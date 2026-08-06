@@ -13,6 +13,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# shellcheck source=lib/gradle-run.sh
+source "$REPO_ROOT/.claude/scripts/lib/gradle-run.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -159,10 +162,20 @@ echo -e "${CYAN}--- Build Check ---${NC}"
 
 if [ -f "gradlew" ]; then
     echo -e "  Running: ./gradlew assembleDebug (this may take a few minutes)..."
-    if ./gradlew assembleDebug --quiet 2>/dev/null; then
+    # Same rule as pre-push-check.sh: keep Gradle's output, and do not call an
+    # environment failure a build failure. Blocking a release on a dead daemon
+    # (or, worse, "fixing" code that was never broken) costs a whole cycle.
+    ASSEMBLE_LOG="${TMPDIR:-/tmp}/sceneview-release-assembleDebug.log"
+    if gradle_run "$ASSEMBLE_LOG" assembleDebug; then
         check "Android assembleDebug" "PASS" ""
     else
-        check "Android assembleDebug" "FAIL" "Build failed"
+        ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" $?)"
+        if [ -n "$ASSEMBLE_REASON" ]; then
+            check "Android assembleDebug" "WARN" "did not run — Gradle infrastructure failure: $ASSEMBLE_REASON (re-run; log: $ASSEMBLE_LOG)"
+        else
+            check "Android assembleDebug" "FAIL" "Build failed (log: $ASSEMBLE_LOG)"
+            gradle_log_tail "$ASSEMBLE_LOG" 15
+        fi
     fi
 else
     check "Gradle wrapper" "FAIL" "gradlew not found"

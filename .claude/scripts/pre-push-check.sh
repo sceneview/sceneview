@@ -4,61 +4,168 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/gradle-run.sh
+source "$SCRIPT_DIR/lib/gradle-run.sh"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
 ERRORS=0
+# Steps that could NOT reach a verdict (Gradle died before judging the code,
+# a report was never produced, …). These are neither ✓ nor ✗ — but a gate that
+# did not run is not a gate that passed, so they still block the push.
+INCOMPLETE=0
+
+# Gradle output is KEPT, never sent to /dev/null: the swallowed stderr is
+# exactly what would have shown that a "screenshot regression" was really a
+# dead build daemon (measured 2026-08-06 — see step 5). Logs survive the run so
+# they can be read afterwards.
+LOG_DIR="${TMPDIR:-/tmp}"
+LOG_DIR="${LOG_DIR%/}/sceneview-pre-push"
+mkdir -p "$LOG_DIR"
+
+# Report a failed Gradle step, distinguishing an ENVIRONMENT failure from a
+# real one. The specific diagnosis ($4) is only pronounced when the log does
+# not carry an infrastructure signature.
+#   gate_gradle_failure <label> <logfile> <exit-code> <real-diagnosis>
+gate_gradle_failure() {
+    local label="$1" log="$2" code="$3" diag="$4"
+    local reason
+    reason="$(gradle_infra_reason "$log" "$code")"
+    if [ -n "$reason" ]; then
+        echo -e "${YELLOW}  ⚠ $label did not run to a verdict — Gradle infrastructure failure: $reason${NC}"
+        gradle_log_tail "$log" 12
+        echo -e "      Full log: $log"
+        INCOMPLETE=$((INCOMPLETE + 1))
+    else
+        echo -e "${RED}  ✗ $diag${NC}"
+        gradle_log_tail "$log" 20
+        echo -e "      Full log: $log"
+        ERRORS=$((ERRORS + 1))
+    fi
+}
 
 echo "═══════════════════════════════════════════"
 echo "  SceneView Pre-Push Quality Gate"
 echo "═══════════════════════════════════════════"
 
 # 1. Android compilation
+# A mass of `Unresolved reference` on symbols the diff never touched is very
+# often a poisoned Gradle build cache (an empty FROM-CACHE entry), not a real
+# break — `rm -rf <module>/build && ./gradlew … --no-build-cache` is the only
+# measured remedy. That is why the log tail is printed instead of hidden.
 echo -e "\n${YELLOW}[1/11] Compiling sceneview...${NC}"
-if ./gradlew :sceneview:compileReleaseKotlin --quiet 2>/dev/null; then
+if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
-    echo -e "${RED}  ✗ sceneview FAILED to compile${NC}"
-    ERRORS=$((ERRORS + 1))
+    gate_gradle_failure "sceneview compilation" "$LOG_DIR/compile-sceneview.log" $? \
+        "sceneview FAILED to compile"
 fi
 
 echo -e "${YELLOW}[2/11] Compiling arsceneview...${NC}"
-if ./gradlew :arsceneview:compileReleaseKotlin --quiet 2>/dev/null; then
+if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
-    echo -e "${RED}  ✗ arsceneview FAILED to compile${NC}"
-    ERRORS=$((ERRORS + 1))
+    gate_gradle_failure "arsceneview compilation" "$LOG_DIR/compile-arsceneview.log" $? \
+        "arsceneview FAILED to compile"
 fi
 
 # 2. Unit tests
 echo -e "\n${YELLOW}[3/11] Running sceneview unit tests...${NC}"
-if ./gradlew :sceneview:test --quiet 2>/dev/null; then
+if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
-    echo -e "${RED}  ✗ sceneview tests FAILED${NC}"
-    ERRORS=$((ERRORS + 1))
+    gate_gradle_failure "sceneview unit tests" "$LOG_DIR/test-sceneview.log" $? \
+        "sceneview tests FAILED"
 fi
 
 echo -e "${YELLOW}[4/11] Running arsceneview unit tests...${NC}"
-if ./gradlew :arsceneview:testDebugUnitTest --quiet 2>/dev/null; then
+if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; then
     echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
 else
-    echo -e "${RED}  ✗ arsceneview tests FAILED${NC}"
-    ERRORS=$((ERRORS + 1))
+    gate_gradle_failure "arsceneview unit tests" "$LOG_DIR/test-arsceneview.log" $? \
+        "arsceneview tests FAILED"
 fi
 
 # 3. Screenshot tests (Roborazzi — Android, JVM, no emulator)
+#
+# Two ways this step used to lie, BOTH measured 2026-08-06 on this repo:
+#
+#  (a) FALSE RED. `--quiet 2>/dev/null` plus "any non-zero exit == screenshot
+#      regression" reported a regression when Gradle had in fact died with
+#      `Gradle build daemon disappeared unexpectedly` (daemon contention on a
+#      Mac running several builds). Reproduced identically on a pristine clone
+#      of main — no golden and no source change involved — and re-running the
+#      task alone gave BUILD SUCCESSFUL / exit 0. The swallowed stderr was the
+#      only place that said so, and no Roborazzi report existed because the
+#      comparison never ran.
+#
+#  (b) FALSE GREEN. The goldens under src/test/snapshots/ are not declared
+#      inputs of any task, so re-running after mutating a golden by 8000 red
+#      pixels gave `verifyRoborazziDebug UP-TO-DATE` / `BUILD SUCCESSFUL in 1s`
+#      — and this step printed "✓ Android screenshots match goldens" having
+#      compared nothing at all.
+#
+# Both are fixed by the same rule: the verdict comes from the COMPARISON
+# REPORT, never from the exit code alone.
+#   - `:samples:android-demo:testDebugUnitTest --rerun` forces the comparison
+#     to happen, so (b) cannot recur;
+#   - `results-summary.json` must be NEWER than a marker taken just before the
+#     run, otherwise nothing was compared and neither ✓ nor "regression" may be
+#     printed. Measured: the report is rewritten by `finalizeTestRoborazziDebug`
+#     even when the test task FAILS (`changed:1` on a red run), and left
+#     untouched on an UP-TO-DATE run — so its mtime discriminates all four
+#     cases (pass / real diff / skipped / infra death).
 echo -e "\n${YELLOW}[5/11] Verifying Android screenshot goldens...${NC}"
 SNAPSHOTS_DIR="samples/android-demo/src/test/snapshots"
+RR_SUMMARY="samples/android-demo/build/test-results/roborazzi/debug/results-summary.json"
+RR_LOG="$LOG_DIR/roborazzi.log"
+RR_MARKER="$LOG_DIR/roborazzi.marker"
 if [ -d "$SNAPSHOTS_DIR" ] && [ "$(ls -A $SNAPSHOTS_DIR 2>/dev/null)" ]; then
-    if ./gradlew :samples:android-demo:verifyRoborazziDebug --quiet 2>/dev/null; then
-        echo -e "${GREEN}  ✓ Android screenshots match goldens${NC}"
+    rm -f "$RR_MARKER"
+    touch "$RR_MARKER"
+    if gradle_run "$RR_LOG" :samples:android-demo:verifyRoborazziDebug \
+                            :samples:android-demo:testDebugUnitTest --rerun; then
+        RR_EXIT=0
     else
-        echo -e "${RED}  ✗ Android screenshot regression detected — run recordRoborazziDebug if change is intentional${NC}"
-        ERRORS=$((ERRORS + 1))
+        RR_EXIT=$?
     fi
+
+    # Positive proof that goldens were actually read and compared.
+    RR_DIFFS="$(roborazzi_fresh_diff_count "$RR_SUMMARY" "$RR_MARKER")"
+
+    case "$RR_DIFFS" in
+        0)
+            if [ "$RR_EXIT" -eq 0 ]; then
+                echo -e "${GREEN}  ✓ Android screenshots match goldens${NC}"
+            else
+                # The comparison ran and every golden matched, so the red build
+                # is something else in :samples:android-demo's test suite.
+                echo -e "${RED}  ✗ :samples:android-demo tests FAILED — every screenshot matched its golden, so this is NOT a golden regression${NC}"
+                gradle_log_tail "$RR_LOG" 20
+                echo -e "      Full log: $RR_LOG"
+                ERRORS=$((ERRORS + 1))
+            fi
+            ;;
+        ''|*[!0-9]*)
+            # No fresh report => nothing was compared. Name the real cause.
+            RR_REASON="$(gradle_infra_reason "$RR_LOG" "$RR_EXIT")"
+            [ -n "$RR_REASON" ] || RR_REASON="the run produced no Roborazzi comparison report"
+            echo -e "${YELLOW}  ⚠ screenshots NOT verified — $RR_REASON${NC}"
+            gradle_log_tail "$RR_LOG" 12
+            echo -e "      Full log: $RR_LOG"
+            INCOMPLETE=$((INCOMPLETE + 1))
+            ;;
+        *)
+            echo -e "${RED}  ✗ Android screenshot regression — $RR_DIFFS golden(s) differ${NC}"
+            echo -e "      Diff images: samples/android-demo/build/outputs/roborazzi/*_compare.png"
+            echo -e "      Intentional change? ./gradlew :samples:android-demo:recordRoborazziDebug"
+            ERRORS=$((ERRORS + 1))
+            ;;
+    esac
 else
     echo -e "${YELLOW}  ⚠ No goldens yet — run: ./gradlew :samples:android-demo:recordRoborazziDebug${NC}"
 fi
@@ -84,11 +191,20 @@ elif ! xcrun simctl spawn booted launchctl list 2>/dev/null | grep -q "UIKitAppl
     echo -e "${YELLOW}  ⚠ iOS demo app not running on the booted sim — skip (launch it on the About tab to arm this check)${NC}"
 elif [ ! -f "$IOS_GOLDENS/${IOS_GOLDEN_NAME}.png" ]; then
     echo -e "${YELLOW}  ⚠ No iOS golden yet — foreground the About tab, then: python3 .claude/scripts/generate-ios-goldens.py capture ${IOS_GOLDEN_NAME}${NC}"
-elif python3 .claude/scripts/generate-ios-goldens.py verify "$IOS_GOLDEN_NAME" 2>/dev/null; then
+elif python3 .claude/scripts/generate-ios-goldens.py verify "$IOS_GOLDEN_NAME" > "$LOG_DIR/ios-goldens.log" 2>&1; then
     echo -e "${GREEN}  ✓ iOS screenshots match goldens${NC}"
-else
+# Same rule as step 5: the harness exits 1 both on a real pixel diff AND on any
+# crash (Pillow/numpy missing, `simctl io screenshot` failing on a sim that just
+# went away). Only the "REGRESSION" line it prints proves a comparison actually
+# happened — without it, this is a tooling failure, not a visual one.
+elif grep -q "REGRESSION" "$LOG_DIR/ios-goldens.log" 2>/dev/null; then
     echo -e "${RED}  ✗ iOS screenshot regression — app foregrounded on About, same sim model as the golden? Intentional change: python3 .claude/scripts/generate-ios-goldens.py capture ${IOS_GOLDEN_NAME}${NC}"
+    sed 's/^/      /' "$LOG_DIR/ios-goldens.log"
     ERRORS=$((ERRORS + 1))
+else
+    echo -e "${YELLOW}  ⚠ iOS goldens NOT verified — the comparison harness itself failed:${NC}"
+    tail -12 "$LOG_DIR/ios-goldens.log" 2>/dev/null | sed 's/^/      /'
+    INCOMPLETE=$((INCOMPLETE + 1))
 fi
 
 # 5. Version sync
@@ -116,10 +232,15 @@ fi
 echo -e "\n${YELLOW}[8/11] Validating website JS...${NC}"
 NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
 if [ -n "$NODE_CMD" ]; then
-    if "$NODE_CMD" -c website-static/js/sceneview.js 2>/dev/null; then
+    if [ ! -f website-static/js/sceneview.js ]; then
+        # "has syntax errors" would be a lie about a file that is not there.
+        echo -e "${RED}  ✗ website-static/js/sceneview.js is MISSING${NC}"
+        ERRORS=$((ERRORS + 1))
+    elif "$NODE_CMD" -c website-static/js/sceneview.js > "$LOG_DIR/website-js.log" 2>&1; then
         echo -e "${GREEN}  ✓ sceneview.js syntax OK${NC}"
     else
-        echo -e "${RED}  ✗ sceneview.js has syntax errors${NC}"
+        echo -e "${RED}  ✗ sceneview.js has syntax errors:${NC}"
+        tail -10 "$LOG_DIR/website-js.log" | sed 's/^/      /'
         ERRORS=$((ERRORS + 1))
     fi
 else
@@ -164,24 +285,50 @@ fi
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.
 echo -e "\n${YELLOW}[11/11] Checking public-API ABI (apiCheck)...${NC}"
 if [ -f gradlew ]; then
-    if ./gradlew -q apiCheck > /tmp/api-check.log 2>&1; then
+    if gradle_run "$LOG_DIR/api-check.log" apiCheck; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"
     else
-        echo -e "${RED}  ✗ apiCheck failed — public-API surface drifted:${NC}"
-        tail -20 /tmp/api-check.log | sed 's/^/      /'
-        echo -e "      Intentional change? Run ./gradlew apiDump and commit the .api diff."
-        ERRORS=$((ERRORS + 1))
+        # "the public-API surface drifted" is a claim about the CODE — do not
+        # make it when Gradle died before comparing anything.
+        API_EXIT=$?
+        API_REASON="$(gradle_infra_reason "$LOG_DIR/api-check.log" "$API_EXIT")"
+        if [ -n "$API_REASON" ]; then
+            echo -e "${YELLOW}  ⚠ apiCheck did not run to a verdict — Gradle infrastructure failure: $API_REASON${NC}"
+            gradle_log_tail "$LOG_DIR/api-check.log" 12
+            INCOMPLETE=$((INCOMPLETE + 1))
+        else
+            echo -e "${RED}  ✗ apiCheck failed — public-API surface drifted:${NC}"
+            gradle_log_tail "$LOG_DIR/api-check.log" 20
+            echo -e "      Intentional change? Run ./gradlew apiDump and commit the .api diff."
+            ERRORS=$((ERRORS + 1))
+        fi
+        echo -e "      Full log: $LOG_DIR/api-check.log"
     fi
 else
     echo -e "${YELLOW}  ⚠ gradlew not found, skipping${NC}"
 fi
 
 # Summary
+#
+# "could not run" is reported SEPARATELY from "failed" — conflating them is the
+# whole bug this script was carrying. It still exits non-zero: an unrun gate is
+# not a passed gate. Infrastructure failures on this host are usually daemon
+# contention, so the remedy is to re-run once nothing else is building.
 echo -e "\n═══════════════════════════════════════════"
-if [ "$ERRORS" -eq 0 ]; then
+if [ "$ERRORS" -eq 0 ] && [ "$INCOMPLETE" -eq 0 ]; then
     echo -e "${GREEN}  ✓ ALL CHECKS PASSED — safe to push${NC}"
     exit 0
+elif [ "$ERRORS" -eq 0 ]; then
+    echo -e "${YELLOW}  ⚠ $INCOMPLETE CHECK(S) COULD NOT RUN — no check failed, but the gate is INCOMPLETE${NC}"
+    echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
+    echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
+    echo -e "${YELLOW}    Logs: $LOG_DIR${NC}"
+    exit 1
 else
     echo -e "${RED}  ✗ $ERRORS CHECK(S) FAILED — DO NOT PUSH${NC}"
+    if [ "$INCOMPLETE" -gt 0 ]; then
+        echo -e "${YELLOW}  ⚠ plus $INCOMPLETE check(s) that could not run at all${NC}"
+    fi
+    echo -e "      Logs: $LOG_DIR"
     exit 1
 fi

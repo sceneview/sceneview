@@ -871,6 +871,21 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-context-budget.sh
 
+      # Gradle failure classification (lib/gradle-run.sh). The gate scripts used
+      # to run `./gradlew <task> --quiet 2>/dev/null` and translate ANY non-zero
+      # exit into one hard-coded diagnosis, with the stderr that would have
+      # contradicted it thrown away. Measured 2026-08-06: "Android screenshot
+      # regression detected" when Gradle had actually died of daemon contention,
+      # reproduced identically on a pristine clone of main. The classifier now
+      # decides, and it can fail in BOTH directions — too narrow and the
+      # false-red comes back, too broad and a genuine compile break is waved
+      # through as "infrastructure". Fixture-based (synthetic Gradle logs, no
+      # Gradle), with a mutation test on the pattern table.
+      - name: Self-test Gradle failure classification
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-gradle-run.sh
+
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two
       # success-shaped lines, installed NOTHING, and left a build eight hours
