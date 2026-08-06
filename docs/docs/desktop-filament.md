@@ -9,12 +9,16 @@ still stands; the *binding supply* decision does not.
 
 > **2026-08-03 update.** Desktop rendering is now delivered as the desktop `actual` of
 > the `sceneview-compose` façade. The binding supply changed: instead of *depending on*
-> `io.github.erkko68.filament-ffm`, its desktop path is **vendored** into
-> `third_party/filament-kmp/` under its Apache-2.0 licence, with the attribution that
-> licence requires. The offscreen architecture and the filament-kmp analysis below are
-> unchanged and still the basis for the work. See
-> [compose-multiplatform.md](compose-multiplatform.md). Original decision thread:
-> [issue #2540](https://github.com/sceneview/sceneview/issues/2540).
+> `io.github.erkko68.filament-ffm`, its desktop path is **vendored** under its
+> Apache-2.0 licence, with the attribution that licence requires. The offscreen
+> architecture and the filament-kmp analysis below are unchanged and still the basis for
+> the work. See [compose-multiplatform.md](compose-multiplatform.md). Original decision
+> thread: [issue #2540](https://github.com/sceneview/sceneview/issues/2540).
+
+> **2026-08-05 amendment — vendor stays the decision, the *timing* moved.** The copy did
+> land on `main` (commit `c01ae5d87`) and was removed again in the same week, unused. See
+> [Re-vendoring the binding](#re-vendoring-the-binding) below for why, and for the one
+> command that brings it back.
 
 > Supersedes the 2026-03-25 research version of this page, which incorrectly
 > presented Filament's desktop Java build (`filament-java.jar`, `FilamentCanvas`,
@@ -107,7 +111,8 @@ pin ahead of SceneView Android's Filament ref (see the `.filamat` note below).
    the copy — JDK 22+, the CMake/`jextract` chain, three-OS CI, recurring upkeep — are
    listed in [compose-multiplatform.md](compose-multiplatform.md). Attribution is
    mandatory, not discretionary: upstream `LICENSE` plus a `NOTICE` crediting
-   Èric Bitriá Ribes.
+   Èric Bitriá Ribes. **Amended again 2026-08-05: the copy is taken when the spike
+   starts, not before** — see [Re-vendoring the binding](#re-vendoring-the-binding).
 3. **Phased, with measured gates and abandon criteria** — P1 spike (engine boot +
    offscreen + one GLB in `samples/desktop-demo` behind a flag; FPS/CPU/resize/leak
    gates) → P2 `sceneview-desktop/` module mirroring the Android composable surface
@@ -132,6 +137,50 @@ pin ahead of SceneView Android's Filament ref (see the `.filamat` note below).
 - **Frame pacing:** drive rendering from `withFrameNanos`, render on the engine
   thread (the repo's single-threaded Filament rule applies on desktop too), reuse
   the two pixel buffers — no per-frame allocation.
+
+---
+
+## Re-vendoring the binding
+
+The vendored copy landed on `main` in `c01ae5d87` and was removed in the same week. It
+was never a mistake of *shape* — vendoring is still the decision above — it was a
+mistake of *timing*. Three measurements decided it:
+
+- **Nothing compiled it.** No `settings.gradle` referenced `third_party/`, so the 31 700
+  lines were dead weight in every checkout, every `grep`, and every cross-cutting lint.
+  It had already cost one repo-wide guard: `check-deprecated-api.sh` needed a
+  `third_party/*` whitelist, because Filament's own `Scene` class tripped SceneView's
+  deprecated-composable detector and the files could not be edited without falsifying
+  the §4(b) NOTICE.
+- **Its guard made an unrelated repo a single point of failure.** `diff-upstream.sh` ran
+  unconditionally in `Repo hygiene checks` and `git clone`d
+  `github.com/Erkko68/filament-kmp` on every CI invocation, exiting non-zero if the clone
+  failed. A rename, a privatisation or an outage on one individual's repository would
+  have reddened every pull request in the monorepo — to protect code nothing built.
+- **A frozen 0.3.0 ages exactly like the churn it was meant to escape.** The spike is
+  contributor-carried with no date; whoever starts it will want a current tag anyway.
+
+**Restoring it is one command** — the full tree, plus `LICENSE`, `NOTICE`,
+`MANIFEST.sha256` and `diff-upstream.sh`, verbatim and independent of upstream's
+survival:
+
+```bash
+git checkout c01ae5d87 -- third_party/filament-kmp
+```
+
+To take a *newer* upstream tag instead: clone at that tag, replace the tree, update the
+tag and commit lines in `third_party/filament-kmp/NOTICE`, then
+`bash third_party/filament-kmp/diff-upstream.sh --regenerate` and review the manifest
+diff — a file appearing or vanishing there is the point of the exercise.
+
+Either way, three things must land in the **same** PR as the restored tree, or the
+restore is not real:
+
+1. the §4(b) step back in `.github/workflows/ci.yml` under `repo-hygiene` (the version in
+   `c01ae5d87` is copy-pasteable) — a guard no job invokes is prose;
+2. the Filament KMP attribution block back in the root `NOTICE` (also in `c01ae5d87`);
+3. the `settings.gradle` include that makes something actually build it. Vendoring code
+   that nothing compiles is what this section exists to prevent repeating.
 
 ---
 

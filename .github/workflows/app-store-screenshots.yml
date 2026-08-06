@@ -3,8 +3,21 @@ name: Sync App Store screenshots
 # Uploads samples/ios-demo/appstore-screenshots/ to the EDITABLE App Store
 # version. No build, no signing, no Xcode — plain App Store Connect REST.
 #
+# ⚠️ This is the SECONDARY path since #2899. `app-store.yml`'s submit step
+# calls `asc_listing.apply_screenshots()` inline on every release, between the
+# listing-text sync and the review submission — the only moment an editable
+# version exists, because that step creates it and Apple locks the metadata
+# when it submits. This workflow remains for OUT-OF-BAND refreshes, and can
+# only write when a version happens to be open; dispatched at any other time
+# it SKIPs honestly ("no editable iOS version").
+#
+# Do not read the rest of this header as "the dispatch is the only mechanism".
+# It was, and relying on it alone is exactly how v4.26.0 shipped a screenshot
+# set four releases stale while its listing text synced correctly.
+#
 # Why this is its own workflow rather than a job inside app-store.yml
-# (#2612 P2 Phase B, review of PR #2781):
+# (#2612 P2 Phase B, review of PR #2781) — still true, and still the reason
+# app-store.yml must never be *dispatched* merely to refresh screenshots:
 #
 #   The first cut added a `sync_screenshots` input + job to app-store.yml.
 #   That workflow's `deploy-ios` / `deploy-macos` jobs are gated only on

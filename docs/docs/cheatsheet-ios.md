@@ -53,7 +53,45 @@ SceneView { root in
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance
+.contentID(model == nil ? nil : selectedID)  // v4.26.0+ — re-runs the content closure IN PLACE when the id changes. Use this to swap the model, NEVER SwiftUI's .id()
 ```
+
+!!! danger "Swapping the model: `contentID`, never `.id()`"
+    The content closure runs **once**, when the scene is created. To show a
+    different model, change `.contentID(_:)`. Do **not** re-key the view with
+    SwiftUI's `.id(_:)`, and do not wrap the `SceneView` in an
+    `if let model` that unmounts it while the next one loads — put the spinner
+    in an overlay instead. Both change the view's *identity*, so SwiftUI
+    discards the `RealityView` and builds a new one, and on iOS 26 Simulator a
+    re-created `RealityView` intermittently renders nothing at all — no model,
+    and no skybox either — permanently
+    ([#3008](https://github.com/sceneview/sceneview/issues/3008)).
+
+    The id has to change **every time the closure would build something
+    different**, including "still loading" → "loaded". An `Optional` covers
+    that; keyed on the selected item alone it already sits at its final value
+    while the model is still being fetched, and the scene stays empty forever.
+
+    ```swift
+    ZStack {
+        SceneView { root in
+            guard let model else { return }        // scene stays mounted
+            root.addChild(model.entity)
+        }
+        .contentID(model == nil ? nil : selectedID)
+        .environment(.studio)
+
+        if model == nil { ProgressView() }         // spinner as an OVERLAY
+    }
+    ```
+
+    On each change the previous content is removed (its per-entity gesture
+    handlers unregistered first, so it deallocates instead of leaking), the
+    render-quality preset is re-applied, and the auto-framing pass is re-armed
+    so the new subject is fitted rather than inheriting the previous camera
+    distance. **Android has no equivalent and needs none** — `SceneView { }`
+    there is a composable whose DSL content is re-read on recomposition, so
+    swapping a model is an ordinary state change.
 
 !!! tip "Getting a scene to fill the frame — and to show its sky"
     The auto-fit pass fits the content's **bounding sphere** to the narrower

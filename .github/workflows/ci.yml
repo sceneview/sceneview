@@ -694,21 +694,6 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
 
-      # Apache-2.0 §4(b) guard for the vendored filament-kmp copy. This is
-      # licence compliance, not tidiness: `third_party/filament-kmp/NOTICE`
-      # claims the copy is byte-identical to upstream 0.3.0, and an unnoticed
-      # edit turns that claim false. It also pins the tree against
-      # MANIFEST.sha256 in both directions, so a deleted file, an added build
-      # script, an added binary blob or a symlink cannot slip in unreviewed.
-      # Runs unconditionally. Gating it on "did third_party/ change?" would
-      # need history this shallow checkout does not have, and the whole cost is
-      # a 2 s / 32 MB `--depth 1` clone — cheaper than the gate being skipped
-      # on the one PR that mattered.
-      - name: Verify vendored filament-kmp matches upstream
-        if: always()
-        shell: bash
-        run: bash third_party/filament-kmp/diff-upstream.sh
-
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the
       # monorepo root Package.swift. Any NEW reference to the dead mirror URL

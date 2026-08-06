@@ -182,7 +182,7 @@ One unified showcase app per platform — all features integrated into tabs.
 | `docs/` | MkDocs documentation source (built by CI) |
 | `branding/` | Logo SVGs, brand guide, store asset specs |
 | `buildSrc/` | Gradle build logic + detekt config |
-| `third_party/` | Vendored third-party source. `filament-kmp/` is the desktop/JVM Filament binding copied from [Erkko68/filament-kmp](https://github.com/Erkko68/filament-kmp) `0.3.0` under Apache-2.0 — **never hand-edit without adding the §4(b) modification notice**; `third_party/filament-kmp/diff-upstream.sh` enforces it on every PR (`Repo hygiene checks`), pinning the tree with `MANIFEST.sha256` in both directions |
+| `third_party/` | Vendored third-party source. **Empty today** — the Filament KMP desktop binding was vendored here and removed again before it ever compiled; re-vendoring is a one-command restore from `c01ae5d87`, see [docs/docs/desktop-filament.md](docs/docs/desktop-filament.md#re-vendoring-the-binding). Any future vendored tree must ship LICENSE + NOTICE + a §4(b) guard wired into a CI job — a guard no job invokes is prose |
 | `.github/` | CI workflows + community docs (CoC, Security, Support, Governance, Sponsors, Privacy) |
 
 ## Changelog entries

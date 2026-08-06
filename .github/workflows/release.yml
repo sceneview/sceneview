@@ -568,10 +568,79 @@ jobs:
         if: steps.check-pub.outputs.skip != 'true'
         working-directory: flutter/sceneview_flutter
         run: |
-          if ! flutter pub publish --force; then
-            echo "::warning::pub.dev publish failed. If this is an auth error, enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev for flutter_sceneview (the sceneview/sceneview_flutter names are third-party, see #2735). A brand-new package's FIRST version must be published manually once before OIDC applies. Failing honestly rather than masking (#2731 lesson)."
+          # `flutter pub publish --force` does NOT fail when the OIDC credential
+          # is missing — it falls back to INTERACTIVE OAuth, prints an
+          # accounts.google.com URL and blocks on "Waiting for your
+          # authorization…" until the job timeout kills it. The job then lands
+          # as `cancelled`, which reads as "someone stopped it" rather than "the
+          # publish failed", so nothing was ever red. That is how
+          # flutter_sceneview silently missed BOTH v4.25.0 and v4.26.0 while
+          # every other target shipped (#3011).
+          #
+          # Three guards, because the exit code alone cannot be trusted here:
+          #   - stdin closed, so a prompt dies instead of waiting;
+          #   - `timeout`, so a hang is bounded and attributable to THIS step
+          #     instead of surfacing as a job-level cancellation;
+          #   - the interactive banner is a hard failure on its own, whatever
+          #     pub exits with afterwards.
+          set -o pipefail
+          rc=0
+          timeout 300 flutter pub publish --force < /dev/null 2>&1 | tee publish.log || rc=$?
+          if grep -q "Waiting for your authorization" publish.log; then
+            echo "::error::pub.dev fell back to INTERACTIVE OAuth — the OIDC credential never reached dart pub. Enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev for flutter_sceneview (the sceneview/sceneview_flutter names are third-party, see #2735/#3011). A brand-new package's FIRST version must be published manually once before OIDC applies."
             exit 1
           fi
+          if [ "$rc" -eq 124 ]; then
+            echo "::error::pub.dev publish timed out after 300s without asking for authorization — read the log above."
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::pub.dev publish failed (exit $rc). Failing honestly rather than masking (#2731 lesson)."
+            exit "$rc"
+          fi
+
+      - name: Verify flutter_sceneview is really on pub.dev
+        if: steps.check-pub.outputs.skip != 'true'
+        env:
+          PUB_VERSION: ${{ steps.check-pub.outputs.version }}
+        run: |
+          # The registry is the ground truth, never the publish step's exit
+          # code. Without this, #3011 stays possible in a new disguise: any
+          # future failure mode that ends 0 without uploading is invisible.
+          #
+          # This is currently the ONLY post-publish re-verify in the workflow —
+          # the npm and Maven jobs query their registries as a PRE-publish skip
+          # guard and then trust a non-zero exit, which holds for them because
+          # their CLIs fail loudly on an auth error rather than dropping to an
+          # interactive prompt the way `flutter pub publish --force` does. That
+          # is an asymmetry, not a rule everyone else already follows; extending
+          # it is tracked separately.
+          for attempt in 1 2 3 4 5; do
+            # Set membership in ['versions'], NOT equality against
+            # ['latest']['version'] — mirroring the check-pub step above. They
+            # agree for forward-only releases, but a backport would leave
+            # `latest` pointing at a higher version, so an equality test would
+            # exhaust its retries and ::error:: a release whose publish actually
+            # succeeded. That is this PR's own false-red, in mirror image.
+            # Raised in review of PR #3013.
+            FOUND=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
+              | python3 -c "import json,os,sys; print(any(v['version'] == os.environ['PUB_VERSION'] for v in json.load(sys.stdin)['versions']))" \
+              2>/dev/null || echo "False")
+            if [ "$FOUND" = "True" ]; then
+              echo "pub.dev serves flutter_sceneview $PUB_VERSION"
+              exit 0
+            fi
+            # Do not announce — or wait out — a retry that will not happen:
+            # the last pass falls straight through to the error below.
+            if [ "$attempt" -lt 5 ]; then
+              echo "pub.dev does not list $PUB_VERSION yet (attempt $attempt/5) — retrying in 20s"
+              sleep 20
+            else
+              echo "pub.dev does not list $PUB_VERSION (attempt $attempt/5) — no retries left"
+            fi
+          done
+          echo "::error::pub.dev does not serve $PUB_VERSION after a green publish — the step passed and nothing landed (#3011)."
+          exit 1
 
   # ── 5. Create GitHub Release with auto-generated notes ────────────────────
   create-release:
@@ -629,8 +698,70 @@ jobs:
             found                 { print }
           ' CHANGELOG.md > release-notes.md || true
           if [ -s release-notes.md ]; then
+            # A GitHub release body is capped at 125,000 characters and the API
+            # TRUNCATES rather than rejecting, so an oversized section ships cut
+            # off mid-sentence with a green step and no warning anywhere (#3012:
+            # v4.26.0 extracted 132,833 characters and published 124,999).
+            #
+            # Dropping whole trailing `###` subsections keeps the body valid
+            # markdown and keeps the loss legible — never a mid-word cut. The
+            # pointer is appended so the release page says what is missing
+            # instead of implying these are the complete notes.
+            VERSION="$VERSION" python3 - <<'PY'
+          import os, pathlib, re
+          CAP = 125000
+          version = os.environ["VERSION"]
+          p = pathlib.Path("release-notes.md")
+          text = p.read_text()
+          if len(text) <= CAP:
+              raise SystemExit(0)
+          parts = re.split(r"(?m)^(?=### )", text)
+          head, sections = parts[0], parts[1:]
+          link = (f"https://github.com/sceneview/sceneview/blob/v{version}"
+                  f"/CHANGELOG.md")
+          kept, dropped = [], []
+          for s in sections:
+              title = s.splitlines()[0].removeprefix("### ").strip()
+              # `not dropped` makes the loss TRAILING, which is what the comment
+              # above promises. A greedy keep-whatever-fits pass would drop one
+              # large high-value section and keep the small trivia after it —
+              # with v4.26.0's own shape (### Fixed alone was 73,275 characters)
+              # that means losing Fixed and keeping Tests and Docs, inverting the
+              # priority the CHANGELOG's ordering expresses. Trailing loss is
+              # predictable and matches how someone reads the notes; cherry-picked
+              # loss is neither. Raised in review of PR #3013.
+              #
+              # +600 leaves room for the pointer this loop has not built yet.
+              if not dropped and len(head) + len("".join(kept)) + len(s) + 600 <= CAP:
+                  kept.append(s)
+              else:
+                  dropped.append(title)
+
+          def pointer(what):
+              return ("\n### Not shown here\n\n"
+                      f"{what} — omitted only because a GitHub release body is capped "
+                      f"at {CAP:,} characters and this release is larger. Read the "
+                      f"complete notes in [CHANGELOG.md]({link}), the single source "
+                      "of truth.\n")
+
+          body = head + "".join(kept) + pointer(", ".join(dropped))
+          # Dropping subsections is the readable path, not a guarantee: a
+          # section with no `### ` subsections at all, or one whose preamble
+          # alone overflows, leaves `body` still over the cap — and shipping it
+          # would silently reintroduce #3012 through the very guard meant to
+          # stop it. Fall back to cutting at a LINE boundary, which is still
+          # valid markdown and still says what happened.
+          if len(body) > CAP:
+              keep = CAP - 600
+              body = text[:keep].rsplit("\n", 1)[0] + pointer("The tail of these notes")
+              dropped = dropped or ["(no ### subsections to drop — cut at a line boundary)"]
+          p.write_text(body)
+          print(f"::warning::Release notes exceeded {CAP} characters "
+                f"({len(text)}) — trimmed the body and linked CHANGELOG.md "
+                f"instead: {', '.join(dropped)}")
+          PY
             echo "extracted=true" >> "$GITHUB_OUTPUT"
-            echo "Extracted $(wc -l < release-notes.md) lines for v$VERSION from CHANGELOG.md"
+            echo "Extracted $(wc -c < release-notes.md) characters for v$VERSION from CHANGELOG.md"
           else
             echo "extracted=false" >> "$GITHUB_OUTPUT"
             echo "::warning::No '## v$VERSION' section in CHANGELOG.md — falling back to auto-generated PR list"

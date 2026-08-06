@@ -58,6 +58,13 @@ struct ModelViewerDemo: View {
     /// bundled hero. We surface the title in the status pill so the user can
     /// tell which model is on screen right now.
     @State private var streamedDisplayName: String?
+    /// Monotonic count of models loaded into the scene, and the only reliable
+    /// half of the `.contentID(_:)` key. The display name is not: two
+    /// consecutive "Surprise me" rolls can land on models with the *same*
+    /// title, and a key that does not change is a swap that silently does not
+    /// happen. Bumped on every successful load, so the id changes even when
+    /// the name repeats.
+    @State private var loadCount: Int = 0
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
@@ -95,8 +102,18 @@ struct ModelViewerDemo: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if let loadedNode {
+        ZStack {
+            // Mounted for the demo's whole lifetime, and never re-keyed with
+            // `.id(_:)` — both throw the `RealityView` away and build a new one,
+            // which on iOS 26 Simulator intermittently comes back rendering
+            // nothing at all, no model and no skybox, permanently (#3008).
+            // `.contentID(_:)` swaps the model inside the live scene. The key
+            // is `loadCount`, not the model's title — see its declaration: two
+            // "Surprise me" rolls can return the same title, and an unchanged
+            // key is a swap that silently does not happen. Optional so it also
+            // changes when the first model lands.
             SceneView { root in
+                guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
                 root.addChild(loadedNode.entity)
             }
@@ -119,22 +136,24 @@ struct ModelViewerDemo: View {
             // adrift in empty backdrop: the hero's bounding sphere is set by
             // its display plinth, not by the car (#2896).
             .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
+            .contentID(loadedNode == nil ? nil : loadCount)
             .ignoresSafeArea()
-            .id("model-viewer-\(streamedDisplayName ?? "bundled")")
-        } else {
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(.white)
-                if let loadError {
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                } else {
-                    Text("Loading model…")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
+
+            if loadedNode == nil {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                    if let loadError {
+                        Text(loadError)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    } else {
+                        Text("Loading model…")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
             }
         }
@@ -206,6 +225,7 @@ struct ModelViewerDemo: View {
             _ = node.scaleToUnits(0.6)
             _ = node.centerOrigin()
             loadedNode = node
+            loadCount += 1
         } catch {
             loadError = "Could not load bundled hero: \(error.localizedDescription)"
         }
@@ -261,6 +281,7 @@ struct ModelViewerDemo: View {
             _ = node.scaleToUnits(0.6)
             _ = node.centerOrigin()
             loadedNode = node
+            loadCount += 1
             streamedDisplayName = pick.name
         } catch {
             // Keep the current hero on screen, but surface a transient banner so
