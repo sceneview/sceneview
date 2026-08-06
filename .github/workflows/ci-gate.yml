@@ -534,6 +534,12 @@ jobs:
                 echo "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
                   | while IFS= read -r n; do echo "    - $n"; done
               fi
+              # DELIBERATE: the timeout prints the FULL `vanished` set, not
+              # `vanished_gating`. The wait log above must not call an advisory
+              # check "still gated" because it is not — but this is a
+              # post-mortem, the header only claims the names were missing from
+              # the read, and knowing that an advisory check disappeared too is
+              # evidence about the API, not a claim about the verdict.
               if [ -n "$vanished" ]; then
                 echo "  Observed earlier but missing from the final Checks API read (#3018):"
                 echo "$vanished" | sort -u | while IFS= read -r n; do echo "    - $n"; done
