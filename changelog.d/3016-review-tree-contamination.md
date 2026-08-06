@@ -10,5 +10,9 @@
   and `git clean` are now denied, the prompt states that CI checkouts are clean by
   construction so uncommitted work can only be the review's own damage, and a new
   assertion fails the job outright if the tree is dirty rather than letting a poisoned
-  verdict reach the pull request. Closes
+  verdict reach the pull request. That assertion was itself fail-open at first — a
+  failed `git status` left its output variable empty and the step announced a pristine
+  checkout it had never managed to look at, the same "absent is not zero" trap this
+  workflow already carries two steps below — so a failed probe is now treated as
+  contamination rather than as a clean result. Closes
   [#3016](https://github.com/sceneview/sceneview/issues/3016).
