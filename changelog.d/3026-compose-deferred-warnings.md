@@ -36,11 +36,16 @@
   is unreleased, so it costs no compatibility; after publication it would.
 - **`check-vendored-download-safety.sh`** — refuses to *build* a vendored tree whose
   build-logic downloads archives without verifying them and creates symlinks from an
-  unvalidated `entry.linkName`. Both defects are real in
-  `third_party/filament-kmp/build-logic/` and both are currently unreachable, because
-  nothing builds that tree. The gate stays silent until a `settings.gradle` include lands
-  ([#2540](https://github.com/sceneview/sceneview/issues/2540)) and fails from that
-  moment, naming both fixes — the requirement lands *before* the build chain, not after.
+  unvalidated `entry.linkName`. Both defects are real in the `filament-kmp 0.3.0`
+  build-logic, and both are build-time code execution the moment something compiles it.
+  The tree was removed from `main` by
+  [#3015](https://github.com/sceneview/sceneview/pull/3015) while this change was in
+  flight, so the gate is dormant today; it arms itself when the desktop spike
+  ([#2540](https://github.com/sceneview/sceneview/issues/2540)) restores the copy and a
+  `settings.gradle` include lands, and fails from that moment naming both fixes. The
+  remediation is also written into `docs/docs/desktop-filament.md`
+  § *Re-vendoring the binding* as item 4 of the obligations that must ship in the same PR
+  as a restored tree — the requirement lands *before* the build chain, not after.
   Wired into `repo-hygiene` and `pre-push-check.sh`, and its failing path is driven on
   synthetic trees by `test-check-vendored-download-safety.sh` — a gate dormant on the real
   tree is a gate whose breakage would otherwise surface only in the PR it must stop. That

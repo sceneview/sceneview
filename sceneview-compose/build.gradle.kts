@@ -11,8 +11,8 @@ plugins {
 // ── sceneview-compose ────────────────────────────────────────────────────────
 // A thin Compose Multiplatform façade over the per-platform renderers. One API,
 // several renderers: Android delegates to the Filament `SceneView { }`, iOS to
-// RealityKit through SceneViewSwift, desktop to the vendored Filament binding in
-// third_party/filament-kmp/.
+// RealityKit through SceneViewSwift, desktop to a Filament FFM binding that is not
+// vendored yet (see docs/docs/desktop-filament.md).
 //
 // Scope is the VIEWER SUBSET only — see docs/docs/compose-multiplatform.md and
 // this module's README. AR, materials and post-processing stay platform-native.

@@ -770,37 +770,24 @@ jobs:
 
       # Refuses to BUILD a vendored tree whose build-logic downloads archives
       # without verifying them and unpacks symlinks without validating their
-      # targets. Silent while nothing builds third_party/filament-kmp (the case
-      # today); mandatory the instant a settings.gradle include lands, which is
-      # the moment a reviewer is thinking about CMake, not about tar entries.
+      # targets. `third_party/filament-kmp/` was removed from main in #3015, so
+      # today this exits 0 on "nothing vendored". It arms itself the instant the
+      # tree comes back AND something builds it (#2540) — which is the moment a
+      # reviewer is thinking about CMake and jextract, not about tar entries.
       - name: Check vendored download chain is hardened before it is built
         if: always()
         shell: bash
         run: bash .claude/scripts/check-vendored-download-safety.sh
 
-      # The gate above is dormant on the current tree — it exits 0 without
-      # exercising either probe, and will until someone wires the vendored
-      # binding. This self-test drives its FAILING path on synthetic trees so a
-      # loosened probe is caught now rather than in the PR it was meant to stop.
+      # The gate above is dormant on the current tree — with nothing vendored it
+      # exits 0 without exercising either probe, and will stay that way until the
+      # desktop spike restores the copy. This self-test drives its FAILING path
+      # on synthetic trees so a loosened probe is caught now, rather than in the
+      # PR it was meant to stop.
       - name: Self-test the vendored-download gate
         if: always()
         shell: bash
         run: bash .claude/scripts/test-check-vendored-download-safety.sh
-
-      # Apache-2.0 §4(b) guard for the vendored filament-kmp copy. This is
-      # licence compliance, not tidiness: `third_party/filament-kmp/NOTICE`
-      # claims the copy is byte-identical to upstream 0.3.0, and an unnoticed
-      # edit turns that claim false. It also pins the tree against
-      # MANIFEST.sha256 in both directions, so a deleted file, an added build
-      # script, an added binary blob or a symlink cannot slip in unreviewed.
-      # Runs unconditionally. Gating it on "did third_party/ change?" would
-      # need history this shallow checkout does not have, and the whole cost is
-      # a 2 s / 32 MB `--depth 1` clone — cheaper than the gate being skipped
-      # on the one PR that mattered.
-      - name: Verify vendored filament-kmp matches upstream
-        if: always()
-        shell: bash
-        run: bash third_party/filament-kmp/diff-upstream.sh
 
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the

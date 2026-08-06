@@ -16,8 +16,11 @@
   registered factory `SceneViewer` draws a visible notice rather than an empty viewport.
 - **`ModelSource.Url` now rejects non-http/https URLs in `commonMain`**, so the documented
   invariant holds on every platform instead of only inside the Android downloader.
-- **Apache-2.0 §4(b) compliance for `third_party/filament-kmp/` is now enforced in CI.**
-  `diff-upstream.sh` existed but no job ran it. It now runs on every PR and pins the
-  vendored tree with `MANIFEST.sha256` in both directions, so a deleted file, an added
-  build script, an added binary blob or a symlink cannot land unreviewed — none of which
-  the previous extension-filtered, one-way walk could see.
+- **The vendored `third_party/filament-kmp/` copy was removed again before shipping.**
+  It was 31 700 lines that no `settings.gradle` referenced, so nothing compiled it, and
+  its Apache-2.0 §4(b) guard cloned a single-maintainer GitHub repo on every CI run —
+  making an unrelated upstream outage able to redden every PR in the monorepo. The
+  desktop track still plans to vendor; the *execution* moves to the P1 spike, where the
+  copy can be taken at a current upstream tag instead of ageing on `main`. Restoring it
+  is one command, documented in
+  [docs/docs/desktop-filament.md](https://github.com/sceneview/sceneview/blob/main/docs/docs/desktop-filament.md).

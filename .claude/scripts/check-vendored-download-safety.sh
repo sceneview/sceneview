@@ -23,14 +23,17 @@
 #      does not resolve symlinks) and writes through the link, outside the
 #      destination. The extracted tree is then marked executable and run.
 #
-# Both are build-time, and today they are unreachable: NOTHING builds the
-# vendored tree — `settings.gradle` has no include for it. That is precisely
-# why this is a gate and not a patch. The defects become live the moment the
-# desktop spike (#2540) wires the binding in, and that is the moment a reviewer
-# is thinking about CMake and jextract, not about tar entries.
+# Both are build-time, and today they are unreachable twice over: the tree was
+# removed from main in #3015, and even while it was present nothing built it
+# (`settings.gradle` never had an include). That is precisely why this is a gate
+# and not a patch — patching a copy that was about to be deleted would have
+# protected nothing. The defects become live the moment the desktop spike
+# (#2540) restores the binding AND wires it in, and that is the moment a
+# reviewer is thinking about CMake and jextract, not about tar entries.
 #
 # So: while nothing builds it, this passes and says nothing. The instant
-# something does, it fails and names both fixes.
+# something does, it fails and names both fixes. The remediation is spelled out
+# in docs/docs/desktop-filament.md § Re-vendoring the binding (item 4).
 #
 # ─── What it checks ─────────────────────────────────────────────────────────
 #
