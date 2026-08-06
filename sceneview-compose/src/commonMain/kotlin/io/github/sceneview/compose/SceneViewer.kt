@@ -55,6 +55,9 @@ import androidx.compose.ui.Modifier
  *   touch point, or `null` when the tap missed the model.
  * @param onFrame invoked once per rendered frame with the frame time in nanoseconds.
  *   Called on the platform's render-driving thread — keep it allocation-free.
+ * @param onError invoked when a model or environment fails to load. Without it a failure
+ *   is invisible on screen: the viewport keeps showing the environment, which looks
+ *   exactly like a load still in progress. See [SceneViewerError].
  */
 @Composable
 public expect fun SceneViewer(
@@ -65,4 +68,5 @@ public expect fun SceneViewer(
     environment: EnvironmentSource = EnvironmentSource.Default,
     onTap: ((ModelHit?) -> Unit)? = null,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onError: ((SceneViewerError) -> Unit)? = null,
 )

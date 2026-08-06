@@ -159,6 +159,19 @@ else
     echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found, skipping${NC}"
 fi
 
+# Vendored-download hardening gate. Passes silently while nothing builds
+# third_party/filament-kmp; fails the moment something does and its downloads
+# are still unverified / its symlink extraction unvalidated.
+if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
+    if bash .claude/scripts/check-vendored-download-safety.sh > /tmp/vendored-dl.log 2>&1; then
+        echo -e "${GREEN}  ✓ vendored download chain: not built, or hardened${NC}"
+    else
+        echo -e "${RED}  ✗ vendored download chain is BUILT but not hardened:${NC}"
+        tail -20 /tmp/vendored-dl.log | sed 's/^/      /'
+        ERRORS=$((ERRORS + 1))
+    fi
+fi
+
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
 # check — catch an unintentional public-API change locally before CI does.
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.

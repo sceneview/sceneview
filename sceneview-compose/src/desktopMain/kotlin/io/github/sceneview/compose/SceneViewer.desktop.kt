@@ -24,6 +24,10 @@ public actual fun SceneViewer(
     environment: EnvironmentSource,
     onTap: ((ModelHit?) -> Unit)?,
     onFrame: ((frameTimeNanos: Long) -> Unit)?,
+    // Never invoked while this is a placeholder: nothing is loaded, so nothing can fail
+    // to load. An unwired platform is not an error the app should surface as one — it is
+    // stated on screen instead, by the placeholder below.
+    onError: ((SceneViewerError) -> Unit)?,
 ) {
     UnsupportedPlatformPlaceholder(
         platform = "Desktop",

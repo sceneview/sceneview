@@ -70,6 +70,31 @@ These are **not** coming to `commonMain`, in this release or a later one:
 - **Migrating `sceneview/` to Compose Multiplatform.** The Android library keeps
   targeting Compose Android. Existing consumers are untouched.
 
+### A failed load is reported, not just logged (decided 2026-08-06)
+
+`SceneViewer` shipped with no error surface: a load that failed left the viewport showing
+the environment, which is *pixel-identical* to a load still in progress, and the only
+trace was a logcat line. That was flagged at review and consciously accepted — a viewer
+subset can reasonably decide that failures are the app's problem to detect.
+
+It was reconsidered and reversed, on one measurable fact: **the module is unreleased**
+(no `sceneview-compose` artifact on Maven Central, its changelog fragment still pending in
+`changelog.d/`). Adding a parameter costs nothing today and costs compatibility forever
+after the first publication, so deferring the decision was strictly worse than taking it.
+
+The shape is deliberately small — `onError: ((SceneViewerError) -> Unit)? = null`, opt-in,
+with the log line unchanged when it is absent. It is **not** a general state machine: no
+loading/loaded/failed enum, no retry policy, no error taxonomy. Those would be a viewer
+API growing into an app framework, which the non-goals above rule out. What it guarantees
+is only this: an app can tell "failed" from "still loading", which it previously could not.
+
+Both shapes of failure reach it — an exception, and a loader answering `null` without
+throwing. The second is not a nicety: moving asset reads off the main thread in the same
+change swapped `createModelInstance` (which raised `IllegalArgumentException` when Filament
+refused to parse a buffer) for the suspending `loadModelInstance` (which returns `null` for
+the same input). Reporting only exceptions would have made every malformed model fail
+silently — a fix for one defect quietly creating another.
+
 ## Hard guardrails
 
 These are load-bearing. Breaking one turns a bounded, reversible module into a
@@ -147,6 +172,15 @@ The desktop actual ships only when it clears all of these:
 4. 100 open/close cycles, RSS stable.
 5. Seam proof: the `.api` dump contains no renderer type, and a `Noop` implementation
    satisfies the interface.
+6. `bash .claude/scripts/check-vendored-download-safety.sh` is green **with the binding
+   actually wired**. The vendored build-logic downloads Filament and `jextract` archives
+   with no integrity check, and `extractAll` creates symlinks from an unvalidated
+   `entry.linkName` — a tarball carrying `a -> /tmp/evil` followed by `a/x` writes outside
+   the destination, because `normalize()` does not resolve symlinks and the existing
+   entry-path check therefore passes. Both are unreachable while nothing builds the tree,
+   and both become build-time code execution the moment something does. The gate is silent
+   until a `settings.gradle` include lands and fails from that instant, so this cannot be
+   deferred to a follow-up PR: the hardening lands *with* the build chain, not after it.
 
 ## Increments
 

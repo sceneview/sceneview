@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-07-23'
+  last-updated: '2026-08-06'
   keywords:
   - sceneview
   - sceneviewswift
@@ -66,9 +66,37 @@ Trigger on any of:
 - "Place a model on a detected AR plane in ARKit + SwiftUI."
 - "Add 3D content to a visionOS / macOS app with SceneView."
 - "Convert this SceneKit / RealityView code to SceneViewSwift."
+- "Make `SceneViewer` from our Compose Multiplatform app actually render on iOS."
 
 Skip for plain ARKit-SDK, SceneKit, Unity, Unreal, or RealityKit projects that
 do NOT use the SceneViewSwift wrapper.
+
+### If the ask comes from a Compose Multiplatform app
+
+`sceneview-compose` exposes one `SceneViewer` composable from `commonMain`, but a Kotlin
+Multiplatform module cannot depend on a Swift Package — so on iOS it renders a "no
+renderer registered" notice until the **app** supplies one. That supply is a Swift task,
+which is why it lands here:
+
+1. Write an `@objc UIView` wrapping `SceneViewSwift.SceneView` in a
+   `UIHostingController`. The production-tested pattern is
+   `flutter/sceneview_flutter/ios/Classes/SceneViewPlugin.swift` — copy its retain-cycle
+   and Swift-6 actor handling rather than reinventing them.
+2. Implement `SceneViewerViewFactory` (`create` **and** `update` — Kotlin/Native does not
+   bridge interface default bodies into the generated Obj-C protocol, so Swift must
+   implement both), and assign `SceneViewerBridge.factory` once before the first compose.
+3. `update` must **mutate** the existing view. Recreating the scene reloads the model and
+   throws away the user's camera position.
+4. Call the spec's `onCameraMoved` after every gesture — without it `CameraState` reports
+   only what the app last wrote — and `onError` when a load fails, since a failed load on
+   RealityKit looks exactly like a slow one.
+
+`SceneViewerSpec` compares by value (model bytes by content), so `update` is **not**
+called on every recomposition. Do not build Swift-side change caching that assumes it is.
+
+SceneView does not ship that wrapper yet. If the user wants AR, custom materials or
+post-processing, they are outside `sceneview-compose`'s scope — use `ARSceneView` /
+`SceneView` from SceneViewSwift directly.
 
 ## Setup
 

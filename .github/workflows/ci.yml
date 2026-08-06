@@ -112,6 +112,12 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       flutter: ${{ steps.filter.outputs.flutter }}
       kmp: ${{ steps.filter.outputs.kmp }}
+      # Declaring the filter under `with.filters` is NOT enough: an output
+      # missing from this block evaluates to the empty string, every
+      # `needs.changes.outputs.<name> == 'true'` is false, and the job is
+      # skipped on every run — which GitHub reports as success. A gate that
+      # can never fire looks exactly like a gate that always passes.
+      compose: ${{ steps.filter.outputs.compose }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -171,6 +177,16 @@ jobs:
               - 'arsceneview/**'
               - 'sceneview/**'
               - 'sceneview-web/**'
+            # Narrower than `kmp` on purpose. The only job gated on this runs
+            # on a macOS runner and links a Kotlin/Native test binary, which is
+            # the most expensive thing in this workflow per line of code it
+            # covers. `kmp` would fire it for any change under sceneview/,
+            # arsceneview/, sceneview-core/ or sceneview-web/ — none of which
+            # can affect an iosTest that only exercises sceneview-compose's own
+            # iosMain types.
+            compose:
+              - *shared
+              - 'sceneview-compose/**'
 
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
@@ -227,8 +243,7 @@ jobs:
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml),
-      # scoped to the three library modules — same scope as the Android Lint step
-      # above.
+      # scoped to the four library modules.
       #
       # BLOCKING: detekt was upgraded from 1.23.8 (which silently no-op'd task
       # registration on Kotlin 2.3.x / AGP 8.13.x) to detekt 2.0.0-alpha.0 in
@@ -249,6 +264,7 @@ jobs:
             sceneview/build/reports/detekt/
             arsceneview/build/reports/detekt/
             sceneview-core/build/reports/detekt/
+            sceneview-compose/build/reports/detekt/
           if-no-files-found: ignore
 
       - name: Upload lint reports
@@ -656,6 +672,64 @@ jobs:
             :sceneview-compose:compileKotlinIosSimulatorArm64 \
             --stacktrace
 
+  # ── Kotlin/Native unit tests (iOS simulator) ────────────────────────────
+  # The job above compiles the iOS targets to klibs, which Linux can do. It
+  # cannot LINK or RUN a Kotlin/Native test binary — that needs the Apple
+  # toolchain — so until this job existed, every `iosTest` source set in the
+  # repo was unexecuted code. `SceneViewerSpecTest` is the first, and it
+  # guards a property that is invisible to a compile: `SceneViewerSpec`
+  # comparing by value (and its model bytes by content) is the only thing
+  # stopping every recomposition from re-applying the same model to the
+  # RealityKit renderer. A compile-only check would pass on the identity
+  # equality that defect was made of.
+  #
+  # Separate job, not a step in the one above: that one is ubuntu-latest and
+  # deliberately cheap. This one is macOS, and the Kotlin/Native link is the
+  # long pole (~10 min cold, measured locally), so it must not serialise in
+  # front of the klib compile.
+  kmp-native-test:
+    name: KMP native unit tests (iOS sim)
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.compose == 'true'
+    # Same opt-in as bridge-ios-compile.yml: the self-hosted Mac when its
+    # heartbeat says it is awake, a hosted macOS runner otherwise.
+    runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+    # Kept at/below the other blocking jobs (30 min) so the CI Gate's 50-min
+    # internal deadline keeps its margin. The cold Kotlin/Native link is the
+    # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,
+    # and 33 s to re-link and re-run after a one-file change. The 30 min is
+    # headroom for a slower hosted runner, not an expected duration.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-gradle
+
+      # -Xmx8g, overriding the -Xmx4g in gradle.properties. NOT a precaution:
+      # `linkDebugTestIosSimulatorArm64` OOM-killed the Gradle daemon twice at
+      # 4g while this test was being written ("Gradle build daemon disappeared
+      # unexpectedly"), and it completes at 8g. The Kotlin/Native linker runs
+      # inside the daemon, so the repo-wide value is what it gets — and
+      # setup-gradle does not override it, meaning this job would have failed
+      # the same way on its first run.
+      #
+      # Scoped to this step rather than raised in gradle.properties: 4g is the
+      # right default for every other job in this repo, several of which run on
+      # 16 GB runners in parallel with an emulator.
+      - name: Run iOS simulator unit tests
+        run: |
+          ./gradlew -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -XX:MaxMetaspaceSize=768m" \
+            :sceneview-compose:iosSimulatorArm64Test --stacktrace
+
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kmp-native-test-results
+          path: sceneview-compose/build/test-results/
+          if-no-files-found: ignore
+
   # ── Repo hygiene checks ─────────────────────────────────────────────────
   # One job consolidating the 5 micro grep/validate gates that used to each
   # surface as their own top-level status check (see #1305). Each gate runs
@@ -693,6 +767,25 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
+
+      # Refuses to BUILD a vendored tree whose build-logic downloads archives
+      # without verifying them and unpacks symlinks without validating their
+      # targets. Silent while nothing builds third_party/filament-kmp (the case
+      # today); mandatory the instant a settings.gradle include lands, which is
+      # the moment a reviewer is thinking about CMake, not about tar entries.
+      - name: Check vendored download chain is hardened before it is built
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-vendored-download-safety.sh
+
+      # The gate above is dormant on the current tree — it exits 0 without
+      # exercising either probe, and will until someone wires the vendored
+      # binding. This self-test drives its FAILING path on synthetic trees so a
+      # loosened probe is caught now rather than in the PR it was meant to stop.
+      - name: Self-test the vendored-download gate
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-vendored-download-safety.sh
 
       # Apache-2.0 §4(b) guard for the vendored filament-kmp copy. This is
       # licence compliance, not tidiness: `third_party/filament-kmp/NOTICE`

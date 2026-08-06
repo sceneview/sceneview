@@ -10,10 +10,11 @@ import dev.romainguy.kotlin.math.Float3
  *
  * **A failed load is not visible on screen.** Whatever the cause — an unsupported
  * format, a malformed file, an HTTP error, a size-capped download — the viewport keeps
- * showing the environment, which looks exactly like a load still in progress. The
- * failure is reported to logcat under the `SceneViewer` tag; there is no `onError`
- * callback and no failed state in this API yet. Check the log before concluding that a
- * model is merely slow.
+ * showing the environment, which looks exactly like a load still in progress. Pass
+ * `onError` to [SceneViewer] to observe the failure and render your own state for it;
+ * see [SceneViewerError]. Handling it is optional, and with no handler the failure is
+ * still written to the platform log under the `SceneViewer` tag — so check the log
+ * before concluding that a model is merely slow.
  */
 public sealed interface ModelSource {
 
