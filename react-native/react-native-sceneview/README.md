@@ -7,8 +7,12 @@
 React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR scenes powered by Filament (Android) and RealityKit (iOS).
 
 > **Status:** Alpha — 3D model loading works on both platforms. AR scene is
-> functional on Android. The iOS native bridge compiles against the real
-> `SceneViewSwift` API and is CI-verified (`.github/workflows/rn-ios-compile.yml`).
+> functional on Android. The iOS native bridge is CI-verified against the real
+> `SceneViewSwift` API **and the real React Native API**
+> (`.github/workflows/rn-ios-compile.yml`): both modules come from an actual
+> build — SceneViewSwift from SwiftPM, React from the demo's `pod install` —
+> and the job proves each import is load-bearing before trusting the result.
+> It type-checks only; it does not link or run.
 
 ## Features
 
