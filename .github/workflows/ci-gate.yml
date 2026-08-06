@@ -121,6 +121,36 @@ name: CI Gate
 # `others` is completely empty and is disabled as soon as one check
 # run appears.
 #
+# STICKY OBSERVATION LEDGER (#3018)
+# ---------------------------------
+# Every decision below used to be taken from ONE instant's read of the
+# Checks API. That read is not stable: while GitHub builds a new run
+# attempt (`gh run rerun`, "Re-run failed jobs"), an entire check suite can
+# be absent from one response and back in the next.
+#
+# On PR #3015 that window landed on the gate's final poll. `Compile KMP
+# core` had concluded `cancelled` (killed by its own `timeout-minutes`), a
+# re-run was requested, and the 18:09:33Z read returned only the
+# `PR Review (agents)` suite. Every consequence of the partial read pushed
+# the same way: the 11 missing checks left `pending` so the loop broke,
+# left `observed_names` so the CORE-CHECK GUARD read it as the docs-only
+# signature and disabled itself, and left `others` so the `cancelled` never
+# reached `ci-gate-aggregate.sh`. The gate aggregated ONE check run and
+# passed. The one-entry conclusions list in that log is not a display bug —
+# the aggregation genuinely saw one check.
+#
+# Fix: `.github/scripts/ci-gate-merge-observations.sh` keeps a ledger of
+# every check name observed for this SHA. A name that disappears from a
+# later read is kept as `status: vanished`, which the `pending` selector
+# treats as not-completed — so the gate waits instead of concluding. When
+# the check comes back its FRESH record replaces the remembered one, so a
+# `cancelled` that is genuinely re-run to `success` still goes green; if it
+# never comes back the gate times out red. Both branches are fail-closed.
+#
+# This is orthogonal to the #2492 collapse: that resolves two check runs
+# sharing a name WITHIN one read, this carries names ACROSS reads. #2492's
+# intent is untouched.
+#
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
 on:
@@ -249,6 +279,11 @@ jobs:
           sleep 30
           seen_any_other=false
 
+          # STICKY OBSERVATION LEDGER (#3018): every check name observed for
+          # this SHA, carried across poll iterations so a check cannot leave
+          # the set just because one Checks API read did not return it.
+          ledger_file=$(mktemp)
+
           # Normalise REQUIRED_CHECKS into a clean, non-empty list.
           required_checks=$(echo "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
@@ -300,6 +335,24 @@ jobs:
             # `cancel-in-progress` is preserved.
             others=$(echo "$others" \
               | jq -s -c 'group_by(.name) | map(max_by(.id))[]')
+
+            # STICKY OBSERVATION LEDGER (#3018)
+            # ---------------------------------
+            # Fold this read into everything already observed for the SHA. A
+            # name that was seen before and is missing NOW comes back as
+            # `status: vanished` (never emitted by the Checks API), which the
+            # `pending` selector below treats as not-completed — so a check
+            # can never leave the gated set by disappearing mid-re-run. A name
+            # still reported by the API keeps its live record, so a re-run
+            # that turns `cancelled` into `success` is honoured on this poll.
+            # Runs BEFORE the emptiness test so a total disappearance keeps
+            # waiting instead of re-arming the docs-only bypass.
+            others=$(printf '%s\n' "$others" \
+              | bash .github/scripts/ci-gate-merge-observations.sh "$ledger_file")
+            printf '%s\n' "$others" | sed '/^[[:space:]]*$/d' > "$ledger_file"
+
+            # Names observed earlier that the current read did not return.
+            vanished=$(echo "$others" | jq -r 'select(.status == "vanished") | .name')
 
             if [ -z "$others" ]; then
               # DOCS-ONLY BYPASS (#2117): if the short grace period has
@@ -400,12 +453,23 @@ jobs:
                 echo "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
                   | while IFS= read -r n; do echo "    - $n"; done
               fi
+              if [ -n "$vanished" ]; then
+                echo "  Observed earlier but missing from the final Checks API read (#3018):"
+                echo "$vanished" | sort -u | while IFS= read -r n; do echo "    - $n"; done
+              fi
               exit 1
             fi
 
             if [ -n "$pending" ]; then
               echo "Waiting for checks to finish (running, or fork PR awaiting approval):"
               echo "$pending" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+            fi
+            # A vanished check is almost always a run attempt being rebuilt
+            # (`gh run rerun`). Say so loudly rather than silently dropping it
+            # from the verdict, which is exactly what #3018 was.
+            if [ -n "$vanished" ]; then
+              echo "Observed earlier but absent from this Checks API read — still gated, waiting (#3018):"
+              echo "$vanished" | sort -u | while IFS= read -r n; do echo "  - $n"; done
             fi
             if [ -n "$missing_core" ]; then
               echo "Waiting for expected core checks to register:"
@@ -417,7 +481,11 @@ jobs:
 
           echo ""
           echo "All other check runs completed. Conclusions:"
-          echo "$others" | jq -r '"  - \(.name): \(.conclusion)"' | sort -u
+          # `.conclusion // .status` so an ADVISORY check that is still running
+          # or has vanished (#3018) prints `in_progress` / `vanished` instead
+          # of a bare `null` — the loop is allowed to break on those, and the
+          # log must say which of the two it was.
+          echo "$others" | jq -r '"  - \(.name): \(.conclusion // .status)"' | sort -u
 
           # A real failure flips the gate red. `skipped`/`neutral`/`success`
           # all pass — path-filtered-out jobs report `skipped`.
