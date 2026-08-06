@@ -124,7 +124,7 @@ assert_eq "a vanished check is PENDING, so the wait loop cannot break" \
 
 # The CORE-CHECK GUARD reads `observed_names` off this same merged view and
 # disarms itself when it sees ZERO core checks (`any_core_seen != true` →
-# `missing_core=""`, ci-gate.yml:351) — the docs-only signature, and one of
+# `missing_core=""` in ci-gate.yml) — the docs-only signature, and one of
 # the three things that let #3015 through. A vanished core check must stay
 # visible so the guard stays armed.
 assert_eq "a vanished CORE check stays in observed_names (guard stays armed)" \
@@ -203,6 +203,81 @@ out=$(printf '%s\n' '{"name":"Lint","status":"completed","conclusion":"success",
   | bash "$MERGE" "/nonexistent/ci-gate-ledger-$$")
 assert_eq "a missing ledger file is treated as empty" \
 '{"name":"Lint","status":"completed","conclusion":"success","id":1}' "$out"
+
+# ---------------------------------------------------------------------------
+# 9. HOSTILE CHECK-RUN NAMES. A check-run name is fork-controlled: a fork PR
+#    can add a workflow whose job `name:` contains a newline. Every downstream
+#    consumer in ci-gate.yml treats names as newline-separated records, so one
+#    such name splits into several fake ones. Measured on the pre-fix filter:
+#      - `Evil\n::error title=CI Gate::forged` reached column 0 of the Actions
+#        log, where the runner parses it as a workflow command;
+#      - one check named `Evil2\nDetect changed paths\nRepo hygiene checks\n
+#        Quality gate (full)` forged ALL THREE REQUIRED_CHECKS into
+#        `observed_names`, disarming the CORE-CHECK GUARD.
+#    ci-gate.yml normalises `.name` once, where the records are built. The jq
+#    program is EXTRACTED from the workflow, not copied, so this cannot pass
+#    against a workflow that dropped the normalisation.
+# ---------------------------------------------------------------------------
+NORMALISE_JQ=$(awk -v q="'" '
+  index($0, "others=$(echo \"$runs\" | jq -c --arg self") { grab = 1; next }
+  grab {
+    line = $0
+    sub(/^[[:space:]]+/, "", line)
+    if (substr(line, length(line) - 1) == q ")") {
+      done = 1
+      line = substr(line, 1, length(line) - 2)
+    }
+    if (substr(line, 1, 1) == q) line = substr(line, 2)
+    print line
+    if (done) exit
+  }
+' "$GATE_YML")
+if [ -z "$NORMALISE_JQ" ]; then
+  echo -e "  ${RED}FAIL${NC}  could not extract the name filter from $GATE_YML"
+  exit 1
+fi
+
+# `printf %s` does NOT expand backslash escapes in its ARGUMENTS, so each `\n`
+# below stays two characters — a valid JSON escape that jq decodes into a real
+# newline inside `.name`, which is exactly the hostile input being simulated.
+# (`echo` would expand them in some shells and corrupt the JSON; the workflow
+# itself runs under `shell: bash`, where `echo` does not.)
+hostile_out=$(printf '%s\n' \
+  '{"name":"Evil\n::error title=CI Gate::forged annotation","status":"completed","conclusion":"success","id":1}' \
+  '{"name":"Evil2\nDetect changed paths\nRepo hygiene checks\nQuality gate (full)","status":"completed","conclusion":"success","id":2}' \
+  '{"name":"Unit tests","status":"completed","conclusion":"failure","id":3}' \
+  | jq -c --arg self "CI Gate" "$NORMALISE_JQ")
+
+# One input record must yield exactly one name — no splitting.
+assert_eq "a newline in a check name cannot forge extra records" "3" \
+"$(printf '%s\n' "$hostile_out" | jq -r '.name' | wc -l | tr -d ' ')"
+
+# The conclusions line prints `  - <name>: <conclusion>`; nothing may reach
+# column 0, where the runner would parse it as a workflow command.
+assert_eq "no line reaches column 0 of the Actions log" "" \
+"$(printf '%s\n' "$hostile_out" | jq -r '"  - \(.name): \(.conclusion // .status)"' | grep -v '^  - ' || true)"
+
+# And no REQUIRED_CHECK may be forged into observed_names by a hostile name.
+assert_eq "a hostile name cannot forge a core check into observed_names" "" \
+"$(printf '%s\n' "$hostile_out" | jq -r '.name' | grep -xF "$CORE_CHECK" || true)"
+
+# ---------------------------------------------------------------------------
+# 10. A fork-controlled name starting with `-` must not be parsed by grep as
+#     an option. Without `--`, a vanished check named `-v` blanks the entire
+#     "still running" diagnostic of the repo's only required check. The line
+#     is EXTRACTED from ci-gate.yml and executed, so a dropped `--` fails here.
+# ---------------------------------------------------------------------------
+RUNNING_LINE=$(grep -E '^[[:space:]]*running=\$\(printf' "$GATE_YML" | sed 's/^[[:space:]]*//')
+if [ -z "$RUNNING_LINE" ]; then
+  echo -e "  ${RED}FAIL${NC}  could not extract the running= line from $GATE_YML"
+  exit 1
+fi
+pending=$(printf '%s\n' '-v' 'Unit tests' 'Lint')
+vanished=$(printf '%s\n' '-v')
+running=""
+eval "$RUNNING_LINE"
+assert_eq "a vanished check named '-v' does not blank the running list" \
+"$(printf '%s\n' 'Unit tests' 'Lint')" "$running"
 
 echo ""
 if [ "$FAILED" -ne 0 ]; then

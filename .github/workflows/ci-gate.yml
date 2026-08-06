@@ -151,6 +151,29 @@ name: CI Gate
 # sharing a name WITHIN one read, this carries names ACROSS reads. #2492's
 # intent is untouched.
 #
+# WHAT THE LEDGER DOES *NOT* CLOSE (#3024)
+# ----------------------------------------
+# The ledger is per-gate-run: `mktemp` at the top of the step. This workflow
+# carries `cancel-in-progress`, and merging any sibling PR to `main` recomputes
+# every open PR's merge ref and re-fires `pull_request` — killing the in-flight
+# gate and starting a new one with an EMPTY ledger. If that restarted gate's
+# FIRST read lands in the rebuild window, there is nothing remembered, the
+# CORE-CHECK GUARD sees zero core checks and reads its docs-only signature, and
+# the #3015 shape reproduces verbatim. Measured, not hypothesised.
+#
+# So the ledger narrows the window from "any one read is partial" to "every
+# read up to the decision is partial" — it does not eliminate it. Closing it
+# means deciding INSIDE the gate whether `ci.yml` should have run for this PR,
+# which is the #2117 trade and needs its own measurement. Tracked in #3024;
+# do not read the section above as "the class is closed".
+#
+# RECOVERY FROM A PERMANENT VANISH
+# --------------------------------
+# If a check never comes back (a deleted workflow run, a removed check suite),
+# this gate burns its remaining deadline and exits red. The escape hatch is to
+# re-run THIS check: a new gate run gets a fresh ledger and a stable read, so
+# recovery is about a minute — not a 50-minute wait, and not a forced push.
+#
 # Branch protection on `main` requires ONLY this `CI Gate` check.
 
 on:
@@ -283,6 +306,7 @@ jobs:
           # this SHA, carried across poll iterations so a check cannot leave
           # the set just because one Checks API read did not return it.
           ledger_file=$(mktemp)
+          trap 'rm -f "$ledger_file"' EXIT
 
           # Normalise REQUIRED_CHECKS into a clean, non-empty list.
           required_checks=$(echo "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
@@ -301,12 +325,27 @@ jobs:
               "repos/$REPO/commits/$HEAD_SHA/check-runs" \
               --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, id: .id}')
 
-            # Drop this gate's own check run from consideration, plus every
+            # NEWLINE-NORMALISE THE NAME, ONCE, HERE
+            # --------------------------------------
+            # A check-run name is attacker-influenceable: a FORK PR can add a
+            # workflow whose job `name:` contains `\n`. Every downstream use
+            # treats names as newline-separated records — `observed_names`
+            # (core-check guard), the `pending`/`vanished` lists, and the
+            # conclusions line that prints straight to the Actions log. A name
+            # carrying a newline therefore splits into several fake records:
+            # measured, `Evil\n::error title=CI Gate::forged` reaches column 0
+            # of the log and the runner parses it as a workflow command.
+            # Normalising at the single point where records are built closes
+            # every one of those sinks at once. Legitimate job names never
+            # contain newlines, so this is a no-op for real checks.
+            #
+            # Then drop this gate's own check run from consideration, plus every
             # `Device QA — *` run: Device QA is deliberately NOT a per-PR gate
             # (see header comment + device-qa.yml), so a manually-dispatched
             # Device QA run on a branch SHA must never count here (#1588).
             others=$(echo "$runs" | jq -c --arg self "$SELF_CHECK" \
-              'select((.name != $self) and (.name | startswith("Device QA") | not))')
+              '.name |= gsub("[\r\n]"; " ")
+               | select((.name != $self) and (.name | startswith("Device QA") | not))')
 
             # LATEST-RUN-PER-NAME COLLAPSE (#2492)
             # ------------------------------------
@@ -442,16 +481,34 @@ jobs:
               break
             fi
 
-            # DISPLAY ONLY — `pending` itself is never modified here.
+            # DISPLAY ONLY — `pending` itself is never modified below.
+            #
+            # `vanished` is computed from the raw merged view, BEFORE the
+            # advisory filter, so it also contains advisory names that were
+            # just dropped from `pending`. An advisory check that vanishes is
+            # not gated by anything — the loop is allowed to break with it
+            # still missing — so announcing it as "still gated, waiting" would
+            # assert the opposite of what the code does. Intersect with the
+            # post-advisory `pending`: a vanished name that survived the
+            # advisory filter is exactly a vanished name that still gates.
+            if [ -n "$vanished" ] && [ -n "$pending" ]; then
+              vanished_gating=$(printf '%s\n' "$vanished" | grep -xF -- "$pending" || true)
+            else
+              vanished_gating=""
+            fi
+
             # A vanished name belongs in `pending` (that is the whole #3018
             # fix) but it is NOT "running": the API has stopped reporting it.
             # Printing it under the "still running" header would assert the
             # opposite of what was measured, and print every such name twice.
-            # So split the two sets for the log; the wait/timeout blocks below
-            # print `running` under "running" and `vanished` under its own
+            # So split the two sets for the log; the wait block below prints
+            # `running` under "running" and `vanished_gating` under its own
             # header.
             if [ -n "$pending" ] && [ -n "$vanished" ]; then
-              running=$(printf '%s\n' "$pending" | grep -vxF "$vanished" || true)
+              # `--` is load-bearing: a check-run name is fork-controlled, and
+              # a name like `-v` or `--help` would otherwise be parsed by grep
+              # as an option, blanking the whole "still running" diagnostic.
+              running=$(printf '%s\n' "$pending" | grep -vxF -- "$vanished" || true)
             else
               running="$pending"
             fi
@@ -481,9 +538,9 @@ jobs:
             # A vanished check is almost always a run attempt being rebuilt
             # (`gh run rerun`). Say so loudly rather than silently dropping it
             # from the verdict, which is exactly what #3018 was.
-            if [ -n "$vanished" ]; then
+            if [ -n "$vanished_gating" ]; then
               echo "Observed earlier but absent from this Checks API read — still gated, waiting (#3018):"
-              echo "$vanished" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+              echo "$vanished_gating" | sort -u | while IFS= read -r n; do echo "  - $n"; done
             fi
             if [ -n "$missing_core" ]; then
               echo "Waiting for expected core checks to register:"
