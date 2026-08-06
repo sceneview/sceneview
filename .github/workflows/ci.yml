@@ -748,6 +748,16 @@ jobs:
         shell: bash
         run: bash .github/scripts/test-ci-gate-aggregation.sh
 
+      # CI Gate observation-ledger regression suite — pins the rule that a
+      # check observed once for a SHA can never leave the gated set just
+      # because one Checks API read did not return it. #3018: a partial read
+      # during a run-attempt rebuild let `CI Gate` pass green over a
+      # `Compile KMP core` that had concluded `cancelled`.
+      - name: Test CI Gate observation ledger
+        if: always()
+        shell: bash
+        run: bash .github/scripts/test-ci-gate-observations.sh
+
       # Demo app asset integrity — catches broken model/HDR references in
       # any samples/* demo app, both for bundled file paths and CDN URLs.
       # Self-test first so a regressed validator can't report a false PASS.
