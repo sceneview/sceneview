@@ -824,6 +824,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-sync-versions-kotlin.sh
 
+      # sync-versions.sh bridge-README self-test — same blind spot as the
+      # Kotlin one above: the RN handler only fires on drifted README prose, so
+      # the in-tree run (everything already at VERSION_NAME) never executes it
+      # and a broken sed stays green until a release bump. Pins the negative
+      # halves too: the Flutter pub.dev caret range must NOT be swept (pub.dev
+      # lags VERSION_NAME, and `^<unpublished>` fails `flutter pub get`), and
+      # the dated versions sharing those files — the `v4.3.0` feature notes,
+      # the #2735 "at tags vX.Y.Z and earlier" rename fact — must survive, or a
+      # true sentence becomes a false one.
+      - name: Self-test sync-versions.sh bridge READMEs
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-sync-versions-bridge-readmes.sh
+
       # Emulator-pool lease contract self-test (#2862). The pool's mutual
       # exclusion is what stops two sessions from driving one AVD, and it is
       # invisible to every other check: no emulator runs in `repo-hygiene`, and
