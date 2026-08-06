@@ -1,0 +1,28 @@
+name: Timeout probe (#3018)
+
+# TEMPORARY — measurement scaffold for #3018. DELETE with the PR that carries it.
+#
+# Reproduces the ONE case that matters for the CI Gate aggregator: a job killed
+# by its own `timeout-minutes`, which GitHub reports with `conclusion: cancelled`,
+# with NO sibling check run under the same name (so the #2492 latest-run-per-name
+# collapse cannot be involved and there is no concurrency noise to hide behind).
+#
+# Expected-correct behaviour: `CI Gate` goes RED, listing `Timeout probe`.
+# If it goes green, a job that produced no verdict merges green.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  timeout-probe:
+    name: Timeout probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Sleep past the job timeout so the runner kills us
+        run: sleep 300
