@@ -70,6 +70,15 @@
   its first occupant, pinning the value-equality above; a compile-only check would have
   passed on exactly the identity equality that was the defect.
 
+  The job also selects Xcode 26.x explicitly, as every other macOS job in this repo
+  already did. Kotlin/Native links against whatever SDK `DEVELOPER_DIR` points at, and
+  the `macos-15` image still defaults to Xcode 16.4 — whose iOS 18.5 SDK has no
+  `UIViewLayoutRegion`, a class the 2.4.10 platform klibs reference. Without the
+  selection the link fails with `Undefined symbols for architecture arm64`, which is
+  exactly how this job's first real run ended. It passed locally throughout because the
+  development machine runs Xcode 26.3 (SDK 26.2), where the class exists — a divergence
+  no local gate could have surfaced.
+
 <!-- category: Docs -->
 - `sceneview-compose` is now documented in the `sceneview` agent skill, with the scope
   boundary (viewer subset, no AR), the `ModelSource` rules and the per-platform status —

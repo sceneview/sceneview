@@ -704,6 +704,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Kotlin/Native links against whatever SDK DEVELOPER_DIR points at, and
+      # the `macos-15` image still defaults to Xcode 16.4 (iOS 18.5 SDK). The
+      # Kotlin/Native 2.4.10 platform klibs are built against a newer SDK, so
+      # linking the test binary under the default toolchain fails with
+      # `Undefined symbols: _OBJC_CLASS_$_UIViewLayoutRegion` and
+      # `framework 'UIUtilities' not found` — the class does not exist in the
+      # 18.5 SDK (job 92699724938, the first run of this job).
+      #
+      # Same block as bridge-ios-compile.yml: DEVELOPER_DIR rather than
+      # `sudo xcode-select -s`, because the sudo form needs NOPASSWD in
+      # /etc/sudoers, which the self-hosted Mac does not provide — and this
+      # job targets that runner whenever its heartbeat says it is awake.
+      - name: Select Xcode
+        run: |
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
+
       - uses: ./.github/actions/setup-gradle
 
       # -Xmx8g, overriding the -Xmx4g in gradle.properties. NOT a precaution:
