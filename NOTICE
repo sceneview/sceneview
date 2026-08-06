@@ -16,23 +16,6 @@ Third-party code included in this repository
 ================================================================================
 
 --------------------------------------------------------------------------------
-Filament KMP  —  third_party/filament-kmp/
---------------------------------------------------------------------------------
-
-    Filament KMP
-    Copyright 2026 Èric Bitriá Ribes
-    https://github.com/Erkko68/filament-kmp
-
-    Licensed under the Apache License, Version 2.0.
-
-The desktop/JVM path of Filament KMP is vendored into this repository at
-third_party/filament-kmp/ (upstream tag 0.3.0). It is unmodified as of vendoring;
-any file the SceneView project changes will carry a notice to that effect. See
-third_party/filament-kmp/NOTICE and third_party/filament-kmp/README.md for the
-full attribution, the list of what was copied, and how to verify the diff
-against upstream.
-
---------------------------------------------------------------------------------
 Filament  —  Google
 --------------------------------------------------------------------------------
 

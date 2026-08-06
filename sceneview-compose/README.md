@@ -48,7 +48,7 @@ no honest common shape.
 |---|---|---|
 | Android | Filament, via `io.github.sceneview.SceneView` | ✅ implemented |
 | iOS | RealityKit, via `SceneViewSwift` | ✅ implemented — needs a one-time app registration, below |
-| Desktop (JVM) | Filament, via the binding vendored in `third_party/filament-kmp/` | ⏳ placeholder — needs the native build chain |
+| Desktop (JVM) | Filament, via an FFM binding to be vendored from filament-kmp | ⏳ placeholder — binding not vendored yet, then needs the native build chain |
 
 Unimplemented platforms render a visible placeholder naming the platform and the reason,
 not an empty viewport — a blank box is indistinguishable from a model that failed to
