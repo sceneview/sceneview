@@ -261,20 +261,52 @@ jobs:
           LANG: en_US.UTF-8
           NO_FLIPPER: '1'
           RCT_NEW_ARCH_ENABLED: '0'
-        # `--deployment` is what makes the tracked `Podfile.lock` BINDING rather
-        # than decorative. Bare `pod install` silently re-resolves and rewrites
-        # the lock when the graph differs, exits 0, and the type-check then runs
-        # against a pod set nobody reviewed — while `.gitignore` claims the lock
-        # "pins the pod versions the CI type-check resolves". `--deployment`
-        # fails instead, so that claim is enforced rather than asserted.
+        # Plain `pod install`, NOT `--deployment` — and that is a measured
+        # decision, not the lazy default.
         #
-        # Measured before adopting: with this exact env, `pod install
-        # --deployment` exits 0 and leaves the lock byte-identical. Without
-        # `NO_FLIPPER=1` it exits 1 and reports 10 Flipper pods it wants to ADD —
-        # i.e. the env below is not cosmetic, it is the resolution the committed
-        # lock encodes. That is precisely the drift bare `pod install` would have
-        # swallowed.
-        run: pod install --deployment
+        # `--deployment` would make the tracked `Podfile.lock` binding, which is
+        # what you want in principle. It cannot work here. RN 0.73 vendors most
+        # `React-*` pods as `:path` podspecs out of `node_modules`, and
+        # `React-Codegen`'s podspec is GENERATED during `pod install`, so the
+        # lock's `SPEC CHECKSUMS` are machine-dependent by construction. Measured
+        # on run 31190394239: `--deployment` passed locally with this exact env
+        # and byte-identical lock, then failed on `macos-15` with ~30 differing
+        # React-* checksums — same pod VERSIONS, different podspec digests.
+        #
+        # So the lock's version rows are meaningful and its checksum rows are
+        # not portable. The next step asserts the part that IS reproducible.
+        run: pod install
+
+      # The reproducible half of the lockfile guarantee.
+      #
+      # `pod install` re-resolves and may rewrite `Podfile.lock`, so the file
+      # alone proves nothing about what CI just built. What IS deterministic is
+      # the chain `package-lock.json` -> `npm ci` -> `node_modules/react-native`
+      # -> the `React-Core` version CocoaPods resolves from it. Assert that the
+      # React we are about to type-check against is the React the JS lockfile
+      # pins — if those ever diverge, the guard is checking a different API than
+      # the module declares, and it must say so instead of proceeding.
+      - name: Assert the resolved React matches the pinned React Native
+        working-directory: samples/react-native-demo
+        run: |
+          set -euo pipefail
+          RN_VERSION="$(node -p "require('./node_modules/react-native/package.json').version")"
+          # `Podfile.lock` lists `- React-Core (0.73.11):` under PODS. Take the
+          # first match; grep -m1 keeps it deterministic if the pod recurs as a
+          # dependency line elsewhere in the file.
+          POD_VERSION="$(grep -m1 -oE '^  - React-Core \([0-9]+\.[0-9]+\.[0-9]+\)' ios/Podfile.lock \
+                          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+          if [ -z "$POD_VERSION" ]; then
+            echo "::error::Could not read a React-Core version from ios/Podfile.lock — the lock is malformed or CocoaPods changed its format, so this assertion cannot run. Refusing to continue rather than skipping the check."
+            exit 1
+          fi
+          echo "react-native (from npm ci): $RN_VERSION"
+          echo "React-Core  (from pod install): $POD_VERSION"
+          if [ "$RN_VERSION" != "$POD_VERSION" ]; then
+            echo "::error::React-Core $POD_VERSION does not match the pinned react-native $RN_VERSION. The type-check would run against a React the JS lockfile does not pin."
+            exit 1
+          fi
+          echo "✓ React-Core matches the react-native pinned by package-lock.json."
 
       # Fail loudly if CocoaPods did not generate the React modulemap, rather
       # than letting the type-check fall back to something else.
