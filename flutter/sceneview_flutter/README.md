@@ -280,21 +280,27 @@ session: `samples/ios-demo`'s `Collision & Hit Test` demo — the same
 tapped. So `targetedToAnyEntity()` resolving nothing is specific to how this
 bridge presents its scene, not a property of the modifier.
 
-Three things still differ between the two measurements, and no experiment so far
-has varied fewer than all three at once:
+**Asynchronous loading is not the difference either.** Same session, same
+simulator: `samples/ios-demo`'s Model Viewer, temporarily given an
+`onEntityTapped`, reported `car_019_0` on the first tap — a `.usdz` loaded
+through the same `ModelNode.load`, well after the first frame. So neither the
+loader nor `.usdz` content is what breaks the bridge.
+
+Two differences remain, and no measurement so far has varied only one:
 
 1. **Host** — a Flutter platform view versus plain SwiftUI.
-2. **When the content appears** — the working demo builds its shapes inside
-   `SceneView`'s `content` closure, so they exist when `buildContent` calls
-   `makeInputTargetable()` on the content root. The bridge loads its model
-   asynchronously afterwards, in `SceneViewerContentRoot.sync`, and relies on
-   `ModelNode.load` having applied the components itself.
-3. **Scale** — ~0.3 m cubes versus a 155-unit fox.
+2. **How the entity reaches the scene** — the native demo re-runs `SceneView`'s
+   `content` closure through `.contentID(loadCount)`, so `buildContent` runs
+   again and `makeInputTargetable()` sweeps the tree with the model in it.
+   `SceneViewerHostView` hands `SceneView` an empty `SceneViewerContentRoot` once
+   and never re-keys it, so that sweep only ever sees an empty root; the attached
+   models depend entirely on the components `ModelNode.load` set on them.
+3. **Scale** — the native hero is normalised with `scaleToUnits(0.6)`; the fox
+   reaches the bridge at its authored 155 units.
 
-Isolating (2) is the cheapest next step and needs no Flutter at all: give
-`samples/ios-demo`'s Model Viewer an `onEntityTapped` and tap an
-asynchronously-loaded model. A miss there indicts the async path and clears the
-platform view; a hit narrows the cause to the host or the scale.
+Whichever of these it is, note that (2) is a property of the shared host, not of
+Flutter — so the React Native bridge, which uses the same host, is likely to have
+the same gap.
 
 Do not describe `onTap` as working on iOS until a tap has been seen to reach
 Dart. Tracked in
