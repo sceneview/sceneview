@@ -81,7 +81,7 @@ add_check() {
 # the plugin's own version — it is a dependency on the *published* Maven Central
 # artifact. It MUST lag to the last released version: it cannot point at the
 # in-flight release (e.g. 4.7.0 is not on Maven Central until the release PR is
-# published — pointing at it breaks the `Build flutter-demo APK` CI check). So
+# published — pointing at it breaks the `Flutter plugin + demo APK` CI check). So
 # this coordinate is checked REPORT-ONLY (WARN, never MISMATCH) and is
 # deliberately excluded from every `--fix` sweep below. See issue #1494.
 check_plugin_sdk_dep() {
@@ -1717,7 +1717,7 @@ fi
 
 # ─── Flutter CHANGELOG stub (--fix; deliberately OUTSIDE the ERRORS gate) ──
 # The pub.dev publish preflight (`flutter pub publish --dry-run`, #2735 —
-# ci.yml → "Build flutter-demo APK") requires the plugin CHANGELOG to mention
+# ci.yml → "Flutter plugin + demo APK") requires the plugin CHANGELOG to mention
 # the current pubspec version. A bump that updates the pubspec without adding
 # the entry therefore turns that job red on EVERY non-path-gated PR and
 # nightly until someone backfills it by hand — this bit twice, for 4.23.0 AND

@@ -19,7 +19,7 @@ name: CI
 #   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
 #   - coverage       JaCoCo coverage (advisory, off the critical path) (gated on `android`)
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
-#   - flutter-demo   flutter-demo APK               (gated on `flutter`)
+#   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
 #   - repo-hygiene   grep/validate micro-gates       (always, when workflow runs)
 #   - quality-gate   full .claude/scripts/quality-gate.sh (gated on `quality_gate`)
@@ -608,13 +608,21 @@ jobs:
           path: samples/web-demo/test-results/
           if-no-files-found: ignore
 
-  # ── Flutter demo build ──────────────────────────────────────────────────
+  # ── Flutter plugin + demo build ─────────────────────────────────────────
   # Protects the Kotlin 2.0 Compose Compiler plugin wiring in
   # flutter/sceneview_flutter/android/build.gradle. Without this job, a
   # direct push to main that removes the plugin (or downgrades Kotlin)
   # only shows up the next time someone runs `flutter build apk`.
+  #
+  # It also gates the PUBLISHED Dart package itself. Until #3053 every step
+  # here except the publish dry-run ran in `samples/flutter-demo`, so
+  # `flutter/sceneview_flutter/lib` and `test` were analyzed by nothing and
+  # their 18 unit tests were run by nothing — an analyzer ERROR in the
+  # package we ship to pub.dev could sit on main indefinitely. Building the
+  # demo does NOT cover this: the demo consumes the plugin from Maven/pub,
+  # and `flutter build apk` never compiles the plugin's `test/` tree at all.
   flutter-demo:
-    name: Build flutter-demo APK
+    name: Flutter plugin + demo APK
     needs: changes
     if: inputs.force-all || needs.changes.outputs.flutter == 'true'
     runs-on: ubuntu-latest
@@ -645,6 +653,21 @@ jobs:
       - name: pub.dev publish preflight (--dry-run)
         working-directory: flutter/sceneview_flutter
         run: flutter pub publish --dry-run
+
+      # ── The published package (#3053) ──────────────────────────────────
+      # Same flags as the demo step below: `--no-fatal-infos` /
+      # `--no-fatal-warnings` keep the ~300 style lints advisory while any
+      # analyzer ERROR still fails the job. Measured on this commit: 0
+      # errors, 2 warnings (example/pubspec.yaml declares `models/` and
+      # `environments/` asset dirs that do not exist) and 1 info. Tightening
+      # to fatal warnings means fixing those two first.
+      - name: flutter analyze (published plugin)
+        working-directory: flutter/sceneview_flutter
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: flutter test (published plugin)
+        working-directory: flutter/sceneview_flutter
+        run: flutter test
 
       - name: flutter analyze
         working-directory: samples/flutter-demo
