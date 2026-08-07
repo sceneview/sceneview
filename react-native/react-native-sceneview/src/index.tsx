@@ -161,9 +161,11 @@ export interface SceneViewProps {
    *
    * The event payload carries the world-space position of the tapped model and
    * its `nodeName` (the model file's base name without extension) on both
-   * Android and iOS. A tap that hits no model reports `nodeName: null` and
-   * `0, 0, 0`; on iOS AR the tap reports the surface point only, so `nodeName`
-   * is absent there.
+   * Android and iOS. A tap that hits no model reports `nodeName: null` — with
+   * the tapped node's real world position on Android when it landed on an
+   * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. On iOS
+   * AR the tap reports the surface point only, so `nodeName` is `undefined`
+   * rather than `null` there — guard for both.
    */
   onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }
