@@ -190,8 +190,15 @@ class RNSceneViewWrapper: UIView {
 /// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise report
 /// `robot.glb?sig=SIG&v=1` as the tapped node's name. RealityKit's
 /// `ModelNode.load(_ path:)` is bundle-only today, so this is defensive; it
-/// keeps the derivation byte-identical to the Android bridge, which DOES take
+/// keeps the derivation aligned with the Android bridge, which DOES take
 /// remote URLs (`ModelLoader.loadModel`).
+///
+/// "Aligned", not byte-identical: `NSString` path semantics and Kotlin's
+/// `substringAfterLast('/')` / `substringBeforeLast('.')` diverge on two
+/// degenerate inputs — a trailing slash (`models/` → Kotlin `""`, Swift
+/// `models`) and a dotfile base name (`.hidden` → Kotlin `""`, Swift
+/// `.hidden`). Neither is reachable for the `.glb` / `.gltf` / `.usdz`
+/// sources these bridges load, so the outputs match for every real asset.
 func rnModelFileName(_ path: String) -> String {
     let stripped = path.prefix { $0 != "?" && $0 != "#" }
     return (String(stripped) as NSString).lastPathComponent

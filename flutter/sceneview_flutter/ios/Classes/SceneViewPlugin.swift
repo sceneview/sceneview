@@ -45,8 +45,19 @@ struct FlutterModelData: Identifiable, Equatable {
 /// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise report
 /// `robot.glb?sig=SIG&v=1` as the tapped node's name. RealityKit's
 /// `ModelNode.load(_ path:)` is bundle-only today, so this is defensive; it
-/// keeps the derivation byte-identical to the Android bridge, which DOES take
+/// keeps the derivation aligned with the Android bridge, which DOES take
 /// remote URLs (`ModelLoader.loadModel`).
+///
+/// Two known divergences, both unreachable for the `.glb` / `.gltf` / `.usdz`
+/// sources this bridge loads:
+/// - `NSString` path semantics vs Kotlin's `substringAfterLast('/')` /
+///   `substringBeforeLast('.')` differ on a trailing slash (`models/` →
+///   Kotlin `""`, Swift `models`) and on a dotfile base name (`.hidden` →
+///   Kotlin `""`, Swift `.hidden`).
+/// - Android's `tapNodeName` falls back to `node_<index>` when the derived
+///   base name is empty; this side has no fallback and names the entity `""`,
+///   which a tap then reports as `""` — the same value `flutterTappedNodeName`
+///   returns for a tap that hit no bridge-loaded model at all.
 func flutterModelFileName(_ path: String) -> String {
     let stripped = path.prefix { $0 != "?" && $0 != "#" }
     return (String(stripped) as NSString).lastPathComponent
