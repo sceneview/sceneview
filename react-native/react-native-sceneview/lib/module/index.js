@@ -1,5 +1,11 @@
-import React from 'react';
-import { requireNativeComponent, NativeModules, Platform, View, Text, StyleSheet } from 'react-native';
+// `tsconfig.json` sets `"jsx": "react"` — the CLASSIC runtime — so every JSX
+// element below compiles to `React.createElement(...)` (verified in the
+// published `lib/commonjs/index.js`). Biome's `useImportType` only sees the
+// `React.FC` type annotations, not the JSX lowering, so it offers a "safe fix"
+// that would erase this import and break the shipped bundle at runtime.
+// biome-ignore lint/style/useImportType: React is a VALUE import — see above.
+import React from "react";
+import { NativeModules, Platform, requireNativeComponent, StyleSheet, Text, View } from "react-native";
 
 // ---------------------------------------------------------------------------
 // Node type interfaces
@@ -49,9 +55,9 @@ import { requireNativeComponent, NativeModules, Platform, View, Text, StyleSheet
 // Native components (only available on Android and iOS)
 // ---------------------------------------------------------------------------
 
-const isNativeAvailable = Platform.OS === 'android' || Platform.OS === 'ios';
-const NativeSceneView = isNativeAvailable ? requireNativeComponent('RNSceneView') : null;
-const NativeARSceneView = isNativeAvailable ? requireNativeComponent('RNARSceneView') : null;
+const isNativeAvailable = Platform.OS === "android" || Platform.OS === "ios";
+const NativeSceneView = isNativeAvailable ? requireNativeComponent("RNSceneView") : null;
+const NativeARSceneView = isNativeAvailable ? requireNativeComponent("RNARSceneView") : null;
 
 // ---------------------------------------------------------------------------
 // Fallback for unsupported platforms
@@ -67,12 +73,12 @@ const UnsupportedView = ({
 const fallbackStyles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e'
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a2e"
   },
   text: {
-    color: '#aaa',
+    color: "#aaa",
     fontSize: 16
   }
 });
@@ -151,10 +157,10 @@ const NativeARRecorder = NativeModules.RNARRecorder;
 export class ARRecorder {
   /** `true` when {@link ARRecorder} is supported on the current platform. */
   static get isSupported() {
-    return Platform.OS === 'ios' && NativeARRecorder != null;
+    return Platform.OS === "ios" && NativeARRecorder != null;
   }
   rejectUnsupported() {
-    return Promise.reject(new Error('ARRecorder is currently only supported on iOS. Android AR session ' + 'recording is tracked in issue #1051.'));
+    return Promise.reject(new Error("ARRecorder is currently only supported on iOS. Android AR session " + "recording is tracked in issue #1051."));
   }
 
   /** Starts an AR session recording. */

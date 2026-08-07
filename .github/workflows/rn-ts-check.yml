@@ -1,0 +1,123 @@
+name: React Native TypeScript check
+
+# Lints, type-checks and unit-tests the React Native module's TypeScript.
+#
+# WHY THIS EXISTS
+# ---------------
+# `react-native/react-native-sceneview/package.json` declared
+# `"lint": "eslint \"src/**/*.{ts,tsx}\""` while `eslint` was in NEITHER its
+# devDependencies NOR anywhere else in the repo. Running `npm run lint` after
+# a clean `npm ci` failed with `sh: eslint: command not found` (exit 127) —
+# measured, not inferred. Grepping every file under `.github/workflows/` for
+# `lint`/`eslint` returned nothing, so no job invoked it either: the package
+# advertised a lint gate that had never once run, locally or in CI.
+#
+# The same was true of its two other check scripts. `npm run typescript`
+# (`tsc --noEmit`) and `npm test` (jest) existed and WORKED, but the only RN
+# npm script any workflow ever called was `npm run build`, inside
+# `release.yml`'s `publish-rn` job — i.e. at publish time, on a tag, far too
+# late to block anything. The bridge's TypeScript was therefore shipped to
+# npm having been type-checked and tested only on a contributor's laptop.
+#
+# This is the TypeScript-side twin of the exposure `rn-ios-compile.yml`
+# (#2067) and `rn-android-compile.yml` (#3042) each closed for their own
+# native bridge.
+#
+# WHY BIOME, NOT ESLINT
+# ---------------------
+# The repo already has exactly one JS/TS linter: Biome v2, configured by the
+# repo-root `biome.json` and consumed by `mcp/` via `npm run biome`. Adding
+# ESLint to satisfy a stale script would have meant a second linter, a second
+# config and a second rule set inside one repo. Instead the RN sources were
+# added to `biome.json`'s `files.includes` and the package's `lint` script
+# now runs Biome from the repo root, mirroring `mcp/package.json`'s pattern
+# (the root is the CWD so the config's root-relative `includes` resolve).
+#
+# NOT SILENTLY SKIPPABLE
+# ----------------------
+# Two ways this gate could quietly stop guarding anything, and what stops each:
+#   1. A path filter that misses the module — the repo's "skipped -> green for
+#      life" trap. The `paths:` list below covers the TypeScript surface, the
+#      package manifest and lockfile, both tsconfigs, the workflow itself, and
+#      `biome.json` (whose `files.includes` decides what Biome even looks at).
+#   2. A vacuous pass. If the RN paths ever fall out of `biome.json`'s
+#      `includes`, Biome does NOT exit 0 on an empty file set — it prints
+#      "No files were processed in the specified paths." and exits 1
+#      (measured, both for a missing path and for a config-excluded one). So
+#      config drift turns this job red rather than green-for-nothing.
+#
+# NOT IN `ci-gate.yml`'s `REQUIRED_CHECKS`
+# ----------------------------------------
+# Same rule as `snippets-check.yml`: this is a positively-path-filtered
+# workflow. When it runs, its check run is picked up by the head-SHA poll and
+# gates the merge; when the filter skips it, no check run registers and the
+# aggregator does not wait. Adding its name to `REQUIRED_CHECKS` would make
+# every non-RN PR block on a check that never fires.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/src/**'
+      - 'react-native/react-native-sceneview/__tests__/**'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'react-native/react-native-sceneview/package-lock.json'
+      - 'react-native/react-native-sceneview/tsconfig.json'
+      - 'react-native/react-native-sceneview/tsconfig.build.json'
+      - 'biome.json'
+      - '.github/workflows/rn-ts-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/src/**'
+      - 'react-native/react-native-sceneview/__tests__/**'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'react-native/react-native-sceneview/package-lock.json'
+      - 'react-native/react-native-sceneview/tsconfig.json'
+      - 'react-native/react-native-sceneview/tsconfig.build.json'
+      - 'biome.json'
+      - '.github/workflows/rn-ts-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rn-ts-check-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ts-check:
+    name: RN TypeScript lint + typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: react-native/react-native-sceneview/package-lock.json
+
+      # `npm ci` (not `npm install`) so the lockfile is authoritative and a
+      # drifted lockfile fails here instead of being silently rewritten.
+      - name: Install dependencies
+        working-directory: react-native/react-native-sceneview
+        run: npm ci --no-audit --no-fund
+
+      # `npm run lint` cd's to the repo root and runs the package-local Biome
+      # binary against `react-native/react-native-sceneview`, so the root
+      # `biome.json` (formatter + linter + assists) is the single rule source.
+      - name: Lint (Biome)
+        working-directory: react-native/react-native-sceneview
+        run: npm run lint
+
+      - name: Type-check
+        working-directory: react-native/react-native-sceneview
+        run: npm run typescript
+
+      - name: Unit tests
+        working-directory: react-native/react-native-sceneview
+        run: npm test

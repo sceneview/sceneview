@@ -204,6 +204,27 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
 
 See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/.github/CONTRIBUTING.md).
 
+### Local checks
+
+From this directory, after `npm ci`:
+
+```bash
+npm run lint        # Biome (repo-root biome.json) — lint + format + import assists
+npm run lint:fix    # same, applying the safe fixes
+npm run typescript  # tsc --noEmit
+npm test            # jest
+```
+
+All three run on every PR that touches this package's TypeScript, via
+[`.github/workflows/rn-ts-check.yml`](https://github.com/sceneview/sceneview/blob/main/.github/workflows/rn-ts-check.yml).
+
+The linter is **Biome**, not ESLint — the repo has a single JS/TS rule set in
+the root `biome.json`, and `react-native/react-native-sceneview/src` plus
+`__tests__` are listed in its `files.includes`. The `lint` scripts `cd` to the
+repo root before invoking Biome so those root-relative includes resolve, which
+means they must be run through npm (`npm run lint`), not by calling the Biome
+binary from this directory.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE) for details.
