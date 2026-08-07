@@ -39,7 +39,7 @@ export default function ModelViewer() {
         { src: 'models/damaged_helmet.glb', scale: 1.0 }
       ]}
       environment="environments/sky_2k.hdr"
-      cameraOrbit={true}
+      cameraControlMode="orbit"
     />
   );
 }
@@ -72,7 +72,7 @@ export default function ARViewer() {
 React Native (TypeScript)
   └── Native Component
         ├── Android → SimpleViewManager → ComposeView → SceneView { }
-        └── iOS → RCTViewManager → UIHostingController → SceneView { }
+        └── iOS → RCTViewManager → SceneViewerHostView → SceneView { }
 ```
 
 ## Props
@@ -83,7 +83,8 @@ React Native (TypeScript)
 |---|---|---|
 | `modelNodes` | `ModelNode[]` | Array of models to display |
 | `environment` | `string` | HDR environment path |
-| `cameraOrbit` | `boolean` | Enable orbit camera controls |
+| `cameraControlMode` | `'orbit' \| 'pan' \| 'firstPerson'` | Camera mode. `pan`/`firstPerson` are iOS-only |
+| `cameraOrbit` | `boolean` | **Deprecated**, inert on iOS — use `cameraControlMode` |
 | `onTap` | `(event) => void` | Tap event with 3D coordinates |
 
 ### ARSceneView (extends SceneView)

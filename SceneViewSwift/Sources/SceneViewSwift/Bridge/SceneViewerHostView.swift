@@ -41,6 +41,17 @@ public final class SceneViewerConfiguration: NSObject {
     /// load however valid they are. Default `"usdz"`.
     @objc public var modelBytesFileExtension: String = "usdz"
 
+    /// Several models at once, replacing the single-model fields above when non-empty.
+    ///
+    /// The three fields above are the single-model shorthand and stay the whole story for
+    /// a caller that shows one thing — `sceneview-compose` never sets this. A bridge whose
+    /// public surface is a *list* (the Flutter plugin's `loadModel` / `clearScene`, the
+    /// React Native `modelNodes` prop) sets this instead and leaves them alone.
+    ///
+    /// Set ``SceneViewerModel/identity`` on each entry unless two entries can never share
+    /// a source — see that property.
+    @objc public var models: [SceneViewerModel] = []
+
     // MARK: Camera — angles in DEGREES
 
     @objc public var cameraTargetX: Float = 0
@@ -52,6 +63,43 @@ public final class SceneViewerConfiguration: NSObject {
 
     /// Whether drag-to-orbit and pinch-to-zoom respond. Default `true`.
     @objc public var cameraGesturesEnabled: Bool = true
+
+    /// `"orbit"`, `"pan"` or `"firstPerson"`. Anything else is treated as `"orbit"`.
+    ///
+    /// A wire name rather than the `CameraControlMode` enum, which does not cross into
+    /// Objective-C — and the same three strings the Flutter and React Native bridges
+    /// already accept from Dart and JavaScript.
+    @objc public var cameraControlMode: String = "orbit"
+
+    /// Whether the scene frames its content to the viewport on load. Default `false`.
+    ///
+    /// Off by default because the fit pass **owns the orbit radius**: with it on, the
+    /// distance in ``cameraDistance`` is computed rather than honoured, and is then
+    /// reported back through ``SceneViewerHostView/onCameraMoved`` — so a host that
+    /// mirrors that callback into its own state watches the distance it just wrote get
+    /// overwritten. SceneView Android honours the authored distance verbatim, and matching
+    /// it is what makes one camera state mean one thing on both platforms.
+    ///
+    /// Turn it on when the caller has no opinion about the camera and wants the model
+    /// framed — which is what both the Flutter and React Native bridges expose, and why
+    /// they default it to `true` on their own surfaces. **Setting this leaves
+    /// ``cameraDistance`` with no effect.**
+    @objc public var autoCenterContent: Bool = false
+
+    /// Whether the camera fields above describe a pose the caller is actually authoring.
+    ///
+    /// Set this to `false` when the camera belongs to the scene rather than to you: the
+    /// pose fields are then ignored entirely and the camera is left to the fit pass and
+    /// the user's gestures.
+    ///
+    /// It exists because "the caller did not set a camera" and "the caller set the default
+    /// camera" are indistinguishable in a struct of primitives with defaults, and the two
+    /// need opposite handling. ``SceneViewerHostView/applyConfiguration(_:)`` is called on
+    /// every update — every method-channel call, every prop change — and each call would
+    /// otherwise re-assert `distance 4, elevation 15°` as a genuine write, snapping the
+    /// camera back and discarding both the fit pass and wherever the user had orbited to.
+    /// A bridge that never exposed a camera would acquire one that fights its user.
+    @objc public var cameraPoseAuthored: Bool = true
 
     // MARK: Lighting
 
@@ -107,13 +155,20 @@ public final class SceneViewerConfiguration: NSObject {
 /// two are handed a `UIView` by their host framework. This is the one wrapper they can
 /// share, so that "hosting a SwiftUI scene in UIKit correctly" is solved once.
 ///
-/// Today `sceneview-compose` is the consumer. The Flutter and React Native bridges still
-/// carry their own bespoke platform views (`SceneViewPlugin.swift`,
-/// `SceneViewModule.swift`), written before this existed and doing more than viewing —
-/// method channels, AR, tap-to-place. Migrating them onto this host is worthwhile and
-/// deliberately not done here: they are production-tested, and a rewrite of working
-/// bridge code does not belong in the change that introduces the thing to rewrite them
-/// onto.
+/// All three now use it for their **3D** path. The Flutter and React Native bridges keep
+/// their own platform-view classes — those own a method channel and a prop bag, which is
+/// not this type's business — but the SwiftUI hosting, the model loading and the scene
+/// itself are here. Their **AR** paths are untouched: `ARSceneView` is anchor-driven, has
+/// no content closure, and shares nothing with this beyond the word "scene".
+///
+/// What migrating them added, and why it is worth knowing before extending this further:
+/// each of those bridges had behaviour that could not survive the move unless the
+/// configuration could express it. ``SceneViewerConfiguration/models`` (both are model
+/// *lists*), ``SceneViewerConfiguration/cameraControlMode`` and
+/// ``SceneViewerConfiguration/autoCenterContent`` (both expose them publicly),
+/// ``onTapEntity`` (the two report *different* things about a tapped entity, and both are
+/// public API) and ``SceneViewerConfiguration/cameraPoseAuthored`` (neither has a camera
+/// at all) are all there because a bridge would otherwise have regressed silently.
 ///
 /// ### Using it
 ///
@@ -180,6 +235,29 @@ public final class SceneViewerHostView: UIView {
     @objc public var onTap: ((Bool, Float, Float, Float, Float) -> Void)? {
         get { state.onTap }
         set { state.onTap = newValue }
+    }
+
+    /// Called after a tap lands on the model, with the hit itself.
+    ///
+    /// The Swift-only counterpart to ``onTap``, which flattens a hit into five primitives
+    /// because it has to cross into Kotlin. This one hands over the ``SceneTapHit``,
+    /// including the tapped `Entity` — so a caller can read the name, walk to an ancestor,
+    /// or take the entity's own origin rather than the hit position.
+    ///
+    /// That is not a convenience. Two bridges publish a tapped node under two different
+    /// definitions — one walks up to the first named ancestor and strips the extension,
+    /// the other reports the tapped entity's raw name — and a third reports the entity's
+    /// origin where ``onTap`` reports the bounds centre. Every one of those is public API
+    /// someone has already shipped against. Flattening them into one convention here would
+    /// change all three; handing over the entity lets each keep its own, which is why this
+    /// exists at all.
+    ///
+    /// Both callbacks can be set at once and both fire. Not `@objc`: ``SceneTapHit``
+    /// carries RealityKit types that do not cross into Objective-C, and the consumers that
+    /// need it — the Flutter and React Native bridges — are Swift.
+    public var onTapEntity: ((SceneTapHit) -> Void)? {
+        get { state.onTapEntity }
+        set { state.onTapEntity = newValue }
     }
 
     /// Called after **every** camera change, with `(distance, azimuthDegrees,
@@ -279,7 +357,8 @@ public final class SceneViewerHostView: UIView {
     /// would re-evaluate the SwiftUI body, re-diff the light slots, and re-run the
     /// environment loader on every single frame of a drag.
     @objc public func applyConfiguration(_ configuration: SceneViewerConfiguration) {
-        applyModel(configuration)
+        applyModels(configuration)
+        applyCameraControls(configuration)
         applyCamera(configuration)
         // Separate from `applyCamera`, which returns early when the incoming pose is an
         // echo of its own read-back. Folding the gesture flag in there would make it
@@ -290,17 +369,48 @@ public final class SceneViewerHostView: UIView {
         applyEnvironment(configuration)
     }
 
-    private func applyModel(_ configuration: SceneViewerConfiguration) {
-        let request = Self.modelRequest(from: configuration)
-        let key = request.key
-        guard key != state.modelKey else { return }
-        // The request first: the `@Published` key is what wakes the loading task, and it
+    private func applyModels(_ configuration: SceneViewerConfiguration) {
+        Self.warnIfURLRefused(configuration)
+        let entries = SceneViewerModelEntry.entries(from: configuration)
+        let key = sceneViewerListKey(entries)
+        guard key != state.modelListKey else { return }
+        // The entries first: the `@Published` key is what wakes the loading task, and it
         // must not observe a key whose payload has not landed yet.
-        state.modelRequest = request
-        state.modelKey = key
+        state.modelEntries = entries
+        state.modelListKey = key
+    }
+
+    private func applyCameraControls(_ configuration: SceneViewerConfiguration) {
+        let mode = sceneViewerCameraControlMode(configuration.cameraControlMode)
+        if state.cameraControlMode != mode {
+            state.cameraControlMode = mode
+        }
+        if state.autoCenterContent != configuration.autoCenterContent {
+            state.autoCenterContent = configuration.autoCenterContent
+        }
     }
 
     private func applyCamera(_ configuration: SceneViewerConfiguration) {
+        // The flag has to reach the state, not just gate this method: the body attaches
+        // `.cameraPose(_:)` unconditionally, and `SceneView` applies a *non-nil* request
+        // the first time it sees one — `appliedCache.requestedPose` starts `nil`, so the
+        // very first `applyCamera` there compares non-nil against nil and writes the pose.
+        // Returning early here only stops `state.cameraPose` from being *updated*; the
+        // default value it already holds would still be applied once, framing a caller
+        // that authors no camera at elevation 15° where `CameraControls`' own default is
+        // 30°. Auto-centering re-fits distance and target and hides most of it, but not
+        // the elevation — so the Flutter and React Native bridges would have come out of
+        // this migration looking down on the model from a different angle than before.
+        if state.cameraPoseAuthored != configuration.cameraPoseAuthored {
+            state.cameraPoseAuthored = configuration.cameraPoseAuthored
+        }
+
+        // A caller that authors no camera gets none applied — see `cameraPoseAuthored`.
+        // Checked before the pose is even built, so no echo state is touched either:
+        // `lastReportedPose` must keep tracking what the scene reports, since that is what
+        // `reportTap` measures its distance from.
+        guard configuration.cameraPoseAuthored else { return }
+
         let incoming = SceneCameraPose(
             azimuth: SceneViewerAngle.radians(fromDegrees: configuration.cameraAzimuthDegrees),
             elevation: SceneViewerAngle.radians(fromDegrees: configuration.cameraElevationDegrees),
@@ -416,26 +526,38 @@ public final class SceneViewerHostView: UIView {
         state.environment = environment
     }
 
-    private static func modelRequest(
-        from configuration: SceneViewerConfiguration
-    ) -> SceneViewerModelRequest {
-        let request = SceneViewerModelRequest.make(
-            assetPath: configuration.modelAssetPath,
-            urlString: configuration.modelURLString,
-            bytes: configuration.modelBytes,
-            bytesFileExtension: configuration.modelBytesFileExtension
-        )
-        guard let request else {
-            // A URL was supplied and refused by the scheme allowlist. Logged rather than
-            // silently degraded: a refused scheme and "no model set" render identically.
+    /// Logs any URL the scheme allowlist refused.
+    ///
+    /// Resolving a configuration drops a refused entry silently — `compactMap` cannot say
+    /// why something is missing — and a refused scheme renders exactly like "no model
+    /// set". Logged rather than silently degraded, which is the whole reason
+    /// `SceneViewerModelRequest.make` distinguishes `nil` from `.none`.
+    private static func warnIfURLRefused(_ configuration: SceneViewerConfiguration) {
+        func check(_ urlString: String?, _ assetPath: String?, _ bytes: Data?) {
+            guard SceneViewerModelRequest.make(
+                assetPath: assetPath,
+                urlString: urlString,
+                bytes: bytes,
+                bytesFileExtension: "usdz"
+            ) == nil else { return }
             NSLog(
-                "[SceneViewSwift] SceneViewerHostView rejected modelURLString '%@': "
+                "[SceneViewSwift] SceneViewerHostView rejected model URL '%@': "
                     + "only http and https are accepted",
-                configuration.modelURLString ?? ""
+                urlString ?? ""
             )
-            return .none
         }
-        return request
+
+        if configuration.models.isEmpty {
+            check(
+                configuration.modelURLString,
+                configuration.modelAssetPath,
+                configuration.modelBytes
+            )
+        } else {
+            for model in configuration.models {
+                check(model.urlString, model.assetPath, model.bytes)
+            }
+        }
     }
 }
 
@@ -451,17 +573,21 @@ public final class SceneViewerHostView: UIView {
 @MainActor
 final class SceneViewerState: ObservableObject {
 
-    /// Identity of the model to display; drives the loading task.
-    @Published var modelKey: String?
+    /// Joint identity of the models to display; drives the loading task.
+    @Published var modelListKey: String = ""
 
-    /// The payload behind ``modelKey``. Not `@Published` — nothing renders from it
+    /// The payload behind ``modelListKey``. Not `@Published` — nothing renders from it
     /// directly, and republishing megabytes of `Data` would invalidate the SwiftUI body.
-    var modelRequest: SceneViewerModelRequest = .none
+    var modelEntries: [SceneViewerModelEntry] = []
 
     /// Bumped on every genuine app write to ``cameraPose``. `SceneView` applies on a
     /// generation change, not on a value change, so re-writing a pose the camera has
     /// since been dragged away from is honoured instead of dropped as a no-op.
     @Published var cameraPoseGeneration: Int = 0
+
+    /// Whether the caller authors a camera at all. `false` detaches the pose entirely
+    /// rather than handing `SceneView` the default below — see `applyCamera`.
+    @Published var cameraPoseAuthored: Bool = true
 
     @Published var cameraPose = SceneCameraPose(
         azimuth: 0,
@@ -470,6 +596,8 @@ final class SceneViewerState: ObservableObject {
         target: .zero
     )
     @Published var cameraGesturesEnabled = true
+    @Published var cameraControlMode: CameraControlMode = .orbit
+    @Published var autoCenterContent = false
     @Published var lighting = SceneViewerLighting(
         direction: SIMD3<Float>(0.3, -1, -0.5),
         intensity: 100_000,
@@ -488,6 +616,7 @@ final class SceneViewerState: ObservableObject {
     var lastReportedPose: SceneCameraPose?
 
     var onTap: ((Bool, Float, Float, Float, Float) -> Void)?
+    var onTapEntity: ((SceneTapHit) -> Void)?
     var onCameraMoved: ((Float, Float, Float) -> Void)?
 
     func reportCameraMoved(_ pose: SceneCameraPose) {
@@ -500,6 +629,9 @@ final class SceneViewerState: ObservableObject {
     }
 
     func reportTap(_ hit: SceneTapHit) {
+        // Handed over before the flattening, and unconditionally: a consumer of the full
+        // hit is not interested in whether the primitive one is wired.
+        onTapEntity?(hit)
         // Distance is measured from where the camera actually is, which is the last
         // reported pose when there is one — the requested pose can be several frames
         // stale mid-drag, and after any gesture it is not where the camera is at all.
@@ -552,55 +684,80 @@ final class SceneViewerContentRoot {
     /// async-loaded content, and the one the Flutter bridge already uses.
     let entity = Entity()
 
-    private var loadedKey: String?
-    private var loaded: Entity?
+    /// Attached model entities, keyed by ``SceneViewerModelEntry/key``.
+    ///
+    /// Keyed rather than a single slot so a removal detaches exactly the entity that left
+    /// the list and disturbs nothing else — which is what makes one reconciliation express
+    /// both of the shapes its callers have: Flutter appends one model at a time and
+    /// expects the others to stay put, React Native hands over a whole new list and
+    /// expects the old one gone. Neither is special-cased; both fall out of "detach what
+    /// is no longer asked for, load what is not yet attached".
+    private var loaded: [String: Entity] = [:]
 
     /// Monotonic token identifying the in-flight load.
     ///
     /// The supersession check cannot compare the *key*, because a key is not unique over
     /// time. An A → B → A swap inside one load window (a model picker; simulator loads
-    /// run for hundreds of milliseconds) gives two live tasks that both observe
-    /// `loadedKey == "asset:A"` on resume — `Entity(named:)` is not cancellation-aware,
-    /// so the first task's continuation still runs — and both attach. The first model
-    /// becomes a child with no reference in `loaded`, so nothing can ever detach it: two
-    /// coincident copies render, and one leaks for the life of the view.
+    /// run for hundreds of milliseconds) gives two live tasks that both observe `loaded`
+    /// without an entry for `"asset:A"` on resume — `Entity(named:)` is not
+    /// cancellation-aware, so the first task's continuation still runs — and both attach.
+    /// The first model becomes a child that `loaded` then stops pointing at, so nothing
+    /// can ever detach it: two coincident copies render, and one leaks for the life of
+    /// the view.
     private var loadGeneration: Int = 0
 
-    /// Loads `request`'s model and swaps it in, replacing whatever was there.
-    func sync(to request: SceneViewerModelRequest) async {
-        let key = request.key
-        guard key != loadedKey else { return }
+    /// Reconciles what is attached with `entries`, loading and detaching the difference.
+    func sync(to entries: [SceneViewerModelEntry]) async {
+        let desired = Set(entries.map(\.key))
 
-        loaded?.removeFromParent()
-        loaded = nil
-        loadedKey = key
+        // Detach what left the list. Snapshot the keys first — mutating the dictionary
+        // while iterating its `keys` view is undefined. An empty list detaches everything,
+        // which is what both bridges' `clearScene` / empty-prop path means.
+        for key in Array(loaded.keys) where !desired.contains(key) {
+            loaded.removeValue(forKey: key)?.removeFromParent()
+        }
+
         loadGeneration &+= 1
         let generation = loadGeneration
-        guard key != nil else { return }
 
-        do {
-            let node = try await Self.load(request)
-            // Compare the token captured before the `await`, not the key.
-            guard loadGeneration == generation else { return }
-            loaded = node.entity
-            entity.addChild(node.entity)
-        } catch {
-            // Logged, not thrown: there is no failed state in the viewer façade, and a
-            // failed load leaves the environment on screen — indistinguishable from a
-            // load still in progress. The log is the only thing that tells them apart,
-            // which is precisely why it must exist.
-            NSLog(
-                "[SceneViewSwift] SceneViewerHostView failed to load model '%@': %@",
-                key ?? "(none)",
-                error.localizedDescription
-            )
-            // Clear the key so the same model can be requested again. Left set, a
-            // transient failure — a network blip on a `.url`, a resource missing from a
-            // freshly-installed bundle — would be permanent for that model: the caller's
-            // "same key, no reload" guard would refuse every retry, and the user would
-            // have to switch to a different model and back.
-            if loadGeneration == generation {
-                loadedKey = nil
+        for entry in entries where loaded[entry.key] == nil {
+            do {
+                let node = try await Self.load(entry.request)
+                // Compare the token captured before the `await`, not the key.
+                guard loadGeneration == generation else { return }
+                // The list may have been re-applied while this was in flight and this
+                // entry loaded by the newer pass; attaching again would render two copies.
+                guard loaded[entry.key] == nil else { continue }
+
+                // Only what the caller actually specified — writing a default position or
+                // an identity scale would overwrite the transform the asset authored.
+                if let position = entry.position { _ = node.position(position) }
+                if let scale = entry.scale { _ = node.scale(scale) }
+                if let nodeName = entry.nodeName { node.entity.name = nodeName }
+                if let animationName = entry.animationName {
+                    node.playAnimation(named: animationName)
+                } else if entry.autoPlayAllAnimations, node.animationCount > 0 {
+                    node.playAllAnimations()
+                }
+
+                loaded[entry.key] = node.entity
+                entity.addChild(node.entity)
+            } catch {
+                // Logged, not thrown: there is no failed state in the viewer façade, and a
+                // failed load leaves the environment on screen — indistinguishable from a
+                // load still in progress. The log is the only thing that tells them apart,
+                // which is precisely why it must exist.
+                //
+                // One bad entry does not abandon the rest of the list, and a failure
+                // leaves nothing in `loaded`, so the entry is retried the next time the
+                // list is synced. Left marked as loaded, a transient failure — a network
+                // blip on a `.url`, a resource missing from a freshly-installed bundle —
+                // would be permanent for that model until the caller changed the list.
+                NSLog(
+                    "[SceneViewSwift] SceneViewerHostView failed to load model '%@': %@",
+                    entry.key,
+                    error.localizedDescription
+                )
             }
         }
     }
@@ -653,15 +810,21 @@ struct SceneViewerRootView: View {
         var view = SceneView { root in
             root.addChild(scene.contentRoot.entity)
         }
-        .cameraControls(.orbit)
-        // Off deliberately. The fit-to-bounds pass owns the orbit radius, and would
-        // overwrite the distance the caller wrote — then, through `onCameraChanged`,
-        // overwrite the caller's own state with it. SceneView Android honours the
-        // authored distance verbatim; matching that is what makes one camera state mean
-        // one thing on both platforms.
-        .autoCenterContent(false)
+        .cameraControls(state.cameraControlMode)
+        // Defaults to off, and the reason is on `SceneViewerConfiguration.autoCenterContent`:
+        // the fit-to-bounds pass owns the orbit radius and would overwrite the distance the
+        // caller wrote, then overwrite the caller's own state with it through
+        // `onCameraChanged`. Callers that author no camera at all — the Flutter and React
+        // Native bridges — turn it on and want exactly that framing.
+        .autoCenterContent(state.autoCenterContent)
         .cameraGesturesEnabled(state.cameraGesturesEnabled)
-        .cameraPose(state.cameraPose)
+        // `nil`, not the default pose, when nobody authored a camera: the modifier's
+        // contract is that `nil` means "no pose requested", and any non-nil value is
+        // applied once on first sight even if the host never wrote it.
+        .cameraPose(sceneViewerRequestedPose(
+            authored: state.cameraPoseAuthored,
+            pose: state.cameraPose
+        ))
         .cameraPoseGeneration(state.cameraPoseGeneration)
         .onCameraChanged { pose in
             state.reportCameraMoved(pose)
@@ -679,8 +842,8 @@ struct SceneViewerRootView: View {
             view = view.environment(environment)
         }
 
-        return view.task(id: state.modelKey) {
-            await scene.contentRoot.sync(to: state.modelRequest)
+        return view.task(id: state.modelListKey) {
+            await scene.contentRoot.sync(to: state.modelEntries)
         }
     }
 }

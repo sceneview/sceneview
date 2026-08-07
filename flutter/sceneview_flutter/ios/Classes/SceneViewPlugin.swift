@@ -35,71 +35,6 @@ struct FlutterModelData: Identifiable, Equatable {
     }
 }
 
-// MARK: - Content root
-
-/// Holds the persistent RealityKit content root for a Flutter platform view.
-///
-/// `SceneViewSwift.SceneView`'s content closure runs only once during scene
-/// setup, so it cannot react to models added later over the method channel.
-/// This holder gives the bridge a stable `Entity` that is handed to `SceneView`
-/// at construction and then mutated imperatively (`addChild` / `removeFromParent`)
-/// as `SceneState.models` changes — the same pattern the SceneViewSwift docs
-/// recommend for async-loaded models.
-@MainActor
-final class FlutterContentRoot {
-    /// The entity passed to `SceneView { root in root.addChild(content) }`.
-    let entity = Entity()
-
-    /// Loaded model entities, keyed by the `FlutterModelData.id` that produced
-    /// them, so a `clearScene` / model removal can detach exactly the right
-    /// entity without disturbing models that are still present.
-    private var loaded: [UUID: Entity] = [:]
-
-    /// Reconciles the attached model entities with the desired model list.
-    ///
-    /// Loads any model in `models` that is not yet attached and detaches any
-    /// previously-loaded model no longer present (covers both `loadModel` and
-    /// `clearScene` from the Dart side). `ModelNode.load(_:)` is `async` and
-    /// `@MainActor` — there is no synchronous path/`String` initialiser on
-    /// `ModelNode` (issue #2065), so each load is awaited in turn.
-    ///
-    /// RealityKit only loads `.usdz` / `.reality` natively. A `.glb` path
-    /// throws; the failure is logged rather than thrown so one bad asset does
-    /// not block the rest of the scene.
-    func sync(to models: [FlutterModelData]) async {
-        let desired = Set(models.map(\.id))
-
-        // Detach models that were removed. Snapshot the keys first — mutating
-        // the dictionary while iterating its `keys` view is undefined.
-        for id in Array(loaded.keys) where !desired.contains(id) {
-            loaded.removeValue(forKey: id)?.removeFromParent()
-        }
-
-        // Load and attach models not yet present.
-        for data in models where loaded[data.id] == nil {
-            do {
-                let node = try await ModelNode.load(data.path)
-                node.scale(data.scale)
-                // The Dart side may have cleared the model between the
-                // `await` suspension and resumption — only attach if it is
-                // still wanted.
-                guard loaded[data.id] == nil else { continue }
-                // The model file's base name without extension is the node
-                // name reported back to Dart on tap (matches Android).
-                node.entity.name = (data.path as NSString).lastPathComponent
-                loaded[data.id] = node.entity
-                entity.addChild(node.entity)
-            } catch {
-                NSLog(
-                    "[flutter_sceneview] Failed to load model '%@': %@",
-                    data.path,
-                    error.localizedDescription
-                )
-            }
-        }
-    }
-}
-
 // MARK: - 3D SceneView
 
 class SceneViewFactory: NSObject, FlutterPlatformViewFactory {
@@ -128,22 +63,24 @@ class SceneViewFactory: NSObject, FlutterPlatformViewFactory {
     }
 }
 
-/// Maps the wire name sent from Dart to a `CameraControlMode`.
-/// Unknown values fall back to `.orbit`.
-func flutterCameraControlMode(_ raw: String?) -> CameraControlMode {
-    switch raw {
-    case "pan": return .pan
-    case "firstPerson": return .firstPerson
-    default: return .orbit
-    }
-}
-
 /// Observable model holding scene state, updated via method channel.
+///
+/// Shared by the 3D and AR platform views. Only the AR one still drives SwiftUI
+/// from it — the 3D view reads it to build a `SceneViewerConfiguration` — but it
+/// stays an `ObservableObject` because the AR wrapper observes it.
 @MainActor
 class SceneState: ObservableObject {
     @Published var models: [FlutterModelData] = []
     @Published var environmentPath: String?
-    @Published var cameraControlMode: CameraControlMode = .orbit
+
+    /// Wire name as it arrives from Dart: `"orbit"`, `"pan"` or `"firstPerson"`.
+    ///
+    /// Kept as the raw string rather than mapped to a `CameraControlMode` here:
+    /// `SceneViewerConfiguration` takes the same three wire names and normalises
+    /// an unrecognised one to `"orbit"`, which is exactly what the mapping this
+    /// replaces did. Mapping locally would mean converting back to a string at
+    /// the boundary, with two normalisations free to disagree.
+    @Published var cameraControlMode: String = "orbit"
     @Published var autoCenterContent: Bool = true
 
     /// `nonisolated` so the platform-view classes (plain `NSObject`s, not
@@ -157,8 +94,16 @@ class SceneState: ObservableObject {
     nonisolated init() {}
 }
 
+/// The 3D platform view, hosted on the shared `SceneViewerHostView`.
+///
+/// This class owns the method channel and the Dart-facing state; everything
+/// below the `SceneViewerConfiguration` it builds — hosting SwiftUI in UIKit,
+/// loading models, reconciling the scene — belongs to `SceneViewerHostView` and
+/// is shared with the React Native bridge and `sceneview-compose`. The AR
+/// platform view below still has its own SwiftUI wrapper: `ARSceneView` is
+/// anchor-driven and shares nothing with the 3D viewer.
 class SceneViewPlatformView: NSObject, FlutterPlatformView {
-    private let hostingController: UIHostingController<SceneViewSwiftUIWrapper>
+    private let hostView: SceneViewerHostView
     private let channel: FlutterMethodChannel
     private let sceneState = SceneState()
 
@@ -168,28 +113,37 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             binaryMessenger: messenger
         )
 
-        // Capture the channel weakly so the tap closure forwarded into the
-        // SwiftUI wrapper does not extend the platform view's lifetime.
-        let channel = self.channel
-        self.hostingController = UIHostingController(
-            rootView: SceneViewSwiftUIWrapper(
-                state: sceneState,
-                onTap: { [weak channel] nodeName in
-                    channel?.invokeMethod("onTap", arguments: nodeName)
-                }
-            )
-        )
-        self.hostingController.view.frame = frame
-        self.hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // `SceneViewerHostView` is `@MainActor` and this initialiser is not — Flutter
+        // declares `FlutterPlatformViewFactory` without isolation. Asserted rather than
+        // hopped onto with a `Task`, because Flutter creates platform views on the
+        // platform thread, which *is* the main thread: `assumeIsolated` states that fact
+        // and traps if it ever stops being true, where a `Task` would silently defer the
+        // whole setup past `view()` and hand Flutter a view with no scene in it.
+        self.hostView = MainActor.assumeIsolated { SceneViewerHostView(frame: frame) }
 
         super.init()
 
         // Apply v4.3.0 creation params (camera mode + auto-centre).
-        let mode = flutterCameraControlMode(args["cameraControlMode"] as? String)
+        let mode = args["cameraControlMode"] as? String
         let autoCenter = (args["autoCenterContent"] as? NSNumber)?.boolValue ?? true
-        Task { @MainActor in
-            sceneState.cameraControlMode = mode
+
+        // Capture the channel weakly, never `self`: the host view holds this
+        // closure, and this object holds the host view (issue #2069).
+        //
+        // `onTapEntity` rather than the host's flattened `onTap`, because the
+        // name Dart receives is derived from the entity tree — walk up to the
+        // first named ancestor, then strip the extension. That derivation is
+        // this bridge's published contract, and the flattened callback carries
+        // a position, not an entity to walk.
+        let channel = self.channel
+        MainActor.assumeIsolated {
+            hostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            hostView.onTapEntity = { [weak channel] hit in
+                channel?.invokeMethod("onTap", arguments: flutterTappedNodeName(hit.entity))
+            }
+            sceneState.cameraControlMode = mode ?? "orbit"
             sceneState.autoCenterContent = autoCenter
+            applyState()
         }
 
         // Install the handler with a `[weak self]` capture so the channel does
@@ -210,7 +164,46 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
     }
 
     func view() -> UIView {
-        return hostingController.view
+        return hostView
+    }
+
+    /// Pushes the current `SceneState` into the host view.
+    ///
+    /// Called after every mutation. `applyConfiguration` compares field by field
+    /// and touches only what changed, so re-sending the whole configuration on
+    /// each method call costs nothing and removes the question of which subset a
+    /// given call has to send.
+    @MainActor
+    private func applyState() {
+        let configuration = SceneViewerConfiguration()
+
+        configuration.models = sceneState.models.map { data in
+            let model = SceneViewerModel()
+            model.assetPath = data.path
+            // The Dart side's own per-entry id, so two `loadModel` calls with the
+            // same path stay two models on screen rather than collapsing into one.
+            model.identity = data.id.uuidString
+            // The file's base name — with its extension, which `flutterTappedNodeName`
+            // strips when reporting. Matches Android.
+            model.nodeName = (data.path as NSString).lastPathComponent
+            model.setScale(data.scale)
+            return model
+        }
+
+        configuration.cameraControlMode = sceneState.cameraControlMode
+        configuration.autoCenterContent = sceneState.autoCenterContent
+        // This bridge exposes no camera on its Dart surface, so it authors no pose:
+        // without this, every method call would re-assert the configuration's default
+        // pose and snap the camera back out of the auto-centre framing and away from
+        // wherever the user had orbited to.
+        configuration.cameraPoseAuthored = false
+
+        if let path = sceneState.environmentPath, !path.isEmpty {
+            configuration.environmentKind = "hdr"
+            configuration.environmentHdrPath = path
+        }
+
+        hostView.applyConfiguration(configuration)
     }
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -224,6 +217,7 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             let scale = (args["scale"] as? NSNumber)?.floatValue ?? 1.0
             Task { @MainActor in
                 sceneState.models.append(FlutterModelData(path: modelPath, scale: scale))
+                applyState()
             }
             result(nil)
 
@@ -240,6 +234,7 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
         case "clearScene":
             Task { @MainActor in
                 sceneState.models.removeAll()
+                applyState()
             }
             result(nil)
 
@@ -247,14 +242,15 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             let hdrPath = (call.arguments as? [String: Any])?["hdrPath"] as? String
             Task { @MainActor in
                 sceneState.environmentPath = hdrPath
+                applyState()
             }
             result(nil)
 
         case "setCameraControlMode":
             let raw = (call.arguments as? [String: Any])?["mode"] as? String
-            let mode = flutterCameraControlMode(raw)
             Task { @MainActor in
-                sceneState.cameraControlMode = mode
+                sceneState.cameraControlMode = raw ?? "orbit"
+                applyState()
             }
             result(nil)
 
@@ -262,6 +258,7 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             let enabled = ((call.arguments as? [String: Any])?["enabled"] as? NSNumber)?.boolValue ?? true
             Task { @MainActor in
                 sceneState.autoCenterContent = enabled
+                applyState()
             }
             result(nil)
 
@@ -284,55 +281,6 @@ func flutterTappedNodeName(_ entity: Entity) -> String {
         node = current.parent
     }
     return ""
-}
-
-/// SwiftUI wrapper for `SceneViewSwift.SceneView`, driven by observable state.
-///
-/// `SceneView`'s `@NodeBuilder` initialiser composes a *static* `[Entity]` list
-/// at construction (it has no SwiftUI `ForEach` support — issue #2065), and its
-/// imperative `SceneView { (Entity) -> Void }` content closure runs only once.
-/// To support models streamed in over the Flutter method channel, the bridge
-/// hands `SceneView` a persistent content-root entity and then attaches loaded
-/// model entities to it imperatively as `state.models` changes.
-struct SceneViewSwiftUIWrapper: View {
-    @ObservedObject var state: SceneState
-
-    /// Persistent content root attached to the scene once and mutated as
-    /// models load. `@StateObject` so the same `Entity` survives every
-    /// SwiftUI re-render — re-creating it would orphan already-loaded models.
-    @StateObject private var contentBox = FlutterContentRootBox()
-
-    /// Forwards a model tap to the Flutter method channel as `onTap`.
-    let onTap: (String) -> Void
-
-    var body: some View {
-        SceneView { root in
-            // Runs once during scene setup. Attach the persistent content
-            // root so later async model loads (added as its children) appear
-            // without re-running this closure.
-            root.addChild(contentBox.root.entity)
-        }
-        .cameraControls(state.cameraControlMode)
-        .autoCenterContent(state.autoCenterContent)
-        .onEntityTapped { entity in
-            // Wire SceneViewSwift's entity hit-test to the Flutter channel so
-            // the Dart `onTap` callback fires on iOS, matching Android (#2051).
-            onTap(flutterTappedNodeName(entity))
-        }
-        // Re-sync the loaded model entities whenever the Dart side mutates
-        // `state.models` (loadModel / clearScene). `ModelNode.load` is async,
-        // so the diff runs in a task keyed on the model-id list.
-        .task(id: state.models.map(\.id)) {
-            await contentBox.root.sync(to: state.models)
-        }
-    }
-}
-
-/// `ObservableObject` box so a `FlutterContentRoot` (which is `@MainActor`)
-/// can be held by `@StateObject` with a stable identity across re-renders.
-@MainActor
-final class FlutterContentRootBox: ObservableObject {
-    let root = FlutterContentRoot()
 }
 
 // MARK: - AR SceneView

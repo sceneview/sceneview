@@ -89,7 +89,7 @@ import { SceneView } from '@sceneview-sdk/react-native';
   style={{ flex: 1 }}
   environment="environments/studio_small.hdr"
   modelNodes={[{ src: 'models/damaged_helmet.glb', position: [0, 0, -2] }]}
-  cameraOrbit
+  cameraControlMode="orbit"
 />
 ```
 
@@ -114,7 +114,7 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 | `modelNodes`        | `ModelNode[]`        | `[]`      | Models to render                         |
 | `geometryNodes`     | `GeometryNode[]`     | `[]`      | Geometry nodes (forward-compatible)      |
 | `lightNodes`        | `LightNode[]`        | `[]`      | Light nodes (forward-compatible)         |
-| `cameraOrbit`       | `boolean`            | `true`    | Enable orbit camera controls             |
+| `cameraOrbit`       | `boolean`            | `true`    | **Deprecated**, inert on iOS — use `cameraControlMode` |
 | `cameraControlMode` | `CameraControlMode`  | `'orbit'` | Camera mode (v4.3.0). `'pan'`/`'firstPerson'` are iOS-only |
 | `autoCenterContent` | `boolean`            | `true`    | Auto-centre content on first frame (v4.3.0, iOS-first) |
 | `onTap`             | `function`           | —         | Tap callback (event pending)             |
@@ -122,6 +122,14 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 `cameraControlMode` `'pan'` and `'firstPerson'` are iOS-only in v4.3.0; on
 Android they fall back to orbit. `autoCenterContent` is iOS-first — the
 Android side is tracked in issue #1051.
+
+`cameraOrbit` is **deprecated and inert on iOS**. It predates
+`cameraControlMode`, and the two contradict each other — nothing can say which
+should win for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the iOS
+bridge reads only `cameraControlMode`. Note this leaves **no** way to freeze the
+camera from this bridge on iOS: `SceneViewSwift` has `cameraGesturesEnabled`,
+but the React Native surface does not expose it yet. `cameraOrbit: false` still
+works on Android.
 
 ### Props — ARSceneView (extends SceneView)
 
@@ -181,8 +189,12 @@ requireNativeComponent('RNSceneView' / 'RNARSceneView')
     +---> Android: ViewManager -> ComposeView -> SceneView { } / ARSceneView { }
     |                              (Filament, SceneView SDK)
     |
-    +---> iOS: RCTViewManager -> UIHostingController -> SceneView / ARSceneView
-                                  (RealityKit, SceneViewSwift)
+    +---> iOS 3D: RCTViewManager -> SceneViewerHostView -> SceneView
+    |                                (RealityKit, SceneViewSwift — the same host
+    |                                 the Flutter plugin and sceneview-compose use)
+    |
+    +---> iOS AR: RCTViewManager -> UIHostingController -> ARSceneView
+                                     (RealityKit, SceneViewSwift)
 ```
 
 Props are mapped from the React Native bridge to native view parameters on each platform.
