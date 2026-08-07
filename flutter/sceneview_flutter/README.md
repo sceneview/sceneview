@@ -274,13 +274,27 @@ with the fox rendering and the camera orbiting: three taps on the model, no
 callback. So the gap survives a change of host, which is evidence against the
 host being what breaks it.
 
-What is still untested is the one experiment that separates the two candidate
-causes, because every measurement so far has varied both at once: this bridge
-loads a 155-unit model inside a Flutter platform view, while the native
-`CollisionHitTestDemo` picks ~0.3 m cubes outside one. Load
-`assets/models/khronos_fox.usdz` at scale 1.0 into `samples/ios-demo` and tap it.
-A hit there means the platform view is the cause; a miss means the model's scale
-or its generated collision shape is, and the platform view is exonerated.
+**The package itself picks correctly.** Measured on the same simulator, same
+session: `samples/ios-demo`'s `Collision & Hit Test` demo — the same
+`SceneView`, the same `.targetedToAnyEntity()` — highlights the shape that was
+tapped. So `targetedToAnyEntity()` resolving nothing is specific to how this
+bridge presents its scene, not a property of the modifier.
+
+Three things still differ between the two measurements, and no experiment so far
+has varied fewer than all three at once:
+
+1. **Host** — a Flutter platform view versus plain SwiftUI.
+2. **When the content appears** — the working demo builds its shapes inside
+   `SceneView`'s `content` closure, so they exist when `buildContent` calls
+   `makeInputTargetable()` on the content root. The bridge loads its model
+   asynchronously afterwards, in `SceneViewerContentRoot.sync`, and relies on
+   `ModelNode.load` having applied the components itself.
+3. **Scale** — ~0.3 m cubes versus a 155-unit fox.
+
+Isolating (2) is the cheapest next step and needs no Flutter at all: give
+`samples/ios-demo`'s Model Viewer an `onEntityTapped` and tap an
+asynchronously-loaded model. A miss there indicts the async path and clears the
+platform view; a hit narrows the cause to the host or the scale.
 
 Do not describe `onTap` as working on iOS until a tap has been seen to reach
 Dart. Tracked in
