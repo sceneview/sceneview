@@ -162,10 +162,15 @@ check_plugin_sdk_dep "react-native/.../android/build.gradle.kts" \
 # so the surrounding prose versions (`v4.3.0` feature notes) stay untouched.
 RN_LIB_README="$REPO_ROOT/react-native/react-native-sceneview/README.md"
 if [ -f "$RN_LIB_README" ]; then
+    # `NOT FOUND` is passed THROUGH to add_check on purpose, not guarded out:
+    # add_check turns it into a visible SKIP row plus a warning. Guarding it
+    # away instead made the whole check vanish silently when the anchor line
+    # was reworded — no row, no warning, and the script still printed "All
+    # versions are aligned". A gate that disappears when its anchor moves is
+    # the drift it exists to catch.
     V=$(grep -m1 -oE '^- Version: `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$RN_LIB_README" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    [ -n "$V" ] && [ "$V" != "NOT FOUND" ] && \
-        add_check "react-native/.../README.md (SwiftPM version)" "$V"
+    add_check "react-native/.../README.md (SwiftPM version)" "${V:-NOT FOUND}"
 fi
 
 # ─── 3. Flutter ──────────────────────────────────────────────────────────
@@ -215,10 +220,11 @@ fi
 # `--fix` handler for this slot — the WARN is the whole feature.
 FLUTTER_README="$REPO_ROOT/flutter/sceneview_flutter/README.md"
 if [ -f "$FLUTTER_README" ]; then
+    # Same rule as the RN check above: `NOT FOUND` goes through to add_check so
+    # a reworded anchor surfaces as a SKIP row, never as silence.
     V=$(grep -m1 -oE 'flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$FLUTTER_README" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    [ -n "$V" ] && [ "$V" != "NOT FOUND" ] && \
-        add_check "flutter/.../README.md (pub snippet — lags pub.dev, not bumped)" "$V" "false"
+    add_check "flutter/.../README.md (pub snippet — lags pub.dev, not bumped)" "${V:-NOT FOUND}" "false"
 fi
 
 # Flutter CHANGELOG

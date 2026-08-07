@@ -27,8 +27,11 @@
 # REPO_ROOT from its own path, so the real tree is never touched.
 
 set -euo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
-SRC="$ROOT/.claude/scripts/sync-versions.sh"
+# Resolve the script under test from THIS file's own path, not from the cwd:
+# invoked by absolute path from another checkout, a cwd-derived SRC silently
+# tests that other tree's script — a mutated copy passed clean that way during
+# review. Mirrors what sync-versions.sh does for its own REPO_ROOT.
+SRC="$(cd "$(dirname "$0")/../.." && pwd)/.claude/scripts/sync-versions.sh"
 PASS=0; FAIL=0
 ok()  { printf '  \xE2\x9C\x93 %s\n' "$1"; PASS=$((PASS+1)); }
 bad() { printf '  \xE2\x9C\x97 %s\n' "$1"; FAIL=$((FAIL+1)); }
@@ -143,6 +146,15 @@ mkdir -p "$A/sceneview"
 printf 'VERSION_NAME=2.0.0\n' > "$A/sceneview/gradle.properties"   # forces a mismatch
 set +e; ALIGN_OUT="$(bash "$A/.claude/scripts/sync-versions.sh" --fix 2>&1)"; set -e
 
+# Positive cue FIRST: the three checks below assert an ABSENCE, and an absence
+# is worthless if the code path that could have produced the thing never ran.
+# Mutation-proven: drop `sceneview` from the module loop and this fixture stops
+# raising ERRORS, the `--fix` block never executes, and all three assertions
+# below pass vacuously while the suite still reports all-green.
+grep -q 'Fixes applied' <<<"$ALIGN_OUT" \
+    && ok "fix block actually executed (this section's premise holds)" \
+    || bad "fix block never ran — the absence checks below are vacuous"
+
 # Anchored on the `Fixed:` prefix: the check table prints these labels on
 # every run, so matching a label alone would flag a plain OK row as a rewrite
 # (it did, while this test was being written).
@@ -158,6 +170,25 @@ grep -q '^- Version: `7.7.7` (or \*Up to Next Major\*)$' "$A/react-native/react-
 grep -q 'flutter_sceneview: \^7.7.7' "$A/flutter/sceneview_flutter/README.md" \
     && ok "aligned Flutter README left byte-for-byte unchanged" \
     || bad "aligned Flutter README was mutated"
+
+# ── 5. A REWORDED anchor must surface as a visible SKIP row, never as
+#       silence. Guarding `NOT FOUND` away made both checks vanish with no row
+#       and no warning while the script still printed "All versions are
+#       aligned" — a gate that disappears when its anchor moves. No fixture
+#       above can catch this: they all contain the anchor. ──────────────────
+R="$WORK/reworded"
+make_fixture "$R" "1.0.0" "1.0.0" "1.0.0"
+printf -- '- Version REWORDED: `1.0.0`\n' > "$R/react-native/react-native-sceneview/README.md"
+printf 'flutter_sceneview REWORDED\n' > "$R/flutter/sceneview_flutter/README.md"
+set +e; REWORD_OUT="$(bash "$R/.claude/scripts/sync-versions.sh" 2>&1)"; set -e
+
+grep -qE 'react-native/.*README.md \(SwiftPM version\).*SKIP' <<<"$REWORD_OUT" \
+    && ok "reworded RN anchor → visible SKIP row (not silence)" \
+    || bad "reworded RN anchor vanished silently — the check disappeared"
+
+grep -qE 'flutter/.*README.md \(pub snippet.*SKIP' <<<"$REWORD_OUT" \
+    && ok "reworded Flutter anchor → visible SKIP row (not silence)" \
+    || bad "reworded Flutter anchor vanished silently — the check disappeared"
 
 echo ""
 echo "  $PASS passed, $FAIL failed"

@@ -49,6 +49,10 @@ add it once in Xcode (*File ▸ Add Package Dependencies…*):
 - URL: `https://github.com/sceneview/sceneview`
 - Version: `4.26.0` (or *Up to Next Major*)
 
+Unlike the Flutter plugin's pub.dev range, this version tracks the SDK release
+directly: SwiftPM resolves against a git tag in this same repository, which the
+release creates, so it is never ahead of something that does not exist yet.
+
 The module's `ios/*.swift` `import SceneViewSwift` resolves against that
 app-level package at build time.
 
