@@ -25,8 +25,27 @@ public sealed interface ModelSource {
      * JVM classpath on desktop. Use the same relative path on all three and place the
      * file in each platform's asset location — or use a Compose Multiplatform resource
      * and pass the bytes through [Bytes] instead.
+     *
+     * The path must be **relative and scheme-less**, and that is checked here for the
+     * same reason [Url]'s http/https rule is: a bundled-file type whose string can name
+     * something other than a bundled file is a hole an app opens without noticing. On
+     * Android the loader dispatches on URI scheme, so `content://`, `file://` and
+     * `https://` each resolve — reading a private ContentProvider under the app's own
+     * uid, or an arbitrary local file, and bypassing the timeouts and the 64 MB cap that
+     * [Url] applies. An app that resolves a deep link or a server-supplied id into a
+     * path now gets the same refusal on every platform.
+     *
+     * @throws IllegalArgumentException if [path] carries a URI scheme.
      */
-    public data class Asset(val path: String) : ModelSource
+    public data class Asset(val path: String) : ModelSource {
+        init {
+            require(!URI_SCHEME.containsMatchIn(path)) {
+                "ModelSource.Asset takes a path relative to the app's bundled assets, " +
+                    "not a URI — got '$path'. Use ModelSource.Url for http/https, or read " +
+                    "the bytes yourself and pass ModelSource.Bytes."
+            }
+        }
+    }
 
     /**
      * Model bytes already in memory — a downloaded file, or a CMP resource.
@@ -75,6 +94,12 @@ public sealed interface ModelSource {
 // Scheme + authority only; the rest of the URL is the platform downloader's business.
 // Deliberately anchored, so a string merely *containing* "http://" does not pass.
 private val HTTP_URL = Regex("^https?://[^/?#]+.*$", RegexOption.IGNORE_CASE)
+
+// RFC 3986 §3.1 scheme, anchored at the start. Anchored on purpose: a Windows-style
+// "C:/models" is not a URI scheme by this definition (a scheme needs a letter first,
+// which `C` satisfies — so `C:` IS rejected, and that is deliberate too: an absolute
+// path is not a bundled asset either). A bare "models/car.glb" has no colon and passes.
+private val URI_SCHEME = Regex("^[a-zA-Z][a-zA-Z0-9+.\\-]*:")
 
 /**
  * A tap that landed on the model.

@@ -122,11 +122,19 @@ grep -q "does not verify what it downloaded" <<<"$OUT" \
     && ok "digest plumbing WITHOUT a pinned hash does not satisfy the probe" \
     || bad "digest probe passed with nothing to compare against"
 
+run "$(make_tree digestnocmp wired 'val EXPECTED = mapOf("a.tgz" to "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+fun sha256(f: File) = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+val actual = sha256(cached)')"
+grep -q "does not verify what it downloaded" <<<"$OUT" \
+    && ok "a digest COMPUTED but never compared does not satisfy the probe" \
+    || bad "digest probe passed on a hash nobody compares — decorative, not a check"
+
 run "$(make_tree digestfull wired 'val EXPECTED = mapOf("a.tgz" to "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-fun sha256(f: File) = MessageDigest.getInstance("SHA-256").digest(f.readBytes())')"
+fun sha256(f: File) = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+if (sha256(cached).toHex() != EXPECTED.getValue(key)) { cached.delete(); error("digest mismatch") }')"
 { grep -q "downloads verified against a pinned digest" <<<"$OUT" \
     && grep -q "unvalidated entry.linkName" <<<"$OUT"; } \
-    && ok "digest + pinned hash → probe 1 green, probe 2 independently still red" \
+    && ok "digest + pinned hash + comparison → probe 1 green, probe 2 independently still red" \
     || bad "probe 1 should go green alone, without dragging probe 2 with it"
 
 # ── Probe 2: symlink target validation ───────────────────────────────────────
@@ -140,13 +148,72 @@ check(target.startsWith(destPath)) { "Symlink escapes destination" }')"
     && ok "a real linkName containment check → probe 2 green (probe 1 still red)" \
     || bad "probe 2 not satisfied by a genuine linkName guard (rc=$RC)"
 
-run "$(make_tree hardened wired 'val EXPECTED = mapOf("a.tgz" to "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+run "$(make_tree linknormalize wired 'val target = out.parent.resolve(entry.linkName).normalize()')"
+grep -q "unvalidated entry.linkName" <<<"$OUT" \
+    && ok "a normalize() whose result is never asserted on does not satisfy probe 2" \
+    || bad "probe 2 passed on a discarded normalize() — the value proves nothing"
+
+run "$(make_tree linkcomment wired '// TODO: normalize the entry.linkName and check startsWith one day')"
+grep -q "unvalidated entry.linkName" <<<"$OUT" \
+    && ok "a linkName MENTION in a comment does not satisfy probe 2" \
+    || bad "probe 2 satisfied by a bare comment — hollow"
+
+HARDENED='val EXPECTED = mapOf("a.tgz" to "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 fun sha256(f: File) = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+if (sha256(cached).toHex() != EXPECTED.getValue(key)) { cached.delete(); error("digest mismatch") }
 val target = out.parent.resolve(entry.linkName).normalize()
-check(target.startsWith(destPath)) { "Symlink escapes destination" }')"
+check(target.startsWith(destPath)) { "Symlink escapes destination" }'
+
+run "$(make_tree hardened wired "$HARDENED")"
 { [[ $RC -eq 0 ]] && grep -q "is hardened" <<<"$OUT"; } \
     && ok "wired + both fixes → pass" \
     || bad "a fully hardened wired tree must pass (rc=$RC)"
+
+# The over-rejection guard. A gate that cannot be satisfied is as useless as one
+# that always passes: the next person deletes it. Stray comments that happen to
+# contain the probe keywords must not flip a genuinely hardened tree red.
+run "$(make_tree hardenednoise wired "$HARDENED
+// historical note: we used to call sha256( here and normalize the entry.linkName")"
+{ [[ $RC -eq 0 ]] && grep -q "is hardened" <<<"$OUT"; } \
+    && ok "hardened tree + keyword-bearing comments → still passes" \
+    || bad "comments must neither satisfy a probe nor break one (rc=$RC)"
+
+# ── Wiring spellings ─────────────────────────────────────────────────────────
+# Every row here was measured GREEN-on-vulnerable against the previous probe,
+# whose `^[^/#]*<path>` anchor forbade a slash before the path. The comment above
+# it claimed it matched "the path alone" and could not be outrun; it did not.
+
+wire_as() { # $1 = settings.gradle content -> tree dir with a vulnerable build-logic
+    local d; d="$(make_tree "wire$RANDOM" wired)"
+    printf '%s\n' "$1" > "$d/settings.gradle"
+    echo "$d"
+}
+
+for spelling in \
+    'project(":filament-kmp").projectDir = file("$rootDir/third_party/filament-kmp")' \
+    'includeBuild("./third_party/filament-kmp")' \
+    'include("third_party/filament-kmp")' ; do
+    run "$(wire_as "$spelling")"
+    [[ $RC -eq 1 ]] \
+        && ok "wiring detected: ${spelling:0:46}" \
+        || bad "wiring MISSED (gate green on a vulnerable tree): $spelling"
+done
+
+run "$(wire_as '// includeBuild("third_party/filament-kmp")')"
+{ [[ $RC -eq 0 ]] && grep -q "nothing builds it" <<<"$OUT"; } \
+    && ok "a commented-out include does NOT arm the gate" \
+    || bad "a comment must not count as wiring (rc=$RC)"
+
+# CI wiring: the ordinary spelling puts the directory in `working-directory:` and
+# the command on the next line, so the old same-line `gradlew` adjacency missed it.
+CI_TREE="$(make_tree ci wired)"
+rm -f "$CI_TREE/settings.gradle"
+printf -- '- working-directory: third_party/filament-kmp\n  run: ./gradlew assemble\n' \
+    > "$CI_TREE/.github/workflows/desktop.yml"
+run "$CI_TREE"
+[[ $RC -eq 1 ]] \
+    && ok "CI wiring detected across lines (working-directory + gradlew)" \
+    || bad "CI probe missed the multi-line working-directory form (rc=$RC)"
 
 echo
 if [[ $FAIL -gt 0 ]]; then

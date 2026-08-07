@@ -58,6 +58,12 @@ import androidx.compose.ui.Modifier
  * @param onError invoked when a model or environment fails to load. Without it a failure
  *   is invisible on screen: the viewport keeps showing the environment, which looks
  *   exactly like a load still in progress. See [SceneViewerError].
+ *
+ *   **Always called on the main thread**, on every failure path including a download —
+ *   unlike [onFrame], which runs on the render thread. So a handler may touch UI
+ *   directly. Currently raised on Android only: desktop is a placeholder that loads
+ *   nothing, and on iOS the Kotlin side raises none of its own, forwarding only what the
+ *   host's Swift factory reports.
  */
 @Composable
 public expect fun SceneViewer(

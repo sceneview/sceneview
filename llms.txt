@@ -5415,7 +5415,18 @@ Gotchas:
   without it the only trace is the platform log under the `SceneViewer` tag. It fires for
   an exception (missing asset, HTTP error, size cap) *and* for a loader answering "no
   model" without throwing (a malformed glTF/GLB that Filament refuses to parse), so
-  `SceneViewerError.cause` is `null` in the second case.
+  `SceneViewerError.cause` is `null` in the second case. Always delivered on the **main
+  thread**, including for a failed download — unlike `onFrame`, which is on the render
+  thread — so a handler may touch UI directly. Raised on **Android only** today: desktop
+  is a placeholder that loads nothing, and the iOS Kotlin side raises none of its own,
+  forwarding only what the host's Swift factory reports.
+- `ModelSource.Asset` takes a path relative to the app's bundled assets and **rejects any
+  URI scheme** — `content://`, `file://`, `https://` all throw `IllegalArgumentException`
+  from `commonMain`, so the refusal is identical on every platform. Without that check
+  Android's loader would dispatch on the scheme and read a private ContentProvider or an
+  arbitrary local file, which is the hole `ModelSource.Url`'s http/https rule exists to
+  close. Resolve a user-supplied or deep-linked string to `Url`, or read it yourself and
+  pass `Bytes`.
 - `ModelSource.Bytes` AND `ModelSource.Url` must be self-contained (GLB, or glTF with
   embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
   one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete — and

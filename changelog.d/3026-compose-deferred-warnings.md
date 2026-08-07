@@ -31,6 +31,25 @@
   as a twelfth leg (a sub-second regenerate-and-compare), and mutation-tested: appending a
   line to `llms.txt` turns it red, restoring it turns it green.
 
+- **`ModelSource.Asset` now rejects any URI scheme**, and this closes a hole the
+  threading fix above had just opened. `loadModelInstance` dispatches on URI scheme,
+  where the replaced `createModelInstance(assetFileLocation)` went straight to
+  `AssetManager.open`. So for one commit an app resolving a deep link or a
+  server-supplied id into `ModelSource.Asset` could be handed `content://` (reading a
+  private ContentProvider under its own uid), `file://` (an arbitrary local read) or
+  `https://` (bypassing the timeouts and the 64 MB cap that `ModelSource.Url` enforces).
+  `Url`'s KDoc already argued this case — *"a `file://` slipped into a deep link would
+  otherwise turn into a local-file read on whichever platform happened not to re-check"* —
+  and the fix is its mirror: the check lives in `commonMain`, so every platform refuses
+  identically. Found by review, not by a gate; no test covered the widening because the
+  threading fix looked like a pure substitution.
+- **`onError` is now always called on the main thread.** `runCatching` sat *inside*
+  `withContext(Dispatchers.IO)` on the download path only, so a handler that worked for a
+  failed asset crashed for a failed download with `Can't create handler inside thread that
+  has not called Looper.prepare()` — and the failure most likely to happen in production
+  was the one delivered on the wrong thread. The thread is now documented on the parameter
+  and in `llms.txt`, alongside the fact that it is raised on Android only today.
+
 <!-- category: Added -->
 - **`SceneViewer` gains an `onError` callback**, plus the `SceneViewerError` type it
   reports. A failed load has no pixels of its own — the viewport keeps showing the

@@ -183,10 +183,15 @@ private fun rememberModelInstance(
             }.orReport("parsing ${model.bytes.size} in-memory bytes", currentOnError)
 
             is ModelSource.Url -> {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching { fetchModelBytes(model.url) }
-                        .orReport("downloading ${model.url}", currentOnError)
-                }
+                // `runCatching` OUTSIDE the IO block, not inside it. Inlining `orReport`
+                // into `withContext(Dispatchers.IO)` put the app's `onError` lambda on an
+                // IO thread — and only on this branch, so a handler that worked for a
+                // failed asset crashed for a failed download with "Can't create handler
+                // inside thread that has not called Looper.prepare()". A public callback
+                // must have one thread, and for a Compose API that thread is main.
+                val bytes = runCatching {
+                    withContext(Dispatchers.IO) { fetchModelBytes(model.url) }
+                }.orReport("downloading ${model.url}", currentOnError)
                 bytes?.let {
                     // Back on the composition (main) thread — the Filament JNI contract.
                     runCatching {

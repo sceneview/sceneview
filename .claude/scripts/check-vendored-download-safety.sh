@@ -78,24 +78,34 @@ fi
 wired=0
 wire_reason=""
 
-# ANY non-comment mention of the path in a settings file counts as wiring. An
-# earlier version of this probe matched only `include("<path>")` and was blind to
-# the form Gradle actually uses for a relocated subproject —
-#   include ":filament-kmp"
-#   project(":filament-kmp").projectDir = file("third_party/filament-kmp")
-# — so a mutation test that wired the tree left the gate green. A settings file
-# exists to wire projects: a mention of the path in one IS the wiring, and
-# matching the path alone cannot be outrun by a syntax this script did not predict.
-if grep -REq "^[^/#]*third_party/filament-kmp" \
-        settings.gradle settings.gradle.kts 2>/dev/null; then
+# Strip whole-line comments, then match the path ANYWHERE on what is left. Say
+# what is meant rather than encoding "not a comment" into the match itself: two
+# earlier attempts both left the gate green on a genuinely wired tree.
+#   1. `include("<path>")` alone missed the relocated-subproject form
+#      (`project(":x").projectDir = file("third_party/filament-kmp")`).
+#   2. `^[^/#]*third_party/filament-kmp` was meant to fix that by matching the
+#      path alone, and its comment claimed it "cannot be outrun by a syntax this
+#      script did not predict" — but `[^/#]*` forbids a slash BEFORE the path, so
+#      the two most idiomatic spellings slipped through, both measured green on a
+#      vulnerable tree: `file("$rootDir/third_party/filament-kmp")` and
+#      `includeBuild("./third_party/filament-kmp")`.
+# Read the assertion, never its comment: that regex never matched "the path
+# alone", and only running it said so.
+strip_comments() { grep -vE '^[[:space:]]*(//|#|\*|/\*)' "$@" 2>/dev/null || true; }
+
+if strip_comments settings.gradle settings.gradle.kts | grep -Fq "third_party/filament-kmp"; then
     wired=1
     wire_reason="a settings file references $VENDORED"
 fi
 
-if grep -REq "third_party/filament-kmp.*gradlew|gradlew.*third_party/filament-kmp" \
-        .github/workflows/*.yml 2>/dev/null; then
+# Fail-closed on CI too: ANY workflow naming the path arms the gate. Requiring
+# `gradlew` on the SAME line missed the ordinary spelling, where the directory is
+# a `working-directory:` and the command sits on the next line. A workflow that
+# mentions the vendored tree at all is signal enough — a needless arming costs a
+# comment, a missed one ships an unverified download chain.
+if grep -rlFq "third_party/filament-kmp" .github/workflows/ 2>/dev/null; then
     wired=1
-    wire_reason="${wire_reason:+$wire_reason; }a CI step runs Gradle in $VENDORED"
+    wire_reason="${wire_reason:+$wire_reason; }a CI workflow references $VENDORED"
 fi
 
 if [[ "$wired" -eq 0 ]]; then
@@ -117,17 +127,32 @@ fi
 failures=0
 
 # ─── 1. Downloads are verified against a pinned digest ──────────────────────
-# COUNTED, not merely grepped: the probe must match the digest plumbing AND a
-# pinned expected value. A file that merely mentions "sha256" in a comment
-# scores zero here, which is the point — a hollow probe is worse than none.
-digest_api=$(grep -Ec 'MessageDigest\.getInstance\("SHA-256"\)|sha256\(' "$DOWNLOADS" || true)
-pinned_values=$(grep -Ec '"[0-9a-f]{64}"' "$DOWNLOADS" || true)
+# Both probes below read CODE ONLY — comments are stripped first — and both
+# require an ASSERTION, not a mention. The previous version claimed in this very
+# comment that "a file that merely mentions sha256 in a comment scores zero
+# here". It did not: `grep -Ec 'sha256\('` counts comment lines like any other,
+# and a tree with an unguarded `createSymbolicLink` plus these three lines
+#     // TODO: call sha256( on the result some day
+#     // pinned "aaaa…" (64 hex)
+#     // linkName: we should normalize this before createSymbolicLink
+# was measured PASS/PASS, rc=0, "vendored download chain is hardened".
+# A probe that a TODO satisfies is worse than no probe, because it also silences
+# the reviewer. Hence: strip comments, then demand the comparison itself.
+CODE="$(strip_comments "$DOWNLOADS")"
 
-if [[ "$digest_api" -ge 1 && "$pinned_values" -ge 1 ]]; then
-    pass "downloads verified against a pinned digest (${digest_api} digest call(s), ${pinned_values} pinned hash(es))"
+digest_api=$(printf '%s\n' "$CODE" | grep -Ec 'MessageDigest\.getInstance\("SHA-256"\)|sha256\(' || true)
+pinned_values=$(printf '%s\n' "$CODE" | grep -Ec '"[0-9a-f]{64}"' || true)
+# The comparison is what makes the digest a check rather than a decoration: a
+# hash computed and never compared verifies nothing.
+digest_compared=$(printf '%s\n' "$CODE" \
+    | grep -Eic '(check|require|if|assert|error|throw).*(digest|sha256|hash|checksum).*(==|!=|equals|contentEquals)|(digest|sha256|hash|checksum).*(==|!=|equals|contentEquals)' || true)
+
+if [[ "$digest_api" -ge 1 && "$pinned_values" -ge 1 && "$digest_compared" -ge 1 ]]; then
+    pass "downloads verified against a pinned digest (${digest_api} digest call(s), ${pinned_values} pinned hash(es), ${digest_compared} comparison(s))"
 else
     fail "downloadToCache() does not verify what it downloaded."
-    echo "      found: ${digest_api} SHA-256 call(s), ${pinned_values} pinned 64-hex value(s); need >=1 of each."
+    echo "      found (comments stripped): ${digest_api} SHA-256 call(s), ${pinned_values} pinned"
+    echo "      64-hex value(s), ${digest_compared} digest comparison(s); need >=1 of each."
     echo "      Fix: hash the bytes after the stream completes, compare against a"
     echo "      checked-in expected digest per artifact, and DELETE the cached file"
     echo "      on mismatch — a poisoned cache entry that survives is worse than a"
@@ -136,12 +161,42 @@ else
 fi
 
 # ─── 2. Symlink targets are validated before creation ───────────────────────
-# The existing `check(out.startsWith(destPath))` guards the ENTRY path. This
-# probe is specifically about linkName, so it must not be satisfied by that
-# check: it requires linkName to be mentioned in the same file as a containment
-# assertion applied to a RESOLVED link target.
-if grep -q 'createSymbolicLink' "$DOWNLOADS"; then
-    linkname_guard=$(grep -Ec 'linkName.*(startsWith|normalize|isAbsolute)|(startsWith|normalize|isAbsolute).*linkName' "$DOWNLOADS" || true)
+# The existing `check(out.startsWith(destPath))` guards the ENTRY path, so this
+# probe must not be satisfied by it — and must not be satisfied by a comment, nor
+# by a `normalize()` whose result nobody looks at. Two tightenings over the
+# previous version, both driven by measured green-on-vulnerable trees:
+#   - comments stripped (a bare `// TODO: normalize linkName` scored a PASS);
+#   - `normalize` alone no longer counts. `Paths.get(entry.linkName).normalize()`
+#     returns a value; discarding it validates nothing. The line must carry a
+#     REFUSAL — check/require/throw/error/return — together with a containment
+#     test (startsWith / isAbsolute), which is the property that actually stops
+#     `a -> /tmp/evil`.
+if printf '%s\n' "$CODE" | grep -q 'createSymbolicLink'; then
+    # Follow the VARIABLE, not the line. The realistic guard spans two lines —
+    #     val target = out.parent.resolve(entry.linkName).normalize()
+    #     check(target.startsWith(destPath)) { … }
+    # — so a same-line requirement rejected genuine hardening (measured: 3 of this
+    # gate's own self-tests went red). Requiring only "an assertion somewhere" is
+    # the opposite error: the pre-existing `check(out.startsWith(destPath))` guards
+    # the ENTRY path and would satisfy it for free. So: find the variables derived
+    # from `linkName`, then demand a containment assertion naming ONE OF THEM.
+    linkname_guard=0
+    # `|| true` is load-bearing under `set -euo pipefail`: with no match, grep exits
+    # 1, pipefail propagates it out of the substitution and set -e kills the script
+    # MID-GATE — which then reports rc=1 and reads exactly like a legitimate refusal.
+    # Measured: three self-tests went red for this reason, not for the reason they
+    # named. A gate that dies is not a gate that judges.
+    link_vars=$(printf '%s\n' "$CODE" \
+        | grep -E '\b(val|var)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=.*linkName' \
+        | sed -E 's/.*\b(val|var)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\2/' | sort -u || true)
+    for v in $link_vars; do
+        n=$(printf '%s\n' "$CODE" \
+            | grep -Ec "(check|require|assert|throw|error|return|if).*\\b${v}\\b.*(startsWith|isAbsolute)" || true)
+        linkname_guard=$((linkname_guard + n))
+    done
+    # The one-liner form, where linkName is asserted on directly.
+    linkname_guard=$((linkname_guard + $(printf '%s\n' "$CODE" \
+        | grep -Ec '(check|require|assert|throw|error|return|if).*linkName.*(startsWith|isAbsolute)|(check|require|assert|throw|error|return|if).*(startsWith|isAbsolute).*linkName' || true)))
     if [[ "$linkname_guard" -ge 1 ]]; then
         pass "symlink targets validated before creation (${linkname_guard} guard(s) on linkName)"
     else
