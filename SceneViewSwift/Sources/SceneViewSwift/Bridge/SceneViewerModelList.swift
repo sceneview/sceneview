@@ -223,6 +223,26 @@ func sceneViewerRequestedPose(
     authored ? pose : nil
 }
 
+// MARK: - Bytes file extension
+
+/// The extension the in-memory-bytes path may append to a temp file name.
+///
+/// `bytesFileExtension` is public `@objc` on both ``SceneViewerModel`` and
+/// ``SceneViewerConfiguration``, and it reaches `appendingPathExtension` and then
+/// `Data.write(to:)`. No shipped bridge sets it from untrusted input — Flutter and React
+/// Native only ever send an asset path — but "no caller does this today" is a property of
+/// the callers, not of the API, and this one is the same shape as the URL-scheme
+/// allowlist the bridge boundary already enforces. Anything that is not a short
+/// alphanumeric run cannot shape a path, so it is refused rather than sanitised into
+/// something the caller did not ask for.
+///
+/// Refusal falls back to `usdz`, the default and the only value either bridge uses.
+func sceneViewerBytesFileExtension(_ raw: String) -> String {
+    let allowed = raw.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    guard allowed, !raw.isEmpty, raw.count <= 8 else { return "usdz" }
+    return raw
+}
+
 // MARK: - Resolving a configuration
 
 #if canImport(UIKit) && (os(iOS) || os(visionOS))
@@ -241,7 +261,9 @@ extension SceneViewerModelEntry {
                 assetPath: configuration.modelAssetPath,
                 urlString: configuration.modelURLString,
                 bytes: configuration.modelBytes,
-                bytesFileExtension: configuration.modelBytesFileExtension
+                bytesFileExtension: sceneViewerBytesFileExtension(
+                    configuration.modelBytesFileExtension
+                )
             )
             return [
                 make(
@@ -263,7 +285,9 @@ extension SceneViewerModelEntry {
                     assetPath: model.assetPath,
                     urlString: model.urlString,
                     bytes: model.bytes,
-                    bytesFileExtension: model.bytesFileExtension
+                    bytesFileExtension: sceneViewerBytesFileExtension(
+                        model.bytesFileExtension
+                    )
                 ),
                 nodeName: model.nodeName,
                 scale: sceneViewerVector(model.scaleX, model.scaleY, model.scaleZ),

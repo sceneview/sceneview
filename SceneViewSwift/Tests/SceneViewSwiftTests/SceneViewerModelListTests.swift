@@ -225,6 +225,41 @@ final class SceneViewerModelListTests: XCTestCase {
         XCTAssertNil(sceneViewerRequestedPose(authored: false, pose: hostDefault))
     }
 
+    // MARK: - Bytes file extension
+
+    func testBytesFileExtension_keepsAPlainExtension() {
+        XCTAssertEqual(sceneViewerBytesFileExtension("usdz"), "usdz")
+        XCTAssertEqual(sceneViewerBytesFileExtension("glb"), "glb")
+        XCTAssertEqual(sceneViewerBytesFileExtension("USDZ"), "USDZ")
+        XCTAssertEqual(sceneViewerBytesFileExtension("usdz2"), "usdz2")
+    }
+
+    /// Every separator that could shape a path out of an extension. `appendingPathExtension`
+    /// percent-encodes some of these rather than escaping the directory, so this pins the
+    /// refusal at the boundary instead of relying on what the URL layer happens to do.
+    func testBytesFileExtension_refusesAnythingThatCouldShapeAPath() {
+        for hostile in ["../../etc/passwd", "usdz/../x", "us/dz", "usdz.", ".usdz",
+                        "usdz%2F", "usdz\u{0000}", "usdz ", "usdz\n", "us-dz", "us_dz"] {
+            XCTAssertEqual(
+                sceneViewerBytesFileExtension(hostile), "usdz",
+                "\(hostile) must be refused, not appended"
+            )
+        }
+    }
+
+    func testBytesFileExtension_refusesEmptyAndOverlong() {
+        XCTAssertEqual(sceneViewerBytesFileExtension(""), "usdz")
+        XCTAssertEqual(sceneViewerBytesFileExtension(String(repeating: "a", count: 9)), "usdz")
+        XCTAssertEqual(sceneViewerBytesFileExtension(String(repeating: "a", count: 8)),
+                       String(repeating: "a", count: 8))
+    }
+
+    /// Non-ASCII letters satisfy `isLetter`, so the ASCII test is what carries this.
+    func testBytesFileExtension_refusesNonASCIILetters() {
+        XCTAssertEqual(sceneViewerBytesFileExtension("usdź"), "usdz")
+        XCTAssertEqual(sceneViewerBytesFileExtension("ｕｓｄｚ"), "usdz")
+    }
+
     // MARK: - Helper
 
     private func makePose() -> SceneCameraPose {
