@@ -100,7 +100,17 @@ export interface SceneViewProps {
      * **iOS:** acknowledged but not yet rendered — see {@link LightNode}.
      */
     lightNodes?: LightNode[];
-    /** Enable default orbit camera controls. Default: true. */
+    /**
+     * Enable default orbit camera controls. Default: `true`.
+     *
+     * @deprecated Superseded by {@link SceneViewProps.cameraControlMode}, and
+     * **inert on iOS**: the two would contradict each other — nothing can say
+     * which wins for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the
+     * iOS bridge deliberately reads only `cameraControlMode`. Still honoured on
+     * Android. There is currently no way to freeze the camera from this bridge
+     * on iOS; `SceneViewSwift` has `cameraGesturesEnabled` but it is not exposed
+     * here yet.
+     */
     cameraOrbit?: boolean;
     /**
      * Camera interaction mode (v4.3.0). Default: `'orbit'`.

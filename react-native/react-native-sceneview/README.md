@@ -7,8 +7,14 @@
 React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR scenes powered by Filament (Android) and RealityKit (iOS).
 
 > **Status:** Alpha — 3D model loading works on both platforms. AR scene is
-> functional on Android. The iOS native bridge compiles against the real
-> `SceneViewSwift` API and is CI-verified (`.github/workflows/rn-ios-compile.yml`).
+> functional on Android. The iOS native bridge is CI-verified against the real
+> `SceneViewSwift` API **and the real React Native API**
+> (`.github/workflows/rn-ios-compile.yml`): both modules come from an actual
+> build — SceneViewSwift from SwiftPM, React from the demo's `pod install` —
+> and the job proves each import is load-bearing before trusting the result.
+> It type-checks `ios/*.swift` only: it does not link, does not run, and does
+> not compile the Obj-C `RCT_EXTERN_MODULE` glue in `ios/RNSceneViewManager.m`
+> that exposes the module to JS.
 
 ## Features
 
@@ -39,7 +45,10 @@ source, clone the repo and `npm install <path-to-clone>/react-native/react-nativ
 cd ios && pod install
 ```
 
-Requires iOS 17+ and Xcode 15+.
+Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
+(`SceneViewSwift/Package.swift`), so the host app's `Podfile` must declare
+`platform :ios, '18.0'` rather than React Native's `min_ios_version_supported`
+(13.4), or `pod install` fails to resolve this module.
 
 **The host app must add `SceneViewSwift` via Swift Package Manager.**
 `SceneViewSwift` ships as a SwiftPM package only (no CocoaPods spec), so this
@@ -80,7 +89,7 @@ import { SceneView } from '@sceneview-sdk/react-native';
   style={{ flex: 1 }}
   environment="environments/studio_small.hdr"
   modelNodes={[{ src: 'models/damaged_helmet.glb', position: [0, 0, -2] }]}
-  cameraOrbit
+  cameraControlMode="orbit"
 />
 ```
 
@@ -105,7 +114,7 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 | `modelNodes`        | `ModelNode[]`        | `[]`      | Models to render                         |
 | `geometryNodes`     | `GeometryNode[]`     | `[]`      | Geometry nodes (forward-compatible)      |
 | `lightNodes`        | `LightNode[]`        | `[]`      | Light nodes (forward-compatible)         |
-| `cameraOrbit`       | `boolean`            | `true`    | Enable orbit camera controls             |
+| `cameraOrbit`       | `boolean`            | `true`    | **Deprecated**, inert on iOS — use `cameraControlMode` |
 | `cameraControlMode` | `CameraControlMode`  | `'orbit'` | Camera mode (v4.3.0). `'pan'`/`'firstPerson'` are iOS-only |
 | `autoCenterContent` | `boolean`            | `true`    | Auto-centre content on first frame (v4.3.0, iOS-first) |
 | `onTap`             | `function`           | —         | Tap callback (event pending)             |
@@ -113,6 +122,14 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 `cameraControlMode` `'pan'` and `'firstPerson'` are iOS-only in v4.3.0; on
 Android they fall back to orbit. `autoCenterContent` is iOS-first — the
 Android side is tracked in issue #1051.
+
+`cameraOrbit` is **deprecated and inert on iOS**. It predates
+`cameraControlMode`, and the two contradict each other — nothing can say which
+should win for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the iOS
+bridge reads only `cameraControlMode`. Note this leaves **no** way to freeze the
+camera from this bridge on iOS: `SceneViewSwift` has `cameraGesturesEnabled`,
+but the React Native surface does not expose it yet. `cameraOrbit: false` still
+works on Android.
 
 ### Props — ARSceneView (extends SceneView)
 
@@ -172,8 +189,12 @@ requireNativeComponent('RNSceneView' / 'RNARSceneView')
     +---> Android: ViewManager -> ComposeView -> SceneView { } / ARSceneView { }
     |                              (Filament, SceneView SDK)
     |
-    +---> iOS: RCTViewManager -> UIHostingController -> SceneView / ARSceneView
-                                  (RealityKit, SceneViewSwift)
+    +---> iOS 3D: RCTViewManager -> SceneViewerHostView -> SceneView
+    |                                (RealityKit, SceneViewSwift — the same host
+    |                                 the Flutter plugin and sceneview-compose use)
+    |
+    +---> iOS AR: RCTViewManager -> UIHostingController -> ARSceneView
+                                     (RealityKit, SceneViewSwift)
 ```
 
 Props are mapped from the React Native bridge to native view parameters on each platform.

@@ -77,7 +77,7 @@ export default function App() {
           style={styles.scene}
           environment={ENVIRONMENT}
           modelNodes={[currentModel.node]}
-          cameraOrbit
+          cameraControlMode="orbit"
           onTap={(e) => console.log("Tapped:", e.nativeEvent)}
         />
       )}

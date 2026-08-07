@@ -203,7 +203,11 @@ Flutter (Dart)
   +-- PlatformView -----> Android: ComposeView + SceneView { }
   |                        (Filament renderer, SceneView SDK)
   |
-  +-- PlatformView -----> iOS: UIHostingController + SceneViewSwift
+  +-- PlatformView -----> iOS 3D: SceneViewerHostView + SceneViewSwift
+  |                        (RealityKit renderer — the shared host, also used by
+  |                         the React Native bridge and sceneview-compose)
+  |
+  +-- PlatformView -----> iOS AR: UIHostingController + ARSceneView
                            (RealityKit renderer)
 ```
 

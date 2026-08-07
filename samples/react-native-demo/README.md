@@ -28,7 +28,7 @@ React Native (JS/TS)
 
 ## Bridge Features Demonstrated
 
-- `SceneView` component with `environment`, `cameraOrbit`
+- `SceneView` component with `environment`, `cameraControlMode`
 - `ARSceneView` with plane detection
 - `modelNodes` for GLB model loading
 - `geometryNodes` for procedural geometry (cube, sphere, cylinder, plane) with color — **Android only**
@@ -90,4 +90,4 @@ npx react-native run-android  # or run-ios
 - Node.js 18+
 - React Native 0.73+
 - Android SDK 24+ (for Android)
-- iOS 17+ (for iOS)
+- iOS 18+ (for iOS) — matches `SceneViewSwift`'s deployment floor

@@ -7,7 +7,11 @@ description: The opt-in self-hosted macOS runner (label sceneview-mac) — insta
 
 GitHub-hosted `macos-15` runners cost ~10x ubuntu per-minute and have no KVM.
 SceneView ships **6 jobs on `macos-15`** (`ios.yml`, `bridge-ios-compile.yml`,
-`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`). The iOS Maestro
+`rn-ios-compile.yml`, `app-store.yml` × 2, `render-tests.yml`) — but
+`rn-ios-compile.yml` is **deliberately excluded** from the opt-in: it runs
+`npm ci` and `pod install`, which write into shared per-user caches
+(`~/.npm`, `~/Library/Caches/CocoaPods`) on a machine that is Thomas's daily
+driver. Keep that one on a disposable hosted runner. The iOS Maestro
 device-QA leg (#1601) is CI-wired since #2833 — nightly via `device-qa.yml`,
 routed to the self-hosted `sceneview-mac` runner when its heartbeat is fresh
 (see the "iOS leg status" note under "Device QA" above). The self-hosted
