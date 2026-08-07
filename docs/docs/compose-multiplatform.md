@@ -121,11 +121,16 @@ no optionals-of-scalars, because a bridge boundary cannot carry them.
 see SwiftUI through cinterop; the Flutter plugin and the React Native module need one
 because their host frameworks hand them a `UIView`. Solving "host a SwiftUI scene in
 UIKit correctly" once — retain cycles, Swift 6 actor isolation, the persistent content
-root that async-loaded models attach to, per-field change gating — is the point. Today
-only `sceneview-compose` consumes it; `SceneViewPlugin.swift` and `SceneViewModule.swift`
-still carry their own platform views, which do more than viewing (method channels, AR,
-tap-to-place) and are production-tested. Migrating them is worthwhile and is deliberately
-not bundled into the change that introduces the thing to migrate onto.
+root that async-loaded models attach to, per-field change gating — is the point, and all
+three consume it: `sceneview-compose`, `SceneViewPlugin.swift` and
+`SceneViewModule.swift` all render their 3D path through this host.
+
+Each bridge still has a platform-view class of its own, because each does more than
+viewing. What stayed behind is what is genuinely theirs: the Flutter method channel, the
+React Native prop bag, and the **AR** path — `ARSceneView` is anchor-driven and shares
+nothing with the 3D viewer, so `ARSceneViewPlatformView` is untouched. What left is the
+part all three had written three times: hosting a SwiftUI scene in UIKit, and loading
+models into it.
 
 ### What the wrapper needed from `SceneViewSwift`, and why it is additive
 

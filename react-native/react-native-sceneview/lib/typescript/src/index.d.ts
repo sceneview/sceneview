@@ -1,5 +1,5 @@
-import React from 'react';
-import { type ViewStyle, type NativeSyntheticEvent } from 'react-native';
+import React from "react";
+import { type NativeSyntheticEvent, type ViewStyle } from "react-native";
 /** A 3D model loaded from a .glb / .gltf file. */
 export interface ModelNode {
     /** Asset path or URL to the glTF/GLB model. */
@@ -26,7 +26,7 @@ export interface ModelNode {
  *   cross-platform bridge-parity umbrella (#909). Use `modelNodes` on iOS.
  */
 export interface GeometryNode {
-    type: 'box' | 'cube' | 'sphere' | 'cylinder' | 'plane';
+    type: "box" | "cube" | "sphere" | "cylinder" | "plane";
     size?: [number, number, number];
     position?: [number, number, number];
     rotation?: [number, number, number];
@@ -52,7 +52,7 @@ export interface GeometryNode {
  *   cross-platform bridge-parity umbrella (#909).
  */
 export interface LightNode {
-    type: 'directional' | 'point' | 'spot';
+    type: "directional" | "point" | "spot";
     intensity?: number;
     color?: string;
     position?: [number, number, number];
@@ -68,7 +68,7 @@ export interface TapEvent {
 }
 export interface PlaneDetectedEvent {
     id: string;
-    type: 'horizontal' | 'vertical';
+    type: "horizontal" | "vertical";
     center: [number, number, number];
     extent: [number, number];
 }
@@ -81,7 +81,7 @@ export interface PlaneDetectedEvent {
  *   back to orbit (the per-mode switch is an iOS-first v4.3.0 addition —
  *   the Android side is tracked in issue #1051).
  */
-export type CameraControlMode = 'orbit' | 'pan' | 'firstPerson';
+export type CameraControlMode = "orbit" | "pan" | "firstPerson";
 export interface SceneViewProps {
     style?: ViewStyle;
     /** HDR environment asset path (e.g. "environments/studio.hdr"). */
@@ -100,7 +100,17 @@ export interface SceneViewProps {
      * **iOS:** acknowledged but not yet rendered — see {@link LightNode}.
      */
     lightNodes?: LightNode[];
-    /** Enable default orbit camera controls. Default: true. */
+    /**
+     * Enable default orbit camera controls. Default: `true`.
+     *
+     * @deprecated Superseded by {@link SceneViewProps.cameraControlMode}, and
+     * **inert on iOS**: the two would contradict each other — nothing can say
+     * which wins for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the
+     * iOS bridge deliberately reads only `cameraControlMode`. Still honoured on
+     * Android. There is currently no way to freeze the camera from this bridge
+     * on iOS; `SceneViewSwift` has `cameraGesturesEnabled` but it is not exposed
+     * here yet.
+     */
     cameraOrbit?: boolean;
     /**
      * Camera interaction mode (v4.3.0). Default: `'orbit'`.

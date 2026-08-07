@@ -123,7 +123,7 @@ D-pad controlled 3D viewer:
 Native SceneView rendering inside Flutter:
 
 - Android: ComposeView + Scene composable
-- iOS: UIHostingController + SceneViewSwift
+- iOS: SceneViewerHostView + SceneViewSwift (the shared 3D host; AR keeps its own view)
 
 ```bash
 cd samples/flutter-demo && flutter run

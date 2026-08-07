@@ -28,8 +28,11 @@
 #   ~/Library/LaunchAgents/io.github.sceneview.runner.plist          runner
 #   ~/Library/LaunchAgents/io.github.sceneview.runner-heartbeat.plist heartbeat
 #
-# OPT IN A WORKFLOW (one line per job in any .github/workflows/*.yml):
-#   runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+# OPT IN A WORKFLOW (one line per job in any .github/workflows/*.yml)
+#   The expression is deliberately NOT reproduced here — it also carries a
+#   fork-PR clause, and a copy in a comment is a copy that drifts. Take it
+#   verbatim from the `self-hosted-runner` skill, or from
+#   .github/workflows/bridge-ios-compile.yml, which holds the rationale.
 #
 # USAGE
 #   bash .claude/scripts/setup-self-hosted-runner.sh             # install

@@ -89,7 +89,7 @@ import { SceneView } from '@sceneview-sdk/react-native';
   style={{ flex: 1 }}
   environment="environments/studio_small.hdr"
   modelNodes={[{ src: 'models/damaged_helmet.glb', position: [0, 0, -2] }]}
-  cameraOrbit
+  cameraControlMode="orbit"
 />
 ```
 
@@ -114,7 +114,7 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 | `modelNodes`        | `ModelNode[]`        | `[]`      | Models to render                         |
 | `geometryNodes`     | `GeometryNode[]`     | `[]`      | Geometry nodes (forward-compatible)      |
 | `lightNodes`        | `LightNode[]`        | `[]`      | Light nodes (forward-compatible)         |
-| `cameraOrbit`       | `boolean`            | `true`    | Enable orbit camera controls             |
+| `cameraOrbit`       | `boolean`            | `true`    | **Deprecated**, inert on iOS — use `cameraControlMode` |
 | `cameraControlMode` | `CameraControlMode`  | `'orbit'` | Camera mode (v4.3.0). `'pan'`/`'firstPerson'` are iOS-only |
 | `autoCenterContent` | `boolean`            | `true`    | Auto-centre content on first frame (v4.3.0, iOS-first) |
 | `onTap`             | `function`           | —         | Tap callback (event pending)             |
@@ -122,6 +122,14 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 `cameraControlMode` `'pan'` and `'firstPerson'` are iOS-only in v4.3.0; on
 Android they fall back to orbit. `autoCenterContent` is iOS-first — the
 Android side is tracked in issue #1051.
+
+`cameraOrbit` is **deprecated and inert on iOS**. It predates
+`cameraControlMode`, and the two contradict each other — nothing can say which
+should win for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the iOS
+bridge reads only `cameraControlMode`. Note this leaves **no** way to freeze the
+camera from this bridge on iOS: `SceneViewSwift` has `cameraGesturesEnabled`,
+but the React Native surface does not expose it yet. `cameraOrbit: false` still
+works on Android.
 
 ### Props — ARSceneView (extends SceneView)
 
@@ -181,8 +189,12 @@ requireNativeComponent('RNSceneView' / 'RNARSceneView')
     +---> Android: ViewManager -> ComposeView -> SceneView { } / ARSceneView { }
     |                              (Filament, SceneView SDK)
     |
-    +---> iOS: RCTViewManager -> UIHostingController -> SceneView / ARSceneView
-                                  (RealityKit, SceneViewSwift)
+    +---> iOS 3D: RCTViewManager -> SceneViewerHostView -> SceneView
+    |                                (RealityKit, SceneViewSwift — the same host
+    |                                 the Flutter plugin and sceneview-compose use)
+    |
+    +---> iOS AR: RCTViewManager -> UIHostingController -> ARSceneView
+                                     (RealityKit, SceneViewSwift)
 ```
 
 Props are mapped from the React Native bridge to native view parameters on each platform.
@@ -212,6 +224,38 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
 ## Contributing
 
 See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/.github/CONTRIBUTING.md).
+
+### Local checks
+
+From this directory, after `npm ci`:
+
+```bash
+npm run lint        # Biome (repo-root biome.json) — lint + format + import assists
+npm run lint:fix    # same, applying the safe fixes
+npm run typescript  # tsc --noEmit
+npm test            # jest
+```
+
+All four run on every PR that touches this package's TypeScript, via
+[`.github/workflows/rn-ts-check.yml`](https://github.com/sceneview/sceneview/blob/main/.github/workflows/rn-ts-check.yml).
+They do not all cover the same files:
+
+| check | covers |
+|---|---|
+| `lint` | `src/`, `__tests__/`, `example/src/` |
+| `typescript` | `src/` only — that is `tsconfig.json`'s `include` |
+| `test` | `__tests__/` |
+
+The linter is **Biome**, not ESLint — the repo has a single JS/TS rule set in
+the root `biome.json`, and those three directories are listed in its
+`files.includes`. The `lint` scripts `cd` to the repo root before invoking
+Biome, mirroring `mcp/package.json`'s script; Biome also walks up and finds the
+root config on its own, so calling `./node_modules/.bin/biome check .` from
+this directory works too.
+
+Note that most rules in `biome.json` are **warning** severity, so `npm run
+lint` can exit 0 with findings still printed. Read its output, don't just read
+its exit code.
 
 ## License
 

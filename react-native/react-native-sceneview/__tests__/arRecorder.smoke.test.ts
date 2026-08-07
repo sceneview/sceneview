@@ -16,10 +16,10 @@
 // surface in a Node test environment, without dragging in the full
 // react-native preset.
 jest.mock(
-  'react-native',
+  "react-native",
   () => {
     return {
-      Platform: { OS: 'android' },
+      Platform: { OS: "android" },
       NativeModules: {},
       // Stubbed surface — only `Platform`/`NativeModules` are read by ARRecorder.
       // Touching anything else from here should fail loudly.
@@ -32,10 +32,10 @@ jest.mock(
   { virtual: true }
 );
 
-import { ARRecorder } from '../src/index';
+import { ARRecorder } from "../src/index";
 
-describe('ARRecorder bridge smoke tests', () => {
-  test('every method returns a Promise on an unsupported platform', () => {
+describe("ARRecorder bridge smoke tests", () => {
+  test("every method returns a Promise on an unsupported platform", () => {
     const recorder = new ARRecorder();
 
     // The methods that the README + Flutter features page claim are
@@ -44,28 +44,24 @@ describe('ARRecorder bridge smoke tests', () => {
     // "iOS-only" error.
     const start = recorder.start();
     const stop = recorder.stop();
-    const save = recorder.saveToPhotoLibrary('/tmp/foo.mov');
+    const save = recorder.saveToPhotoLibrary("/tmp/foo.mov");
 
     expect(start).toBeInstanceOf(Promise);
     expect(stop).toBeInstanceOf(Promise);
     expect(save).toBeInstanceOf(Promise);
 
     // Swallow the rejections so the test runner does not flag them.
-    return Promise.all([
-      start.catch(() => null),
-      stop.catch(() => null),
-      save.catch(() => null),
-    ]);
+    return Promise.all([start.catch(() => null), stop.catch(() => null), save.catch(() => null)]);
   });
 
-  test('isSupported reflects the platform + native module presence', () => {
+  test("isSupported reflects the platform + native module presence", () => {
     // The mocked Platform.OS is 'android' and NativeModules is empty, so
     // isSupported MUST be false. If the bridge ever flips a default that
     // claims iOS support on Android, this test catches it.
     expect(ARRecorder.isSupported).toBe(false);
   });
 
-  test('start rejects on unsupported platforms with a helpful message', async () => {
+  test("start rejects on unsupported platforms with a helpful message", async () => {
     const recorder = new ARRecorder();
     await expect(recorder.start()).rejects.toThrow(/iOS/);
     await expect(recorder.start()).rejects.toThrow(/#1051/);

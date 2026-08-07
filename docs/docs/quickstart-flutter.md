@@ -57,11 +57,13 @@ ARSceneView(
 Flutter (Dart)
   └── PlatformView
         ├── Android → ComposeView → SceneView { ModelNode(...) }
-        └── iOS → UIHostingController → SceneView { ModelNode(...) }
+        └── iOS → SceneViewerHostView → SceneView { ModelNode(...) }
 ```
 
 - **Android**: Uses `ComposeView` hosting the Jetpack Compose `SceneView { }` composable with Filament renderer
-- **iOS**: Uses `UIHostingController` hosting the SwiftUI `SceneView { }` with RealityKit renderer
+- **iOS**: Uses `SceneViewerHostView` — the shared `@objc UIView` host in `SceneViewSwift`,
+  also used by the React Native bridge and `sceneview-compose` — with RealityKit renderer.
+  The AR path keeps its own platform view
 
 ## Available Methods
 

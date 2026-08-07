@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
+// This sample illustrates a package whose `tsconfig.json` sets `"jsx": "react"`
+// — the classic runtime, where JSX lowers to `React.createElement(...)`. This
+// directory carries no tsconfig or babel config of its own, so Biome reads the
+// file without that context and reports `React` as an unused import. Keeping it
+// is what makes the snippet safe to paste into a classic-runtime host app.
+// biome-ignore lint/correctness/noUnusedImports: React is used by the JSX lowering.
+import React, { useState } from "react";
 import {
+  FlatList,
   SafeAreaView,
   StyleSheet,
-  Text,
-  View,
   Switch,
+  Text,
   TouchableOpacity,
-  FlatList,
-} from 'react-native';
-import { SceneView, ARSceneView, type ModelNode } from 'react-native-sceneview';
+  View,
+} from "react-native";
+import { ARSceneView, type ModelNode, SceneView } from "react-native-sceneview";
 
 // ---------------------------------------------------------------------------
 // Model catalog
@@ -21,25 +27,25 @@ interface ModelEntry {
 
 const MODELS: ModelEntry[] = [
   {
-    label: 'Damaged Helmet',
+    label: "Damaged Helmet",
     node: {
-      src: 'models/damaged_helmet.glb',
+      src: "models/damaged_helmet.glb",
       position: [0, 0, -2],
       scale: [1, 1, 1],
     },
   },
   {
-    label: 'Robot',
+    label: "Robot",
     node: {
-      src: 'models/robot.glb',
+      src: "models/robot.glb",
       position: [0, 0, -2],
       scale: [0.5, 0.5, 0.5],
-      animation: 'Idle',
+      animation: "Idle",
     },
   },
 ];
 
-const ENVIRONMENT = 'environments/studio_small.hdr';
+const ENVIRONMENT = "environments/studio_small.hdr";
 
 export default function App() {
   const [arMode, setArMode] = useState(false);
@@ -63,16 +69,16 @@ export default function App() {
           style={styles.scene}
           planeDetection
           modelNodes={[currentModel.node]}
-          onTap={(e) => console.log('Tapped:', e.nativeEvent)}
-          onPlaneDetected={(e) => console.log('Plane detected:', e.nativeEvent)}
+          onTap={(e) => console.log("Tapped:", e.nativeEvent)}
+          onPlaneDetected={(e) => console.log("Plane detected:", e.nativeEvent)}
         />
       ) : (
         <SceneView
           style={styles.scene}
           environment={ENVIRONMENT}
           modelNodes={[currentModel.node]}
-          cameraOrbit
-          onTap={(e) => console.log('Tapped:', e.nativeEvent)}
+          cameraControlMode="orbit"
+          onTap={(e) => console.log("Tapped:", e.nativeEvent)}
         />
       )}
 
@@ -86,19 +92,11 @@ export default function App() {
             contentContainerStyle={styles.pickerContent}
             renderItem={({ item, index }) => (
               <TouchableOpacity
-                style={[
-                  styles.chip,
-                  index === selectedIndex && styles.chipSelected,
-                ]}
+                style={[styles.chip, index === selectedIndex && styles.chipSelected]}
                 onPress={() => setSelectedIndex(index)}
                 activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.chipText,
-                    index === selectedIndex && styles.chipTextSelected,
-                  ]}
-                >
+                <Text style={[styles.chipText, index === selectedIndex && styles.chipTextSelected]}>
                   {item.label}
                 </Text>
               </TouchableOpacity>
@@ -113,26 +111,26 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: "#1a1a2e",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
   },
   title: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   toggleLabel: {
-    color: '#ccc',
+    color: "#ccc",
     fontSize: 14,
   },
   scene: {
@@ -141,7 +139,7 @@ const styles = StyleSheet.create({
   picker: {
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#333',
+    borderTopColor: "#333",
   },
   pickerContent: {
     paddingHorizontal: 12,
@@ -151,19 +149,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#2a2a4e',
+    backgroundColor: "#2a2a4e",
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: "#444",
   },
   chipSelected: {
-    backgroundColor: '#4a90d9',
-    borderColor: '#4a90d9',
+    backgroundColor: "#4a90d9",
+    borderColor: "#4a90d9",
   },
   chipText: {
-    color: '#aaa',
+    color: "#aaa",
     fontSize: 14,
   },
   chipTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
 });
