@@ -92,6 +92,20 @@ dependencies — so the **host app** must add the package in Xcode:
 - File → Add Package Dependencies… → `https://github.com/sceneview/sceneview`
 - Pick the `SceneViewSwift` library product; depend on the latest `vX.Y.Z` tag.
 
+> **Pick the tag to match the plugin, not the pub.dev range.** The two versions
+> are resolved by different package managers and only the pub.dev one is allowed
+> to lag: `ios/Classes/*.swift` compiles against whatever tag *your* app pins.
+> The plugin builds on `SceneViewerHostView`, which landed **after** `v4.26.0` —
+> no `SceneViewer*` type exists at that tag or earlier — and it calls the
+> two-parameter `onTapEntity` (the tapped model root is the second parameter),
+> so pin `v4.27.0` or newer.
+>
+> Nothing in this repository's CI will warn you: `bridge-ios-compile.yml`
+> type-checks the plugin against the `SceneViewSwift` sources *in the repo*, not
+> against the tag your app resolves. A stale pin therefore surfaces as a Swift
+> compile error in your own build — loud and at build time, never a runtime
+> surprise, but yours to notice.
+
 > **iOS model format.** RealityKit loads `.usdz` and `.reality` natively. Pass
 > `.usdz` model paths to `loadModel(...)` on iOS — a `.glb` path fails to load
 > (the failure is logged; the rest of the scene is unaffected).

@@ -106,7 +106,11 @@ platform:
   Tracked under [#2051](https://github.com/sceneview/sceneview/issues/2051).
 
 The *key* is written on every dispatch path of both views on both platforms, so
-`nodeName == null` is still the single correct "the tap hit no model" test.
+`nodeName == null` is still the single correct "the tap hit no model" test. How
+often it dispatches differs, though: on iOS a tap that hits no entity fires no
+`onTap` at all (RealityKit's gesture is entity-targeted), where Android
+dispatches a `0, 0, 0` miss — so tap-event totals are not comparable across
+platforms.
 
 ## Type Definitions
 

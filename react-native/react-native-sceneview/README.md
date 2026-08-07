@@ -63,10 +63,14 @@ directly: SwiftPM resolves against a git tag in this same repository, which the
 release creates, so it is never ahead of something that does not exist yet.
 
 > **Keep the two versions in step.** npm `4.27.0`'s Swift requires SPM tag
-> `v4.27.0` or newer: `SceneViewerHostView.onTapEntity` gained a second
-> parameter (the tapped model root) in that release, so this module's
-> `ios/*.swift` does not compile against `v4.26.0`. A mismatch is a loud Swift
-> compile error at build time, not a runtime surprise.
+> `v4.27.0` or newer: this module's `ios/*.swift` builds on
+> `SceneViewerHostView` — which landed *after* `v4.26.0`, so no `SceneViewer*`
+> type exists at that tag or any earlier one — and it calls the two-parameter
+> `onTapEntity` (the tapped model root is the second parameter). A mismatch is a
+> loud Swift compile error at build time, not a runtime surprise, but no CI job
+> here will catch it for you: `rn-ios-compile.yml` type-checks against the
+> `SceneViewSwift` sources *in this repo*, not against the tag your app
+> resolves.
 
 The module's `ios/*.swift` `import SceneViewSwift` resolves against that
 app-level package at build time.
@@ -226,7 +230,10 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   hit-test hook and its tap can only resolve the surface point
   ([#2051](https://github.com/sceneview/sceneview/issues/2051)). Every dispatch
   path still writes the key, so `nodeName == null` is the single "the tap hit no
-  model" test — it is never `undefined`.
+  model" test — it is never `undefined`. *How often* it dispatches differs
+  though: on iOS a tap that hits no entity fires no `onTap` at all (RealityKit's
+  gesture is entity-targeted), where Android dispatches a `0, 0, 0` miss — so
+  the two platforms do not deliver the same number of tap events.
 - **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
   environment is accepted but not applied.
 - **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`

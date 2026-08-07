@@ -205,11 +205,16 @@ func sceneViewerListKey(_ entries: [SceneViewerModelEntry]) -> String {
 /// The extension is kept here and stripped at the report, so a bridge that wants the file
 /// name for something else still has it.
 ///
-/// Two known divergences from the Android bridges' Kotlin derivation
-/// (`substringAfterLast('/')` / `substringBeforeLast('.')`), both unreachable for the
-/// `.glb` / `.gltf` / `.usdz` sources these bridges load:
-/// - `NSString` path semantics differ on a trailing slash (`models/` → Kotlin `""`, Swift
-///   `models`) and on a dotfile base name (`.hidden` → Kotlin `""`, Swift `.hidden`).
+/// Divergences from the Android bridges' Kotlin derivation
+/// (`substringAfterLast('/')` / `substringBeforeLast('.')`) on inputs no loader accepts.
+/// The cases below are the measured ones, not a closed set — `NSString` path semantics and
+/// Kotlin's `substringBeforeLast` disagree wherever the base name is degenerate, and every
+/// such input is unreachable for the `.glb` / `.gltf` / `.usdz` sources these bridges load:
+/// - Measured on the full derivation (this function plus the `deletingPathExtension` the
+///   bridges apply at the report), as Kotlin → Swift: `models/` → `""` / `models`;
+///   `.hidden` → `""` / `.hidden`; `/` → `""` / `/`; `..` → `.` / `..`; and `robot.` →
+///   `robot` / `robot.`, because `deletingPathExtension` does not treat a trailing dot as
+///   an extension.
 /// - Android's Flutter bridge falls back to `node_<index>` when the derived base name is
 ///   empty; this side has no fallback and names the entity `""`, which a tap then reports
 ///   as `""` — the same value a tap that hit no bridge-loaded model at all reports.
