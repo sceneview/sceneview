@@ -77,9 +77,25 @@ the CI rules. Three practical consequences:
 - **The reviewers have no shell, so the workflow hands them the diff** as a file
   under `RUNNER_TEMP`, computed once from the committed merge ref. The verdict
   file lives there too, written by the orchestrator with a heredoc. Nothing the
-  review produces touches the checkout, which is what lets
-  `Assert the reviewers left the tree clean` demand a pristine tree with **no
-  exclusions**.
+  review produces touches the checkout.
+- **⚠️ The reviewers are not the only writer in that job, and this cost 11 of
+  14 sampled failing runs.** `claude-code-action` reverts `.claude/`,
+  `.mcp.json`, `.claude.json`, `.gitmodules`, `.ripgreprc`, `CLAUDE.md`,
+  `CLAUDE.local.md` and `.husky/` to the base branch before the CLI starts —
+  the CLI reads settings and hooks from cwd, and a PR head is untrusted. So on
+  any PR touching `.claude/**`, `git status` is dirty before a reviewer has read
+  a line. A bare `git status --porcelain | test -z` blamed the reviewers for it
+  (run 31193247720, PR #3048: ` M .claude/scripts/sync-assets.sh`, 0 denials,
+  an error naming #3016 — the wrong cause).
+  `Assert the reviewers left the tree clean` now calls
+  `assert-review-tree-clean.sh`, which is **not** a path exclusion: a sensitive
+  path passes only when its bytes and mode equal `origin/<base>` exactly, so a
+  reviewer editing `.claude/` still fails. Two consequences when reviewing a PR
+  that touches those paths: the files **on disk are the base versions**, so read
+  the PR's content from `pr.diff`, `git show HEAD:<path>` or `.claude-pr/`; and
+  the `sv-ci-*` toolsets actually loaded are the base ones, which makes
+  `Assert the CI reviewers cannot write` a review signal rather than the last
+  line of defence.
 - **`Assert the CI reviewers cannot write` pins the frontmatter** from inside
   `pr-review.yml`, because the agent files live in the PR's own checkout and a
   PR could otherwise widen the reviewers that judge it. The self-modification

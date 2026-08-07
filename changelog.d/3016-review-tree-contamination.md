@@ -19,8 +19,10 @@
   Above all, the reviewers are now five `sv-ci-*` agent types whose `tools:`
   frontmatter grants `Read, Glob, Grep` and no shell, so contamination is
   impossible rather than forbidden: the diff and the verdict file moved out of the
-  repository into `RUNNER_TEMP`, and the clean-tree assertion demands a pristine
-  checkout with no exclusions. Measured — dropping `Write` alone would have changed
+  repository into `RUNNER_TEMP`, and the clean-tree assertion demands a checkout
+  byte-identical to `HEAD` (refined in #3057, which carves out — and asserts —
+  the eight config paths `claude-code-action` itself restores from the base
+  branch). Measured — dropping `Write` alone would have changed
   nothing, since a subagent that still has `Bash` overwrites a tracked file with
   one `echo`. Closes
   [#3016](https://github.com/sceneview/sceneview/issues/3016).

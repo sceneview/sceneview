@@ -1032,6 +1032,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-grade-pr-review.sh
 
+      # PR-review contamination net (assert-review-tree-clean.sh). It has to
+      # hold two opposite things true: the `.claude/` revert that
+      # claude-code-action performs on every PR-head checkout must PASS, and a
+      # reviewer editing that same directory must FAIL. The version it replaced
+      # could not tell those apart and blamed the reviewers for the action's own
+      # write — 11 of 14 sampled failing runs on 2026-08-07. Real git fixtures,
+      # plus a mutation test proving the suite goes red if the assertion is ever
+      # softened into a path exclusion, and a wiring check that the workflow
+      # still calls it.
+      - name: Self-test PR-review contamination net
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-assert-review-tree-clean.sh
+
       # Agent-cost measurement (agent-cost-report.sh). It reads local session
       # transcripts, so CI can never exercise it on real data — but its one
       # silent failure mode is arithmetic: a transcript emits several records
