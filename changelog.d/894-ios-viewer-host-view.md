@@ -4,9 +4,9 @@
   [#3009](https://github.com/sceneview/sceneview/pull/3009): the Kotlin side declared it
   needed a `UIView` factory, and every app had to write that `UIView` itself. It now ships
   in `SceneViewSwift`, driven entirely by primitives on `SceneViewerConfiguration`, so a
-  `SceneViewerViewFactory` is a field-by-field copy plus two callbacks. Same wrapper is
-  intended for the Flutter and React Native bridges, which still carry their own platform
-  views today. See [`sceneview-compose/README.md`](https://github.com/sceneview/sceneview/blob/main/sceneview-compose/README.md).
+  `SceneViewerViewFactory` is a field-by-field copy plus two callbacks. The Flutter and
+  React Native bridges render their 3D path through this same wrapper — each keeps a
+  platform-view class only for its method channel or prop bag and for the AR path. See [`sceneview-compose/README.md`](https://github.com/sceneview/sceneview/blob/main/sceneview-compose/README.md).
 - **Four additive `SceneView` modifiers** the wrapper needed, all opt-in and none changing
   existing behaviour: `cameraPose(_:)` (continuous camera write-through, applied only when
   the value changes so it does not fight a live drag), `onCameraChanged(_:)` (the camera

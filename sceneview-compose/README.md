@@ -133,10 +133,10 @@ the latest Compose state, so re-assigning them on every update buys nothing. Cal
 `applyConfiguration(_:)` on every update, and never rebuild the view: rebuilding reloads
 the model and discards wherever the user had orbited to.
 
-The same host also serves the Flutter and React Native bridges. Those still carry their
-own bespoke platform views today (`SceneViewPlugin.swift`, `SceneViewModule.swift`),
-which do more than viewing — method channels, AR, tap-to-place — and migrating them onto
-this host is deliberately a separate change from the one that introduces it.
+The same host serves the Flutter and React Native bridges: `SceneViewPlugin.swift` and
+`SceneViewModule.swift` render their 3D path through it too. Each keeps a platform-view
+class of its own for what is genuinely its own — the method channel, the prop bag, and
+the AR path, which is anchor-driven and shares nothing with the 3D viewer.
 
 ### What iOS does differently
 
