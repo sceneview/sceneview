@@ -7,10 +7,13 @@ Pod::Spec.new do |s|
   backed by RealityKit and ARKit, mirroring the Android (Filament) API.
                        DESC
   s.homepage         = 'https://github.com/sceneview/sceneview'
-  s.license          = { :type => 'Apache-2.0', :file => '../LICENSE' }
+  s.license          = { :type => 'Apache-2.0', :file => 'LICENSE' }
   s.author           = { 'SceneView' => 'contact@sceneview.github.io' }
-  s.source           = { :path => '.' }
-  s.source_files     = 'Sources/SceneViewSwift/**/*.swift'
+  s.source           = {
+    :git => 'https://github.com/sceneview/sceneview.git',
+    :tag => "v#{s.version}"
+  }
+  s.source_files     = 'SceneViewSwift/Sources/SceneViewSwift/**/*.swift'
 
   # Must match Package.swift's `platforms:` — see the note there on why v1 needs
   # iOS 18 / visionOS 2 (RealityKit's per-entity light and shadow APIs).
@@ -32,6 +35,28 @@ Pod::Spec.new do |s|
   # as a pod is what actually makes `import SceneViewSwift` resolve from a
   # bridge, and it is why the Flutter demo's iOS path could not build at all.
   #
+  # ── Why it lives at the repo ROOT, not in SceneViewSwift/ ──────────────────
+  #
+  # `flutter_sceneview` is published to pub.dev and declares
+  # `s.dependency 'SceneViewSwift'`. A consumer who installs the plugin from
+  # pub.dev has no clone of this monorepo, so a `:path` Podfile line is not
+  # reachable for them — and this pod is deliberately NOT on the CocoaPods
+  # trunk. `pod 'SceneViewSwift', :git => …` is the one form that works without
+  # a clone and without publishing, and CocoaPods resolves `:git` by looking for
+  # `<name>.podspec` at the repository root. Sitting in `SceneViewSwift/` made
+  # that lookup fail, which would have turned every downstream `pod install`
+  # into "Unable to find a specification for 'SceneViewSwift'".
+  #
+  # Consequences of the location, both deliberate:
+  #   - `source_files` is repo-relative (`SceneViewSwift/Sources/...`).
+  #   - `:file => 'LICENSE'` resolves to the repo's own Apache-2.0 file. The
+  #     previous `'../LICENSE'` escaped the pod root: it worked for a local
+  #     `:path` install and would have shipped a packaged pod with no licence
+  #     at all, which `pod spec lint` rejects and licence compliance does not
+  #     forgive.
+  #
   # Keep `s.version`, `s.platform` and `s.swift_version` in sync with
-  # Package.swift and with the bridges' own podspecs.
+  # Package.swift and with the bridges' own podspecs. `s.version` is checked by
+  # `.claude/scripts/sync-versions.sh` — that check is the enforcement; this
+  # comment is not.
 end

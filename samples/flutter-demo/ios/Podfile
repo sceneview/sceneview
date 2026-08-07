@@ -44,7 +44,12 @@ target 'Runner' do
 
   # `flutter_sceneview` declares `s.dependency 'SceneViewSwift'`, which is not
   # published to the CocoaPods trunk — this points it at the in-repo sources.
-  pod 'SceneViewSwift', :path => '../../../SceneViewSwift'
+  # The path is the REPO ROOT, because that is where `SceneViewSwift.podspec`
+  # lives: CocoaPods resolves `:git` by looking for `<name>.podspec` at the root
+  # of the repository, and a consumer installing the plugin from pub.dev has no
+  # clone to point `:path` at. Keeping the podspec inside `SceneViewSwift/`
+  # would have left them with no resolvable coordinate at all.
+  pod 'SceneViewSwift', :path => '../../..'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 

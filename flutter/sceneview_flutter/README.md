@@ -86,15 +86,26 @@ platform :ios, '18.0'
 ```
 
 The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer), and
-declares it as a **pod** dependency. Point that dependency at the package in
-your `Podfile`:
+declares it as a **pod** dependency. `SceneViewSwift` is **not published to the
+CocoaPods trunk**, so your `Podfile` has to say where it comes from — otherwise
+`pod install` fails with `Unable to find a specification for 'SceneViewSwift'`.
+
+Installing the plugin from pub.dev (no clone of the SDK repo):
 
 ```ruby
 target 'Runner' do
   use_frameworks!
-  pod 'SceneViewSwift', :path => '<path-to>/SceneViewSwift'
+  pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git',
+                        :tag => 'v4.26.0'
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
+```
+
+Working from a checkout of the SDK monorepo instead — point at the **repo root**,
+which is where `SceneViewSwift.podspec` lives:
+
+```ruby
+  pod 'SceneViewSwift', :path => '<path-to>/sceneview'
 ```
 
 > **Adding the Swift package to your Xcode project does not work**, and this

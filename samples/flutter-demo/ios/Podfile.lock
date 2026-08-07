@@ -2,7 +2,7 @@ PODS:
   - Flutter (1.0.0)
   - flutter_sceneview (4.26.0):
     - Flutter
-    - SceneViewSwift
+    - SceneViewSwift (~> 4.26)
   - integration_test (0.0.1):
     - Flutter
   - package_info_plus (0.4.5):
@@ -16,7 +16,7 @@ DEPENDENCIES:
   - flutter_sceneview (from `.symlinks/plugins/flutter_sceneview/ios`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
-  - SceneViewSwift (from `../../../SceneViewSwift`)
+  - SceneViewSwift (from `../../..`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 EXTERNAL SOURCES:
@@ -29,18 +29,18 @@ EXTERNAL SOURCES:
   package_info_plus:
     :path: ".symlinks/plugins/package_info_plus/ios"
   SceneViewSwift:
-    :path: "../../../SceneViewSwift"
+    :path: "../../.."
   url_launcher_ios:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_sceneview: 5834ed66252876cb6634feec5a4974b2ca339028
+  flutter_sceneview: b7cbc25f654d60a63d7832800e0d5335d06bdfd8
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
-  SceneViewSwift: 7c9174da98407d5c6b4b94a42a728dd204796454
+  SceneViewSwift: 84e88aa6da1f1fe8f582a562dc03920726d81f63
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
-PODFILE CHECKSUM: 98e8fe30e63f353d372ad24e4c0557e2038b71b4
+PODFILE CHECKSUM: 0e1f9a846ad6e619b137dac88628ce0f70b286bb
 
 COCOAPODS: 1.17.0

@@ -120,7 +120,12 @@ class AboutPage extends StatelessWidget {
               children: [
                 _FeatureRow('SceneView (3D)', _FeatureSupport.both, theme),
                 _FeatureRow('ARSceneView (AR)', _FeatureSupport.both, theme),
-                _FeatureRow('Model loading (GLB/glTF)', _FeatureSupport.both, theme),
+                // Deliberately split by format rather than claiming "both":
+                // Filament reads GLB/glTF, RealityKit reads neither. Saying
+                // "Model loading (GLB/glTF) — both" was the claim this app's
+                // own iOS viewer disproved by rendering nothing for a release.
+                _FeatureRow('Model loading — GLB/glTF', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Model loading — USDZ', _FeatureSupport.iosOnly, theme),
                 _FeatureRow('Camera gestures (pan, pinch)', _FeatureSupport.both, theme),
                 _FeatureRow('Model position, rotation', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('onTap callback', _FeatureSupport.androidOnly, theme),
@@ -154,7 +159,11 @@ class AboutPage extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.article),
                   title: const Text('pub.dev Package'),
-                  subtitle: const Text('pub.dev/packages/sceneview'),
+                  // `flutter_sceneview`, not `sceneview`: the latter is this
+                  // project's own pre-rename package, abandoned at 3.6.1 and
+                  // still on pub.dev, so the old link sent users to a package
+                  // that will never match this app.
+                  subtitle: const Text('pub.dev/packages/flutter_sceneview'),
                 ),
                 ListTile(
                   leading: const Icon(Icons.description),
@@ -262,6 +271,12 @@ enum _FeatureSupport {
   /// Implemented on Android; the iOS port is not yet bridged (#909).
   androidOnly,
 
+  /// Implemented on iOS only. Not a gap in the bridge — a difference between
+  /// the renderers themselves. Filament reads glTF/GLB and RealityKit reads
+  /// USD, so a model format is supported on exactly one side by construction,
+  /// and no amount of bridging changes that.
+  iosOnly,
+
   /// Not yet bridged on either platform.
   planned,
 }
@@ -271,6 +286,8 @@ Widget _FeatureRow(String name, _FeatureSupport support, ThemeData theme) {
     _FeatureSupport.both => (Icons.check_circle, Colors.green, 'Android + iOS'),
     _FeatureSupport.androidOnly =>
       (Icons.adjust, Colors.blue, 'Android only'),
+    _FeatureSupport.iosOnly =>
+      (Icons.adjust, Colors.purple, 'iOS only'),
     _FeatureSupport.planned =>
       (Icons.radio_button_unchecked, Colors.grey, 'Not yet bridged'),
   };

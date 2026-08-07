@@ -201,6 +201,29 @@ if [ -f "$PODSPEC" ]; then
     add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
 fi
 
+# SceneViewSwift podspec (repo root)
+#
+# Registered because the file carries `s.version` and nothing was watching it.
+# Every version-bearing surface this script does NOT enumerate drifts silently
+# until someone reads it — which is exactly how the Flutter demo's About tab sat
+# at v4.13.0 while the SDK shipped 4.26.0, defended by a test asserting the stale
+# string. A "keep this in sync" comment in the file itself is prose; this is the
+# enforcement.
+PODSPEC_SWIFT="$REPO_ROOT/SceneViewSwift.podspec"
+if [ -f "$PODSPEC_SWIFT" ]; then
+    V=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    add_check "SceneViewSwift.podspec" "$V"
+fi
+
+# Flutter demo About tab — hardcoded display string, WARN-only.
+# It is user-visible chrome rather than a coordinate anyone resolves against, so
+# a mismatch should not fail a release; it should stop being invisible.
+ABOUT_PAGE="$REPO_ROOT/samples/flutter-demo/lib/pages/about_page.dart"
+if [ -f "$ABOUT_PAGE" ]; then
+    V=$(grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" "$ABOUT_PAGE" | head -1 | tr -d 'v' || echo "NOT FOUND")
+    add_check "samples/flutter-demo/lib/pages/about_page.dart" "$V" "false"
+fi
+
 # Flutter example pubspec
 FLUTTER_EXAMPLE="$REPO_ROOT/samples/flutter-demo/pubspec.yaml"
 if [ -f "$FLUTTER_EXAMPLE" ]; then

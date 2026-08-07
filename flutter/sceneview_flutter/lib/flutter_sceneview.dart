@@ -351,9 +351,13 @@ class SceneViewController {
 
   /// Called when a model node is tapped. Receives the node name/id.
   ///
-  /// Wired on both Android and iOS for [SceneView] (3D). On iOS [ARSceneView]
-  /// this callback is not yet delivered — SceneViewSwift's `ARSceneView` does
-  /// not expose an entity hit-test hook (tracked in #2051).
+  /// **Delivered on Android only.** On iOS [SceneView] (3D) the callback is
+  /// wired end to end — the platform view claims tap gestures and the entity
+  /// carries collision and input-target components — but RealityKit's
+  /// entity-targeted hit test resolves no entity, so this never fires. Measured
+  /// 2026-08-07; see the plugin README's `onTap` known-gap section. On iOS
+  /// [ARSceneView] it is not delivered either: SceneViewSwift's `ARSceneView`
+  /// exposes no entity hit-test hook (tracked in #2051).
   void Function(String nodeName)? onTap;
 
   /// Called when an AR plane is detected. Receives the plane type
@@ -490,7 +494,9 @@ class SceneView extends StatefulWidget {
 
   /// Called when a model node is tapped. Receives the node name/id.
   ///
-  /// Wired on both Android and iOS.
+  /// **Delivered on Android only.** On iOS the callback is wired but
+  /// RealityKit's hit test does not resolve an entity, so it never fires — see
+  /// [SceneViewController.onTap] and the plugin README's known-gap section.
   final void Function(String nodeName)? onTap;
 
   /// Camera interaction mode. Defaults to [CameraControlMode.orbit].

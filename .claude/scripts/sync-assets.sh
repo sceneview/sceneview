@@ -27,7 +27,12 @@ WEB_MODELS="$REPO_ROOT/samples/web-demo/public/models"
 # so every Flutter leg of this sync silently addressed nothing, and the demo
 # never received the USDZ its catalog entries already claimed it used.
 FLUTTER_ANDROID_MODELS="$REPO_ROOT/samples/flutter-demo/android/app/src/main/assets/models"
-FLUTTER_ANDROID_ENVS="$REPO_ROOT/samples/flutter-demo/android/app/src/main/assets/environments"
+# No FLUTTER_ANDROID_ENVS: it was declared here and used by nothing, and fixing
+# its path would only have made a dead variable point somewhere better. The
+# Flutter demo loads environments through Flutter's own asset bundle — the
+# `assets: - environments/` entry in its pubspec.yaml, resolved from the package
+# root — not through Android's native assets directory, so there is no Android
+# environments leg for this demo to sync.
 FLUTTER_IOS_MODELS="$REPO_ROOT/samples/flutter-demo/ios/Runner/Models"
 RN_ANDROID_MODELS="$REPO_ROOT/samples/react-native-demo/android/app/src/main/assets/models"
 RN_ANDROID_ENVS="$REPO_ROOT/samples/react-native-demo/android/app/src/main/assets/environments"

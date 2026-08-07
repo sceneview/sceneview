@@ -51,9 +51,15 @@ let flutterSupportedModelExtensions: Set<String> = [
 /// An extension-less path is accepted: `Entity(named:)` resolves bundle
 /// resources by name alone.
 func flutterUnsupportedModelReason(_ path: String) -> String? {
-    // Query strings and fragments are not part of the file's extension.
-    let withoutQuery = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
-    let ext = (withoutQuery as NSString).pathExtension.lowercased()
+    // Query strings and fragments are not part of the file's extension. Both
+    // separators are stripped: splitting on "?" alone left `fox.usdz#frag` with
+    // an extension of `usdz#frag`, which failed the allowlist and told the
+    // caller RealityKit cannot parse a format that is in fact supported.
+    let withoutQueryOrFragment = path
+        .split(whereSeparator: { $0 == "?" || $0 == "#" })
+        .first
+        .map(String.init) ?? path
+    let ext = (withoutQueryOrFragment as NSString).pathExtension.lowercased()
     guard !ext.isEmpty else { return nil }
     guard !flutterSupportedModelExtensions.contains(ext) else { return nil }
     return "RealityKit cannot parse '.\(ext)' — it reads "
@@ -131,10 +137,17 @@ final class FlutterContentRoot {
             do {
                 let node = try await flutterLoadModel(path: data.path)
                 node.scale(data.scale)
-                // The Dart side may have cleared the model between the
-                // `await` suspension and resumption — only attach if it is
-                // still wanted.
-                guard loaded[data.id] == nil else { continue }
+                // The Dart side may have cleared the scene between the `await`
+                // suspension and resumption — do not attach a stale entity.
+                //
+                // This used to read `guard loaded[data.id] == nil`, which could
+                // never fire: the loop's own `where` clause already guarantees
+                // that key is absent, and `clearScene` REMOVES keys rather than
+                // adding them, so the condition stayed true exactly when the
+                // model had been cleared. Cancellation is the signal that
+                // actually carries the information — the RN bridge checks it
+                // the same way (SceneViewModule.swift:226, :466).
+                guard !Task.isCancelled else { return }
                 // The model file's base name without extension is the node
                 // name reported back to Dart on tap (matches Android).
                 node.entity.name = (data.path as NSString).lastPathComponent
