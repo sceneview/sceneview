@@ -193,7 +193,7 @@ class ARSceneViewManager : SimpleViewManager<FrameLayout>() {
                                 rotation = model.rotation,
                                 apply = {
                                     // The tap payload's `nodeName` — see
-                                    // [ModelNodeData.nodeName] (issue #2053).
+                                    // [ModelNodeData.nodeName] (PR #3037).
                                     name = model.nodeName()
                                 },
                             )

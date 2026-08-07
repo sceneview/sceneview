@@ -182,6 +182,21 @@ class RNSceneViewWrapper: UIView {
     }
 }
 
+/// The model file's name, used to name a loaded model root.
+///
+/// Query and fragment are stripped before taking the last path component: a
+/// model source may be a URL, and `deletingPathExtension` on a raw URL only
+/// removes the extension when it is the last dot in the whole string —
+/// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise report
+/// `robot.glb?sig=SIG&v=1` as the tapped node's name. RealityKit's
+/// `ModelNode.load(_ path:)` is bundle-only today, so this is defensive; it
+/// keeps the derivation byte-identical to the Android bridge, which DOES take
+/// remote URLs (`ModelLoader.loadModel`).
+func rnModelFileName(_ path: String) -> String {
+    let stripped = path.prefix { $0 != "?" && $0 != "#" }
+    return (String(stripped) as NSString).lastPathComponent
+}
+
 /// Resolves a tapped entity to the model root the bridge loaded it from — the
 /// direct child of `modelRoot`, named `<file>.usdz` by `loadModels()`.
 ///
@@ -265,7 +280,7 @@ struct RNSceneViewContent: View {
                 // model's identity: `rnTappedModelEntity` resolves any hit
                 // entity up to this one, and `nodeName` is this name without
                 // its extension — the string Android reports for the same tap.
-                node.entity.name = (model.path as NSString).lastPathComponent
+                node.entity.name = rnModelFileName(model.path)
                 node.position(model.position)
                 node.scale(model.scale)
                 if let animation = model.animation {

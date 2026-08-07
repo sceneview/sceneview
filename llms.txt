@@ -7271,8 +7271,10 @@ ARSceneView(
 ```
 
 `ModelNode` fields: `modelPath` (required), `x/y/z` (world position), `scale`, `rotationX/Y/Z` (degrees).
-`onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) on
-Android and iOS — never a mesh name from inside the asset; empty when the tap hit no loaded model.
+`onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) —
+never a mesh name from inside the asset; empty when the tap hit no loaded model. Delivered on
+Android and iOS for `SceneView` (3D). For `ARSceneView` it is **Android-only**: SceneViewSwift's
+`ARSceneView` exposes no entity hit-test hook, so on iOS the AR `onTap` never fires (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`, `setCameraControlMode(CameraControlMode)`,
 `setAutoCenterContent(bool)`.
@@ -7335,7 +7337,8 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
 `onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
 without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a mesh name from inside
-the asset. `nodeName` is `null` (and the position `0,0,0`) when the tap hit no model.
+the asset. `nodeName` is `null` (and the position `0,0,0`) when the tap hit no model, and `undefined`
+on iOS `ARSceneView` (which reports the tapped surface point only) — guard for both.
 Geometry types: `'box' | 'cube' | 'sphere' | 'cylinder' | 'plane'`.
 Light types: `'directional' | 'point' | 'spot'`.
 

@@ -63,8 +63,15 @@ export interface TapEvent {
     x: number;
     y: number;
     z: number;
-    /** Name of the tapped node, if any. */
-    nodeName?: string;
+    /**
+     * Name of the tapped model: its file's base name without extension
+     * (`models/robot.glb` → `robot`), identical on Android and iOS. Never an
+     * asset-internal mesh name — a tap inside a model always reports the model.
+     *
+     * `null` when the tap hit no model (an untitled geometry node on Android, or
+     * an AR surface point), so guard before using it.
+     */
+    nodeName?: string | null;
 }
 export interface PlaneDetectedEvent {
     id: string;
@@ -118,9 +125,11 @@ export interface SceneViewProps {
     /**
      * Called when the user taps inside the scene.
      *
-     * The event payload carries the world-space tap coordinates. On Android the
-     * tapped node's `nodeName` is included when the tap hits a node; on iOS AR
-     * the tap reports the surface point only, so `nodeName` is absent there.
+     * The event payload carries the world-space position of the tapped model and
+     * its `nodeName` (the model file's base name without extension) on both
+     * Android and iOS. A tap that hits no model reports `nodeName: null` and
+     * `0, 0, 0`; on iOS AR the tap reports the surface point only, so `nodeName`
+     * is absent there.
      */
     onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }

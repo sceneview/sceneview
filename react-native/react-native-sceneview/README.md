@@ -112,7 +112,7 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 | `cameraOrbit`       | `boolean`            | `true`    | Enable orbit camera controls             |
 | `cameraControlMode` | `CameraControlMode`  | `'orbit'` | Camera mode (v4.3.0). `'pan'`/`'firstPerson'` are iOS-only |
 | `autoCenterContent` | `boolean`            | `true`    | Auto-centre content on first frame (v4.3.0, iOS-first) |
-| `onTap`             | `function`           | —         | Tap callback (event pending)             |
+| `onTap`             | `function`           | —         | Tap callback — `{ x, y, z, nodeName }`   |
 
 `cameraControlMode` `'pan'` and `'firstPerson'` are iOS-only in v4.3.0; on
 Android they fall back to orbit. `autoCenterContent` is iOS-first — the
@@ -191,8 +191,11 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   the iOS RealityKit port is not yet bridged.
 - **`depthOcclusion` / `instantPlacement`** — declared as props but **not
   configured natively** on either platform. Setting them has no effect today.
-- **`onTap` / `onPlaneDetected`** — declared, but the native side does not yet
-  dispatch these events, so the callbacks never fire.
+- **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
+  `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
+  (`onTap` *is* dispatched on both platforms — it carries the tapped model's
+  world position and its file base name without extension as `nodeName`, `null`
+  when the tap hit no model.)
 - **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
   environment is accepted but not applied.
 - **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`

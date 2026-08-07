@@ -155,7 +155,7 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                                     // The tap payload's `nodeName`. Without a name the
                                     // hit-tested ModelNode reports `null` for every model
                                     // tap, while iOS reports the model file's base name —
-                                    // so name the node the same way here (issue #2053).
+                                    // so name the node the same way here (PR #3037).
                                     name = model.nodeName()
                                 },
                             )
@@ -396,11 +396,21 @@ data class ModelNodeData(
      * name without extension, matching the iOS bridge (which names each loaded
      * model root after its file and strips the extension on tap).
      *
+     * [src] is documented as an "asset path **or URL**", and `ModelLoader`
+     * really does load `https://` sources, so the query and fragment are
+     * stripped FIRST. Cutting at the last `.` on a raw URL only works when the
+     * extension is the last dot in the whole string: for
+     * `https://cdn/robot.glb?sig=SIG&v=1.2` it yields
+     * `robot.glb?sig=SIG&v=1` — a CDN signature leaking into a payload that
+     * apps routinely put in a label or an analytics event.
+     *
      * `null` for a path with no usable base name, so the payload stays
      * `nodeName: null` rather than an empty string.
      */
     fun nodeName(): String? =
-        src.substringAfterLast('/').substringBeforeLast('.').takeIf { it.isNotEmpty() }
+        src.substringBefore('?').substringBefore('#')
+            .substringAfterLast('/').substringBeforeLast('.')
+            .takeIf { it.isNotEmpty() }
 }
 
 data class GeometryNodeData(

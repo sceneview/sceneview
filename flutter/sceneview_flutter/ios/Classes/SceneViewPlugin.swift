@@ -35,6 +35,23 @@ struct FlutterModelData: Identifiable, Equatable {
     }
 }
 
+// MARK: - Model naming
+
+/// The model file's name, used to name a loaded model root.
+///
+/// Query and fragment are stripped before taking the last path component: a
+/// model source may be a URL, and `deletingPathExtension` on a raw URL only
+/// removes the extension when it is the last dot in the whole string —
+/// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise report
+/// `robot.glb?sig=SIG&v=1` as the tapped node's name. RealityKit's
+/// `ModelNode.load(_ path:)` is bundle-only today, so this is defensive; it
+/// keeps the derivation byte-identical to the Android bridge, which DOES take
+/// remote URLs (`ModelLoader.loadModel`).
+func flutterModelFileName(_ path: String) -> String {
+    let stripped = path.prefix { $0 != "?" && $0 != "#" }
+    return (String(stripped) as NSString).lastPathComponent
+}
+
 // MARK: - Content root
 
 /// Holds the persistent RealityKit content root for a Flutter platform view.
@@ -88,7 +105,7 @@ final class FlutterContentRoot {
                 // walks a tapped entity up to this entity (the direct child of
                 // `entity`) and reports its base name without extension, which
                 // is what Android reports for a tap on that model.
-                node.entity.name = (data.path as NSString).lastPathComponent
+                node.entity.name = flutterModelFileName(data.path)
                 loaded[data.id] = node.entity
                 entity.addChild(node.entity)
             } catch {
@@ -608,7 +625,7 @@ final class ARPlacementController: ObservableObject {
             do {
                 let node = try await ModelNode.load(data.path)
                 node.scale(data.scale)
-                node.entity.name = (data.path as NSString).lastPathComponent
+                node.entity.name = flutterModelFileName(data.path)
                 templates.append((data, node.entity))
             } catch {
                 NSLog(
