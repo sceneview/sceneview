@@ -26,10 +26,14 @@
   threw into a swallowed `NSLog`. Sample models now carry a per-platform source; a
   bundled `khronos_fox.usdz` renders on iOS, and entries with no USDZ are shown
   disabled with the reason rather than looking loadable.
-- **Flutter bridge: iOS accepts remote model URLs.** `https://` paths are routed
-  through `ModelNode.load(from:)` (which downloads) instead of being treated as bundle
-  resource names, closing a divergence with the Android bridge. An unsupported format
-  is now reported with an actionable reason instead of RealityKit's generic error.
+- **Flutter bridge: iOS accepts remote model URLs.** An `https://` path now becomes a
+  download rather than a lookup for a bundle resource named `"https:…"`, closing a
+  divergence with Android, where Filament's `ModelLoader` takes either. The 3D path
+  routes it by setting `SceneViewerModel.urlString` instead of `assetPath` — the shared
+  host reads exactly one of the two and checks `assetPath` first — and the AR path,
+  which has no shared host, routes it through `ModelNode.load(from:)`. AR also names
+  an unsupported format with an actionable reason rather than relaying RealityKit's
+  generic error, which is indistinguishable from "file not found".
 - **Flutter bridge: platform views claim tap gestures.** `SceneView`/`ARSceneView`
   declared only pan and scale recognizers, so Flutter kept every tap and the native
   hit test never ran. (`onTap` still does not fire on iOS for a separate,

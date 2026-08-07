@@ -267,15 +267,24 @@ against that code on the same simulator: four taps at three positions on a
 rendered, orbitable model produced no callback. A drag in the same session
 orbited the camera, so the touches were reaching the native view throughout.
 
-The remaining suspect is the RealityKit hit test resolving through a Flutter
-platform view's touch-interception layer. Do not describe `onTap` as working on
-iOS until a tap has been seen to reach Dart.
+**`SceneViewerHostView` is not the fix either.** #3035 moved this bridge onto
+that shared host — an `@objc UIView` built for UIKit embedding, which was the
+most promising remaining lead. Re-measured on the same simulator after the move,
+with the fox rendering and the camera orbiting: three taps on the model, no
+callback. So the gap survives a change of host, which is evidence against the
+host being what breaks it.
 
-Worth trying next: `SceneViewerHostView` (added by #3027) is an `@objc UIView`
-built for exactly this kind of bridge and exposes `onTap` as a plain closure.
-It routes through the same `.onEntityTapHit` internally, so it is a lead rather
-than a fix — but a host view designed for UIKit embedding is the more promising
-place to find out whether the interception layer is really the cause.
+What is still untested is the one experiment that separates the two candidate
+causes, because every measurement so far has varied both at once: this bridge
+loads a 155-unit model inside a Flutter platform view, while the native
+`CollisionHitTestDemo` picks ~0.3 m cubes outside one. Load
+`assets/models/khronos_fox.usdz` at scale 1.0 into `samples/ios-demo` and tap it.
+A hit there means the platform view is the cause; a miss means the model's scale
+or its generated collision shape is, and the platform view is exonerated.
+
+Do not describe `onTap` as working on iOS until a tap has been seen to reach
+Dart. Tracked in
+[#3045](https://github.com/sceneview/sceneview/issues/3045).
 
 ## Contributing
 
