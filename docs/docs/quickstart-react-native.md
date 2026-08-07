@@ -79,6 +79,10 @@ React Native (TypeScript)
 | `depthOcclusion` | `boolean` | Enable LiDAR depth occlusion |
 | `onPlaneDetected` | `(event) => void` | Plane detection event |
 
+`onTap` is inherited from `SceneView`, but its payload is not identical here: on
+iOS `ARSceneView` reports the tapped surface point and **omits `nodeName`
+entirely**, so it reads as `undefined` rather than `null`. Guard for both.
+
 ## Type Definitions
 
 ```typescript
