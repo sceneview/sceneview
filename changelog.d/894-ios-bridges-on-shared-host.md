@@ -35,6 +35,12 @@
   flattening three published payloads into one.
 
 <!-- category: Fixed -->
+- **`bytesFileExtension` is validated before it reaches the filesystem.** The value is
+  public `@objc` on `SceneViewerConfiguration` and on the new `SceneViewerModel`, and it
+  was appended to a temp file name unvalidated. Anything that is not a short ASCII
+  alphanumeric run is now refused back to `usdz` rather than sanitised — a caller that
+  sent something else asked for something this API does not offer. No shipped bridge is
+  affected: Flutter and React Native only ever send an asset path.
 - **`setEnvironment` on the Flutter plugin and `environment` on the React Native
   component were silently inert on iOS.** Both stored the HDR path in their scene state
   and no view ever read it, so the call succeeded and nothing changed. Routed through the
