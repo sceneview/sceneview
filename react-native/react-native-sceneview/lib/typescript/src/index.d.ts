@@ -68,10 +68,12 @@ export interface TapEvent {
      * (`models/robot.glb` → `robot`), identical on Android and iOS. Never an
      * asset-internal mesh name — a tap inside a model always reports the model.
      *
-     * `null` when the tap hit no model (an untitled geometry node on Android, or
-     * an AR surface point), so guard before using it.
+     * `null` — never `undefined` — when the tap hit no model (an untitled
+     * geometry node on Android, or an AR surface point). Every native dispatch
+     * path writes the key, so `nodeName == null` is the one guard that covers
+     * both views on both platforms.
      */
-    nodeName?: string | null;
+    nodeName: string | null;
 }
 export interface PlaneDetectedEvent {
     id: string;
@@ -129,9 +131,10 @@ export interface SceneViewProps {
      * its `nodeName` (the model file's base name without extension) on both
      * Android and iOS. A tap that hits no model reports `nodeName: null` — with
      * the tapped node's real world position on Android when it landed on an
-     * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. On iOS
-     * AR the tap reports the surface point only, so `nodeName` is `undefined`
-     * rather than `null` there — guard for both.
+     * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. On
+     * `ARSceneView` the tap reports the surface point, so `nodeName` is always
+     * `null` there. One `nodeName == null` check covers every case; the key is
+     * never omitted.
      */
     onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }

@@ -44,6 +44,35 @@ func rnCameraControlMode(_ raw: String?) -> CameraControlMode {
     }
 }
 
+/// Builds the JS `onTap` payload — the iOS counterpart of Android's single
+/// `TapEvent.getEventData()`.
+///
+/// Both iOS views go through here so `nodeName` is written on *every* dispatch
+/// path, never merely on the ones that happen to have a name: a missed tap
+/// reports `NSNull()`, which crosses the bridge as the same JS `null` Android
+/// emits via `putNull`. That is what lets the public `TapEvent.nodeName` be
+/// typed `string | null` instead of `string | null | undefined` — a consumer
+/// writes one `nodeName == null` guard. `ARSceneView` reports a surface point
+/// rather than a node, so it always passes `nil`.
+///
+/// Keeping this a single function (rather than a comment asking each call site
+/// to remember the key) is the guard: a new tap source cannot omit `nodeName`
+/// without skipping the only payload builder in the bridge.
+func rnTapPayload(worldPosition: SIMD3<Float>, nodeName: String?) -> [String: Any] {
+    // Seeded with the null sentinel, then overwritten — so the key exists
+    // before any branch runs and no path can drop it.
+    var payload: [String: Any] = [
+        "x": worldPosition.x,
+        "y": worldPosition.y,
+        "z": worldPosition.z,
+        "nodeName": NSNull(),
+    ]
+    if let nodeName {
+        payload["nodeName"] = nodeName
+    }
+    return payload
+}
+
 /// Observable state model shared between React props and SwiftUI view.
 @MainActor
 class RNSceneState: ObservableObject {
@@ -82,18 +111,10 @@ class RNSceneViewWrapper: UIView {
                     // reports the `ModelNode` root (the only collider a loaded
                     // model owns) and falls back to `0,0,0` / `null` when the
                     // tap hit no node, so do the same here.
-                    let p = entity?.position(relativeTo: nil) ?? SIMD3<Float>.zero
-                    var payload: [String: Any] = [
-                        "x": p.x,
-                        "y": p.y,
-                        "z": p.z,
-                        "nodeName": NSNull(),
-                    ]
-                    if let entity {
-                        payload["nodeName"] =
-                            (entity.name as NSString).deletingPathExtension
-                    }
-                    block?(payload)
+                    block?(rnTapPayload(
+                        worldPosition: entity?.position(relativeTo: nil) ?? .zero,
+                        nodeName: entity.map { ($0.name as NSString).deletingPathExtension }
+                    ))
                 }
             }
         }
@@ -341,12 +362,11 @@ class RNARSceneViewWrapper: UIView {
                 sceneState.onTap = { worldPosition in
                     // Mirrors the Android `TapEvent` payload. `ARSceneView`'s
                     // `onTapOnPlane` reports the tapped surface point, not a
-                    // node, so `nodeName` is left absent.
-                    block?([
-                        "x": worldPosition.x,
-                        "y": worldPosition.y,
-                        "z": worldPosition.z,
-                    ])
+                    // node, so `nodeName` is always `null` here — the same JS
+                    // `null` Android emits via `putNull` and the 3D view emits
+                    // for a tap that hit no model. It used to omit the key,
+                    // which made JS see `undefined` on this one view.
+                    block?(rnTapPayload(worldPosition: worldPosition, nodeName: nil))
                 }
             }
         }
