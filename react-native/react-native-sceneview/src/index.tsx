@@ -186,10 +186,12 @@ export interface SceneViewProps {
    * Android and iOS. A tap that hits no model reports `nodeName: null` — with
    * the tapped node's real world position on Android when it landed on an
    * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. That
-   * `0, 0, 0` miss is **Android-only**: iOS resolves the tap through
-   * RealityKit's entity-targeted gesture, which fires only on a hit, so a tap
-   * on empty space dispatches no `onTap` event at all — count taps and you
-   * will see fewer events on iOS, not a `0, 0, 0` one.
+   * `0, 0, 0` miss is **in practice Android-only**: iOS resolves the tap
+   * through RealityKit's entity-targeted gesture, which fires only on a hit,
+   * so a tap on empty space dispatches no `onTap` event at all — count taps
+   * and you will see fewer events on iOS, not a `0, 0, 0` one. (iOS emits
+   * `0, 0, 0` only if a hit entity resolves outside every loaded model, which
+   * the content root's contents make unreachable today.)
    *
    * On {@link ARSceneViewProps | `ARSceneView`} *what a hit reports* differs by
    * platform:
