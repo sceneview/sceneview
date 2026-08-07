@@ -153,16 +153,19 @@ public struct ModelNode: @unchecked Sendable {
     ///     forwarding a user- or network-supplied string could otherwise turn this into
     ///     a local-file read. Load a local file with ``load(contentsOf:enableCollision:)``.
     ///   - enableCollision: Whether to generate collision shapes for hit testing.
-    ///   - timeout: Download timeout in seconds (default: 60). An inactivity timeout,
-    ///     **not** a size or wall-clock cap: this method does not limit how many bytes it
-    ///     will write to the temporary directory, so a hostile host trickling a huge body
-    ///     can fill the device's storage. The Android downloader caps at 64 MB; matching
-    ///     it here needs a delegate-based byte counter and is not done yet.
+    ///   - timeout: Download **inactivity** timeout in seconds (default: 60) — not a
+    ///     wall-clock or size bound. The size bound is ``maxBytes``.
+    ///   - maxBytes: Ceiling on the downloaded body, in bytes. Default 64 MB, matching
+    ///     the Android downloader's `MAX_MODEL_BYTES`. Enforced on every chunk so an
+    ///     endless body is *stopped*, not merely detected afterwards; a server that
+    ///     announces an oversized `Content-Length` is refused before a byte is read.
+    ///     Exceeding it throws `URLError(.dataLengthExceedsMaximum)`.
     @MainActor
     public static func load(
         from remoteURL: URL,
         enableCollision: Bool = true,
-        timeout: TimeInterval = 60.0
+        timeout: TimeInterval = 60.0,
+        maxBytes: Int64 = 64 * 1024 * 1024
     ) async throws -> ModelNode {
         // Enforce the scheme this method's own documentation promises. `URL` accepts any
         // scheme and `URLSession.download` honours `file://` — measured, not assumed: it
@@ -177,22 +180,54 @@ public struct ModelNode: @unchecked Sendable {
             throw URLError(.unsupportedURL)
         }
 
-        // Download to temporary file
         var request = URLRequest(url: remoteURL)
         request.timeoutInterval = timeout
 
-        let (tempURL, response) = try await URLSession.shared.download(for: request)
+        // `download(for:delegate:)` rather than a byte-by-byte `bytes(for:)` loop:
+        // `URLSession.AsyncBytes` yields one `UInt8` per iteration, which is fine for a
+        // log stream and ruinous for a model — a 10 MB `.usdz` is 10 million awaits. The
+        // delegate watches the same transfer the system is already streaming to disk and
+        // cancels it the moment it goes over, so the cap *stops* the body instead of
+        // discovering afterwards that it was too big.
+        //
+        // `timeout` is an inactivity timeout, not a wall-clock or size bound: without
+        // this, a host trickling an endless body keeps the connection alive and fills the
+        // device's storage. Android has enforced a cap since the façade shipped
+        // (`MAX_MODEL_BYTES`); this is the matching one.
+        let capDelegate = SizeCappedDownload(maxBytes: maxBytes)
+        let tempURL: URL
+        let response: URLResponse
+        do {
+            (tempURL, response) = try await URLSession.shared.download(
+                for: request,
+                delegate: capDelegate
+            )
+        } catch let error as URLError where error.code == .cancelled && capDelegate.didExceed {
+            // The delegate cancels on overflow, and a cancelled task surfaces as
+            // `.cancelled`. Re-map it so the caller can tell "too big" from "the caller
+            // cancelled me" — otherwise the cap is indistinguishable from a normal
+            // cooperative cancellation.
+            throw URLError(.dataLengthExceedsMaximum)
+        }
         // Registered immediately: every path below can throw, and `URLSession`'s
         // downloaded file is the caller's to clean up once the call returns.
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        // Validate the HTTP response. `guard let`, not `if let` — a conditional cast
-        // silently *skipped* validation for any non-HTTP response rather than rejecting
-        // it, which is precisely the hole the scheme guard above closes from the other
-        // side. Belt and braces: this method only ever speaks http/https now.
+        // `guard let`, not `if let` — a conditional cast silently *skipped* validation
+        // for any non-HTTP response rather than rejecting it, which is precisely the hole
+        // the scheme guard above closes from the other side.
         guard let httpResponse = response as? HTTPURLResponse,
               (200..<300).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
+        }
+
+        // Backstop for a server that under-reports or omits `Content-Length`: the
+        // delegate's running check is the real guard, this catches a body that slipped
+        // past it entirely.
+        let downloaded = (try? FileManager.default
+            .attributesOfItem(atPath: tempURL.path)[.size] as? Int64) ?? nil
+        if let downloaded, downloaded > maxBytes {
+            throw URLError(.dataLengthExceedsMaximum)
         }
 
         // Move to a named temp file with correct extension (RealityKit needs it)
@@ -598,6 +633,52 @@ public struct ModelNode: @unchecked Sendable {
             entity.components.set(GroundingShadowComponent(castsShadow: true))
         }
         return self
+    }
+}
+
+
+/// Cancels a download the moment it exceeds a byte ceiling.
+///
+/// Separate from the `async` call site because `URLSession`'s size information only
+/// arrives through the delegate: `download(for:)` hands back the response *after* the
+/// body has already landed on disk, which is too late for a cap to mean anything.
+private final class SizeCappedDownload: NSObject, URLSessionTaskDelegate,
+                                        URLSessionDownloadDelegate, @unchecked Sendable {
+
+    private let maxBytes: Int64
+
+    /// Set when this delegate is the reason the task was cancelled, so the call site can
+    /// tell an overflow from a caller-initiated cancellation — both surface as
+    /// `URLError.cancelled`.
+    private(set) var didExceed = false
+
+    init(maxBytes: Int64) {
+        self.maxBytes = maxBytes
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        // Both an announced oversize and a running one. The announcement is a hint a
+        // hostile server can omit or lie about, so it is an early-out, not the guard.
+        guard totalBytesExpectedToWrite > maxBytes || totalBytesWritten > maxBytes else {
+            return
+        }
+        didExceed = true
+        downloadTask.cancel()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        // Required by the protocol. The `async` overload of `download(for:delegate:)`
+        // takes ownership of the file itself, so there is nothing to do here.
     }
 }
 

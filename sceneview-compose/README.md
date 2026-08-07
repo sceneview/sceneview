@@ -153,7 +153,7 @@ here.
 | `EnvironmentSource.Color` | key light only, flat colour behind | flat colour behind, but the model is still lit by RealityKit's default IBL, which is not exposed |
 | `Lighting.ambientIntensity` | always applied | applies only with `EnvironmentSource.Hdr` — the other two have no authored IBL to scale |
 | `CameraState.distance` | any positive value | clamped to `1…50` scene units, RealityKit's own dolly envelope. **The clamped value is reported back**, so a clamp is visible in your state rather than a silent disagreement with the screen |
-| `ModelSource.Url` download | capped at 64 MB, with connect/read timeouts | scheme-checked (`http`/`https` only) and given a 60 s inactivity timeout, but **not size-capped**: `URLSession` streams to disk, so a hostile host trickling a huge body fills storage. Matching the Android cap needs a delegate-based byte counter and is not done yet |
+| `ModelSource.Url` download | capped at 64 MB, with connect/read timeouts | same 64 MB cap, plus a scheme allowlist (`http`/`https` only) and a 60 s inactivity timeout. The cap cancels the transfer mid-flight rather than measuring it afterwards |
 
 `CameraState.azimuth`, `elevation`, `distance` and `gesturesEnabled` are fully two-way on
 iOS: gestures write into them, and writes drive the camera. Measured on the iOS 26.3

@@ -20,6 +20,12 @@
   now enforced, the response check rejects rather than skips a non-HTTP response, and the
   temporary files are cleaned up on the failure paths too. Use `load(contentsOf:)` for a
   local file.
+- **`ModelNode.load(from:)` had no size ceiling**, where the Android downloader has capped
+  at 64 MB since the compose façade shipped. `timeout` is an inactivity timeout, so a host
+  trickling an endless body kept the connection alive and filled the device's storage. Now
+  capped at 64 MB by default (`maxBytes:`), enforced by a download delegate that cancels
+  the transfer mid-flight rather than measuring it after the fact, with an early refusal
+  when the server announces an oversized `Content-Length`.
 - **`ModelSource`'s format documentation was wrong about iOS.** It claimed every platform
   accepts glTF and GLB; RealityKit reads neither. There is no format all platforms accept,
   and the KDoc now says so instead of letting it be discovered as a load that fails
