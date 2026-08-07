@@ -6,10 +6,10 @@
   apart. The 3D path of each now builds a `SceneViewerConfiguration` and hands it to the
   same host that `sceneview-compose` uses; each bridge keeps only what is genuinely its
   own, its method channel or its prop bag. Their **AR** paths are untouched: `ARSceneView`
-  is anchor-driven and shares nothing with the 3D viewer. Every method-channel name, every
-  prop name and every callback payload is unchanged — including the two bridges'
-  *different* definitions of a tapped node, which is why the host grew `onTapEntity`
-  rather than one flattened convention (see below).
+  is anchor-driven and shares nothing with the 3D viewer. Every method-channel name and
+  every prop name is unchanged. The one payload that did change is the tapped node's name,
+  and deliberately: both bridges were reporting a mesh from inside the asset, so the
+  definitions were unified rather than preserved — see the tap entries below.
 - **`SceneViewerConfiguration` gained the four things a bridge cannot do without.**
   `models` (a list — Flutter appends one at a time, React Native replaces the lot;
   a per-entry `identity` is what keeps two copies of one path as two models),
@@ -26,13 +26,14 @@
   and default, so `sceneview-compose` is unaffected: a configuration with no `models` is
   resolved into a one-element list built from the single-model fields, through the same
   reconciliation path.
-- **`SceneViewerHostView.onTapEntity`**, a Swift-only companion to the `@objc` `onTap`
-  that hands over the `SceneTapHit` rather than five primitives. The two bridges publish
-  genuinely different things about a tapped entity — Flutter walks up to the first named
-  ancestor and strips the extension, React Native reports the raw name and the entity's
-  own origin where `onTap` reports the bounds centre — and all of it is already-shipped
-  public API. Handing over the entity lets each keep its own contract instead of
-  flattening three published payloads into one.
+- **`SceneViewerHostView.onTapEntity: ((SceneTapHit, Entity?) -> Void)?`**, a Swift-only
+  companion to the `@objc` `onTap` that hands over the `SceneTapHit` rather than five
+  primitives, plus the **model root** the hit entity sits inside — the direct child of the
+  content root, which is the entity `SceneViewerModel.nodeName` was written on, and `nil`
+  when the tap resolved outside every configured model. Both bridges were re-deriving that
+  from the hit entity and both got it wrong (see the tap fix below), so the resolution
+  lives in the host, which is the one place that knows what a model is. This member has
+  never shipped in a release, so its arity is free to be what it should have been.
 
 <!-- category: Fixed -->
 - **`bytesFileExtension` is validated before it reaches the filesystem.** The value is

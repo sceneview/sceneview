@@ -62,6 +62,12 @@ Unlike the Flutter plugin's pub.dev range, this version tracks the SDK release
 directly: SwiftPM resolves against a git tag in this same repository, which the
 release creates, so it is never ahead of something that does not exist yet.
 
+> **Keep the two versions in step.** npm `4.27.0`'s Swift requires SPM tag
+> `v4.27.0` or newer: `SceneViewerHostView.onTapEntity` gained a second
+> parameter (the tapped model root) in that release, so this module's
+> `ios/*.swift` does not compile against `v4.26.0`. A mismatch is a loud Swift
+> compile error at build time, not a runtime surprise.
+
 The module's `ios/*.swift` `import SceneViewSwift` resolves against that
 app-level package at build time.
 
@@ -117,7 +123,7 @@ import { ARSceneView } from '@sceneview-sdk/react-native';
 | `cameraOrbit`       | `boolean`            | `true`    | **Deprecated**, inert on iOS — use `cameraControlMode` |
 | `cameraControlMode` | `CameraControlMode`  | `'orbit'` | Camera mode (v4.3.0). `'pan'`/`'firstPerson'` are iOS-only |
 | `autoCenterContent` | `boolean`            | `true`    | Auto-centre content on first frame (v4.3.0, iOS-first) |
-| `onTap`             | `function`           | —         | Tap callback (event pending)             |
+| `onTap`             | `function`           | —         | Tap callback — `{ x, y, z, nodeName }`   |
 
 `cameraControlMode` `'pan'` and `'firstPerson'` are iOS-only in v4.3.0; on
 Android they fall back to orbit. `autoCenterContent` is iOS-first — the
@@ -208,8 +214,14 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   the iOS RealityKit port is not yet bridged.
 - **`depthOcclusion` / `instantPlacement`** — declared as props but **not
   configured natively** on either platform. Setting them has no effect today.
-- **`onTap` / `onPlaneDetected`** — declared, but the native side does not yet
-  dispatch these events, so the callbacks never fire.
+- **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
+  `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
+- **`onTap`** — dispatched on both platforms and on both views. On `SceneView`
+  (3D) it carries the tapped model's world position and its file base name
+  without extension as `nodeName`. On `ARSceneView` it reports the tapped
+  surface point, so `nodeName` is always `null` there. Every dispatch path
+  writes the key, so `nodeName == null` is the single "the tap hit no model"
+  test — it is never `undefined`.
 - **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
   environment is accepted but not applied.
 - **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`

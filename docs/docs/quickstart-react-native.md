@@ -85,7 +85,7 @@ React Native (TypeScript)
 | `environment` | `string` | HDR environment path |
 | `cameraControlMode` | `'orbit' \| 'pan' \| 'firstPerson'` | Camera mode. `pan`/`firstPerson` are iOS-only |
 | `cameraOrbit` | `boolean` | **Deprecated**, inert on iOS — use `cameraControlMode` |
-| `onTap` | `(event) => void` | Tap event with 3D coordinates |
+| `onTap` | `(event) => void` | Tap event: `{ x, y, z, nodeName }` — the tapped model's world position and its file base name without extension. `nodeName` is `null` when no model was hit; the key is always present, so one `nodeName == null` check covers every view and platform |
 
 ### ARSceneView (extends SceneView)
 
@@ -94,6 +94,9 @@ React Native (TypeScript)
 | `planeDetection` | `boolean` | Enable plane detection |
 | `depthOcclusion` | `boolean` | Enable LiDAR depth occlusion |
 | `onPlaneDetected` | `(event) => void` | Plane detection event |
+
+`onTap` is inherited from `SceneView`. On `ARSceneView` it reports the tapped
+surface point, so `nodeName` is always `null` — a plane hit is not a model hit.
 
 ## Type Definitions
 
@@ -104,5 +107,14 @@ interface ModelNode {
   rotation?: [number, number, number];
   scale?: number;
   animation?: boolean;
+}
+
+interface TapEvent {
+  x: number;
+  y: number;
+  z: number;
+  // The tapped model's file base name without extension, or `null` when the
+  // tap hit no model. Never `undefined` — every dispatch path writes the key.
+  nodeName: string | null;
 }
 ```

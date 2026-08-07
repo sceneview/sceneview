@@ -349,7 +349,10 @@ class SceneViewController {
   MethodChannel? _channel;
   bool _disposed = false;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`), identical on Android
+  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
+  /// did not land on a loaded model.
   ///
   /// Wired on both Android and iOS for [SceneView] (3D). On iOS [ARSceneView]
   /// this callback is not yet delivered — SceneViewSwift's `ARSceneView` does
@@ -488,7 +491,10 @@ class SceneView extends StatefulWidget {
   /// Models to load immediately when the view is created.
   final List<ModelNode> initialModels;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`), identical on Android
+  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
+  /// did not land on a loaded model.
   ///
   /// Wired on both Android and iOS.
   final void Function(String nodeName)? onTap;
@@ -622,7 +628,9 @@ class ARSceneView extends StatefulWidget {
   /// Whether to enable plane detection and rendering.
   final bool planeDetection;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`) — never the name of a
+  /// mesh inside the asset.
   ///
   /// Delivered on Android only. On iOS, SceneViewSwift's `ARSceneView` does
   /// not yet expose an entity hit-test hook, so this is never invoked there
