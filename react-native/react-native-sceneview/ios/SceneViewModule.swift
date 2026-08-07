@@ -18,6 +18,37 @@ struct RNModelData: Identifiable, Equatable {
     }
 }
 
+// MARK: - Tap payload
+
+/// Builds the JS `onTap` payload — the iOS counterpart of Android's single
+/// `TapEvent.getEventData()`.
+///
+/// Both iOS views go through here so `nodeName` is written on *every* dispatch
+/// path, never merely on the ones that happen to have a name: a missed tap
+/// reports `NSNull()`, which crosses the bridge as the same JS `null` Android
+/// emits via `putNull`. That is what lets the public `TapEvent.nodeName` be
+/// typed `string | null` instead of `string | null | undefined` — a consumer
+/// writes one `nodeName == null` guard. `ARSceneView` reports a surface point
+/// rather than a node, so it always passes `nil`.
+///
+/// Keeping this a single function (rather than a comment asking each call site
+/// to remember the key) is the guard: a new tap source cannot omit `nodeName`
+/// without skipping the only payload builder in the bridge.
+func rnTapPayload(worldPosition: SIMD3<Float>, nodeName: String?) -> [String: Any] {
+    // Seeded with the null sentinel, then overwritten — so the key exists
+    // before any branch runs and no path can drop it.
+    var payload: [String: Any] = [
+        "x": worldPosition.x,
+        "y": worldPosition.y,
+        "z": worldPosition.z,
+        "nodeName": NSNull(),
+    ]
+    if let nodeName {
+        payload["nodeName"] = nodeName
+    }
+    return payload
+}
+
 // MARK: - SceneView (3D)
 
 /// RCTViewManager subclass that bridges React Native's `<RNSceneView>`
@@ -79,20 +110,20 @@ class RNSceneViewWrapper: UIView {
             let block = onTap
             Task { @MainActor in
                 // `onTapEntity` rather than the host's flattened `onTap`: this
-                // prop reports the tapped entity's own origin and its raw name,
-                // where the flattened callback carries the hit's bounds centre
-                // and no name at all. Both are already published payloads, so
-                // the entity is what keeps this one unchanged.
-                hostView.onTapEntity = { hit in
+                // prop reports the tapped *model* — its own origin and its file
+                // base name — where the flattened callback carries the hit's
+                // bounds centre and no name at all.
+                //
+                // The model root is what the host resolves, so a tap inside a
+                // USDZ that names its meshes reports the model, not `skin0`.
+                hostView.onTapEntity = { _, modelRoot in
                     // Mirrors the Android `TapEvent` payload: world-space
-                    // coordinates of the tapped entity + its node name.
-                    let p = hit.entity.position(relativeTo: nil)
-                    block?([
-                        "x": p.x,
-                        "y": p.y,
-                        "z": p.z,
-                        "nodeName": hit.entity.name,
-                    ])
+                    // coordinates of the tapped model (`node.worldPosition`
+                    // there) + its node name, `null` when nothing was hit.
+                    block?(rnTapPayload(
+                        worldPosition: modelRoot?.position(relativeTo: nil) ?? .zero,
+                        nodeName: modelRoot.map { ($0.name as NSString).deletingPathExtension }
+                    ))
                 }
             }
         }
@@ -136,9 +167,11 @@ class RNSceneViewWrapper: UIView {
             // No named animation means play them all, which is this bridge's
             // behaviour and not the Flutter one's.
             model.autoPlayAllAnimations = true
-            // Deliberately no `nodeName`: the `onTap` payload reports the name
-            // RealityKit gave the tapped entity, and naming the root here would
-            // change what JS receives.
+            // The file's name — with its extension, which the tap report
+            // strips. This is the only entity the bridge names, and the host
+            // resolves a tap to exactly it, so it is what JS receives as
+            // `nodeName`. Matches Android's `ModelNodeData.nodeName()`.
+            model.nodeName = sceneViewerModelFileName(data.path)
             return model
         }
 
@@ -271,12 +304,11 @@ class RNARSceneViewWrapper: UIView {
                 sceneState.onTap = { worldPosition in
                     // Mirrors the Android `TapEvent` payload. `ARSceneView`'s
                     // `onTapOnPlane` reports the tapped surface point, not a
-                    // node, so `nodeName` is left absent.
-                    block?([
-                        "x": worldPosition.x,
-                        "y": worldPosition.y,
-                        "z": worldPosition.z,
-                    ])
+                    // node, so `nodeName` is always `null` here — the same JS
+                    // `null` Android emits via `putNull` and the 3D view emits
+                    // for a tap that hit no model. It used to omit the key,
+                    // which made JS see `undefined` on this one view.
+                    block?(rnTapPayload(worldPosition: worldPosition, nodeName: nil))
                 }
             }
         }

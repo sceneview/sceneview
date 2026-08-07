@@ -1,5 +1,6 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import Foundation
+import RealityKit
 import simd
 
 // The multi-model half of ``SceneViewerHostView``.
@@ -59,11 +60,13 @@ public final class SceneViewerModel: NSObject {
 
     /// Name assigned to the loaded entity, or `nil` to leave whatever the loader produced.
     ///
-    /// This is what a tap reports back. `nil` is not the same as `""`: the Flutter bridge
-    /// names its models after the file so its `onTap` can send that name, while the React
-    /// Native bridge deliberately does not, and reports the name RealityKit gave the
-    /// tapped entity. Naming unconditionally would silently change the React Native
-    /// payload.
+    /// This is what a tap reports back: ``SceneViewerHostView/onTapEntity`` resolves the
+    /// tapped entity to the model root — the entity this name is written on — so whatever
+    /// a bridge sets here *is* its tap payload. Both shipped bridges set the model file's
+    /// name, via ``sceneViewerModelFileName(_:)``, and strip the extension when reporting.
+    ///
+    /// `nil` is not the same as `""`: left `nil`, the loader's own name survives, which is
+    /// what a single-model caller that never reads a tap name wants.
     @objc public var nodeName: String?
 
     // MARK: Transform — `NaN` means "not specified"
@@ -185,6 +188,56 @@ func sceneViewerVector(_ x: Float, _ y: Float, _ z: Float) -> SIMD3<Float>? {
 /// source key, and neither is multi-line.
 func sceneViewerListKey(_ entries: [SceneViewerModelEntry]) -> String {
     entries.map(\.key).joined(separator: "\n")
+}
+
+// MARK: - Model naming and tap resolution
+
+/// The model file's name (query and fragment stripped), used to name a loaded model root.
+///
+/// Query and fragment go before the last path component is taken, because a model source
+/// may be a URL: `deletingPathExtension` on a raw URL only removes the extension when it
+/// is the last dot in the whole string, so `https://cdn/robot.glb?sig=SIG&v=1.2` would
+/// otherwise report `robot.glb?sig=SIG&v=1` as the tapped node's name — a CDN signature
+/// leaking into a payload apps routinely put in a label or an analytics event. That is not
+/// hypothetical on this side either: ``SceneViewerModel/urlString`` already accepts a
+/// remote `.usdz`.
+///
+/// The extension is kept here and stripped at the report, so a bridge that wants the file
+/// name for something else still has it.
+///
+/// Two known divergences from the Android bridges' Kotlin derivation
+/// (`substringAfterLast('/')` / `substringBeforeLast('.')`), both unreachable for the
+/// `.glb` / `.gltf` / `.usdz` sources these bridges load:
+/// - `NSString` path semantics differ on a trailing slash (`models/` → Kotlin `""`, Swift
+///   `models`) and on a dotfile base name (`.hidden` → Kotlin `""`, Swift `.hidden`).
+/// - Android's Flutter bridge falls back to `node_<index>` when the derived base name is
+///   empty; this side has no fallback and names the entity `""`, which a tap then reports
+///   as `""` — the same value a tap that hit no bridge-loaded model at all reports.
+public func sceneViewerModelFileName(_ path: String) -> String {
+    let stripped = path.prefix { $0 != "?" && $0 != "#" }
+    return (String(stripped) as NSString).lastPathComponent
+}
+
+/// Resolves a tapped entity to the bridge-loaded model root: the direct child of
+/// `contentRoot`. Returns nil when the entity is not inside any loaded model.
+///
+/// `SpatialTapGesture` reports the *deepest* hit entity, and USDZ assets name their
+/// meshes — a tap on `black_dragon.usdz` reports `skin0` if the name is read off the hit
+/// entity, and a walk to the first *named* ancestor stops at the same place. The one
+/// entity whose name a bridge controls is the model root, the direct child of the content
+/// root (``SceneViewerModel/nodeName`` is written on it), so the walk climbs to exactly
+/// that and nothing else.
+///
+/// Android cannot reproduce the bug and so cannot be the reference for the walk: the only
+/// collider a loaded model owns there is the `ModelNode` root — glTF child renderables get
+/// no collision shape — so its hit-test can only ever resolve to the model.
+func sceneViewerTappedModelEntity(_ entity: Entity, contentRoot: Entity) -> Entity? {
+    var node: Entity? = entity
+    while let current = node, current !== contentRoot {
+        if current.parent === contentRoot { return current }
+        node = current.parent
+    }
+    return nil
 }
 
 // MARK: - Camera control mode

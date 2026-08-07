@@ -166,8 +166,8 @@ public final class SceneViewerConfiguration: NSObject {
 /// configuration could express it. ``SceneViewerConfiguration/models`` (both are model
 /// *lists*), ``SceneViewerConfiguration/cameraControlMode`` and
 /// ``SceneViewerConfiguration/autoCenterContent`` (both expose them publicly),
-/// ``onTapEntity`` (the two report *different* things about a tapped entity, and both are
-/// public API) and ``SceneViewerConfiguration/cameraPoseAuthored`` (neither has a camera
+/// ``onTapEntity`` (both publish a tapped *node*, which the flattened ``onTap`` cannot
+/// express) and ``SceneViewerConfiguration/cameraPoseAuthored`` (neither has a camera
 /// at all) are all there because a bridge would otherwise have regressed silently.
 ///
 /// ### Using it
@@ -237,25 +237,30 @@ public final class SceneViewerHostView: UIView {
         set { state.onTap = newValue }
     }
 
-    /// Called after a tap lands on the model, with the hit itself.
+    /// Called after a tap lands on the model, with the hit and the model it belongs to.
     ///
     /// The Swift-only counterpart to ``onTap``, which flattens a hit into five primitives
     /// because it has to cross into Kotlin. This one hands over the ``SceneTapHit``,
-    /// including the tapped `Entity` — so a caller can read the name, walk to an ancestor,
-    /// or take the entity's own origin rather than the hit position.
+    /// including the tapped `Entity`, plus the **model root** that entity sits inside —
+    /// the direct child of the content root, which is the entity
+    /// ``SceneViewerModel/nodeName`` was written on. Its `name` is therefore whatever the
+    /// caller asked for, never a name RealityKit invented.
     ///
-    /// That is not a convenience. Two bridges publish a tapped node under two different
-    /// definitions — one walks up to the first named ancestor and strips the extension,
-    /// the other reports the tapped entity's raw name — and a third reports the entity's
-    /// origin where ``onTap`` reports the bounds centre. Every one of those is public API
-    /// someone has already shipped against. Flattening them into one convention here would
-    /// change all three; handing over the entity lets each keep its own, which is why this
-    /// exists at all.
+    /// Resolving it here rather than at each call site is the point. `SpatialTapGesture`
+    /// reports the deepest hit entity, so `hit.entity.name` is an asset-internal mesh name
+    /// for any asset that names its meshes — a tap on `black_dragon.usdz` reported
+    /// `skin0`, and so did a walk to the first *named* ancestor. Every consumer would
+    /// otherwise have to re-derive the same walk, and the two bridges that tried each got
+    /// it wrong in their own way.
+    ///
+    /// The second parameter is `nil` when the tap resolved outside every configured model
+    /// — an entity added to the scene by something other than the model list. `hit` is
+    /// still delivered, so a consumer can decide what a miss means for its own payload.
     ///
     /// Both callbacks can be set at once and both fire. Not `@objc`: ``SceneTapHit``
     /// carries RealityKit types that do not cross into Objective-C, and the consumers that
     /// need it — the Flutter and React Native bridges — are Swift.
-    public var onTapEntity: ((SceneTapHit) -> Void)? {
+    public var onTapEntity: ((SceneTapHit, Entity?) -> Void)? {
         get { state.onTapEntity }
         set { state.onTapEntity = newValue }
     }
@@ -616,7 +621,7 @@ final class SceneViewerState: ObservableObject {
     var lastReportedPose: SceneCameraPose?
 
     var onTap: ((Bool, Float, Float, Float, Float) -> Void)?
-    var onTapEntity: ((SceneTapHit) -> Void)?
+    var onTapEntity: ((SceneTapHit, Entity?) -> Void)?
     var onCameraMoved: ((Float, Float, Float) -> Void)?
 
     func reportCameraMoved(_ pose: SceneCameraPose) {
@@ -628,10 +633,10 @@ final class SceneViewerState: ObservableObject {
         )
     }
 
-    func reportTap(_ hit: SceneTapHit) {
+    func reportTap(_ hit: SceneTapHit, modelRoot: Entity?) {
         // Handed over before the flattening, and unconditionally: a consumer of the full
         // hit is not interested in whether the primitive one is wired.
-        onTapEntity?(hit)
+        onTapEntity?(hit, modelRoot)
         // Distance is measured from where the camera actually is, which is the last
         // reported pose when there is one — the requested pose can be several frames
         // stale mid-drag, and after any gesture it is not where the camera is at all.
@@ -830,7 +835,13 @@ struct SceneViewerRootView: View {
             state.reportCameraMoved(pose)
         }
         .onEntityTapHit { hit in
-            state.reportTap(hit)
+            state.reportTap(
+                hit,
+                modelRoot: sceneViewerTappedModelEntity(
+                    hit.entity,
+                    contentRoot: scene.contentRoot.entity
+                )
+            )
         }
         .mainLight(.custom(scene.light(for: state.lighting)))
         // The façade exposes one key light. A second, unexposed light would keep lighting
