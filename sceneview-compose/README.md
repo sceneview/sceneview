@@ -29,6 +29,11 @@ platform it covers.
 - Orbit camera with hoistable, saveable state
 - A directional key light and an environment (default, flat colour, or HDR)
 - Tap hit-testing against the model
+- An opt-in `onError` callback — **use it.** A failed load has no pixels of its own: the
+  viewport keeps showing the environment, which is indistinguishable from a load still in
+  progress. Without `onError` the only trace is the platform log, under the `SceneViewer`
+  tag. It reports an exception (missing asset, HTTP error, size cap) *and* a loader that
+  answers "no model" without throwing (a malformed glTF/GLB), where `cause` is `null`.
 
 ### What is deliberately not here, ever
 
@@ -80,12 +85,21 @@ public interface SceneViewerViewFactory {
 
 `SceneViewerSpec` is deliberately flat and primitive so it crosses into Swift cleanly:
 model source (asset path / URL / bytes), camera (target, distance, azimuth, elevation in
-**degrees** — Swift converts to radians), lighting, environment, plus two callbacks:
+**degrees** — Swift converts to radians), lighting, environment, plus three callbacks:
 
 - `onTap(hit, x, y, z, distance)` — wire to `SceneViewSwift`'s `.onEntityTapped`.
 - `onCameraMoved(distance, azimuth, elevation)` — **call this after every gesture.**
   It is what keeps `CameraState` truthful; skip it and reads return only what the app
   last wrote, silently ignoring the user.
+- `onError(message)` — **call this when a load fails.** It surfaces as the app's
+  `onError`. RealityKit fails the same way Filament does, with no pixels of its own, so
+  an implementation that never calls it leaves the app unable to tell a failure from a
+  slow load.
+
+`SceneViewerSpec` compares by **value**, and its `modelBytes` by **content**. That is
+what lets `update` be skipped when a recomposition changed nothing — so implement
+`update` as a plain apply, and do not add your own "did anything change?" caching on the
+Swift side expecting to be called on every frame. You will not be.
 
 Until a factory is registered, `SceneViewer` renders a visible notice saying so.
 

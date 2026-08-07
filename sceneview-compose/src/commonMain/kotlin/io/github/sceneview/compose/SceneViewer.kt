@@ -58,9 +58,19 @@ import androidx.compose.ui.Modifier
  *   gesture only fires on a hit and reports no surface coordinate. See the module README.
  * @param onFrame invoked once per rendered frame with the frame time in nanoseconds.
  *   Called on the platform's render-driving thread — keep it allocation-free.
+ *
  *   **Not invoked on iOS**: `SceneViewSwift` publishes no per-frame callback, and a
  *   polled timer would report times that are not the renderer's. Nothing is simulated in
  *   its place, so a frame counter simply never advances there.
+ * @param onError invoked when a model or environment fails to load. Without it a failure
+ *   is invisible on screen: the viewport keeps showing the environment, which looks
+ *   exactly like a load still in progress. See [SceneViewerError].
+ *
+ *   **Always called on the main thread**, on every failure path including a download —
+ *   unlike [onFrame], which runs on the render thread. So a handler may touch UI
+ *   directly. Currently raised on Android only: desktop is a placeholder that loads
+ *   nothing, and on iOS the Kotlin side raises none of its own, forwarding only what the
+ *   host's Swift factory reports.
  */
 @Composable
 public expect fun SceneViewer(
@@ -71,4 +81,5 @@ public expect fun SceneViewer(
     environment: EnvironmentSource = EnvironmentSource.Default,
     onTap: ((ModelHit?) -> Unit)? = null,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onError: ((SceneViewerError) -> Unit)? = null,
 )

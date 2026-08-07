@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-07-20'
+  last-updated: '2026-08-06'
   keywords:
   - sceneview
   - 3d
@@ -33,6 +33,12 @@ SceneView is a declarative 3D and AR SDK. One mental model across every platform
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
   via Swift Package Manager (tag `4.26.0`). RealityKit renderer.
+- **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
+  (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
+  orbit camera, key light, environment, tap. **No AR, no custom materials, no
+  post-processing.** Android delegates to the Filament `SceneView { }` below; iOS needs a
+  one-time renderer registration; Desktop draws a placeholder. Reach for it only when the
+  ask is genuinely shared-source; for anything platform-specific, use the native API.
 - **Web** — `sceneview-web@4.26.0` on npm (Filament.js + WebXR).
 - **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
 - **React Native** — `@sceneview-sdk/react-native@4.26.0` (Fabric bridge).
@@ -60,10 +66,55 @@ Trigger on any of:
 - "Place a model on a detected AR plane / image / face."
 - "Render 3D on the web with Filament.js or WebXR."
 - "Bridge a 3D scene to Flutter or React Native."
+- "Show the same 3D model from shared `commonMain` code in a Compose Multiplatform app."
 - "Convert a 2.x / 3.x SceneView snippet to 4.x."
 
 Skip for plain ARCore-SDK, Sceneform (deprecated), Unity, Unreal, or RealityKit
 projects that do NOT use the SceneViewSwift wrapper.
+
+## Compose Multiplatform: `SceneViewer` (viewer subset, unreleased)
+
+`sceneview-compose` is the only way to write **one** 3D composable in `commonMain`. It is
+not a portable replacement for `SceneView { }` — it covers the model-viewer case and
+stops there, on purpose.
+
+**Choose it only when the ask is genuinely shared-source.** If the app is Android-only,
+or needs AR, custom materials or post-processing, use the platform-native API instead;
+this façade will not grow to cover them.
+
+```kotlin
+// commonMain — compiles on Android, iOS and Desktop
+SceneViewer(
+    model = ModelSource.Asset("models/damaged_helmet.glb"),
+    modifier = Modifier.fillMaxSize(),
+    camera = rememberCameraState(distance = 4f),
+    lighting = Lighting(intensity = 100_000f, castShadows = true),
+    environment = EnvironmentSource.Default,
+    onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
+    onError = { error -> println("load failed: ${error.message}") },
+)
+```
+
+Rules an agent must not get wrong:
+
+- **`ModelSource` is a sealed interface**, not a string: `Asset(path)`, `Bytes(byteArray)`
+  or `Url(url)`. `Url` accepts **http/https only** and throws `IllegalArgumentException`
+  on anything else, in `commonMain`, on every platform.
+- **`Bytes` and `Url` must be self-contained** (a GLB, or glTF with embedded buffers).
+  Only `Asset` resolves sibling `.bin`/texture files. A `.gltf` with external resources
+  passed as `Bytes` loads *incomplete and silently*.
+- **A failed load has no pixels.** The viewport keeps showing the environment, which is
+  indistinguishable from a load still in progress. Pass `onError` — without it the only
+  trace is the platform log under the `SceneViewer` tag. It fires both for an exception
+  (missing asset, HTTP error) and for a malformed model Filament refuses to parse, where
+  `SceneViewerError.cause` is `null`.
+- **Platform status**: Android renders (Filament). iOS renders (RealityKit) but the app
+  must register `SceneViewerBridge.factory` once at launch — a KMP module cannot depend
+  on a Swift Package. Desktop draws a visible placeholder; it is not wired yet. On an
+  unwired platform this never throws and never shows an empty viewport.
+- **`usdz` is Apple-only.** Every platform accepts glTF and GLB.
+- Lighting maps *approximately* between Filament and RealityKit — a scene tuned on
+  Android reads slightly differently on iOS. That is a property of the façade.
 
 ## The minimal correct Android example
 
