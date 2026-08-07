@@ -703,8 +703,11 @@ jobs:
     needs: changes
     if: inputs.force-all || needs.changes.outputs.compose == 'true'
     # Same opt-in as bridge-ios-compile.yml: the self-hosted Mac when its
-    # heartbeat says it is awake, a hosted macOS runner otherwise.
-    runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+    # heartbeat says it is awake, a hosted macOS runner otherwise — and never
+    # for a fork PR, which stays on `macos-15`. That workflow carries the full
+    # rationale for both halves of the condition; keep the three copies
+    # (here, bridge-ios-compile.yml, device-qa.yml) identical.
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     # Kept at/below the other blocking jobs (30 min) so the CI Gate's 50-min
     # internal deadline keeps its margin. The cold Kotlin/Native link is the
     # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,
@@ -829,6 +832,30 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/test-check-vendored-download-safety.sh
+
+      # Self-hosted macOS routing. Three workflows share one `runs-on`
+      # expression; until this gate existed, "keep the three copies identical"
+      # was a comment. It evaluates the real expression under simulated events:
+      # fork PRs must land on a disposable hosted runner, and push / dispatch /
+      # schedule must keep the Mac we already own. Both directions fail
+      # silently — one leaks reach onto a persistent machine, the other just
+      # quietly spends hosted minutes.
+      #
+      # This job is deliberately NOT path-gated, so a workflow-only PR still
+      # runs it. A gate that skips itself on the very diff it polices is green
+      # for life (#2988).
+      - name: Check self-hosted runner routing
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/check-self-hosted-runner-routing.py
+
+      # Drives the gate's FAILING path on synthetic trees — including the old
+      # two-term expression it was written to catch. Without this, a loosened
+      # probe reports green on a repo that happens to be correct.
+      - name: Self-test the self-hosted routing gate
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
 
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the

@@ -52,7 +52,7 @@ fires `runner-heartbeat.sh` every 300s. The heartbeat pings
 online, then updates two repo variables: `SELF_HOSTED_MACOS_ONLINE`
 (`"true"`/`"false"`) and `SELF_HOSTED_MACOS_LAST_SEEN` (ISO 8601 UTC).
 
-### Opt a workflow in — single line
+### Opt a workflow in — one line, copied verbatim
 
 Workflows route to self-hosted only when the heartbeat is fresh, and fall
 back to `macos-15` automatically when the Mac is asleep, off, or the runner
@@ -62,15 +62,47 @@ process is dead (heartbeat sets `ONLINE=false` if `runner.status != "online"`):
 jobs:
   build:
     # Was:  runs-on: macos-15
-    runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     steps:
       - ...
 ```
 
 That's the whole change per workflow. **No composite action, no reusable
 workflow, no pre-job** — `runs-on` accepts expressions since GitHub Actions
-late-2024. Thomas opts workflows in one at a time as confidence grows; no
-existing workflow is modified by this commit.
+late-2024. Thomas opts workflows in one at a time as confidence grows.
+
+**Copy it whole — do not simplify it back to the two-term form.** Both halves
+of the added clause are load-bearing, and dropping either one fails silently
+rather than loudly:
+
+- `github.event_name != 'pull_request'` — `github.event.pull_request` is null
+  on `push`, `workflow_dispatch`, `schedule`, and a `workflow_call` from
+  nightly-ci.yml. Without this term the `head.repo` comparison is false on all
+  of them, so **every non-PR run quietly loses the fast runner** and the repo
+  pays for hosted minutes it already owns hardware for.
+- `head.repo.full_name == github.repository` — true only for a branch PR
+  opened inside this repo, false for every fork. `sceneview-mac` is a
+  persistent machine and Thomas's daily driver: a job there inherits the
+  previous job's filesystem, `~/.gradle`, and whatever the login user can
+  reach.
+
+**This clause is defence in depth, not a boundary.** A fork PR runs the
+workflow file from the merge ref — the contributor's own copy — so a hostile
+PR can just delete the line. The boundary is the repo setting: Settings →
+Actions → General → "Require approval for **all external contributors**"
+(`approval_policy: all_external_contributors`), which withholds a runner
+entirely until a maintainer approves the run. Check it with:
+
+```bash
+gh api repos/sceneview/sceneview/actions/permissions/fork-pr-contributor-approval
+```
+
+The default, `first_time_contributors`, is not enough: it approves a
+contributor once and then lets every later PR from them start on its own.
+
+Three workflows carry the expression today — `ci.yml` (kmp-native-test),
+`bridge-ios-compile.yml`, `device-qa.yml` (ios). Keep the three identical;
+`bridge-ios-compile.yml` holds the long-form comment.
 
 ### Safety net
 
