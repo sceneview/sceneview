@@ -244,9 +244,23 @@ is never called. Verified on an iPhone 17 Pro Max simulator (iOS 26.3):
 - the same tap through `.targetedToAnyEntity()` fires for no entity, whether the
   collision shape is the generated one or an explicit bounding box.
 
+**A missing component is not the explanation — that was ruled out by
+measurement, not by reading.** #3027 landed `Entity.makeInputTargetable()` and
+applies it to the *whole* `contentRoot` in `buildContent`, so every entity in
+the scene carries an `InputTargetComponent` regardless of collision. Re-measured
+against that code on the same simulator: four taps at three positions on a
+rendered, orbitable model produced no callback. A drag in the same session
+orbited the camera, so the touches were reaching the native view throughout.
+
 The remaining suspect is the RealityKit hit test resolving through a Flutter
 platform view's touch-interception layer. Do not describe `onTap` as working on
 iOS until a tap has been seen to reach Dart.
+
+Worth trying next: `SceneViewerHostView` (added by #3027) is an `@objc UIView`
+built for exactly this kind of bridge and exposes `onTap` as a plain closure.
+It routes through the same `.onEntityTapHit` internally, so it is a lead rather
+than a fix — but a host view designed for UIKit embedding is the more promising
+place to find out whether the interception layer is really the cause.
 
 ## Contributing
 
