@@ -43,10 +43,16 @@
 #   Everything outside the eight paths must still be byte-identical to HEAD,
 #   with no carve-outs at all.
 #
-#   The one case it cannot separate is a reviewer reverting a sensitive file to
-#   precisely the base content — which is indistinguishable from the restore
-#   because it IS the restore's result, and which the action has already done
-#   itself by the time any reviewer runs.
+#   Two residuals, both stated rather than papered over:
+#     * A reviewer reverting a sensitive file to PRECISELY the base content is
+#       indistinguishable from the restore, because it IS the restore's result,
+#       and the action has already done it by the time any reviewer runs.
+#     * `git status` never lists IGNORED paths, so a write to something matched
+#       by `.gitignore` (`.claude/settings.json`, `.claude/plans/`, `build/`, …)
+#       is invisible here. Measured with git 2.46, it also lists neither FIFOs
+#       and sockets nor empty directories, even under `-uall`. Both blind spots
+#       are identical in the assertion this replaces — not regressions, and not
+#       covered. Do not read "byte-identical to HEAD" as covering them.
 #
 #   The list below is a copy of the action's `SENSITIVE_PATHS`. If the action
 #   ever widens it, this script does not follow, and the new path reports as
@@ -65,7 +71,11 @@ BASE_REF=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --base)    BASE_REF="${2:-}"; shift 2 ;;
+    # `shift 2` on a lone `--base` shifts NOTHING and returns non-zero, and with
+    # no `-e` the loop then spins on the same argument until the job times out.
+    # A usage error must be an exit, not a hang.
+    --base)    [ $# -ge 2 ] || { echo "assert-review-tree-clean.sh: --base needs a value" >&2; exit 2; }
+               BASE_REF="$2"; shift; shift ;;
     -h|--help) sed -n '2,60p' "$0"; exit 0 ;;
     *)         echo "assert-review-tree-clean.sh: unexpected argument $1" >&2; exit 2 ;;
   esac
@@ -97,8 +107,14 @@ is_sensitive() {
 # `<mode> <sha>` for a path in the base commit, empty when the path is absent
 # there. Mode is compared too: a chmod on a restored file is not something the
 # restore can produce, so it is a write by something else.
+#
+# `:(literal)` is load-bearing. `git ls-tree` takes PATHSPECS, not names, so a
+# planted path containing `*`, `?` or `[` would match its siblings, print
+# several rows, and the comparison would then be against a DIFFERENT file's
+# blob — the one way this script could have failed open on a path it was
+# actually looking at.
 base_entry() {
-  git ls-tree "$BASE_REF" -- "$1" 2>/dev/null | awk 'NR==1 {print $1" "$3}'
+  git ls-tree "$BASE_REF" -- ":(literal)$1" 2>/dev/null | awk 'NR==1 {print $1" "$3}'
 }
 
 # `<mode> <sha>` for a path in the WORKING TREE, computed from the file itself
@@ -108,10 +124,20 @@ base_entry() {
 worktree_entry() {
   local path="$1"
   if [ -L "$path" ]; then
-    printf '120000 %s' "$(readlink -- "$path" | git hash-object --stdin)"
+    # `readlink` appends a newline; git's symlink blob is the target with none.
+    # Hashing readlink's output directly can therefore NEVER equal the 120000
+    # blob in the tree, which would red-flag every legitimately restored
+    # symlink.
+    printf '120000 %s' "$(printf '%s' "$(readlink -- "$path")" | git hash-object --stdin)"
   elif [ -f "$path" ]; then
     if [ -x "$path" ]; then printf '100755 '; else printf '100644 '; fi
     git hash-object -- "$path"
+  elif [ -e "$path" ]; then
+    # A directory, FIFO, socket or device sitting at a sensitive path. Printing
+    # nothing here would make it indistinguishable from ABSENT, so a planted
+    # non-regular file at a path missing from base would compare "" = "" and be
+    # waved through. Emit something that cannot collide with any tree entry.
+    printf 'unsupported-file-type %s' "$path"
   fi
   # Absent: print nothing. Absent-on-both is then a match, which is exactly
   # right for a file the PR adds under `.claude/` and the action deletes.
@@ -146,29 +172,53 @@ fi
 RESTORED=()
 CONTAMINATED=()
 
+classify() {
+  local xy="$1" path="$2" label="${3:-}"
+  if is_sensitive "$path" && [ "$(worktree_entry "$path")" = "$(base_entry "$path")" ]; then
+    RESTORED+=("$xy $path$label")
+  else
+    CONTAMINATED+=("$xy $path$label")
+  fi
+}
+
 # `--porcelain=v1 -z` emits `XY <path>\0`, and for a rename or copy a SECOND
 # NUL-terminated field carrying the original path. Read the pairs explicitly:
 # splitting on NUL without consuming that extra field would read an original
 # path as if it were a status line.
+#
+# ⛔ BOTH SIDES OF A RENAME GET CLASSIFIED, and skipping the source was a
+# measured FAIL-OPEN — a regression against the `git status | test -z` this
+# replaced. In `-z` the destination comes FIRST, so judging only `$PATH_NAME`
+# judged the wrong path:
+#     git mv src/Foo.kt .claude/evil && rm .claude/evil
+# emits one entry, `RD .claude/evil\0src/Foo.kt\0`. The destination is absent
+# from both the worktree and base, so "" = "" filed it under RESTORED and the
+# script announced a pristine tree while `src/Foo.kt` had been deleted outright.
+# The orchestrator holds bare `Bash`, and its deny list covers `checkout`,
+# `switch`, `reset`, `stash`, `restore`, `apply` and `clean` — not `git mv`.
+# The action's restore (`rm -rf` + `git checkout base --` + `git reset --`)
+# cannot produce a rename entry at all, so anything here is another writer.
 while IFS= read -r -d '' ENTRY; do
   XY="${ENTRY:0:2}"
   PATH_NAME="${ENTRY:3}"
+  classify "$XY" "$PATH_NAME"
   case "$XY" in
-    R*|C*|*R|*C) IFS= read -r -d '' _ORIG || true ;;
+    R*|C*|*R|*C)
+      if IFS= read -r -d '' ORIG_PATH; then
+        classify "$XY" "$ORIG_PATH" " (rename/copy source)"
+      fi
+      ;;
   esac
-
-  if is_sensitive "$PATH_NAME" && [ "$(worktree_entry "$PATH_NAME")" = "$(base_entry "$PATH_NAME")" ]; then
-    RESTORED+=("$XY $PATH_NAME")
-  else
-    CONTAMINATED+=("$XY $PATH_NAME")
-  fi
 done < "$TMP/status"
 
 if [ "${#RESTORED[@]}" -gt 0 ]; then
   echo "Restored from ${BASE_REF} by claude-code-action's PR-head hardening (NOT reviewer contamination):"
   printf '  %s\n' "${RESTORED[@]}"
   echo "Each of those matches ${BASE_REF} byte-for-byte, which is the action's own contract."
-  echo "The reviewers read the PR's versions from the diff and from .claude-pr/."
+  # `.claude-pr/` never appears above: the action appends `/.claude-pr/` to
+  # `.git/info/exclude` (`ensureClaudePrExcludedFromGit`), so `git status` does
+  # not list it even under `-uall`.
+  echo "The reviewers read the PR's versions from pr.diff and from .claude-pr/."
 fi
 
 if [ "${#CONTAMINATED[@]}" -gt 0 ]; then

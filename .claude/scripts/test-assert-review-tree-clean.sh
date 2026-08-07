@@ -156,6 +156,38 @@ make_repo "$TMP/deleted" "printf 'pr code\n' > src/app.kt" \
 run "$TMP/deleted"
 check "reviewer deletes a base-identical .claude file — contamination" 1
 
+# Measured FAIL-OPEN, and a regression against the `git status | test -z` this
+# replaced: in `-z` the rename DESTINATION comes first, so judging only that
+# path let the source vanish unseen. `.claude/evil` is absent from both the
+# worktree and base, so "" = "" filed the whole entry under RESTORED while
+# `src/app.kt` had been deleted. `git mv` is not in the orchestrator's deny list.
+make_repo "$TMP/rename" "printf 'pr\n' > .claude/scripts/sync-assets.sh" \
+                        "git mv src/app.kt .claude/evil && rm .claude/evil"
+run "$TMP/rename"
+check "reviewer renames a tracked file INTO .claude and deletes it — contamination" 1
+
+# NO FIFO / empty-directory case here, on purpose. Measured with git 2.46:
+# `git status --porcelain -uall` lists neither — only regular files and symlinks
+# reach the loop at all. An assertion built on `git status` therefore cannot see
+# them, and a test claiming otherwise would pass only by accident. The script's
+# `unsupported-file-type` branch stays as cheap defence in case a future git
+# does report one; the limitation is documented in its header rather than
+# papered over with a green ✓.
+
+# The symlink branch must not red-flag a LEGITIMATE restore: `readlink` appends
+# a newline that git's 120000 blob does not carry, so hashing it raw could never
+# match and every restored symlink would read as contamination.
+make_repo "$TMP/symlink" "ln -s scripts/sync-assets.sh .claude/link && git add .claude/link"
+run "$TMP/symlink"
+check "PR adds a symlink under .claude — the restore deletes it, still benign" 0
+
+# `git ls-tree` takes PATHSPECS: a planted name containing glob metacharacters
+# must not be compared against a SIBLING's blob.
+make_repo "$TMP/glob" "printf 'pr\n' > .claude/scripts/sync-assets.sh" \
+                      "cp .claude/scripts/sync-assets.sh '.claude/scripts/sync-assets*.sh'"
+run "$TMP/glob"
+check "planted file whose name is a glob — matched literally, contamination" 1
+
 # --- the check must fail CLOSED when it cannot look -------------------------
 
 mkdir -p "$TMP/norepo"
@@ -169,19 +201,57 @@ check "unresolvable base ref — refuses to guess" 1
 OUT="$(cd "$TMP/nobase" && bash "$ASSERT" 2>&1)"; RC=$?
 check "missing --base — usage error" 2
 
+# `shift 2` on a lone `--base` shifts nothing and returns non-zero; without a
+# guard the arg loop spins on the same token until the job timeout. A hang is
+# not a usage error, and `timeout` is how the difference gets asserted.
+# `timeout` is coreutils: present on the CI runner, absent from a bare macOS.
+# Without the guard this case would exit 127 and red-flag a contributor's
+# machine for a tool that was never the thing under test.
+if command -v timeout >/dev/null 2>&1; then
+  OUT="$(cd "$TMP/nobase" && timeout 10 bash "$ASSERT" --base 2>&1)"; RC=$?
+  check "--base with no value — exits, does not hang" 2
+else
+  echo "  – skipped: --base with no value (needs coreutils \`timeout\`)"
+fi
+
 # --- the suite must pin its own WIRING --------------------------------------
 #
-# Counting cases measures effort, not coverage: 15 green assertions say nothing
-# if `pr-review.yml` never calls this script. That exact failure shipped on
-# #3047 — a suite went 21/21 with the fix's only call site deleted from the
-# workflow. The gate is the call, so the call is what gets asserted.
+# Counting cases measures effort, not coverage: green assertions say nothing if
+# `pr-review.yml` never calls this script. That exact failure shipped on #3047 —
+# a suite went 21/21 with the fix's only call site deleted from the workflow.
+#
+# ⛔ GREP THE CALL, NOT THE NAME. The first version of this check matched the
+# bare filename anywhere in the file, and `pr-review.yml` mentions this script
+# in FOUR comment lines — so deleting the only real invocation left the check
+# green off a comment. It reproduced #3047 inside the very block written to
+# prevent it. The mutation below is what keeps that honest.
 WORKFLOW="$SCRIPT_DIR/../../.github/workflows/pr-review.yml"
-if [ -f "$WORKFLOW" ] && grep -q 'assert-review-tree-clean\.sh' "$WORKFLOW"; then
+CALL_PATTERN='^[[:space:]]*bash "\$RUNNER_TEMP/assert-review-tree-clean\.sh" --base'
+
+wiring_ok() { grep -qE "$CALL_PATTERN" "$1"; }
+
+if [ -f "$WORKFLOW" ] && wiring_ok "$WORKFLOW"; then
   echo "  ✓ pr-review.yml actually invokes this script"
   PASS=$((PASS + 1))
 else
   echo "  ✗ pr-review.yml does not invoke assert-review-tree-clean.sh — the gate is unwired, and every case above is decoration"
   FAIL=$((FAIL + 1))
+fi
+
+# Mutation on the wiring check itself: strip the invocation, keep every comment
+# that names the script, and the check must still go red.
+if [ -f "$WORKFLOW" ]; then
+  grep -vE "$CALL_PATTERN" "$WORKFLOW" > "$TMP/unwired.yml"
+  if wiring_ok "$TMP/unwired.yml"; then
+    echo "  ✗ removing the invocation left the wiring check green — it is matching prose, not the call (#3047)"
+    FAIL=$((FAIL + 1))
+  elif ! grep -q 'assert-review-tree-clean\.sh' "$TMP/unwired.yml"; then
+    echo "  ✗ mutation removed every mention, so this proves nothing — the check must survive comments that name the script"
+    FAIL=$((FAIL + 1))
+  else
+    echo "  ✓ deleting the invocation turns the wiring check red, even with 4 comments still naming the script"
+    PASS=$((PASS + 1))
+  fi
 fi
 
 # --- mutation: the obvious wrong fix must turn this suite RED ---------------
@@ -192,21 +262,54 @@ fi
 echo
 echo "mutation test (a path EXCLUSION instead of a content assertion)"
 MUTANT="$TMP/mutant.sh"
-sed 's|^  if is_sensitive "\$PATH_NAME" \&\& \[ .*$|  if is_sensitive "$PATH_NAME"; then|' "$ASSERT" > "$MUTANT"
-if ! grep -q 'if is_sensitive "\$PATH_NAME"; then$' "$MUTANT"; then
+sed 's|^  if is_sensitive "\$path" \&\& \[ .*$|  if is_sensitive "$path"; then|' "$ASSERT" > "$MUTANT"
+if ! grep -q 'if is_sensitive "\$path"; then$' "$MUTANT"; then
   echo "  ✗ mutation could not be applied — the classification line moved; update this test"
   FAIL=$((FAIL + 1))
 else
+  # `rename` is deliberately NOT here. Its source path (`src/app.kt`) is not
+  # sensitive, so a path EXCLUSION does not weaken it — that hole is orthogonal
+  # and gets its own mutation below. Listing it would have made this gate
+  # unsatisfiable, which is how a suite ends up loosened to `-gt 0`.
+  MUT_CASES=(dirty-claude planted chmod deleted glob)
   MUT_CAUGHT=0
-  for case_dir in dirty-claude planted chmod deleted; do
+  for case_dir in "${MUT_CASES[@]}"; do
     (cd "$TMP/$case_dir" && bash "$MUTANT" --base base >/dev/null 2>&1)
     [ $? -ne 1 ] && MUT_CAUGHT=$((MUT_CAUGHT + 1))
   done
-  if [ "$MUT_CAUGHT" -gt 0 ]; then
-    echo "  ✓ weakening the assertion to a path exclusion breaks $MUT_CAUGHT/4 contamination cases"
+  # ⛔ ALL of them, not "at least one". `-gt 0` would let five of the six stop
+  # discriminating while the suite still printed a ✓ — the same "counting
+  # measures effort, not coverage" trap the wiring check above exists for.
+  if [ "$MUT_CAUGHT" -eq "${#MUT_CASES[@]}" ]; then
+    echo "  ✓ weakening the assertion to a path exclusion breaks all ${#MUT_CASES[@]} contamination cases"
     PASS=$((PASS + 1))
   else
-    echo "  ✗ the mutant passed every contamination case — this suite does not pin the assertion"
+    echo "  ✗ the mutant still blocked $(( ${#MUT_CASES[@]} - MUT_CAUGHT )) of ${#MUT_CASES[@]} contamination cases — this suite does not pin the assertion"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+
+# --- mutation 2: dropping the rename SOURCE must reopen the measured fail-open
+#
+# This is the hole the review found: judging only the rename destination let
+# `git mv src/app.kt .claude/evil && rm .claude/evil` pass as "restored" while a
+# tracked file was deleted. Reverting that one line must make the `rename` case
+# go green-when-it-should-be-red, or this suite is not pinning the fix.
+echo
+echo "mutation test (drop the rename/copy SOURCE from classification)"
+MUTANT2="$TMP/mutant2.sh"
+sed 's|^        classify "\$XY" "\$ORIG_PATH" .*$|        :|' "$ASSERT" > "$MUTANT2"
+if ! grep -q '^        :$' "$MUTANT2"; then
+  echo "  ✗ mutation could not be applied — the rename-source classification moved; update this test"
+  FAIL=$((FAIL + 1))
+else
+  (cd "$TMP/rename" && bash "$MUTANT2" --base base >/dev/null 2>&1)
+  if [ $? -eq 0 ]; then
+    echo "  ✓ dropping the rename source reopens the fail-open, and this suite catches it"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ the rename case still blocks without the source classification — it is not what makes that case red"
     FAIL=$((FAIL + 1))
   fi
 fi

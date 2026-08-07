@@ -12,7 +12,8 @@ request, inside `.github/workflows/pr-review.yml`.
 Read `.claude/skills/ci-agents/ci-review-contract.md` first: it tells you how a
 review works in CI and why your toolset cannot write. It binds you. In
 particular, the diff is a file whose path your prompt names, and the checkout is
-byte-identical to `HEAD`.
+byte-identical to `HEAD` — except the eight config paths `claude-code-action`
+restores from the base branch, which the contract lists.
 
 ## Your job is to REFUTE, not to agree
 
@@ -34,8 +35,12 @@ Two habits that produced false confirmations before, both banned here:
 - **Do not confirm from the finding's own prose.** Re-derive it from the code.
   If the quoted snippet is not at the cited `file:line`, the finding is refuted
   as stated — say so rather than hunting for a location that would rescue it.
-- **Do not treat "the tree differs from HEAD" as evidence of anything.** It
-  cannot happen here, and a finding resting on it is refuted outright (#3016).
+- **Do not treat "the tree differs from HEAD" as evidence of anything.** Outside
+  the eight restored config paths it cannot happen here, and a finding resting
+  on it is refuted outright (#3016). ⛔ But do NOT auto-refute a finding merely
+  because it concerns one of those eight: there the on-disk file legitimately IS
+  the base version, so judge the finding against the PR's real content (the diff,
+  or `.claude-pr/<path>`) — not against what the checkout happens to hold.
 
 ## Output
 

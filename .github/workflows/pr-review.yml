@@ -401,9 +401,12 @@ jobs:
       #   * every reviewer reads the same bytes, instead of four models each
       #     re-deriving a diff and possibly disagreeing about what the PR is;
       #   * nothing the fan-out needs to read or write lives in the checkout,
-      #     which is what lets the assertion below demand a pristine tree with
-      #     no exclusions at all.
+      #     which is what lets the assertion below demand a tree byte-identical
+      #     to HEAD everywhere except the eight config paths the ACTION itself
+      #     restores from the base branch — see that step for why those are an
+      #     asserted contract rather than an exclusion.
       - name: Materialise the diff the reviewers read
+        id: diff
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -415,6 +418,15 @@ jobs:
             echo "::error title=Base ref unresolved::Could not resolve origin/${BASE}, so the PR diff cannot be computed. No review is possible — this is a CI problem, not a finding about the PR."
             exit 1
           fi
+          # PIN THE BASE COMMIT, for the clean-tree assertion at the end of the
+          # job. The action restores the eight config paths from the base branch
+          # as it stands NOW; resolving `origin/$BASE` again after a ~6-minute
+          # fan-out would resolve a MOVED ref, and any PR merged to the base in
+          # that window that touches those paths would make a correctly-restored
+          # file differ from it — a false "contaminated" red, of exactly the kind
+          # this workflow keeps relearning. This repo peaks at 30 PRs a day, so
+          # the window is not theoretical.
+          echo "base_sha=$(git rev-parse "origin/$BASE")" >> "$GITHUB_OUTPUT"
           # Three-dot is what "the PR changed" means. It needs a merge base, and
           # the fetches in this job are depth-limited, so fall back to the
           # two-dot form rather than handing the reviewers a truncated file.
@@ -541,9 +553,10 @@ jobs:
             are the BASE versions, not this PR's. Reading them and concluding
             "the change is missing" would be a false finding about a change that
             is right there in the diff. For those paths the PR's real content is
-            `${{ runner.temp }}/pr.diff`, `git show HEAD:<path>`, or the
-            snapshot the action leaves in `.claude-pr/<path>`. Tell every
-            reviewer you spawn the same thing if the diff touches them.
+            `${{ runner.temp }}/pr.diff` or the snapshot the action leaves in
+            `.claude-pr/<path>` — the two a reviewer can `Read`, since it has no
+            shell. `git show HEAD:<path>` also works, but only for you. Tell
+            every reviewer you spawn the same thing if the diff touches them.
 
             ## Step 1 — four independent reviewers, in parallel
 
@@ -707,27 +720,44 @@ jobs:
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_SHA: ${{ steps.diff.outputs.base_sha }}
         run: |
           set -uo pipefail
           DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
           # The branch the ACTION restored from — `restoreConfigFromBase` uses
           # the PR's base branch, so the comparison has to use the same one or
-          # every restored file reads as contamination.
-          BASE="${GITHUB_BASE_REF:-$DEFAULT_BRANCH}"
+          # every restored file reads as contamination. Prefer the SHA pinned
+          # BEFORE the fan-out (see `Materialise the diff`): re-resolving the
+          # branch here would follow it if it moved during the review. The
+          # branch name is only the fallback for the `always()` paths where that
+          # step never ran.
+          BASE="${BASE_SHA:-origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}}"
           # ⛔ Same pin as the grader, for the same reason: the judge must not
           # come from the code being judged. Reading the script out of the
           # checkout would let a PR supply the assertion that clears it — and by
           # this point in the job `.claude/` is whatever the action restored,
           # which is the base version on a healthy run and the PR's version if
           # the action never got that far. `git show` removes the ambiguity.
-          ASSERT="$RUNNER_TEMP/assert-review-tree-clean.sh"
-          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null
-          git fetch origin "$BASE" --depth=1 --quiet 2>/dev/null
-          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/assert-review-tree-clean.sh" > "$ASSERT" 2>/dev/null; then
+          #
+          # ⚠️ `|| true` on both fetches is not sloppiness. GitHub runs this as
+          # `bash -e` and `set -uo pipefail` does NOT clear errexit, so a bare
+          # failing fetch would kill the step before the `::error` below could
+          # print — a red check with an empty log, indistinguishable from real
+          # contamination. Every sibling fetch in this file is guarded the same
+          # way. Nothing fails open: `git show` and the script's own
+          # `rev-parse --verify` on the base are what actually gate.
+          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null || true
+          git fetch origin "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}" --depth=1 --quiet 2>/dev/null || true
+          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/assert-review-tree-clean.sh" \
+                 > "$RUNNER_TEMP/assert-review-tree-clean.sh" 2>/dev/null; then
             echo "::error title=Clean-tree assertion could not run::Could not read .claude/scripts/assert-review-tree-clean.sh from origin/${DEFAULT_BRANCH}. Refusing to assert with whatever copy the PR happens to carry — absent is not clean."
             exit 1
           fi
-          bash "$ASSERT" --base "origin/$BASE"
+          # Invoked by literal path, not through a variable: this line is what
+          # `test-assert-review-tree-clean.sh`'s wiring check greps for, and a
+          # check that can be satisfied by a mention in a COMMENT is #3047 all
+          # over again. Keep the script name here.
+          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE"
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
