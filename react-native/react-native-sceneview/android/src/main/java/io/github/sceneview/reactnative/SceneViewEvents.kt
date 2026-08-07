@@ -13,8 +13,14 @@ import io.github.sceneview.node.Node
  * RN Fabric event delivered to the JS `onTap` prop of `<SceneView>` / `<ARSceneView>`.
  *
  * Payload mirrors the TypeScript `TapEvent` interface in `src/index.tsx`:
- * `{ x, y, z, nodeName? }`. Wired in [SceneViewManager] / [ARSceneViewManager]
- * via `getExportedCustomDirectEventTypeConstants` (issue #2053).
+ * `{ x, y, z, nodeName }` — the key is never optional. [getEventData] writes it
+ * on every dispatch, `putNull` when no node was hit, so JS sees `null` and never
+ * `undefined`. Wired in [SceneViewManager] / [ARSceneViewManager] via
+ * `getExportedCustomDirectEventTypeConstants` (issue #2053).
+ *
+ * Both managers share this event, so an AR tap that lands on a model reports
+ * that model's name exactly as the 3D view does. iOS AR cannot: its
+ * `ARSceneView` has no entity hit-test hook and always reports `null` (#2051).
  */
 class TapEvent(
     surfaceId: Int,

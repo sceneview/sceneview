@@ -218,10 +218,15 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
 - **`onTap`** — dispatched on both platforms and on both views. On `SceneView`
   (3D) it carries the tapped model's world position and its file base name
-  without extension as `nodeName`. On `ARSceneView` it reports the tapped
-  surface point, so `nodeName` is always `null` there. Every dispatch path
-  writes the key, so `nodeName == null` is the single "the tap hit no model"
-  test — it is never `undefined`.
+  without extension as `nodeName`, identically on Android and iOS. On
+  `ARSceneView` *what a hit reports* differs: **Android** hit-tests the AR
+  scene, so a tap on a model reports that model's file base name just as
+  `SceneView` does and a plane hit or a miss reports `null`; **iOS** always
+  reports `null`, because SceneViewSwift's `ARSceneView` exposes no entity
+  hit-test hook and its tap can only resolve the surface point
+  ([#2051](https://github.com/sceneview/sceneview/issues/2051)). Every dispatch
+  path still writes the key, so `nodeName == null` is the single "the tap hit no
+  model" test — it is never `undefined`.
 - **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
   environment is accepted but not applied.
 - **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`

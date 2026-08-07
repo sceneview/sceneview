@@ -10,6 +10,11 @@ import type { TapEvent } from "../src/index";
  * `"nodeName": NSNull()` before any branch runs). So a consumer needs one
  * `nodeName == null` guard, not a two-sentinel `null`/`undefined` one.
  *
+ * That the key is always *written* is a separate claim from what a hit
+ * *reports*, and the latter is not uniform: on `ARSceneView`, Android names the
+ * tapped model while iOS is always `null` (no entity hit-test hook, #2051).
+ * These assertions are about the type, which both platforms satisfy.
+ *
  * These are compile-time assertions — `ts-jest` type-checks this file, so
  * re-introducing `?` or `| undefined` on `nodeName` fails the run rather than
  * silently widening a published type. The runtime `expect` only keeps Jest

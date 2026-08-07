@@ -95,10 +95,14 @@ export interface TapEvent {
    * (`models/robot.glb` → `robot`), identical on Android and iOS. Never an
    * asset-internal mesh name — a tap inside a model always reports the model.
    *
-   * `null` — never `undefined` — when the tap hit no model (an untitled
-   * geometry node on Android, or an AR surface point). Every native dispatch
-   * path writes the key, so `nodeName == null` is the one guard that covers
-   * both views on both platforms.
+   * `null` — never `undefined` — when the tap hit no model: an untitled
+   * geometry node or nothing at all on Android, a plane or a miss in Android
+   * AR, and *every* `ARSceneView` tap on iOS, where `SceneViewSwift`'s
+   * `ARSceneView` exposes no entity hit-test hook and so can only resolve the
+   * surface point (#2051).
+   *
+   * Every native dispatch path writes the key, so `nodeName == null` is the one
+   * guard that covers both views on both platforms.
    */
   nodeName: string | null;
 }
@@ -181,10 +185,20 @@ export interface SceneViewProps {
    * its `nodeName` (the model file's base name without extension) on both
    * Android and iOS. A tap that hits no model reports `nodeName: null` — with
    * the tapped node's real world position on Android when it landed on an
-   * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. On
-   * `ARSceneView` the tap reports the surface point, so `nodeName` is always
-   * `null` there. One `nodeName == null` check covers every case; the key is
-   * never omitted.
+   * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all.
+   *
+   * On {@link ARSceneViewProps | `ARSceneView`} *what a hit reports* differs by
+   * platform:
+   * - **Android**: the AR view hit-tests the scene, so a tap on a model reports
+   *   that model's file base name exactly as `SceneView` does; a tap on a plane
+   *   or on nothing reports `null`.
+   * - **iOS**: always `null` — `SceneViewSwift.ARSceneView` exposes no entity
+   *   hit-test hook, so the AR tap can only resolve the surface point. Tracked
+   *   under {@link https://github.com/sceneview/sceneview/issues/2051 | #2051}.
+   *
+   * The *key* is written on every dispatch path of both views on both
+   * platforms, so one `nodeName == null` check remains the correct "the tap hit
+   * no model" test everywhere; it is never omitted and never `undefined`.
    */
   onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }

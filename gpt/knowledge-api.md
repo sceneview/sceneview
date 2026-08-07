@@ -3715,6 +3715,15 @@ hit entity, so `hit.entity.name` is an asset-internal mesh name for any asset th
 its meshes (a tap on `black_dragon.usdz` reported `skin0`). Not reachable from Kotlin;
 use `onTap` there.
 
+`sceneViewerModelFileName(_ path: String) -> String` is a Swift-only free function in the
+same module — the derivation a bridge should use to name a model, rather than rolling its
+own. It strips any query and fragment *before* taking the last path component, so a remote
+source (`SVSceneViewerModel.urlString` accepts a remote `.usdz`) cannot leak a CDN
+signature into the reported name: `https://cdn/robot.glb?sig=SIG&v=1.2` gives `robot.glb`,
+not `robot.glb?sig=SIG&v=1`. It keeps the extension — strip it at the report — and it is
+public only because both bridges are separate modules. Not `@objc`, so not reachable from
+Kotlin.
+
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.
 

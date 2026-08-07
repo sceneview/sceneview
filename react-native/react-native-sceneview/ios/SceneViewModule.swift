@@ -28,8 +28,13 @@ struct RNModelData: Identifiable, Equatable {
 /// reports `NSNull()`, which crosses the bridge as the same JS `null` Android
 /// emits via `putNull`. That is what lets the public `TapEvent.nodeName` be
 /// typed `string | null` instead of `string | null | undefined` — a consumer
-/// writes one `nodeName == null` guard. `ARSceneView` reports a surface point
-/// rather than a node, so it always passes `nil`.
+/// writes one `nodeName == null` guard.
+///
+/// This iOS `ARSceneView` can only resolve a surface point, never an entity, so
+/// it always passes `nil`. That is a platform limitation, not the contract:
+/// Android's AR view hit-tests the scene and does name the tapped model. Naming
+/// it here needs an entity hit-test hook on `SceneViewSwift.ARSceneView`, which
+/// does not exist yet (#2051).
 ///
 /// Keeping this a single function (rather than a comment asking each call site
 /// to remember the key) is the guard: a new tap source cannot omit `nodeName`
@@ -308,6 +313,9 @@ class RNARSceneViewWrapper: UIView {
                     // `null` Android emits via `putNull` and the 3D view emits
                     // for a tap that hit no model. It used to omit the key,
                     // which made JS see `undefined` on this one view.
+                    //
+                    // Android's AR view names the tapped model instead; this
+                    // side cannot until #2051 adds an entity hit-test hook.
                     block?(rnTapPayload(worldPosition: worldPosition, nodeName: nil))
                 }
             }

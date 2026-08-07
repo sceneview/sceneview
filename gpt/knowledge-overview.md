@@ -681,8 +681,13 @@ without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a me
 the asset. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
 `nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. That case is
 reported with the tapped node's real world position on Android when it landed on an unnamed geometry
-node, and `0,0,0` when it hit nothing at all. On `ARSceneView` the tap reports the surface point, so
-`nodeName` is always `null` there on both platforms.
+node, and `0,0,0` when it hit nothing at all. On `ARSceneView` *what a hit reports* diverges by
+platform: **Android** hit-tests the scene, so a tap on a model reports that model's file base name
+exactly as `SceneView` does, and a tap on a plane or on nothing reports `null`; **iOS** always
+reports `null`, because `SceneViewSwift.ARSceneView` exposes no entity hit-test hook
+([#2051](https://github.com/sceneview/sceneview/issues/2051)) — its AR tap can only resolve the
+surface point. The *key* is still written on every dispatch path on both platforms, so
+`nodeName == null` remains the single correct "no model was hit" test everywhere.
 Geometry types: `'box' | 'cube' | 'sphere' | 'cylinder' | 'plane'`.
 Light types: `'directional' | 'point' | 'spot'`.
 
