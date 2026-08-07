@@ -61,6 +61,36 @@ fork-authored code) is deliberately not used. Such a run says so loudly in the
 job summary plus a `::warning::`, and never reports a silent green review. Get
 coverage with `gh workflow run pr-review.yml -f pr=<n>`.
 
+**The reviewers cannot write, and that is a toolset rather than a promise.**
+CI spawns five `sv-ci-*` types — four reviewers plus `sv-ci-finding-verifier` —
+whose frontmatter grants `Read, Glob, Grep` and nothing else. Each is a thin
+wrapper that reads [`ci-review-contract.md`](ci-review-contract.md) and then its
+canonical `sv-*` mandate, so there is one copy of each mandate and one copy of
+the CI rules. Three practical consequences:
+
+- **`Bash` is a write door exactly as wide as `Write`.** Measured: a subagent
+  granted `Read, Glob, Grep, Bash` overwrote a tracked file with one `echo`,
+  with `Write` absent from the process grant and every git write verb in the
+  deny list. Dropping `Write` from `claude_args` is therefore *not* what makes
+  a reviewer read-only — only the per-agent `tools:` list is, and `claude_args`
+  cannot express per-agent scoping at all. Anything else is #3016 again.
+- **The reviewers have no shell, so the workflow hands them the diff** as a file
+  under `RUNNER_TEMP`, computed once from the committed merge ref. The verdict
+  file lives there too, written by the orchestrator with a heredoc. Nothing the
+  review produces touches the checkout, which is what lets
+  `Assert the reviewers left the tree clean` demand a pristine tree with **no
+  exclusions**.
+- **`Assert the CI reviewers cannot write` pins the frontmatter** from inside
+  `pr-review.yml`, because the agent files live in the PR's own checkout and a
+  PR could otherwise widen the reviewers that judge it. The self-modification
+  guard freezes that assertion — same reasoning as reading the grader from the
+  default branch.
+
+The canonical `sv-*` agents deliberately **keep** their shell: in a live session
+they review uncommitted work and their documented escape hatch is cloning to
+`/tmp` themselves. Read-only there is still a prompt rule, enforced by review
+hygiene rather than by the harness. Use `sv-ci-*` only in CI.
+
 ⚠️ **This is the repo's most expensive quota consumer**, and the volume is
 measured, not guessed: this repo peaks at **30 PRs in a single day** (21 on
 several others), and each review spawns 4 reviewers plus one adversarial

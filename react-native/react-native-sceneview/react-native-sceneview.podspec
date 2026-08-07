@@ -20,7 +20,7 @@ Pod::Spec.new do |s|
   # no published CocoaPods spec for it — so it CANNOT be declared as a
   # `s.dependency` here (CocoaPods would fail `pod install` resolving it).
   # The host app must add it once via Xcode's SwiftPM integration:
-  #   File ▸ Add Package Dependencies… ▸ https://github.com/sceneview/SceneViewSwift
+  #   File ▸ Add Package Dependencies… ▸ https://github.com/sceneview/sceneview
   # The module's `ios/*.swift` `import SceneViewSwift` then resolves at the
   # app build, exactly like any RN native module with a SwiftPM dependency.
   # See this module's README "iOS" section.

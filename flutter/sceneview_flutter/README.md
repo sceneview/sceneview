@@ -28,18 +28,25 @@ Flutter plugin for [SceneView](https://sceneview.github.io) — 3D and AR scenes
 ## Installation
 
 > **Naming note:** this package publishes to pub.dev as **`flutter_sceneview`**
-> ([#2735](https://github.com/sceneview/sceneview/issues/2735)). The pub.dev
-> packages named `sceneview` and `sceneview_flutter` are unrelated third-party
-> uploads — do not use them.
+> ([#2735](https://github.com/sceneview/sceneview/issues/2735)). Two similar
+> pub.dev names are *not* what you want, for different reasons:
+> `sceneview` is this project's own pre-rename package, abandoned at 3.6.1 —
+> ours, but years stale; `sceneview_flutter` is an unrelated third-party demo
+> upload at 0.0.1. Neither receives updates.
 
 In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_sceneview: ^4.23.0
+  flutter_sceneview: ^4.24.0
 ```
 
-Or as a Git dependency (note: at tags `v4.23.0` and earlier the package name
+This tracks the latest version **published to pub.dev**, which lags the SDK's
+`VERSION_NAME` whenever the `pub-publish` job has not shipped the newest
+release yet. Do not raise it to match the Android SDK version: a caret range
+against an unpublished version resolves to nothing and fails `flutter pub get`.
+
+Or as a Git dependency (note: at tags `v4.24.0` and earlier the package name
 was `sceneview_flutter` — the dependency key must match the name at the ref):
 
 ```yaml
