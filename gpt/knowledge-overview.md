@@ -678,8 +678,10 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
 `onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
 without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a mesh name from inside
-the asset. `nodeName` is `null` (and the position `0,0,0`) when the tap hit no model, and `undefined`
-on iOS `ARSceneView` (which reports the tapped surface point only) — guard for both.
+the asset. `nodeName` is `null` when the tap hit no model — with the tapped node's real world position
+on Android when it landed on an unnamed geometry node, and `0,0,0` when it hit nothing at all. On iOS
+`ARSceneView` (which reports the tapped surface point only) the key is absent, so `nodeName` is
+`undefined` rather than `null` — guard for both.
 Geometry types: `'box' | 'cube' | 'sphere' | 'cylinder' | 'plane'`.
 Light types: `'directional' | 'point' | 'spot'`.
 

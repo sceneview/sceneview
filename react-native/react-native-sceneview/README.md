@@ -189,9 +189,12 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   configured natively** on either platform. Setting them has no effect today.
 - **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
-  (`onTap` *is* dispatched on both platforms — it carries the tapped model's
-  world position and its file base name without extension as `nodeName`, `null`
-  when the tap hit no model.)
+- **`onTap`** — dispatched on both platforms, but the payload differs by view.
+  On `SceneView` (3D) it carries the tapped model's world position and its file
+  base name without extension as `nodeName`, or `null` when the tap hit no
+  model. On **`ARSceneView` under iOS** it reports the tapped surface point
+  only and omits the key entirely, so `nodeName` is `undefined` there, never
+  `null` — a consumer testing for "no model" must accept both.
 - **`environment` on `ARSceneView`** — AR scenes use the camera feed; the HDR
   environment is accepted but not applied.
 - **`ModelNode.scale`** — parsed as a uniform float; the per-axis `[x, y, z]`
