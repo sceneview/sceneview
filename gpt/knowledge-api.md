@@ -3692,6 +3692,26 @@ SceneViewerBridge.factory = object : SceneViewerViewFactory {
 Without a registered factory, `SceneViewer` draws a visible "no renderer registered"
 notice.
 
+**The host carries more than `sceneview-compose` uses.** The same
+`SceneViewerHostView` drives the Flutter plugin and the React Native module's 3D path,
+so `SVSceneViewerConfiguration` has members a Compose caller never needs. They are
+additive — leave them alone and the single-model behaviour above is unchanged — but an
+AI extending a bridge should know they exist (v4.27.0+):
+
+| Member | What it is for |
+|---|---|
+| `models: [SVSceneViewerModel]` | Several models at once. Wins over the single-model fields when non-empty; empty resolves the single-model fields into a one-element list through the same reconciliation. Each entry carries its own `identity`, which is what keeps two copies of one asset path as two models |
+| `cameraControlMode: String` | `"orbit"` (default), `"pan"`, `"firstPerson"`. Anything else falls back to orbit rather than rendering nothing |
+| `autoCenterContent: Bool` | Fit-to-bounds on the first stable frame. Defaults to `false`, because the fit owns the orbit radius and would overwrite a caller-authored distance. Callers that author no camera turn it on |
+| `cameraPoseAuthored: Bool` | Defaults to `true`. Set it to `false` when the caller has no camera at all: `applyConfiguration` then applies no pose, instead of re-asserting the default one on every call and snapping the camera away from wherever the user orbited to |
+
+`SceneViewerHostView.onTapEntity: ((SceneTapHit) -> Void)?` is a Swift-only companion to
+the `@objc` `onTap`, handing over the `SceneTapHit` rather than five primitives. It
+exists because the bridges publish genuinely different things about a tapped entity —
+one walks to the first named ancestor and strips the extension, another reports the raw
+name and the entity's own origin where `onTap` reports the bounds centre. Not reachable
+from Kotlin; use `onTap` there.
+
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.
 

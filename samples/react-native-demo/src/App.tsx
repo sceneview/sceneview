@@ -248,7 +248,7 @@ function SearchTab() {
             style={styles.scene}
             environment={ENVIRONMENT}
             modelNodes={[selectedModel]}
-            cameraOrbit
+            cameraControlMode="orbit"
             onTap={(e) => {
               const { x, y, z, nodeName } = e.nativeEvent;
               setTapInfo(
@@ -366,7 +366,7 @@ function GeometryTab() {
           style={styles.scene}
           environment={ENVIRONMENT}
           geometryNodes={geometryNodes}
-          cameraOrbit
+          cameraControlMode="orbit"
           cameraControlMode={cameraMode}
           onTap={(e) => {
             const { x, y, z, nodeName } = e.nativeEvent;
@@ -488,7 +488,7 @@ function LightsTab() {
           environment={ENVIRONMENT}
           geometryNodes={demoGeometry}
           lightNodes={activeLights}
-          cameraOrbit
+          cameraControlMode="orbit"
         />
         <View style={styles.lightInfoBadge}>
           <Text style={styles.lightInfoText}>
@@ -765,7 +765,7 @@ function MaterialsTab() {
           environment={ENVIRONMENT}
           geometryNodes={geometryNodes}
           lightNodes={lightNodes}
-          cameraOrbit
+          cameraControlMode="orbit"
         />
         <View style={styles.lightInfoBadge}>
           <Text style={styles.lightInfoText}>{unlit ? 'Unlit' : 'Lit PBR'}</Text>
@@ -839,7 +839,7 @@ function AnimationTab() {
           style={styles.scene}
           environment={ENVIRONMENT}
           modelNodes={[modelNode]}
-          cameraOrbit
+          cameraControlMode="orbit"
         />
         <View style={styles.lightInfoBadge}>
           <Text style={styles.lightInfoText}>{model.label}</Text>
@@ -913,7 +913,7 @@ function EnvironmentTab() {
           environment={env.path}
           modelNodes={[modelNode]}
           autoCenterContent={autoCenter}
-          cameraOrbit
+          cameraControlMode="orbit"
         />
         <View style={styles.lightInfoBadge}>
           <Text style={styles.lightInfoText}>{env.label}</Text>

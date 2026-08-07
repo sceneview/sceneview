@@ -28,7 +28,7 @@ React Native (JS/TS)
 
 ## Bridge Features Demonstrated
 
-- `SceneView` component with `environment`, `cameraOrbit`
+- `SceneView` component with `environment`, `cameraControlMode`
 - `ARSceneView` with plane detection
 - `modelNodes` for GLB model loading
 - `geometryNodes` for procedural geometry (cube, sphere, cylinder, plane) with color — **Android only**
