@@ -318,15 +318,20 @@ interface CameraComponent : Component {
     /**
      * Get a view space position from a world position.
      *
-     * The device coordinate space is unaffected by the orientation of the device
+     * The device coordinate space is unaffected by the orientation of the device.
+     *
+     * Returns `null` when [worldPosition] is **behind the camera** (behind the near plane): such a
+     * point has no view-space position and was historically projected to a finite, mirrored
+     * coordinate on the wrong side of the view. Handle the `null` case rather than draw at a bogus
+     * point. See [io.github.sceneview.utils.worldToView].
      *
      * @param worldPosition The world position to convert.
      *
-     * @return normalized view coordinate
+     * @return normalized view coordinate, or `null` if [worldPosition] is behind the near plane.
      * x = (0 = left, 0.5 = center, 1 = right)
      * y = (0 = bottom, 0.5 = center, 1 = top)
      */
-    fun worldToView(worldPosition: Position) = camera.worldToView(worldPosition)
+    fun worldToView(worldPosition: Position): Float2? = camera.worldToView(worldPosition)
 
     /**
      * Calculates a ray in world space going from the near-plane of the camera and through a point in
