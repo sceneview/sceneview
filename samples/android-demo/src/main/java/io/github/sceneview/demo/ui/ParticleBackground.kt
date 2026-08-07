@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.foundation.background
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneScope
@@ -59,6 +61,24 @@ import kotlin.random.Random
 @Composable
 fun ParticleBackground(modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
+
+    // `@Preview` panes and Roborazzi run on the JVM, where `rememberEngine()`
+    // below throws `UnsatisfiedLinkError: no filament-jni`. Short-circuit to a
+    // static backdrop first — same pattern as [GeometryDemo] and
+    // [SplatPreviewDemo], see [io.github.sceneview.demo.DemoPreviewPlaceholder].
+    // This also makes the composable deterministic: the particle field is
+    // seeded from an *unseeded* [Random], so a pixel-exact golden could never
+    // match the live scene anyway.
+    if (LocalInspectionMode.current) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(inspectionBackdrop(dark))
+                .background(scrimBrush(dark)),
+        )
+        return
+    }
+
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
@@ -213,6 +233,14 @@ private fun particleColor(base: Color, dark: Boolean): Color {
         alpha = 1f,
     )
 }
+
+/**
+ * Flat stand-in for the opaque [SceneView] render target, used only when
+ * [LocalInspectionMode] is on. It is the colour the live scene's scrim already
+ * fades toward, so a preview reads as "calm dark field" rather than a hole.
+ */
+private fun inspectionBackdrop(dark: Boolean): Brush =
+    SolidColor(if (dark) SceneViewColors.SurfaceDim else Color.White)
 
 /**
  * Vertical scrim drawn on top of the [SceneView]. Fades toward the theme

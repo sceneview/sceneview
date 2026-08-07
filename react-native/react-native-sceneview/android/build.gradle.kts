@@ -18,8 +18,29 @@ android {
         minSdk = 24
     }
 
+    // Explicit and REQUIRED — not boilerplate. Without it AGP defaults Java to
+    // 1.8 while the Kotlin plugin picks the toolchain JDK, and the build dies
+    // with "Inconsistent JVM-target compatibility detected for tasks
+    // 'compileReleaseJavaWithJavac' (1.8) and 'compileReleaseKotlin' (22)".
+    // A host RN app does NOT fix this for us: React Native's Gradle plugin
+    // supplies plugin versions, never a library module's JVM target. 17 matches
+    // the Flutter plugin (`flutter/sceneview_flutter/android/build.gradle`) and
+    // React Native's own JDK 17 requirement. Caught by the standalone compile
+    // gate (`tools/rn-android-compile`, #3042) the first time this module was
+    // ever compiled by CI.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     buildFeatures {
         compose = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
