@@ -1,3 +1,7 @@
+<!-- category: Changed -->
+
+- **React Native (iOS): the module's minimum iOS version is now 18.0, up from a declared 17.0.** The 17.0 figure was never real — `SceneViewSwift` has required iOS 18.0 since #719, so an iOS 17 host app resolved the pod and then failed later at build time with a confusing error. Declaring the true floor moves that failure to `pod install`, where it names its own cause. Host apps must set `platform :ios, '18.0'` in their `Podfile` and build with Xcode 16+.
+
 <!-- category: Fixed -->
 
 - **React Native (iOS): the `pod install` of a host app no longer fails on this module's podspec.** `s.homepage` was fed `package["repository"]` — an object, which CocoaPods rejects outright (`Unacceptable type 'Hash' for 'homepage'`) — and `s.platforms` claimed iOS 17.0 while `SceneViewSwift` requires iOS 18.0, so CocoaPods could not resolve the module at all. Both are corrected, and `samples/react-native-demo`'s `Podfile`, Xcode deployment target and READMEs now state the real iOS 18.0 floor.

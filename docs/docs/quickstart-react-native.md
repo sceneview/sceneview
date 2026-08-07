@@ -9,6 +9,21 @@ npm install @sceneview-sdk/react-native
 cd ios && pod install
 ```
 
+### iOS: raise the Podfile deployment target first
+
+`SceneViewSwift`'s floor is iOS 18.0, so the module's podspec declares
+`:ios => "18.0"`. A stock React Native `Podfile` uses
+`min_ios_version_supported` (13.4), and `pod install` then fails with
+*"Specs satisfying the `react-native-sceneview` dependency were found, but they
+required a higher minimum deployment target"*. Edit `ios/Podfile` before
+installing:
+
+```ruby
+platform :ios, '18.0'
+```
+
+Xcode 16+ is required to build against that target.
+
 ## Usage
 
 ### 3D Scene

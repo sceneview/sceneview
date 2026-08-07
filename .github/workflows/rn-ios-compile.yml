@@ -216,7 +216,7 @@ jobs:
           echo "Runner arch: $RUNNER_ARCH → simulator target set in SIM_TARGET"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -261,7 +261,20 @@ jobs:
           LANG: en_US.UTF-8
           NO_FLIPPER: '1'
           RCT_NEW_ARCH_ENABLED: '0'
-        run: pod install
+        # `--deployment` is what makes the tracked `Podfile.lock` BINDING rather
+        # than decorative. Bare `pod install` silently re-resolves and rewrites
+        # the lock when the graph differs, exits 0, and the type-check then runs
+        # against a pod set nobody reviewed — while `.gitignore` claims the lock
+        # "pins the pod versions the CI type-check resolves". `--deployment`
+        # fails instead, so that claim is enforced rather than asserted.
+        #
+        # Measured before adopting: with this exact env, `pod install
+        # --deployment` exits 0 and leaves the lock byte-identical. Without
+        # `NO_FLIPPER=1` it exits 1 and reports 10 Flipper pods it wants to ADD —
+        # i.e. the env below is not cosmetic, it is the resolution the committed
+        # lock encodes. That is precisely the drift bare `pod install` would have
+        # swallowed.
+        run: pod install --deployment
 
       # Fail loudly if CocoaPods did not generate the React modulemap, rather
       # than letting the type-check fall back to something else.
