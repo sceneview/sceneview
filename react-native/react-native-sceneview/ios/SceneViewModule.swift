@@ -34,41 +34,43 @@ class RNSceneViewManager: RCTViewManager {
     }
 }
 
-/// Maps the wire string sent from JS to a `CameraControlMode` (v4.3.0).
-/// Unknown values fall back to `.orbit`.
-func rnCameraControlMode(_ raw: String?) -> CameraControlMode {
-    switch raw {
-    case "pan": return .pan
-    case "firstPerson": return .firstPerson
-    default: return .orbit
-    }
-}
-
-/// Observable state model shared between React props and SwiftUI view.
+/// State model backing the React props.
+///
+/// Still an `ObservableObject` for shape consistency with `RNARSceneState`, which
+/// genuinely drives SwiftUI; nothing observes this one since the 3D scene moved
+/// onto `SceneViewerHostView`.
 @MainActor
 class RNSceneState: ObservableObject {
     @Published var models: [RNModelData] = []
     @Published var environmentPath: String?
-    @Published var cameraOrbit: Bool = true
-    @Published var cameraControlMode: CameraControlMode = .orbit
-    @Published var autoCenterContent: Bool = true
 
-    /// Invoked from the SwiftUI content's `onEntityTapped` modifier so the
-    /// wrapper can forward the tap to React Native's `onTap` prop (issue #2053).
+    /// Accepted, stored, and deliberately not applied — as before this bridge
+    /// moved onto the shared host.
     ///
-    /// Carries the *model root* the tap resolved to — the entity named after
-    /// the model file — or `nil` when the tap did not land on a bridge-loaded
-    /// model. Never an asset-internal mesh, so the `nodeName` payload matches
-    /// Android's (see `rnTappedModelEntity(_:modelRoot:)`).
-    ///
-    /// Not `@Published` — it is plumbing, not rendered state.
-    var onTap: ((Entity?) -> Void)?
+    /// `cameraControlMode` supersedes it and the two would contradict each other
+    /// (which wins for `cameraOrbit: false, cameraControlMode: "orbit"`?). Wiring
+    /// it up here would be a behaviour change dressed as a refactor, so it stays
+    /// inert; the TypeScript surface deprecates it.
+    @Published var cameraOrbit: Bool = true
+
+    /// Wire name as it arrives from JS: `"orbit"`, `"pan"` or `"firstPerson"`.
+    /// `SceneViewerConfiguration` normalises an unrecognised value to `"orbit"`,
+    /// which is what the local mapping this replaces did.
+    @Published var cameraControlMode: String = "orbit"
+
+    @Published var autoCenterContent: Bool = true
 }
 
-/// UIView wrapper that hosts a SwiftUI `SceneView` via UIHostingController.
+/// UIView wrapper hosting the shared `SceneViewerHostView`.
+///
+/// This class owns the React prop bag; the scene itself — hosting SwiftUI in
+/// UIKit, loading models, reconciling them — belongs to `SceneViewerHostView`
+/// and is shared with the Flutter plugin and `sceneview-compose`. The AR wrapper
+/// below keeps its own SwiftUI content: `ARSceneView` is anchor-driven and
+/// shares nothing with the 3D viewer.
 class RNSceneViewWrapper: UIView {
 
-    private var hostingController: UIHostingController<RNSceneViewContent>?
+    private let hostView = SceneViewerHostView()
     private let sceneState = RNSceneState()
 
     /// Event callback for tap events.
@@ -76,24 +78,30 @@ class RNSceneViewWrapper: UIView {
         didSet {
             let block = onTap
             Task { @MainActor in
-                sceneState.onTap = { entity in
-                    // Mirrors the Android `TapEvent` payload: the world-space
-                    // position of the tapped *model* + its name. Android
-                    // reports the `ModelNode` root (the only collider a loaded
-                    // model owns) and falls back to `0,0,0` / `null` when the
-                    // tap hit no node, so do the same here.
-                    let p = entity?.position(relativeTo: nil) ?? SIMD3<Float>.zero
-                    var payload: [String: Any] = [
+                // `onTapModel` rather than the host's flattened `onTap`: this
+                // prop reports the tapped model's own origin and its name,
+                // where the flattened callback carries the hit's bounds centre
+                // and no name at all.
+                hostView.onTapModel = { hit in
+                    // Mirrors the Android `TapEvent` payload: world-space
+                    // coordinates of the tapped model + its node name. Android
+                    // reports the `ModelNode` root — the only collider a loaded
+                    // model owns — and `null` for a tap that hit no node, so
+                    // `nil` here maps to the same `nodeName: null`.
+                    //
+                    // An empty name maps to `null` too: the host leaves a model
+                    // it could derive no name for (a `bytes` source has no file
+                    // name) with whatever RealityKit called it, which is `""`
+                    // for most assets. `""` would read in JS as a model named
+                    // the empty string rather than as "no name".
+                    let p = hit?.entity.position(relativeTo: nil) ?? SIMD3<Float>.zero
+                    let name = hit?.entity.name ?? ""
+                    block?([
                         "x": p.x,
                         "y": p.y,
                         "z": p.z,
-                        "nodeName": NSNull(),
-                    ]
-                    if let entity {
-                        payload["nodeName"] =
-                            (entity.name as NSString).deletingPathExtension
-                    }
-                    block?(payload)
+                        "nodeName": name.isEmpty ? NSNull() : name,
+                    ])
                 }
             }
         }
@@ -110,12 +118,53 @@ class RNSceneViewWrapper: UIView {
     }
 
     private func setupView() {
-        let content = RNSceneViewContent(state: sceneState)
-        let hosting = UIHostingController(rootView: content)
-        hosting.view.frame = bounds
-        hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        addSubview(hosting.view)
-        hostingController = hosting
+        hostView.frame = bounds
+        hostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(hostView)
+    }
+
+    /// Pushes the current props into the host view.
+    ///
+    /// Called after every prop change. `applyConfiguration` compares field by
+    /// field and touches only what changed, so re-sending everything on each
+    /// prop update costs nothing.
+    @MainActor
+    private func applyState() {
+        let configuration = SceneViewerConfiguration()
+
+        configuration.models = sceneState.models.map { data in
+            let model = SceneViewerModel()
+            model.assetPath = data.path
+            // The per-entry id minted when the prop was decoded. A new
+            // `modelNodes` value mints new ids, which is what gives this prop
+            // its replace-the-whole-list semantics.
+            model.identity = data.id.uuidString
+            model.setScale(data.scale.x, data.scale.y, data.scale.z)
+            model.setPosition(data.position.x, data.position.y, data.position.z)
+            model.animationName = data.animation
+            // No named animation means play them all, which is this bridge's
+            // behaviour and not the Flutter one's.
+            model.autoPlayAllAnimations = true
+            // No `nodeName`: the host derives it from the source, which is what
+            // makes the `onTap` payload the model file's base name on both
+            // platforms rather than whatever RealityKit named the hit entity.
+            return model
+        }
+
+        configuration.cameraControlMode = sceneState.cameraControlMode
+        configuration.autoCenterContent = sceneState.autoCenterContent
+        // This bridge exposes no camera prop, so it authors no pose: without
+        // this, every prop change would re-assert the configuration's default
+        // pose and snap the camera back out of the auto-centre framing and away
+        // from wherever the user had orbited to.
+        configuration.cameraPoseAuthored = false
+
+        if let path = sceneState.environmentPath, !path.isEmpty {
+            configuration.environmentKind = "hdr"
+            configuration.environmentHdrPath = path
+        }
+
+        hostView.applyConfiguration(configuration)
     }
 
     // MARK: - React props
@@ -124,6 +173,7 @@ class RNSceneViewWrapper: UIView {
         didSet {
             Task { @MainActor in
                 sceneState.environmentPath = environment
+                applyState()
             }
         }
     }
@@ -150,10 +200,12 @@ class RNSceneViewWrapper: UIView {
                     let animation = dict["animation"] as? String
                     return RNModelData(path: src, scale: scale, position: position, animation: animation)
                 } ?? []
+                applyState()
             }
         }
     }
 
+    /// **Deprecated.** Superseded by `cameraControlMode`; see `RNSceneState.cameraOrbit`.
     @objc var cameraOrbit: Bool = true {
         didSet {
             Task { @MainActor in
@@ -165,9 +217,10 @@ class RNSceneViewWrapper: UIView {
     /// Camera interaction mode (v4.3.0, issue #1053).
     @objc var cameraControlMode: String? {
         didSet {
-            let mode = rnCameraControlMode(cameraControlMode)
+            let raw = cameraControlMode
             Task { @MainActor in
-                sceneState.cameraControlMode = mode
+                sceneState.cameraControlMode = raw ?? "orbit"
+                applyState()
             }
         }
     }
@@ -177,128 +230,7 @@ class RNSceneViewWrapper: UIView {
         didSet {
             Task { @MainActor in
                 sceneState.autoCenterContent = autoCenterContent
-            }
-        }
-    }
-}
-
-/// The model file's name, used to name a loaded model root.
-///
-/// Query and fragment are stripped before taking the last path component: a
-/// model source may be a URL, and `deletingPathExtension` on a raw URL only
-/// removes the extension when it is the last dot in the whole string —
-/// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise report
-/// `robot.glb?sig=SIG&v=1` as the tapped node's name. RealityKit's
-/// `ModelNode.load(_ path:)` is bundle-only today, so this is defensive; it
-/// keeps the derivation aligned with the Android bridge, which DOES take
-/// remote URLs (`ModelLoader.loadModel`).
-///
-/// "Aligned", not byte-identical: `NSString` path semantics and Kotlin's
-/// `substringAfterLast('/')` / `substringBeforeLast('.')` diverge on two
-/// degenerate inputs — a trailing slash (`models/` → Kotlin `""`, Swift
-/// `models`) and a dotfile base name (`.hidden` → Kotlin `""`, Swift
-/// `.hidden`). Neither is reachable for the `.glb` / `.gltf` / `.usdz`
-/// sources these bridges load, so the outputs match for every real asset.
-func rnModelFileName(_ path: String) -> String {
-    let stripped = path.prefix { $0 != "?" && $0 != "#" }
-    return (String(stripped) as NSString).lastPathComponent
-}
-
-/// Resolves a tapped entity to the model root the bridge loaded it from — the
-/// direct child of `modelRoot`, named `<file>.usdz` by `loadModels()`.
-///
-/// `SpatialTapGesture` reports the deepest hit entity. Inside a USDZ that is
-/// usually an asset-internal mesh (`black_dragon.usdz` reports `skin0`), so
-/// reporting `hit.entity.name` raw leaked the asset's internal naming into the
-/// JS `nodeName` payload. Android cannot do that: the only collider a loaded
-/// model owns is the `ModelNode` root (glTF child renderables get no collision
-/// shape), so its `TapEvent` always names the model.
-///
-/// Returns `nil` when the tap did not land on a bridge-loaded model, which maps
-/// to the `nodeName: null` Android reports for a tap that hit no node.
-func rnTappedModelEntity(_ entity: Entity, modelRoot: Entity) -> Entity? {
-    var node: Entity? = entity
-    while let current = node, current !== modelRoot {
-        if current.parent === modelRoot { return current }
-        node = current.parent
-    }
-    return nil
-}
-
-/// SwiftUI content view rendering `SceneViewSwift.SceneView` (issue #2067).
-///
-/// `SceneViewSwift` loads models **asynchronously** (`ModelNode.load(_:)` is
-/// `async throws`) — there is no synchronous `ModelNode(String)` initialiser,
-/// and the `@NodeBuilder` content builder composes static `EntityProvider`
-/// values, not a SwiftUI `ForEach`. So the bridge loads each `RNModelData`
-/// off the main actor's `Task`, wraps the resulting `ModelEntity`s in a
-/// stable holder entity, and feeds that holder to `SceneView`'s **imperative**
-/// `init(_ content: (Entity) -> Void)`.
-///
-/// `SceneView`'s content closure runs once when the underlying `RealityView`
-/// is created, so the holder entity is built up front and re-populated in a
-/// `.task(id:)` whenever the JS `modelNodes` prop changes — RealityKit picks
-/// up the new children on its next render frame without recreating the view.
-struct RNSceneViewContent: View {
-    @ObservedObject var state: RNSceneState
-
-    /// Stable parent entity handed to `SceneView`. Its children are the
-    /// loaded model entities; rebuilt by `loadModels()` on every prop change.
-    @State private var modelRoot = Entity()
-
-    var body: some View {
-        SceneView { root in
-            root.addChild(modelRoot)
-        }
-        .cameraControls(state.cameraControlMode)
-        .autoCenterContent(state.autoCenterContent)
-        // Forward entity taps to React Native's `onTap` prop (issue #2053).
-        // Resolved to the model root first — `SpatialTapGesture` reports the
-        // deepest hit entity, which inside a USDZ is an asset-internal mesh.
-        .onEntityTapped { entity in
-            state.onTap?(rnTappedModelEntity(entity, modelRoot: modelRoot))
-        }
-        // Reload whenever the JS `modelNodes` prop changes. Keyed on the
-        // model identities so an unrelated re-render does not re-download.
-        .task(id: state.models.map(\.id)) {
-            await loadModels()
-        }
-    }
-
-    /// Loads every model in `state.models` and replaces `modelRoot`'s
-    /// children with the freshly loaded entities. `ModelNode.load(_:)` is
-    /// `@MainActor`-isolated, so this runs on the main actor as required by
-    /// RealityKit. A failed load is skipped (the others still render).
-    @MainActor
-    private func loadModels() async {
-        // Clear previous content before reloading.
-        for child in modelRoot.children {
-            child.removeFromParent()
-        }
-        for model in state.models {
-            do {
-                let node = try await ModelNode.load(model.path)
-                // `.task(id:)` cancels this task when the `modelNodes` prop
-                // changes mid-load. A cancelled task still resumes past the
-                // `await`, so bail out before mutating the scene — otherwise a
-                // superseded load leaks a stale model into `modelRoot`.
-                guard !Task.isCancelled else { return }
-                // Name the model root after its file so a tap can report the
-                // model's identity: `rnTappedModelEntity` resolves any hit
-                // entity up to this one, and `nodeName` is this name without
-                // its extension — the string Android reports for the same tap.
-                node.entity.name = rnModelFileName(model.path)
-                node.position(model.position)
-                node.scale(model.scale)
-                if let animation = model.animation {
-                    node.playAnimation(named: animation)
-                } else if node.animationCount > 0 {
-                    node.playAllAnimations()
-                }
-                modelRoot.addChild(node.entity)
-            } catch {
-                // A single bad path must not break the whole scene.
-                print("[RNSceneView] Failed to load model '\(model.path)': \(error)")
+                applyState()
             }
         }
     }

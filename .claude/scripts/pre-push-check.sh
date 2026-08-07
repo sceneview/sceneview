@@ -63,7 +63,7 @@ echo "════════════════════════�
 # often a poisoned Gradle build cache (an empty FROM-CACHE entry), not a real
 # break — `rm -rf <module>/build && ./gradlew … --no-build-cache` is the only
 # measured remedy. That is why the log tail is printed instead of hidden.
-echo -e "\n${YELLOW}[1/11] Compiling sceneview...${NC}"
+echo -e "\n${YELLOW}[1/14] Compiling sceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
@@ -71,7 +71,7 @@ else
         "sceneview FAILED to compile"
 fi
 
-echo -e "${YELLOW}[2/11] Compiling arsceneview...${NC}"
+echo -e "${YELLOW}[2/14] Compiling arsceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
@@ -80,7 +80,7 @@ else
 fi
 
 # 2. Unit tests
-echo -e "\n${YELLOW}[3/11] Running sceneview unit tests...${NC}"
+echo -e "\n${YELLOW}[3/14] Running sceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
@@ -88,7 +88,7 @@ else
         "sceneview tests FAILED"
 fi
 
-echo -e "${YELLOW}[4/11] Running arsceneview unit tests...${NC}"
+echo -e "${YELLOW}[4/14] Running arsceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; then
     echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
 else
@@ -128,7 +128,7 @@ fi
 #     even when the test task FAILS (`changed:1` on a red run), and left
 #     untouched on an UP-TO-DATE run — so its mtime discriminates all four
 #     cases (pass / real diff / skipped / infra death).
-echo -e "\n${YELLOW}[5/11] Verifying Android screenshot goldens...${NC}"
+echo -e "\n${YELLOW}[5/14] Verifying Android screenshot goldens...${NC}"
 SNAPSHOTS_DIR="samples/android-demo/src/test/snapshots"
 RR_SUMMARY="samples/android-demo/build/test-results/roborazzi/debug/results-summary.json"
 RR_LOG="$LOG_DIR/roborazzi.log"
@@ -192,7 +192,7 @@ fi
 # Golden target = a STATIC screen (About) — never a network-fed screen like
 # Explore, whose remote gallery re-drifts a 1%-threshold pixel golden.
 # NB: the golden is resolution-bound — capture and verify on the same sim model.
-echo -e "${YELLOW}[6/11] Verifying iOS screenshot goldens...${NC}"
+echo -e "${YELLOW}[6/14] Verifying iOS screenshot goldens...${NC}"
 IOS_GOLDENS="samples/ios-demo/goldens"
 IOS_GOLDEN_NAME="about_static"
 IOS_BUNDLE_ID="io.github.sceneview.demo"
@@ -221,7 +221,7 @@ else
 fi
 
 # 5. Version sync
-echo -e "\n${YELLOW}[7/11] Checking version sync...${NC}"
+echo -e "\n${YELLOW}[7/14] Checking version sync...${NC}"
 # Capture sync-versions.sh output and exit code separately, so a crash of the
 # script is not swallowed by the pipeline (a piped crash would falsely report
 # "0 mismatches"). `set -o pipefail` is deliberately NOT used globally — many
@@ -242,7 +242,7 @@ else
 fi
 
 # 6. Website JS syntax
-echo -e "\n${YELLOW}[8/11] Validating website JS...${NC}"
+echo -e "\n${YELLOW}[8/14] Validating website JS...${NC}"
 NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
@@ -264,7 +264,7 @@ fi
 # Scans every samples/* for broken bundled paths or dead CDN URLs so the
 # class of bugs fixed in session 34 (TV demo pointing at non-existent
 # models/*.glb, web-demo pointing at 404 CDN URLs) cannot come back.
-echo -e "\n${YELLOW}[9/11] Validating demo app asset references...${NC}"
+echo -e "\n${YELLOW}[9/14] Validating demo app asset references...${NC}"
 # --no-cdn to keep pre-push fast; CI runs the full check with CDN hits.
 if bash .claude/scripts/validate-demo-assets.sh --no-cdn > /tmp/validate-demo-assets.log 2>&1; then
     echo -e "${GREEN}  ✓ All demo asset refs resolve${NC}"
@@ -280,7 +280,7 @@ fi
 # runs in quality-gate.sh, pr-check.yml and daily via maintenance.yml — but
 # the lighter pre-push gate skipped it, so a skill-only push could land drift
 # without ever hitting quality-gate.sh. Invoke it directly here too.
-echo -e "\n${YELLOW}[10/11] Checking agent skill drift...${NC}"
+echo -e "\n${YELLOW}[10/14] Checking agent skill drift...${NC}"
 if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
     if bash .claude/scripts/check-sceneview-skill.sh > /tmp/skill-drift.log 2>&1; then
         echo -e "${GREEN}  ✓ agents/sceneview/ in sync with library source${NC}"
@@ -293,10 +293,59 @@ else
     echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found, skipping${NC}"
 fi
 
+# 9. GPT knowledge base drift (#3026).
+# `gpt/knowledge-*.md` is GENERATED from llms.txt and gated in ci.yml →
+# repo-hygiene. Nothing ran it locally — not this script, not quality-gate.sh,
+# not impact-check.sh — so editing llms.txt passed every local gate and only
+# turned red on CI. That is exactly what happened to the PR that added this
+# leg. Sub-second (a node regenerate-and-compare, no write).
+echo -e "\n${YELLOW}[11/14] Checking GPT knowledge base drift...${NC}"
+if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/dev/null)}" ]; then
+    if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > /tmp/gpt-knowledge-drift.log 2>&1; then
+        echo -e "${GREEN}  ✓ gpt/knowledge-*.md in sync with llms.txt${NC}"
+    else
+        echo -e "${RED}  ✗ gpt/knowledge-*.md drifted from llms.txt:${NC}"
+        tail -10 /tmp/gpt-knowledge-drift.log | sed 's/^/      /'
+        echo -e "      Fix: node tools/generate-gpt-knowledge.js"
+        ERRORS=$((ERRORS + 1))
+    fi
+else
+    echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found, skipping${NC}"
+fi
+
+# Vendored-download hardening gate. Passes silently while nothing builds
+# third_party/filament-kmp; fails the moment something does and its downloads
+# are still unverified / its symlink extraction unvalidated.
+echo -e "\n${YELLOW}[12/14] Checking the vendored download chain...${NC}"
+if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
+    if bash .claude/scripts/check-vendored-download-safety.sh > /tmp/vendored-dl.log 2>&1; then
+        echo -e "${GREEN}  ✓ vendored download chain: not built, or hardened${NC}"
+    else
+        echo -e "${RED}  ✗ vendored download chain is BUILT but not hardened:${NC}"
+        tail -20 /tmp/vendored-dl.log | sed 's/^/      /'
+        ERRORS=$((ERRORS + 1))
+    fi
+fi
+
+# Self-hosted runner routing. Three workflows share one `runs-on` expression;
+# it must keep sending fork PRs to a disposable hosted runner AND keep sending
+# push / dispatch / schedule to the Mac we already own. Both halves fail
+# silently — one leaks reach, the other just quietly spends money.
+echo -e "\n${YELLOW}[13/14] Checking self-hosted runner routing...${NC}"
+if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
+    if python3 .claude/scripts/check-self-hosted-runner-routing.py > /tmp/runner-routing.log 2>&1; then
+        cat /tmp/runner-routing.log
+    else
+        echo -e "${RED}  ✗ self-hosted runner routing is wrong:${NC}"
+        tail -20 /tmp/runner-routing.log | sed 's/^/      /'
+        ERRORS=$((ERRORS + 1))
+    fi
+fi
+
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
 # check — catch an unintentional public-API change locally before CI does.
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.
-echo -e "\n${YELLOW}[11/11] Checking public-API ABI (apiCheck)...${NC}"
+echo -e "\n${YELLOW}[14/14] Checking public-API ABI (apiCheck)...${NC}"
 if [ -f gradlew ]; then
     if gradle_run "$LOG_DIR/api-check.log" apiCheck; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"

@@ -3651,22 +3651,68 @@ today — they draw a visible "not available yet" notice):
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, delegates to `SceneView { }` | Implemented |
-| iOS | RealityKit via `SceneViewSwift` | Needs a one-time app registration — see below |
+| iOS | RealityKit via `SceneViewSwift` | Implemented — needs a one-time app registration, see below |
 | Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
 
 **iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
 the app supplies the renderer:
 
+**Do NOT hand-roll the `UIView`.** `SceneViewSwift` ships it: `SVSceneViewerHostView`
+(`SceneViewerHostView` in Swift), configured through the primitives on
+`SVSceneViewerConfiguration`. The factory is a field-by-field copy plus two callbacks.
+
 ```kotlin notest iosMain-only — platform.UIKit.UIView has no Android counterpart
 // iosMain, before the first SceneViewer composes
 SceneViewerBridge.factory = object : SceneViewerViewFactory {
-    override fun create(spec: SceneViewerSpec): UIView = /* wrap SceneViewSwift.SceneView */
-    override fun update(view: UIView, spec: SceneViewerSpec) { /* mutate, never recreate */ }
+    override fun create(spec: SceneViewerSpec): UIView =
+        SVSceneViewerHostView().also { host ->
+            // Set the callbacks ONCE, here. `spec`'s lambdas already forward to the
+            // latest Compose state, so re-assigning them on every update buys nothing.
+            host.onTap = { hit, x, y, z, distance -> spec.onTap(hit, x, y, z, distance) }
+            host.onCameraMoved = { distance, azimuth, elevation ->
+                spec.onCameraMoved(distance, azimuth, elevation)
+            }
+            host.applyConfiguration(spec.toConfiguration())
+        }
+
+    override fun update(view: UIView, spec: SceneViewerSpec) {
+        // Mutate, never recreate: rebuilding reloads the model and discards wherever
+        // the user had orbited to.
+        (view as SVSceneViewerHostView).applyConfiguration(spec.toConfiguration())
+    }
 }
+
+// Copy each SceneViewerSpec field onto SVSceneViewerConfiguration — modelAssetPath,
+// modelURLString, modelBytes, cameraTargetX/Y/Z, cameraDistance,
+// cameraAzimuthDegrees, cameraElevationDegrees, cameraGesturesEnabled, the
+// lightDirection*/lightIntensity/ambientIntensity/castShadows group, and the
+// environment* group. Angles cross in DEGREES; the Swift side converts to radians.
 ```
 
-Without it, `SceneViewer` draws a visible "no renderer registered" notice. `onFrame` is
-never invoked on iOS — `SceneViewSwift` exposes no per-frame callback.
+Without a registered factory, `SceneViewer` draws a visible "no renderer registered"
+notice.
+
+**The host carries more than `sceneview-compose` uses.** The same
+`SceneViewerHostView` drives the Flutter plugin and the React Native module's 3D path,
+so `SVSceneViewerConfiguration` has members a Compose caller never needs. They are
+additive — leave them alone and the single-model behaviour above is unchanged — but an
+AI extending a bridge should know they exist (v4.27.0+):
+
+| Member | What it is for |
+|---|---|
+| `models: [SVSceneViewerModel]` | Several models at once. Wins over the single-model fields when non-empty; empty resolves the single-model fields into a one-element list through the same reconciliation. Each entry carries its own `identity`, which is what keeps two copies of one asset path as two models |
+| `cameraControlMode: String` | `"orbit"` (default), `"pan"`, `"firstPerson"`. Anything else falls back to orbit rather than rendering nothing |
+| `autoCenterContent: Bool` | Fit-to-bounds on the first stable frame. Defaults to `false`, because the fit owns the orbit radius and would overwrite a caller-authored distance. Callers that author no camera turn it on |
+| `cameraPoseAuthored: Bool` | Defaults to `true`. Set it to `false` when the caller has no camera at all: `applyConfiguration` then applies no pose, instead of re-asserting the default one on every call and snapping the camera away from wherever the user orbited to |
+
+`SceneViewerHostView.onTapModel: ((SceneTapHit?) -> Void)?` is a Swift-only companion to
+the `@objc` `onTap`, handing over the `SceneTapHit` rather than five primitives. The
+entity it carries is the **model root** — the direct child of the host's content root,
+named after the model file — never the deep mesh `SpatialTapGesture` actually reports
+(a tap anywhere on `black_dragon.usdz` hits `skin0`). `nil` means the tap landed on no
+model the host loaded. `hit.worldPosition` stays the bounds centre of the geometry the
+finger landed on, so it still tracks which part of a multi-mesh model was touched. Not
+reachable from Kotlin; use `onTap` there.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.
@@ -3683,6 +3729,7 @@ fun SceneViewer(
     environment: EnvironmentSource = EnvironmentSource.Default,
     onTap: ((ModelHit?) -> Unit)? = null,
     onFrame: ((frameTimeNanos: Long) -> Unit)? = null,
+    onError: ((SceneViewerError) -> Unit)? = null,
 )
 ```
 
@@ -3692,6 +3739,7 @@ fun SceneViewer(
 | `EnvironmentSource` | `Default` · `Color(r, g, b, alpha = 1f)` · `Hdr(path, showSkybox = true)` |
 | `Lighting` | `direction: Float3` · `intensity: Float` (lux) · `ambientIntensity: Float` · `castShadows: Boolean` |
 | `ModelHit` | `position: Float3` · `distance: Float` |
+| `SceneViewerError` | `message: String` · `cause: Throwable?` |
 | `CameraState` | `target` · `distance` · `azimuth` · `elevation` (degrees) · `gesturesEnabled` |
 
 Helpers: `rememberCameraState(target, distance, azimuth, elevation)` (saved across
@@ -3710,15 +3758,33 @@ fun ModelScreen() {
         lighting = Lighting(intensity = 80_000f, castShadows = true),
         environment = EnvironmentSource.Hdr("environments/studio.hdr"),
         onTap = { hit -> if (hit != null) println("hit at ${hit.position}") },
+        onError = { error -> println("load failed: ${error.message}") },
     )
 }
 ```
 
 Gotchas:
+- **A failed load is invisible without `onError`.** The viewport keeps showing the
+  environment, which is pixel-identical to a load still in progress. `onError` is opt-in;
+  without it the only trace is the platform log under the `SceneViewer` tag. It fires for
+  an exception (missing asset, HTTP error, size cap) *and* for a loader answering "no
+  model" without throwing (a malformed glTF/GLB that Filament refuses to parse), so
+  `SceneViewerError.cause` is `null` in the second case. Always delivered on the **main
+  thread**, including for a failed download — unlike `onFrame`, which is on the render
+  thread — so a handler may touch UI directly. Raised on **Android only** today: desktop
+  is a placeholder that loads nothing, and the iOS Kotlin side raises none of its own,
+  forwarding only what the host's Swift factory reports.
+- `ModelSource.Asset` takes a path relative to the app's bundled assets and **rejects any
+  URI scheme** — `content://`, `file://`, `https://` all throw `IllegalArgumentException`
+  from `commonMain`, so the refusal is identical on every platform. Without that check
+  Android's loader would dispatch on the scheme and read a private ContentProvider or an
+  arbitrary local file, which is the hole `ModelSource.Url`'s http/https rule exists to
+  close. Resolve a user-supplied or deep-linked string to `Url`, or read it yourself and
+  pass `Bytes`.
 - `ModelSource.Bytes` AND `ModelSource.Url` must be self-contained (GLB, or glTF with
   embedded resources). Only `Asset` resolves sibling resources; `Url` downloads exactly
-  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete —
-  and does so silently, with no error surfaced.
+  one file, so a `.gltf` referencing an external `.bin` or texture loads incomplete — and
+  does so with no error raised at all, since an incomplete parse is not a failed one.
 - `ModelSource.Url` accepts absolute http/https only. That check is in `commonMain`, so
   it holds on every platform. The connect/read timeouts and the 64 MB cap are **Android
   only** — they live in the Android downloader; on iOS the URL is handed to the
@@ -3728,6 +3794,27 @@ Gotchas:
   HDR environment and use it everywhere.
 - `EnvironmentSource.Hdr(showSkybox = false)` makes the viewport transparent so Compose
   content behind it shows through.
+
+iOS-only divergences (RealityKit, not bugs — do not generate code that relies on the
+Android behaviour here):
+- `onFrame` is **never invoked on iOS**. `SceneViewSwift` publishes no per-frame
+  callback, and nothing is simulated in its place, so a frame counter never advances.
+- iOS reads **`.usdz` / `.reality` only** — RealityKit does not read glTF or GLB, which
+  is what Android and desktop read. There is no format all platforms accept: ship both
+  and pick per platform, or convert with `tools/convert-usdz.sh`.
+- A tap that **misses** the model produces no `onTap` call at all on iOS, where Android
+  calls back with `null`.
+- `ModelHit.position` is the tapped entity's **bounds centre** on iOS, not a true
+  ray-surface intersection: RealityKit exposes no scene-space tap location outside
+  visionOS.
+- `EnvironmentSource.Color` still gets RealityKit's default image-based light on iOS
+  (which is not exposed), where Android leaves the model lit by the key light alone.
+  `Lighting.ambientIntensity` therefore applies only with `EnvironmentSource.Hdr`.
+- `CameraState.distance` is clamped to `1…50` scene units on iOS, RealityKit's dolly
+  envelope. The clamped value is written back into `CameraState`, so a clamp is visible
+  in your state rather than a silent disagreement with the screen.
+- `CameraState.azimuth`, `elevation`, `distance` and `gesturesEnabled` are otherwise
+  fully two-way on iOS: gestures write into them and writes drive the camera.
 
 Full rationale: `docs/docs/compose-multiplatform.md`.
 
@@ -4364,7 +4451,43 @@ View modifiers (chainable):
 .framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter. NO EFFECT when autoCenterContent(false)
 .cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
 .contentID(_ id: some Hashable) -> SceneView                // v4.26.0+ — re-runs the content closure IN PLACE when id changes. Use this, NEVER SwiftUI .id(), to swap the model
+.cameraPose(_ pose: SceneCameraPose?) -> SceneView          // v4.27.0+ — drives the orbit camera continuously (radians). Applied only when the VALUE changes, so it coexists with a live drag
+.onCameraChanged(_ handler: @escaping (SceneCameraPose) -> Void) -> SceneView  // v4.27.0+ — fires after EVERY camera change: drag, pinch, auto-rotate step, fit-to-bounds re-frame, and a clamped .cameraPose write
+.cameraGesturesEnabled(_ enabled: Bool) -> SceneView        // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which hands the camera to Apple and disables .cameraPose too
+.onEntityTapHit(_ handler: @escaping (SceneTapHit) -> Void) -> SceneView  // v4.27.0+ — tap + world position. Distinct BASE name on purpose: a `hit:` label overload made every existing `.onEntityTapped { entity in }` ambiguous
 ```
+
+**Two-way camera (v4.27.0+).** `.cameraPose(_:)` writes, `.onCameraChanged(_:)` reads
+back. Without the read-back a hoisted camera state can only report what it last wrote —
+the user orbits, the screen moves, and every read still returns the initial pose.
+
+```swift
+@State private var pose = SceneCameraPose(azimuth: 0, elevation: .pi / 12, distance: 4)
+
+SceneView { root in /* ... */ }
+    .cameraPose(pose)
+    .onCameraChanged { new in
+        Task { @MainActor in pose = new }   // hop REQUIRED: the callback fires from
+    }                                        // inside RealityKit's update pass
+```
+
+`SceneCameraPose` is `(azimuth, elevation, distance, target)`, angles in **radians**.
+Elevation is clamped to ±85° and distance to `1…50` on apply, and the clamped value is
+what `onCameraChanged` reports — so a pose that could not be honoured says so rather
+than leaving your state and the screen disagreeing.
+
+`SceneTapHit` is `(entity, worldPosition)`. `worldPosition` is the tapped entity's
+**bounds centre**, not the exact surface point: `location3D` and
+`EntityTargetValue.convert` are visionOS-only, and a SwiftUI `RealityView` exposes no
+scene raycast on iOS/macOS.
+
+**Hit testing needs `InputTargetComponent`, and you get it for free (v4.27.0+).** A
+`CollisionComponent` alone never made an entity tappable — SwiftUI's
+`targetedToAnyEntity()` gestures also require `InputTargetComponent`, and before v4.27.0
+nothing set it, so `.onEntityTapped` and every `NodeGesture` handler silently never
+fired. `SceneView` now applies it to the whole content subtree, `ModelNode.load` applies
+it under `enableCollision`, and `NodeGesture` registration applies it to the entity. If
+you build entities outside those paths, call `.makeInputTargetable()` yourself.
 
 **Swapping the model in a scene (`contentID`, v4.26.0+).** The content closure
 runs once, when the scene is created. To show a different model, change

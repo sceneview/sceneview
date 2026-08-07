@@ -50,6 +50,10 @@ SceneView { root in
 .autoCenterContent(true)           // v4.3.0+ — library translates content centroid to orbit pivot (default true; pass false to keep explicit placements)
 .framingMargin(0.95)               // v4.26.0+ — padding on the auto-fit distance (default 1.15; 1.0 = bounding sphere tangent; < 1 fills the frame)
 .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // v4.26.0+ — seeds the INITIAL orbit pose in radians; elevation is positive ABOVE the target (defaults: 0, 30°)
+.cameraPose(pose)                  // v4.27.0+ — drives the camera CONTINUOUSLY (SceneCameraPose, radians). Applied only when the value changes, so it coexists with a live drag
+.onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — fires after EVERY camera change (drag, pinch, auto-rotate, re-frame). The hop is required: it fires inside RealityKit's update pass
+.cameraGesturesEnabled(false)      // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which also disables .cameraPose
+.onEntityTapHit { hit in }         // v4.27.0+ — tap + world position (SceneTapHit). Bounds centre, not the surface point
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance

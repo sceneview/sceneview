@@ -22,7 +22,7 @@ SceneView uses **native renderers per platform** for the best performance and to
 | **Android TV** | Filament | Compose TV | `sceneview` | Alpha |
 | **Flutter** | Filament / RealityKit | PlatformView | `flutter/sceneview_flutter` | Alpha |
 | **React Native** | Filament / RealityKit | Fabric | `react-native/react-native-sceneview` | Alpha |
-| **Compose Multiplatform** | per-platform | Compose Multiplatform | `sceneview-compose` | Android implemented; iOS + Desktop placeholder |
+| **Compose Multiplatform** | per-platform | Compose Multiplatform | `sceneview-compose` | Android + iOS implemented; Desktop placeholder |
 
 !!! note "Compose Multiplatform is a façade, not a platform"
     `sceneview-compose` gives you one `SceneViewer` composable from `commonMain` and
@@ -107,7 +107,7 @@ SceneView works on Android TV using the same Filament renderer as mobile. The `S
 A Flutter plugin that bridges to native SceneView rendering on both Android (Filament) and iOS (RealityKit) via PlatformView.
 
 - **Android**: `ComposeView` hosting `SceneView { }` composable
-- **iOS**: `UIHostingController` hosting SwiftUI `SceneView { }`
+- **iOS**: `SceneViewerHostView`, the shared `SceneViewSwift` host, for the 3D path; AR keeps its own platform view
 - **Install**: `flutter_sceneview: ^4.24.0` in pubspec.yaml ([pub.dev](https://pub.dev/packages/flutter_sceneview) — the packages named `sceneview` / `sceneview_flutter` are unrelated third-party uploads)
 
 [:octicons-arrow-right-24: Flutter Quickstart](quickstart-flutter.md)
@@ -119,7 +119,7 @@ A Flutter plugin that bridges to native SceneView rendering on both Android (Fil
 A React Native module that bridges to native SceneView rendering on both Android (Filament) and iOS (RealityKit) via Fabric components.
 
 - **Android**: `SimpleViewManager` with `ComposeView` hosting `SceneView { }`
-- **iOS**: `RCTViewManager` with `UIHostingController` hosting `SceneView { }`
+- **iOS**: `RCTViewManager` with `SceneViewerHostView`, the shared `SceneViewSwift` host, for the 3D path; AR keeps its own platform view
 - **Install**: `npm install @sceneview-sdk/react-native`
 
 [:octicons-arrow-right-24: React Native Quickstart](quickstart-react-native.md)

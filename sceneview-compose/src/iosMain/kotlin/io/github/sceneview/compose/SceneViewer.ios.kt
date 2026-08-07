@@ -26,6 +26,7 @@ public actual fun SceneViewer(
     environment: EnvironmentSource,
     onTap: ((ModelHit?) -> Unit)?,
     onFrame: ((frameTimeNanos: Long) -> Unit)?,
+    onError: ((SceneViewerError) -> Unit)?,
 ) {
     val factory = SceneViewerBridge.factory
 
@@ -43,6 +44,7 @@ public actual fun SceneViewer(
     // Swift side once, at view creation, and must keep pointing at the latest lambdas.
     val currentOnTap by rememberUpdatedState(onTap)
     val currentCamera by rememberUpdatedState(camera)
+    val currentOnError by rememberUpdatedState(onError)
 
     val spec = SceneViewerSpec(
         modelAssetPath = (model as? ModelSource.Asset)?.path,
@@ -93,8 +95,17 @@ public actual fun SceneViewer(
             currentCamera.azimuth = azimuth
             currentCamera.elevation = elevation
         },
+
+        // The renderer lives in Swift, so a load failure has no Kotlin exception to
+        // carry — only the message the RealityKit side reports.
+        onError = { message -> currentOnError?.invoke(SceneViewerError(message)) },
     )
 
+    // Structural, not identity: [SceneViewerSpec] compares by value (and its bytes by
+    // content), so a recomposition that changed nothing writes nothing here, and `update`
+    // below is not re-invoked. Without that, every recomposition — including the one each
+    // touch-move event triggers through CameraState — would hand the Swift side a new
+    // spec carrying the same model and ask it to apply it again.
     val currentSpec by rememberUpdatedState(spec)
 
     UIKitView(

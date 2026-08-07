@@ -106,6 +106,11 @@ API_DIRS=(
     sceneview/src/main
     arsceneview/src/main
     sceneview-core/src/commonMain
+    # `commonMain` only: it is the whole published surface of sceneview-compose
+    # (the module runs `explicitApi()`, and the per-platform `actual`s add no
+    # declaration a consumer can name). Adding the platform source sets would
+    # flag every internal helper as a docs-worthy API change.
+    sceneview-compose/src/commonMain
     SceneViewSwift/Sources
     sceneview-web/src
 )

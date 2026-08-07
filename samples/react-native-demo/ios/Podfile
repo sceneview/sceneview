@@ -5,7 +5,12 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# NOT `min_ios_version_supported` (React Native 0.73's floor is iOS 13.4):
+# `react-native-sceneview` bridges SceneViewSwift, whose own floor is iOS 18.0.
+# With the RN default, `pod install` fails outright with "Specs satisfying the
+# `react-native-sceneview` dependency were found, but they required a higher
+# minimum deployment target."
+platform :ios, '18.0'
 prepare_react_native_project!
 
 # If you are using a `react-native-flipper` your iOS build will fail when `NO_FLIPPER=1` is set.

@@ -112,6 +112,12 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       flutter: ${{ steps.filter.outputs.flutter }}
       kmp: ${{ steps.filter.outputs.kmp }}
+      # Declaring the filter under `with.filters` is NOT enough: an output
+      # missing from this block evaluates to the empty string, every
+      # `needs.changes.outputs.<name> == 'true'` is false, and the job is
+      # skipped on every run — which GitHub reports as success. A gate that
+      # can never fire looks exactly like a gate that always passes.
+      compose: ${{ steps.filter.outputs.compose }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -171,6 +177,16 @@ jobs:
               - 'arsceneview/**'
               - 'sceneview/**'
               - 'sceneview-web/**'
+            # Narrower than `kmp` on purpose. The only job gated on this runs
+            # on a macOS runner and links a Kotlin/Native test binary, which is
+            # the most expensive thing in this workflow per line of code it
+            # covers. `kmp` would fire it for any change under sceneview/,
+            # arsceneview/, sceneview-core/ or sceneview-web/ — none of which
+            # can affect an iosTest that only exercises sceneview-compose's own
+            # iosMain types.
+            compose:
+              - *shared
+              - 'sceneview-compose/**'
 
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
@@ -227,8 +243,7 @@ jobs:
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml),
-      # scoped to the three library modules — same scope as the Android Lint step
-      # above.
+      # scoped to the four library modules.
       #
       # BLOCKING: detekt was upgraded from 1.23.8 (which silently no-op'd task
       # registration on Kotlin 2.3.x / AGP 8.13.x) to detekt 2.0.0-alpha.0 in
@@ -249,6 +264,7 @@ jobs:
             sceneview/build/reports/detekt/
             arsceneview/build/reports/detekt/
             sceneview-core/build/reports/detekt/
+            sceneview-compose/build/reports/detekt/
           if-no-files-found: ignore
 
       - name: Upload lint reports
@@ -667,6 +683,97 @@ jobs:
             :sceneview-compose:compileKotlinIosSimulatorArm64 \
             --stacktrace
 
+  # ── Kotlin/Native unit tests (iOS simulator) ────────────────────────────
+  # The job above compiles the iOS targets to klibs, which Linux can do. It
+  # cannot LINK or RUN a Kotlin/Native test binary — that needs the Apple
+  # toolchain — so until this job existed, every `iosTest` source set in the
+  # repo was unexecuted code. `SceneViewerSpecTest` is the first, and it
+  # guards a property that is invisible to a compile: `SceneViewerSpec`
+  # comparing by value (and its model bytes by content) is the only thing
+  # stopping every recomposition from re-applying the same model to the
+  # RealityKit renderer. A compile-only check would pass on the identity
+  # equality that defect was made of.
+  #
+  # Separate job, not a step in the one above: that one is ubuntu-latest and
+  # deliberately cheap. This one is macOS, and the Kotlin/Native link is the
+  # long pole (~10 min cold, measured locally), so it must not serialise in
+  # front of the klib compile.
+  kmp-native-test:
+    name: KMP native unit tests (iOS sim)
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.compose == 'true'
+    # Same opt-in as bridge-ios-compile.yml: the self-hosted Mac when its
+    # heartbeat says it is awake, a hosted macOS runner otherwise — and never
+    # for a fork PR, which stays on `macos-15`. That workflow carries the full
+    # rationale for both halves of the condition; keep the three copies
+    # (here, bridge-ios-compile.yml, device-qa.yml) identical.
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
+    # Kept at/below the other blocking jobs (30 min) so the CI Gate's 50-min
+    # internal deadline keeps its margin. The cold Kotlin/Native link is the
+    # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,
+    # and 33 s to re-link and re-run after a one-file change. The 30 min is
+    # headroom for a slower hosted runner, not an expected duration.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Kotlin/Native links against whatever SDK DEVELOPER_DIR points at, and
+      # the `macos-15` image still defaults to Xcode 16.4 (iOS 18.5 SDK). The
+      # Kotlin/Native 2.4.10 platform klibs are built against a newer SDK, so
+      # linking the test binary under the default toolchain fails with
+      # `Undefined symbols: _OBJC_CLASS_$_UIViewLayoutRegion` and
+      # `framework 'UIUtilities' not found` — the class does not exist in the
+      # 18.5 SDK (job 92699724938, the first run of this job).
+      #
+      # Same block as bridge-ios-compile.yml: DEVELOPER_DIR rather than
+      # `sudo xcode-select -s`, because the sudo form needs NOPASSWD in
+      # /etc/sudoers, which the self-hosted Mac does not provide — and this
+      # job targets that runner whenever its heartbeat says it is awake.
+      - name: Select Xcode
+        run: |
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
+
+      - uses: ./.github/actions/setup-gradle
+
+      # -Xmx8g, overriding the -Xmx4g in gradle.properties. NOT a precaution:
+      # `linkDebugTestIosSimulatorArm64` OOM-killed the Gradle daemon twice at
+      # 4g while this test was being written ("Gradle build daemon disappeared
+      # unexpectedly"), and it completes at 8g. The Kotlin/Native linker runs
+      # inside the daemon, so the repo-wide value is what it gets — and
+      # setup-gradle does not override it, meaning this job would have failed
+      # the same way on its first run.
+      #
+      # Scoped to this step rather than raised in gradle.properties: 4g is the
+      # right default for every other job in this repo, several of which run on
+      # 16 GB runners in parallel with an emulator.
+      - name: Run iOS simulator unit tests
+        run: |
+          ./gradlew -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -XX:MaxMetaspaceSize=768m" \
+            :sceneview-compose:iosSimulatorArm64Test --stacktrace
+
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kmp-native-test-results
+          path: sceneview-compose/build/test-results/
+          if-no-files-found: ignore
+
   # ── Repo hygiene checks ─────────────────────────────────────────────────
   # One job consolidating the 5 micro grep/validate gates that used to each
   # surface as their own top-level status check (see #1305). Each gate runs
@@ -704,6 +811,51 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
+
+      # Refuses to BUILD a vendored tree whose build-logic downloads archives
+      # without verifying them and unpacks symlinks without validating their
+      # targets. `third_party/filament-kmp/` was removed from main in #3015, so
+      # today this exits 0 on "nothing vendored". It arms itself the instant the
+      # tree comes back AND something builds it (#2540) — which is the moment a
+      # reviewer is thinking about CMake and jextract, not about tar entries.
+      - name: Check vendored download chain is hardened before it is built
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/check-vendored-download-safety.sh
+
+      # The gate above is dormant on the current tree — with nothing vendored it
+      # exits 0 without exercising either probe, and will stay that way until the
+      # desktop spike restores the copy. This self-test drives its FAILING path
+      # on synthetic trees so a loosened probe is caught now, rather than in the
+      # PR it was meant to stop.
+      - name: Self-test the vendored-download gate
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-vendored-download-safety.sh
+
+      # Self-hosted macOS routing. Three workflows share one `runs-on`
+      # expression; until this gate existed, "keep the three copies identical"
+      # was a comment. It evaluates the real expression under simulated events:
+      # fork PRs must land on a disposable hosted runner, and push / dispatch /
+      # schedule must keep the Mac we already own. Both directions fail
+      # silently — one leaks reach onto a persistent machine, the other just
+      # quietly spends hosted minutes.
+      #
+      # This job is deliberately NOT path-gated, so a workflow-only PR still
+      # runs it. A gate that skips itself on the very diff it polices is green
+      # for life (#2988).
+      - name: Check self-hosted runner routing
+        if: always()
+        shell: bash
+        run: python3 .claude/scripts/check-self-hosted-runner-routing.py
+
+      # Drives the gate's FAILING path on synthetic trees — including the old
+      # two-term expression it was written to catch. Without this, a loosened
+      # probe reports green on a repo that happens to be correct.
+      - name: Self-test the self-hosted routing gate
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
 
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the

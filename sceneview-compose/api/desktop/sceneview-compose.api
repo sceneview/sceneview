@@ -135,7 +135,14 @@ public final class io/github/sceneview/compose/ModelSource$Url : io/github/scene
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/compose/SceneViewerError {
+	public static final field $stable I
+	public final fun getCause ()Ljava/lang/Throwable;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/compose/SceneViewer_desktopKt {
-	public static final fun SceneViewer (Lio/github/sceneview/compose/ModelSource;Landroidx/compose/ui/Modifier;Lio/github/sceneview/compose/CameraState;Lio/github/sceneview/compose/Lighting;Lio/github/sceneview/compose/EnvironmentSource;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun SceneViewer (Lio/github/sceneview/compose/ModelSource;Landroidx/compose/ui/Modifier;Lio/github/sceneview/compose/CameraState;Lio/github/sceneview/compose/Lighting;Lio/github/sceneview/compose/EnvironmentSource;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
 }
 

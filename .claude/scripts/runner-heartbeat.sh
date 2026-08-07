@@ -5,9 +5,10 @@
 #   SELF_HOSTED_MACOS_LAST_SEEN — ISO 8601 UTC timestamp, refreshed every run
 #   SELF_HOSTED_MACOS_ONLINE    — "true" while runner.status == "online"
 #
-# Workflows pick the runner via a one-line expression in `runs-on`:
-#
-#   runs-on: ${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}
+# Workflows pick the runner via a one-line expression in `runs-on`. It is NOT
+# reproduced here: it also carries a fork-PR clause, and a copy in a comment is
+# a copy that drifts. Take it verbatim from the `self-hosted-runner` skill, or
+# from `.github/workflows/bridge-ios-compile.yml`, which holds the rationale.
 #
 # When this Mac is asleep / off the heartbeat stops; freshness of LAST_SEEN
 # acts as the safety net (a stale ONLINE=true is overridden by an aged

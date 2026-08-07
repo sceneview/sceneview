@@ -1,14 +1,20 @@
-import React from 'react';
+// `tsconfig.json` sets `"jsx": "react"` — the CLASSIC runtime — so every JSX
+// element below compiles to `React.createElement(...)` (verified in the
+// published `lib/commonjs/index.js`). Biome's `useImportType` only sees the
+// `React.FC` type annotations, not the JSX lowering, so it offers a "safe fix"
+// that would erase this import and break the shipped bundle at runtime.
+// biome-ignore lint/style/useImportType: React is a VALUE import — see above.
+import React from "react";
 import {
-  requireNativeComponent,
   NativeModules,
-  Platform,
-  type ViewStyle,
   type NativeSyntheticEvent,
-  View,
-  Text,
+  Platform,
+  requireNativeComponent,
   StyleSheet,
-} from 'react-native';
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 // ---------------------------------------------------------------------------
 // Node type interfaces
@@ -41,7 +47,7 @@ export interface ModelNode {
  *   cross-platform bridge-parity umbrella (#909). Use `modelNodes` on iOS.
  */
 export interface GeometryNode {
-  type: 'box' | 'cube' | 'sphere' | 'cylinder' | 'plane';
+  type: "box" | "cube" | "sphere" | "cylinder" | "plane";
   size?: [number, number, number];
   position?: [number, number, number];
   rotation?: [number, number, number];
@@ -68,7 +74,7 @@ export interface GeometryNode {
  *   cross-platform bridge-parity umbrella (#909).
  */
 export interface LightNode {
-  type: 'directional' | 'point' | 'spot';
+  type: "directional" | "point" | "spot";
   intensity?: number;
   color?: string;
   position?: [number, number, number];
@@ -97,7 +103,7 @@ export interface TapEvent {
 
 export interface PlaneDetectedEvent {
   id: string;
-  type: 'horizontal' | 'vertical';
+  type: "horizontal" | "vertical";
   center: [number, number, number];
   extent: [number, number];
 }
@@ -115,7 +121,7 @@ export interface PlaneDetectedEvent {
  *   back to orbit (the per-mode switch is an iOS-first v4.3.0 addition —
  *   the Android side is tracked in issue #1051).
  */
-export type CameraControlMode = 'orbit' | 'pan' | 'firstPerson';
+export type CameraControlMode = "orbit" | "pan" | "firstPerson";
 
 export interface SceneViewProps {
   style?: ViewStyle;
@@ -138,7 +144,17 @@ export interface SceneViewProps {
    */
   lightNodes?: LightNode[];
 
-  /** Enable default orbit camera controls. Default: true. */
+  /**
+   * Enable default orbit camera controls. Default: `true`.
+   *
+   * @deprecated Superseded by {@link SceneViewProps.cameraControlMode}, and
+   * **inert on iOS**: the two would contradict each other — nothing can say
+   * which wins for `cameraOrbit: false, cameraControlMode: 'orbit'` — so the
+   * iOS bridge deliberately reads only `cameraControlMode`. Still honoured on
+   * Android. There is currently no way to freeze the camera from this bridge
+   * on iOS; `SceneViewSwift` has `cameraGesturesEnabled` but it is not exposed
+   * here yet.
+   */
   cameraOrbit?: boolean;
 
   /**
@@ -211,14 +227,14 @@ export interface ARSceneViewProps extends SceneViewProps {
 // Native components (only available on Android and iOS)
 // ---------------------------------------------------------------------------
 
-const isNativeAvailable = Platform.OS === 'android' || Platform.OS === 'ios';
+const isNativeAvailable = Platform.OS === "android" || Platform.OS === "ios";
 
 const NativeSceneView = isNativeAvailable
-  ? requireNativeComponent<SceneViewProps>('RNSceneView')
+  ? requireNativeComponent<SceneViewProps>("RNSceneView")
   : null;
 
 const NativeARSceneView = isNativeAvailable
-  ? requireNativeComponent<ARSceneViewProps>('RNARSceneView')
+  ? requireNativeComponent<ARSceneViewProps>("RNARSceneView")
   : null;
 
 // ---------------------------------------------------------------------------
@@ -234,12 +250,12 @@ const UnsupportedView: React.FC<{ name: string }> = ({ name }) => (
 const fallbackStyles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a2e",
   },
   text: {
-    color: '#aaa',
+    color: "#aaa",
     fontSize: 16,
   },
 });
@@ -293,8 +309,7 @@ interface RNARRecorderModule {
   saveToPhotoLibrary(movPath: string): Promise<void>;
 }
 
-const NativeARRecorder: RNARRecorderModule | undefined =
-  NativeModules.RNARRecorder;
+const NativeARRecorder: RNARRecorderModule | undefined = NativeModules.RNARRecorder;
 
 /**
  * Records an AR session to a video file (v4.3.0).
@@ -320,14 +335,14 @@ const NativeARRecorder: RNARRecorderModule | undefined =
 export class ARRecorder {
   /** `true` when {@link ARRecorder} is supported on the current platform. */
   static get isSupported(): boolean {
-    return Platform.OS === 'ios' && NativeARRecorder != null;
+    return Platform.OS === "ios" && NativeARRecorder != null;
   }
 
   private rejectUnsupported(): Promise<never> {
     return Promise.reject(
       new Error(
-        'ARRecorder is currently only supported on iOS. Android AR session ' +
-          'recording is tracked in issue #1051.'
+        "ARRecorder is currently only supported on iOS. Android AR session " +
+          "recording is tracked in issue #1051."
       )
     );
   }
