@@ -1,5 +1,6 @@
 #if os(iOS) || os(macOS) || os(visionOS)
 import Foundation
+import RealityKit
 import simd
 
 // The multi-model half of ``SceneViewerHostView``.
@@ -222,6 +223,33 @@ func sceneViewerRequestedPose(
     authored ? pose : nil
 }
 
+// MARK: - Tap resolution
+
+/// The model `tapped` belongs to: the direct child of `contentRoot` above it.
+///
+/// Every model a host loads is attached as a direct child of its content root and named
+/// after its source, so climbing to that child turns any hit — however deep inside the
+/// asset — into the model that was tapped. `SpatialTapGesture` hands back the *deepest*
+/// hit entity, and walking up to the first *named* ancestor instead stops inside the
+/// asset, because USD assets name their meshes: that is what reported `skin0` for a tap
+/// on `black_dragon.usdz`.
+///
+/// `nil` when `tapped` is not part of a model that root loaded — including the content
+/// root itself, which is not a model, and an entity detached from it entirely.
+///
+/// A free function rather than a method on the content root so it is reachable from
+/// `swift test`: the host is UIKit-only and never compiles on macOS, and this walk is
+/// precisely the logic that was wrong.
+@MainActor
+func sceneViewerModelRoot(for tapped: Entity, contentRoot: Entity) -> Entity? {
+    var node: Entity? = tapped
+    while let current = node, current !== contentRoot {
+        if current.parent === contentRoot { return current }
+        node = current.parent
+    }
+    return nil
+}
+
 // MARK: - Node name
 
 /// The name given to a loaded model root — which is what a tap reports back.
@@ -231,10 +259,14 @@ func sceneViewerRequestedPose(
 /// `ModelNodeData.nodeName`): strip any query and fragment, take the last path component,
 /// drop the extension. `models/robot.glb` → `robot`.
 ///
-/// **The query strip is not decoration.** A model source may be a URL, and
-/// `deletingPathExtension` on a raw URL string only removes the extension when it is the
-/// last dot in the whole string — `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise be
-/// published as `robot.glb?sig=SIG&v=1`.
+/// **Nothing but the path is looked at, and that is not decoration.** A model source may
+/// be a URL whose query carries a credential, and `deletingPathExtension` on a raw URL
+/// string only removes the extension when it is the last dot in the whole string —
+/// `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise be published as
+/// `robot.glb?sig=SIG&v=1`. A URL is therefore reduced to `URL.path` before anything else,
+/// which drops the scheme, the userinfo and the authority outright rather than relying on
+/// the last-path-component cut to step over them — `https://user:pass@host` has no path
+/// component at all, so that cut would have published the credentials verbatim.
 ///
 /// `nil` for `.bytes` (there is no file name to derive from) and whenever the derivation
 /// comes out empty, which leaves the loaded entity with whatever name the asset carries —
@@ -255,13 +287,18 @@ func sceneViewerNodeName(explicit: String?, request: SceneViewerModelRequest) ->
     case .asset(let path):
         source = path
     case .url(let url):
-        source = url.absoluteString
+        // The path only — see the note above. It also percent-decodes, so an encoded
+        // `%3F` is a real `?` by the time the strip below sees it.
+        source = url.path
     }
 
     let stripped = String(source.prefix { $0 != "?" && $0 != "#" })
     let base = (stripped as NSString).lastPathComponent
     let name = (base as NSString).deletingPathExtension
-    return name.isEmpty ? nil : name
+    // `"/"` is what `lastPathComponent` returns for a root-only path, which is what a
+    // path-less URL reduces to (`https://host/` → `/`). It is not a file name, and
+    // publishing it would be indistinguishable from a model genuinely called `/`.
+    return name.isEmpty || name == "/" ? nil : name
 }
 
 // MARK: - Bytes file extension

@@ -777,21 +777,10 @@ final class SceneViewerContentRoot {
 
     /// The model `tapped` belongs to: the direct child of ``entity`` above it.
     ///
-    /// Every model this root loads is attached as a direct child and named after its
-    /// source, so climbing to that child turns any hit — however deep inside the asset —
-    /// into the model that was tapped. Walking up to the first *named* ancestor instead
-    /// stops inside the asset, because USD assets name their meshes: that is what reported
-    /// `skin0` for a tap on `black_dragon.usdz`.
-    ///
-    /// `nil` when `tapped` is not part of a model this root loaded — including a tap on
-    /// the content root itself, which is not a model.
+    /// Delegates to ``sceneViewerModelRoot(for:contentRoot:)``, which carries the
+    /// reasoning and — unlike this UIKit-only type — is reachable from `swift test`.
     func modelRoot(for tapped: Entity) -> Entity? {
-        var node: Entity? = tapped
-        while let current = node, current !== entity {
-            if current.parent === entity { return current }
-            node = current.parent
-        }
-        return nil
+        sceneViewerModelRoot(for: tapped, contentRoot: entity)
     }
 
     private static func load(_ request: SceneViewerModelRequest) async throws -> ModelNode {

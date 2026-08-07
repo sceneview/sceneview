@@ -393,24 +393,42 @@ data class ModelNodeData(
 ) {
     /**
      * The name reported as the tap payload's `nodeName`: the model file's base
-     * name without extension, matching the iOS bridge (which names each loaded
-     * model root after its file and strips the extension on tap).
+     * name without extension, matching the iOS bridge (whose host names each
+     * loaded model root after its file and reports that name on tap).
      *
      * [src] is documented as an "asset path **or URL**", and `ModelLoader`
-     * really does load `https://` sources, so the query and fragment are
-     * stripped FIRST. Cutting at the last `.` on a raw URL only works when the
-     * extension is the last dot in the whole string: for
+     * really does load `https://` sources, so everything that is not the path
+     * is dropped FIRST. Cutting at the last `.` on a raw URL only works when
+     * the extension is the last dot in the whole string: for
      * `https://cdn/robot.glb?sig=SIG&v=1.2` it yields
      * `robot.glb?sig=SIG&v=1` — a CDN signature leaking into a payload that
-     * apps routinely put in a label or an analytics event.
+     * apps routinely put in a label or an analytics event. The authority goes
+     * with it: `https://user:pass@host` has no path component for the last-`/`
+     * cut to step over, so the credentials would have been published verbatim.
      *
      * `null` for a path with no usable base name, so the payload stays
      * `nodeName: null` rather than an empty string.
      */
     fun nodeName(): String? =
-        src.substringBefore('?').substringBefore('#')
-            .substringAfterLast('/').substringBeforeLast('.')
+        urlPathOf(src).substringAfterLast('/').substringBeforeLast('.')
             .takeIf { it.isNotEmpty() }
+}
+
+/**
+ * The path part of [source], or the whole thing when it is not a URL.
+ *
+ * Kept as string surgery rather than `android.net.Uri` so it stays exercisable
+ * from a plain JVM unit test — `Uri.parse` is a stub outside an instrumented
+ * run. Returns "" for a URL with an authority and no path, which is what makes
+ * the caller report `null` instead of naming a model after a host.
+ */
+private fun urlPathOf(source: String): String {
+    val withoutQuery = source.substringBefore('?').substringBefore('#')
+    val schemeEnd = withoutQuery.indexOf("://")
+    if (schemeEnd < 0) return withoutQuery
+    val afterScheme = withoutQuery.substring(schemeEnd + 3)
+    val pathStart = afterScheme.indexOf('/')
+    return if (pathStart < 0) "" else afterScheme.substring(pathStart)
 }
 
 data class GeometryNodeData(

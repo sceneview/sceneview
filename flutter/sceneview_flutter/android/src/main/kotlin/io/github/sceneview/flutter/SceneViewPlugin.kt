@@ -151,18 +151,36 @@ private fun parseLightNode(call: MethodCall): FlutterLightNode = FlutterLightNod
  * without extension, identical to what the iOS bridge derives.
  *
  * A model path may be a URL — `ModelLoader.loadModel` loads `https://` sources
- * — so the query and fragment are stripped FIRST. Cutting at the last `.` on a
- * raw URL only strips the extension when it is the last dot in the whole
- * string: `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise yield
+ * — so everything that is not the path is dropped FIRST. Cutting at the last
+ * `.` on a raw URL only strips the extension when it is the last dot in the
+ * whole string: `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise yield
  * `robot.glb?sig=SIG&v=1`, leaking a CDN signature into a payload apps put in
- * labels and analytics events (PR #3037).
+ * labels and analytics events (PR #3037). The authority goes with it, because
+ * `https://user:pass@host` has no path component for the last-`/` cut to step
+ * over and the credentials would have been published verbatim.
  *
  * [fallback] keeps a path with no usable base name from reporting "".
  */
 private fun tapNodeName(path: String, fallback: String): String =
-    path.substringBefore('?').substringBefore('#')
-        .substringAfterLast('/').substringBeforeLast('.')
+    urlPathOf(path).substringAfterLast('/').substringBeforeLast('.')
         .ifEmpty { fallback }
+
+/**
+ * The path part of [source], or the whole thing when it is not a URL.
+ *
+ * Kept as string surgery rather than `android.net.Uri` so it stays exercisable
+ * from a plain JVM unit test — `Uri.parse` is a stub outside an instrumented
+ * run. Returns "" for a URL with an authority and no path, which is what makes
+ * the caller fall back instead of naming a model after a host.
+ */
+private fun urlPathOf(source: String): String {
+    val withoutQuery = source.substringBefore('?').substringBefore('#')
+    val schemeEnd = withoutQuery.indexOf("://")
+    if (schemeEnd < 0) return withoutQuery
+    val afterScheme = withoutQuery.substring(schemeEnd + 3)
+    val pathStart = afterScheme.indexOf('/')
+    return if (pathStart < 0) "" else afterScheme.substring(pathStart)
+}
 
 // ---------------------------------------------------------------------------
 // 3D SceneView

@@ -1,4 +1,5 @@
 import XCTest
+import RealityKit
 import simd
 @testable import SceneViewSwift
 
@@ -260,6 +261,69 @@ final class SceneViewerModelListTests: XCTestCase {
         XCTAssertEqual(sceneViewerBytesFileExtension("ｕｓｄｚ"), "usdz")
     }
 
+    // MARK: - Tap resolution
+
+    /// The bug, pinned. A tap inside a multi-level asset must report the model, not the
+    /// mesh RealityKit's gesture actually hit.
+    @MainActor
+    func testModelRoot_climbsFromADeepMeshToTheModel() {
+        let contentRoot = Entity()
+        let model = Entity()
+        model.name = "black_dragon"
+        let skin = Entity()
+        skin.name = "skin0"
+        let deeper = Entity()
+        model.addChild(skin)
+        skin.addChild(deeper)
+        contentRoot.addChild(model)
+
+        XCTAssertTrue(sceneViewerModelRoot(for: skin, contentRoot: contentRoot) === model)
+        XCTAssertTrue(sceneViewerModelRoot(for: deeper, contentRoot: contentRoot) === model)
+    }
+
+    /// The walk this replaces stopped at the first *named* ancestor. An unnamed model root
+    /// above a named mesh is exactly the shape that made it report the mesh, so the
+    /// resolution must not depend on names at all.
+    @MainActor
+    func testModelRoot_ignoresNamesEntirely() {
+        let contentRoot = Entity()
+        let model = Entity()          // deliberately unnamed
+        let mesh = Entity()
+        mesh.name = "skin0"
+        model.addChild(mesh)
+        contentRoot.addChild(model)
+
+        XCTAssertTrue(sceneViewerModelRoot(for: mesh, contentRoot: contentRoot) === model)
+    }
+
+    /// A model that was tapped directly resolves to itself, not to its parent.
+    @MainActor
+    func testModelRoot_returnsTheModelWhenItIsTappedDirectly() {
+        let contentRoot = Entity()
+        let model = Entity()
+        contentRoot.addChild(model)
+
+        XCTAssertTrue(sceneViewerModelRoot(for: model, contentRoot: contentRoot) === model)
+    }
+
+    /// `nil`, not the content root and not the entity itself — this is what lets a bridge
+    /// report "no model" rather than inventing a name for something that is not one.
+    @MainActor
+    func testModelRoot_isNilWhenNothingWasHit() {
+        let contentRoot = Entity()
+        XCTAssertNil(sceneViewerModelRoot(for: contentRoot, contentRoot: contentRoot))
+
+        let detached = Entity()
+        XCTAssertNil(sceneViewerModelRoot(for: detached, contentRoot: contentRoot))
+
+        // A whole tree that hangs somewhere else entirely — the walk must terminate at the
+        // root of that tree rather than loop or climb into the content root by accident.
+        let otherRoot = Entity()
+        let stranger = Entity()
+        otherRoot.addChild(stranger)
+        XCTAssertNil(sceneViewerModelRoot(for: stranger, contentRoot: contentRoot))
+    }
+
     // MARK: - Node name
 
     /// The value a tap publishes on every bridge: the file's base name, no extension.
@@ -283,6 +347,24 @@ final class SceneViewerModelListTests: XCTestCase {
         )
         XCTAssertEqual(
             nodeName(.url(URL(string: "https://cdn.example/models/robot.glb")!)),
+            "robot"
+        )
+    }
+
+    /// The hardening the security review asked for: a credential must not reach the name
+    /// even when the URL has no path for the last-component cut to step over, and even when
+    /// the `?` arrives percent-encoded. Both are handled by reducing the URL to its path.
+    func testNodeName_neverPublishesCredentialsFromAURL() {
+        XCTAssertEqual(
+            nodeName(.url(URL(string: "https://user:pa55w0rd@cdn.example/models/robot.glb")!)),
+            "robot"
+        )
+        // No path at all — the authority, credentials included, must not become the name.
+        XCTAssertNil(nodeName(.url(URL(string: "https://user:pa55w0rd@cdn.example")!)))
+        XCTAssertNil(nodeName(.url(URL(string: "https://user:pa55w0rd@cdn.example/")!)))
+        // A percent-encoded query is a real `?` once the path is decoded.
+        XCTAssertEqual(
+            nodeName(.url(URL(string: "https://cdn.example/robot.glb%3Fsig=SECRET")!)),
             "robot"
         )
     }
