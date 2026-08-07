@@ -181,6 +181,34 @@ restore is not real:
 2. the Filament KMP attribution block back in the root `NOTICE` (also in `c01ae5d87`);
 3. the `settings.gradle` include that makes something actually build it. Vendoring code
    that nothing compiles is what this section exists to prevent repeating.
+4. **the two hardening fixes below, in that same PR — not a follow-up.** Item 3 is what
+   makes them reachable, so shipping them later means shipping a window.
+
+### The build-logic must be hardened before anything builds it
+
+`build-logic/src/main/kotlin/FilamentDownloads.kt` in the copy taken from `0.3.0` has two
+defects. Both are build-time code execution, and both are harmless only for as long as
+nothing compiles the tree — which item 3 ends:
+
+- **Downloads are not verified.** `downloadToCache()` streams a URL into the cache and
+  returns it. The *version* is pinned; the *bytes* are not. A GitHub release asset can be
+  deleted and re-uploaded under the same tag, and the `download.java.net` jextract builds
+  are explicitly transient. Fix: hash the bytes once the stream completes, compare against
+  a checked-in digest per artifact, and **delete the cached file on mismatch** — a
+  poisoned cache entry that survives is worse than a failed download.
+- **`extractAll()` is symlink-tar-slippable.** It asserts each entry's own path stays
+  under the destination, which stops a `../../etc/passwd` entry, but it does not validate
+  `entry.linkName` before `Files.createSymbolicLink`. A tarball carrying `a -> /tmp/evil`
+  followed by a regular entry `a/x` passes that assertion — `normalize()` does not resolve
+  symlinks — and writes outside the destination, into a tree that is then marked
+  executable and run. Fix: resolve `linkName` against the entry's parent, assert the
+  result stays under `destPath`, and reject absolute targets outright.
+
+This is not left to a reviewer's memory. `bash .claude/scripts/check-vendored-download-safety.sh`
+runs in `repo-hygiene` and in `pre-push-check.sh`: it is silent while the tree is absent
+or unbuilt, and **fails from the moment a `settings.gradle` include lands** with either
+fix missing. Its own failing path is exercised on synthetic trees by
+`test-check-vendored-download-safety.sh`, so the gate cannot rot while it is dormant.
 
 ---
 

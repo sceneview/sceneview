@@ -57,13 +57,14 @@ public actual fun SceneViewer(
     environment: EnvironmentSource,
     onTap: ((ModelHit?) -> Unit)?,
     onFrame: ((frameTimeNanos: Long) -> Unit)?,
+    onError: ((SceneViewerError) -> Unit)?,
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, model)
+    val modelInstance = rememberModelInstance(modelLoader, model, onError)
 
-    val filamentEnvironment = rememberEnvironment(engine, environmentLoader, environment)
+    val filamentEnvironment = rememberEnvironment(engine, environmentLoader, environment, onError)
 
     // The image-based light is shared state owned by the Environment, and Filament has
     // no "authored intensity" to read back — `indirectLight.intensity` is simply the
@@ -138,42 +139,64 @@ private val EnvironmentSource.isOpaque: Boolean
 /**
  * Loads [model] into a Filament [ModelInstance], whatever its source.
  *
- * `createModelInstance` must run on the main thread (Filament JNI); only the byte fetch
- * moves to IO. The instance is destroyed when the source changes or the composable
- * leaves — `produceState` alone would cancel the producer but never free the GPU-side
- * model, which is the leak described in #2459.
+ * Filament's JNI calls must run on the main thread; **reading the bytes must not**. Every
+ * source that has bytes to fetch reads them off it, because `produceState` runs its
+ * producer in the composition's context — which on Android is the main thread — so any
+ * blocking read left in this block blocks the frame that started it.
+ *
+ * The instance is destroyed when the source changes or the composable leaves —
+ * `produceState` alone would cancel the producer but never free the GPU-side model,
+ * which is the leak described in #2459.
  */
 @Composable
 private fun rememberModelInstance(
     modelLoader: ModelLoader,
     model: ModelSource,
+    onError: ((SceneViewerError) -> Unit)?,
 ): ModelInstance? {
+    // Kept fresh without restarting the load: `onError` is a lambda, so using it as a
+    // `produceState` key would re-download the model on every recomposition that passed
+    // a new one. Capturing the first one instead would send failures to a stale handler.
+    val currentOnError by rememberUpdatedState(onError)
+
     val instance = produceState<ModelInstance?>(
         initialValue = null,
         key1 = modelLoader,
         key2 = model,
     ) {
         value = when (model) {
-            // Delegates to the loader's asset overload, whose default resolver reads
-            // sibling files out of assets — so a .gltf with external .bin/textures works.
+            // `loadModelInstance`, NOT `createModelInstance`: the latter is @MainThread
+            // and reads the asset on the CALLING thread (ModelLoader.createModel ->
+            // context.assets.readBuffer), so the whole file landed on the main thread
+            // here. The suspending overload reads through Dispatchers.IO and hops back
+            // to Main for the JNI call alone. Sibling resolution is preserved — its
+            // default resolver walks the same asset folder, so a .gltf with external
+            // .bin/textures still loads.
             is ModelSource.Asset -> runCatching {
-                modelLoader.createModelInstance(assetFileLocation = model.path)
-            }.reportFailure("loading asset '${model.path}'")
+                modelLoader.loadModelInstance(model.path)
+            }.orReport("loading asset '${model.path}'", currentOnError)
 
+            // No IO: the caller already holds the bytes. Straight to the JNI call, on
+            // the main thread, which is where this block already is.
             is ModelSource.Bytes -> runCatching {
                 modelLoader.createModelInstance(ByteBuffer.wrap(model.bytes))
-            }.reportFailure("parsing ${model.bytes.size} in-memory bytes")
+            }.orReport("parsing ${model.bytes.size} in-memory bytes", currentOnError)
 
             is ModelSource.Url -> {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching { fetchModelBytes(model.url) }
-                        .reportFailure("downloading ${model.url}")
-                }
+                // `runCatching` OUTSIDE the IO block, not inside it. Inlining `orReport`
+                // into `withContext(Dispatchers.IO)` put the app's `onError` lambda on an
+                // IO thread — and only on this branch, so a handler that worked for a
+                // failed asset crashed for a failed download with "Can't create handler
+                // inside thread that has not called Looper.prepare()". A public callback
+                // must have one thread, and for a Compose API that thread is main.
+                val bytes = runCatching {
+                    withContext(Dispatchers.IO) { fetchModelBytes(model.url) }
+                }.orReport("downloading ${model.url}", currentOnError)
                 bytes?.let {
                     // Back on the composition (main) thread — the Filament JNI contract.
                     runCatching {
                         modelLoader.createModelInstance(ByteBuffer.wrap(it))
-                    }.reportFailure("parsing the model downloaded from ${model.url}")
+                    }.orReport("parsing the model downloaded from ${model.url}", currentOnError)
                 }
             }
         }
@@ -240,21 +263,42 @@ private fun fetchModelBytes(url: String): ByteArray {
 }
 
 /**
- * Unwraps a [Result], logging any failure instead of discarding it.
+ * Unwraps a [Result], reporting a failure instead of discarding it.
  *
- * `SceneViewer` has no `onError` and no failed state, so a failed load leaves the
- * viewport showing the environment — pixel-identical to a load still in progress. That
- * is a deliberate API decision for the viewer subset, but silently swallowing the cause
- * as well would leave a developer with nothing at all to go on. This is the one place
- * that guarantee is kept, and [ModelSource]'s KDoc points here.
+ * A failed load still leaves the viewport showing the environment — pixel-identical to a
+ * load still in progress. This is the one place that becomes observable: always to
+ * logcat, and to the app's `onError` when it supplied one.
+ *
+ * **Both shapes of failure land here**, and the second one is not optional. A missing
+ * asset throws (`AssetManager.open`), which `runCatching` catches. A *malformed* one does
+ * not: `createModelInstance` raised `IllegalArgumentException` when Filament refused to
+ * parse the buffer, but the suspending `loadModelInstance` this now calls returns a plain
+ * `null` for the same input. Handling only the exception would have turned the
+ * off-main-thread fix into a silent failure for every unparseable model.
  *
  * [CancellationException] is rethrown: a cancelled coroutine is not a failure, and
  * swallowing it would break structured concurrency.
  */
-private fun <T> Result<T>.reportFailure(what: String): T? = onFailure { cause ->
-    if (cause is CancellationException) throw cause
+private fun <T : Any> Result<T?>.orReport(
+    what: String,
+    onError: ((SceneViewerError) -> Unit)?,
+): T? = fold(
+    onSuccess = { value ->
+        if (value == null) report(what, cause = null, onError = onError)
+        value
+    },
+    onFailure = { cause ->
+        if (cause is CancellationException) throw cause
+        report(what, cause, onError)
+        null
+    },
+)
+
+/** Writes a failure to logcat, and hands it to the app when it asked for one. */
+private fun report(what: String, cause: Throwable?, onError: ((SceneViewerError) -> Unit)?) {
     Log.e(TAG, "SceneViewer failed $what", cause)
-}.getOrNull()
+    onError?.invoke(SceneViewerError(what, cause))
+}
 
 private const val TAG = "SceneViewer"
 private const val CONNECT_TIMEOUT_MS = 15_000
@@ -272,25 +316,46 @@ private const val DOWNLOAD_CHUNK_BYTES = 64 * 1024
  */
 private const val MAX_MODEL_BYTES = 64L * 1024 * 1024
 
-/** Maps the portable [EnvironmentSource] onto a Filament [Environment]. */
+/**
+ * Maps the portable [EnvironmentSource] onto a Filament [Environment].
+ *
+ * The neutral fallback is built **inside the branches that use it**, not once up front.
+ * Building it is not free: `createEnvironment` reads `environments/neutral/neutral_ibl.ktx`
+ * out of assets synchronously and uploads it as a cubemap, and a hoisted `val` paid that
+ * on every [EnvironmentSource.Color] scene only to drop the result — a colour background
+ * has no image-based light, so the fallback was never reachable from that branch.
+ */
 @Composable
 private fun rememberEnvironment(
     engine: Engine,
     environmentLoader: EnvironmentLoader,
     source: EnvironmentSource,
+    onError: ((SceneViewerError) -> Unit)?,
 ): Environment {
     val isOpaque = source.isOpaque
-    val fallback = rememberEnvironment(environmentLoader, isOpaque = isOpaque)
+    val currentOnError by rememberUpdatedState(onError)
 
     return when (source) {
-        is EnvironmentSource.Default -> fallback
+        is EnvironmentSource.Default -> rememberEnvironment(environmentLoader, isOpaque)
 
-        is EnvironmentSource.Color -> rememberEnvironment(environmentLoader, isOpaque, key = source) {
-            environmentLoader.createEnvironment(
-                skybox = Skybox.Builder()
-                    .color(source.red, source.green, source.blue, source.alpha)
-                    .build(engine),
-            )
+        // Remembered on explicit value keys rather than through the `environment = { }`
+        // factory overload: that overload takes the factory lambda as a `remember` key
+        // too, and this lambda captures the Filament `Engine`, whose Compose stability is
+        // inferred from a class this module does not own. Keying on (engine, loader,
+        // source) does not depend on that inference — the skybox is rebuilt when, and
+        // only when, one of the three actually changes.
+        is EnvironmentSource.Color -> {
+            val colorEnvironment = remember(engine, environmentLoader, source) {
+                environmentLoader.createEnvironment(
+                    skybox = Skybox.Builder()
+                        .color(source.red, source.green, source.blue, source.alpha)
+                        .build(engine),
+                )
+            }
+            DisposableEffect(colorEnvironment) {
+                onDispose { environmentLoader.destroyEnvironment(colorEnvironment) }
+            }
+            colorEnvironment
         }
 
         // HDR loading is suspending and may fail (missing file, unreadable format). Until
@@ -303,17 +368,19 @@ private fun rememberEnvironment(
                         url = source.path,
                         createSkybox = source.showSkybox,
                     )
-                }.reportFailure("loading HDR environment '${source.path}'")
+                }.orReport("loading HDR environment '${source.path}'", currentOnError)
             }.value
 
-            // Only environments this branch created are ours to free. `fallback` is owned
-            // by rememberEnvironment above, which destroys it itself — destroying it here
-            // too would be a double free.
+            // Only environments this branch created are ours to free. The fallback below
+            // is owned by `rememberEnvironment`, which destroys it itself — destroying it
+            // here too would be a double free.
             DisposableEffect(loaded) {
                 onDispose { loaded?.let { environmentLoader.destroyEnvironment(it) } }
             }
 
-            loaded ?: fallback
+            // Conditional on purpose: once the HDR resolves, the fallback leaves
+            // composition and its own DisposableEffect frees the neutral cubemap.
+            loaded ?: rememberEnvironment(environmentLoader, isOpaque)
         }
     }
 }

@@ -93,9 +93,31 @@ public interface SceneViewerViewFactory {
  * A flat, Objective-C-friendly description of what to render.
  *
  * Deliberately primitive: every member crosses the Kotlin/Swift boundary, so this holds
- * no sealed types, no lambdas beyond the tap callback, and no Kotlin-only constructs.
+ * no sealed types, no lambdas beyond the callbacks, and no Kotlin-only constructs.
  * Angles are in **degrees**, matching [CameraState] rather than RealityKit's radians —
  * the Swift side converts.
+ *
+ * ### Compared by value, and by *content* for the bytes
+ *
+ * [SceneViewer] rebuilds a spec on every composition and publishes it through
+ * `rememberUpdatedState`, which only notifies when the new value is unequal. Identity
+ * comparison — the default for a plain class — makes every rebuild unequal, so [update]
+ * would be re-invoked on every recomposition, including the one each touch-move event
+ * triggers through `CameraState`, each time handing the Swift side the same model to
+ * apply again.
+ *
+ * [ModelSource.Bytes] already compares its array by content for exactly that reason, but
+ * the benefit is lost the moment the array is unpacked into a field: [equals] on a
+ * `ByteArray` is reference equality, so a caller re-wrapping the same image — the normal
+ * shape of `ModelSource.Bytes(resource.readBytes())` — would produce an unequal spec.
+ * [modelBytes] is therefore compared with `contentEquals`, restoring the guarantee the
+ * source type makes.
+ *
+ * The callbacks are deliberately **excluded** from [equals] and [hashCode]. They are not
+ * the app's lambdas: [SceneViewer] passes permanent forwarders that read the current
+ * ones out of `rememberUpdatedState`, so they already dispatch to the latest handler
+ * without the spec having to change. Including them would compare freshly allocated
+ * closures and defeat the whole comparison.
  */
 public class SceneViewerSpec internal constructor(
     /** Bundle-relative path when the source is an asset, otherwise `null`. */
@@ -144,4 +166,73 @@ public class SceneViewerSpec internal constructor(
      * reads would return the values the app last wrote and silently ignore every drag.
      */
     public val onCameraMoved: (distance: Float, azimuthDegrees: Float, elevationDegrees: Float) -> Unit,
-)
+
+    /**
+     * Invoked by the Swift side when a model or environment fails to load.
+     *
+     * Call it with a short English description of what failed — it reaches the app as
+     * [SceneViewerError.message]. A failed load has no pixels of its own on RealityKit
+     * either: the viewport keeps showing the environment, so an implementation that never
+     * calls this leaves the app unable to tell a failure from a slow load.
+     */
+    public val onError: (message: String) -> Unit,
+) {
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SceneViewerSpec) return false
+        return modelAssetPath == other.modelAssetPath &&
+            modelUrl == other.modelUrl &&
+            // Nullable receiver: two absent arrays compare equal, as they should.
+            modelBytes.contentEquals(other.modelBytes) &&
+            cameraTargetX == other.cameraTargetX &&
+            cameraTargetY == other.cameraTargetY &&
+            cameraTargetZ == other.cameraTargetZ &&
+            cameraDistance == other.cameraDistance &&
+            cameraAzimuthDegrees == other.cameraAzimuthDegrees &&
+            cameraElevationDegrees == other.cameraElevationDegrees &&
+            cameraGesturesEnabled == other.cameraGesturesEnabled &&
+            lightDirectionX == other.lightDirectionX &&
+            lightDirectionY == other.lightDirectionY &&
+            lightDirectionZ == other.lightDirectionZ &&
+            lightIntensity == other.lightIntensity &&
+            ambientIntensity == other.ambientIntensity &&
+            castShadows == other.castShadows &&
+            environmentKind == other.environmentKind &&
+            environmentRed == other.environmentRed &&
+            environmentGreen == other.environmentGreen &&
+            environmentBlue == other.environmentBlue &&
+            environmentAlpha == other.environmentAlpha &&
+            environmentHdrPath == other.environmentHdrPath &&
+            environmentShowSkybox == other.environmentShowSkybox
+    }
+
+    override fun hashCode(): Int {
+        // `contentHashCode`, matching the `contentEquals` above: two specs that compare
+        // equal must never hash apart.
+        var result = modelAssetPath?.hashCode() ?: 0
+        result = 31 * result + (modelUrl?.hashCode() ?: 0)
+        result = 31 * result + (modelBytes?.contentHashCode() ?: 0)
+        result = 31 * result + cameraTargetX.hashCode()
+        result = 31 * result + cameraTargetY.hashCode()
+        result = 31 * result + cameraTargetZ.hashCode()
+        result = 31 * result + cameraDistance.hashCode()
+        result = 31 * result + cameraAzimuthDegrees.hashCode()
+        result = 31 * result + cameraElevationDegrees.hashCode()
+        result = 31 * result + cameraGesturesEnabled.hashCode()
+        result = 31 * result + lightDirectionX.hashCode()
+        result = 31 * result + lightDirectionY.hashCode()
+        result = 31 * result + lightDirectionZ.hashCode()
+        result = 31 * result + lightIntensity.hashCode()
+        result = 31 * result + ambientIntensity.hashCode()
+        result = 31 * result + castShadows.hashCode()
+        result = 31 * result + environmentKind.hashCode()
+        result = 31 * result + environmentRed.hashCode()
+        result = 31 * result + environmentGreen.hashCode()
+        result = 31 * result + environmentBlue.hashCode()
+        result = 31 * result + environmentAlpha.hashCode()
+        result = 31 * result + (environmentHdrPath?.hashCode() ?: 0)
+        result = 31 * result + environmentShowSkybox.hashCode()
+        return result
+    }
+}
