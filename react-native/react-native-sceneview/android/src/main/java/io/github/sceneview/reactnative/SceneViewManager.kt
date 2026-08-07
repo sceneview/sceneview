@@ -406,6 +406,11 @@ data class ModelNodeData(
      * with it: `https://user:pass@host` has no path component for the last-`/`
      * cut to step over, so the credentials would have been published verbatim.
      *
+     * One deliberate divergence from the Swift derivation: `URL.path` there
+     * percent-decodes and this does not, so `robot%20arm.glb` yields
+     * `robot%20arm` here and `robot arm` on iOS. Decoding would need a decoder
+     * with its own surprises (`+` becomes a space), for a shape no bridge emits.
+     *
      * `null` for a path with no usable base name, so the payload stays
      * `nodeName: null` rather than an empty string.
      */

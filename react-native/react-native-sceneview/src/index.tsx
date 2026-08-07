@@ -95,8 +95,9 @@ export interface TapEvent {
    * (`models/robot.glb` → `robot`), identical on Android and iOS. Never an
    * asset-internal mesh name — a tap inside a model always reports the model.
    *
-   * `null` when the tap hit no model (an untitled geometry node on Android, or
-   * an AR surface point), so guard before using it.
+   * `null` when the tap hit no model — an untitled geometry node or empty space
+   * on Android, an entity outside the loaded models on iOS. See `onTap` for why
+   * empty space behaves differently per platform. Guard before using it.
    */
   nodeName?: string | null;
 }
@@ -177,11 +178,16 @@ export interface SceneViewProps {
    *
    * The event payload carries the world-space position of the tapped model and
    * its `nodeName` (the model file's base name without extension) on both
-   * Android and iOS. A tap that hits no model reports `nodeName: null` — with
-   * the tapped node's real world position on Android when it landed on an
-   * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. On iOS
-   * AR the tap reports the surface point only, so `nodeName` is `undefined`
-   * rather than `null` there — guard for both.
+   * Android and iOS.
+   *
+   * `nodeName: null` means "no model", but the three platforms reach it
+   * differently. **On Android** a tap that hits nothing fires with `0, 0, 0`,
+   * and a tap on an unnamed geometry node fires with that node's real position.
+   * **On iOS** a tap on empty space fires no event at all — RealityKit's
+   * hit-test gesture only reports a hit — so `null` is reachable only for a tap
+   * on something in the scene that is not a loaded model. **On iOS
+   * `ARSceneView`** the tap reports the surface point only and omits the key, so
+   * `nodeName` is `undefined` rather than `null` — guard for both.
    */
   onTap?: (event: NativeSyntheticEvent<TapEvent>) => void;
 }

@@ -36,12 +36,22 @@ public struct SceneTapHit {
     /// possibly a deep mesh child rather than the model root.
     public let entity: Entity
 
-    /// World-space centre of ``entity``'s visual bounds.
+    /// World-space centre of the tapped geometry's visual bounds.
     ///
     /// See the type's own documentation: this is *not* the exact surface point of the
     /// tap, and cannot be on iOS or macOS.
+    ///
+    /// Usually the bounds of ``entity`` itself. It may instead belong to a **descendant**
+    /// of it when a host has re-rooted the hit onto something coarser — which is what
+    /// `SceneViewerHostView.onTapModel` does, pairing the model root with the position of
+    /// the mesh the finger actually landed on, so the position still tracks which part of
+    /// a multi-mesh model was touched.
     public let worldPosition: SIMD3<Float>
 
+    /// Builds a hit from an entity and a position that were resolved separately.
+    ///
+    /// The pairing is deliberate and load-bearing — see ``worldPosition``. Use
+    /// ``init(entity:)`` when the two should describe the same entity.
     public init(entity: Entity, worldPosition: SIMD3<Float>) {
         self.entity = entity
         self.worldPosition = worldPosition

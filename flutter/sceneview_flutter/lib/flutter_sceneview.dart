@@ -351,8 +351,12 @@ class SceneViewController {
 
   /// Called when a model node is tapped. Receives the model file's base name
   /// without extension (`models/helmet.glb` → `helmet`), identical on Android
-  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
-  /// did not land on a loaded model.
+  /// and iOS — never the name of a mesh inside the asset.
+  ///
+  /// **A tap that lands on nothing does not call this** on either platform:
+  /// Android fires it per model, and iOS's hit-test gesture only fires when it
+  /// hits an entity. The empty string is reachable only for a tap on something
+  /// in the scene that is not a loaded model.
   ///
   /// Wired on both Android and iOS for [SceneView] (3D). On iOS [ARSceneView]
   /// this callback is not yet delivered — SceneViewSwift's `ARSceneView` does
@@ -493,8 +497,12 @@ class SceneView extends StatefulWidget {
 
   /// Called when a model node is tapped. Receives the model file's base name
   /// without extension (`models/helmet.glb` → `helmet`), identical on Android
-  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
-  /// did not land on a loaded model.
+  /// and iOS — never the name of a mesh inside the asset.
+  ///
+  /// **A tap that lands on nothing does not call this** on either platform:
+  /// Android fires it per model, and iOS's hit-test gesture only fires when it
+  /// hits an entity. The empty string is reachable only for a tap on something
+  /// in the scene that is not a loaded model.
   ///
   /// Wired on both Android and iOS.
   final void Function(String nodeName)? onTap;

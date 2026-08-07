@@ -237,9 +237,11 @@ func sceneViewerRequestedPose(
 /// `nil` when `tapped` is not part of a model that root loaded — including the content
 /// root itself, which is not a model, and an entity detached from it entirely.
 ///
-/// A free function rather than a method on the content root so it is reachable from
-/// `swift test`: the host is UIKit-only and never compiles on macOS, and this walk is
-/// precisely the logic that was wrong.
+/// A free function rather than a method on the content root so `swift test` on macOS
+/// covers it. The host is UIKit-only, so it is only ever built by the iOS-Simulator
+/// `xcodebuild test` leg (`.github/workflows/ios.yml`) — reachable, but not from the
+/// local run a change to this walk is made under, and this walk is precisely the logic
+/// that was wrong.
 @MainActor
 func sceneViewerModelRoot(for tapped: Entity, contentRoot: Entity) -> Entity? {
     var node: Entity? = tapped
@@ -271,12 +273,20 @@ func sceneViewerModelRoot(for tapped: Entity, contentRoot: Entity) -> Entity? {
 /// `nil` for `.bytes` (there is no file name to derive from) and whenever the derivation
 /// comes out empty, which leaves the loaded entity with whatever name the asset carries —
 /// and leaves the caller's "no model name" case representable rather than reporting `""`.
+/// An `explicit` of `""` is treated as unset and derives from the source, for the same
+/// reason: an empty name is not a name.
 ///
-/// Two known divergences from Kotlin, both unreachable for the `.glb` / `.gltf` / `.usdz`
-/// sources these bridges load: `NSString` path semantics differ from Kotlin's
+/// What a bridge does with `nil` is the bridge's own call and they differ — Flutter Android
+/// falls back to `node_<index>` where the iOS side reports the empty string.
+///
+/// Three known divergences from Kotlin, none reachable for the `.glb` / `.gltf` / `.usdz`
+/// sources these bridges load. `NSString` path semantics differ from Kotlin's
 /// `substringAfterLast('/')` / `substringBeforeLast('.')` on a trailing slash (`models/` →
 /// Kotlin `""`, Swift `models`) and on a dotfile base name (`.hidden` → Kotlin `""`, Swift
-/// `.hidden`).
+/// `.hidden`). And `URL.path` percent-decodes where Kotlin's string surgery does not, so a
+/// percent-encoded path component resolves differently (`robot%20arm.glb` → Swift
+/// `robot arm`, Kotlin `robot%20arm`). Decoding on the Kotlin side would need a decoder
+/// with its own surprises (`+` becomes a space), for a shape no bridge emits.
 func sceneViewerNodeName(explicit: String?, request: SceneViewerModelRequest) -> String? {
     if let explicit, !explicit.isEmpty { return explicit }
 
