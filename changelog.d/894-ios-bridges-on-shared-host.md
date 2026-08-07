@@ -9,7 +9,8 @@
   is anchor-driven and shares nothing with the 3D viewer. Every method-channel name and
   every prop name is unchanged. The one payload that did change is the tapped node's name,
   and deliberately: both bridges were reporting a mesh from inside the asset, so the
-  definitions were unified rather than preserved — see the tap entries below.
+  definitions were unified rather than preserved — see the `nodeName` entries in this
+  release.
 - **`SceneViewerConfiguration` gained the four things a bridge cannot do without.**
   `models` (a list — Flutter appends one at a time, React Native replaces the lot;
   a per-entry `identity` is what keeps two copies of one path as two models),
