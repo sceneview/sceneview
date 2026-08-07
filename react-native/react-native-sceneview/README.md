@@ -225,6 +225,38 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
 
 See [CONTRIBUTING.md](https://github.com/sceneview/sceneview/blob/main/.github/CONTRIBUTING.md).
 
+### Local checks
+
+From this directory, after `npm ci`:
+
+```bash
+npm run lint        # Biome (repo-root biome.json) — lint + format + import assists
+npm run lint:fix    # same, applying the safe fixes
+npm run typescript  # tsc --noEmit
+npm test            # jest
+```
+
+All four run on every PR that touches this package's TypeScript, via
+[`.github/workflows/rn-ts-check.yml`](https://github.com/sceneview/sceneview/blob/main/.github/workflows/rn-ts-check.yml).
+They do not all cover the same files:
+
+| check | covers |
+|---|---|
+| `lint` | `src/`, `__tests__/`, `example/src/` |
+| `typescript` | `src/` only — that is `tsconfig.json`'s `include` |
+| `test` | `__tests__/` |
+
+The linter is **Biome**, not ESLint — the repo has a single JS/TS rule set in
+the root `biome.json`, and those three directories are listed in its
+`files.includes`. The `lint` scripts `cd` to the repo root before invoking
+Biome, mirroring `mcp/package.json`'s script; Biome also walks up and finds the
+root config on its own, so calling `./node_modules/.bin/biome check .` from
+this directory works too.
+
+Note that most rules in `biome.json` are **warning** severity, so `npm run
+lint` can exit 0 with findings still printed. Read its output, don't just read
+its exit code.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE) for details.

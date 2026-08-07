@@ -9,6 +9,9 @@
     "includes": [
       "mcp/src/**/*.ts",
       "mcp/scripts/**/*.js",
+      "react-native/react-native-sceneview/src/**/*.{ts,tsx}",
+      "react-native/react-native-sceneview/__tests__/**/*.{ts,tsx}",
+      "react-native/react-native-sceneview/example/src/**/*.{ts,tsx}",
       "website-static/js/sceneview.js",
       "!mcp/dist/**",
       "!mcp/src/generated/**",
