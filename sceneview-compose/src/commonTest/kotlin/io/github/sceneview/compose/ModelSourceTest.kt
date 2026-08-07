@@ -79,4 +79,51 @@ class ModelSourceTest {
     fun bytes_with_different_content_are_not_equal() {
         assertFalse(ModelSource.Bytes(byteArrayOf(1, 2, 3)) == ModelSource.Bytes(byteArrayOf(1, 2, 4)))
     }
+
+    // ── Asset is bundled-only ───────────────────────────────────────────────
+    // Same argument as `Url`, in the opposite direction. Android's loader dispatches on
+    // URI scheme, so before this guard a `content://` handed to `Asset` read a private
+    // ContentProvider under the app's own uid, and an `https://` bypassed the timeouts
+    // and the 64 MB cap that `Url` enforces. A caller that resolves a deep link or a
+    // server-supplied id into a path must be refused identically on every platform, so
+    // the check lives here and not in `SceneViewer.android.kt`.
+
+    @Test
+    fun asset_accepts_a_relative_bundled_path() {
+        assertEquals("models/car.glb", ModelSource.Asset("models/car.glb").path)
+    }
+
+    @Test
+    fun asset_rejects_a_content_uri() {
+        assertFailsWith<IllegalArgumentException> {
+            ModelSource.Asset("content://com.victim.fileprovider/prefs/auth.xml")
+        }
+    }
+
+    @Test
+    fun asset_rejects_a_file_uri() {
+        assertFailsWith<IllegalArgumentException> { ModelSource.Asset("file:///etc/passwd") }
+    }
+
+    @Test
+    fun asset_rejects_an_http_url() {
+        assertFailsWith<IllegalArgumentException> {
+            ModelSource.Asset("https://attacker.example/50GB.bin")
+        }
+    }
+
+    @Test
+    fun asset_rejects_an_android_resource_uri() {
+        assertFailsWith<IllegalArgumentException> {
+            ModelSource.Asset("android.resource://com.victim/12345678")
+        }
+    }
+
+    // A colon deeper in the path is not a scheme — the regex is anchored, so a file
+    // legitimately named with one still loads. This is the over-rejection guard: a check
+    // that also refuses valid paths gets deleted by the next person in a hurry.
+    @Test
+    fun asset_allows_a_colon_that_is_not_a_leading_scheme() {
+        assertEquals("models/car:red.glb", ModelSource.Asset("models/car:red.glb").path)
+    }
 }

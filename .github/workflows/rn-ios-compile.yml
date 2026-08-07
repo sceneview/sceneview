@@ -1,7 +1,7 @@
 name: React Native iOS bridge compile
 
 # Compile-checks the React Native module's iOS Swift bridge against the REAL
-# `SceneViewSwift` public API.
+# `SceneViewSwift` public API **and the REAL React Native Objective-C API**.
 #
 # WHY THIS EXISTS (#2067)
 # -----------------------
@@ -14,31 +14,69 @@ name: React Native iOS bridge compile
 #
 # WHY A TYPE-CHECK, NOT A FULL APP BUILD
 # --------------------------------------
-# The acceptance criterion asked for "a CI job that compiles the RN module's
-# iOS target". The natural target would be `samples/react-native-demo`, but a
-# full `npm install` + `pod install` + `xcodebuild` of that demo is NOT viable
-# as a deterministic gate:
-#   * `SceneViewSwift` is distributed via Swift Package Manager ONLY — there is
-#     no published CocoaPods spec — so `pod install` of the demo cannot resolve
-#     it. The host app must add `SceneViewSwift` via Xcode's SwiftPM integration
-#     (the demo's `.xcodeproj` currently does not), and the RN module's podspec
-#     therefore cannot declare it as a `s.dependency`.
-#   * `samples/react-native-demo` is documented (`SETUP.md`) as "scaffolded,
-#     NEVER built end-to-end" — wiring its full RN 0.73 toolchain is out of
-#     scope for a regression guard and would be flaky.
+# `SceneViewSwift` is distributed via Swift Package Manager ONLY — there is no
+# published CocoaPods spec — so the demo's `pod install` cannot resolve it and
+# the module's podspec cannot declare it as a `s.dependency`. A host app adds
+# it once through Xcode's SwiftPM integration. Building the demo app end-to-end
+# would therefore require scaffolding that SwiftPM wiring into a generated
+# `.xcodeproj`; a `swiftc -typecheck` against a freshly built `.swiftmodule`
+# catches the #2067 defect class without it.
 #
-# So this job does the deterministic, fast, CocoaPods-free thing that DIRECTLY
-# catches the #2067 defect class: it builds the real `SceneViewSwift` package
-# for the iOS simulator, generates a tiny compile-only shim for the four React
-# Native Objective-C symbols the bridge imports (`RCTViewManager`,
-# `RCTDirectEventBlock`, `RCTPromiseResolveBlock`, `RCTPromiseRejectBlock`),
-# and `swiftc -typecheck`s the RN module's `ios/*.swift` against both. Any
-# future `SceneViewSwift` API drift fails this job.
+# WHY THE REACT MODULE IS REAL, NOT A STUB
+# ----------------------------------------
+# The bridge does `import React`, so the type-check needs a React module. This
+# job used to synthesise a hand-written Swift shim redeclaring the four React
+# symbols the bridge touches. That shim was a liability: it could drift from
+# the real React API without anything noticing, and — measured — it is strictly
+# poorer than the real thing (a probe using `RCTEventEmitter`, `RCTConvert` and
+# `RCTBridge` type-checks clean against real React and produces 8 errors
+# against the shim). A guard whose reference API is hand-maintained tests the
+# hand-maintenance, not the bridge.
 #
-# The React shim is a compile-only stand-in — it is never linked into a
-# shipped binary; the real React symbols come from CocoaPods in a host app.
-# What this job proves is the part #2067 is about: the bridge's use of
-# `SceneViewSwift` is real, existing API.
+# So the React module is now the REAL one: `npm ci` + `pod install` on
+# `samples/react-native-demo` produces CocoaPods' own generated
+# `React-Core.modulemap` (`module React { umbrella header
+# "React-Core-umbrella.h" … }`) over React Native's real headers, and the
+# type-check imports that. Nothing about React's API surface is authored here.
+#
+# Running the demo's `pod install` also validates the module's podspec on every
+# run — that is not incidental. Two real integration defects surfaced the first
+# time it ran: `s.homepage` was fed `package["repository"]` (an object, which
+# CocoaPods rejects outright) and `s.platforms` claimed iOS 17.0 while
+# `SceneViewSwift/Package.swift` requires iOS 18.0.
+#
+# THE TWO NEGATIVE CONTROLS
+# -------------------------
+# A type-check that silently resolved neither module would pass vacuously and
+# this workflow would be prose. Both imports are therefore proven load-bearing
+# on every run, before the real check: the same `swiftc` command is re-run once
+# without `-I <SceneViewSwift>` and once without the React modulemap, and each
+# MUST fail with `no such module`. If either negative control passes, the job
+# fails — the guard refuses to report green on a check it cannot perform.
+#
+# MEASURED, NOT ASSUMED
+# ---------------------
+# Verified locally (Xcode 26.3, RN 0.73.11, CocoaPods 1.17.0) by mutating the
+# TRACKED bridge file and running this job's type-check step verbatim. It goes
+# red on every mutation, and in each case BOTH negative controls still passed
+# first — so the red came from the real check, not from a broken setup:
+#   * `try await ModelNode.load(path)` → `ModelNode(path)` (the exact #2067
+#     regression)                                             → 4 errors
+#   * `.cameraControls(_:)` → `.cameraControlsRenamed(_:)`    → 2 errors
+#   * `AnchorNode.world(position:)` → `.worldRenamed(…)`      → 4 errors
+#   * `: RCTViewManager` → `: RCTViewManagerRenamed`          → 16 errors
+# and green (0 errors) on the unmutated file. The negative controls were
+# mutation-tested too: replacing the bridge with a file that imports neither
+# module makes the step exit 1 with "this guard is vacuous" instead of
+# reporting a green type-check of nothing.
+#
+# LIMITATION (documented honestly)
+# --------------------------------
+# A type-check does not link, does not run, and does not exercise the Obj-C
+# `RCT_EXTERN_MODULE` registration glue in `ios/RNSceneViewManager.m` — a
+# property exported there but absent from the Swift class still passes here.
+# What it does guarantee is that the bridge's Swift compiles against the real
+# SceneViewSwift API and the real React API, which is the #2067 defect class.
 
 on:
   push:
@@ -46,6 +84,14 @@ on:
     paths:
       - 'react-native/react-native-sceneview/ios/**'
       - 'react-native/react-native-sceneview/react-native-sceneview.podspec'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'react-native/react-native-sceneview/package-lock.json'
+      # The React module the type-check imports is produced from the demo's
+      # dependency graph, so the demo's manifests are inputs to this guard.
+      - 'samples/react-native-demo/package.json'
+      - 'samples/react-native-demo/package-lock.json'
+      - 'samples/react-native-demo/ios/Podfile'
+      - 'samples/react-native-demo/ios/Podfile.lock'
       - 'SceneViewSwift/**'
       - '.github/workflows/rn-ios-compile.yml'
   pull_request:
@@ -53,6 +99,12 @@ on:
     paths:
       - 'react-native/react-native-sceneview/ios/**'
       - 'react-native/react-native-sceneview/react-native-sceneview.podspec'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'react-native/react-native-sceneview/package-lock.json'
+      - 'samples/react-native-demo/package.json'
+      - 'samples/react-native-demo/package-lock.json'
+      - 'samples/react-native-demo/ios/Podfile'
+      - 'samples/react-native-demo/ios/Podfile.lock'
       - 'SceneViewSwift/**'
       - '.github/workflows/rn-ios-compile.yml'
   workflow_dispatch:
@@ -66,22 +118,38 @@ permissions:
 
 jobs:
   compile:
-    name: Compile RN iOS bridge against SceneViewSwift
+    name: Compile RN iOS bridge against SceneViewSwift + React
+    # Deliberately NOT opted in to the self-hosted `sceneview-mac` runner: this
+    # job runs `npm ci` and `pod install`, which write into shared per-user
+    # caches (`~/.npm`, `~/Library/Caches/CocoaPods`). Keep it on a disposable
+    # hosted runner. See CLAUDE.md → self-hosted runner skill.
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
+        # DEVELOPER_DIR (Apple-canonical) instead of `sudo xcode-select -s`:
+        # the sudo form needs NOPASSWD in /etc/sudoers, which hosted runners
+        # provide but self-hosted macOS runners do not. Same pattern as
+        # bridge-ios-compile.yml — kept identical so the two stay in step.
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer 2>/dev/null \
-            || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          echo "Using Xcode: $(xcode-select -p)"
-          xcodebuild -version
+          for cand in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode.app; do
+            if [ -d "$cand" ]; then
+              echo "DEVELOPER_DIR=$cand/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Using Xcode: $cand"
+              "$cand/Contents/Developer/usr/bin/xcodebuild" -version
+              exit 0
+            fi
+          done
+          echo "::error::No Xcode installation found in /Applications/"
+          exit 1
 
       - name: Cache Swift Package dependencies
         uses: actions/cache@v6
@@ -122,11 +190,6 @@ jobs:
               ONLY_ACTIVE_ARCH=NO \
               ARCHS="arm64 x86_64"
           }
-          # The trailing `|| STATUS=...` keeps errexit (GitHub's default
-          # `bash -eo pipefail`) from bailing out of the pipe before we read the
-          # code, and captures xcodebuild's REAL exit (`PIPESTATUS[0]`, not
-          # xcpretty's). Only after testing it — never an `exit` inside the pipe —
-          # do we reach the `.swiftmodule` guard below.
           STATUS=0
           if command -v xcpretty >/dev/null 2>&1; then
             run_xcodebuild | xcpretty --color 2>/dev/null || STATUS=${PIPESTATUS[0]}
@@ -152,54 +215,189 @@ jobs:
           echo "SVMOD_DIR=$MODULE_DIR" >> "$GITHUB_ENV"
           echo "Runner arch: $RUNNER_ARCH → simulator target set in SIM_TARGET"
 
-      # Generate a compile-only shim for the React Native Objective-C symbols
-      # the bridge imports. NOT a shipped artifact — the real symbols come from
-      # CocoaPods in a host app. This lets `swiftc` resolve `import React`
-      # so the only thing the type-check can fail on is a SceneViewSwift API
-      # mismatch — exactly the #2067 defect class.
-      - name: Generate compile-only React shim
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            react-native/react-native-sceneview/package-lock.json
+            samples/react-native-demo/package-lock.json
+
+      # ORDER MATTERS. The demo depends on the bridge module through a `file:`
+      # link, and npm runs that linked package's `prepare` (`bob build`) even
+      # under `--ignore-scripts` — so `bob` must already exist in the module's
+      # own node_modules or the demo install dies with `bob: command not found`.
+      # Installing the module's locked devDependencies first provides it.
+      - name: Install bridge module JS dependencies
+        working-directory: react-native/react-native-sceneview
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # `--ignore-scripts` skips the demo's own lifecycle scripts; the linked
+      # module's `prepare` still runs (see above) and now succeeds.
+      - name: Install demo JS dependencies
+        working-directory: samples/react-native-demo
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Cache CocoaPods downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-rn-ios-${{ runner.os }}-${{ hashFiles('samples/react-native-demo/ios/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-rn-ios-${{ runner.os }}-
+
+      # Produces the REAL React module the type-check imports, and validates
+      # this module's podspec (autolinking pulls `react-native-sceneview` into
+      # the Pods project, so a malformed podspec fails right here).
+      #
+      # NO_FLIPPER=1 keeps the Flipper pod graph out — it is a debug tool this
+      # guard does not need, and its pods are the flakiest part of RN 0.73's
+      # dependency set. RCT_NEW_ARCH_ENABLED=0 keeps the old architecture, which
+      # is what the bridge's `RCTViewManager` subclasses target.
+      - name: pod install (produces the real React module)
+        working-directory: samples/react-native-demo/ios
+        env:
+          LANG: en_US.UTF-8
+          NO_FLIPPER: '1'
+          RCT_NEW_ARCH_ENABLED: '0'
+        # Plain `pod install`, NOT `--deployment` — and that is a measured
+        # decision, not the lazy default.
+        #
+        # `--deployment` would make the tracked `Podfile.lock` binding, which is
+        # what you want in principle. It cannot work here. RN 0.73 vendors most
+        # `React-*` pods as `:path` podspecs out of `node_modules`, and
+        # `React-Codegen`'s podspec is GENERATED during `pod install`, so the
+        # lock's `SPEC CHECKSUMS` are machine-dependent by construction. Measured
+        # on run 31190394239: `--deployment` passed locally with this exact env
+        # and byte-identical lock, then failed on `macos-15` with ~30 differing
+        # React-* checksums — same pod VERSIONS, different podspec digests.
+        #
+        # So the lock's version rows are meaningful and its checksum rows are
+        # not portable. The next step asserts the part that IS reproducible.
+        run: pod install
+
+      # The reproducible half of the lockfile guarantee.
+      #
+      # `pod install` re-resolves and may rewrite `Podfile.lock`, so the file
+      # alone proves nothing about what CI just built. What IS deterministic is
+      # the chain `package-lock.json` -> `npm ci` -> `node_modules/react-native`
+      # -> the `React-Core` version CocoaPods resolves from it. Assert that the
+      # React we are about to type-check against is the React the JS lockfile
+      # pins — if those ever diverge, the guard is checking a different API than
+      # the module declares, and it must say so instead of proceeding.
+      - name: Assert the resolved React matches the pinned React Native
+        working-directory: samples/react-native-demo
         run: |
           set -euo pipefail
-          SHIM_DIR="$RUNNER_TEMP/rn-react-shim"
-          mkdir -p "$SHIM_DIR"
-          cat > "$SHIM_DIR/React.swift" <<'SHIM'
-          // Compile-only shim of the React Native Objective-C symbols used by
-          // react-native-sceneview/ios/SceneViewModule.swift. Mirrors the public
-          // signatures from <React/RCTViewManager.h> + <React/RCTBridgeModule.h>.
-          // Used ONLY to type-check the RN bridge against the real SceneViewSwift
-          // API — never compiled into a shipped binary.
-          import UIKit
+          RN_VERSION="$(node -p "require('./node_modules/react-native/package.json').version")"
+          # `Podfile.lock` lists `- React-Core (0.73.11):` under PODS. Take the
+          # first match; grep -m1 keeps it deterministic if the pod recurs as a
+          # dependency line elsewhere in the file.
+          POD_VERSION="$(grep -m1 -oE '^  - React-Core \([0-9]+\.[0-9]+\.[0-9]+\)' ios/Podfile.lock \
+                          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+          if [ -z "$POD_VERSION" ]; then
+            echo "::error::Could not read a React-Core version from ios/Podfile.lock — the lock is malformed or CocoaPods changed its format, so this assertion cannot run. Refusing to continue rather than skipping the check."
+            exit 1
+          fi
+          echo "react-native (from npm ci): $RN_VERSION"
+          echo "React-Core  (from pod install): $POD_VERSION"
+          if [ "$RN_VERSION" != "$POD_VERSION" ]; then
+            echo "::error::React-Core $POD_VERSION does not match the pinned react-native $RN_VERSION. The type-check would run against a React the JS lockfile does not pin."
+            exit 1
+          fi
+          echo "✓ React-Core matches the react-native pinned by package-lock.json."
 
-          public typealias RCTDirectEventBlock = ([String: Any]) -> Void
-          public typealias RCTPromiseResolveBlock = (Any?) -> Void
-          public typealias RCTPromiseRejectBlock = (String?, String?, Error?) -> Void
-          public typealias RCTBubblingEventBlock = ([String: Any]) -> Void
+      # Fail loudly if CocoaPods did not generate the React modulemap, rather
+      # than letting the type-check fall back to something else.
+      - name: Locate the generated React modulemap
+        working-directory: samples/react-native-demo/ios
+        run: |
+          set -euo pipefail
+          PODS="$PWD/Pods"
+          MAP="$PODS/Target Support Files/React-Core/React-Core.modulemap"
+          if [ ! -f "$MAP" ]; then
+            echo "::error::CocoaPods did not generate React-Core.modulemap — cannot type-check against real React."
+            exit 1
+          fi
+          # It must actually declare `module React` — that is the module name
+          # `import React` resolves. A renamed module would silently break the
+          # guard's premise.
+          if ! grep -qE '^module React( |\{)' "$MAP"; then
+            echo "::error::$MAP does not declare 'module React':"
+            cat "$MAP"
+            exit 1
+          fi
+          echo "REACT_MODULEMAP=$MAP" >> "$GITHUB_ENV"
+          echo "PODS_ROOT_DIR=$PODS" >> "$GITHUB_ENV"
+          cat "$MAP"
 
-          open class RCTViewManager: NSObject {
-              open func view() -> UIView! { return UIView() }
-              open class func requiresMainQueueSetup() -> Bool { return true }
-              open class func moduleName() -> String! { return "" }
-          }
-          SHIM
-          xcrun --sdk iphonesimulator swiftc \
-            -emit-module \
-            -module-name React \
-            -target "$SIM_TARGET" \
-            "$SHIM_DIR/React.swift" \
-            -emit-module-path "$SHIM_DIR/React.swiftmodule"
-          echo "SHIM_DIR=$SHIM_DIR" >> "$GITHUB_ENV"
-
-      # The actual regression guard: type-check the RN module's iOS Swift
-      # against the real SceneViewSwift module + the React shim. Fails the
-      # workflow if the bridge references any non-existent SceneViewSwift API.
+      # The actual regression guard, plus the two negative controls that keep it
+      # from ever passing vacuously.
       - name: Type-check RN iOS bridge
         run: |
-          set -o pipefail
-          echo "Type-checking against SceneViewSwift module at: $SVMOD_DIR (target: $SIM_TARGET)"
-          xcrun --sdk iphonesimulator swiftc \
-            -typecheck \
-            -target "$SIM_TARGET" \
-            -I "$SVMOD_DIR" \
-            -I "$SHIM_DIR" \
-            react-native/react-native-sceneview/ios/SceneViewModule.swift
-          echo "RN iOS bridge compiles against the real SceneViewSwift API."
+          set -euo pipefail
+
+          SRC=(react-native/react-native-sceneview/ios/*.swift)
+          echo "Type-checking: ${SRC[*]}"
+
+          # Clang args that make `import React` resolve to CocoaPods' generated
+          # module over React Native's real headers. Every search path below
+          # points at generated or vendored files — none of React's API surface
+          # is authored in this repository.
+          CC_ARGS=(
+            -Xcc -fmodule-map-file="$REACT_MODULEMAP"
+            -Xcc -I"$PODS_ROOT_DIR/Target Support Files/React-Core"
+          )
+          for d in "$PODS_ROOT_DIR"/Headers/Public/*/; do
+            CC_ARGS+=(-Xcc -I"${d%/}")
+          done
+          CC_ARGS+=(
+            -Xcc -I"$PODS_ROOT_DIR/Headers/Public"
+            -Xcc -I"$PODS_ROOT_DIR/boost"
+            -Xcc -I"$PODS_ROOT_DIR/DoubleConversion"
+            -Xcc -I"$PODS_ROOT_DIR/RCT-Folly"
+            -Xcc -I"$PODS_ROOT_DIR/fmt/include"
+          )
+
+          # `-swift-version 5` matches the podspec's `swift_version = '5.9'`.
+          typecheck() {
+            xcrun --sdk iphonesimulator swiftc -typecheck \
+              -swift-version 5 \
+              -target "$SIM_TARGET" \
+              "$@" \
+              "${SRC[@]}"
+          }
+
+          # ---- Negative control 1: SceneViewSwift must be load-bearing -------
+          echo "── Negative control: dropping -I <SceneViewSwift> must fail ──"
+          if typecheck "${CC_ARGS[@]}" > "$RUNNER_TEMP/nc-sv.log" 2>&1; then
+            echo "::error::Type-check PASSED without the SceneViewSwift module — the bridge is not actually being checked against SceneViewSwift, so this guard is vacuous."
+            exit 1
+          fi
+          if ! grep -q "no such module 'SceneViewSwift'" "$RUNNER_TEMP/nc-sv.log"; then
+            echo "::error::Expected \"no such module 'SceneViewSwift'\"; got a different failure:"
+            head -30 "$RUNNER_TEMP/nc-sv.log"
+            exit 1
+          fi
+          echo "✓ SceneViewSwift import is load-bearing"
+
+          # ---- Negative control 2: React must be load-bearing ---------------
+          echo "── Negative control: dropping the React modulemap must fail ──"
+          if typecheck -I "$SVMOD_DIR" > "$RUNNER_TEMP/nc-react.log" 2>&1; then
+            echo "::error::Type-check PASSED without the React module — the bridge is not actually being checked against React, so this guard is vacuous."
+            exit 1
+          fi
+          if ! grep -q "no such module 'React'" "$RUNNER_TEMP/nc-react.log"; then
+            echo "::error::Expected \"no such module 'React'\"; got a different failure:"
+            head -30 "$RUNNER_TEMP/nc-react.log"
+            exit 1
+          fi
+          echo "✓ React import is load-bearing"
+
+          # ---- The real check ------------------------------------------------
+          echo "── Type-check against real SceneViewSwift + real React ──"
+          echo "SceneViewSwift module: $SVMOD_DIR  (target: $SIM_TARGET)"
+          typecheck -I "$SVMOD_DIR" "${CC_ARGS[@]}"
+
+          echo "✅ RN iOS bridge type-checks against the real SceneViewSwift API and the real React API."

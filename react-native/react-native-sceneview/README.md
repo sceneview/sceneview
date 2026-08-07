@@ -7,8 +7,14 @@
 React Native bindings for [SceneView](https://sceneview.github.io) — 3D and AR scenes powered by Filament (Android) and RealityKit (iOS).
 
 > **Status:** Alpha — 3D model loading works on both platforms. AR scene is
-> functional on Android. The iOS native bridge compiles against the real
-> `SceneViewSwift` API and is CI-verified (`.github/workflows/rn-ios-compile.yml`).
+> functional on Android. The iOS native bridge is CI-verified against the real
+> `SceneViewSwift` API **and the real React Native API**
+> (`.github/workflows/rn-ios-compile.yml`): both modules come from an actual
+> build — SceneViewSwift from SwiftPM, React from the demo's `pod install` —
+> and the job proves each import is load-bearing before trusting the result.
+> It type-checks `ios/*.swift` only: it does not link, does not run, and does
+> not compile the Obj-C `RCT_EXTERN_MODULE` glue in `ios/RNSceneViewManager.m`
+> that exposes the module to JS.
 
 ## Features
 
@@ -39,7 +45,10 @@ source, clone the repo and `npm install <path-to-clone>/react-native/react-nativ
 cd ios && pod install
 ```
 
-Requires iOS 17+ and Xcode 15+.
+Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
+(`SceneViewSwift/Package.swift`), so the host app's `Podfile` must declare
+`platform :ios, '18.0'` rather than React Native's `min_ios_version_supported`
+(13.4), or `pod install` fails to resolve this module.
 
 **The host app must add `SceneViewSwift` via Swift Package Manager.**
 `SceneViewSwift` ships as a SwiftPM package only (no CocoaPods spec), so this

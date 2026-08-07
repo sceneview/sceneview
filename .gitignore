@@ -67,6 +67,19 @@ sceneview-web/build/
 sceneview-desktop/build/
 tools/snippets-check/build/
 
+# Standalone RN Android bridge compile gate (#3042). It is its own Gradle
+# BUILD, not a module of the root one, so it grows a `.gradle/` of its own
+# next to the `build/` the root patterns above would not have matched either.
+tools/rn-android-compile/build/
+tools/rn-android-compile/.gradle/
+# Belt and braces: the harness redirects the module's output into itself, but
+# anything that opens `react-native/react-native-sceneview/android` directly
+# (Android Studio, a host app's build) writes here — and npm SHIPS that
+# directory (`package.json` → `files: [… "android" …]`), so a stray build dir
+# would end up inside the published tarball.
+react-native/react-native-sceneview/android/build/
+react-native/react-native-sceneview/android/.gradle/
+
 # ── Kotlin/JS ─────────────────────────────────────────────
 kotlin-js-store/
 

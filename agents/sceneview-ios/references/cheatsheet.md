@@ -40,6 +40,10 @@ SceneView { … }
     .autoCenterContent(true)     // translate content centroid to orbit pivot
     .framingMargin(0.95)         // auto-fit padding; 1.15 default, 1.0 = bounding sphere tangent, < 1 tighter
     .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // INITIAL orbit pose, radians (defaults 0, 30°)
+    .cameraPose(pose)            // v4.27.0+ — continuous camera drive (SceneCameraPose, radians)
+    .onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — read-back after every change; the hop is required
+    .cameraGesturesEnabled(false) // v4.27.0+ — freeze drag/pinch without handing the camera to Apple
+    .onEntityTapHit { hit in }   // v4.27.0+ — tap + world position (bounds centre, not the surface point)
     .mainLight(.systemDefault)   // see LightSlot
     .fillLight(.systemDefault)
     .renderQuality(.default)     // .cinematic | .default | .performance

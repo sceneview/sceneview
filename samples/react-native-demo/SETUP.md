@@ -11,9 +11,13 @@
 >
 > This demo is deliberately NOT included in the root
 > `settings.gradle` (comment: `samples/react-native-demo/ (JS, not
-> Gradle)`). Root `./gradlew` does not touch it, and no CI job
-> currently builds it — unlike the other six demo apps, which are all
-> covered by either `ci.yml` or `pr-check.yml`.
+> Gradle)`). Root `./gradlew` does not touch it, and no CI job *builds
+> the app* — unlike the other six demo apps, which are all covered by
+> either `ci.yml` or `pr-check.yml`. Since #3036 its JS and CocoaPods
+> install ARE exercised on every matching PR: `rn-ios-compile.yml` runs
+> `npm ci` here and `pod install` in `ios/`, so a broken `package.json`,
+> `Podfile` or lockfile now fails CI even though the app is never built
+> or run.
 
 ## What is here
 

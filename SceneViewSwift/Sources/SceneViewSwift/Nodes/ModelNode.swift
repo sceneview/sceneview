@@ -101,7 +101,8 @@ public struct ModelNode: @unchecked Sendable {
 
         // Generate collision shapes for tap interaction
         if enableCollision {
-            modelEntity.makeTappable()
+            modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeInputTargetable()
         }
 
         return ModelNode(modelEntity)
@@ -127,7 +128,8 @@ public struct ModelNode: @unchecked Sendable {
         }()
 
         if enableCollision {
-            modelEntity.makeTappable()
+            modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeInputTargetable()
         }
 
         return ModelNode(modelEntity)
@@ -145,25 +147,87 @@ public struct ModelNode: @unchecked Sendable {
     /// ```
     ///
     /// - Parameters:
-    ///   - remoteURL: An HTTP or HTTPS URL pointing to a USDZ or Reality file.
+    ///   - remoteURL: An HTTP or HTTPS URL pointing to a USDZ or Reality file. Any other
+    ///     scheme throws `URLError(.unsupportedURL)` — this is now enforced, not merely
+    ///     documented. `URLSession` will happily fetch a `file://` URL, so a caller
+    ///     forwarding a user- or network-supplied string could otherwise turn this into
+    ///     a local-file read. Load a local file with ``load(contentsOf:enableCollision:)``.
     ///   - enableCollision: Whether to generate collision shapes for hit testing.
-    ///   - timeout: Download timeout in seconds (default: 60).
+    ///   - timeout: Download **inactivity** timeout in seconds (default: 60) — not a
+    ///     wall-clock or size bound. The size bound is ``maxBytes``.
+    ///   - maxBytes: Ceiling on the downloaded body, in bytes. Default 64 MB, matching
+    ///     the Android downloader's `MAX_MODEL_BYTES`. Enforced on every chunk so an
+    ///     endless body is *stopped*, not merely detected afterwards; a server that
+    ///     announces an oversized `Content-Length` is refused before a byte is read.
+    ///     Exceeding it throws `URLError(.dataLengthExceedsMaximum)`.
     @MainActor
     public static func load(
         from remoteURL: URL,
         enableCollision: Bool = true,
-        timeout: TimeInterval = 60.0
+        timeout: TimeInterval = 60.0,
+        maxBytes: Int64 = 64 * 1024 * 1024
     ) async throws -> ModelNode {
-        // Download to temporary file
+        // Enforce the scheme this method's own documentation promises. `URL` accepts any
+        // scheme and `URLSession.download` honours `file://` — measured, not assumed: it
+        // returns the bytes of a local path, with a response that is not an
+        // `HTTPURLResponse` and therefore skipped the status check below entirely. So a
+        // caller forwarding an attacker-influenced string (a deep link, a remote-config
+        // value, a bridge argument) turned this into an in-sandbox file read handed to
+        // RealityKit's USD parser. Use `load(contentsOf:)` for a local file — that is
+        // what it is for.
+        guard let scheme = remoteURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            throw URLError(.unsupportedURL)
+        }
+
         var request = URLRequest(url: remoteURL)
         request.timeoutInterval = timeout
 
-        let (tempURL, response) = try await URLSession.shared.download(for: request)
+        // `download(for:delegate:)` rather than a byte-by-byte `bytes(for:)` loop:
+        // `URLSession.AsyncBytes` yields one `UInt8` per iteration, which is fine for a
+        // log stream and ruinous for a model — a 10 MB `.usdz` is 10 million awaits. The
+        // delegate watches the same transfer the system is already streaming to disk and
+        // cancels it the moment it goes over, so the cap *stops* the body instead of
+        // discovering afterwards that it was too big.
+        //
+        // `timeout` is an inactivity timeout, not a wall-clock or size bound: without
+        // this, a host trickling an endless body keeps the connection alive and fills the
+        // device's storage. Android has enforced a cap since the façade shipped
+        // (`MAX_MODEL_BYTES`); this is the matching one.
+        let capDelegate = SizeCappedDownload(maxBytes: maxBytes)
+        let tempURL: URL
+        let response: URLResponse
+        do {
+            (tempURL, response) = try await URLSession.shared.download(
+                for: request,
+                delegate: capDelegate
+            )
+        } catch let error as URLError where error.code == .cancelled && capDelegate.didExceed {
+            // The delegate cancels on overflow, and a cancelled task surfaces as
+            // `.cancelled`. Re-map it so the caller can tell "too big" from "the caller
+            // cancelled me" — otherwise the cap is indistinguishable from a normal
+            // cooperative cancellation.
+            throw URLError(.dataLengthExceedsMaximum)
+        }
+        // Registered immediately: every path below can throw, and `URLSession`'s
+        // downloaded file is the caller's to clean up once the call returns.
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        // Validate HTTP response
-        if let httpResponse = response as? HTTPURLResponse,
-           !(200..<300).contains(httpResponse.statusCode) {
+        // `guard let`, not `if let` — a conditional cast silently *skipped* validation
+        // for any non-HTTP response rather than rejecting it, which is precisely the hole
+        // the scheme guard above closes from the other side.
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
+        }
+
+        // Backstop for a server that under-reports or omits `Content-Length`: the
+        // delegate's running check is the real guard, this catches a body that slipped
+        // past it entirely.
+        let downloaded = (try? FileManager.default
+            .attributesOfItem(atPath: tempURL.path)[.size] as? Int64) ?? nil
+        if let downloaded, downloaded > maxBytes {
+            throw URLError(.dataLengthExceedsMaximum)
         }
 
         // Move to a named temp file with correct extension (RealityKit needs it)
@@ -171,11 +235,12 @@ public struct ModelNode: @unchecked Sendable {
         let namedTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(ext)
-        try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
-
+        // Also registered before the operation that creates the file, so a `moveItem`
+        // that fails part-way does not leave one behind.
         defer {
             try? FileManager.default.removeItem(at: namedTempURL)
         }
+        try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
 
         return try await load(contentsOf: namedTempURL, enableCollision: enableCollision)
     }
@@ -571,51 +636,49 @@ public struct ModelNode: @unchecked Sendable {
     }
 }
 
-extension Entity {
-    /// Makes this entity a valid target for SwiftUI entity-targeted gestures.
-    ///
-    /// Hit testing needs **two** components, not one:
-    ///
-    /// - `CollisionComponent` — the geometry a ray can intersect, produced by
-    ///   `generateCollisionShapes(recursive:)`.
-    /// - `InputTargetComponent` — the opt-in that makes the entity eligible for
-    ///   `SpatialTapGesture().targetedToAnyEntity()` at all.
-    ///
-    /// Generating collision shapes alone reads like it is enough — the entity
-    /// really is intersectable, and the gesture really is installed — but
-    /// `targetedToAnyEntity()` skips every entity without an
-    /// `InputTargetComponent`. `InputTargetComponent` was absent from the whole
-    /// package, so no loaded model was ever a valid gesture target.
-    ///
-    /// This is a *necessary* condition, and measured not to be a sufficient one:
-    /// with collision and input both verified present on a loaded model (and the
-    /// tap verified to reach SwiftUI), an entity-targeted tap still resolves to
-    /// no entity when the scene is hosted inside a Flutter platform view. See
-    /// the "known gap" note in flutter/sceneview_flutter's README.
-    ///
-    /// Both components must sit on the *same* entity, which is why this walks
-    /// the hierarchy instead of setting the input target on the root alone.
-    /// `Entity(named:)` returns a plain `Entity`, so `ModelNode.load` wraps it
-    /// in an empty `ModelEntity`; that wrapper has no mesh, so
-    /// `generateCollisionShapes(recursive:)` gives collision to the mesh
-    /// *children* and none to the root. An input target on the root alone
-    /// therefore pairs with nothing, and the tap silently finds no target.
-    @MainActor
-    func makeTappable() {
-        generateCollisionShapes(recursive: true)
-        setInputTargetWhereCollidable()
+
+/// Cancels a download the moment it exceeds a byte ceiling.
+///
+/// Separate from the `async` call site because `URLSession`'s size information only
+/// arrives through the delegate: `download(for:)` hands back the response *after* the
+/// body has already landed on disk, which is too late for a cap to mean anything.
+private final class SizeCappedDownload: NSObject, URLSessionTaskDelegate,
+                                        URLSessionDownloadDelegate, @unchecked Sendable {
+
+    private let maxBytes: Int64
+
+    /// Set when this delegate is the reason the task was cancelled, so the call site can
+    /// tell an overflow from a caller-initiated cancellation — both surface as
+    /// `URLError.cancelled`.
+    private(set) var didExceed = false
+
+    init(maxBytes: Int64) {
+        self.maxBytes = maxBytes
     }
 
-    /// Sets `InputTargetComponent` on every entity in this subtree that has a
-    /// `CollisionComponent`, plus on self.
-    @MainActor
-    private func setInputTargetWhereCollidable() {
-        if components.has(CollisionComponent.self) {
-            components.set(InputTargetComponent())
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        // Both an announced oversize and a running one. The announcement is a hint a
+        // hostile server can omit or lie about, so it is an early-out, not the guard.
+        guard totalBytesExpectedToWrite > maxBytes || totalBytesWritten > maxBytes else {
+            return
         }
-        for child in children {
-            child.setInputTargetWhereCollidable()
-        }
+        didExceed = true
+        downloadTask.cancel()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        // Required by the protocol. The `async` overload of `download(for:delegate:)`
+        // takes ownership of the file itself, so there is nothing to do here.
     }
 }
 
