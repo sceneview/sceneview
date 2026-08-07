@@ -22,10 +22,6 @@
   declared only pan and scale recognizers, so Flutter kept every tap and the native
   hit test never ran. (`onTap` still does not fire on iOS for a separate,
   documented reason — see the plugin README.)
-- **SceneViewSwift: loaded models are valid gesture targets.** `InputTargetComponent`
-  was absent from the package, and `SpatialTapGesture().targetedToAnyEntity()` skips
-  any entity without one — a necessary condition for every entity tap on Apple
-  platforms, missing since the gesture was introduced.
 - **`sync-assets.sh` addressed a directory that does not exist.** All three Flutter
   legs pointed at `samples/flutter-demo/example/…`, so the demo never received the
   assets its catalog entries already claimed it used. The Flutter legs now refresh the
