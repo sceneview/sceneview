@@ -153,6 +153,26 @@ fi
 check_plugin_sdk_dep "react-native/.../android/build.gradle.kts" \
     "$REPO_ROOT/react-native/react-native-sceneview/android/build.gradle.kts"
 
+# react-native/react-native-sceneview/README.md — the SwiftPM setup prose
+# (`- Version: \`X.Y.Z\` (or *Up to Next Major*)`) that a host app types into
+# Xcode's *Add Package Dependencies…* dialog. This module's package.json and
+# package-lock.json were tracked above but this README's prose was NOT, so it
+# sat at 4.14.0 while VERSION_NAME reached 4.26.0 — and the install snippet
+# beside it was pinned at `#v4.0.9`. Anchored on the `Version:` list-item form
+# so the surrounding prose versions (`v4.3.0` feature notes) stay untouched.
+RN_LIB_README="$REPO_ROOT/react-native/react-native-sceneview/README.md"
+if [ -f "$RN_LIB_README" ]; then
+    # `NOT FOUND` is passed THROUGH to add_check on purpose, not guarded out:
+    # add_check turns it into a visible SKIP row plus a warning. Guarding it
+    # away instead made the whole check vanish silently when the anchor line
+    # was reworded — no row, no warning, and the script still printed "All
+    # versions are aligned". A gate that disappears when its anchor moves is
+    # the drift it exists to catch.
+    V=$(grep -m1 -oE '^- Version: `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$RN_LIB_README" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    add_check "react-native/.../README.md (SwiftPM version)" "${V:-NOT FOUND}"
+fi
+
 # ─── 3. Flutter ──────────────────────────────────────────────────────────
 echo -e "${CYAN}--- Flutter ---${NC}"
 # Main plugin
@@ -186,6 +206,25 @@ FLUTTER_EXAMPLE="$REPO_ROOT/samples/flutter-demo/pubspec.yaml"
 if [ -f "$FLUTTER_EXAMPLE" ]; then
     V=$(grep '^version:' "$FLUTTER_EXAMPLE" | awk '{print $2}' || echo "NOT FOUND")
     add_check "samples/flutter-demo/pubspec.yaml" "$V" "false"
+fi
+
+# flutter/sceneview_flutter/README.md — the pub.dev install snippet
+# (`flutter_sceneview: ^X.Y.Z`). REPORT-ONLY (WARN), never bumped — same rule
+# as `check_plugin_sdk_dep` above, for the same reason: this is a caret range
+# against a version that must already EXIST on pub.dev, not the in-flight
+# VERSION_NAME. pub.dev lags whenever `pub-publish` has not shipped the newest
+# release (measured 2026-08-07: pub.dev latest 4.24.0 vs VERSION_NAME 4.26.0),
+# and `^4.26.0` against a registry whose newest is 4.24.0 resolves to NOTHING
+# and fails `flutter pub get`. A `--fix` sweep here would convert a working
+# install line into a broken one at every release, so there deliberately is no
+# `--fix` handler for this slot — the WARN is the whole feature.
+FLUTTER_README="$REPO_ROOT/flutter/sceneview_flutter/README.md"
+if [ -f "$FLUTTER_README" ]; then
+    # Same rule as the RN check above: `NOT FOUND` goes through to add_check so
+    # a reworded anchor surfaces as a SKIP row, never as silence.
+    V=$(grep -m1 -oE 'flutter_sceneview: \^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$FLUTTER_README" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    add_check "flutter/.../README.md (pub snippet — lags pub.dev, not bumped)" "${V:-NOT FOUND}" "false"
 fi
 
 # Flutter CHANGELOG
@@ -1037,6 +1076,23 @@ if changed:
 " 2>/dev/null || echo "")
         [ -n "$CHANGED" ] && echo -e "  Fixed: react-native/.../package-lock.json ($CHANGED -> $SOURCE_VERSION)"
     fi
+
+    # Fix react-native/.../README.md — SwiftPM setup prose. Anchored on the
+    # `- Version: \`X.Y.Z\`` list-item so the `v4.3.0` feature-note versions
+    # elsewhere in the file are never touched.
+    if [ -f "$RN_LIB_README" ]; then
+        CURRENT=$(grep -m1 -oE '^- Version: `[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?`' "$RN_LIB_README" \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/^- Version: \`$CURRENT\`/- Version: \`$SOURCE_VERSION\`/" "$RN_LIB_README"
+            echo -e "  Fixed: react-native/.../README.md (SwiftPM version $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # NOTE: there is deliberately NO `--fix` handler for the Flutter README's
+    # `flutter_sceneview: ^X.Y.Z` snippet. It is a caret range against a
+    # version that must already be live on pub.dev; syncing it to the
+    # in-flight VERSION_NAME breaks `flutter pub get`. See its check above.
 
     # Fix Flutter pubspec.yaml
     PUBSPEC="$REPO_ROOT/flutter/sceneview_flutter/pubspec.yaml"

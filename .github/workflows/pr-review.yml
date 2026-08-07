@@ -16,6 +16,14 @@ name: PR Review (agents)
 #   orchestrator still merges. A confirmed breaking public-API change is the
 #   maintainer gate and is reported as such, never auto-fixed.
 #
+# THE REVIEWERS CANNOT WRITE
+#   CI spawns the `sv-ci-*` agent types, not the canonical `sv-*` ones: same
+#   mandates, wrapped in a toolset of `Read, Glob, Grep` and no shell. That is
+#   what makes a reviewer structurally incapable of editing the checkout it is
+#   judging (#3016) — the process-wide grant in `claude_args` cannot be scoped
+#   per agent, so it never could have done this job. The canonical agents keep
+#   their shell for live sessions, where they review uncommitted work.
+#
 # GENERATOR != EVALUATOR
 #   The agents FIND (write `review-verdict.json`); `grade-pr-review.sh` DECIDES.
 #   The merge verdict is computed by a self-tested bash/python script
@@ -308,6 +316,111 @@ jobs:
             exit 1
           fi
 
+      # ⛔ THE READ-ONLY CONTRACT IS ENFORCED FROM HERE, NOT FROM THE AGENT FILES.
+      #   The reviewers are read-only because their `tools:` frontmatter grants
+      #   `Read, Glob, Grep` and nothing else — that is a toolset, not a request,
+      #   and it is the only thing in this workflow that makes contamination
+      #   impossible rather than merely forbidden (#3016).
+      #
+      #   But those files live in the PR's own checkout, so a PR could widen them
+      #   and be reviewed by the reviewers it just re-armed. This step is the
+      #   pin: it lives in `pr-review.yml`, which the self-modification guard
+      #   above already freezes against the default branch, so the assertion
+      #   cannot be edited by the PR it is judging. Same reasoning as the grader
+      #   being read from `origin/$DEFAULT_BRANCH` rather than from the checkout.
+      #
+      #   Exact-match on purpose. `tools: Read, Glob, Grep, Bash` would read as a
+      #   modest widening and would give the whole hole back: measured locally,
+      #   a subagent with `Bash` overwrote a tracked file with one `echo`, while
+      #   `Write` was absent from the process grant and every git write verb was
+      #   in the deny list. `Bash` is a write door exactly as wide as `Write`.
+      - name: Assert the CI reviewers cannot write
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        run: |
+          set -uo pipefail
+          EXPECTED='tools: Read, Glob, Grep'
+          RC=0
+          for AGENT in sv-ci-code-reviewer sv-ci-security-reviewer \
+                       sv-ci-impact-reviewer sv-ci-doc-freshness \
+                       sv-ci-finding-verifier; do
+            FILE=".claude/agents/${AGENT}.md"
+            if [ ! -f "$FILE" ]; then
+              echo "::error title=CI reviewer missing::${FILE} does not exist in this checkout, so the fan-out would fall back to an agent that can write. Refusing to review."
+              RC=1
+              continue
+            fi
+            # Frontmatter only: stop at the closing `---`, so a `tools:` line in
+            # the prose below cannot satisfy the check.
+            #
+            # ⛔ COUNT the key, never take the FIRST one. The original version
+            # ended in `{print; exit}`, which stopped at the first `tools:` line
+            # and was exact-matched — so a file carrying the key TWICE
+            #     tools: Read, Glob, Grep
+            #     tools: Read, Glob, Grep, Bash
+            # passed this gate on the benign line while a YAML loader resolving
+            # duplicate keys last-wins would hand the reviewer a shell. Caught by
+            # the agent review on #3025; the six mutants that step shipped with
+            # did not include a duplicate key, which is exactly the shape a
+            # hostile edit takes. Duplicates now fail rather than resolve: this
+            # gate does not get to guess which line the loader honours.
+            FOUND="$(awk '
+              NR==1 && $0!="---" { exit }
+              NR>1 && /^---[[:space:]]*$/ { exit }
+              /^tools:/ { n++; last=$0 }
+              END {
+                if (n == 1) print last
+                else if (n > 1) printf "<%d duplicate tools: keys>", n
+              }' "$FILE")"
+            if [ "$FOUND" != "$EXPECTED" ]; then
+              echo "::error title=CI reviewer is not read-only::${FILE} declares '${FOUND:-<no tools: line>}' — expected '${EXPECTED}'. A reviewer with any other toolset can modify the checkout it is judging (#3016). Refusing to review."
+              RC=1
+            fi
+          done
+          # Not `[ "$RC" -eq 0 ] && echo …`: GitHub invokes `run:` as `bash -e`,
+          # so a false test on the last line is itself a non-zero exit, and the
+          # step would then fail with no message of its own.
+          if [ "$RC" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All five CI reviewer types declare a read-only toolset."
+
+      # The reviewers have no shell, so they cannot run `git diff` themselves.
+      # The diff is computed here instead — deterministically, once, from the
+      # committed merge ref — and handed to them as a file OUTSIDE the
+      # repository. Two things follow from that, both wanted:
+      #   * every reviewer reads the same bytes, instead of four models each
+      #     re-deriving a diff and possibly disagreeing about what the PR is;
+      #   * nothing the fan-out needs to read or write lives in the checkout,
+      #     which is what lets the assertion below demand a pristine tree with
+      #     no exclusions at all.
+      - name: Materialise the diff the reviewers read
+        if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -uo pipefail
+          BASE="${GITHUB_BASE_REF:-${DEFAULT_BRANCH:-main}}"
+          git fetch origin "$BASE" --quiet 2>/dev/null || true
+          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
+            echo "::error title=Base ref unresolved::Could not resolve origin/${BASE}, so the PR diff cannot be computed. No review is possible — this is a CI problem, not a finding about the PR."
+            exit 1
+          fi
+          # Three-dot is what "the PR changed" means. It needs a merge base, and
+          # the fetches in this job are depth-limited, so fall back to the
+          # two-dot form rather than handing the reviewers a truncated file.
+          if ! git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/pr.diff" 2>/dev/null; then
+            echo "::warning title=No merge base::origin/${BASE}...HEAD did not resolve; falling back to a two-dot diff, which also shows anything the base gained since."
+            git diff "origin/$BASE" HEAD > "$RUNNER_TEMP/pr.diff"
+          fi
+          # An empty diff is the FALSE GREEN this workflow's header warns about:
+          # four reviewers read nothing, find nothing, and the PR collects a
+          # clean verdict it never earned. Refuse loudly instead.
+          if [ ! -s "$RUNNER_TEMP/pr.diff" ]; then
+            echo "::error title=Nothing to review::The diff against origin/${BASE} is empty, and a review of an empty diff would report a PASS the PR never earned. If this is a dispatch on an already-merged PR, that is expected — read the merge commit instead."
+            exit 1
+          fi
+          echo "Diff for the reviewers: $(wc -l < "$RUNNER_TEMP/pr.diff") lines, $(wc -c < "$RUNNER_TEMP/pr.diff") bytes."
+
       - name: Run the four reviewers
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         uses: anthropics/claude-code-action@v1
@@ -335,53 +448,109 @@ jobs:
           # #2431 is preserved where it belongs: as a DENY list, not by starving
           # the shell. Reviewers share ONE working tree, so a `git checkout`,
           # `switch`, `reset` or `stash` corrupts it under the others. The prompt
-          # already forbids it; these four make it structural.
+          # already forbids it; these make it structural.
+          #
+          # `restore`, `apply` and `clean` were added after #3016: the original
+          # four stop a reviewer from moving the BRANCH but not from reverting a
+          # FILE, and the narrower verbs are the ones a reviewer actually reaches
+          # for ("let me see what main said here"). Measured cost of the gap:
+          # three false blocking verdicts across #3009 and #3015, each one a
+          # reviewer's own edit read back as a defect and then confirmed by an
+          # adversarial verifier looking at the same poisoned tree.
+          #
+          # Both paragraphs above now bind the ORCHESTRATOR, not the reviewers:
+          # the reviewers have no shell at all, so no deny list reaches them.
+          # Keep the list anyway — the orchestrator holds `Bash` because it needs
+          # git, and these seven verbs are the ones that corrupt a checkout the
+          # rest of the job is about to assert is pristine.
+          #
+          # `Write` is GONE, and the honest accounting of what that buys is
+          # short: on its own, nothing. `Bash` is a write door exactly as wide —
+          # measured locally, a subagent granted `Read, Glob, Grep, Bash` and
+          # asked to corrupt a tracked file did it in a single `echo`, with
+          # `Write` absent from this grant and every git write verb denied below.
+          # Reading a `Write`-less allowlist as "the reviewers are read-only now"
+          # would be reading a false victory.
+          #
+          # What actually makes them read-only is the `tools:` frontmatter on the
+          # five `sv-ci-*` agents — `Read, Glob, Grep`, no shell. That is
+          # per-agent scoping, which `claude_args` cannot express at all, and the
+          # step above pins it. Removing `Write` earns its place for a smaller
+          # reason: the orchestrator now writes its verdict outside the repo with
+          # a heredoc, so nothing in this job needs `Write`, and an unused grant
+          # is only a door left open for an agent spawned outside the five typed
+          # ones. It shrinks that blast radius from `Write` + `Bash` to `Bash`.
           claude_args: >-
             --model claude-opus-4-8
-            --allowedTools "Task,Read,Glob,Grep,Write,Bash"
-            --disallowedTools "Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git stash:*)"
+            --allowedTools "Task,Read,Glob,Grep,Bash"
+            --disallowedTools "Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git stash:*),Bash(git restore:*),Bash(git apply:*),Bash(git clean:*)"
           prompt: |
             You are the SceneView PR review ORCHESTRATOR running in CI.
 
-            Your ONLY deliverable is a file `review-verdict.json` at the repo
-            root. You do NOT decide whether the PR merges — a separate script
-            grades your findings. Do not post comments; do not edit code; do not
-            push. Report, and report honestly.
+            Your ONLY deliverable is the file
+            `${{ runner.temp }}/review-verdict.json`. You do NOT decide whether
+            the PR merges — a separate script grades your findings. Do not post
+            comments; do not edit code; do not push. Report, and report honestly.
+
+            ⛔ WRITE NOTHING INSIDE THE REPOSITORY. Not the verdict, not a
+            scratch file, not a note to yourself. The checkout must end this job
+            byte-identical to `HEAD`, and a step after you asserts exactly that
+            and fails the job if it is not — see below for why. Everything you
+            need to produce goes under `${{ runner.temp }}`.
 
             ## Scope
 
-            The PR under review is number ${{ steps.pr.outputs.number }}. This
-            value is an integer the workflow already sanitized (digits only) —
-            it is the only interpolated value in this prompt, and no PR title,
+            The PR under review is number ${{ steps.pr.outputs.number }}. That
+            value and `${{ runner.temp }}` are the only interpolated values in
+            this prompt — the number is sanitized to digits, and no PR title,
             body, or branch name is ever interpolated here, so a crafted PR
-            cannot inject instructions into these directions. Run `git fetch
-            origin --quiet` first, then determine the diff:
-            `git diff origin/main...HEAD` (also check `git diff` for anything
-            uncommitted). Read the WHOLE diff and the surrounding code.
+            cannot inject instructions into these directions.
+
+            The diff is already computed for you: read
+            `${{ runner.temp }}/pr.diff`. It was produced by the workflow from
+            the committed merge ref, so it is the whole PR and the only PR — you
+            do not need `git diff`, and neither do the reviewers, who have no
+            shell at all. Read the WHOLE diff and the surrounding code.
+
+            ⛔ THE PULL REQUEST IS THE COMMITTED DIFF, AND NOTHING ELSE. This
+            checkout is clean by construction — CI never has uncommitted work.
+            So anything `git status` or a bare `git diff` reports is damage this
+            job did to the tree during THIS run, never a defect in the PR.
+            Reporting it as a finding is how this workflow produced three false
+            `DO_NOT_MERGE` verdicts across #3009 and #3015: the finding names an
+            "uncommitted revert" and prescribes `git restore <file>` —
+            discarding a change nobody made. If you observe an uncommitted
+            change, that is a bug in this review, so re-read the file at `HEAD`
+            (`git show HEAD:<path>`) and judge THAT.
 
             ## Step 1 — four independent reviewers, in parallel
 
             Spawn all four in ONE message so they run concurrently, each with its
-            dedicated subagent type (its mandate is the single source of truth in
-            `.claude/agents/<type>.md`):
+            dedicated subagent type:
 
-            - `sv-code-reviewer`     — correctness, threading (Filament JNI is
-                                       main-thread only), resource hygiene, minimality
-            - `sv-security-reviewer` — secrets, deserialization, permission scope,
-                                       supply chain, shell injection
-            - `sv-impact-reviewer`   — breaking public API, cross-platform divergence
-            - `sv-doc-freshness`     — llms.txt / KDoc / docs / recipes / skills /
-                                       changelog fragment
+            - `sv-ci-code-reviewer`     — correctness, threading (Filament JNI is
+                                          main-thread only), resource hygiene, minimality
+            - `sv-ci-security-reviewer` — secrets, deserialization, permission scope,
+                                          supply chain, shell injection
+            - `sv-ci-impact-reviewer`   — breaking public API, cross-platform divergence
+            - `sv-ci-doc-freshness`     — llms.txt / KDoc / docs / recipes / skills /
+                                          changelog fragment
 
-            If a subagent type is not registered in this environment, fall back
-            to a general agent instructed to READ `.claude/agents/<type>.md` and
-            adopt that role EXACTLY. A reviewer must never be silently dropped —
-            if one genuinely cannot run, OMIT it from `perReviewer` and lower
-            `reviewersRan`. Under-reporting is safe; over-reporting is not.
+            ⛔ USE THOSE FIVE TYPES AND NO OTHERS — the four above plus
+            `sv-ci-finding-verifier` in step 2. They are the `sv-*` mandates
+            wrapped in a toolset that CANNOT write: `Read`, `Glob`, `Grep`, no
+            shell. That is what makes this review incapable of contaminating the
+            tree it judges (#3016), and it is a property of those types alone. A
+            general agent, or any other type, would come back with a shell and
+            hand the hole straight back — so there is NO fallback here. If a type
+            is not registered, that reviewer simply does not run: OMIT it from
+            `perReviewer` and lower `reviewersRan`. A missing reviewer grades as
+            REVIEW_INCOMPLETE, which is the correct, safe outcome. Under-reporting
+            is safe; over-reporting is not.
 
-            Tell every reviewer it is STRICTLY READ-ONLY on this checkout: no
-            `git checkout`/`switch`/`reset`/`stash`, no file edits. They share
-            this working tree and a branch switch corrupts it (#2431).
+            Give every reviewer the diff path `${{ runner.temp }}/pr.diff` in its
+            prompt — it has no shell and cannot compute the diff itself. Its own
+            definition already tells it the rest.
 
             ⛔ EVERY `Task` CALL MUST BE SYNCHRONOUS — pass
             `run_in_background: false` on all four, and on every verifier in
@@ -398,14 +567,29 @@ jobs:
             ## Step 2 — adversarially verify every ERROR
 
             For each finding a reviewer marked as an error, spawn a SEPARATE
-            verifier agent whose instruction is to REFUTE it: read the code at
-            that location and reproduce the failure. Default to "not real" if it
-            cannot be independently confirmed. Only errors that survive
-            verification go into `confirmedErrors`. Warnings are not verified.
+            `sv-ci-finding-verifier` — one per finding, never one for several —
+            whose instruction is to REFUTE it: read the code at that location and
+            establish that the finding is wrong. Give it the finding verbatim and
+            the same diff path. Default to "not real" if it cannot be
+            independently confirmed. Only errors that survive verification go
+            into `confirmedErrors`. Warnings are not verified.
 
-            ## Step 3 — write review-verdict.json
+            ## Step 3 — write the verdict file
 
-            Write EXACTLY this shape to `review-verdict.json` at the repo root:
+            You have no `Write` tool. Write the file with a shell heredoc, and
+            quote the delimiter so nothing in it is expanded:
+
+            ```bash
+            cat > "${{ runner.temp }}/review-verdict.json" <<'JSON'
+            { ... }
+            JSON
+            ```
+
+            Then read it back once (`cat`) to confirm it is there and is valid
+            JSON. If it is not, fix it and check again — a malformed or missing
+            file grades as REVIEW_INCOMPLETE and blocks the PR.
+
+            The content must be EXACTLY this shape:
 
             ```json
             {
@@ -428,12 +612,65 @@ jobs:
             ```
 
             `reviewer` MUST be one of `code`, `security`, `impact`, `doc` — the
-            grader keys the maintainer gate off `impact`. A clean PASS is a valid
-            and expected outcome: do NOT invent findings to look thorough. Write
-            the file even if everything passed.
+            grader keys the maintainer gate off `impact`, and the `sv-ci-` prefix
+            on the agent types does not appear here. A clean PASS is a valid and
+            expected outcome: do NOT invent findings to look thorough. Write the
+            file even if everything passed.
 
             Your final message: one short paragraph stating what you found. The
             file is the deliverable.
+
+      # ⛔ The reviewers must not have touched the tree. This is the backstop for
+      # #3016, and it is deliberately an ASSERTION rather than a repair: silently
+      # restoring the files would hide a reviewer that mutates the checkout, and
+      # the mutation is the bug worth seeing.
+      #
+      # It has NO exclusions any more. It used to exempt `review-verdict.json`,
+      # which the orchestrator wrote at the repo root; that file now lives under
+      # RUNNER_TEMP with the diff, so nothing this job produces belongs in the
+      # checkout and the invariant is the strongest one available: byte-identical
+      # to HEAD, no carve-outs. An exempted path is a path a reviewer can hide in.
+      #
+      # The net stays even though the reviewers are now structurally incapable of
+      # writing (no shell, no write tool — see the toolset assertion above). It
+      # covers what that guarantee does not: the orchestrator, which still holds
+      # `Bash` because it needs git, and any future widening of the toolsets. A
+      # net is not removed because the hole it was strung under looks plugged.
+      #
+      # The failure mode this catches is specific and was measured three times
+      # (#3009, #3015): a reviewer edits or reverts a file, the orchestrator
+      # reads the dirty tree, and the edit is reported as a confirmed error
+      # against the PR. A false blocker costs a re-run; worse, it teaches us to
+      # dismiss this reviewer, which is exactly how a REAL finding gets waved
+      # through — on #3009 one of the three findings was genuine (a wrong
+      # VERSION_NAME that would have published an immutable bad Maven
+      # coordinate) and nearly drowned in the two false ones.
+      #
+      # `if: always()` so a fan-out that died mid-way still reports what it left
+      # behind. It runs BEFORE the grader, so a poisoned tree fails the job on
+      # its own terms instead of being laundered into a verdict.
+      - name: Assert the reviewers left the tree clean
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        run: |
+          set -uo pipefail
+          # A FAILED `git status` is not a clean tree. Assigning it straight into
+          # DIRT made this step fail-OPEN: a non-zero exit leaves the variable
+          # empty and the assertion then announces a pristine checkout it never
+          # managed to look at. Reproduced outside a repository: git printed
+          # "fatal: not a git repository" and the step still said "Working tree
+          # clean". Same class as "absent is not zero", which this workflow
+          # already learned the hard way for `permission_denials_count` below.
+          if ! DIRT="$(git status --porcelain)"; then
+            echo "::error title=Clean-tree assertion could not run::git status failed in ${PWD}, so this run proves nothing about the checkout. Absent is not clean — treating it as contaminated."
+            exit 1
+          fi
+          if [ -z "$DIRT" ]; then
+            echo "Working tree clean — the review did not mutate the checkout."
+            exit 0
+          fi
+          echo "$DIRT"
+          echo "::error title=Review contaminated its own checkout::This job modified the working tree during the run (see the paths above). CI checks out a clean tree and the review writes everything under RUNNER_TEMP, so every one of those changes was made here — any finding derived from them is false. This is #3016. Re-run the review; do not act on its verdict."
+          exit 1
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
@@ -443,14 +680,22 @@ jobs:
       # what happened, BEFORE the grader turns it into a one-word verdict.
       # `if: always()` so it also speaks when the fan-out itself failed.
       - name: Diagnose a missing verdict file
+        id: diag
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         run: |
           set -uo pipefail
-          if [ -f review-verdict.json ]; then
-            echo "review-verdict.json written ($(wc -c < review-verdict.json) bytes)."
+          VERDICT_FILE="${RUNNER_TEMP}/review-verdict.json"
+          # An output rather than `hashFiles()` downstream: the verdict lives
+          # outside the workspace now, and `hashFiles()` only ever globs inside
+          # it — it would have returned "absent" for every run, uploading the run
+          # record on healthy reviews too.
+          if [ -s "$VERDICT_FILE" ]; then
+            echo "verdict_present=true" >> "$GITHUB_OUTPUT"
+            echo "review-verdict.json written ($(wc -c < "$VERDICT_FILE") bytes)."
             exit 0
           fi
-          echo "::warning title=No review-verdict.json::The reviewers produced no verdict file. Diagnosing before the grader reports REVIEW_INCOMPLETE."
+          echo "verdict_present=false" >> "$GITHUB_OUTPUT"
+          echo "::warning title=No review-verdict.json::The reviewers produced no verdict file at ${VERDICT_FILE}. Diagnosing before the grader reports REVIEW_INCOMPLETE."
           LOG="${RUNNER_TEMP}/claude-execution-output.json"
           if [ ! -f "$LOG" ]; then
             echo "::error title=Fan-out left no run record::${LOG} is absent — the action did not get far enough to write one. Check the step above for a startup failure (bad model id, expired token, action version)."
@@ -553,7 +798,7 @@ jobs:
       # nothing to explain, and the record carries the whole reviewer
       # conversation, so it is not something to publish by default.
       - name: Upload the run record when the review produced nothing
-        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && hashFiles('review-verdict.json') == ''
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && steps.diag.outputs.verdict_present == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: claude-run-record-pr${{ steps.pr.outputs.number }}-${{ github.run_id }}
@@ -619,7 +864,12 @@ jobs:
             } > review-comment.md
             exit 0
           fi
-          bash "$GRADER" review-verdict.json \
+          # The verdict is read from RUNNER_TEMP, never from the checkout: the
+          # tree must stay byte-identical to HEAD for the contamination
+          # assertion above to mean anything (#3016). `review-comment.md` and
+          # `grade.out` are still written here — this step runs after that
+          # assertion, and they are the grader's output, not the agents'.
+          bash "$GRADER" "$RUNNER_TEMP/review-verdict.json" \
             --comment-out review-comment.md --pr "$PR_NUM" > grade.out
           echo "gate_rc=$?" >> "$GITHUB_OUTPUT"
           cat grade.out >> "$GITHUB_OUTPUT"

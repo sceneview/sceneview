@@ -340,12 +340,23 @@ jobs:
         # plain sub-minute JVM tests, no emulator. Before #2733 this suite
         # gated nothing — only `jsTest` ran it, marked informational.
         run: |
+          # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
+          # with verifyRoborazziDebug above it. The goldens under
+          # samples/android-demo/src/test/snapshots/ are not declared inputs of
+          # any task, so with a restored Gradle cache the comparison comes back
+          # UP-TO-DATE having read no golden — measured locally 2026-08-06 on a
+          # golden mutated by 8000 red pixels: `verifyRoborazziDebug UP-TO-DATE`
+          # / `BUILD SUCCESSFUL in 1s`. A PR whose only change IS a golden PNG
+          # would go green on this, the leg that actually gates merge. `--rerun`
+          # binds to the task it follows, so it forces only the demo module's
+          # test task. See #3029 and .claude/scripts/lib/gradle-run.sh.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
+            :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
 
       - name: Upload unit test reports
@@ -862,6 +873,16 @@ jobs:
         shell: bash
         run: bash .github/scripts/test-ci-gate-aggregation.sh
 
+      # CI Gate observation-ledger regression suite — pins the rule that a
+      # check observed once for a SHA can never leave the gated set just
+      # because one Checks API read did not return it. #3018: a partial read
+      # during a run-attempt rebuild let `CI Gate` pass green over a
+      # `Compile KMP core` that had concluded `cancelled`.
+      - name: Test CI Gate observation ledger
+        if: always()
+        shell: bash
+        run: bash .github/scripts/test-ci-gate-observations.sh
+
       # Demo app asset integrity — catches broken model/HDR references in
       # any samples/* demo app, both for bundled file paths and CDN URLs.
       # Self-test first so a regressed validator can't report a false PASS.
@@ -938,6 +959,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-sync-versions-kotlin.sh
 
+      # sync-versions.sh bridge-README self-test — same blind spot as the
+      # Kotlin one above: the RN handler only fires on drifted README prose, so
+      # the in-tree run (everything already at VERSION_NAME) never executes it
+      # and a broken sed stays green until a release bump. Pins the negative
+      # halves too: the Flutter pub.dev caret range must NOT be swept (pub.dev
+      # lags VERSION_NAME, and `^<unpublished>` fails `flutter pub get`), and
+      # the dated versions sharing those files — the `v4.3.0` feature notes,
+      # the #2735 "at tags vX.Y.Z and earlier" rename fact — must survive, or a
+      # true sentence becomes a false one.
+      - name: Self-test sync-versions.sh bridge READMEs
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-sync-versions-bridge-readmes.sh
+
       # Emulator-pool lease contract self-test (#2862). The pool's mutual
       # exclusion is what stops two sessions from driving one AVD, and it is
       # invisible to every other check: no emulator runs in `repo-hygiene`, and
@@ -995,6 +1030,21 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/test-context-budget.sh
+
+      # Gradle failure classification (lib/gradle-run.sh). The gate scripts used
+      # to run `./gradlew <task> --quiet 2>/dev/null` and translate ANY non-zero
+      # exit into one hard-coded diagnosis, with the stderr that would have
+      # contradicted it thrown away. Measured 2026-08-06: "Android screenshot
+      # regression detected" when Gradle had actually died of daemon contention,
+      # reproduced identically on a pristine clone of main. The classifier now
+      # decides, and it can fail in BOTH directions — too narrow and the
+      # false-red comes back, too broad and a genuine compile break is waved
+      # through as "infrastructure". Fixture-based (synthetic Gradle logs, no
+      # Gradle), with a mutation test on the pattern table.
+      - name: Self-test Gradle failure classification
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-gradle-run.sh
 
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two
