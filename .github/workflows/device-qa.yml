@@ -410,7 +410,7 @@ jobs:
     # caller is nightly-ci.yml (schedule / workflow_dispatch). It is written in
     # anyway so that adding `pull_request:` to the triggers cannot silently
     # hand a fork the persistent runner.
-    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     timeout-minutes: 45
     continue-on-error: true
     steps:

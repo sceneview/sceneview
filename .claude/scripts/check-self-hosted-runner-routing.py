@@ -157,28 +157,99 @@ class Ev:
 
 
 def evaluate(expr, ctx):
-    return Ev(tokenize(expr), ctx).or_()
+    ev = Ev(tokenize(expr), ctx)
+    value = ev.or_()
+    # Reject leftovers rather than ignoring them. Without this, a stray closing
+    # paren — `vars.X == 'true')` — parses "successfully" with the tail dropped,
+    # so a malformed expression could be judged on a prefix of itself. The
+    # opposite typo, a missing close, already raised.
+    if ev.i != len(ev.t):
+        raise SyntaxError(f"trailing tokens after a complete expression: {ev.t[ev.i:]!r}")
+    return value
 
 
 # ---------------------------------------------------------------- discovery
 # Read the raw text rather than parsing YAML: no PyYAML dependency, and the check sees
 # exactly the bytes a reviewer sees. `jobs:` keys are 2-space indented, `runs-on:` 4.
 JOB_RE = re.compile(r"^  ([A-Za-z_][\w-]*):\s*$")
-RUNSON_RE = re.compile(r"^    runs-on:\s*(.+?)\s*$")
+RUNSON_RE = re.compile(r"^    runs-on:\s*(.*?)\s*$")
+SEQ_ITEM_RE = re.compile(r"^\s+-\s*(.+?)\s*$")
 
 
 def find_self_hosted_jobs(workflow_dir):
-    """Yield (path, job, raw_runs_on) for every job whose runs-on names the Mac."""
-    for path in sorted(workflow_dir.glob("*.yml")) + sorted(workflow_dir.glob("*.yaml")):
+    """Yield (path, job, raw_runs_on) for every job whose runs-on names the Mac.
+
+    Handles BOTH spellings of the value. `runs-on:` with an empty value opens a
+    YAML block sequence:
+
+        runs-on:
+          - self-hosted
+          - sceneview-mac
+
+    which is the canonical way to write a label list — and which an inline-only
+    regex skips silently. Skipping it is worse than missing a job: with no other
+    self-hosted job in the tree the gate would take its "nothing routes here"
+    branch and exit 0, reporting green over a job pinned to the persistent Mac
+    with no heartbeat fallback and no fork clause at all.
+    """
+    for path in workflow_files(workflow_dir):
         job = None
-        for line in path.read_text().splitlines():
+        lines = path.read_text().splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            i += 1
             m = JOB_RE.match(line)
             if m:
                 job = m.group(1)
                 continue
             m = RUNSON_RE.match(line)
-            if m and SELF in m.group(1):
-                yield path, job or "?", m.group(1)
+            if not m:
+                continue
+            start = i  # 1-indexed line number of the `runs-on:` line
+            value = m.group(1)
+            if value:
+                if SELF in value:
+                    yield path, job or "?", value, {start}
+                continue
+            # Empty value: gather the block sequence that follows.
+            items, used = [], {start}
+            while i < len(lines) and SEQ_ITEM_RE.match(lines[i]):
+                items.append(SEQ_ITEM_RE.match(lines[i]).group(1))
+                used.add(i + 1)
+                i += 1
+            if items and any(SELF in it for it in items):
+                yield path, job or "?", "[" + ", ".join(items) + "]", used
+
+
+def workflow_files(workflow_dir):
+    return sorted(workflow_dir.glob("*.yml")) + sorted(workflow_dir.glob("*.yaml"))
+
+
+def unattributed_mentions(workflow_dir, attributed):
+    """Lines naming the runner that discovery did NOT pick up.
+
+    Discovery above is a set of regexes, and a regex is a claim about formatting,
+    not about meaning. It sees `runs-on` only on one line, at one indentation.
+    A folded scalar (`runs-on: >-` with the expression on the next line), a
+    matrix indirection (`runs-on: ${{ matrix.runner }}`), or 4-space job keys
+    all make it find NOTHING — and "nothing found" takes the legitimate
+    opt-out branch and exits 0. The expression is 200+ characters, which is
+    exactly what a human or a formatter folds, so this is not a hypothetical.
+
+    So the gate does not get to trust its own regex. Every non-comment line in
+    the workflow directory that names the runner must have been attributed to a
+    job; one that was not means discovery drifted, and that is a failure rather
+    than a silent green.
+    """
+    stray = []
+    for path in workflow_files(workflow_dir):
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if SELF not in line or line.lstrip().startswith("#"):
+                continue
+            if (path, n) not in attributed:
+                stray.append((path, n, line.strip()))
+    return stray
 
 
 def ctx_for(event_name, head_repo=None, online="true"):
@@ -202,6 +273,16 @@ CASES = [
     ("PR from a fork",              ctx_for("pull_request", "attacker/sceneview"),       HOSTED),
     ("fork w/ repo as name prefix", ctx_for("pull_request", "sceneview/sceneview-evil"), HOSTED),
     ("fork w/ repo as path suffix", ctx_for("pull_request", "evil/sceneview/sceneview"), HOSTED),
+    # `pull_request_target` is the trap. It carries a FULLY POPULATED
+    # `github.event.pull_request` from the fork, but its event_name is not
+    # `pull_request` — so a guard that only excludes `pull_request` short-
+    # circuits straight to the self-hosted branch and hands the fork the Mac.
+    # No workflow here uses the trigger today (only comments in pr-review.yml
+    # explaining why it is avoided), which is exactly why it needs a case: it
+    # is the trigger someone reaches for when they WANT a fork PR to see
+    # secrets, and by then nothing would have complained.
+    ("PR_TARGET from a fork",       ctx_for("pull_request_target", "attacker/sceneview"), HOSTED),
+    ("PR_TARGET from this repo",    ctx_for("pull_request_target", REPO),                 SELF),
     ("heartbeat says offline",      ctx_for("push", online="false"),                     HOSTED),
     ("heartbeat variable unset",    ctx_for("push", online=None),                        HOSTED),
 ]
@@ -217,15 +298,33 @@ def main():
         return 1
 
     jobs = list(find_self_hosted_jobs(workflow_dir))
-    if not jobs:
-        # Not a pass by default: the routing is supposed to exist. If every workflow
-        # was opted back out, say so loudly rather than reporting a silent green.
+    failures, expressions = [], set()
+
+    # Falsify discovery BEFORE trusting its result — including when it found
+    # nothing, which is the case that used to exit 0 over a reformatted tree.
+    attributed = {(path, n) for path, _, _, used in jobs for n in used}
+    for path, n, text in unattributed_mentions(workflow_dir, attributed):
+        failures.append(
+            f"{path.relative_to(root)}:{n} names `{SELF}` but no job's `runs-on` "
+            f"was attributed to it — the discovery regex has drifted, so this "
+            f"gate is not seeing what it claims to check:\n      {text}"
+        )
+
+    if not jobs and not failures:
+        # A genuine full opt-out (runner decommissioned). Legitimate, but never
+        # silent: the routing is supposed to exist, so say the coverage is zero.
         print(f"{YELLOW}  ⚠ no job routes to `{SELF}` — self-hosted opt-in removed?{OFF}")
         return 0
 
-    failures, expressions = [], set()
-    for path, job, raw in jobs:
+    for path, job, raw, _ in jobs:
         rel = path.relative_to(root)
+        # Normalise the two spellings that are stylistic, not semantic: a
+        # trailing YAML comment, and a quoted scalar (several YAML linters
+        # prefer quotes). Refusing those would make the gate reject a correct
+        # expression — a gate that blocks legitimate work gets deleted.
+        raw = re.sub(r"\s+#.*$", "", raw).strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+            raw = raw[1:-1].strip()
         m = re.fullmatch(r"\$\{\{(.*)\}\}", raw, re.S)
         if not m:
             failures.append(f"{rel} :: {job} — runs-on is not a bare ${{{{ }}}} expression: {raw}")

@@ -707,7 +707,7 @@ jobs:
     # for a fork PR, which stays on `macos-15`. That workflow carries the full
     # rationale for both halves of the condition; keep the three copies
     # (here, bridge-ios-compile.yml, device-qa.yml) identical.
-    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     # Kept at/below the other blocking jobs (30 min) so the CI Gate's 50-min
     # internal deadline keeps its margin. The cold Kotlin/Native link is the
     # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,

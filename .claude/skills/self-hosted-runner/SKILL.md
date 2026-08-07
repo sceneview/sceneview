@@ -62,7 +62,7 @@ process is dead (heartbeat sets `ONLINE=false` if `runner.status != "online"`):
 jobs:
   build:
     # Was:  runs-on: macos-15
-    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     steps:
       - ...
 ```
@@ -80,6 +80,13 @@ rather than loudly:
   nightly-ci.yml. Without this term the `head.repo` comparison is false on all
   of them, so **every non-PR run quietly loses the fast runner** and the repo
   pays for hosted minutes it already owns hardware for.
+- `github.event_name != 'pull_request_target'` — the trap. That event carries a
+  **fully populated `pull_request` payload from the fork**, but its event_name
+  is not `pull_request`; excluding only `pull_request` short-circuits straight
+  to the self-hosted branch and hands the fork the Mac. No workflow here uses
+  the trigger today — which is exactly why the term is written now, since
+  `pull_request_target` is what someone reaches for when they *want* a fork PR
+  to see secrets.
 - `head.repo.full_name == github.repository` — true only for a branch PR
   opened inside this repo, false for every fork. `sceneview-mac` is a
   persistent machine and Thomas's daily driver: a job there inherits the

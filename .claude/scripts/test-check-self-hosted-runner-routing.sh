@@ -38,7 +38,7 @@ write_job() {
     } > "$tree/.github/workflows/$file"
 }
 
-GOOD="\${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}"
+GOOD="\${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}"
 
 # check <expected-rc> <label> <tree>
 check() {
@@ -91,9 +91,16 @@ check 1 "hardcoded sceneview-mac (no fallback when asleep)" "$t"
 
 # --- 7. two workflows that disagree must be refused ---------------------------
 # The drift this gate exists to catch: one file updated, the other left behind.
+#
+# The second expression is deliberately SEMANTICALLY EQUIVALENT to $GOOD and
+# only textually different (one extra paren pair). An earlier version of this
+# case paired $GOOD with the old two-term form — which case 3 already refuses on
+# its own merits, so deleting the byte-identical check entirely left this case
+# green. Measured: with the equivalent-but-different form, only the drift branch
+# can turn it red, so the check is now uniquely exercised.
 t="$(new_tree)"
 write_job "$t" a.yml build "$GOOD"
-write_job "$t" b.yml build "\${{ vars.SELF_HOSTED_MACOS_ONLINE == 'true' && 'sceneview-mac' || 'macos-15' }}"
+write_job "$t" b.yml build "\${{ ((vars.SELF_HOSTED_MACOS_ONLINE == 'true') && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}"
 check 1 "two workflows carrying different expressions" "$t"
 
 # --- 8. discovery reaches a workflow the author never listed ------------------
@@ -104,14 +111,21 @@ write_job "$t" aaa-good.yml build "$GOOD"
 write_job "$t" zzz-newly-opted-in.yml build "sceneview-mac"
 check 1 "a 4th workflow opted in with a bad expression" "$t"
 
-# --- 9. a near-miss comparison must be refused --------------------------------
-# `sceneview/sceneview-evil` is a fork whose full_name STARTS WITH the repo name.
+# --- 9. a function-call rewrite is refused, by construction -------------------
+# NOTE THE LABEL. This case used to claim it proved a prefix-named fork
+# (`sceneview/sceneview-evil`) slips past `startsWith()`. It does not: the
+# evaluator has no `,` token, so ANY function form dies in the tokenizer before
+# a single comparison runs. That is fail-closed and safe, but "refused as
+# unparseable" is not "refused as wrong", and stating the stronger claim would
+# be exactly the hollow assertion this suite exists to prevent.
 t="$(new_tree)"
 write_job "$t" a.yml build "\${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || startsWith(github.event.pull_request.head.repo.full_name, github.repository))) && 'sceneview-mac' || 'macos-15' }}"
-check 1 "startsWith() instead of == (prefix-named fork slips in)" "$t"
+check 1 "a function-call rewrite is unparseable, so refused" "$t"
 
 # --- 10. a tree with no self-hosted job at all is not a failure ---------------
 # Opting every workflow back out is a legitimate state (runner decommissioned).
+# Note this tree mentions the label NOWHERE — that is what makes it legitimate,
+# and case 12 is the counterpart where the label IS present but undiscovered.
 t="$(new_tree)"; write_job "$t" a.yml build "macos-15"
 check 0 "no self-hosted job at all (opt-out is legitimate)" "$t"
 
@@ -119,6 +133,41 @@ check 0 "no self-hosted job at all (opt-out is legitimate)" "$t"
 t="$(new_tree)"
 write_job "$t" a.yml build "[self-hosted, sceneview-mac]"
 check 1 "label array instead of the fallback expression" "$t"
+
+# --- 12. a reformat that hides the opt-in from discovery must be refused ------
+# The gate's discovery is a set of regexes, i.e. a claim about FORMATTING. Each
+# of these is valid YAML that pins a job to the persistent Mac with no heartbeat
+# fallback and no fork clause, while matching none of those regexes. Before the
+# unattributed-mention check, all three printed "no job routes to sceneview-mac"
+# and exited 0 — the gate blessing the very leak it exists to stop. The 200+
+# character expression makes a fold or a matrix extraction a realistic edit, not
+# a contrived one.
+t="$(new_tree)"
+{ printf 'name: t\non:\n  pull_request:\n\njobs:\n  build:\n    runs-on: >-\n'
+  printf '      ${{ vars.SELF_HOSTED_MACOS_ONLINE == '"'"'true'"'"' && '"'"'sceneview-mac'"'"' || '"'"'macos-15'"'"' }}\n'
+  printf '    steps:\n      - run: true\n'; } > "$t/.github/workflows/folded.yml"
+check 1 "folded scalar hides the old two-term form from discovery" "$t"
+
+t="$(new_tree)"
+{ printf 'name: t\non:\n  pull_request:\n\njobs:\n  build:\n    runs-on:\n      - self-hosted\n      - sceneview-mac\n'
+  printf '    steps:\n      - run: true\n'; } > "$t/.github/workflows/blockseq.yml"
+check 1 "block-sequence label list pinned to the Mac" "$t"
+
+t="$(new_tree)"
+{ printf 'name: t\non:\n  pull_request:\n\njobs:\n  build:\n    strategy:\n      matrix:\n        runner: [ubuntu-latest, sceneview-mac]\n'
+  printf '    runs-on: ${{ matrix.runner }}\n    steps:\n      - run: true\n'; } > "$t/.github/workflows/matrix.yml"
+check 1 "matrix indirection reaches the Mac unguarded" "$t"
+
+# --- 13. a comment naming the runner is not an opt-in ------------------------
+# The counterpart to case 12: the unattributed-mention check must not fire on
+# prose. Several real workflows (rn-ios-compile.yml, app-store-screenshots.yml)
+# explain in comments why they are NOT opted in — if those tripped the gate, it
+# would be red on main and get switched off.
+t="$(new_tree)"
+{ printf 'name: t\non:\n  push:\n\njobs:\n  build:\n'
+  printf '    # deliberately NOT on sceneview-mac: npm ci writes shared caches\n'
+  printf '    runs-on: macos-15\n    steps:\n      - run: true\n'; } > "$t/.github/workflows/prose.yml"
+check 0 "a comment naming the runner is not an opt-in" "$t"
 
 echo
 if [ "$fail" -eq 0 ]; then

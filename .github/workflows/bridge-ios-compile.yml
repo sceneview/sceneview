@@ -61,12 +61,19 @@ jobs:
     # disposable hosted runner. `sceneview-mac` is a persistent machine that is
     # also Thomas's daily driver: a job there inherits the previous job's
     # filesystem, `~/.gradle`, and any credential the login user holds, so an
-    # untrusted contributor's build script would run with that reach. The two
-    # halves are both load-bearing:
+    # untrusted contributor's build script would run with that reach. All three
+    # terms are load-bearing:
     #   - `github.event_name != 'pull_request'` — `github.event.pull_request` is
     #     null on push / workflow_dispatch / schedule / workflow_call-from-
     #     nightly, so comparing `head.repo.full_name` alone would be false there
     #     and silently push every non-PR run back onto `macos-15`.
+    #   - `github.event_name != 'pull_request_target'` — the trap. That event
+    #     carries a FULLY POPULATED `pull_request` payload from the fork, yet its
+    #     event_name is not `pull_request`, so excluding only `pull_request`
+    #     short-circuits to the self-hosted branch and hands the fork the Mac.
+    #     No workflow here uses the trigger today, which is precisely why the
+    #     term is written now: it is what someone reaches for when they WANT a
+    #     fork PR to see secrets, and nothing else would have objected.
     #   - `head.repo.full_name == github.repository` — true only for a branch
     #     PR opened inside this repo, false for every fork.
     # This is defence in depth, NOT the boundary: a fork PR runs the workflow
@@ -74,7 +81,7 @@ jobs:
     # can simply delete this line. The real gate is the repo's fork-PR approval
     # policy (Settings → Actions → "Require approval for all external
     # contributors"), which withholds the runner until a maintainer approves.
-    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
+    runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
     timeout-minutes: 25
 
     steps:
