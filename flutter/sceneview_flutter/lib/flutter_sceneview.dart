@@ -575,6 +575,12 @@ class _SceneViewState extends State<SceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       case TargetPlatform.iOS:
@@ -586,6 +592,12 @@ class _SceneViewState extends State<SceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       default:
@@ -707,6 +719,12 @@ class _ARSceneViewState extends State<ARSceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       case TargetPlatform.iOS:
@@ -718,6 +736,12 @@ class _ARSceneViewState extends State<ARSceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       default:

@@ -37,7 +37,7 @@ class AboutPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'v4.13.0',
+                    'v4.26.0',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: theme.colorScheme.onPrimaryContainer.withOpacity(0.7),
                     ),
@@ -188,7 +188,7 @@ class AboutPage extends StatelessWidget {
           // Footer
           Center(
             child: Text(
-              'Made with SceneView SDK v4.13.0',
+              'Made with SceneView SDK v4.26.0',
               style: theme.textTheme.bodySmall,
             ),
           ),

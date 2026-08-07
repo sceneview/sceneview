@@ -22,9 +22,13 @@ ANDROID_TV_MODELS="$REPO_ROOT/samples/android-tv-demo/src/main/assets/models"
 ANDROID_TV_ENVS="$REPO_ROOT/samples/android-tv-demo/src/main/assets/environments"
 IOS_MODELS="$REPO_ROOT/samples/ios-demo/SceneViewDemo/Models"
 WEB_MODELS="$REPO_ROOT/samples/web-demo/public/models"
-FLUTTER_ANDROID_MODELS="$REPO_ROOT/samples/flutter-demo/example/android/app/src/main/assets/models"
-FLUTTER_ANDROID_ENVS="$REPO_ROOT/samples/flutter-demo/example/android/app/src/main/assets/environments"
-FLUTTER_IOS_MODELS="$REPO_ROOT/samples/flutter-demo/example/ios/Runner/Models"
+# These three pointed at `samples/flutter-demo/example/...` — a directory that
+# does not exist. The demo's real tree is samples/flutter-demo/{android,ios,lib},
+# so every Flutter leg of this sync silently addressed nothing, and the demo
+# never received the USDZ its catalog entries already claimed it used.
+FLUTTER_ANDROID_MODELS="$REPO_ROOT/samples/flutter-demo/android/app/src/main/assets/models"
+FLUTTER_ANDROID_ENVS="$REPO_ROOT/samples/flutter-demo/android/app/src/main/assets/environments"
+FLUTTER_IOS_MODELS="$REPO_ROOT/samples/flutter-demo/ios/Runner/Models"
 RN_ANDROID_MODELS="$REPO_ROOT/samples/react-native-demo/android/app/src/main/assets/models"
 RN_ANDROID_ENVS="$REPO_ROOT/samples/react-native-demo/android/app/src/main/assets/environments"
 RN_IOS_MODELS="$REPO_ROOT/samples/react-native-demo/ios/Models"
@@ -145,6 +149,31 @@ check_or_fix() {
     fi
 }
 
+# Refreshes only the assets a platform ALREADY bundles, instead of pushing the
+# whole shared library at it.
+#
+# The Flutter demo bundles exactly one model, wired into the Runner target's
+# Resources build phase by hand; copying all ~90 shared models into its tree
+# would commit tens of MB that no build ever reads. The full-fanout legs above
+# are right for the demos that really do ship the whole catalogue (android-demo,
+# ios-demo, web) — this one keeps a curated platform honest without growing it.
+refresh_existing() {
+    local src_dir="$1"
+    local dst_dir="$2"
+    local ext="$3"
+    local mode="$4"
+
+    [ -d "$dst_dir" ] || return 0
+    shopt -s nullglob
+    local found=0
+    for dst in "$dst_dir"/*."$ext"; do
+        found=1
+        check_or_fix "$src_dir/$(basename "$dst")" "$dst" "$mode"
+    done
+    shopt -u nullglob
+    [ "$found" -eq 1 ] || echo -e "  (no .$ext bundled yet — nothing to refresh)"
+}
+
 echo ""
 echo -e "${BLUE}═══ SceneView Asset Sync ═══${NC}"
 echo ""
@@ -235,19 +264,13 @@ for glb in "$ASSETS_DIR"/models/glb/*.glb; do
     check_or_fix "$glb" "$WEB_MODELS/$(basename "$glb")" "$MODE"
 done
 
-# --- Sync GLB models to Flutter (Android side) ---
+# --- Refresh the GLB models Flutter/Android already bundles ---
 echo -e "${BLUE}[Flutter/Android] GLB models → $( echo "$FLUTTER_ANDROID_MODELS" | sed "s|$REPO_ROOT/||" )${NC}"
-for glb in "$ASSETS_DIR"/models/glb/*.glb; do
-    [ -f "$glb" ] || continue
-    check_or_fix "$glb" "$FLUTTER_ANDROID_MODELS/$(basename "$glb")" "$MODE"
-done
+refresh_existing "$ASSETS_DIR/models/glb" "$FLUTTER_ANDROID_MODELS" "glb" "$MODE"
 
-# --- Sync USDZ models to Flutter (iOS side) ---
+# --- Refresh the USDZ models Flutter/iOS already bundles ---
 echo -e "${BLUE}[Flutter/iOS] USDZ models → $( echo "$FLUTTER_IOS_MODELS" | sed "s|$REPO_ROOT/||" )${NC}"
-for usdz in "$ASSETS_DIR"/models/usdz/*.usdz; do
-    [ -f "$usdz" ] || continue
-    check_or_fix "$usdz" "$FLUTTER_IOS_MODELS/$(basename "$usdz")" "$MODE"
-done
+refresh_existing "$ASSETS_DIR/models/usdz" "$FLUTTER_IOS_MODELS" "usdz" "$MODE"
 
 # --- Sync GLB models to React Native (Android side) ---
 echo -e "${BLUE}[RN/Android] GLB models → $( echo "$RN_ANDROID_MODELS" | sed "s|$REPO_ROOT/||" )${NC}"

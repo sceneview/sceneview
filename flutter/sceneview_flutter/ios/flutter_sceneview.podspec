@@ -11,7 +11,16 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform         = :ios, '17.0'
+  # The bridge compiles inside Pods.xcodeproj, which cannot see a Swift package
+  # added to the host app's project — so SceneViewSwift has to arrive as a pod
+  # too. The host app's Podfile supplies the path:
+  #   pod 'SceneViewSwift', :path => '<repo>/SceneViewSwift'
+  s.dependency 'SceneViewSwift'
+  # Must match SceneViewSwift/Package.swift's `.iOS("18.0")`. This said 17.0
+  # while the package it bridges to required 18.0 — a host app that believed
+  # the podspec and targeted 17.0 got availability errors from RealityKit's
+  # per-entity light/shadow APIs at link time, not a clear version error.
+  s.platform         = :ios, '18.0'
   s.swift_version    = '5.9'
 
   # SceneViewSwift is consumed via SPM — the host app must add it to their Xcode project.

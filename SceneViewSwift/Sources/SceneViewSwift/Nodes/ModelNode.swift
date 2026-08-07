@@ -101,7 +101,7 @@ public struct ModelNode: @unchecked Sendable {
 
         // Generate collision shapes for tap interaction
         if enableCollision {
-            modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeTappable()
         }
 
         return ModelNode(modelEntity)
@@ -127,7 +127,7 @@ public struct ModelNode: @unchecked Sendable {
         }()
 
         if enableCollision {
-            modelEntity.generateCollisionShapes(recursive: true)
+            modelEntity.makeTappable()
         }
 
         return ModelNode(modelEntity)
@@ -568,6 +568,54 @@ public struct ModelNode: @unchecked Sendable {
             entity.components.set(GroundingShadowComponent(castsShadow: true))
         }
         return self
+    }
+}
+
+extension Entity {
+    /// Makes this entity a valid target for SwiftUI entity-targeted gestures.
+    ///
+    /// Hit testing needs **two** components, not one:
+    ///
+    /// - `CollisionComponent` — the geometry a ray can intersect, produced by
+    ///   `generateCollisionShapes(recursive:)`.
+    /// - `InputTargetComponent` — the opt-in that makes the entity eligible for
+    ///   `SpatialTapGesture().targetedToAnyEntity()` at all.
+    ///
+    /// Generating collision shapes alone reads like it is enough — the entity
+    /// really is intersectable, and the gesture really is installed — but
+    /// `targetedToAnyEntity()` skips every entity without an
+    /// `InputTargetComponent`. `InputTargetComponent` was absent from the whole
+    /// package, so no loaded model was ever a valid gesture target.
+    ///
+    /// This is a *necessary* condition, and measured not to be a sufficient one:
+    /// with collision and input both verified present on a loaded model (and the
+    /// tap verified to reach SwiftUI), an entity-targeted tap still resolves to
+    /// no entity when the scene is hosted inside a Flutter platform view. See
+    /// the "known gap" note in flutter/sceneview_flutter's README.
+    ///
+    /// Both components must sit on the *same* entity, which is why this walks
+    /// the hierarchy instead of setting the input target on the root alone.
+    /// `Entity(named:)` returns a plain `Entity`, so `ModelNode.load` wraps it
+    /// in an empty `ModelEntity`; that wrapper has no mesh, so
+    /// `generateCollisionShapes(recursive:)` gives collision to the mesh
+    /// *children* and none to the root. An input target on the root alone
+    /// therefore pairs with nothing, and the tap silently finds no target.
+    @MainActor
+    func makeTappable() {
+        generateCollisionShapes(recursive: true)
+        setInputTargetWhereCollidable()
+    }
+
+    /// Sets `InputTargetComponent` on every entity in this subtree that has a
+    /// `CollisionComponent`, plus on self.
+    @MainActor
+    private func setInputTargetWhereCollidable() {
+        if components.has(CollisionComponent.self) {
+            components.set(InputTargetComponent())
+        }
+        for child in children {
+            child.setInputTargetWhereCollidable()
+        }
     }
 }
 

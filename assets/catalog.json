@@ -1694,7 +1694,8 @@
       ],
       "usedIn": [
         "android-demo",
-        "ios-demo"
+        "ios-demo",
+        "flutter-demo"
       ],
       "defaultScale": 0.5,
       "cameraDistance": 2.5

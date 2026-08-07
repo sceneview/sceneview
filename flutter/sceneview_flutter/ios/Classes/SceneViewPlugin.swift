@@ -35,6 +35,51 @@ struct FlutterModelData: Identifiable, Equatable {
     }
 }
 
+// MARK: - Model loading
+
+/// Formats RealityKit can actually parse. `Entity(named:)` and
+/// `Entity(contentsOf:)` read USD variants and `.reality` — nothing else. A
+/// `.glb` fails with a generic error that reads like a missing file, so the
+/// bridge names the real reason instead of relaying it.
+let flutterSupportedModelExtensions: Set<String> = [
+    "usdz", "usda", "usdc", "usd", "reality"
+]
+
+/// Returns an actionable reason why `path` cannot be loaded on Apple platforms,
+/// or nil when the format is loadable.
+///
+/// An extension-less path is accepted: `Entity(named:)` resolves bundle
+/// resources by name alone.
+func flutterUnsupportedModelReason(_ path: String) -> String? {
+    // Query strings and fragments are not part of the file's extension.
+    let withoutQuery = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
+    let ext = (withoutQuery as NSString).pathExtension.lowercased()
+    guard !ext.isEmpty else { return nil }
+    guard !flutterSupportedModelExtensions.contains(ext) else { return nil }
+    return "RealityKit cannot parse '.\(ext)' — it reads "
+        + flutterSupportedModelExtensions.sorted().map { ".\($0)" }.joined(separator: ", ")
+        + " only. Convert the model (tools/convert-usdz.sh) and bundle the .usdz "
+        + "as an app resource, or point modelPath at a remote .usdz."
+}
+
+/// Loads one model, choosing between a remote download and a bundle-resource
+/// lookup.
+///
+/// The Android bridge hands `modelPath` straight to Filament's `ModelLoader`,
+/// which accepts both an asset path and an `https://` URL. `ModelNode.load(_:)`
+/// on Apple is a *bundle resource* lookup only, so a URL used to fail here
+/// while the same Dart code worked on Android. Routing HTTP(S) through
+/// `ModelNode.load(from:)` — which downloads first — closes that divergence.
+@MainActor
+func flutterLoadModel(path: String) async throws -> ModelNode {
+    if let url = URL(string: path),
+       let scheme = url.scheme?.lowercased(),
+       scheme == "http" || scheme == "https" {
+        return try await ModelNode.load(from: url)
+    }
+    return try await ModelNode.load(path)
+}
+
 // MARK: - Content root
 
 /// Holds the persistent RealityKit content root for a Flutter platform view.
@@ -77,8 +122,14 @@ final class FlutterContentRoot {
 
         // Load and attach models not yet present.
         for data in models where loaded[data.id] == nil {
+            // Name an unloadable format up front — RealityKit's own error for a
+            // `.glb` is indistinguishable from "file not found".
+            if let reason = flutterUnsupportedModelReason(data.path) {
+                NSLog("[flutter_sceneview] Cannot load model '%@': %@", data.path, reason)
+                continue
+            }
             do {
-                let node = try await ModelNode.load(data.path)
+                let node = try await flutterLoadModel(path: data.path)
                 node.scale(data.scale)
                 // The Dart side may have cleared the model between the
                 // `await` suspension and resumption — only attach if it is
@@ -587,8 +638,12 @@ final class ARPlacementController: ObservableObject {
 
         let loadedIds = Set(templates.map(\.data.id))
         for data in models where !loadedIds.contains(data.id) {
+            if let reason = flutterUnsupportedModelReason(data.path) {
+                NSLog("[flutter_sceneview] Cannot load AR model '%@': %@", data.path, reason)
+                continue
+            }
             do {
-                let node = try await ModelNode.load(data.path)
+                let node = try await flutterLoadModel(path: data.path)
                 node.scale(data.scale)
                 node.entity.name = (data.path as NSString).lastPathComponent
                 templates.append((data, node.entity))

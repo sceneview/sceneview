@@ -85,12 +85,26 @@ Minimum iOS 18 (`SceneViewSwift`'s `Package.swift` requires iOS 18.0). In
 platform :ios, '18.0'
 ```
 
-The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer). It is
-consumed via Swift Package Manager — CocoaPods does not natively integrate SPM
-dependencies — so the **host app** must add the package in Xcode:
+The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer), and
+declares it as a **pod** dependency. Point that dependency at the package in
+your `Podfile`:
 
-- File → Add Package Dependencies… → `https://github.com/sceneview/sceneview`
-- Pick the `SceneViewSwift` library product; depend on the latest `vX.Y.Z` tag.
+```ruby
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift', :path => '<path-to>/SceneViewSwift'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+
+> **Adding the Swift package to your Xcode project does not work**, and this
+> README used to tell you to do exactly that. The bridge is itself a pod, so it
+> compiles inside the generated `Pods.xcodeproj`, which cannot see a package
+> added to `Runner.xcodeproj`; the build fails with
+> `Unable to find module dependency: 'SceneViewSwift'`. The pod route is what
+> makes `import SceneViewSwift` resolve.
+
+`samples/flutter-demo/ios/Podfile` is a working reference.
 
 > **iOS model format.** RealityKit loads `.usdz` and `.reality` natively. Pass
 > `.usdz` model paths to `loadModel(...)` on iOS — a `.glb` path fails to load
@@ -213,8 +227,26 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 
 - Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
 - AR tap-to-place is not yet implemented
-- No event callbacks from native to Dart yet (`onTap`, `onModelLoaded`)
+- `onModelLoaded` is not bridged; a model that fails to load is logged natively
+  (`[flutter_sceneview] Cannot load model …`) and not reported to Dart
 - Only Android and iOS are supported; other platforms show a fallback message
+
+### `onTap` does not fire on iOS (known gap, measured 2026-08-07)
+
+`onTap` works on Android. On iOS the callback is wired end to end — the platform
+view now claims tap gestures, the model loads and renders, and its entity
+carries both a `CollisionComponent` and an `InputTargetComponent` — but
+RealityKit's entity-targeted hit test never resolves an entity, so the handler
+is never called. Verified on an iPhone 17 Pro Max simulator (iOS 26.3):
+
+- a plain `SpatialTapGesture` on the same view **does** fire, at the correct
+  location inside the viewport, so the touch reaches SwiftUI;
+- the same tap through `.targetedToAnyEntity()` fires for no entity, whether the
+  collision shape is the generated one or an explicit bounding box.
+
+The remaining suspect is the RealityKit hit test resolving through a Flutter
+platform view's touch-interception layer. Do not describe `onTap` as working on
+iOS until a tap has been seen to reach Dart.
 
 ## Contributing
 
