@@ -391,6 +391,20 @@ public final class SceneViewerHostView: UIView {
     }
 
     private func applyCamera(_ configuration: SceneViewerConfiguration) {
+        // The flag has to reach the state, not just gate this method: the body attaches
+        // `.cameraPose(_:)` unconditionally, and `SceneView` applies a *non-nil* request
+        // the first time it sees one — `appliedCache.requestedPose` starts `nil`, so the
+        // very first `applyCamera` there compares non-nil against nil and writes the pose.
+        // Returning early here only stops `state.cameraPose` from being *updated*; the
+        // default value it already holds would still be applied once, framing a caller
+        // that authors no camera at elevation 15° where `CameraControls`' own default is
+        // 30°. Auto-centering re-fits distance and target and hides most of it, but not
+        // the elevation — so the Flutter and React Native bridges would have come out of
+        // this migration looking down on the model from a different angle than before.
+        if state.cameraPoseAuthored != configuration.cameraPoseAuthored {
+            state.cameraPoseAuthored = configuration.cameraPoseAuthored
+        }
+
         // A caller that authors no camera gets none applied — see `cameraPoseAuthored`.
         // Checked before the pose is even built, so no echo state is touched either:
         // `lastReportedPose` must keep tracking what the scene reports, since that is what
@@ -570,6 +584,10 @@ final class SceneViewerState: ObservableObject {
     /// generation change, not on a value change, so re-writing a pose the camera has
     /// since been dragged away from is honoured instead of dropped as a no-op.
     @Published var cameraPoseGeneration: Int = 0
+
+    /// Whether the caller authors a camera at all. `false` detaches the pose entirely
+    /// rather than handing `SceneView` the default below — see `applyCamera`.
+    @Published var cameraPoseAuthored: Bool = true
 
     @Published var cameraPose = SceneCameraPose(
         azimuth: 0,
@@ -800,7 +818,13 @@ struct SceneViewerRootView: View {
         // Native bridges — turn it on and want exactly that framing.
         .autoCenterContent(state.autoCenterContent)
         .cameraGesturesEnabled(state.cameraGesturesEnabled)
-        .cameraPose(state.cameraPose)
+        // `nil`, not the default pose, when nobody authored a camera: the modifier's
+        // contract is that `nil` means "no pose requested", and any non-nil value is
+        // applied once on first sight even if the host never wrote it.
+        .cameraPose(sceneViewerRequestedPose(
+            authored: state.cameraPoseAuthored,
+            pose: state.cameraPose
+        ))
         .cameraPoseGeneration(state.cameraPoseGeneration)
         .onCameraChanged { pose in
             state.reportCameraMoved(pose)

@@ -198,7 +198,43 @@ final class SceneViewerModelListTests: XCTestCase {
         XCTAssertEqual(sceneViewerCameraControlMode("nonsense"), .orbit)
     }
 
+    // MARK: - Camera pose
+
+    /// The regression the agent review caught on #3035: `cameraPoseAuthored == false`
+    /// stopped `state.cameraPose` from being *updated*, but the body still handed the
+    /// modifier a non-nil default — which `SceneView` applies on first sight, framing a
+    /// camera-less bridge at 15° where it used to sit at `CameraControls`' 30°.
+    func testRequestedPose_isNilWhenNoCameraIsAuthored() {
+        XCTAssertNil(sceneViewerRequestedPose(authored: false, pose: makePose()))
+    }
+
+    func testRequestedPose_isThePoseWhenACameraIsAuthored() {
+        let pose = makePose()
+        XCTAssertEqual(sceneViewerRequestedPose(authored: true, pose: pose), pose)
+    }
+
+    /// "Not authored" must survive a pose that happens to equal the host's own default —
+    /// the discriminator is the flag, never the value.
+    func testRequestedPose_isNilEvenWhenThePoseMatchesTheHostDefault() {
+        let hostDefault = SceneCameraPose(
+            azimuth: 0,
+            elevation: SceneViewerAngle.radians(fromDegrees: 15),
+            distance: 4,
+            target: .zero
+        )
+        XCTAssertNil(sceneViewerRequestedPose(authored: false, pose: hostDefault))
+    }
+
     // MARK: - Helper
+
+    private func makePose() -> SceneCameraPose {
+        SceneCameraPose(
+            azimuth: SceneViewerAngle.radians(fromDegrees: 42),
+            elevation: SceneViewerAngle.radians(fromDegrees: 21),
+            distance: 3,
+            target: SIMD3<Float>(1, 2, 3)
+        )
+    }
 
     private func makeEntry(identity: String?, assetPath: String) -> SceneViewerModelEntry? {
         SceneViewerModelEntry.make(

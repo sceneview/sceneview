@@ -16,7 +16,13 @@
   `cameraControlMode` and `autoCenterContent` (both bridges expose them publicly),
   and `cameraPoseAuthored` (neither bridge has a camera at all — without it every method
   call would re-assert the default pose and snap the camera out of its framing and away
-  from wherever the user had orbited to). Every pre-existing member keeps its name, type
+  from wherever the user had orbited to). `cameraPoseAuthored: false` detaches the pose
+  rather than merely stopping it from being updated: `SceneView` applies the *first*
+  non-nil request it sees, so handing it a default pose still frames the scene, at
+  elevation 15° where `CameraControls`' own default is 30°. Auto-centering re-fits
+  distance and target and hides all of that except the angle — a camera-less bridge would
+  have come out of this migration looking down on the model from somewhere else. Caught
+  by the agent review on this PR. Every pre-existing member keeps its name, type
   and default, so `sceneview-compose` is unaffected: a configuration with no `models` is
   resolved into a one-element list built from the single-model fields, through the same
   reconciliation path.

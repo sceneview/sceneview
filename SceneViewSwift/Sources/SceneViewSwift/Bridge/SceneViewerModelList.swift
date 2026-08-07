@@ -204,6 +204,25 @@ func sceneViewerCameraControlMode(_ raw: String?) -> CameraControlMode {
     }
 }
 
+// MARK: - Camera pose
+
+/// The value handed to ``SceneView/cameraPose(_:)``: the pose, or `nil` when the caller
+/// authors no camera at all.
+///
+/// Not a cosmetic nil-check. `SceneView` applies a non-nil request the first time it sees
+/// one — its `appliedCache.requestedPose` starts `nil`, so the first comparison is
+/// non-nil against nil and the pose is written. Handing over a *default* pose therefore
+/// frames the scene, and the host's default (elevation 15°) is not `CameraControls`' own
+/// (elevation 30°). A bridge that never exposed a camera would have silently changed
+/// viewing angle on being moved onto this host; auto-centering re-fits distance and
+/// target and hides everything except the angle.
+func sceneViewerRequestedPose(
+    authored: Bool,
+    pose: SceneCameraPose
+) -> SceneCameraPose? {
+    authored ? pose : nil
+}
+
 // MARK: - Resolving a configuration
 
 #if canImport(UIKit) && (os(iOS) || os(visionOS))
