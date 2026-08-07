@@ -24,7 +24,8 @@ platform it covers.
 
 ### What is here
 
-- glTF / GLB loading from an asset, from bytes, or from a URL
+- Model loading from an asset, from bytes, or from a URL — glTF / GLB on Android and
+  desktop, `.usdz` / `.reality` on iOS (RealityKit reads no glTF; see the table below)
 - Orbit camera with hoistable, saveable state
 - A directional key light and an environment (default, flat colour, or HDR)
 - Tap hit-testing against the model
@@ -46,7 +47,7 @@ no honest common shape.
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, via `io.github.sceneview.SceneView` | ✅ implemented |
-| iOS | RealityKit, via `SceneViewSwift` | ⚙️ Kotlin side done — needs a one-time app registration, below |
+| iOS | RealityKit, via `SceneViewSwift` | ✅ implemented — needs a one-time app registration, below |
 | Desktop (JVM) | Filament, via an FFM binding to be vendored from filament-kmp | ⏳ placeholder — binding not vendored yet, then needs the native build chain |
 
 Unimplemented platforms render a visible placeholder naming the platform and the reason,
@@ -88,15 +89,77 @@ model source (asset path / URL / bytes), camera (target, distance, azimuth, elev
 
 Until a factory is registered, `SceneViewer` renders a visible notice saying so.
 
-> **Not yet written:** the reusable `@objc UIView` that wraps `SceneViewSwift.SceneView`
-> in a `UIHostingController`. The pattern it should follow already exists and is
-> production-tested in `flutter/sceneview_flutter/ios/Classes/SceneViewPlugin.swift`
-> (see `SceneViewPlatformView` / `SceneViewSwiftUIWrapper`, including its retain-cycle
-> and Swift-6 actor handling). Two known limits to carry over: `SceneViewSwift` exposes
-> no per-frame callback, so `onFrame` is not invoked on iOS; and its public API seeds the
-> orbit pose via `.cameraOrbit(azimuth:elevation:)` but does not expose continuous camera
-> control, so full `CameraState` write-through needs an additive extension to
-> `SceneViewSwift` first.
+### The `UIView` is written for you
+
+You do **not** have to wrap `SceneViewSwift.SceneView` yourself. `SceneViewSwift` ships
+`SceneViewerHostView` — an `@objc UIView` that hosts the SwiftUI scene and is driven
+entirely by primitives, so your factory is a field-by-field copy and nothing more:
+
+```kotlin
+// iosMain
+class MyRealityKitFactory : SceneViewerViewFactory {
+    override fun create(spec: SceneViewerSpec): UIView =
+        SVSceneViewerHostView().also { host ->
+            host.onTap = { hit, x, y, z, distance ->
+                spec.onTap(hit, x, y, z, distance)
+            }
+            host.onCameraMoved = { distance, azimuth, elevation ->
+                spec.onCameraMoved(distance, azimuth, elevation)
+            }
+            host.applyConfiguration(spec.toConfiguration())
+        }
+
+    override fun update(view: UIView, spec: SceneViewerSpec) {
+        (view as SVSceneViewerHostView).applyConfiguration(spec.toConfiguration())
+    }
+}
+
+private fun SceneViewerSpec.toConfiguration() = SVSceneViewerConfiguration().also {
+    it.modelAssetPath = modelAssetPath
+    it.modelURLString = modelUrl
+    it.modelBytes = modelBytes?.toNSData()          // your own ByteArray -> NSData helper
+    it.cameraTargetX = cameraTargetX          // …and the rest, one line each
+    it.cameraDistance = cameraDistance
+    it.cameraAzimuthDegrees = cameraAzimuthDegrees
+    it.cameraElevationDegrees = cameraElevationDegrees
+    it.cameraGesturesEnabled = cameraGesturesEnabled
+    it.environmentKind = environmentKind
+    // …
+}
+```
+
+Set the callbacks **once, at creation** — `SceneViewerSpec`'s lambdas already forward to
+the latest Compose state, so re-assigning them on every update buys nothing. Call
+`applyConfiguration(_:)` on every update, and never rebuild the view: rebuilding reloads
+the model and discards wherever the user had orbited to.
+
+The same host also serves the Flutter and React Native bridges. Those still carry their
+own bespoke platform views today (`SceneViewPlugin.swift`, `SceneViewModule.swift`),
+which do more than viewing — method channels, AR, tap-to-place — and migrating them onto
+this host is deliberately a separate change from the one that introduces it.
+
+### What iOS does differently
+
+Not bugs to report — measured, deliberate consequences of RealityKit's surface. Each is
+also stated where the corresponding API is documented, so it is not discoverable only
+here.
+
+| | Android (Filament) | iOS (RealityKit) |
+|---|---|---|
+| `onFrame` | called every frame | **never called.** `SceneViewSwift` publishes no per-frame callback, and a polled timer would report times that are not the renderer's |
+| `ModelSource.Asset` / `Url` / `Bytes` | glTF / GLB | **`.usdz` / `.reality` only.** RealityKit does not read glTF. Convert with `tools/convert-usdz.sh` |
+| `onTap` miss | fires with `null` | **no callback at all.** RealityKit's hit-test gesture only fires when it hits something |
+| `ModelHit.position` | true ray-surface intersection | the tapped entity's **bounds centre** — the exact point is unavailable outside visionOS |
+| `EnvironmentSource.Color` | key light only, flat colour behind | flat colour behind, but the model is still lit by RealityKit's default IBL, which is not exposed |
+| `Lighting.ambientIntensity` | always applied | applies only with `EnvironmentSource.Hdr` — the other two have no authored IBL to scale |
+| `CameraState.distance` | any positive value | clamped to `1…50` scene units, RealityKit's own dolly envelope. **The clamped value is reported back**, so a clamp is visible in your state rather than a silent disagreement with the screen |
+| `ModelSource.Url` download | capped at 64 MB, with connect/read timeouts | same 64 MB cap, plus a scheme allowlist (`http`/`https` only) and a 60 s inactivity timeout. The cap cancels the transfer mid-flight rather than measuring it afterwards |
+
+`CameraState.azimuth`, `elevation`, `distance` and `gesturesEnabled` are fully two-way on
+iOS: gestures write into them, and writes drive the camera. Measured on the iOS 26.3
+simulator — a 180-point horizontal drag moved the camera to the arithmetically expected
+−51.6° and reported exactly that back, and writing 90° from the app moved the camera
+there.
 
 ## Targets
 
