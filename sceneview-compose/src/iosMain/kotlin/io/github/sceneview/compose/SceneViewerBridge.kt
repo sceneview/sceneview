@@ -35,11 +35,12 @@ import platform.UIKit.UIView
  * Note it must be an explicit implementation: [SceneViewerViewFactory] has two members,
  * so it is not a `fun interface` and a Swift closure literal cannot stand in for it.
  *
- * The `UIView` itself is written in Swift, where `SceneViewSwift` is linked — typically
- * a `UIHostingController` hosting `SceneViewSwift.SceneView`, exposed to Kotlin through
- * `@objc`. SceneView does not ship that wrapper yet; the pattern it should follow is
- * specified in this module's README and exists, production-tested, in
- * `flutter/sceneview_flutter/ios/Classes/SceneViewPlugin.swift`.
+ * The `UIView` itself is written in Swift, where `SceneViewSwift` is linked. You do not
+ * have to write it: `SceneViewSwift` ships `SceneViewerHostView` (`SVSceneViewerHostView`
+ * in Kotlin), an `@objc UIView` hosting `SceneViewSwift.SceneView` and driven entirely by
+ * the primitives on `SVSceneViewerConfiguration` — so a factory is a field-by-field copy
+ * of [SceneViewerSpec] plus the two callbacks. The module README has the full example, and
+ * the platform differences it inherits from RealityKit.
  *
  * Until a factory is registered, [SceneViewer] renders a visible notice explaining that
  * the bridge is missing — never a blank viewport, which would be indistinguishable from

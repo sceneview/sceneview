@@ -1,0 +1,191 @@
+name: React Native Android bridge compile
+
+# Compile-checks the React Native module's Android Kotlin bridge against the
+# REAL published SceneView Maven artifacts it declares.
+#
+# WHY THIS EXISTS (#3042)
+# -----------------------
+# `react-native/react-native-sceneview/android/` (`SceneViewManager.kt`,
+# `ARSceneViewManager.kt`, `SceneViewEvents.kt`, `SceneViewModule.kt`,
+# `ARRecorderModule.kt`) was compiled by NO CI job. It is not in the root
+# `settings.gradle`, and grepping every file under `.github/workflows/` for
+# `react-native` returned only `rn-ios-compile.yml` (iOS Swift type-check),
+# `release.yml` (npm publish — TypeScript only) and `issue-intake.yml` (prose).
+# Over a thousand lines of Kotlin shipped to npm having never been compiled by
+# anything but a contributor's laptop.
+#
+# This is the SAME exposure `rn-ios-compile.yml` was created for on the iOS
+# side (#2067), and it is arguably worse here: the module's `build.gradle.kts`
+# depends on `io.github.sceneview:sceneview:4.7.0` / `arsceneview:4.7.0` — the
+# last PUBLISHED release, which LAGS the repo's `VERSION_NAME` on purpose
+# (#1494) — so an API that exists in repo source can be absent from the
+# artifact the bridge actually builds against. Reading the source of the
+# matching git tag "proves" nothing the compiler agrees with.
+#
+# The gate found its first defect on its first run: the module set no JVM
+# target at all, so `compileReleaseJavaWithJavac` (1.8) and
+# `compileReleaseKotlin` (toolchain default) disagreed and the module could
+# not be built standalone by anyone. Fixed in the same change.
+#
+# WHY A STANDALONE GRADLE BUILD, NOT THE ROOT `settings.gradle`
+# -------------------------------------------------------------
+# See the long comment in `tools/rn-android-compile/settings.gradle.kts`. In
+# short: adding the module to the root build would make it resolve
+# `io.github.sceneview:*` against LOCAL project source, which destroys the
+# entire point of the gate — the bridge must be proven against the PUBLISHED
+# artifact, lag included.
+#
+# HONEST LIMITATIONS
+# ------------------
+#   * COMPILE gate only. It proves every SceneView / React Native / Compose
+#     symbol the bridge references exists in the artifacts it declares. It
+#     proves nothing about runtime behaviour, and it does not build, install
+#     or run `samples/react-native-demo` (documented in its `SETUP.md` as
+#     "scaffolded, NEVER built end-to-end").
+#   * No npm install, no autolinking, no Metro. The module is compiled as a
+#     plain AGP library, which is exactly how a host app's Gradle build
+#     compiles it — minus the React Native Gradle plugin, whose only relevant
+#     contribution (the `com.facebook.react:react-android` version) this build
+#     pins itself.
+#   * The React Native version is pinned to the package's declared FLOOR
+#     (`peerDependencies: react-native >= 0.72.0`). A bridge that starts using
+#     a newer React Native API fails here — which is the intent — but this job
+#     does NOT prove the bridge compiles against the newest RN release.
+#
+# NOT SILENTLY SKIPPABLE
+# ----------------------
+# The repo's own hard-won rule is that a module absent from a path filter is
+# "skipped -> green for life" — the PR that creates it is green by accident and
+# stays green forever. Two things guard against that here:
+#   1. The `paths:` list below covers the module, this workflow, the harness,
+#      the setup action it uses, and `gradle/libs.versions.toml` (whose AGP /
+#      Kotlin versions the harness mirrors and asserts against).
+#   2. The compile step does not trust a green Gradle exit. It asserts that
+#      `compileReleaseKotlin` genuinely EXECUTED (not `NO-SOURCE`, not
+#      `UP-TO-DATE`, not `FROM-CACHE`) and that class files were actually
+#      produced. A renamed or moved source directory would otherwise turn this
+#      gate into a no-op that reports success.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/android/**'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'tools/rn-android-compile/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/actions/setup-gradle/**'
+      - '.github/workflows/rn-android-compile.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'react-native/react-native-sceneview/android/**'
+      - 'react-native/react-native-sceneview/package.json'
+      - 'tools/rn-android-compile/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/actions/setup-gradle/**'
+      - '.github/workflows/rn-android-compile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rn-android-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile RN Android bridge against published SceneView artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-gradle
+        with:
+          # The module targets JVM 17 (matching the Flutter plugin and React
+          # Native's own JDK 17 requirement), so build it on 17 rather than the
+          # repo default of 21.
+          java-version: "17"
+
+      # The harness pins AGP / Kotlin so the versionless plugin requests in the
+      # module's `build.gradle.kts` resolve without a host app. Those pins
+      # duplicate `gradle/libs.versions.toml` by design (a settings script
+      # cannot read a version catalog), so drift is made loud instead of
+      # silent: bump the catalog and this step tells you exactly which line of
+      # the harness to follow it with.
+      - name: Assert harness toolchain still matches the version catalog
+        run: |
+          set -euo pipefail
+          catalog_version() {
+            grep -E "^$1[[:space:]]*=" gradle/libs.versions.toml \
+              | head -1 | sed -E 's/.*"([^"]+)".*/\1/'
+          }
+          harness_version() {
+            grep -F "id(\"$1\") version" tools/rn-android-compile/settings.gradle.kts \
+              | head -1 | sed -E 's/.*version "([^"]+)".*/\1/'
+          }
+          fail=0
+          check() { # <label> <catalog value> <harness value>
+            if [ -z "$2" ] || [ -z "$3" ]; then
+              echo "::error::Could not read the $1 version (catalog='$2' harness='$3')."
+              fail=1
+            elif [ "$2" != "$3" ]; then
+              echo "::error::$1 drift — gradle/libs.versions.toml says '$2', tools/rn-android-compile/settings.gradle.kts pins '$3'. Update the pin in the harness."
+              fail=1
+            else
+              echo "$1 $2 — catalog and harness agree."
+            fi
+          }
+          check "AGP"    "$(catalog_version agp)"    "$(harness_version com.android.library)"
+          check "Kotlin" "$(catalog_version kotlin)" "$(harness_version org.jetbrains.kotlin.android)"
+          check "Kotlin (compose plugin)" \
+                "$(catalog_version kotlin)" "$(harness_version org.jetbrains.kotlin.plugin.compose)"
+          [ "$fail" -eq 0 ]
+
+      # The actual regression guard.
+      - name: Compile RN Android bridge
+        run: |
+          set -o pipefail
+          ./gradlew -p tools/rn-android-compile \
+            :react-native-sceneview:compileReleaseKotlin \
+            --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/rn-android-compile.log"
+
+      # A green Gradle exit is not proof that anything was compiled: an empty
+      # or moved source set makes the task `NO-SOURCE` and the build succeeds.
+      # (The repo has been burned by exactly this shape of false green — a gate
+      # that reports a verdict it never computed.) So assert the task really
+      # ran, and that classes came out the other end.
+      - name: Assert the compile actually happened
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/rn-android-compile.log"
+          TASK_LINE="$(grep -E '^> Task :react-native-sceneview:compileReleaseKotlin' "$LOG" | head -1 || true)"
+          if [ -z "$TASK_LINE" ]; then
+            echo "::error::compileReleaseKotlin never appeared in the build log — the gate compiled nothing."
+            exit 1
+          fi
+          echo "Task line: $TASK_LINE"
+          case "$TASK_LINE" in
+            *NO-SOURCE*|*UP-TO-DATE*|*FROM-CACHE*|*SKIPPED*)
+              echo "::error::compileReleaseKotlin did not execute ($TASK_LINE). The bridge sources were not compiled — check that src/main/java still holds the Kotlin sources."
+              exit 1
+              ;;
+          esac
+
+          SRC_DIR=react-native/react-native-sceneview/android/src/main/java
+          KT_COUNT="$(find "$SRC_DIR" -name '*.kt' | wc -l | tr -d ' ')"
+          CLASS_DIR=tools/rn-android-compile/build/react-native-sceneview/tmp/kotlin-classes/release
+          CLASS_COUNT="$(find "$CLASS_DIR" -name '*.class' 2>/dev/null | wc -l | tr -d ' ')"
+          echo "Kotlin sources: $KT_COUNT — compiled classes: $CLASS_COUNT"
+          if [ "$KT_COUNT" -lt 1 ]; then
+            echo "::error::No Kotlin sources found under $SRC_DIR — the module layout moved and this gate is guarding nothing."
+            exit 1
+          fi
+          if [ "$CLASS_COUNT" -lt "$KT_COUNT" ]; then
+            echo "::error::Only $CLASS_COUNT class files for $KT_COUNT Kotlin sources — the compile did not cover the bridge."
+            exit 1
+          fi
+          echo "RN Android bridge compiles against the published SceneView artifacts."

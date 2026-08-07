@@ -5,8 +5,11 @@ import dev.romainguy.kotlin.math.Float3
 /**
  * Where a model's bytes come from.
  *
- * Every platform accepts glTF and GLB. `usdz` is Apple-only: passing one on Android or
- * desktop fails to load.
+ * **Format support is not uniform, and this is the one place it bites.** Android and
+ * desktop read glTF and GLB and cannot read `usdz`; iOS is the mirror image — RealityKit
+ * reads `usdz` and `reality` and cannot read glTF at all. There is no format every
+ * platform accepts, so a cross-platform app ships both and picks per platform, or
+ * converts with `tools/convert-usdz.sh`.
  *
  * **A failed load is not visible on screen.** Whatever the cause — an unsupported
  * format, a malformed file, an HTTP error, a size-capped download — the viewport keeps
