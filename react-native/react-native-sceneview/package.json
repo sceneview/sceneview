@@ -17,8 +17,8 @@
   ],
   "scripts": {
     "typescript": "tsc --noEmit",
-    "lint": "cd ../.. && react-native/react-native-sceneview/node_modules/.bin/biome check react-native/react-native-sceneview",
-    "lint:fix": "cd ../.. && react-native/react-native-sceneview/node_modules/.bin/biome check --write react-native/react-native-sceneview",
+    "lint": "cd ../.. && react-native/react-native-sceneview/node_modules/.bin/biome check react-native/react-native-sceneview/src react-native/react-native-sceneview/__tests__ react-native/react-native-sceneview/example/src",
+    "lint:fix": "cd ../.. && react-native/react-native-sceneview/node_modules/.bin/biome check --write react-native/react-native-sceneview/src react-native/react-native-sceneview/__tests__ react-native/react-native-sceneview/example/src",
     "test": "jest",
     "build": "bob build",
     "prepare": "bob build"

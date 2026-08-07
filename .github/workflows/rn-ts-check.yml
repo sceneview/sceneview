@@ -40,11 +40,13 @@ name: React Native TypeScript check
 #      life" trap. The `paths:` list below covers the TypeScript surface, the
 #      package manifest and lockfile, both tsconfigs, the workflow itself, and
 #      `biome.json` (whose `files.includes` decides what Biome even looks at).
-#   2. A vacuous pass. If the RN paths ever fall out of `biome.json`'s
-#      `includes`, Biome does NOT exit 0 on an empty file set — it prints
-#      "No files were processed in the specified paths." and exits 1
-#      (measured, both for a missing path and for a config-excluded one). So
-#      config drift turns this job red rather than green-for-nothing.
+#   2. A vacuous pass — see the assert step below. Biome's exit code is NOT
+#      sufficient here: it exits 1 only when NOTHING matched at all, so
+#      dropping a single directory from `biome.json`'s `includes` leaves it at
+#      0 while silently checking less. Mutation-tested: with the assert step,
+#      dropping any one of the three `includes` lines fails the job; without
+#      it, all three passed green. The assert compares the number of `.ts`/
+#      `.tsx` files on disk against the count Biome reports.
 #
 # NOT IN `ci-gate.yml`'s `REQUIRED_CHECKS`
 # ----------------------------------------
@@ -60,6 +62,7 @@ on:
     paths:
       - 'react-native/react-native-sceneview/src/**'
       - 'react-native/react-native-sceneview/__tests__/**'
+      - 'react-native/react-native-sceneview/example/src/**'
       - 'react-native/react-native-sceneview/package.json'
       - 'react-native/react-native-sceneview/package-lock.json'
       - 'react-native/react-native-sceneview/tsconfig.json'
@@ -71,6 +74,7 @@ on:
     paths:
       - 'react-native/react-native-sceneview/src/**'
       - 'react-native/react-native-sceneview/__tests__/**'
+      - 'react-native/react-native-sceneview/example/src/**'
       - 'react-native/react-native-sceneview/package.json'
       - 'react-native/react-native-sceneview/package-lock.json'
       - 'react-native/react-native-sceneview/tsconfig.json'
@@ -108,11 +112,44 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       # `npm run lint` cd's to the repo root and runs the package-local Biome
-      # binary against `react-native/react-native-sceneview`, so the root
+      # binary against this package's three TypeScript directories, so the root
       # `biome.json` (formatter + linter + assists) is the single rule source.
       - name: Lint (Biome)
         working-directory: react-native/react-native-sceneview
-        run: npm run lint
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee "$RUNNER_TEMP/biome.log"
+
+      # A green Biome exit does NOT prove Biome looked at this package. Measured
+      # on Biome 2.5.7: when a path argument is excluded by `biome.json`'s
+      # `files.includes`, Biome silently drops it and still exits 0 as long as
+      # ANY other argument yielded files. Deleting just the `src/**` line from
+      # `biome.json` therefore leaves this job green while the actually-shipped
+      # source goes unlinted — the exact "reports a verdict it never computed"
+      # shape `rn-android-compile.yml` guards against on the Kotlin side.
+      # (Biome exits 1 only when NOTHING at all matched.)
+      #
+      # So don't trust the exit code: count the TypeScript files on disk and
+      # require Biome to have checked exactly that many.
+      - name: Assert Biome checked every TypeScript file
+        working-directory: react-native/react-native-sceneview
+        run: |
+          set -euo pipefail
+          EXPECTED="$(find src __tests__ example/src \( -name '*.ts' -o -name '*.tsx' \) | wc -l | tr -d ' ')"
+          CHECKED="$(grep -oE 'Checked [0-9]+ files?' "$RUNNER_TEMP/biome.log" | head -1 | grep -oE '[0-9]+' || true)"
+          echo "TypeScript files on disk: $EXPECTED — Biome checked: ${CHECKED:-<none reported>}"
+          if [ "$EXPECTED" -lt 1 ]; then
+            echo "::error::No .ts/.tsx found under src/, __tests__/ or example/src/ — the package layout moved and this gate is guarding nothing."
+            exit 1
+          fi
+          if [ -z "$CHECKED" ]; then
+            echo "::error::Biome printed no 'Checked N files' line — its output format changed and this assertion can no longer verify coverage."
+            exit 1
+          fi
+          if [ "$CHECKED" -ne "$EXPECTED" ]; then
+            echo "::error::Biome checked $CHECKED of $EXPECTED TypeScript files. A path is missing from biome.json's files.includes — this job would otherwise have passed while leaving code unlinted."
+            exit 1
+          fi
 
       - name: Type-check
         working-directory: react-native/react-native-sceneview
