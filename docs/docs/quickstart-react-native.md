@@ -69,7 +69,7 @@ React Native (TypeScript)
 | `modelNodes` | `ModelNode[]` | Array of models to display |
 | `environment` | `string` | HDR environment path |
 | `cameraOrbit` | `boolean` | Enable orbit camera controls |
-| `onTap` | `(event) => void` | Tap event with 3D coordinates |
+| `onTap` | `(event) => void` | Tap event: `{ x, y, z, nodeName }` — the tapped model's world position and its file base name without extension (`null` when no model was hit) |
 
 ### ARSceneView (extends SceneView)
 

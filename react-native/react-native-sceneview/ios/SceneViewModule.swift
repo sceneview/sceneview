@@ -55,8 +55,14 @@ class RNSceneState: ObservableObject {
 
     /// Invoked from the SwiftUI content's `onEntityTapped` modifier so the
     /// wrapper can forward the tap to React Native's `onTap` prop (issue #2053).
+    ///
+    /// Carries the *model root* the tap resolved to — the entity named after
+    /// the model file — or `nil` when the tap did not land on a bridge-loaded
+    /// model. Never an asset-internal mesh, so the `nodeName` payload matches
+    /// Android's (see `rnTappedModelEntity(_:modelRoot:)`).
+    ///
     /// Not `@Published` — it is plumbing, not rendered state.
-    var onTap: ((Entity) -> Void)?
+    var onTap: ((Entity?) -> Void)?
 }
 
 /// UIView wrapper that hosts a SwiftUI `SceneView` via UIHostingController.
@@ -71,15 +77,23 @@ class RNSceneViewWrapper: UIView {
             let block = onTap
             Task { @MainActor in
                 sceneState.onTap = { entity in
-                    // Mirrors the Android `TapEvent` payload: world-space
-                    // coordinates of the tapped entity + its node name.
-                    let p = entity.position(relativeTo: nil)
-                    block?([
+                    // Mirrors the Android `TapEvent` payload: the world-space
+                    // position of the tapped *model* + its name. Android
+                    // reports the `ModelNode` root (the only collider a loaded
+                    // model owns) and falls back to `0,0,0` / `null` when the
+                    // tap hit no node, so do the same here.
+                    let p = entity?.position(relativeTo: nil) ?? SIMD3<Float>.zero
+                    var payload: [String: Any] = [
                         "x": p.x,
                         "y": p.y,
                         "z": p.z,
-                        "nodeName": entity.name,
-                    ])
+                        "nodeName": NSNull(),
+                    ]
+                    if let entity {
+                        payload["nodeName"] =
+                            (entity.name as NSString).deletingPathExtension
+                    }
+                    block?(payload)
                 }
             }
         }
@@ -168,6 +182,27 @@ class RNSceneViewWrapper: UIView {
     }
 }
 
+/// Resolves a tapped entity to the model root the bridge loaded it from — the
+/// direct child of `modelRoot`, named `<file>.usdz` by `loadModels()`.
+///
+/// `SpatialTapGesture` reports the deepest hit entity. Inside a USDZ that is
+/// usually an asset-internal mesh (`black_dragon.usdz` reports `skin0`), so
+/// reporting `hit.entity.name` raw leaked the asset's internal naming into the
+/// JS `nodeName` payload. Android cannot do that: the only collider a loaded
+/// model owns is the `ModelNode` root (glTF child renderables get no collision
+/// shape), so its `TapEvent` always names the model.
+///
+/// Returns `nil` when the tap did not land on a bridge-loaded model, which maps
+/// to the `nodeName: null` Android reports for a tap that hit no node.
+func rnTappedModelEntity(_ entity: Entity, modelRoot: Entity) -> Entity? {
+    var node: Entity? = entity
+    while let current = node, current !== modelRoot {
+        if current.parent === modelRoot { return current }
+        node = current.parent
+    }
+    return nil
+}
+
 /// SwiftUI content view rendering `SceneViewSwift.SceneView` (issue #2067).
 ///
 /// `SceneViewSwift` loads models **asynchronously** (`ModelNode.load(_:)` is
@@ -196,8 +231,10 @@ struct RNSceneViewContent: View {
         .cameraControls(state.cameraControlMode)
         .autoCenterContent(state.autoCenterContent)
         // Forward entity taps to React Native's `onTap` prop (issue #2053).
+        // Resolved to the model root first — `SpatialTapGesture` reports the
+        // deepest hit entity, which inside a USDZ is an asset-internal mesh.
         .onEntityTapped { entity in
-            state.onTap?(entity)
+            state.onTap?(rnTappedModelEntity(entity, modelRoot: modelRoot))
         }
         // Reload whenever the JS `modelNodes` prop changes. Keyed on the
         // model identities so an unrelated re-render does not re-download.
@@ -224,6 +261,11 @@ struct RNSceneViewContent: View {
                 // `await`, so bail out before mutating the scene — otherwise a
                 // superseded load leaks a stale model into `modelRoot`.
                 guard !Task.isCancelled else { return }
+                // Name the model root after its file so a tap can report the
+                // model's identity: `rnTappedModelEntity` resolves any hit
+                // entity up to this one, and `nodeName` is this name without
+                // its extension — the string Android reports for the same tap.
+                node.entity.name = (model.path as NSString).lastPathComponent
                 node.position(model.position)
                 node.scale(model.scale)
                 if let animation = model.animation {

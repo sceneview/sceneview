@@ -612,6 +612,8 @@ ARSceneView(
 ```
 
 `ModelNode` fields: `modelPath` (required), `x/y/z` (world position), `scale`, `rotationX/Y/Z` (degrees).
+`onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) on
+Android and iOS — never a mesh name from inside the asset; empty when the tap hit no loaded model.
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`, `setCameraControlMode(CameraControlMode)`,
 `setAutoCenterContent(bool)`.
@@ -672,6 +674,9 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 
 `ModelNode` fields: `src` (required), `position?: [x,y,z]`, `rotation?: [x,y,z]` (degrees),
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
+`onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
+without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a mesh name from inside
+the asset. `nodeName` is `null` (and the position `0,0,0`) when the tap hit no model.
 Geometry types: `'box' | 'cube' | 'sphere' | 'cylinder' | 'plane'`.
 Light types: `'directional' | 'point' | 'spot'`.
 

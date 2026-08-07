@@ -151,6 +151,13 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                                 autoAnimate = model.animate,
                                 position = model.position,
                                 rotation = model.rotation,
+                                apply = {
+                                    // The tap payload's `nodeName`. Without a name the
+                                    // hit-tested ModelNode reports `null` for every model
+                                    // tap, while iOS reports the model file's base name —
+                                    // so name the node the same way here (issue #2053).
+                                    name = model.nodeName()
+                                },
                             )
                         }
                     }
@@ -383,7 +390,18 @@ data class ModelNodeData(
     val animate: Boolean = true,
     val position: Position = Position(x = 0f),
     val rotation: Rotation = Rotation(x = 0f),
-)
+) {
+    /**
+     * The name reported as the tap payload's `nodeName`: the model file's base
+     * name without extension, matching the iOS bridge (which names each loaded
+     * model root after its file and strips the extension on tap).
+     *
+     * `null` for a path with no usable base name, so the payload stays
+     * `nodeName: null` rather than an empty string.
+     */
+    fun nodeName(): String? =
+        src.substringAfterLast('/').substringBeforeLast('.').takeIf { it.isNotEmpty() }
+}
 
 data class GeometryNodeData(
     val type: String,

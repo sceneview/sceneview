@@ -84,8 +84,10 @@ final class FlutterContentRoot {
                 // `await` suspension and resumption — only attach if it is
                 // still wanted.
                 guard loaded[data.id] == nil else { continue }
-                // The model file's base name without extension is the node
-                // name reported back to Dart on tap (matches Android).
+                // Name the model root after its file: `flutterTappedNodeName`
+                // walks a tapped entity up to this entity (the direct child of
+                // `entity`) and reports its base name without extension, which
+                // is what Android reports for a tap on that model.
                 node.entity.name = (data.path as NSString).lastPathComponent
                 loaded[data.id] = node.entity
                 entity.addChild(node.entity)
@@ -273,14 +275,28 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
 
 /// Derives the node name reported to Flutter for a tapped entity, matching the
 /// Android bridge convention: the model file's base name without extension.
-/// Walks up the entity tree past anonymous mesh children to the first named
-/// ancestor, since `SpatialTapGesture` may report a deep child whose `name`
-/// is empty. Falls back to the empty string when no name is available.
-func flutterTappedNodeName(_ entity: Entity) -> String {
+///
+/// Android reports that base name for *every* tap on a model — its `onTouch`
+/// closure captures `model.path`, and the only collider a loaded model owns is
+/// the `ModelNode` root (glTF child renderables get no collision shape), so a
+/// tap can never resolve to asset-internal geometry there.
+///
+/// `SpatialTapGesture` on the other hand reports the deepest hit entity, and
+/// USDZ assets commonly name their meshes: walking to the first *named*
+/// ancestor stopped inside the asset and reported `skin0` for a tap on
+/// `black_dragon.usdz`. The walk therefore climbs to the model root — the
+/// direct child of `contentRoot`, which is the only entity this bridge names
+/// (`<file>.usdz`, set in `FlutterContentRoot.sync(to:)`) — so the payload is
+/// the model's identity, never a sub-mesh.
+///
+/// Returns the empty string when the tapped entity is not part of a
+/// bridge-loaded model (no ancestor is a child of `contentRoot`).
+func flutterTappedNodeName(_ entity: Entity, contentRoot: Entity) -> String {
     var node: Entity? = entity
-    while let current = node {
-        let stem = (current.name as NSString).deletingPathExtension
-        if !stem.isEmpty { return stem }
+    while let current = node, current !== contentRoot {
+        if current.parent === contentRoot {
+            return (current.name as NSString).deletingPathExtension
+        }
         node = current.parent
     }
     return ""
@@ -317,7 +333,9 @@ struct SceneViewSwiftUIWrapper: View {
         .onEntityTapped { entity in
             // Wire SceneViewSwift's entity hit-test to the Flutter channel so
             // the Dart `onTap` callback fires on iOS, matching Android (#2051).
-            onTap(flutterTappedNodeName(entity))
+            // The hit entity is resolved against the content root so the name
+            // reported is the model's, not an asset-internal mesh's.
+            onTap(flutterTappedNodeName(entity, contentRoot: contentBox.root.entity))
         }
         // Re-sync the loaded model entities whenever the Dart side mutates
         // `state.models` (loadModel / clearScene). `ModelNode.load` is async,
