@@ -49,6 +49,24 @@ the documentation until it can.
 
 ### Quality plan: `.claude/plans/v4.0-quality-plan.md`
 
+## What "done" means here (execution mandate)
+
+A task is not finished at "PR opened". It is finished at **merged**, and at
+**released** when the change is user-facing. Full chain: implemented → gates above
+green (output quoted, never "should work") → `changelog.d/` fragment added → PR →
+every blocker fixed → merged → released if the version plan calls for it
+(→ `versioning` skill) → `.claude/STATE.md` updated.
+
+Do not stop to ask permission mid-chain. The only legitimate stops are the ones in
+the global mandate: a secret to handle, an **irreversible or public** action (Maven
+Central / npm / store publish, tagging a release, force-push to `main`, replying on a
+public issue), a product decision that changes the deliverable, or a verified external
+block. Everything else — naming, structure, refactor scope, ordering — is decided
+without asking.
+
+**Cost note:** this repo drives the largest share of token spend (18 active worktrees
+= 18 full contexts). One session = one issue. Archive the worktree once merged.
+
 ## Where the rest of this guide lives
 
 This file is loaded into **every** session, so it carries only what every session
