@@ -24,6 +24,16 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 TARGET_VERSION="${1:-$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)}"
+# Most checks below only compare files against each other, so defaulting to the
+# CURRENT version is right for them. The breaking-change guard is the exception:
+# it judges a BUMP, and the current version is not the tag about to be pushed.
+# §6 uses this to report "not measured" instead of a PASS nobody asked for.
+# An `a && b && c` chain would be the obvious one-liner and would also END THE
+# SCRIPT under `set -e` whenever no argument is given — the common case.
+TARGET_EXPLICIT=false
+if [ $# -ge 1 ] && [ -n "${1:-}" ]; then
+    TARGET_EXPLICIT=true
+fi
 BLOCKERS=0
 WARNINGS=0
 
@@ -160,7 +170,16 @@ if [ -x "$BREAKING_GUARD" ]; then
     BG_RC=$?
     set -e
     case "$BG_RC" in
-        0) check "breaking change vs bump level" "PASS" "$(tail -1 "$BG_LOG" | sed 's/\x1b\[[0-9;]*m//g')" ;;
+        0) if [ "$TARGET_EXPLICIT" = true ]; then
+               check "breaking change vs bump level" "PASS" "$(tail -1 "$BG_LOG" | sed 's/\x1b\[[0-9;]*m//g')"
+           else
+               # No target given, so TARGET_VERSION is the version already shipped.
+               # The guard then compares it against the release BEFORE it and
+               # reports a minor bump — true, and about the wrong pair of versions.
+               # Reporting that as PASS would answer a question nobody asked.
+               check "breaking change vs bump level" "WARN" \
+                   "not measured — no target version given, so the guard judged v$TARGET_VERSION (already released) instead of the tag you are about to push. Re-run: release-checklist.sh <target-version>"
+           fi ;;
         1) check "breaking change vs bump level" "FAIL" "a pending fragment is breaking — $TARGET_VERSION is a patch bump (see below)"
            sed 's/^/      /' "$BG_LOG" ;;
         *) check "breaking change vs bump level" "FAIL" "guard errored (exit $BG_RC) — a malformed fragment blocks the release rather than shipping unread"

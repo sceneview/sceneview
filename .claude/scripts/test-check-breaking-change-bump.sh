@@ -130,6 +130,29 @@ frag 0004-negated.md <<'EOF'
 EOF
 expect_rc "'non-breaking' does not refuse a patch tag" 0 4.26.1
 
+# ── 5b. …including when the bullet WRAPS mid-negation ────────────────────────
+# sed is line-oriented. Every fragment in the tree today writes one long line per
+# bullet, so a wrap between "non-" and "breaking" would have gone unnoticed until
+# the first contributor who wraps — and it would have blocked a release.
+setup_sandbox
+frag 0004b-negated-wrapped.md <<'EOF'
+<!-- category: Added -->
+- The modifier is opt-in and non-
+  breaking — a scene without it builds exactly as before.
+EOF
+expect_rc "a negation split across two lines still does not refuse a patch tag" 0 4.26.1
+
+# ── 5c. A usage typo must not read as REFUSED ────────────────────────────────
+# `--previous` with no value used to abort on `shift 2` under `set -e`, and the
+# resulting exit 1 is this script's REFUSED code: a typo would have looked like
+# "a breaking fragment blocks this release".
+setup_sandbox
+frag 0004c-plain.md <<'EOF'
+<!-- category: Fixed -->
+- Nothing remarkable.
+EOF
+expect_rc "'--previous' with no value exits 2 (malformed), not 1 (REFUSED)" 2 4.26.1 --previous
+
 # ── 6. Substring false positive ──────────────────────────────────────────────
 setup_sandbox
 frag 0005-substring.md <<'EOF'

@@ -48,7 +48,9 @@
 #     [ "$FRAG_IN_COMMENT" = false ] || die "unterminated <!-- in $f"
 
 # Every FRAG_* global below is written here and read by the sourcing script, so
-# shellcheck's "appears unused" is structural, not a finding.
+# the "appears unused" warning is structural, not a finding. (Do not start the
+# line above with the linter's own name: it gets parsed as a malformed directive
+# and the whole file is then skipped, SC1072/SC1073.)
 # shellcheck disable=SC2034
 
 # ─── HTML-comment stripper ───────────────────────────────────────────────────
@@ -188,7 +190,12 @@ frag_is_breaking_marker_line() {
 # which always wins over the heuristic.
 frag_prose_claims_breaking() { # $1 = comment-stripped body text
     local text
-    text="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    # Newlines become spaces FIRST: sed is line-oriented, so a bullet hard-wrapped
+    # between "non-" and "breaking" would slip past the negation filter below and
+    # be read as a breaking declaration. Fragments in this repo are written as one
+    # long line per bullet today, which is exactly why the wrapped case would go
+    # unnoticed until the first contributor who wraps.
+    text="$(printf '%s' "$1" | tr '\n' ' ' | tr '[:upper:]' '[:lower:]')"
     text="$(printf '%s' "$text" | sed -E "s/(non|not|no|isn.t|aren.t|won.t)[[:space:]-]+breaking/xnegatedx/g")"
     printf '%s' "$text" | grep -qE '(^|[^a-z0-9])breaking'
 }

@@ -171,6 +171,9 @@ setup_sandbox "$COLLATOR"
 OUT="$(cd "$ROOT" && bash .claude/scripts/collate-changelog.sh 4.1.0 --date 2026-08-01 2>&1)"; RC=$?
 
 check "exit 0 on valid fragments" 0 "$RC"
+# Every assertion below reads CHANGELOG.md, so a collator that died would fail
+# them all with no clue why. Surface its output once, here.
+if [ "$RC" != 0 ]; then printf '%s\n' "$OUT" | sed 's/^/        /'; fi
 
 check "single-tag: first bullet"          Added   "$(section_of MARKER-SINGLE-A)"
 check "single-tag: second bullet"         Added   "$(section_of MARKER-SINGLE-B)"

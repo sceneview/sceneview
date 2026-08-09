@@ -88,7 +88,15 @@ PREVIOUS=""
 QUIET=false
 while [ $# -gt 0 ]; do
     case "$1" in
-        --previous) PREVIOUS="${2:-}"; shift 2 ;;
+        # `shift 2` with only one argument left aborts under `set -e`, and the
+        # resulting exit 1 is this script's REFUSED code — a usage typo would
+        # read as "a breaking fragment blocks this release".
+        --previous)
+            [ $# -ge 2 ] && [ -n "$2" ] || {
+                echo -e "${RED}Error:${NC} --previous requires a version argument."
+                exit 2
+            }
+            PREVIOUS="$2"; shift 2 ;;
         --quiet)    QUIET=true; shift ;;
         *) echo -e "${RED}Error:${NC} unknown argument '$1'"; exit 2 ;;
     esac
