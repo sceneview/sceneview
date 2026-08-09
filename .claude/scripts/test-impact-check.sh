@@ -102,5 +102,71 @@ set -e
   && ok "single-commit history (no HEAD~1) → runs without crashing under set -e" \
   || bad "missing HEAD~1 must not crash the script (rc=$RC)"
 
+# ── SPM version gate (#3068) ─────────────────────────────────────────────
+# The gate used to `grep -r .` the working directory, so it FAILed on untracked
+# local files that exist in no clone — while its own tracked population was
+# empty, making the CI verdict a silent PASS. These four cases pin both halves:
+# it must see the repository, ignore the disk, stay loud when its own pattern
+# breaks, and still SKIP (never false-FAIL) when the doc surface isn't present.
+
+# Tracked file carrying the canonical SPM snippet, plus the version source.
+spm_repo() {
+    local dir; dir="$(setup_repo "$1")"
+    printf 'VERSION_NAME=4.26.0\n' > "$dir/gradle.properties"
+    printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "%s")\n' \
+        "$2" > "$dir/llms.txt"
+    ( cd "$dir" && git add -A && git commit -qm base )
+    printf '%s' "$dir"
+}
+
+# 5. Tracked file left behind by a version bump → FAIL, and NAME the file.
+#    A bare count ("15 file(s)") is what made the original unactionable.
+D="$(spm_repo spm_stale 4.25.0)"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs stale' <<<"$OUT" \
+  && grep -q 'llms.txt' <<<"$OUT"; } \
+  && ok "stale version in a TRACKED file → FAIL, offending file named" \
+  || bad "a stale tracked SPM ref must FAIL and name the file"
+
+# 6. Same tree, version aligned → PASS (no false alarm on a good bump).
+D="$(spm_repo spm_ok 4.26.0)"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT"; } \
+  && ok "aligned tracked SPM ref → PASS" \
+  || bad "an aligned tracked SPM ref should PASS"
+
+# 7. The original bug: an UNTRACKED stale draft must not block anything. It is
+#    in no clone and no CI run, so it cannot be a merge blocker — including the
+#    archived `sceneview-swift` coordinate that used to be the whole pattern.
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/untracked-draft.md"
+printf '.package(url: "https://github.com/sceneview/sceneview-swift.git", from: "4.0.2")\n' \
+    > "$D/untracked-draft (1).md"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "stale UNTRACKED drafts → ignored (repo, not disk), --fail exit 0" \
+  || bad "untracked files must never trip the SPM gate (rc=$RC)"
+
+# 8. Lean/sparse clone: version source present, SPM doc surface absent. Nothing
+#    can be concluded → SKIP, exit 0 under --fail. Same contract as case 1.
+D="$(setup_repo spm_lean)"
+printf 'VERSION_NAME=4.26.0\n' > "$D/gradle.properties"
+printf '# lean\n' > "$D/README.md"
+( cd "$D" && git add -A && git commit -qm base )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[SKIP\].*SPM version refs' <<<"$OUT" \
+  && ! grep -q '\[FAIL\].*SPM version refs' <<<"$OUT" \
+  && [[ $RC -eq 0 ]]; } \
+  && ok "lean/sparse clone without the SPM doc surface → SKIP, --fail exit 0" \
+  || bad "a missing SPM doc surface must SKIP, not false-FAIL (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
