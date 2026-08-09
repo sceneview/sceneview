@@ -21,6 +21,12 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - models/
-    - environments/
+  # No `assets:` block on purpose. This example is SOURCE-ONLY: it ships
+  # `lib/main.dart` to illustrate the API and has no `android/` or `ios/`
+  # runner, so it is not a buildable app (`flutter build apk` here stops at
+  # "Your app is using an unsupported Gradle project"). It used to declare
+  # `models/` and `environments/`, neither of which exists on disk — that is
+  # a hard `flutter build` failure ("unable to find directory entry in
+  # pubspec.yaml") and two `asset_directory_does_not_exist` analyzer
+  # warnings. The paths in `main.dart` are illustrative; a consuming app
+  # declares its own asset directories.

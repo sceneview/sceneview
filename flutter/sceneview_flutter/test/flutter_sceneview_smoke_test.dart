@@ -21,7 +21,7 @@ void main() {
 
   group('SceneViewController bridge smoke tests', () {
     const viewId = 99;
-    final channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
+    const channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
     final recordedCalls = <MethodCall>[];
 
     setUp(() {
@@ -114,8 +114,8 @@ void main() {
       String? lastNode;
       controller.onTap = (name) => lastNode = name;
 
-      final channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
-      final codec = const StandardMethodCodec();
+      const channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
+      const codec = StandardMethodCodec();
       final binding =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       await binding.handlePlatformMessage(
@@ -133,8 +133,8 @@ void main() {
       String? lastPlane;
       controller.onPlaneDetected = (type) => lastPlane = type;
 
-      final channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
-      final codec = const StandardMethodCodec();
+      const channel = MethodChannel('io.github.sceneview.flutter/scene_$viewId');
+      const codec = StandardMethodCodec();
       final binding =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       await binding.handlePlatformMessage(

@@ -54,6 +54,13 @@
 #       are identical in the assertion this replaces — not regressions, and not
 #       covered. Do not read "byte-identical to HEAD" as covering them.
 #
+#   ON `workflow_dispatch` THE RESTORE IS OURS, NOT THE ACTION'S. The action
+#   gates `restoreConfigFromBase()` on a PR context, which a dispatch does not
+#   have, so it restores NOTHING there — measured on run 31219325024. That is
+#   why `pr-review.yml` carries its own "Restore config paths from base" step
+#   for that trigger. Same eight paths, same base commit, so everything this
+#   script asserts holds identically on both triggers; only the writer differs.
+#
 #   The list below is a copy of the action's `SENSITIVE_PATHS`. If the action
 #   ever widens it, this script does not follow, and the new path reports as
 #   contamination — red, not green. Drift fails closed.
@@ -212,7 +219,11 @@ while IFS= read -r -d '' ENTRY; do
 done < "$TMP/status"
 
 if [ "${#RESTORED[@]}" -gt 0 ]; then
-  echo "Restored from ${BASE_REF} by claude-code-action's PR-head hardening (NOT reviewer contamination):"
+  # Two writers can produce this, and naming only one of them would be a lie on
+  # the other path: `claude-code-action` on `pull_request`, and `pr-review.yml`'s
+  # own "Restore config paths from base" step on `workflow_dispatch`, where the
+  # action does no restore at all (no PR context — see that step).
+  echo "Restored from ${BASE_REF} by the PR-head config hardening (NOT reviewer contamination):"
   printf '  %s\n' "${RESTORED[@]}"
   echo "Each of those matches ${BASE_REF} byte-for-byte, which is the action's own contract."
   # `.claude-pr/` never appears above: the action appends `/.claude-pr/` to
