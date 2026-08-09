@@ -614,7 +614,7 @@ jobs:
   # direct push to main that removes the plugin (or downgrades Kotlin)
   # only shows up the next time someone runs `flutter build apk`.
   #
-  # It also gates the PUBLISHED Dart package itself. Until #3053 every step
+  # It also gates the PUBLISHED Dart package itself. Until #3056 every step
   # here except the publish dry-run ran in `samples/flutter-demo`, so
   # `flutter/sceneview_flutter/lib` and `test` were analyzed by nothing and
   # their 18 unit tests were run by nothing — an analyzer ERROR in the
@@ -654,7 +654,7 @@ jobs:
         working-directory: flutter/sceneview_flutter
         run: flutter pub publish --dry-run
 
-      # ── The published package (#3053) ──────────────────────────────────
+      # ── The published package (#3056) ──────────────────────────────────
       # STRICTER than the demo step below, on purpose: this is the artefact
       # that goes to pub.dev. `--no-fatal-warnings` is deliberately absent,
       # so an analyzer WARNING reddens the job — the demo keeps it because
