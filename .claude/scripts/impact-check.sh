@@ -381,6 +381,7 @@ else
             # exactly the same reason the root one does.
             SPM_POP=()
             SPM_STALE=()
+            SPM_STALE_FILES=0
             while IFS= read -r -d '' spm_f; do
                 case "$spm_f" in
                     mcp/*|docs/docs/migration.md) continue ;;
@@ -391,10 +392,17 @@ else
                 spm_pins=$(grep -nE -e "$SPM_PIN_RE" -- "$spm_f" 2>/dev/null || true)
                 [[ -z "$spm_pins" ]] && continue
                 SPM_POP+=("$spm_f")
+                # EVERY stale pin, not just the first: a file with three of
+                # them would otherwise be reported as having one, and the
+                # second bump would look like a fresh regression.
                 spm_bad=$(printf '%s\n' "$spm_pins" \
-                    | grep -vE -e "$SPM_OK_RE" | head -1 || true)
+                    | grep -vE -e "$SPM_OK_RE" || true)
                 if [[ -n "$spm_bad" ]]; then
-                    SPM_STALE+=("$spm_f:${spm_bad%%:*}")
+                    SPM_STALE_FILES=$((SPM_STALE_FILES + 1))
+                    while IFS= read -r spm_line; do
+                        [[ -z "$spm_line" ]] && continue
+                        SPM_STALE+=("$spm_f:${spm_line%%:*}")
+                    done <<< "$spm_bad"
                 fi
             done < <(git ls-files -z -- '*.md' '*.txt' 2>/dev/null)
 
@@ -425,8 +433,13 @@ else
                 check "SPM version refs match $GRADLE_VERSION" "PASS" \
                     "${#SPM_POP[@]} tracked file(s) scanned"
             else
+                # One entry PER LINE, never space-joined: `spm guide.md:1` is
+                # indistinguishable from two entries once a space is also the
+                # separator, and a report you have to squint at is how this
+                # gate's bare "15 file(s)" stayed unactionable for so long.
                 check "SPM version refs stale" "FAIL" \
-                    "${#SPM_STALE[@]} of ${#SPM_POP[@]} tracked file(s): ${SPM_STALE[*]}"
+                    "$SPM_STALE_FILES of ${#SPM_POP[@]} tracked file(s), ${#SPM_STALE[@]} line(s)"
+                printf '    %s\n' "${SPM_STALE[@]}"
             fi
         fi
     fi

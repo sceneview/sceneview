@@ -241,5 +241,23 @@ set -e
   && ok "tracked '-i.md' and 'spm guide.md' → scanned and flagged, not swallowed" \
   || bad "pathological tracked filenames must reach the scan and be named (rc=$RC)"
 
+# 13. A file with SEVERAL stale pins must surface all of them. Reporting only
+#     the first makes the second bump look like a fresh regression, and the
+#     entries must be one-per-line: space-joined, `spm guide.md:1` is
+#     indistinguishable from two separate entries.
+D="$(spm_repo spm_multi 4.25.0)"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")\n' \
+    >> "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm multi )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '1 of 1 tracked file(s), 2 line(s)' <<<"$OUT" \
+  && grep -qx '    llms.txt:1' <<<"$OUT" \
+  && grep -qx '    llms.txt:2' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "several stale pins in one file → every line reported, one per line" \
+  || bad "only the first stale pin per file was reported (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
