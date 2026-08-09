@@ -3391,7 +3391,10 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 `onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
 without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a mesh name from inside
 the asset. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
-`nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. On
+`nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. A miss
+carries `0,0,0` **in practice only on Android**: iOS resolves the tap through RealityKit's
+entity-targeted gesture, which fires only on a hit, so a tap on empty space dispatches no `onTap`
+event at all — count taps and you see fewer events on iOS, not a `0,0,0` one. On
 `ARSceneView` *what a hit reports* diverges: **Android** hit-tests the scene, so a tap on a model
 reports its file base name just as `SceneView` does and a plane hit or a miss reports `null`;
 **iOS** always reports `null`, because SceneViewSwift's `ARSceneView` exposes no entity hit-test
