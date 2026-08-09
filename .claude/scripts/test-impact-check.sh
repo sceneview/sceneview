@@ -121,14 +121,17 @@ spm_repo() {
 
 # 5. Tracked file left behind by a version bump → FAIL, and NAME the file.
 #    A bare count ("15 file(s)") is what made the original unactionable.
+#    Run under --fail: printing [FAIL] is worthless if the quality gate the
+#    check feeds still exits 0.
 D="$(spm_repo spm_stale 4.25.0)"
 set +e
-OUT="$(cd "$D" && bash "$SCRIPT" 2>&1)"; RC=$?
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
 set -e
 { grep -q '\[FAIL\].*SPM version refs stale' <<<"$OUT" \
-  && grep -q 'llms.txt' <<<"$OUT"; } \
-  && ok "stale version in a TRACKED file → FAIL, offending file named" \
-  || bad "a stale tracked SPM ref must FAIL and name the file"
+  && grep -q 'llms.txt' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "stale version in a TRACKED file → FAIL, file named, --fail exit non-zero" \
+  || bad "a stale tracked SPM ref must FAIL, name the file, and exit non-zero (rc=$RC)"
 
 # 6. Same tree, version aligned → PASS (no false alarm on a good bump).
 D="$(spm_repo spm_ok 4.26.0)"
@@ -167,6 +170,23 @@ set -e
   && [[ $RC -eq 0 ]]; } \
   && ok "lean/sparse clone without the SPM doc surface → SKIP, --fail exit 0" \
   || bad "a missing SPM doc surface must SKIP, not false-FAIL (rc=$RC)"
+
+# 9. The headline contract: doc surface PRESENT but the pattern matches nothing.
+#    That is the detector broken, not the tree, and it must be loud — case 8
+#    only covers the absent-surface SKIP, so without this a regression flipping
+#    this branch to PASS or SKIP would sail through every other case.
+D="$(setup_repo spm_blind)"
+printf 'VERSION_NAME=4.26.0\n' > "$D/gradle.properties"
+printf 'SceneView docs with no SPM snippet at all.\n' > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm base )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs' <<<"$OUT" \
+  && grep -q 'pattern is broken' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "sentinel present but 0 matches → FAIL (broken pattern), --fail non-zero" \
+  || bad "an empty discovery with the doc surface present must FAIL (rc=$RC)"
 
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

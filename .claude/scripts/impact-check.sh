@@ -342,15 +342,29 @@ else
         # `sync-versions.sh` §10b remains the source-of-truth UPDATER over its
         # explicit file list; this is the discovery net that catches a canonical
         # SPM snippet living in a file that list doesn't know about yet.
+        # Both classes accept the same quoting — ' " ` — so a snippet written
+        # `from: '4.26.0'` cannot be discovered by one regex and judged stale
+        # by the other, which would report a false FAIL on an aligned file.
         SPM_URL_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]? *\(?from'
-        SPM_VERSION_RE="from:? *[\"\`]?${GRADLE_VERSION//./\\.}"
+        SPM_VERSION_RE="from:? *['\"\`]?${GRADLE_VERSION//./\\.}"
 
         if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             check "SPM version refs" "SKIP" "not a git repository"
         else
-            SPM_POP=$(git ls-files -z -- '*.md' '*.txt' 2>/dev/null \
-                | xargs -0 grep -lE "$SPM_URL_RE" 2>/dev/null \
-                | grep -vE '^(CHANGELOG\.md|MIGRATION\.md|docs/docs/migration\.md)$|^mcp/' || true)
+            # Paths stay NUL-delimited from `git ls-files` all the way into an
+            # array: a newline in a committed filename would silently split a
+            # `while read` over newline-joined `grep -l` output, and BSD grep
+            # has no portable NUL-delimited -l to join the two halves with
+            # (macOS `grep -lZ` still terminates with \n). `-e … --` keeps a
+            # file named like `-i.md` from being read as a grep option.
+            # 282 tracked files, ~1.1s — paid once per push, unlike the trust.
+            SPM_POP=()
+            while IFS= read -r -d '' spm_f; do
+                case "$spm_f" in
+                    CHANGELOG.md|MIGRATION.md|docs/docs/migration.md|mcp/*) continue ;;
+                esac
+                grep -qE -e "$SPM_URL_RE" -- "$spm_f" 2>/dev/null && SPM_POP+=("$spm_f")
+            done < <(git ls-files -z -- '*.md' '*.txt' 2>/dev/null)
 
             # An empty population has two very different causes, and calling
             # both the same thing is how a gate earns a reputation for lying:
@@ -368,31 +382,26 @@ else
             # These two sentinels are tracked files that always carry the
             # canonical snippet in a complete checkout, so their presence is
             # what separates "no surface" from "broken pattern".
-            if [[ -z "$SPM_POP" ]] \
+            if [[ ${#SPM_POP[@]} -eq 0 ]] \
                && [[ ! -f "llms.txt" ]] && [[ ! -f "docs/docs/quickstart-ios.md" ]]; then
                 check "SPM version refs" "SKIP" \
                     "SPM doc surface not in checkout (lean/sparse clone)"
-            elif [[ -z "$SPM_POP" ]]; then
+            elif [[ ${#SPM_POP[@]} -eq 0 ]]; then
                 check "SPM version refs" "FAIL" \
                     "discovery matched 0 tracked files — the pattern is broken, not the tree"
             else
-                SPM_STALE=""
-                while IFS= read -r spm_f; do
-                    [[ -z "$spm_f" ]] && continue
-                    grep -qE "$SPM_VERSION_RE" "$spm_f" 2>/dev/null \
-                        || SPM_STALE+="$spm_f"$'\n'
-                done <<< "$SPM_POP"
+                SPM_STALE=()
+                for spm_f in "${SPM_POP[@]}"; do
+                    grep -qE -e "$SPM_VERSION_RE" -- "$spm_f" 2>/dev/null \
+                        || SPM_STALE+=("$spm_f")
+                done
 
-                POP_COUNT=$(printf '%s\n' "$SPM_POP" | grep -c . || true)
-                if [[ -z "${SPM_STALE//[$'\n' ]}" ]]; then
+                if [[ ${#SPM_STALE[@]} -eq 0 ]]; then
                     check "SPM version refs match $GRADLE_VERSION" "PASS" \
-                        "$POP_COUNT tracked file(s) scanned"
+                        "${#SPM_POP[@]} tracked file(s) scanned"
                 else
-                    # `printf | grep -c .` counts non-empty lines — `echo "" | wc -l`
-                    # returns 1 for an empty string and would report a phantom "1 file".
-                    STALE_COUNT=$(printf '%s' "$SPM_STALE" | grep -c . || true)
                     check "SPM version refs stale" "FAIL" \
-                        "$STALE_COUNT of $POP_COUNT tracked file(s): $(printf '%s' "$SPM_STALE" | tr '\n' ' ')"
+                        "${#SPM_STALE[@]} of ${#SPM_POP[@]} tracked file(s): ${SPM_STALE[*]}"
                 fi
             fi
         fi
