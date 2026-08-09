@@ -219,5 +219,27 @@ set -e
   && ok "MIGRATION.md excluded at any depth, not just repo root" \
   || bad "a nested MIGRATION.md must stay excluded (rc=$RC)"
 
+# 12. Pathological TRACKED filenames must survive the `git ls-files` → array
+#     path. Case 7's space-in-name draft is UNTRACKED, so it never reaches it:
+#     the NUL-delimited read and the `-e … --` end-of-options guard were
+#     defended by comment only. A leading-dash name is the sharp one — without
+#     `--`, grep reads `-i.md` as an option and the file leaves the population
+#     SILENTLY, which is this gate's whole failure mode in miniature.
+D="$(spm_repo spm_odd_names 4.26.0)"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/spm guide.md"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/-i.md"
+( cd "$D" && git add -A -- '.' && git commit -qm odd )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '2 of 3 tracked file(s)' <<<"$OUT" \
+  && grep -q 'spm guide.md:1' <<<"$OUT" \
+  && grep -q '\-i.md:1' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "tracked '-i.md' and 'spm guide.md' → scanned and flagged, not swallowed" \
+  || bad "pathological tracked filenames must reach the scan and be named (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
