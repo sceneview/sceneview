@@ -108,7 +108,21 @@ public constructor(
 
     // Conflated channel: the sender never blocks; a new event replaces any
     // pending one. This gives us drop-on-backpressure semantics for free.
-    private val outbox = Channel<String>(capacity = Channel.CONFLATED)
+    //
+    // ONE CHANNEL PER CONNECTION, swapped by [connect]. A single bridge-wide
+    // channel silently ate the first event of every reconnect (#2777): the
+    // outgoing writer is still parked in `receive` when disconnect() cancels
+    // it, and a `trySend` that lands before the cancellation is processed is
+    // handed straight to that dead receiver. With no `onUndeliveredElement`
+    // hook the element is then dropped on the floor — never buffered, so the
+    // incoming writer never sees it and the fresh socket looks mute. Giving
+    // each connection its own channel makes that structurally impossible:
+    // an event enqueued after connect() returns can only ever reach the
+    // writer that connect() just started.
+    //
+    // Volatile because `enqueue` runs on the render thread while `connect`
+    // swaps the reference from the caller's thread.
+    @Volatile private var outbox = Channel<String>(capacity = Channel.CONFLATED)
 
     @Volatile private var socket: Socket? = null
     @Volatile private var writer: BufferedWriter? = null
@@ -162,6 +176,11 @@ public constructor(
         // Reset counters on every fresh connect so a flickering link doesn't
         // accumulate misleading totals across attempts.
         _eventsSent = 0L
+        // Hand this connection its own outbox BEFORE the writer starts, so a
+        // caller that enqueues the moment connect() returns cannot have its
+        // event captured by the writer we are replacing (#2777).
+        val box = Channel<String>(capacity = Channel.CONFLATED)
+        outbox = box
         writerJob = scope.launch {
             // Capture local refs so the writer's finally block does NOT race a
             // subsequent connect() that may have replaced the writer/socket
@@ -184,7 +203,10 @@ public constructor(
                 localReaderJob = scope.launch { readSidecarAcks(s) }
                 readerJob = localReaderJob
 
-                for (line in outbox) {
+                // `box`, not the field: this writer only ever ships events
+                // enqueued for ITS connection, so a cancellation that lands
+                // late can no longer strand the next connection's first event.
+                for (line in box) {
                     try {
                         w.write(line)
                         w.flush()
@@ -198,6 +220,10 @@ public constructor(
                 logWarning("connect to $host:$port failed: ${e.message}")
             } finally {
                 _isConnected = false
+                // This connection's outbox dies with it. Events enqueued while
+                // no writer is running are dropped rather than buffered, so a
+                // later connect() can't ship a stale event from a dead session.
+                box.close()
                 // Close ONLY the resources this writer owns, then null out the
                 // shared fields ONLY if they still point to our locals (i.e. a
                 // subsequent connect() hasn't already replaced them).
@@ -490,6 +516,10 @@ public constructor(
     }
 
     private fun closeQuietly() {
+        // Close this connection's outbox so its writer leaves the for-loop
+        // through the normal channel-closed path instead of relying on the
+        // cancellation landing first. The next connect() installs a fresh one.
+        outbox.close()
         try { writer?.close() } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}
         writer = null
