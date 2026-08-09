@@ -342,11 +342,28 @@ else
         # `sync-versions.sh` §10b remains the source-of-truth UPDATER over its
         # explicit file list; this is the discovery net that catches a canonical
         # SPM snippet living in a file that list doesn't know about yet.
-        # Both classes accept the same quoting — ' " ` — so a snippet written
-        # `from: '4.26.0'` cannot be discovered by one regex and judged stale
-        # by the other, which would report a false FAIL on an aligned file.
-        SPM_URL_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]? *\(?from'
-        SPM_VERSION_RE="from:? *['\"\`]?${GRADLE_VERSION//./\\.}"
+        # Discovery and verdict are anchored to the SAME LINE. Judging at file
+        # granularity let a file whose canonical snippet was stale still PASS
+        # because some *other* line elsewhere happened to carry the current
+        # version — the check would confirm a version that no reader resolves.
+        # A "pinning line" is the canonical URL plus a version constraint on
+        # that line; every SPM form is accepted, not just bare `from:`, so an
+        # `.upToNextMajor(from:)` snippet is covered instead of silently
+        # dropped from the population. Quoting is deliberately loose (' " `,
+        # or none) in both halves: a snippet must never be discovered by one
+        # regex and judged stale by the other.
+        # The version is escaped for ERE rather than assumed to be bare semver
+        # — a `+build` suffix would otherwise be read as a metacharacter.
+        VER_ESC=$(printf '%s' "$GRADLE_VERSION" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+        # What follows the URL is deliberately near-adjacent — closing quote,
+        # comma, paren, dot — and not `.*`: a permissive gap turns every plain
+        # `github.com/sceneview/sceneview/blob/…` link whose sentence happens
+        # to contain "from" into a stale SPM pin. Measured: 25 files, 10 of
+        # them prose. It also keeps the ARCHIVED `sceneview/sceneview-swift`
+        # mirror out (banning that URL is check-sceneview-swift-urls.sh's job).
+        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)'
+        SPM_PIN_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*'"$SPM_CONSTRAINT"
+        SPM_OK_RE="${SPM_CONSTRAINT}[^0-9]*${VER_ESC}([^0-9]|$)"
 
         if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             check "SPM version refs" "SKIP" "not a git repository"
@@ -358,12 +375,27 @@ else
             # (macOS `grep -lZ` still terminates with \n). `-e … --` keeps a
             # file named like `-i.md` from being read as a grep option.
             # 282 tracked files, ~1.1s — paid once per push, unlike the trust.
+            # CHANGELOG.md / MIGRATION.md are excluded wherever they live, not
+            # only at the repo root: the reason they are excluded is what the
+            # file IS, and a docs/MIGRATION.md would quote old versions for
+            # exactly the same reason the root one does.
             SPM_POP=()
+            SPM_STALE=()
             while IFS= read -r -d '' spm_f; do
                 case "$spm_f" in
-                    CHANGELOG.md|MIGRATION.md|docs/docs/migration.md|mcp/*) continue ;;
+                    mcp/*|docs/docs/migration.md) continue ;;
                 esac
-                grep -qE -e "$SPM_URL_RE" -- "$spm_f" 2>/dev/null && SPM_POP+=("$spm_f")
+                case "${spm_f##*/}" in
+                    CHANGELOG.md|MIGRATION.md) continue ;;
+                esac
+                spm_pins=$(grep -nE -e "$SPM_PIN_RE" -- "$spm_f" 2>/dev/null || true)
+                [[ -z "$spm_pins" ]] && continue
+                SPM_POP+=("$spm_f")
+                spm_bad=$(printf '%s\n' "$spm_pins" \
+                    | grep -vE -e "$SPM_OK_RE" | head -1 || true)
+                if [[ -n "$spm_bad" ]]; then
+                    SPM_STALE+=("$spm_f:${spm_bad%%:*}")
+                fi
             done < <(git ls-files -z -- '*.md' '*.txt' 2>/dev/null)
 
             # An empty population has two very different causes, and calling
@@ -389,20 +421,12 @@ else
             elif [[ ${#SPM_POP[@]} -eq 0 ]]; then
                 check "SPM version refs" "FAIL" \
                     "discovery matched 0 tracked files — the pattern is broken, not the tree"
+            elif [[ ${#SPM_STALE[@]} -eq 0 ]]; then
+                check "SPM version refs match $GRADLE_VERSION" "PASS" \
+                    "${#SPM_POP[@]} tracked file(s) scanned"
             else
-                SPM_STALE=()
-                for spm_f in "${SPM_POP[@]}"; do
-                    grep -qE -e "$SPM_VERSION_RE" -- "$spm_f" 2>/dev/null \
-                        || SPM_STALE+=("$spm_f")
-                done
-
-                if [[ ${#SPM_STALE[@]} -eq 0 ]]; then
-                    check "SPM version refs match $GRADLE_VERSION" "PASS" \
-                        "${#SPM_POP[@]} tracked file(s) scanned"
-                else
-                    check "SPM version refs stale" "FAIL" \
-                        "${#SPM_STALE[@]} of ${#SPM_POP[@]} tracked file(s): ${SPM_STALE[*]}"
-                fi
+                check "SPM version refs stale" "FAIL" \
+                    "${#SPM_STALE[@]} of ${#SPM_POP[@]} tracked file(s): ${SPM_STALE[*]}"
             fi
         fi
     fi

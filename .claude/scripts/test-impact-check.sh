@@ -188,5 +188,36 @@ set -e
   && ok "sentinel present but 0 matches → FAIL (broken pattern), --fail non-zero" \
   || bad "an empty discovery with the doc surface present must FAIL (rc=$RC)"
 
+# 10. Discovery and verdict must be anchored to the SAME LINE. A stale canonical
+#     snippet alongside any other line that happens to quote the current version
+#     used to PASS at file granularity — the gate confirming a version no reader
+#     resolves. Must FAIL, and name the offending LINE.
+D="$(spm_repo spm_decoupled 4.25.0)"
+printf 'Released in 4.26.0 — notes mention (from: "4.26.0") in prose.\n' >> "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm prose )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs stale' <<<"$OUT" \
+  && grep -q 'llms.txt:1' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "stale snippet + current version elsewhere in the file → FAIL, line named" \
+  || bad "file-granularity matching must not excuse a stale pinning line (rc=$RC)"
+
+# 11. CHANGELOG.md / MIGRATION.md are excluded by WHAT THEY ARE, so the
+#     exclusion must hold at any path depth — a docs/MIGRATION.md quotes old
+#     versions for the same reason the root one does.
+D="$(spm_repo spm_nested_migration 4.26.0)"
+mkdir -p "$D/docs"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")\n' \
+    > "$D/docs/MIGRATION.md"
+( cd "$D" && git add -A && git commit -qm nested )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "MIGRATION.md excluded at any depth, not just repo root" \
+  || bad "a nested MIGRATION.md must stay excluded (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
