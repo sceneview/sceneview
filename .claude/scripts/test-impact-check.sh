@@ -259,5 +259,23 @@ set -e
   && ok "several stale pins in one file → every line reported, one per line" \
   || bad "only the first stale pin per file was reported (rc=$RC)"
 
+# 14. `changelog.d/` is the PRE-IMAGE of CHANGELOG.md, so it inherits its
+#     exclusion. Excluding one and not the other reopens, inside this gate,
+#     the very "same sentence, two verdicts" hole #3068 closes in the sibling
+#     mirror gate: a release note quoting an old install line would be a merge
+#     blocker as a fragment and exempt the second collate-changelog.sh moves
+#     it — same text, opposite verdicts, decided by nothing but timing.
+D="$(spm_repo spm_fragment 4.26.0)"
+mkdir -p "$D/changelog.d"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")\n' \
+    > "$D/changelog.d/1234-note.md"
+( cd "$D" && git add -A && git commit -qm fragment )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "changelog.d/ fragment excluded, like its CHANGELOG.md destination" \
+  || bad "a fragment must not be a blocker that collating would silence (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

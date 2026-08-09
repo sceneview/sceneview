@@ -336,6 +336,11 @@ else
         # Excluded on purpose:
         #   CHANGELOG.md / MIGRATION.md / docs/docs/migration.md — historical
         #     entries legitimately quote OLD versions.
+        #   changelog.d/ — the PRE-IMAGE of CHANGELOG.md. Excluding one and not
+        #     the other is the "same sentence, two verdicts" hole this PR closes
+        #     in the sibling gate: `collate-changelog.sh` merges a fragment INTO
+        #     CHANGELOG.md, so a release note quoting an old install line would
+        #     be a merge blocker as a fragment and exempt the moment it ships.
         #   mcp/ — an independent release track that must NEVER be synced to
         #     VERSION_NAME, and whose `ios-outdated` fixture is stale by design.
         #
@@ -384,7 +389,7 @@ else
             SPM_STALE_FILES=0
             while IFS= read -r -d '' spm_f; do
                 case "$spm_f" in
-                    mcp/*|docs/docs/migration.md) continue ;;
+                    mcp/*|changelog.d/*|docs/docs/migration.md) continue ;;
                 esac
                 case "${spm_f##*/}" in
                     CHANGELOG.md|MIGRATION.md) continue ;;

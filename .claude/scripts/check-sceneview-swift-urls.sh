@@ -27,6 +27,10 @@
 #   - docs/docs/migration.md              — migration guide quoting the old mirror URL
 #   - .claude/scripts/check-sceneview-swift-urls.sh — this detector itself
 #   - .claude/scripts/test-check-sceneview-swift-urls.sh — its self-test, whose fixtures ARE mirror pins
+#   - .claude/scripts/impact-check.sh                   — its sibling SPM gate, whose comments explain the split of duty
+#   - .claude/scripts/test-impact-check.sh              — that gate's self-test
+#   - .claude/scripts/quality-gate.sh                   — the consumer that runs this detector and parses its output
+#   - .claude/scripts/sync-versions.sh                  — the SPM updater, which still recognises the legacy mirror clause
 #   - .claude/skills/automation-map/SKILL.md — the skill row indexing this detector
 #   - .github/workflows/ci.yml            — the repo-hygiene job comment that documents this detector
 #
@@ -66,7 +70,7 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/skills/automation-map/SKILL\.md)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
 
 # Surfaces where the mirror may be NAMED but never PINNED. The two changelog
 # entries are the only ones allowlisted WHOLESALE (any fragment, current or
@@ -90,9 +94,18 @@ SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(fro
 
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
+#
+# `*.sh` is in the list because a shell script is the one surface where a dead
+# URL is not a bad paste but a broken command — a setup or install script that
+# curls / clones the archived mirror fails at run time. It was missing, which
+# also made the two `.sh` entries in ALLOW dead surface: the gate scripts they
+# name were scanned by neither pass, so the comment above documented a
+# protection that did not exist. Four more gate scripts join them now, each for
+# the same reason as the detector itself — they mention the string BECAUSE
+# their own logic is about it.
 HITS=$(git grep -l 'sceneview-swift' -- \
          '*.md' '*.txt' '*.yml' '*.yaml' '*.swift' '*.kt' \
-         '*.json' '*.html' '*.js' '*.ts' \
+         '*.json' '*.html' '*.js' '*.ts' '*.sh' \
          2>/dev/null | grep -vE "$ALLOW" || true)
 
 if [ -n "$HITS" ]; then

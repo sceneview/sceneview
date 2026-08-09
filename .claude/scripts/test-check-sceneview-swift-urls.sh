@@ -93,5 +93,16 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "prose mentioning the mirror and 'from' separately → not a pin" \
   || bad "a permissive gap turns release-note prose into a false positive (rc=$RC)"
 
+# 6. Pass 1 covers `*.sh`. It did not, which made this very file's ALLOW entry
+#    dead surface — the comment claimed a protection no pass applied. A shell
+#    script is where a dead URL stops being a bad paste and becomes a command
+#    that fails at run time.
+D="$(fixture shell_script tools/install-swift.sh \
+    'git clone https://github.com/sceneview/sceneview-swift.git')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'tools/install-swift.sh' <<<"$OUT"; } \
+  && ok "mirror URL in a tracked .sh → fail, file named" \
+  || bad "a script cloning the archived mirror must not pass (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
