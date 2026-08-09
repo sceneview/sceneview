@@ -104,5 +104,37 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "mirror URL in a tracked .sh → fail, file named" \
   || bad "a script cloning the archived mirror must not pass (rc=$RC)"
 
+# 7. Pass 2 recognises a FETCH VERB as a pin. A version constraint is not the
+#    only runnable form: `git clone …/sceneview-swift.git` carries no version
+#    at all and still fails the moment anyone pastes it, so a prose-only
+#    surface must not be free to ship one just because no `from:` is in sight.
+D="$(fixture fragment_clone changelog.d/1234-note.md \
+    '- Before v4, users ran `git clone https://github.com/sceneview/sceneview-swift.git`.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'changelog.d/1234-note.md:1' <<<"$OUT"; } \
+  && ok "changelog fragment CLONING the mirror → fail, line named" \
+  || bad "a bare clone line is a pin with no version in sight (rc=$RC)"
+
+# 8. …and the verb alone is not. The gate must stay usable for release notes:
+#    a sentence that says the mirror was cloned by users, with no command on
+#    that line, is history — the same both-directions discipline as case 5.
+D="$(fixture prose_clone changelog.d/1234-note.md \
+    '- The sceneview-swift mirror is archived. Users who clone anything now clone the monorepo.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "prose about cloning, no command on the line → not a pin" \
+  || bad "the fetch-verb pattern must not swallow release-note prose (rc=$RC)"
+
+# 9. The fetch verb targets the REPO PATH, not the bare token. This gate's own
+#    filename contains `sceneview-swift`, so a doc line naming `curl` and then
+#    the script matched the first draft — measured: the automation-map row
+#    failed the gate it documents. Only what can be cloned is a clone.
+D="$(fixture prose_script_name CHANGELOG.md \
+    '- Use curl for downloads; the mirror ban lives in check-sceneview-swift-urls.sh.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a fetch verb plus this script's NAME → not a clone of the mirror" \
+  || bad "the fetch pattern must target the repo path, not the bare token (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

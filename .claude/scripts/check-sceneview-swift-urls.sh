@@ -49,7 +49,8 @@
 # never PINNED. A line where a version constraint sits adjacent to the mirror
 # URL is a copy-pasteable install line pointing at an archived repo, which is
 # the exact harm this gate exists to prevent, and no amount of surrounding
-# release-note prose makes it resolve.
+# release-note prose makes it resolve. A bare `git clone` of the mirror is the
+# same harm with no version in sight, so the fetch verbs count as pins too.
 
 #
 # Usage:
@@ -80,6 +81,12 @@ ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.y
 #
 # `test-check-sceneview-swift-urls.sh` is deliberately NOT in this list: its
 # fixtures ARE pins, by design — that is how the second pass is proven to fire.
+#
+# The `changelog.d/` entry is FLAT in ALLOW (`[^/]+\.md`) but NESTED in this
+# pathspec (git's `*` crosses `/`), and the asymmetry is the safe way round on
+# purpose: a hypothetical `changelog.d/sub/x.md` is NOT wholesale-allowlisted
+# by pass 1 — it just fails — while pass 2 still refuses to let it ship a pin.
+# Widening ALLOW to match would hand a subdirectory the wholesale exemption.
 PROSE_ONLY=(
     'CHANGELOG.md'
     'changelog.d/*.md'
@@ -91,6 +98,25 @@ PROSE_ONLY=(
 # happens to contain "from" a false positive (measured on the sibling SPM gate:
 # 25 files matched, 10 of them plain prose).
 SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(from|upToNextMajor|upToNextMinor|exact)'
+
+# A version constraint is not the only way to ship a runnable line. `git clone
+# https://…/sceneview-swift.git` carries no constraint at all and still fails
+# the moment someone pastes it, so the FETCH VERB is a pin in its own right.
+# The verb is anchored BEFORE the URL, which is what keeps this specific: a
+# paragraph that merely says the word "clone" is not a command, and `clone`
+# alone is not in the alternation. The gap is `.*` here — unlike SNIPPET,
+# where a permissive gap costs false positives — because grep already bounds
+# it to one line and a fetch verb preceding the mirror URL is the whole
+# signal. NOT `[^\n]*`: in POSIX ERE that is the class "neither backslash
+# nor the letter n", which the URL itself contains, so the pattern silently
+# never fires. It was written that way first, and case 7 caught it.
+#
+# The target is the REPO form `sceneview/sceneview-swift`, not the bare token:
+# this detector's own filename contains `sceneview-swift`, so any doc line
+# that mentions `curl` and then names the script matched — measured on this
+# repo, the automation-map row failed the gate. Only the org-qualified path
+# can actually be cloned.
+FETCH='(git[[:space:]]+clone|curl|wget|svn[[:space:]]+checkout).*sceneview/sceneview-swift'
 
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
@@ -125,13 +151,13 @@ fi
 
 # Second pass: the two WHOLESALE-allowlisted surfaces may name the mirror, but
 # must never ship a resolvable pin to it.
-PINS=$(git grep -nE "$SNIPPET" -- "${PROSE_ONLY[@]}" 2>/dev/null || true)
+PINS=$(git grep -nE -e "$SNIPPET" -e "$FETCH" -- "${PROSE_ONLY[@]}" 2>/dev/null || true)
 
 if [ -n "$PINS" ]; then
   echo "::error::A prose-only surface ships a live SPM pin to the ARCHIVED 'sceneview-swift' mirror (#1237)."
   echo ""
   echo "  Naming the retired mirror is fine on these surfaces — pinning a"
-  echo "  version to it is a copy-pasteable install line that does not resolve."
+  echo "  version to it, or cloning it, is a copy-pasteable line that fails."
   echo "  Use 'https://github.com/sceneview/sceneview' instead."
   echo ""
   echo "  Offending line(s):"
