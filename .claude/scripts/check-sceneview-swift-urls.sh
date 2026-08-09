@@ -23,9 +23,20 @@
 #   - CLAUDE.md                           — historical changelog narrative
 #   - SceneViewSwift/.../SceneView.swift   — "Ported from ... sceneview-swift PR #1" attribution
 #   - CHANGELOG.md                        — historical version entries (mirror retirement)
+#   - changelog.d/*.md                    — the PRE-IMAGE of CHANGELOG.md (see below)
 #   - docs/docs/migration.md              — migration guide quoting the old mirror URL
 #   - .claude/scripts/check-sceneview-swift-urls.sh — this detector itself
 #   - .github/workflows/ci.yml            — the repo-hygiene job comment that documents this detector
+#
+# `changelog.d/*.md` is allowed for exactly the reason `CHANGELOG.md` is, and
+# omitting it was a hole opened by the move to fragments: `collate-changelog.sh`
+# merges each fragment INTO `CHANGELOG.md` and then deletes it, so a fragment is
+# literally tomorrow's changelog text. Without this, a release note that explains
+# the mirror's retirement is blocked while it lives in `changelog.d/` and becomes
+# allowed the moment it is collated — the same sentence, two verdicts. Fixed in
+# #3068, whose own fragment tripped it. Prose about a dead URL is not a live
+# pointer to one; a fragment that ships an actual install snippet for the mirror
+# is still wrong, and review is the check for that.
 #
 # Usage:
 #   bash .claude/scripts/check-sceneview-swift-urls.sh
@@ -45,7 +56,7 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh)$'
 
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
