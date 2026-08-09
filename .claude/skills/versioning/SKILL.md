@@ -44,7 +44,7 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > `react-native/.../android/build.gradle.kts` are dependencies on the
 > **published** Maven Central artifact — they must lag to the **last released**
 > version and cannot point at the in-flight release (it isn't on Maven Central
-> yet; pointing at it breaks the `Build flutter-demo APK` CI check). Only the
+> yet; pointing at it breaks the `Flutter plugin + demo APK` CI check). Only the
 > plugins' OWN package versions (`version 'X.Y.Z'`, `pubspec.yaml`, podspec,
 > `package.json`) bump to the release version. `sync-versions.sh` reports these
 > consumed-dep coordinates WARN-only and never auto-bumps them (issue #1494).
