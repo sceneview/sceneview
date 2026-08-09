@@ -26,6 +26,8 @@
 #   - changelog.d/*.md                    — the PRE-IMAGE of CHANGELOG.md (see below)
 #   - docs/docs/migration.md              — migration guide quoting the old mirror URL
 #   - .claude/scripts/check-sceneview-swift-urls.sh — this detector itself
+#   - .claude/scripts/test-check-sceneview-swift-urls.sh — its self-test, whose fixtures ARE mirror pins
+#   - .claude/skills/automation-map/SKILL.md — the skill row indexing this detector
 #   - .github/workflows/ci.yml            — the repo-hygiene job comment that documents this detector
 #
 # `changelog.d/*.md` is allowed for exactly the reason `CHANGELOG.md` is, and
@@ -34,9 +36,17 @@
 # literally tomorrow's changelog text. Without this, a release note that explains
 # the mirror's retirement is blocked while it lives in `changelog.d/` and becomes
 # allowed the moment it is collated — the same sentence, two verdicts. Fixed in
-# #3068, whose own fragment tripped it. Prose about a dead URL is not a live
-# pointer to one; a fragment that ships an actual install snippet for the mirror
-# is still wrong, and review is the check for that.
+# #3068, whose own fragment tripped it.
+#
+# Prose about a dead URL is not a live pointer to one — but "review will catch
+# an install snippet in a fragment" is a hope, not a gate, and CHANGELOG.md and
+# changelog.d/ are the only two entries here allowlisted WHOLESALE rather than
+# by exact path. So they get a second, narrower pass: the mirror may be NAMED,
+# never PINNED. A line where a version constraint sits adjacent to the mirror
+# URL is a copy-pasteable install line pointing at an archived repo, which is
+# the exact harm this gate exists to prevent, and no amount of surrounding
+# release-note prose makes it resolve.
+
 #
 # Usage:
 #   bash .claude/scripts/check-sceneview-swift-urls.sh
@@ -56,7 +66,27 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/skills/automation-map/SKILL\.md)$'
+
+# Surfaces where the mirror may be NAMED but never PINNED. The two changelog
+# entries are the only ones allowlisted WHOLESALE (any fragment, current or
+# future), so they carry the most risk; the automation-map row is here because
+# a doc indexing this gate must quote the string it is about, and has no
+# business shipping a resolvable install line either.
+#
+# `test-check-sceneview-swift-urls.sh` is deliberately NOT in this list: its
+# fixtures ARE pins, by design — that is how the second pass is proven to fire.
+PROSE_ONLY=(
+    'CHANGELOG.md'
+    'changelog.d/*.md'
+    '.claude/skills/automation-map/SKILL.md'
+)
+
+# A live install snippet: the mirror URL with a version constraint next to it.
+# Near-adjacency, never `.*` — a permissive gap makes every prose sentence that
+# happens to contain "from" a false positive (measured on the sibling SPM gate:
+# 25 files matched, 10 of them plain prose).
+SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(from|upToNextMajor|upToNextMinor|exact)'
 
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
@@ -77,6 +107,22 @@ if [ -n "$HITS" ]; then
   echo ""
   echo "  If a reference is genuinely historical, add the file path to the"
   echo "  ALLOW regex in .claude/scripts/check-sceneview-swift-urls.sh."
+  exit 1
+fi
+
+# Second pass: the two WHOLESALE-allowlisted surfaces may name the mirror, but
+# must never ship a resolvable pin to it.
+PINS=$(git grep -nE "$SNIPPET" -- "${PROSE_ONLY[@]}" 2>/dev/null || true)
+
+if [ -n "$PINS" ]; then
+  echo "::error::A prose-only surface ships a live SPM pin to the ARCHIVED 'sceneview-swift' mirror (#1237)."
+  echo ""
+  echo "  Naming the retired mirror is fine on these surfaces — pinning a"
+  echo "  version to it is a copy-pasteable install line that does not resolve."
+  echo "  Use 'https://github.com/sceneview/sceneview' instead."
+  echo ""
+  echo "  Offending line(s):"
+  echo "$PINS" | sed 's/^/    /'
   exit 1
 fi
 
