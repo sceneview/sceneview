@@ -49,6 +49,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  * for a render-loop callback — Filament's main-thread contract forbids
  * blocking inside `onSessionUpdated`.
  *
+ * That queue belongs to the **connection**, not to the bridge: [connect]
+ * installs a fresh one, so events logged while disconnected are dropped
+ * rather than replayed onto the next connection. See [connect].
+ *
  * ### Usage
  *
  * Prefer the composable [rememberRerunBridge] helper; this class is public
