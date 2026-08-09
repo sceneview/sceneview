@@ -194,7 +194,10 @@ Tests/Docs). Distinct filenames mean parallel PRs never conflict on the
 changelog. At release time `bash .claude/scripts/collate-changelog.sh X.Y.Z`
 collates every fragment into a new `## vX.Y.Z` section and deletes them. Never
 hand-edit the `## Unreleased` anchor — it is kept empty for backward-compat.
-See [`changelog.d/README.md`](changelog.d/README.md).
+A fragment's **HTML comments are stripped** — that is where maintainer-only
+notes go — and a fragment declaring a breaking change (`<!-- breaking -->`, or
+saying so in its prose) makes the release tooling **refuse a patch-level tag**;
+breaking ships MINOR. See [`changelog.d/README.md`](changelog.d/README.md).
 
 ## Session continuity
 

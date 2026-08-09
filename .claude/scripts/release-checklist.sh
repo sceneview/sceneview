@@ -142,6 +142,36 @@ if [ -d "changelog.d" ]; then
     PENDING=$(find changelog.d -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l | tr -d ' ')
     [ "$PENDING" -eq 0 ] && check "changelog.d/ fragments collated" "PASS" "" || check "changelog.d/ fragments collated" "FAIL" "$PENDING pending — run collate-changelog.sh $TARGET_VERSION"
 fi
+
+# A breaking change must not ship as a PATCH (#3037). release.yml's publish-rn
+# derives the npm version from the git tag, so a patch tag publishes a
+# source-breaking change to a version class every caret range takes silently.
+#
+# The load-bearing copy of this guard lives inside collate-changelog.sh, which
+# cannot be skipped (the check above FAILs while fragments are pending) and runs
+# while the `<!-- breaking -->` markers still exist. Running it again here covers
+# the manual path — a checklist run BEFORE collating — and is a no-op once the
+# fragments are gone.
+BREAKING_GUARD="$REPO_ROOT/.claude/scripts/check-breaking-change-bump.sh"
+if [ -x "$BREAKING_GUARD" ]; then
+    BG_LOG="$(mktemp 2>/dev/null || echo "/tmp/breaking-guard-$$.log")"
+    set +e
+    bash "$BREAKING_GUARD" "$TARGET_VERSION" > "$BG_LOG" 2>&1
+    BG_RC=$?
+    set -e
+    case "$BG_RC" in
+        0) check "breaking change vs bump level" "PASS" "$(tail -1 "$BG_LOG" | sed 's/\x1b\[[0-9;]*m//g')" ;;
+        1) check "breaking change vs bump level" "FAIL" "a pending fragment is breaking — $TARGET_VERSION is a patch bump (see below)"
+           sed 's/^/      /' "$BG_LOG" ;;
+        *) check "breaking change vs bump level" "FAIL" "guard errored (exit $BG_RC) — a malformed fragment blocks the release rather than shipping unread"
+           sed 's/^/      /' "$BG_LOG" ;;
+    esac
+    rm -f "$BG_LOG"
+else
+    # Not a WARN: this is the one check whose absence the release cannot detect
+    # any other way, and "unchecked" must never read as "clean" (#2988).
+    check "breaking change vs bump level" "FAIL" "check-breaking-change-bump.sh missing — bump level not verified"
+fi
 echo ""
 
 # ─── 7. Git state ───────────────────────────────────────────────────────
