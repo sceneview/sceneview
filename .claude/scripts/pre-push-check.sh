@@ -337,9 +337,15 @@ if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
     if bash .claude/scripts/check-vendored-download-safety.sh > "$VENDORED_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ vendored download chain: not built, or hardened${NC}"
     else
+        # BOTH of the checker's genuine-finding exits, not just the tallied
+        # one: it also exits 1 with `FAIL  <downloads file> is missing, but
+        # something builds …` before it ever reaches the "requirement(s)
+        # unmet" tally. A cue covering only the tally would have filed that
+        # real finding as "could not run" — the very mistake this gate is
+        # being fixed for (#3065).
         gate_script_failure "vendored download chain" "$VENDORED_LOG" $? \
-            "vendored download chain is BUILT but not hardened:" \
-            "requirement\(s\) unmet"
+            "vendored download chain is BUILT but unsafe:" \
+            "(requirement\(s\) unmet|is missing, but something builds)"
     fi
 fi
 

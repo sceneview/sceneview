@@ -1,5 +1,5 @@
 <!-- category: Fixed -->
-- **Quality gate:** `pre-push-check.sh` no longer announces a cause it did not
+- **Quality gate** ([#3065](https://github.com/sceneview/sceneview/issues/3065)): `pre-push-check.sh` no longer announces a cause it did not
   establish. A Gradle step that dies because the host is not set up (no
   `local.properties` / `sdk.dir` / `ANDROID_HOME`, missing SDK package or NDK,
   unusable JDK) now reports `⚠ … did NOT run`, prints the exact one-line fix and

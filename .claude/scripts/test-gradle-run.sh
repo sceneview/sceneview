@@ -433,6 +433,29 @@ case "$OUT" in
     *) bad "the proof cue is not what decides — assertions are hollow" ;;
 esac
 
+# A cue is only honest if it covers EVERY way its checker reports a finding.
+# The vendored-download checker has two: a tally line, and an early exit 1 that
+# prints only `FAIL  … is missing, but something builds …`. Both strings below
+# are quoted from check-vendored-download-safety.sh, and the pattern is READ
+# OUT of pre-push-check.sh — so this fails if either side drifts.
+echo "── the shipped cues must cover every finding path of their checker ──"
+GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pre-push-check.sh"
+VENDORED_CUE="$(grep -A2 '"vendored download chain is BUILT but unsafe:"' "$GATE" \
+                | sed -n 's/^ *"\(.*\)"$/\1/p' | tail -1)"
+if [ -z "$VENDORED_CUE" ]; then
+    bad "could not read step 12's proof cue out of pre-push-check.sh"
+else
+    printf '%s\n' "3 requirement(s) unmet — build chain is wired, hardening is not." > "$TMP/vendored-tally.log"
+    printf '%s\n' "FAIL  third_party/filament-kmp/downloads.gradle.kts is missing, but something builds third_party/filament-kmp." > "$TMP/vendored-early.log"
+    for f in tally early; do
+        if grep -qE "$VENDORED_CUE" "$TMP/vendored-$f.log"; then
+            ok "step 12's cue matches the '$f' finding path"
+        else
+            bad "step 12's cue misses the '$f' finding path — that real finding would be filed as 'could not run'"
+        fi
+    done
+fi
+
 echo ""
 echo "test-gradle-run: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
