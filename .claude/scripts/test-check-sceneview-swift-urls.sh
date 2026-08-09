@@ -136,5 +136,18 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "a fetch verb plus this script's NAME → not a clone of the mirror" \
   || bad "the fetch pattern must target the repo path, not the bare token (rc=$RC)"
 
+# 10. The shape that actually broke the live gate: a fetch verb early in a
+#     line and the literal repo path later, with prose in between. `.*`
+#     matched it, because grep bounds a match to a physical LINE and a line
+#     can be a whole paragraph — so this PR's own changelog fragment turned
+#     the gate red against itself. The gap must be one whitespace-free token:
+#     an argument, not a sentence.
+D="$(fixture prose_verb_then_path changelog.d/1234-note.md \
+    '- You could `git clone` it back then; the path was sceneview/sceneview-swift, now retired.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "fetch verb + repo path separated by prose → not a command" \
+  || bad "an unbounded verb-to-URL gap makes a release note a false positive (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

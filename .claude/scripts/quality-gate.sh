@@ -198,7 +198,12 @@ if [ -x ".claude/scripts/check-sceneview-swift-urls.sh" ]; then
         check "No archived sceneview-swift mirror URLs" "PASS" ""
     else
         SWIFT_URL_COUNT=$(grep -cE '^    [^ ]' /tmp/check-sceneview-swift-urls.log 2>/dev/null || echo "?")
-        check "Archived sceneview-swift mirror URLs" "FAIL" "$SWIFT_URL_COUNT file(s); see /tmp/check-sceneview-swift-urls.log"
+        # "finding(s)", not "file(s)": the gate has two passes and they report
+        # different units — pass 1 lists offending FILES, pass 2 offending
+        # LINES (path:N:content), both indented four spaces. Counting one
+        # regex over both and calling the total files over-reports whenever a
+        # single file ships several pins (#3068).
+        check "Archived sceneview-swift mirror URLs" "FAIL" "$SWIFT_URL_COUNT finding(s); see /tmp/check-sceneview-swift-urls.log"
     fi
 fi
 

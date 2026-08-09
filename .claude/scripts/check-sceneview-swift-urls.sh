@@ -104,19 +104,23 @@ SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(fro
 # the moment someone pastes it, so the FETCH VERB is a pin in its own right.
 # The verb is anchored BEFORE the URL, which is what keeps this specific: a
 # paragraph that merely says the word "clone" is not a command, and `clone`
-# alone is not in the alternation. The gap is `.*` here — unlike SNIPPET,
-# where a permissive gap costs false positives — because grep already bounds
-# it to one line and a fetch verb preceding the mirror URL is the whole
-# signal. NOT `[^\n]*`: in POSIX ERE that is the class "neither backslash
-# nor the letter n", which the URL itself contains, so the pattern silently
-# never fires. It was written that way first, and case 7 caught it.
+# alone is not in the alternation. The gap is ONE whitespace-free token —
+# an argument, not prose. `.*` was tried and is exactly the mistake SNIPPET
+# already documents: grep bounds a match to a physical line, and a line can
+# be a whole paragraph. It fired on this PR's own changelog fragment, where
+# `git clone` and the literal repo path sit in one bullet with sentences
+# between them, and turned the gate red against itself.
+#
+# NOT `[^\n]*` either: in POSIX ERE that is the class "neither backslash nor
+# the letter n", which the URL itself contains, so the pattern silently never
+# fires. It was written that way first, and case 7 caught it.
 #
 # The target is the REPO form `sceneview/sceneview-swift`, not the bare token:
 # this detector's own filename contains `sceneview-swift`, so any doc line
 # that mentions `curl` and then names the script matched — measured on this
 # repo, the automation-map row failed the gate. Only the org-qualified path
 # can actually be cloned.
-FETCH='(git[[:space:]]+clone|curl|wget|svn[[:space:]]+checkout).*sceneview/sceneview-swift'
+FETCH='(git[[:space:]]+clone|curl|wget|svn[[:space:]]+checkout)[[:space:]]+[^[:space:]]*sceneview/sceneview-swift'
 
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
