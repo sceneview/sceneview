@@ -170,6 +170,12 @@ public constructor(
      * sidecar (e.g. the `saved` ack returned after [requestSaveAndShare]). It
      * is NOT a generic event router — non-control lines are silently dropped
      * because the sidecar has no reason to send them to us today.
+     *
+     * Each call installs a fresh event queue, so **events logged while the
+     * bridge is disconnected are dropped, not replayed** on the next connect:
+     * only what you log after `connect()` returns reaches the viewer. That is
+     * deliberate — a reconnect should show live AR data, not one stale frame
+     * from a session that ended minutes ago.
      */
     public fun connect() {
         if (writerJob?.isActive == true) return
