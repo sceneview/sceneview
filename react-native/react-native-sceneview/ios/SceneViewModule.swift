@@ -48,7 +48,13 @@ func rnTapPayload(worldPosition: SIMD3<Float>, nodeName: String?) -> [String: An
         "z": worldPosition.z,
         "nodeName": NSNull(),
     ]
-    if let nodeName {
+    // An empty name is "no model", not a model called "". Android already
+    // collapses it (`SceneViewManager.nodeName()` ends in
+    // `takeIf { it.isNotEmpty() }`); collapsing it here rather than at the call
+    // sites is what keeps the two platforms on ONE sentinel, for the same
+    // reason the key is seeded above — a future tap source cannot reintroduce
+    // the empty string without going around the only payload builder.
+    if let nodeName, !nodeName.isEmpty {
         payload["nodeName"] = nodeName
     }
     return payload
