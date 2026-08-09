@@ -516,10 +516,12 @@ public constructor(
     }
 
     private fun closeQuietly() {
-        // Close this connection's outbox so its writer leaves the for-loop
-        // through the normal channel-closed path instead of relying on the
-        // cancellation landing first. The next connect() installs a fresh one.
-        outbox.close()
+        // Deliberately does NOT close the `outbox` FIELD. Only the writer owns
+        // a channel, and it closes its own `box` local in its finally block.
+        // Closing the field here would let a disconnect() racing a connect()
+        // from another thread shut the freshly-installed channel out from
+        // under the writer that just started — a connected-but-mute bridge.
+        // The writer leaves its loop on the cancellation instead.
         try { writer?.close() } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}
         writer = null
