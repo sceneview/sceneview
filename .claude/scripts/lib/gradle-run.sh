@@ -287,6 +287,10 @@ gradle_report_failure() {
 # distinction. Exit >= 2 is their documented "cannot run" code (bad args,
 # missing python3, wrong directory); 126/127 is the shell failing to execute
 # them at all.
+# Each `tail | sed` below carries the same `|| true` as gradle_log_tail, for
+# the same measured reason: `tail` on an absent log exits 1, and under
+# `set -euo pipefail` — which release-checklist.sh uses — pipefail promotes
+# that to the pipeline and errexit kills the caller AT THE PIPELINE, mid-report.
 script_report_failure() {
     local label="$1" log="$2" code="$3" diag="$4" proof="$5" remedy="${6:-}"
     local red="${RED:-$'\033[0;31m'}" yellow="${YELLOW:-$'\033[1;33m'}" nc="${NC:-$'\033[0m'}"
@@ -295,15 +299,15 @@ script_report_failure() {
             126|127) echo -e "${yellow}  ⚠ $label NOT checked — the checker could not be executed (exit $code)${nc}" ;;
             *)       echo -e "${yellow}  ⚠ $label NOT checked — the checker itself could not run (exit $code)${nc}" ;;
         esac
-        tail -20 "$log" 2>/dev/null | sed 's/^/      /'
+        tail -20 "$log" 2>/dev/null | sed 's/^/      /' || true
         INCOMPLETE=$((${INCOMPLETE:-0} + 1))
     elif ! grep -qE "$proof" "$log" 2>/dev/null; then
         echo -e "${yellow}  ⚠ $label NOT checked — the checker exited $code without reaching its verdict${nc}"
-        tail -20 "$log" 2>/dev/null | sed 's/^/      /'
+        tail -20 "$log" 2>/dev/null | sed 's/^/      /' || true
         INCOMPLETE=$((${INCOMPLETE:-0} + 1))
     else
         echo -e "${red}  ✗ $diag${nc}"
-        tail -30 "$log" 2>/dev/null | sed 's/^/      /'
+        tail -30 "$log" 2>/dev/null | sed 's/^/      /' || true
         [ -n "$remedy" ] && echo -e "      $remedy"
         ERRORS=$((${ERRORS:-0} + 1))
     fi

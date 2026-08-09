@@ -433,6 +433,19 @@ case "$OUT" in
     *) bad "the proof cue is not what decides — assertions are hollow" ;;
 esac
 
+# The report helpers must survive an ABSENT log under `set -euo pipefail` —
+# tail exits 1 there, and errexit kills the caller at the pipeline, mid-report.
+# Same trap gradle_log_tail documents; script_report_failure inherited it.
+for fn in script_report_failure gradle_report_failure; do
+    if bash -c "set -euo pipefail; source '$LIB'; ERRORS=0; INCOMPLETE=0
+                $fn 'demo assets' '$TMP/does-not-exist.log' 1 'diag' 'cue' ''
+                echo SURVIVED" 2>/dev/null | grep -q SURVIVED; then
+        ok "$fn on a MISSING log does not abort a 'set -euo pipefail' caller"
+    else
+        bad "$fn on a missing log killed its caller mid-report"
+    fi
+done
+
 # A cue is only honest if it covers EVERY way its checker reports a finding.
 # The vendored-download checker has two: a tally line, and an early exit 1 that
 # prints only `FAIL  … is missing, but something builds …`. Both strings below
