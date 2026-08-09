@@ -278,4 +278,66 @@ class RerunBridgeTest {
             bridge.close()
         }
     }
+
+    /**
+     * Regression guard for #2777: the first event enqueued after a
+     * disconnect → connect cycle must reach the NEW socket.
+     *
+     * The bridge used to share one `CONFLATED` channel across connections, so
+     * the outgoing writer — still parked in `receive` when [RerunBridge.disconnect]
+     * cancelled it — could be handed the event before its cancellation was
+     * processed. With no `onUndeliveredElement` hook the channel then dropped
+     * that element on the floor: never buffered, never seen by the incoming
+     * writer, so the fresh socket stayed mute and the sibling test above
+     * failed with `SocketTimeoutException: Read timed out`.
+     *
+     * This is deliberately a LOOP. The single-shot sibling test only lost the
+     * race under load — it passed 12/12 locally on an idle machine while the
+     * bug was live, which is exactly why the flake survived since #2777 was
+     * filed. Measured on the pre-fix bridge this sequence dropped the event
+     * 48% of the time (72/150), so [ITERATIONS] rounds turn a coin-flip into
+     * a near-certain catch; the fixed bridge scored 0/450.
+     */
+    @Test
+    fun `first event after a reconnect is never swallowed by the previous writer`() {
+        repeat(ITERATIONS) { iteration ->
+            val server = ServerSocket(0)
+            val bridge = RerunBridge(host = "127.0.0.1", port = server.localPort, rateHz = 0)
+            try {
+                server.soTimeout = 5000
+                bridge.connect()
+                val first = server.accept()
+                // Reconnect WITHOUT waiting for the writer to settle — waiting
+                // would paper over the very race this guards.
+                bridge.disconnect()
+                first.close()
+
+                bridge.connect()
+                bridge.testOnlyEnqueue(
+                    RerunWireFormat.cameraPoseJson(
+                        timestampNanos = 1L,
+                        tx = 0f, ty = 0f, tz = 0f,
+                        qx = 0f, qy = 0f, qz = 0f, qw = 1f,
+                    ),
+                )
+
+                val second = server.accept()
+                val line = second.lineReader(5000L).readLine()
+                assertNotNull("round $iteration: reconnected bridge sent nothing", line)
+                assertTrue(
+                    "round $iteration: unexpected payload $line",
+                    line!!.contains("\"type\":\"camera_pose\""),
+                )
+                try { second.close() } catch (_: Exception) {}
+            } finally {
+                bridge.close()
+                try { server.close() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private companion object {
+        /** Rounds of the reconnect race per run — see the test's KDoc. */
+        const val ITERATIONS = 20
+    }
 }
