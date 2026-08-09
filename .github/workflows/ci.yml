@@ -614,7 +614,7 @@ jobs:
   # direct push to main that removes the plugin (or downgrades Kotlin)
   # only shows up the next time someone runs `flutter build apk`.
   #
-  # It also gates the PUBLISHED Dart package itself. Until #3053 every step
+  # It also gates the PUBLISHED Dart package itself. Until #3056 every step
   # here except the publish dry-run ran in `samples/flutter-demo`, so
   # `flutter/sceneview_flutter/lib` and `test` were analyzed by nothing and
   # their 18 unit tests were run by nothing — an analyzer ERROR in the
@@ -654,16 +654,25 @@ jobs:
         working-directory: flutter/sceneview_flutter
         run: flutter pub publish --dry-run
 
-      # ── The published package (#3053) ──────────────────────────────────
-      # Same flags as the demo step below: `--no-fatal-infos` /
-      # `--no-fatal-warnings` keep the ~300 style lints advisory while any
-      # analyzer ERROR still fails the job. Measured on this commit: 0
-      # errors, 2 warnings (example/pubspec.yaml declares `models/` and
-      # `environments/` asset dirs that do not exist) and 1 info. Tightening
-      # to fatal warnings means fixing those two first.
+      # ── The published package (#3056) ──────────────────────────────────
+      # STRICTER than the demo step below, on purpose: this is the artefact
+      # that goes to pub.dev. `--no-fatal-warnings` is deliberately absent,
+      # so an analyzer WARNING reddens the job — the demo keeps it because
+      # its 27 issues have not been triaged, but the plugin is at 0.
+      #
+      # It could only be dropped once the package was actually clean. The
+      # two warnings that forced it (`example/pubspec.yaml` declaring
+      # `models/` and `environments/` asset dirs that do not exist — a hard
+      # `flutter build bundle` failure, not a style nit) are fixed, and
+      # `flutter/sceneview_flutter/analysis_options.yaml` now exists at all,
+      # so the package's own `flutter_lints` dependency is no longer inert.
+      # Measured on this commit: `flutter analyze` reports "No issues found".
+      #
+      # `--no-fatal-infos` stays: infos churn with every Flutter SDK bump,
+      # and a green build should not depend on the runner's SDK minor.
       - name: flutter analyze (published plugin)
         working-directory: flutter/sceneview_flutter
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze --no-fatal-infos
 
       - name: flutter test (published plugin)
         working-directory: flutter/sceneview_flutter
