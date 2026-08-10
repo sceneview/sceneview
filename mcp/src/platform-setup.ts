@@ -502,8 +502,9 @@ class My3DScreen extends StatelessWidget {
       initialModels: [
         ModelNode(modelPath: model, x: 0, y: 0, z: -2, scale: 1.0),
       ],
-      // Android only today — the iOS path is wired but RealityKit's
-      // entity-targeted hit test resolves no entity, so this never fires (#3045).
+      // Android only today — the iOS path is wired but no entity resolves, so
+      // this never fires (#3045). Not the shared RealityKit hit test: React
+      // Native reaches the same hook and fires on iOS (#3086).
       onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }

@@ -15,7 +15,11 @@
   no entity, while the untargeted gesture arrived every time. So
   [#3045] is Flutter's platform-view touch delivery, not RealityKit's
   entity-targeted hit test as its write-up states — React Native, which reaches
-  the same hook through a plain native view, is unaffected.
+  the same hook through a plain native view, is unaffected. Every Flutter-side
+  surface that stated the old root cause as fact now states the measured one:
+  the plugin README and its `onTap` KDoc, the demo README and About tab,
+  `llms.txt` with both mirrors, and the MCP Flutter snippet. The *guidance* on
+  those surfaces is unchanged — Flutter's iOS `onTap` still does not fire.
 - The React Native demo now builds and runs on iOS for the first time. Its
   `podspec` declares `SceneViewSwift` (a pod cannot see the host app's SwiftPM
   packages), the demo `Podfile` resolves it from the repo root and re-pins

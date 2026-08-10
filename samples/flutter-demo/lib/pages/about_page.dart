@@ -131,9 +131,11 @@ class AboutPage extends StatelessWidget {
                 // 3D onTap is Android-only for a different reason than AR: the
                 // iOS path IS wired — the platform view claims the gesture, the
                 // entity carries collision AND input-target components — but
-                // RealityKit's entity-targeted hit test resolves no entity, so
-                // the handler never runs. Measured across two native hosts on
-                // an iPhone 17 Pro Max simulator (#3045). A green badge here
+                // no entity resolves, so the handler never runs. Measured on
+                // an iPhone 17 Pro Max simulator (#3045). Not the shared
+                // RealityKit hit test: React Native reaches the same hook and
+                // was measured firing on iOS (#3086), which leaves Flutter's
+                // platform-view touch delivery. A green badge here
                 // would be the same false capability claim this page exists to
                 // prevent.
                 _FeatureRow('onTap callback (3D)', _FeatureSupport.androidOnly, theme),

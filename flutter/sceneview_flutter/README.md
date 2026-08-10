@@ -336,12 +336,20 @@ Three differences remain, and no measurement so far has varied only one:
 3. **Scale** — the native hero is normalised with `scaleToUnits(0.6)`; the fox
    reaches the bridge at its authored 155 units.
 
-Whichever of these it is, note that (2) is a property of the shared host, not of
-Flutter — so the React Native bridge, which uses the same host, is likely to have
-the same gap.
+That prediction has since been falsified, and it is worth recording why. The
+React Native bridge reaches the *same* `hostView.onTapEntity` hook through the
+same SceneViewSwift build, and its 3D `onTap` was measured **firing** on iOS
+([#3086](https://github.com/sceneview/sceneview/issues/3086)): both hosts were
+instrumented and driven back to back on one simulator, with byte-for-byte
+comparable entity graphs (11 entities, 1 collision shape, 9 input targets), and
+React Native resolved an entity on all 5 taps where Flutter resolved none on 6
+— while the *untargeted* gesture arrived every time in both. So the missing
+piece is not the shared host and not RealityKit's entity-targeted hit test: it
+is Flutter's platform-view touch delivery. The hypotheses above are kept because
+they are what the Flutter-side investigation still has to rule out.
 
-Do not describe `onTap` as working on iOS until a tap has been seen to reach
-Dart. Tracked in
+Do not describe Flutter's `onTap` as working on iOS until a tap has been seen to
+reach Dart. Tracked in
 [#3045](https://github.com/sceneview/sceneview/issues/3045).
 
 ## Contributing
