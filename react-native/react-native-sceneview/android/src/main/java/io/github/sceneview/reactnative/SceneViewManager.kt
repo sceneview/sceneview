@@ -151,6 +151,13 @@ class SceneViewManager : SimpleViewManager<FrameLayout>() {
                                 autoAnimate = model.animate,
                                 position = model.position,
                                 rotation = model.rotation,
+                                apply = {
+                                    // The tap payload's `nodeName`. Without a name the
+                                    // hit-tested ModelNode reports `null` for every model
+                                    // tap, while iOS reports the model file's base name —
+                                    // so name the node the same way here (PR #3037).
+                                    name = model.nodeName()
+                                },
                             )
                         }
                     }
@@ -383,7 +390,28 @@ data class ModelNodeData(
     val animate: Boolean = true,
     val position: Position = Position(x = 0f),
     val rotation: Rotation = Rotation(x = 0f),
-)
+) {
+    /**
+     * The name reported as the tap payload's `nodeName`: the model file's base
+     * name without extension, matching the iOS bridge (which names each loaded
+     * model root after its file and strips the extension on tap).
+     *
+     * [src] is documented as an "asset path **or URL**", and `ModelLoader`
+     * really does load `https://` sources, so the query and fragment are
+     * stripped FIRST. Cutting at the last `.` on a raw URL only works when the
+     * extension is the last dot in the whole string: for
+     * `https://cdn/robot.glb?sig=SIG&v=1.2` it yields
+     * `robot.glb?sig=SIG&v=1` — a CDN signature leaking into a payload that
+     * apps routinely put in a label or an analytics event.
+     *
+     * `null` for a path with no usable base name, so the payload stays
+     * `nodeName: null` rather than an empty string.
+     */
+    fun nodeName(): String? =
+        src.substringBefore('?').substringBefore('#')
+            .substringAfterLast('/').substringBeforeLast('.')
+            .takeIf { it.isNotEmpty() }
+}
 
 data class GeometryNodeData(
     val type: String,

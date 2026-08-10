@@ -3705,12 +3705,24 @@ AI extending a bridge should know they exist (v4.27.0+):
 | `autoCenterContent: Bool` | Fit-to-bounds on the first stable frame. Defaults to `false`, because the fit owns the orbit radius and would overwrite a caller-authored distance. Callers that author no camera turn it on |
 | `cameraPoseAuthored: Bool` | Defaults to `true`. Set it to `false` when the caller has no camera at all: `applyConfiguration` then applies no pose, instead of re-asserting the default one on every call and snapping the camera away from wherever the user orbited to |
 
-`SceneViewerHostView.onTapEntity: ((SceneTapHit) -> Void)?` is a Swift-only companion to
-the `@objc` `onTap`, handing over the `SceneTapHit` rather than five primitives. It
-exists because the bridges publish genuinely different things about a tapped entity —
-one walks to the first named ancestor and strips the extension, another reports the raw
-name and the entity's own origin where `onTap` reports the bounds centre. Not reachable
-from Kotlin; use `onTap` there.
+`SceneViewerHostView.onTapEntity: ((SceneTapHit, Entity?) -> Void)?` is a Swift-only
+companion to the `@objc` `onTap`, handing over the `SceneTapHit` rather than five
+primitives, plus the **model root** the hit entity sits inside — the direct child of the
+content root, which is the entity `SVSceneViewerModel.nodeName` was written on. It is
+`nil` when the tap resolved outside every configured model. Resolving the model root in
+the host is what makes a tap report the model: `SpatialTapGesture` hands back the deepest
+hit entity, so `hit.entity.name` is an asset-internal mesh name for any asset that names
+its meshes (a tap on `black_dragon.usdz` reported `skin0`). Not reachable from Kotlin;
+use `onTap` there.
+
+`sceneViewerModelFileName(_ path: String) -> String` is a Swift-only free function in the
+same module — the derivation a bridge should use to name a model, rather than rolling its
+own. It strips any query and fragment *before* taking the last path component, so a remote
+source (`SVSceneViewerModel.urlString` accepts a remote `.usdz`) cannot leak a CDN
+signature into the reported name: `https://cdn/robot.glb?sig=SIG&v=1.2` gives `robot.glb`,
+not `robot.glb?sig=SIG&v=1`. It keeps the extension — strip it at the report — and it is
+public only because both bridges are separate modules. Not `@objc`, so not reachable from
+Kotlin.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.

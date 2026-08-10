@@ -123,7 +123,11 @@ class AboutPage extends StatelessWidget {
                 _FeatureRow('Model loading (GLB/glTF)', _FeatureSupport.both, theme),
                 _FeatureRow('Camera gestures (pan, pinch)', _FeatureSupport.both, theme),
                 _FeatureRow('Model position, rotation', _FeatureSupport.androidOnly, theme),
-                _FeatureRow('onTap callback', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('onTap callback (3D)', _FeatureSupport.both, theme),
+                // AR onTap is Android-only: SceneViewSwift's ARSceneView
+                // exposes no entity hit-test hook, so the callback never fires
+                // on iOS (#2051).
+                _FeatureRow('onTap callback (AR)', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('onPlaneDetected callback', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('Environment HDR', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('Geometry nodes (cube, sphere, etc.)', _FeatureSupport.androidOnly, theme),
