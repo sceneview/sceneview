@@ -573,7 +573,7 @@ echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
 SELFTEST_FLOOR=20
 SELFTEST_LIST="$LOG_DIR/selftests.txt"
 awk '/^  repo-hygiene:/{f=1;next} /^  [a-z][a-z0-9_-]*:[[:space:]]*$/{f=0} f' .github/workflows/ci.yml \
-    | grep -oE '(bash|python3) [a-zA-Z0-9_./-]*test-[a-zA-Z0-9_.-]+\.(sh|py)' \
+    | grep -oE '(bash|python3) ([a-zA-Z0-9_.][a-zA-Z0-9_./-]*)?test-[a-zA-Z0-9_.-]+\.(sh|py)' \
     | sort -u > "$SELFTEST_LIST" || true
 SELFTEST_COUNT=$(wc -l < "$SELFTEST_LIST" | tr -d ' ')
 if [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
@@ -585,20 +585,38 @@ else
     SELFTEST_UNRUN=0
     while IFS= read -r cmd; do
         [ -n "$cmd" ] || continue
+        ST_INTERP="${cmd%% *}"
         script="${cmd#* }"
+        # The extractor's leading path class cannot start with `-`, so this
+        # can only fire if that regex is later widened. Quoted operand + this
+        # guard together keep an option from ever reaching the interpreter.
+        case "$script" in
+            -*)
+                echo -e "${YELLOW}      ⚠ refusing option-shaped operand '$script' from ci.yml${NC}"
+                SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+                continue
+                ;;
+        esac
         if [ ! -f "$script" ]; then
             echo -e "${YELLOW}      ⚠ $script is referenced by ci.yml but absent here${NC}"
             SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
             continue
         fi
-        ST_LOG="$LOG_DIR/selftest-$(basename "$script").log"
-        # `$cmd` is split on purpose — the extracted commands are
-        # `bash <path>` / `python3 <path>`. Capture the code explicitly: after
-        # a bare `if cmd; then …; fi` with no else, `$?` is the IF's own 0,
-        # not the command's, and every failure would be filed as exit 0.
+        # Flatten the path into the log name: two self-tests in different
+        # directories can share a basename, and a collision would silently
+        # overwrite the tail printed for a failure.
+        ST_LOG="$LOG_DIR/selftest-$(echo "$script" | tr '/' '_').log"
+        # Capture the code explicitly: after a bare `if cmd; then …; fi` with
+        # no else, `$?` is the IF's own 0, not the command's, and every
+        # failure would be filed as exit 0.
+        #
+        # `< /dev/null` is load-bearing: this loop's stdin IS "$SELFTEST_LIST",
+        # so a self-test that reads stdin would eat the remaining lines and end
+        # the loop early — while the "$SELFTEST_COUNT self-test(s) pass" line
+        # below still prints the full pre-computed count. A false green, in the
+        # script whose purpose is to stop false greens.
         ST_CODE=0
-        # shellcheck disable=SC2086
-        $cmd > "$ST_LOG" 2>&1 || ST_CODE=$?
+        "$ST_INTERP" "$script" > "$ST_LOG" 2>&1 < /dev/null || ST_CODE=$?
         # No hardcoded diagnosis: a suite that exits non-zero is reported as
         # what was observed (the code and its own tail), never as "the gate
         # regressed" — the run may equally have died on the way there.
