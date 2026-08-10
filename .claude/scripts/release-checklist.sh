@@ -164,14 +164,16 @@ fi
 # fragments are gone.
 BREAKING_GUARD="$REPO_ROOT/.claude/scripts/check-breaking-change-bump.sh"
 if [ -x "$BREAKING_GUARD" ]; then
-    BG_LOG="$(mktemp 2>/dev/null || echo "/tmp/breaking-guard-$$.log")"
+    # Captured in a variable, not a temp file: the output is a few lines, and a
+    # `mktemp || /tmp/fixed-name-$$` fallback hands an attacker on a shared host
+    # a predictable path to pre-place a symlink at.
     set +e
-    bash "$BREAKING_GUARD" "$TARGET_VERSION" > "$BG_LOG" 2>&1
+    BG_OUT="$(bash "$BREAKING_GUARD" "$TARGET_VERSION" 2>&1)"
     BG_RC=$?
     set -e
     case "$BG_RC" in
         0) if [ "$TARGET_EXPLICIT" = true ]; then
-               check "breaking change vs bump level" "PASS" "$(tail -1 "$BG_LOG" | sed 's/\x1b\[[0-9;]*m//g')"
+               check "breaking change vs bump level" "PASS" "$(printf '%s\n' "$BG_OUT" | tail -1 | sed 's/\x1b\[[0-9;]*m//g')"
            else
                # No target given, so TARGET_VERSION is the version already shipped.
                # The guard then compares it against the release BEFORE it and
@@ -181,11 +183,10 @@ if [ -x "$BREAKING_GUARD" ]; then
                    "not measured — no target version given, so the guard judged v$TARGET_VERSION (already released) instead of the tag you are about to push. Re-run: release-checklist.sh <target-version>"
            fi ;;
         1) check "breaking change vs bump level" "FAIL" "a pending fragment is breaking — $TARGET_VERSION is a patch bump (see below)"
-           sed 's/^/      /' "$BG_LOG" ;;
+           printf '%s\n' "$BG_OUT" | sed 's/^/      /' ;;
         *) check "breaking change vs bump level" "FAIL" "guard errored (exit $BG_RC) — a malformed fragment blocks the release rather than shipping unread"
-           sed 's/^/      /' "$BG_LOG" ;;
+           printf '%s\n' "$BG_OUT" | sed 's/^/      /' ;;
     esac
-    rm -f "$BG_LOG"
 else
     # Not a WARN: this is the one check whose absence the release cannot detect
     # any other way, and "unchecked" must never read as "clean" (#2988).

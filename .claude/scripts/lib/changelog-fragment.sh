@@ -196,6 +196,13 @@ frag_prose_claims_breaking() { # $1 = comment-stripped body text
     # long line per bullet today, which is exactly why the wrapped case would go
     # unnoticed until the first contributor who wraps.
     text="$(printf '%s' "$1" | tr '\n' ' ' | tr '[:upper:]' '[:lower:]')"
-    text="$(printf '%s' "$text" | sed -E "s/(non|not|no|isn.t|aren.t|won.t)[[:space:]-]+breaking/xnegatedx/g")"
+    # Code spans are dropped for the heuristic only — the stripper preserves them
+    # in the published text. A backticked `breaking` is an identifier being
+    # discussed, never a declaration that this release breaks something.
+    text="$(printf '%s' "$text" | sed -E 's/`[^`]*`//g')"
+    # "no longer breaking" is a negation with a word in the middle; the general
+    # "any word between" form would swallow real declarations
+    # ("no workaround exists — breaking"), so only this one phrasing is added.
+    text="$(printf '%s' "$text" | sed -E "s/(non|not|no|isn.t|aren.t|won.t)([[:space:]-]+longer)?[[:space:]-]+breaking/xnegatedx/g")"
     printf '%s' "$text" | grep -qE '(^|[^a-z0-9])breaking'
 }

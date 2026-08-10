@@ -153,6 +153,37 @@ frag 0004c-plain.md <<'EOF'
 EOF
 expect_rc "'--previous' with no value exits 2 (malformed), not 1 (REFUSED)" 2 4.26.1 --previous
 
+# ── 5d. "no longer breaking" is a negation with a word in the middle ─────────
+setup_sandbox
+frag 0004d-no-longer.md <<'EOF'
+<!-- category: Fixed -->
+- Loading a model from a raw resource id is no longer breaking when the id is
+  missing; it now returns null.
+EOF
+expect_rc "'no longer breaking' does not refuse a patch tag" 0 4.26.1
+
+# ── 5e. A backticked identifier is not a declaration ─────────────────────────
+# The stripper deliberately PRESERVES code spans in the published text, so the
+# heuristic has to drop them itself or every fragment documenting this very
+# convention declares itself breaking.
+setup_sandbox
+frag 0004e-codespan.md <<'EOF'
+<!-- category: Added -->
+- A fragment may now carry a `<!-- breaking -->` line; the word `breaking`
+  inside a code span is an identifier, not a declaration.
+EOF
+expect_rc "'breaking' inside a code span does not refuse a patch tag" 0 4.26.1
+
+# ── 5f. …but a real declaration outside a code span still fires ─────────────
+# Without this, 5e could pass by disabling the heuristic altogether.
+setup_sandbox
+frag 0004f-codespan-and-real.md <<'EOF'
+<!-- category: Changed -->
+- The `breaking` marker is documented here, and this bullet is itself a
+  source-breaking change to the public API.
+EOF
+expect_rc "a real declaration beside a code span still refuses a patch tag" 1 4.26.1
+
 # ── 6. Substring false positive ──────────────────────────────────────────────
 setup_sandbox
 frag 0005-substring.md <<'EOF'
