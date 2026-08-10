@@ -620,10 +620,22 @@ SELFTEST_LIST="$LOG_DIR/selftests.txt"
 # fixtures, and is itself one of the self-tests run here. Inline, the property
 # was a character class in the middle of this script that no test could reach.
 : > "$SELFTEST_LIST"
-bash .claude/scripts/lib/extract-gate-selftests.sh .github/workflows/ci.yml repo-hygiene \
-    > "$SELFTEST_LIST" 2> "$LOG_DIR/selftests-refused.txt" || true
-if [ -s "$LOG_DIR/selftests-refused.txt" ]; then
-    sed 's/^/      ⚠ /' "$LOG_DIR/selftests-refused.txt"
+SELFTEST_SKIP=0
+if [ ! -f .claude/scripts/lib/extract-gate-selftests.sh ]; then
+    # An absent extractor and a degraded extractor both end at "found 0", and
+    # the floor branch below would call that "a bug in THIS script's
+    # extractor" — which sends the reader hunting a regex that is not there.
+    # Every sibling leg tells "the gate script is missing" apart from "the gate
+    # says no"; this one has to as well (#3105 review round 7). Both paths
+    # block the push — this only changes which sentence the reader gets.
+    missing_gate_script "lib/extract-gate-selftests.sh"
+    SELFTEST_SKIP=1
+else
+    bash .claude/scripts/lib/extract-gate-selftests.sh .github/workflows/ci.yml repo-hygiene \
+        > "$SELFTEST_LIST" 2> "$LOG_DIR/selftests-refused.txt" || true
+    if [ -s "$LOG_DIR/selftests-refused.txt" ]; then
+        sed 's/^/      ⚠ /' "$LOG_DIR/selftests-refused.txt"
+    fi
 fi
 SELFTEST_COUNT=$(grep -c . "$SELFTEST_LIST" 2>/dev/null || true)
 SELFTEST_COUNT=${SELFTEST_COUNT:-0}
@@ -638,7 +650,14 @@ SELFTEST_COUNT=${SELFTEST_COUNT:-0}
 SELFTEST_NAMED=$(bash .claude/scripts/lib/extract-gate-selftests.sh --count-steps \
     .github/workflows/ci.yml repo-hygiene 2>/dev/null || true)
 SELFTEST_NAMED=${SELFTEST_NAMED:-0}
-if [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
+# The two counts are not equal by construction and `discovered >= named` is the
+# contract, so one edge stays open: two differently-named steps invoking the
+# BYTE-IDENTICAL command collapse under the extractor's `sort -u` and would
+# read as degradation. No such pair exists in ci.yml today, and a duplicated
+# self-test command is itself worth looking at — flagged rather than special-cased.
+if [ "$SELFTEST_SKIP" -eq 1 ]; then
+    :
+elif [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
     echo -e "${RED}  ✗ self-test discovery is broken — found $SELFTEST_COUNT command(s) in ci.yml → repo-hygiene, expected >= $SELFTEST_FLOOR${NC}"
     echo -e "      This is a bug in THIS script's extractor, not a clean tree."
     ERRORS=$((ERRORS + 1))
