@@ -13,8 +13,8 @@ they are **not in sync today**. Read the next section before assuming parity.
 | Class | Files | Set |
 |---|---|---|
 | `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
-| `tablet7-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
-| `tablet10-screenshot-*` | 2 | **v2** — `model-viewer · dynamic-sky` (#2907; `multi-model` is back in the script since #2913 but these files predate it) |
+| `tablet7-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet7_QA` in #3106, once #2913 had fixed the multi-model framing) |
+| `tablet10-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet10_QA` in #3106, once #2913 had fixed the multi-model framing) |
 | iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
 
 **Set v2** is what the capture script produces today. It is three frames
@@ -34,12 +34,12 @@ someone captures it and looks at the frame; `geometry` no longer clips
 (#2873) but its cluster leaves the frame centre empty, which the variance guard
 reads as blank; `double-pendulum` is a tiny linkage in a
 ~95%-black frame and ignores reframing; `fog` stayed a low-contrast grey helmet;
-`animation` duplicates slot 1. The pre-v2 tablet sets above still contain three
-of these — that is the gap #2907 tracks, not an endorsement.
+`animation` duplicates slot 1. No committed class carries any of them any more —
+the last holdouts were the pre-v2 tablet sets #2907 retired.
 
 **`multi-model` was phone-only for one release, and is back on tablets (#2913).**
-What had been measured was real: at a tablet's wider aspect (~0.64 w/h vs the
-phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
+What had been measured was real: at a tablet's wider aspect (0.625 w/h on both
+QA AVDs, against the phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
 foliage, and the variance guard **passed** it (2227 on 10", 2827 on 7"). Both
 stated causes turned out to be wrong, which is worth keeping on the record:
 
@@ -77,10 +77,11 @@ The `imageType` column is the Play `AppImageType` enum value that
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
-All three classes are script-reproducible and all three are now on set v2 — phone
-with three slots, the committed tablet files with two, because they were captured
-while `multi-model` was dropped from tablet runs; a fresh tablet run now writes
-three (Play accepts 2–8 per type). The set is what a run *writes*, and a run also **prunes**
+All three classes are script-reproducible and all three now ship the full set v2
+at three slots each (Play accepts 2–8 per type). The tablet files sat at two for
+one release — they were captured while `multi-model` was dropped from tablet runs
+and were not re-shot when #2913 fixed its framing; #3106 re-captured them. The
+set is what a run *writes*, and a run also **prunes**
 any higher-numbered slot left over from a larger set, because `play_listing.py`
 selects by glob rather than by count — an unpruned leftover would still be
 uploaded at the next tag, and the mosaic (which iterates 1..N) cannot show it.
@@ -141,6 +142,20 @@ per-class value here — the `camera_distance` extra is deliberately not set for
 `camera_distance_for()`. Passing one would override the per-viewport framing with a
 single number tuned on one screen shape. Other demos still take the extra; see the
 framing notes next to `camera_distance_for()` for which ones actually read it.
+
+### Per-form-factor framing (#3106)
+
+`model-viewer` does take the extra, and its value is **per form factor**: 4.5 m on
+phone, 4.0 m on both tablet classes. The 4.5 m was judged on the phone's ~0.47 w/h
+frame; at the tablets' 0.625 it left the helmet at about a third of the frame
+height on mostly black. Probed live and judged on the captures rather than on
+variance — 3.0 m crops the chin piece, 3.5 m fits a 3/4 pose but clips the head-on
+one (the hero orbit is free-running, so the pose is a lottery and a distance must
+survive the whole orbit, not the frame that happened to be captured), 4.0 m fills
+the frame at every instant. A single tablet value covers both classes because
+`Tablet7_QA` (1200x1920 natively) and `Tablet10_QA` (2560x1600 natively, rotated
+to 1600x2560 by the capture script) land on the same
+0.625 aspect; re-probe if an AVD with a different ratio is ever added.
 
 ### Tablet AVDs
 
@@ -216,16 +231,19 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2913 (fixed, awaiting a re-capture)** — the scene now takes the viewport
-  aspect into account, and `multi-model` is back in the tablet set. The committed
-  tablet PNGs still hold two slots because they predate the fix; a tablet run
-  writes three. Re-capturing them is the remaining step (Play accepts 2–8 per
-  type, so the two-slot listing is valid meanwhile).
+- **#2913 (fixed and re-captured, #3106)** — the scene takes the viewport aspect
+  into account, `multi-model` is back in the tablet set, and both tablet classes
+  were re-shot at three slots. No follow-up left here.
 - **Tablet `model-viewer` framing is not deterministic.** In the committed set
   the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
   than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
   classes. Two runs of the same demo should differ only by aspect, so this is a
-  demo-side non-determinism worth pinning before the next re-capture.
+  demo-side non-determinism worth pinning before the next re-capture. Still true
+  after #3106 — the cause is the free-running hero orbit, so the captured pose is
+  whatever instant the settle window lands on. That is why the tablet distance was
+  probed at several orbit instants and chosen to survive the *widest* pose rather
+  than to suit one frame: 3.5 m looked right on the 3/4 pose and clipped the
+  head-on one.
 - **#2874** — `materials` was not reproducible: a streamed subject and an
   orbiting camera against the `studio_2k` skybox meant the frame depended on the
   API key, the network and capture timing. The demo side is **fixed** (bundled
