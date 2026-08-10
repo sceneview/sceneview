@@ -3,9 +3,11 @@
   its fourteen baselines had been recorded as empty viewports — four as 320×544 all-black
   captures, three (`fog`, `lighting`, `lines-paths`) as full-size frames whose SceneView
   band never rendered — and one (`secondary-camera`) was missing entirely, so those cases
-  either compared against nothing or compared nothing against nothing. All fourteen
-  goldens are re-recorded from settled renders and verified over two consecutive full
-  runs ([#2323](https://github.com/sceneview/sceneview/issues/2323)).
+  either compared against nothing or compared nothing against nothing. Eleven goldens are
+  re-recorded from settled renders and one (`secondary-camera`) is added; the two that
+  already depicted a correct settled render (`custom-geometry`, `two-d-in-three-d`) are
+  left byte-for-byte untouched. All fourteen cases pass under the new guards over two
+  consecutive full runs ([#2323](https://github.com/sceneview/sceneview/issues/2323)).
 - The harness refuses the states that produced those baselines: a committed golden with a
   flat SceneView band fails as `DEGENERATE`, a capture whose viewport never rendered fails
   instead of being recorded, and the run waits for the `qa_mode` badge so a splash screen
