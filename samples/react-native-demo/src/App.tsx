@@ -722,7 +722,7 @@ function ARTab() {
             {'the tapped model on Android; on iOS it is always null (#2051)\n'}
             {'\u2022 onTap on the 3D tab \u2014 unverified on iOS. It goes '}
             {'through the same hook whose Flutter equivalent was measured '}
-            {'never to fire (#3045); assume broken until #3072 measures it\n'}
+            {'never to fire (#3045); assume broken until #3086 measures it\n'}
             {'\u2022 onPlaneDetected \u2014 dispatched on Android only\n'}
             {'\nNot yet bridged \u2014 the controls below are present so the '}
             {'API is stable, but they have no native effect:\n'}
