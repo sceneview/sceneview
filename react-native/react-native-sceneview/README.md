@@ -65,7 +65,7 @@ add it once in Xcode (*File ▸ Add Package Dependencies…*):
 > follow #3072 for the pod-based route.
 
 - URL: `https://github.com/sceneview/sceneview`
-- Version: `4.27.0` (or *Up to Next Major*)
+- Version: `4.28.0` (or *Up to Next Major*)
 
 Unlike the Flutter plugin's pub.dev range, this version tracks the SDK release
 directly: SwiftPM resolves against a git tag in this same repository, which the

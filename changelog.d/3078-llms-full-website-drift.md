@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- The published `/llms-full.txt` AI-context file is now served from `docs/docs/llms-full.txt` instead of a hand-maintained duplicate under `website-static/`. The duplicate sat outside every version sweep and shadowed the canonical file on the deployed site, so LLMs reading it were told SceneView 3.6.2 / Filament 1.70.0 / ARCore 1.53.0 — five minors behind. A structural check (`check-llms-drift.sh`) now fails if the committed copy ever returns.

@@ -2,6 +2,212 @@
 
 ## Unreleased
 
+## v4.28.0 — 2026-08-10
+
+### Added
+
+- **A release that ships a breaking change can no longer be tagged as a patch.** `release.yml`'s `publish-rn` job derives the npm version straight from the git tag, so tagging `v4.26.1` would publish a source-breaking `@sceneview-sdk/react-native` change as a semver patch — the one version class a consumer's caret range picks up without review. `.claude/scripts/check-breaking-change-bump.sh` refuses that combination. A fragment declares a breaking change with a `<!-- breaking -->` line or simply by saying so in its public prose (`non-breaking` and `groundbreaking` do not count; `<!-- breaking: false -->` opts out). The check is category-independent — a removed public symbol is as breaking as a changed one — and runs from `collate-changelog.sh`, from `release-fast.yml` right after the version input is validated, and from `release-checklist.sh` §6 — every path that *creates* a release tag. A tag pushed by hand, bypassing collation, still reaches `publish-rn` unguarded: the guard reads the fragments, and collation is what consumes them, so there is nothing left to read afterwards.
+
+### Changed
+
+- **Flutter: `SceneView` / `ARSceneView` now claim taps on Android too.** Adding
+  `TapGestureRecognizer` to the platform view's gesture set is what lets the native hit
+  test run, and it applies to both platforms — the Android views previously let taps
+  fall through. An existing app that wrapped the widget in a `GestureDetector(onTap:)`
+  or an `InkWell` to catch taps *around* the scene will find those taps now going to
+  the platform view instead. Move that handling to `SceneView`'s own `onTap`.
+
+### Fixed
+
+- glTF/GLB models whose textures are WebP-encoded (`EXT_texture_webp`) now load **with** their
+  textures on Android. Filament's Android prebuilt ships no `image/webp` decoder and offers no seam
+  to register one, so `ModelLoader` re-encodes embedded WebP textures to PNG — using Android's own
+  decoder — before handing the asset to Filament, instead of letting it render untextured with only
+  `Missing texture provider for image/webp` in Logcat ([#2305](https://github.com/sceneview/sceneview/issues/2305)).
+  A model without WebP textures is passed through untouched. WebP kept in separate `.webp` files
+  beside a `.gltf` still cannot be converted, and now logs an actionable `SceneView` error rather
+  than failing silently.
+- **A CI job on the self-hosted runner no longer makes the local pre-push gate accuse your code.** The runner and every local session share one `~/.gradle`, and a starting job rewrites `~/.gradle/init.d/gradle-actions.*`. Any concurrent local build whose compiled-script cache still points at the previous copy then dies during *initialization* — before a source file is read — and the gate printed `✗ sceneview FAILED to compile` for all four Gradle legs (measured 2026-08-10, on a run whose only error was `Could not load compiled classes for script '…/init.d/…'`). `gradle_infra_reason` now recognises both spellings of that failure (with and without a reused configuration cache) and reports it as an unrun gate, which still blocks the push. Deliberately anchored on the `~/.gradle/init.d/` path: an init script the repo owns and passes with `--init-script` is committed code, so a break in it stays a real failure — asserted by its own fixture.
+- **A killed test task is no longer reported as a test failure ([#3029](https://github.com/sceneview/sceneview/issues/3029)).** The screenshot leg of `pre-push-check.sh` was the one Gradle step that never went through `gate_gradle_failure`: whenever the Roborazzi report showed zero fresh diffs and the build was red, it printed `✗ :samples:android-demo tests FAILED — every screenshot matched its golden` and named a culprit the log never named. Measured 2026-08-09 on a host down to 2 Gi of free disk, where the only error in the log was `Timeout has been exceeded` — the per-task 25-minute timeout from `samples/android-demo/build.gradle` firing, which kills the task *before* it renders any verdict; re-running the same task on a healthy host gave `BUILD SUCCESSFUL in 18s`. The leg now uses the same triage as every other Gradle step, and `gradle_infra_reason()` gained a `Timeout has been exceeded` row (fixture + mutation case in `test-gradle-run.sh`, 24 assertions). The step reports ⚠ "did not run to a verdict" instead of ✗, and the gate still exits non-zero — a task that was killed is not a task that passed, whether the host was starved or a test genuinely hung.
+- **Maintainer-only notes can no longer leak into the published release notes ([#3037](https://github.com/sceneview/sceneview/pull/3037)).** `collate-changelog.sh` intercepted exactly one comment shape — the single-line `<!-- category: X -->` tag — and copied every other line of a fragment into `CHANGELOG.md` verbatim, so a multi-line `<!-- RELEASE NOTE: … -->` block reached the public page intact. Every HTML comment in a fragment is now stripped, whether it is single-line, multi-line, or trailing on a bullet; the bullet text around it survives untouched. An unterminated `<!--` is a hard error naming the file rather than a silent truncation, because the collator deletes the fragments it consumes and bullets missing from a release section would have no source left to recover them from.
+- **Flutter demo: the iOS 3D viewer now builds and renders.** `samples/flutter-demo`
+  could not be built for iOS at all — it shipped no `Podfile`, so `flutter build ios`
+  generated one targeting iOS 13, below what the plugin required. The demo now commits
+  a `Podfile`, targets iOS 18, and consumes `SceneViewSwift` as a pod: a Swift package
+  added to the host app's Xcode project is invisible to the bridge, which compiles
+  inside CocoaPods' own project (`Unable to find module dependency: 'SceneViewSwift'`).
+  Adds a root-level `SceneViewSwift.podspec` for that path, and corrects the plugin
+  README, which documented the route that does not work.
+- **`flutter_sceneview`'s declared iOS minimum moves 17.0 → 18.0.** Consumer-visible.
+  The podspec claimed 17.0 while `SceneViewSwift/Package.swift` has always required
+  18.0, so a host app that believed it got RealityKit availability errors at link time
+  instead of a clear version error. The podspec now also depends on `SceneViewSwift`
+  (pinned `~> 4.27`), which is **not** on the CocoaPods trunk: host apps must add a
+  `pod 'SceneViewSwift', :podspec => '<raw URL of SceneViewSwift.podspec>'` line,
+  documented in the plugin README. Not the `:git => …, :tag =>` form: CocoaPods reads
+  the podspec from the root of the checked-out tag, and the root podspec is not in
+  any tag yet — verified with `git cat-file -e vX.Y.Z:SceneViewSwift.podspec` on
+  v4.26.0 and v4.27.0, the two most recent — so every tag that exists today resolves
+  to "Unable to find a specification". The `:podspec =>` URL reads the spec from `main` while the sources
+  still come from the tag the spec names.
+- **React Native stays on the SwiftPM route for now**, deliberately. The same pod
+  treatment would need `samples/react-native-demo`'s `Podfile` changed in the same
+  breath or `rn-ios-compile.yml`'s real `pod install` turns red, which is a larger
+  change than this one. Tracked in
+  [#3072](https://github.com/sceneview/sceneview/issues/3072); the RN podspec and
+  README now say so where they claim no CocoaPods spec exists.
+- **Flutter demo: iOS loads a model instead of an empty viewport.** The viewer passed
+  a remote `.glb` URL on every platform, but RealityKit reads only `.usdz`/`.reality`
+  and `ModelNode.load(_:)` resolves a bundle resource, not a URL — so every iOS load
+  threw into a swallowed `NSLog`. Sample models now carry a per-platform source; a
+  bundled `khronos_fox.usdz` renders on iOS, and entries with no USDZ are shown
+  disabled with the reason rather than looking loadable.
+- **Flutter bridge: iOS accepts remote model URLs.** An `https://` path now becomes a
+  download rather than a lookup for a bundle resource named `"https:…"`, closing a
+  divergence with Android, where Filament's `ModelLoader` takes either. The 3D path
+  routes it by setting `SceneViewerModel.urlString` instead of `assetPath` — the shared
+  host reads exactly one of the two and checks `assetPath` first — and the AR path,
+  which has no shared host, routes it through `ModelNode.load(from:)`. AR also names
+  an unsupported format with an actionable reason rather than relaying RealityKit's
+  generic error, which is indistinguishable from "file not found".
+- **Flutter bridge: platform views claim tap gestures.** `SceneView`/`ARSceneView`
+  declared only pan and scale recognizers, so Flutter kept every tap and the native
+  hit test never ran. (`onTap` still does not fire on iOS for a separate,
+  documented reason — see the plugin README.)
+- **`sync-assets.sh` addressed a directory that does not exist.** Its Flutter paths
+  pointed at `samples/flutter-demo/example/…`, so the demo never received the assets
+  its catalog entries already claimed it used. The Flutter legs now refresh the assets
+  the demo actually bundles rather than pushing the whole shared library at it.
+- **Flutter demo About tab showed `v4.13.0`** while the SDK had moved on — and the
+  integration test asserted that exact string, so it defended the drift instead of
+  catching it.
+- **The AI-facing surfaces no longer promise a Flutter `onTap` that iOS never delivers ([#3045](https://github.com/sceneview/sceneview/issues/3045)).** `llms.txt`, its generated `gpt/knowledge-*.md` mirror, `samples/flutter-demo/README.md` and the demo's own "Bridge Coverage" page all stated that the 3D `onTap` is delivered on Android **and** iOS — an inference from the code, landed with [#3063](https://github.com/sceneview/sceneview/pull/3063). Measurement says otherwise: on an iPhone 17 Pro Max simulator (iOS 26.3) the callback never fires on iOS, re-measured across two different native hosts with the model rendering and the camera orbiting throughout. `llms.txt` is the file an AI reads to generate Flutter code, so the claim shipped as generated `onTap` handlers that are silently dead on iOS, and the demo's honesty page rendered a green "Android + iOS" badge for the exact feature it exists to be honest about. All four surfaces now say Android-only and point at #3045; the generated mirror was regenerated from the corrected source, never hand-edited. The Flutter plugin README carried the same claim and is corrected in the merge commit that brought it in.
+- **The demo no longer reaches for a `package:collection` extension it never declares.** `viewer_page.dart` called `Iterable.firstOrNull`, which resolves only through a transitive re-export — the shape `depend_on_referenced_packages` exists to catch. Replaced with plain `dart:core`.
+- **The MCP's Flutter setup guide no longer hands out a `pubspec.yaml` line `flutter pub get` cannot resolve.** `mcp/src/platform-setup.ts` interpolated `LATEST_SCENEVIEW_RELEASE` — the in-flight SDK version — into `flutter_sceneview: ^X.Y.Z`, emitting `^4.26.0` while pub.dev's newest was 4.24.0. The Flutter plugin is a separate release track and its caret range must name a version that already exists on the registry; this is the same bug [llms.txt](llms.txt) carried until it was corrected. `generate-version.js` now also emits `LATEST_FLUTTER_PUB_RELEASE`, read from the plugin's own README (the coordinate a human updates after a successful publish) and **fatal** if that line is missing — a silent fallback to `VERSION_NAME` is exactly how the wrong version shipped. Guarded by a test that asserts the guide does *not* name the SDK version.
+- **The React Native surfaces no longer state as fact that the 3D `onTap` reaches iOS.** That bridge routes its iOS 3D tap through the same `hostView.onTapEntity` hook whose Flutter counterpart was measured never to fire ([#3045](https://github.com/sceneview/sceneview/issues/3045)), so the claim is an untested inference. It is now marked unverified and probably broken, pointing at [#3086](https://github.com/sceneview/sceneview/issues/3086), which will measure it — deliberately *not* flipped to "Android-only", because asserting the opposite without measuring would repeat the original mistake.
+- The React Native README no longer says `SceneViewSwift` ships as SwiftPM only three lines above a callout announcing that a root podspec exists; the podspec exists, it is simply unpublished on the CocoaPods trunk.
+- The Flutter demo's viewer uses `defaultTargetPlatform` instead of `dart:io`'s `Platform`, which made the file uncompilable on Flutter web.
+- **`sync-versions.sh` no longer bumps `llms.txt`'s `flutter_sceneview: ^X.Y.Z` to `VERSION_NAME` at release time**, and the row is report-only rather than critical. This is the same defect as the MCP one above, in the surface that feeds it — and the `4.27.0` release ([`fe4d30b42`](https://github.com/sceneview/sceneview/commit/fe4d30b42)) proved it is not theoretical: the `--fix` sweep rewrote the caret to `^4.27.0` while pub.dev's `flutter_sceneview` had exactly **one** published version, `4.24.0` (checked against the registry API, not inferred). A guard that *repairs* a value it has no view of does not prevent drift, it manufactures it; what keeps this line honest is the absence of an autofix.
+- **Flutter iOS setup in the MCP server now ships a Podfile that actually
+  resolves.** Both Flutter guides stopped at `platform :ios, '18.0'`, so a
+  generated project failed with `Unable to find a specification for
+  'SceneViewSwift'`; they now carry the `pod 'SceneViewSwift', :podspec => …`
+  line and say why a Swift package cannot replace it.
+- **Fixed the Desktop setup guide, which named four APIs that do not exist**
+  (`DesktopScene`, `WireframeCube`, `WireframeSphere`, `Float3`) and leaked a
+  TypeScript `import` into a Kotlin block. It now shows `WireframeCubeViewer()`,
+  the only public entry point, and states plainly that no
+  `io.github.sceneview:sceneview-desktop` artifact is published.
+- **The Flutter plugin's podspec floor on `SceneViewSwift` is now enforced.**
+  It sat at `~> 4.26` through the 4.27.0 release because `sync-versions.sh`
+  watched only `s.version`; a stale floor lets an older SceneViewSwift satisfy
+  the dependency, so the bridge can link against a runtime predating the APIs
+  it calls. Bumped to `~> 4.27` and registered as a checked, autofixable row.
+- **React Native's quickstart no longer implies the iOS 3D `onTap` works.** It
+  is described from source, never measured; the sibling Flutter bridge with the
+  same RealityKit hit test never fires (#3045), and the RN measurement is #3086.
+- `changelog.d/3041-flutter-platformview-tap-arena.md` now carries an explicit
+  `<!-- breaking -->` marker. It describes a behaviour break in prose without
+  ever using the token `breaking`, so the patch-level guard would have let it
+  ship in a patch release.
+- **The Flutter demo's About tab read `v4.26.0` while the SDK shipped 4.27.0.**
+  `sync-versions.sh` only checked that its two slots agreed with *each other*,
+  so a pair that drifted together stayed green. Both now track `VERSION_NAME`
+  and the row reads OK rather than WARN.
+- **`llms.txt` and its two mirrors said the React Native iOS `onTap` is
+  delivered.** It routes through the same RealityKit `.targetedToAnyEntity`
+  hook the Flutter bridge measured never to fire (#3045); RN's own measurement
+  is #3086. All three AI-facing copies now say Android-only-for-now.
+- **`llms.txt` taught a Flutter install that cannot `pod install`.** The
+  mandatory `pod 'SceneViewSwift', :podspec => …` line existed in the
+  quickstart, the plugin README and the MCP server but not in the file AI
+  assistants actually read. Added, with the Swift-package dead end spelled out.
+- **`llms.txt` taught `modelPath: 'models/helmet.glb'` with no platform
+  caveat** — RealityKit cannot read glTF at all, so that line renders nothing on
+  iOS while compiling fine.
+- **Both bridge guides in the MCP server invented props** — `modelUrl`,
+  `onModelLoaded`, `tapToPlace`, `onAnchorCreated`, `PlaneDetection.horizontal`.
+  Rewritten against the real surface (`initialModels` / `ModelNode(modelPath:)`
+  in Dart, `modelNodes={[{ src }]}` in TSX) and guarded by a test.
+- `flutter_sceneview.podspec`'s `swift_version` lagged at 5.9 while the root
+  podspec that declares the sync invariant sets 5.10.
+- Three `--fix` handlers in `sync-versions.sh` read a version through an
+  unguarded `grep | grep | head` pipeline. Under `set -euo pipefail` a
+  non-matching inner grep aborts the entire sweep before the emptiness guard
+  runs, silently skipping every later autofix.
+- Two internal contradictions this PR introduced: `SceneViewSwift.podspec`'s own
+  comment called `:git =>` "the one form that works" while every install
+  document in the same PR says only `:podspec =>` resolves today, and the React
+  Native README's `onTap` topic sentence still said "both platforms" three lines
+  above the callout walking iOS back to *probably broken*.
+- The MCP React Native AR guide no longer sets `depthOcclusion={true}`. The prop
+  is declared on the bridge but configured nowhere native ([#909]), so the
+  example promised LiDAR occlusion the runtime never delivers — and said the
+  opposite of the RN README in the same repo. Real-but-inert props are invisible
+  to the invented-symbol test (the identifier exists), so a dedicated guard now
+  forbids enabling this one in either RN guide.
+
+[#909]: https://github.com/sceneview/sceneview/issues/909
+- `sync-versions.sh`'s new SceneViewSwift floor row mis-handled a pre-release
+  `VERSION_NAME`. Both the check (`$FLOOR.${SOURCE_VERSION##*.}`) and its
+  autofix (`${SOURCE_VERSION%.*}`) took the last dot-segment as the patch, so
+  `4.27.0-rc.1` produced the expected value `4.27.1` — a *blocking* MISMATCH on
+  a floor that was correct — and `--fix` would then have written `4.27.0-rc` as
+  the floor. Both now strip the pre-release suffix before slicing; table-tested
+  across `X.Y.Z`, `X.Y.Z-rc.N` and `X.Y.Z-SNAPSHOT`, matching and mismatching.
+- The React Native bridge's own TypeScript source — the fifth copy of the same
+  AI-facing claim, and the one consumers read as an IDE tooltip — still said the
+  3D `onTap` payload arrives "on both Android and iOS". Corrected in
+  `src/index.tsx` (both the `onTap` and `TapEvent.nodeName` doc comments) and the
+  packaged `lib/typescript/**/*.d.ts` regenerated with `bob`, never hand-edited.
+- The MCP Flutter 3D guide branched its asset path on `dart:io`'s
+  `Platform.isIOS` — the exact import this PR removed from `viewer_page.dart`,
+  because it makes a Flutter file uncompilable on web. It now uses
+  `defaultTargetPlatform`, matching both the demo and the guidance this PR added
+  to `llms.txt`. Guarded and mutation-tested for both Flutter guides.
+- **`impact-check.sh`'s SPM version gate now measures the repository instead of the disk ([#3068](https://github.com/sceneview/sceneview/pull/3068)).** It reported `[FAIL] SPM version refs stale — 15 file(s)` on a clean tree, and no PR could fix those 15: `grep -r .` walked the working directory, so every hit was an **untracked** local file. The count drifted with the disk (15, then 17) because it never described the repository. Worse, the pattern targeted only the SPM mirror archived in PR #1215, leaving the gate a **tracked population of zero** — green in CI while verifying nothing, and blind to the 17 tracked files (`llms.txt`, `gpt/knowledge-*.md`, `docs/docs/quickstart-ios.md`, …) that carry the canonical `sceneview/sceneview` snippet. On the tree that reported the blocker: `[FAIL] 15 file(s)` → `[PASS] 17 tracked file(s) scanned`.
+
+  - Discovery runs on `git ls-files` and targets the canonical coordinate. What isn't committed can't be a merge blocker.
+  - Discovery and verdict share **one line**. At file granularity a stale snippet passed whenever any other line in the file quoted the current version — the gate confirming a version no reader resolves.
+  - Every offending **line** is named (`llms.txt:1`), one per line, not counted and not space-joined — a bare count is what made the original unactionable, and `spm guide.md:1` is indistinguishable from two entries once a space is also the separator.
+  - An empty population is FAIL (`pattern is broken, not the tree`), except on a lean/sparse clone with no doc surface, where it stays SKIP — false-FAILing those is the #2370 scar this script already carries.
+  - All SPM constraint forms count (`upToNextMajor`, `upToNextMinor`, `exact`), and `CHANGELOG.md` / `MIGRATION.md` are excluded at any depth — as is `changelog.d/`, which inherits its destination's exemption: a fragment that was a blocker until `collate-changelog.sh` moved it is the same text judged twice by nothing but timing. `mcp/` stays out: independent release track, fixture stale by design.
+  - A keyword counts as a constraint only in the SYNTAX that carries one — `from:`, `.upToNextMajor(from:)`, `exact:`. Without that, ``…/sceneview.git`, from v3 onward` is discovered as a pin and then judged stale for carrying no version: a release note describing history becomes a merge blocker, which is the "only says no" failure this PR removes, reintroduced in the half that decides what a pin IS. Both halves of a pin end on a boundary for the same reason: `exact` is also the first five letters of `exactly`, and `4.26.0` is a prefix of `4.26.0-beta` — without them the gate reads an English word as a constraint and blesses a version nobody checked. The keyword boundary lives in the constraint SHARED by discovery and verdict, so neither half can define a pin the other does not.
+  - Seventeen cases in `test-impact-check.sh` pin the contract, each mutation-proven — including tracked pathological filenames (`-i.md`, `spm guide.md`), which are dropped **silently** without grep's `-e … --` guard.
+
+- **`check-sceneview-swift-urls.sh` no longer blocks a release note for describing the retired SPM mirror — and no longer lets one ship a pin to it ([#3068](https://github.com/sceneview/sceneview/pull/3068)).** The allowlist covered `CHANGELOG.md` but not `changelog.d/`, even though `collate-changelog.sh` merges each fragment *into* `CHANGELOG.md`: the same sentence was blocked as a fragment and allowed once collated. Caught by this PR's own fragment, which failed three CI jobs on that one root cause. Both changelog surfaces are allowed wholesale, so they get a second, narrower pass — the archived mirror may be **named**, never **pinned**. A version constraint sitting next to that URL is a copy-pasteable install line that does not resolve, and release-note prose around it changes nothing. Everywhere else the gate is unchanged: any `sceneview-swift` URL outside the allowlist still fails and is named — and now `*.sh` is scanned at all. It was in no glob, which quietly made the two `.sh` entries in the allowlist dead surface: the comment documented a protection no pass applied, and a setup script cloning the archived mirror — the one place a dead URL is a failing command rather than a bad paste — would have shipped. And a pin is no longer only a version constraint: `git clone …/sceneview-swift.git` carries no version at all and still fails the moment anyone pastes it, so the fetch verbs count too — targeting the org-qualified repo path rather than the bare token, because this detector's own filename contains that token and the first draft duly failed the automation-map row documenting it. A keyword-less SPM range (`"4.0.0"..<"5.0.0"`) names no constraint at all and counts as well. Twelve cases in `test-check-sceneview-swift-urls.sh` pin both passes in both directions — including the org-qualified requirement, whose fixture puts the mirror-bearing filename in the argument slot the verb-to-URL gap allows: an earlier fixture separated the verb from the name by prose, which the bare-token regression could not have matched either, so it passed against the very defect it named and proved nothing.
+- The release guard now reads a `<!-- breaking -->` marker wherever it appears on
+  a line, including trailing a bullet. Anchored to a whole line, a marker written
+  next to its bullet was silently discarded and the fragment shipped unflagged.
+- The published `/llms-full.txt` AI-context file is now served from `docs/docs/llms-full.txt` instead of a hand-maintained duplicate under `website-static/`. The duplicate sat outside every version sweep and shadowed the canonical file on the deployed site, so LLMs reading it were told SceneView 3.6.2 / Filament 1.70.0 / ARCore 1.53.0 — five minors behind. A structural check (`check-llms-drift.sh`) now fails if the committed copy ever returns.
+- `release-fast.yml` no longer dies right after collating the changelog. Staging the release
+  commit with exclude pathspecs (`git add -A ':!device-qa-report.json' …`) makes git treat a
+  gitignored match as explicitly named and exit 1 — only `device-qa-report.json` is actually
+  gitignored, which is one too many — and under `bash -e` that killed the run before
+  the release branch was ever pushed. The artifacts are now unstaged with `git reset` instead.
+
+### Tests
+
+- `test-collate-changelog.sh` gains the confidentiality contract the collator never had a test for: internal notes in three comment shapes must not reach `CHANGELOG.md`, the bullets around them must, a category tag quoted inside a note must stay inert, and an unterminated comment must fail loudly without consuming a fragment. A second mutation test neutralises the stripper and asserts all six fixture note lines come back.
+- `test-check-breaking-change-bump.sh` pins the new guard in both directions on fixtures taken verbatim from real fragments — #3037's prose must refuse a patch tag, `changelog.d/3008-contentid.md`'s "non-breaking" must not — with one mutation test per direction, plus the post-collation path where the previous version must be read past a `CHANGELOG.md` section that already names the target.
+
+### Docs
+
+- Continued the provenance cleanup started in #2827: the branding audit, the branding README favicon entry and the MkDocs stylesheet now credit the SceneView design system (`DESIGN.md`) for palette and token *values* instead of the tool that once produced them. Colors and tokens are unchanged. References describing the `DESIGN.md` *file format* are intentionally kept.
+- The React Native `onTap` "iOS is unverified" caveat pointed readers at
+  [#3072], which tracks moving the module from SwiftPM to the root podspec — a
+  different problem. The measurement itself now has its own issue, [#3086], and
+  the caveat cites it on every surface that carries it: `llms.txt`, its
+  `website-static/.well-known/` mirror, the regenerated `gpt/knowledge-*`, the
+  React Native quickstart, the plugin README, `src/index.tsx` (with the
+  `bob`-generated `.d.ts`), the MCP server's RN setup guide, and the demo app's
+  AR-tab "AR Bridge Coverage" card and README bridge-status table. The #3072 citations in
+  the plugin README's iOS section and in `react-native-sceneview.podspec` are
+  about the podspec gap and are correct; they stay.
+
+[#3072]: https://github.com/sceneview/sceneview/issues/3072
+[#3086]: https://github.com/sceneview/sceneview/issues/3086
+
 ## v4.27.0 — 2026-08-10 — Compose Multiplatform, a shared iOS host, and one tap contract across the bridges
 
 `sceneview-compose` arrives: one `SceneViewer` composable from `commonMain`, viewer

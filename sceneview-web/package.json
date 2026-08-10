@@ -1,7 +1,7 @@
 {
   "_comment": "This file is NOT the published npm manifest. .github/workflows/release.yml is the single source of truth for the published package: it generates a fresh package.json (with main/types pointing at the real build/kotlin-webpack/js/productionExecutable/ output) and runs `npm publish` from there. The fields kept here exist only for repo tooling \u2014 `version` is validated by sync-versions.sh and release-checklist.sh and must stay in lockstep with gradle.properties VERSION_NAME. Do NOT add main/files/publishConfig back: they pointed at build/dist/js/... which the build never produces, so a manual `npm publish` from this directory shipped a broken tarball (#2058).",
   "name": "sceneview-web",
-  "version": "4.27.0",
+  "version": "4.28.0",
   "description": "SceneView for Web \u2014 3D rendering with Filament.js (WebGL2/WASM). Same engine as SceneView Android.",
   "keywords": [
     "3d",
