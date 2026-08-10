@@ -3429,7 +3429,7 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 - **APK size**: +3.2MB (sceneview), +5.1MB (sceneview + arsceneview).
 - **Memory**: ~25MB empty 3D scene, ~45MB empty AR scene.
 - **Triangle budget**: <100K per model, <200K total scene (mid-tier devices).
-- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP is NOT supported on Android**: Filament's Android prebuilt ships `gltfio` with WebP compiled out, so glTF textures encoded as `EXT_texture_webp` (`image/webp`) fail with "Missing texture provider for image/webp" and render untextured. Re-encode such models' textures to PNG/JPEG or KTX2 before loading on Android (#2305). PNG/JPEG/KTX2 are decoded natively.
+- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android since 4.28.0**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes embedded WebP textures to PNG (via Android's own decoder) before handing the asset to Filament — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. Still unsupported and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`, and the **web** build (Filament.js registers no `image/webp` provider). Prefer PNG/JPEG/KTX2 when you control the asset (#2305).
 - **Draw calls**: aim for <100 per frame. Merge static geometry in Blender before export.
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.

@@ -1075,7 +1075,7 @@ LightNode(
 | `ModelNode(scaleToUnits = 1f, scale = Scale(2f))` | `scale` is silently ignored | Pick one — they are mutually exclusive |
 | Using `MeshNode` for loaded glTF content | No animations, no PBR textures | Use `ModelNode` with `rememberModelInstance` |
 | Not handling `rememberModelInstance` returning `null` | Conditional branches crash at launch | Use `?.let { }` or `if (instance != null)` guards |
-| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android's Filament build has no WebP decoder — re-encode textures to PNG/JPEG/KTX2 before bundling ([#2305](https://github.com/sceneview/sceneview/issues/2305), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
+| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android converts embedded WebP textures automatically since 4.28.0 — the message survives only for WebP kept in separate `.webp` files, or on the web build; re-encode those to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
 | Calling `node.destroy()` manually | Use-after-free, crashes on recomposition | Let the composable own the lifecycle |
 
 ---
