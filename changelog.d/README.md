@@ -59,6 +59,57 @@ before any tag land in `Changed`:
 - **The API it adds along the way.** …
 ```
 
+### Maintainer-only notes
+
+**Every HTML comment in a fragment is stripped before collation** — single-line,
+multi-line, or trailing on a bullet. Comments are therefore the place to leave
+notes that must never reach the public release notes:
+
+```markdown
+<!-- category: Fixed -->
+<!-- RELEASE NOTE (maintainer-only):
+     sign-off, publish mechanics, anything a user should not read.
+     None of this reaches CHANGELOG.md. -->
+- **The bullet users will actually see.** …
+```
+
+This is not cosmetic. Before #3037 the collator intercepted only the exact
+`<!-- category: X -->` line and copied every other line through verbatim, so a
+nine-line internal note in that PR was one release away from being published as
+release notes — and the collator *deletes* the fragments it consumes, so the
+source would have been gone by the time anyone read the page.
+
+One rule follows from it: **close your comments.** An unterminated `<!--` would
+swallow every bullet after it, so `collate-changelog.sh` refuses to collate and
+names the file instead.
+
+### Declaring a breaking change
+
+SceneView freezes major `4` and ships breaking changes as a **minor** bump. Mark
+a fragment that carries one:
+
+```markdown
+<!-- category: Changed -->
+<!-- breaking -->
+- **`TapEvent.nodeName` is now typed `string | null`.** …
+```
+
+`.claude/scripts/check-breaking-change-bump.sh` then refuses a patch-level tag
+for that release. It runs inside `collate-changelog.sh` (which cannot be
+skipped), early in `release-fast.yml`, and in the release checklist.
+
+The marker is optional in practice: a fragment whose **public prose** says the
+change is breaking is treated as breaking anyway — that is how #3037's fragment,
+written before the marker existed, would have been caught. Negated forms
+(`non-breaking`, `not breaking`) and words like `groundbreaking` do not count. If
+a fragment trips the heuristic without being breaking, opt out explicitly with
+`<!-- breaking: false -->`, which always wins.
+
+Why it matters: `release.yml`'s `publish-rn` job derives the npm version straight
+from the git tag, so a patch tag publishes a source-breaking change to
+`@sceneview-sdk/react-native` as a semver patch — the one version class every
+consumer's caret range picks up without review.
+
 ## At release time
 
 `.claude/scripts/collate-changelog.sh X.Y.Z` reads every `*.md` fragment here
