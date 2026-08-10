@@ -108,6 +108,7 @@ Could not (GET|HEAD) ' => a dependency repository could not be reached
 Received fatal alert: => a TLS error while contacting a repository
 Could not open .* (generic class|proj\.dir) cache => the Gradle cache is corrupt (rm -rf the module build/ dirs)
 Timeout has been exceeded => the task hit its Gradle `timeout` and was KILLED before rendering any verdict (host load, or a genuinely hung test — the log carries a thread dump naming the stuck thread)
+(Could not load compiled classes for script '[^']*init\.d/|not found in class loader .*init\.d/) => a HOST init script in ~/.gradle/init.d/ changed under a stale compiled-script cache (the self-hosted runner rewrites those files mid-run, killing every concurrent local build) — wait for the runner to go idle, or build with an isolated GRADLE_USER_HOME
 PATTERNS
 
     return 0

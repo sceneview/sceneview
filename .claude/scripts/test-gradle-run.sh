@@ -124,6 +124,45 @@ Execution failed for task ':samples:android-demo:testDebugUnitTest'.
 BUILD FAILED in 25m 3s
 LOG
 
+# The self-hosted runner and every local session share one ~/.gradle. When a CI
+# job starts it REWRITES ~/.gradle/init.d/gradle-actions.*, and any concurrent
+# local build whose compiled-script cache still points at the previous copy dies
+# in initialization — before a single source file is read. Measured 2026-08-10:
+# all four Gradle legs of pre-push printed "FAILED to compile" while a CI worker
+# for this very PR was running on the same Mac. Two spellings, depending on
+# whether the configuration cache was reused.
+cat > "$TMP/init-script-cache.log" <<'LOG'
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+A problem occurred evaluating initialization script.
+> Could not load compiled classes for script '/Users/x/.gradle/init.d/gradle-actions.build-result-capture-service.plugin.groovy' from cache.
+
+BUILD FAILED in 1s
+LOG
+
+cat > "$TMP/init-script-confcache.log" <<'LOG'
+Reusing configuration cache.
+FAILURE: Build failed with an exception.
+* What went wrong:
+Class 'BuildResultsRecorder' not found in class loader 'VisitableURLClassLoader(ClassLoaderScopeIdentifier.Id{coreAndPlugins:script-file:/Users/x/.gradle/init.d/gradle-actions.build-result-capture-service.plugin.groovy:groovy-dsl:...})' of type 'org.gradle.internal.classloader.VisitableURLClassLoader'.
+CONFIGURE FAILED in 336ms
+LOG
+
+# The same shape, but the offending script is one the REPO owns and passes with
+# --init-script. That is committed code: a typo in it is a real failure, and
+# classifying it as host state would wave a broken build through. Only the
+# ~/.gradle/init.d/ path may be treated as infrastructure.
+cat > "$TMP/init-script-repo.log" <<'LOG'
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+A problem occurred evaluating initialization script.
+> Could not load compiled classes for script '/repo/buildSrc/ci-init.gradle' from cache.
+
+BUILD FAILED in 1s
+LOG
+
 # A GENUINE compile break — the most important negative case.
 cat > "$TMP/compile.log" <<'LOG'
 > Task :sceneview:compileReleaseKotlin FAILED
@@ -157,11 +196,14 @@ assert_infra "$TMP/network.log" "dependency resolution / network"
 assert_infra "$TMP/disk.log"    "disk full"
 assert_infra "$TMP/nope.log"    "log file was never written"
 assert_infra "$TMP/task-timeout.log" "per-task timeout killed the run before any verdict"
+assert_infra "$TMP/init-script-cache.log"    "host init.d/ script changed under a stale script cache"
+assert_infra "$TMP/init-script-confcache.log" "same, surfacing through a reused configuration cache"
 
 echo "── gradle_infra_reason: REAL failures must stay real ──"
 assert_real "$TMP/compile.log"       "unresolved reference (compile break)"
 assert_real "$TMP/testfail.log"      "unit test assertion failure"
 assert_real "$TMP/missing-coord.log" "nonexistent dependency coordinate"
+assert_real "$TMP/init-script-repo.log" "a REPO-owned init script that fails to compile"
 
 echo "── gradle_infra_reason: signal-terminated builds ──"
 for sig in 130 137 143; do
