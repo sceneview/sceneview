@@ -122,6 +122,12 @@ SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(fro
 # can actually be cloned.
 FETCH='(git[[:space:]]+clone|curl|wget|svn[[:space:]]+checkout)[[:space:]]+[^[:space:]]*sceneview/sceneview-swift'
 
+# SPM also accepts a KEYWORD-LESS range: `.package(url: "…", "4.0.0"..<"5.0.0")`.
+# It names no constraint, so neither of the two patterns above sees it, and it
+# is as copy-pasteable as any other install line. Same near-adjacency rule: a
+# version literal next to the URL, followed by a range operator.
+RANGE='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*['"'"'"`]?[0-9][0-9.]*['"'"'"`]?[[:space:]]*\.\.[.<]'
+
 # Grep only tracked files so build output / node_modules can't trip the gate.
 # `git grep` respects .gitignore by definition and is fast on large trees.
 #
@@ -155,7 +161,7 @@ fi
 
 # Second pass: the two WHOLESALE-allowlisted surfaces may name the mirror, but
 # must never ship a resolvable pin to it.
-PINS=$(git grep -nE -e "$SNIPPET" -e "$FETCH" -- "${PROSE_ONLY[@]}" 2>/dev/null || true)
+PINS=$(git grep -nE -e "$SNIPPET" -e "$FETCH" -e "$RANGE" -- "${PROSE_ONLY[@]}" 2>/dev/null || true)
 
 if [ -n "$PINS" ]; then
   echo "::error::A prose-only surface ships a live SPM pin to the ARCHIVED 'sceneview-swift' mirror (#1237)."

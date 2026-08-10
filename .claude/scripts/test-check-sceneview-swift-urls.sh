@@ -149,5 +149,15 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "fetch verb + repo path separated by prose → not a command" \
   || bad "an unbounded verb-to-URL gap makes a release note a false positive (rc=$RC)"
 
+# 11. A keyword-less SPM range is still an install line. It names no
+#     constraint — no `from`, no `upToNextMajor` — so a keyword-driven
+#     detector reads it as prose and lets it through.
+D="$(fixture fragment_range changelog.d/1234-note.md \
+    '- Old: `.package(url: "https://github.com/sceneview/sceneview-swift.git", "4.0.0"..<"5.0.0")`')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'changelog.d/1234-note.md:1' <<<"$OUT"; } \
+  && ok "keyword-less SPM range pin → fail, line named" \
+  || bad "a range pin names no constraint and must still be a pin (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
