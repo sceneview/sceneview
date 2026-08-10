@@ -128,7 +128,7 @@ DEMOS_DEFAULT="model-viewer,dynamic-sky,multi-model"
 # TABLET RUNS SHOOT ALL THREE AGAIN — `multi-model` came back when #2913 landed,
 # per the instruction this block carried while it was dropped (#2915).
 # What had been measured on both tablet AVDs against build 4.25.0: a tablet
-# portrait frame is ~0.64 w/h against the phone's ~0.47, and at that aspect the
+# portrait frame is 0.625 w/h against the phone's ~0.47, and at that aspect the
 # capture landed on a wooden post against the backdrop wall — no foliage. That
 # was real, but BOTH stated causes were wrong, and it is worth recording which:
 #   1. The framing was broken at EVERY aspect, not just on tablets. The section

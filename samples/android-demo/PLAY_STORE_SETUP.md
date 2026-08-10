@@ -64,7 +64,8 @@ in `.claude/scripts/capture-play-store-screenshots.sh` and is mirrored in
 [`distribution/play-store/en-GB/graphics/README.md`](distribution/play-store/en-GB/graphics/README.md).
 
 The tablet sets mirror phone again as of #3106: `multi-model` had been dropped from
-tablet runs because at a tablet's wider aspect (~0.64 w/h vs the phone's ~0.47)
+tablet runs because at a tablet's wider aspect (0.625 w/h on both QA AVDs,
+against the phone's ~0.47)
 the capture landed on a support post rather than foliage. That was a framing
 defect at every aspect — the tablet frame merely exposed it — and it is fixed:
 the scene derives its camera distance from the live viewport aspect (#2913), so

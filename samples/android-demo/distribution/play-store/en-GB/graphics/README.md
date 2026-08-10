@@ -38,8 +38,8 @@ reads as blank; `double-pendulum` is a tiny linkage in a
 the last holdouts were the pre-v2 tablet sets #2907 retired.
 
 **`multi-model` was phone-only for one release, and is back on tablets (#2913).**
-What had been measured was real: at a tablet's wider aspect (~0.64 w/h vs the
-phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
+What had been measured was real: at a tablet's wider aspect (0.625 w/h on both
+QA AVDs, against the phone's ~0.47) the capture landed on a wooden post against the backdrop wall, no
 foliage, and the variance guard **passed** it (2227 on 10", 2827 on 7"). Both
 stated causes turned out to be wrong, which is worth keeping on the record:
 
