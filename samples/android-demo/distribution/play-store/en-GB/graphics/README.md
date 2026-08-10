@@ -230,16 +230,19 @@ passes the variance check and is still unusable.
 
 ## Known follow-ups
 
-- **#2913 (fixed, awaiting a re-capture)** — the scene now takes the viewport
-  aspect into account, and `multi-model` is back in the tablet set. The committed
-  tablet PNGs still hold two slots because they predate the fix; a tablet run
-  writes three. Re-capturing them is the remaining step (Play accepts 2–8 per
-  type, so the two-slot listing is valid meanwhile).
+- **#2913 (fixed and re-captured, #3106)** — the scene takes the viewport aspect
+  into account, `multi-model` is back in the tablet set, and both tablet classes
+  were re-shot at three slots. No follow-up left here.
 - **Tablet `model-viewer` framing is not deterministic.** In the committed set
   the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
   than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
   classes. Two runs of the same demo should differ only by aspect, so this is a
-  demo-side non-determinism worth pinning before the next re-capture.
+  demo-side non-determinism worth pinning before the next re-capture. Still true
+  after #3106 — the cause is the free-running hero orbit, so the captured pose is
+  whatever instant the settle window lands on. That is why the tablet distance was
+  probed at several orbit instants and chosen to survive the *widest* pose rather
+  than to suit one frame: 3.5 m looked right on the 3/4 pose and clipped the
+  head-on one.
 - **#2874** — `materials` was not reproducible: a streamed subject and an
   orbiting camera against the `studio_2k` skybox meant the frame depended on the
   API key, the network and capture timing. The demo side is **fixed** (bundled
