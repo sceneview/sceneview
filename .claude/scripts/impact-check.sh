@@ -315,22 +315,149 @@ else
     if [[ -z "$GRADLE_VERSION" ]]; then
         check "SPM version refs" "SKIP" "VERSION_NAME unreadable in gradle.properties"
     else
-        # Migration guides + changelogs legitimately quote the legacy
-        # `sceneview-swift` mirror coordinate with an OLD version inside a diff
-        # snippet (the whole point is to document the deprecation) — exclude them
-        # so they're never flagged stale.
-        SPM_STALE=$(grep -rl "sceneview-swift.*from.*\"[0-9]" --include='*.md' --include='*.txt' . 2>/dev/null \
-            | grep -vE 'node_modules|build/|\.git/|docs/site/|\.claude/worktrees/|\.claude/plans/|docs/docs/migration|CHANGELOG\.md|MIGRATION\.md' \
-            | xargs grep -l "sceneview-swift" 2>/dev/null \
-            | xargs grep -L "from.*\"$GRADLE_VERSION\"" 2>/dev/null || true)
+        # This gate measures the REPOSITORY, not the disk — and it must target
+        # the coordinate users actually resolve. It did neither (#3068):
+        #
+        #  1. `grep -r .` walked every file ON DISK, so it FAILed on untracked
+        #     local drafts — marketing brochures, and browser-duplicate copies
+        #     like `qa-drafts (1).md` — that exist in no clone and no CI run.
+        #     The count drifted with the disk (15 file(s), then 17) because it
+        #     was never reporting a property of the repository. `git ls-files`
+        #     is the fix: what isn't committed cannot be a merge blocker.
+        #
+        #  2. It matched only `sceneview-swift`, the ARCHIVED mirror retired in
+        #     PR #1215. Bumping a version on a dead URL is not a fix — that URL
+        #     must not appear at all, which is `check-sceneview-swift-urls.sh`'s
+        #     job (#1237). So the tracked population here was EMPTY, and an
+        #     empty scan reported PASS: green in CI while verifying nothing,
+        #     and blind to the ~17 tracked files carrying the CANONICAL
+        #     `sceneview/sceneview` coordinate this now checks.
+        #
+        # Excluded on purpose:
+        #   CHANGELOG.md / MIGRATION.md / docs/docs/migration.md — historical
+        #     entries legitimately quote OLD versions.
+        #   changelog.d/ — the PRE-IMAGE of CHANGELOG.md. Excluding one and not
+        #     the other is the "same sentence, two verdicts" hole this PR closes
+        #     in the sibling gate: `collate-changelog.sh` merges a fragment INTO
+        #     CHANGELOG.md, so a release note quoting an old install line would
+        #     be a merge blocker as a fragment and exempt the moment it ships.
+        #   mcp/ — an independent release track that must NEVER be synced to
+        #     VERSION_NAME, and whose `ios-outdated` fixture is stale by design.
+        #
+        # `sync-versions.sh` §10b remains the source-of-truth UPDATER over its
+        # explicit file list; this is the discovery net that catches a canonical
+        # SPM snippet living in a file that list doesn't know about yet.
+        # Discovery and verdict are anchored to the SAME LINE. Judging at file
+        # granularity let a file whose canonical snippet was stale still PASS
+        # because some *other* line elsewhere happened to carry the current
+        # version — the check would confirm a version that no reader resolves.
+        # A "pinning line" is the canonical URL plus a version constraint on
+        # that line; every SPM form is accepted, not just bare `from:`, so an
+        # `.upToNextMajor(from:)` snippet is covered instead of silently
+        # dropped from the population. Quoting is deliberately loose (' " `,
+        # or none) in both halves: a snippet must never be discovered by one
+        # regex and judged stale by the other.
+        # The version is escaped for ERE rather than assumed to be bare semver
+        # — a `+build` suffix would otherwise be read as a metacharacter.
+        VER_ESC=$(printf '%s' "$GRADLE_VERSION" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+        # What follows the URL is deliberately near-adjacent — closing quote,
+        # comma, paren, dot — and not `.*`: a permissive gap turns every plain
+        # `github.com/sceneview/sceneview/blob/…` link whose sentence happens
+        # to contain "from" into a stale SPM pin. Measured: 25 files, 10 of
+        # them prose. It also keeps the ARCHIVED `sceneview/sceneview-swift`
+        # mirror out (banning that URL is check-sceneview-swift-urls.sh's job).
+        # A keyword is a constraint only in the SYNTAX that carries one: `from:`,
+        # `.upToNextMajor(from:)`, `exact:`. The `[:(]` is what separates a pin
+        # from English — bare `exact` prefixes `exactly`, and "from v3 onward"
+        # three words after the URL is a sentence, not an install line. Both
+        # readings cost: one blesses a version nobody checked, the other turns
+        # a release note into a merge blocker. The boundary lives in the
+        # SHARED constraint, not in the verdict half alone — a keyword that
+        # discovers a line but cannot judge it turns that line into a false
+        # stale, which is the asymmetry this pair was built to avoid.
+        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)[[:space:]]*[:(]'
+        SPM_PIN_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*'"$SPM_CONSTRAINT"
+        # The right boundary rejects `.` and `-` too, so `4.26.0-beta` and
+        # `4.26.0.1` are what they are — a DIFFERENT version — instead of
+        # passing because the current string happens to be their prefix.
+        SPM_OK_RE="${SPM_CONSTRAINT}[^0-9]*${VER_ESC}([^0-9.-]|$)"
 
-        if [[ -z "$SPM_STALE" ]]; then
-            check "SPM version refs match $GRADLE_VERSION" "PASS" ""
+        if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            check "SPM version refs" "SKIP" "not a git repository"
         else
-            # `printf | grep -c .` counts non-empty lines — `echo "" | wc -l`
-            # returns 1 for an empty string and would report a phantom "1 file".
-            STALE_COUNT=$(printf '%s\n' "$SPM_STALE" | grep -c . || true)
-            check "SPM version refs stale" "FAIL" "$STALE_COUNT file(s)"
+            # Paths stay NUL-delimited from `git ls-files` all the way into an
+            # array: a newline in a committed filename would silently split a
+            # `while read` over newline-joined `grep -l` output, and BSD grep
+            # has no portable NUL-delimited -l to join the two halves with
+            # (macOS `grep -lZ` still terminates with \n). `-e … --` keeps a
+            # file named like `-i.md` from being read as a grep option.
+            # 282 tracked files, ~1.1s — paid once per push, unlike the trust.
+            # CHANGELOG.md / MIGRATION.md are excluded wherever they live, not
+            # only at the repo root: the reason they are excluded is what the
+            # file IS, and a docs/MIGRATION.md would quote old versions for
+            # exactly the same reason the root one does.
+            SPM_POP=()
+            SPM_STALE=()
+            SPM_STALE_FILES=0
+            while IFS= read -r -d '' spm_f; do
+                case "$spm_f" in
+                    mcp/*|changelog.d/*|docs/docs/migration.md) continue ;;
+                esac
+                case "${spm_f##*/}" in
+                    CHANGELOG.md|MIGRATION.md) continue ;;
+                esac
+                spm_pins=$(grep -nE -e "$SPM_PIN_RE" -- "$spm_f" 2>/dev/null || true)
+                [[ -z "$spm_pins" ]] && continue
+                SPM_POP+=("$spm_f")
+                # EVERY stale pin, not just the first: a file with three of
+                # them would otherwise be reported as having one, and the
+                # second bump would look like a fresh regression.
+                spm_bad=$(printf '%s\n' "$spm_pins" \
+                    | grep -vE -e "$SPM_OK_RE" || true)
+                if [[ -n "$spm_bad" ]]; then
+                    SPM_STALE_FILES=$((SPM_STALE_FILES + 1))
+                    while IFS= read -r spm_line; do
+                        [[ -z "$spm_line" ]] && continue
+                        SPM_STALE+=("$spm_f:${spm_line%%:*}")
+                    done <<< "$spm_bad"
+                fi
+            done < <(git ls-files -z -- '*.md' '*.txt' 2>/dev/null)
+
+            # An empty population has two very different causes, and calling
+            # both the same thing is how a gate earns a reputation for lying:
+            #
+            #   - the SPM doc surface simply isn't checked out. Lean clones
+            #     (`--depth 1` + sparse-checkout) are the standard batch-agent
+            #     workflow, and FAILing them under `--fail` is precisely the
+            #     #2370 false-red this script already carries scar tissue for.
+            #     Nothing can be concluded → SKIP.
+            #   - the surface IS here and the pattern still matches nothing.
+            #     That is the detector being broken, and it must be loud —
+            #     a silent green on an empty population is exactly how this
+            #     check spent its life verifying nothing at all (#3068).
+            #
+            # These two sentinels are tracked files that always carry the
+            # canonical snippet in a complete checkout, so their presence is
+            # what separates "no surface" from "broken pattern".
+            if [[ ${#SPM_POP[@]} -eq 0 ]] \
+               && [[ ! -f "llms.txt" ]] && [[ ! -f "docs/docs/quickstart-ios.md" ]]; then
+                check "SPM version refs" "SKIP" \
+                    "SPM doc surface not in checkout (lean/sparse clone)"
+            elif [[ ${#SPM_POP[@]} -eq 0 ]]; then
+                check "SPM version refs" "FAIL" \
+                    "discovery matched 0 tracked files — the pattern is broken, not the tree"
+            elif [[ ${#SPM_STALE[@]} -eq 0 ]]; then
+                check "SPM version refs match $GRADLE_VERSION" "PASS" \
+                    "${#SPM_POP[@]} tracked file(s) scanned"
+            else
+                # One entry PER LINE, never space-joined: `spm guide.md:1` is
+                # indistinguishable from two entries once a space is also the
+                # separator, and a report you have to squint at is how this
+                # gate's bare "15 file(s)" stayed unactionable for so long.
+                check "SPM version refs stale" "FAIL" \
+                    "$SPM_STALE_FILES of ${#SPM_POP[@]} tracked file(s), ${#SPM_STALE[@]} line(s)"
+                printf '    %s\n' "${SPM_STALE[@]}"
+            fi
         fi
     fi
 fi

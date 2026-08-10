@@ -889,6 +889,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
 
+      # Self-test first, same discipline as the pairs above. The gate has two
+      # passes pulling opposite ways — everything outside the allowlist fails,
+      # while the two WHOLESALE-allowlisted changelog surfaces must be free to
+      # NAME the retired mirror and must never ship a PIN to it. A gate that
+      # only says no blocks legitimate release notes; one that only says yes
+      # is prose. Mutation-tested on all three: dropping the second pass,
+      # dropping changelog.d/ from the allowlist, and widening the pin regex
+      # to `.*` each break the suite (#3068).
+      - name: Self-test check-sceneview-swift-urls.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-sceneview-swift-urls.sh
+
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the
       # monorepo root Package.swift. Any NEW reference to the dead mirror URL
