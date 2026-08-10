@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import { getPlatformSetup, listPlatforms, PLATFORM_IDS, type Platform, type SetupType } from "./platform-setup.js";
 
 describe("PLATFORM_IDS", () => {
@@ -59,6 +59,22 @@ describe("getPlatformSetup", () => {
     const result = getPlatformSetup("flutter", "3d");
     expect(result).toContain("pubspec.yaml");
     expect(result).toContain("sceneview_flutter");
+  });
+
+  // The pubspec caret range must name a version that ALREADY EXISTS on
+  // pub.dev. Until 2026-08-10 this guide interpolated LATEST_SCENEVIEW_RELEASE
+  // — the in-flight SDK version, which runs ahead of the plugin's own release
+  // train — and emitted `^4.26.0` while pub.dev's newest was 4.24.0: a line
+  // `flutter pub get` cannot resolve, handed out by the server developers ask
+  // how to install. Asserting "not the SDK version" is the half that actually
+  // catches a regression; asserting the pub version alone would still pass if
+  // the two happened to coincide at the moment someone reintroduced the bug.
+  it("pins the Flutter pubspec to the pub.dev release, never to VERSION_NAME", () => {
+    const result = getPlatformSetup("flutter", "3d");
+    expect(result).toContain(`flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}`);
+    if (LATEST_FLUTTER_PUB_RELEASE !== LATEST_SCENEVIEW_RELEASE) {
+      expect(result).not.toContain(`flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}`);
+    }
   });
 
   it("returns React Native setup with npm install", () => {

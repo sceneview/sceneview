@@ -44,6 +44,36 @@ if (!sdkMatch) {
 }
 const sdkVersion = sdkMatch[1].trim();
 
+// The Flutter plugin is a SEPARATE track and must NOT reuse `sdkVersion`.
+// `flutter_sceneview` is a caret range against pub.dev, so the version it
+// names has to ALREADY EXIST on that registry; VERSION_NAME is the in-flight
+// SDK version and routinely runs ahead of it. Pointing the generated setup
+// guide at VERSION_NAME therefore emits a `pubspec.yaml` line that
+// `flutter pub get` cannot resolve — measured on 2026-08-10, when this file
+// generated `^4.26.0` while pub.dev's newest was 4.24.0. The same mistake had
+// already been made (and fixed) in llms.txt; see the "lags pub.dev, not
+// bumped" row in .claude/scripts/sync-versions.sh.
+//
+// Source of truth is the plugin's OWN README, which is the coordinate a human
+// updates after a successful `flutter pub publish`. FATAL rather than falling
+// back to sdkVersion: a silent fallback is exactly how the wrong version got
+// shipped, and an MCP that emits an unresolvable dependency is worse than one
+// that fails to build.
+const flutterReadme = readFileSync(
+  resolve(mcpRoot, "..", "flutter", "sceneview_flutter", "README.md"),
+  "utf8",
+);
+const pubMatch = flutterReadme.match(/^\s*flutter_sceneview:\s*\^([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)/m);
+if (!pubMatch) {
+  console.error(
+    "[generate-version] FATAL: no `flutter_sceneview: ^X.Y.Z` line in " +
+      "flutter/sceneview_flutter/README.md — that line is the published " +
+      "pub.dev coordinate and must not be inferred from VERSION_NAME",
+  );
+  process.exit(1);
+}
+const flutterPubVersion = pubMatch[1];
+
 const outDir = resolve(mcpRoot, "src/generated");
 mkdirSync(outDir, { recursive: true });
 
@@ -56,14 +86,18 @@ const content =
   `// generators all report the actually-published versions instead of\n` +
   `// stale hardcoded constants. See #941.\n\n` +
   `export const PACKAGE_VERSION = "${version}" as const;\n` +
-  `export const LATEST_SCENEVIEW_RELEASE = "${sdkVersion}" as const;\n`;
+  `export const LATEST_SCENEVIEW_RELEASE = "${sdkVersion}" as const;\n` +
+  `// The pub.dev coordinate for \`flutter_sceneview\`, read from the plugin's\n` +
+  `// README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,\n` +
+  `// and a caret range against an unpublished version cannot be resolved.\n` +
+  `export const LATEST_FLUTTER_PUB_RELEASE = "${flutterPubVersion}" as const;\n`;
 
 writeFileSync(outPath, content, "utf8");
 // Log to stderr so we don't pollute stdout (npm pack --dry-run --json
 // pipes stdout through, and the package-files test parses that JSON).
 console.error(
   `[generate-version] wrote ${outPath} ` +
-    `(mcp=${version}, sdk=${sdkVersion})`,
+    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion})`,
 );
 
 // Keep the `android-ok` test fixture's SceneView pin in sync with the SDK

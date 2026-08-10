@@ -5,7 +5,7 @@
  * Consolidates Android, iOS, Web, Flutter, React Native, Desktop, and TV.
  */
 
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 export type Platform = "android" | "ios" | "web" | "flutter" | "react-native" | "desktop" | "tv";
 export type SetupType = "3d" | "ar";
@@ -440,7 +440,7 @@ SceneView Flutter uses **PlatformView** to embed native SceneView (Android: Fila
 \`\`\`yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}
 \`\`\`
 
 ### 2. Android Setup
@@ -501,7 +501,7 @@ const FLUTTER_AR = `## SceneView Flutter — AR Setup
 \`\`\`yaml
 # pubspec.yaml — published on pub.dev (the names sceneview / sceneview_flutter are unrelated third-party uploads)
 dependencies:
-  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}
 \`\`\`
 
 ### 2. Android Manifest
@@ -669,7 +669,7 @@ dependencies {
 \`\`\`kotlin
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 fun main() = application {
     Window(

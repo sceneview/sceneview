@@ -1,5 +1,4 @@
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_sceneview/flutter_sceneview.dart';
 
@@ -524,7 +523,14 @@ class _SampleModel {
 
   /// The path handed to `SceneViewController.loadModel` on the running
   /// platform. Returns null when this platform has no usable source.
-  String? get modelPath => Platform.isIOS || Platform.isMacOS ? usdzResource : url;
+  /// `defaultTargetPlatform` rather than `dart:io`'s `Platform`: the latter
+  /// makes this whole file uncompilable on Flutter web, and the demo has no
+  /// reason to be nailed to the two platforms it happens to ship on today.
+  String? get modelPath =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS
+          ? usdzResource
+          : url;
 
   bool get isLoadableOnThisPlatform => modelPath != null;
 }
