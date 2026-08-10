@@ -40,8 +40,8 @@ distribution/play-store/
         ├── feature-graphic.png            (1024×500)
         ├── icon-512.png                   (512×512)
         ├── phone-screenshot-{1..3}.png    (1080×2304)
-        ├── tablet7-screenshot-{1..2}.png  (1200×N, portrait)
-        └── tablet10-screenshot-{1..2}.png (1600×N, portrait)
+        ├── tablet7-screenshot-{1..3}.png  (1200×N, portrait)
+        └── tablet10-screenshot-{1..3}.png (1600×N, portrait)
 ```
 
 **All three classes are on set v2, but not with the same number of slots.**
