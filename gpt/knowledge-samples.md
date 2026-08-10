@@ -608,6 +608,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
 - `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
+- `ar-measure` — Measure. Tap two points, read the distance in cm.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
 - `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects behind them.
