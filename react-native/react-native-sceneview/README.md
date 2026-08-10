@@ -55,6 +55,14 @@ Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
 module's podspec deliberately does **not** declare it as a `s.dependency` —
 add it once in Xcode (*File ▸ Add Package Dependencies…*):
 
+> **Known gap ([#3072](https://github.com/sceneview/sceneview/issues/3072)).**
+> A root `SceneViewSwift.podspec` exists since the Flutter plugin moved to the
+> pod route — it is unpublished on the CocoaPods trunk, not missing. The SwiftPM
+> instruction below works when the module compiles with the host project's
+> packages in scope, as in `samples/react-native-demo`. If your app builds this
+> module inside `Pods.xcodeproj`, `import SceneViewSwift` will not resolve;
+> follow #3072 for the pod-based route.
+
 - URL: `https://github.com/sceneview/sceneview`
 - Version: `4.26.0` (or *Up to Next Major*)
 

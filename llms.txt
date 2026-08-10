@@ -7345,7 +7345,7 @@ Install:
 ```yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^4.26.0
+  flutter_sceneview: ^4.24.0
 ```
 
 Alternative — pin the repo via git (package name at tag v4.24.0 and earlier

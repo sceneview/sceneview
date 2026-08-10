@@ -88,8 +88,10 @@ void main() {
       // Assert a version is shown, not which one. Pinning the exact string made
       // this test lock in a stale value: it kept passing on 'v4.13.0' while the
       // SDK moved to 4.26.0, so the assertion defended the drift instead of
-      // catching it. The About screen is not covered by sync-versions.sh, so
-      // nothing else was checking it either.
+      // catching it. `sync-versions.sh` now checks the About screen too (both
+      // version slots, and flags them as INCONSISTENT when they disagree), so
+      // this assertion no longer has to be the only thing looking at it — it
+      // covers the runtime half: that a version renders at all.
       expect(find.textContaining(RegExp(r'^v\d+\.\d+\.\d+$')), findsOneWidget);
       // The About tab's "Bridge Coverage" section honestly labels which
       // features the bridge exposes — see issue #909.

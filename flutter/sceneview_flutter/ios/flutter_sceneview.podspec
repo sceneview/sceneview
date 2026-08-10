@@ -15,10 +15,15 @@ Pod::Spec.new do |s|
   # added to the host app's project — so SceneViewSwift has to arrive as a pod
   # too. It is NOT on the CocoaPods trunk, so the host app's Podfile must say
   # where it comes from. From a pub.dev install (no monorepo clone):
-  #   pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git',
-  #                         :tag => 'v4.26.0'
+  #   pod 'SceneViewSwift',
+  #       :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
   # From a checkout of this repo:
   #   pod 'SceneViewSwift', :path => '<repo-root>'
+  #
+  # Not `:git => …, :tag => 'vX.Y.Z'`: CocoaPods looks for the podspec at the
+  # root of the checked-out tag, and the root podspec landed after v4.26.0 was
+  # cut, so every tag that currently exists resolves to "Unable to find a
+  # specification". Switch to a tagged coordinate once a release carries it.
   #
   # The version is pinned rather than left open. An unversioned dependency on a
   # name nobody has reserved on the trunk is a dependency-confusion foothold:

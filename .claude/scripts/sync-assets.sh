@@ -169,13 +169,19 @@ refresh_existing() {
     local mode="$4"
 
     [ -d "$dst_dir" ] || return 0
+    # Save and restore rather than clear: `shopt -u nullglob` on the way out
+    # imposes this function's preference on whatever called it. Harmless today
+    # because nothing here sets it, which is exactly when the habit is worth
+    # keeping — the caller that does set it would fail somewhere else entirely.
+    local had_nullglob=0
+    shopt -q nullglob && had_nullglob=1
     shopt -s nullglob
     local found=0
     for dst in "$dst_dir"/*."$ext"; do
         found=1
         check_or_fix "$src_dir/$(basename "$dst")" "$dst" "$mode"
     done
-    shopt -u nullglob
+    [ "$had_nullglob" -eq 1 ] || shopt -u nullglob
     [ "$found" -eq 1 ] || echo -e "  (no .$ext bundled yet — nothing to refresh)"
 }
 

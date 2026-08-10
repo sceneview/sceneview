@@ -15,6 +15,35 @@ dependencies:
   flutter_sceneview: ^4.24.0
 ```
 
+### iOS setup — one required Podfile line
+
+Android needs nothing beyond `minSdkVersion 24`. iOS needs two edits, and
+skipping the second one fails the build rather than degrading quietly.
+
+`SceneViewSwift` — the RealityKit renderer the bridge wraps — is **not published
+to the CocoaPods trunk**, so your `Podfile` must say where it comes from.
+Without that line, `pod install` stops with
+`Unable to find a specification for 'SceneViewSwift'`.
+
+```ruby
+# ios/Podfile
+platform :ios, '18.0'   # SceneViewSwift's Package.swift requires iOS 18.0
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+
+Adding `SceneViewSwift` as a **Swift package** in Xcode does not work: the
+bridge is itself a pod and compiles inside the generated `Pods.xcodeproj`, which
+cannot see a package added to `Runner.xcodeproj`. See the
+[plugin README](https://github.com/sceneview/sceneview/blob/main/flutter/sceneview_flutter/README.md#ios-setup)
+for the full rationale and for the `:path =>` form used when working from a
+clone of the monorepo. `samples/flutter-demo/ios/Podfile` is a working reference.
+
 ## Usage
 
 ### 3D Scene

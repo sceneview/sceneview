@@ -95,11 +95,21 @@ Installing the plugin from pub.dev (no clone of the SDK repo):
 ```ruby
 target 'Runner' do
   use_frameworks!
-  pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git',
-                        :tag => 'v4.26.0'
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 ```
+
+The `:podspec =>` form is deliberate, and the obvious `:git => …, :tag => 'vX.Y.Z'`
+alternative does **not** work yet. CocoaPods resolves `:git` by looking for
+`SceneViewSwift.podspec` at the root of the checked-out tag, and the podspec was
+added after `v4.26.0` was cut — so a tagged coordinate fails with exactly the
+`Unable to find a specification` error this section exists to prevent, until the
+first release that carries the file. `:podspec =>` reads the spec from `main`
+while the *sources* still come from the tag the spec pins (`:tag => "v#{s.version}"`),
+so the build stays reproducible. Once a release ships with the podspec at the
+root, `:git => …, :tag => 'vX.Y.Z'` becomes the better pin.
 
 Working from a checkout of the SDK monorepo instead — point at the **repo root**,
 which is where `SceneViewSwift.podspec` lives:
@@ -243,7 +253,12 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 - Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
 - AR tap-to-place is not yet implemented
 - `onModelLoaded` is not bridged; a model that fails to load is logged natively
-  (`[flutter_sceneview] Cannot load model …`) and not reported to Dart
+  and not reported to Dart. The prefix to grep for differs by path, because the
+  two paths report from different places: the 3D viewer logs
+  `[SceneViewSwift] SceneViewerHostView failed to load model '<path>': <error>`,
+  while AR logs `[flutter_sceneview] Cannot load AR model '<path>': <reason>`
+  for a format RealityKit cannot parse, and
+  `[flutter_sceneview] Failed to load AR model '<path>': <error>` for anything else
 - Only Android and iOS are supported; other platforms show a fallback message
 
 ### `onTap` does not fire on iOS (known gap, measured 2026-08-07)
@@ -286,7 +301,7 @@ simulator: `samples/ios-demo`'s Model Viewer, temporarily given an
 through the same `ModelNode.load`, well after the first frame. So neither the
 loader nor `.usdz` content is what breaks the bridge.
 
-Two differences remain, and no measurement so far has varied only one:
+Three differences remain, and no measurement so far has varied only one:
 
 1. **Host** — a Flutter platform view versus plain SwiftUI.
 2. **How the entity reaches the scene** — the native demo re-runs `SceneView`'s

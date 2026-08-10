@@ -10,10 +10,14 @@ name: Bridge iOS Compile
 # class of regression fail the PR.
 #
 # Approach — a `swiftc -typecheck`, not a full `flutter build ios`:
-#   * The Flutter plugin consumes `SceneViewSwift` via SPM, which CocoaPods
-#     does not natively integrate — a full `flutter build ios` would need the
-#     example app's `ios/` platform folder scaffolded AND the SPM dependency
-#     wired into a generated `.xcodeproj`. That is heavy and flaky.
+#   * A full `flutter build ios` would need the example app's `ios/` platform
+#     folder scaffolded AND a `pod install` resolving `SceneViewSwift` from the
+#     repo root. That is heavy and flaky. (This bullet used to say the plugin
+#     consumes `SceneViewSwift` via SPM "which CocoaPods does not natively
+#     integrate" — that was the rationale until #3048: the bridge compiles
+#     inside `Pods.xcodeproj`, which cannot see a Swift package added to the
+#     host app, so the plugin now depends on a root-level `SceneViewSwift.podspec`.
+#     The React Native bridge has not made that move yet.)
 #   * A type-check builds `SceneViewSwift` for the iOS Simulator, then
 #     `swiftc -typecheck`s the plugin's `Classes/*.swift` against the built
 #     `.swiftmodule` plus the `Flutter.framework` that ships with the Flutter

@@ -73,5 +73,5 @@ flutter test integration_test/screenshot_test.dart
 
 - Flutter 3.10+
 - Android SDK 24+ (for Android)
-- iOS 17+ (for iOS)
+- iOS 18+ (for iOS — `SceneViewSwift`'s `Package.swift` requires iOS 18.0)
 - `http` package (for Sketchfab search)

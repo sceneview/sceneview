@@ -12,14 +12,18 @@
   18.0, so a host app that believed it got RealityKit availability errors at link time
   instead of a clear version error. The podspec now also depends on `SceneViewSwift`
   (pinned `~> 4.26`), which is **not** on the CocoaPods trunk: host apps must add a
-  `pod 'SceneViewSwift', :git => …, :tag => 'vX.Y.Z'` line, documented in the plugin
-  README. The podspec sits at the repo root precisely so that `:git` form resolves
-  without a monorepo clone.
+  `pod 'SceneViewSwift', :podspec => '<raw URL of SceneViewSwift.podspec>'` line,
+  documented in the plugin README. Not the `:git => …, :tag =>` form: CocoaPods reads
+  the podspec from the root of the checked-out tag, and the root podspec landed after
+  v4.26.0 was cut, so every tag that exists today resolves to "Unable to find a
+  specification". The `:podspec =>` URL reads the spec from `main` while the sources
+  still come from the tag the spec names.
 - **React Native stays on the SwiftPM route for now**, deliberately. The same pod
   treatment would need `samples/react-native-demo`'s `Podfile` changed in the same
   breath or `rn-ios-compile.yml`'s real `pod install` turns red, which is a larger
-  change than this one. Tracked separately; the RN podspec's comment still describes
-  the old rationale.
+  change than this one. Tracked in
+  [#3072](https://github.com/sceneview/sceneview/issues/3072); the RN podspec and
+  README now say so where they claim no CocoaPods spec exists.
 - **Flutter demo: iOS loads a model instead of an empty viewport.** The viewer passed
   a remote `.glb` URL on every platform, but RealityKit reads only `.usdz`/`.reality`
   and `ModelNode.load(_:)` resolves a bundle resource, not a URL — so every iOS load
