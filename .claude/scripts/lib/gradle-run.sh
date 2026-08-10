@@ -107,10 +107,72 @@ error=24, Too many open files => the host hit its open-file limit
 Could not (GET|HEAD) ' => a dependency repository could not be reached
 Received fatal alert: => a TLS error while contacting a repository
 Could not open .* (generic class|proj\.dir) cache => the Gradle cache is corrupt (rm -rf the module build/ dirs)
-The supplied javaHome seems to be invalid => org\.gradle\.java\.home points at an invalid JDK
 PATTERNS
 
     return 0
+}
+
+# ── Host setup failures ─────────────────────────────────────────────────────
+# A THIRD class, distinct from both "infrastructure" and "the code is broken":
+# the toolchain the build needs is not configured on this machine. Like an
+# infra failure it means the gate never judged the code, so no check may claim
+# a verdict — but unlike daemon contention, re-running changes nothing. There
+# is an exact fix, and the caller must print it.
+#
+# Measured 2026-08-09 (#3065): a fresh worktree has no `local.properties`
+# (gitignored, .gitignore:66), so every Gradle step died with `SDK location not
+# found` — and pre-push-check.sh announced "public-API surface drifted" and
+# prescribed `./gradlew apiDump`, a command that would have failed the same way
+# or committed a bogus .api diff. Adding one `sdk.dir=` line flipped the SAME
+# commit to 14/14 green.
+#
+# Same discipline as the table above: narrow, quoted from real AGP/Gradle
+# output. Row shape is `<extended-regex> => <reason> => <fix>`; the fix is
+# printed with `printf %b`, so `\n` breaks a line. Single quotes on the
+# here-doc are load-bearing — `$HOME` must reach the user's terminal literally,
+# as part of a command they can paste.
+_gradle_setup_row() {
+    local log="$1" line pat
+    [ -f "$log" ] || return 0
+    while read -r line; do
+        [ -n "$line" ] || continue
+        pat="${line%% => *}"
+        if grep -qE "$pat" "$log" 2>/dev/null; then
+            echo "$line"
+            return 0
+        fi
+    done <<'PATTERNS'
+SDK location not found => the Android SDK location is not configured => Point the build at your Android SDK, then re-run this gate:\n        echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties\n        (or: export ANDROID_HOME="$HOME/Library/Android/sdk")\n      local.properties is gitignored, so EVERY new worktree needs its own copy.
+(License for package .* not accepted|Failed to install the following (Android SDK packages|SDK components)) => a required Android SDK package is missing, or its licence was never accepted => Install it and accept the licences, then re-run:\n        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+Failed to find (target with hash string|Build Tools revision) => the Android platform / build-tools this project compiles against are not installed => Install the version quoted above with sdkmanager, then re-run:\n        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-<N>" "build-tools;<V>"
+(No version of NDK matched the requested version|NDK not configured) => the NDK version this project requests is not installed => Install the version quoted above, then re-run:\n        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;<version>"
+(The supplied javaHome seems to be invalid|Value '.*' given for org\.gradle\.java\.home) => the JDK this build points at is not usable => Fix org.gradle.java.home in gradle.properties (or JAVA_HOME) so it points at an installed JDK.
+PATTERNS
+
+    return 0
+}
+
+# Echo a short reason when the failure is a HOST SETUP problem, nothing
+# otherwise. Always returns 0 (assignment-safe under `set -e`).
+#
+#   gradle_setup_reason <logfile>
+gradle_setup_reason() {
+    local row
+    row="$(_gradle_setup_row "$1")"
+    [ -n "$row" ] || return 0
+    row="${row#* => }"
+    echo "${row%% => *}"
+}
+
+# Echo the actionable fix for that setup problem, nothing otherwise.
+#
+#   gradle_setup_fix <logfile>
+gradle_setup_fix() {
+    local row
+    row="$(_gradle_setup_row "$1")"
+    [ -n "$row" ] || return 0
+    row="${row#* => }"
+    printf '%b\n' "${row#* => }"
 }
 
 # Print the tail of a Gradle log, indented, skipping the boilerplate footer
@@ -132,6 +194,123 @@ gradle_log_tail() {
     # errexit. A helper that only prints must never be able to end its caller.
     grep -vE "^(\* )?(Try:|> Run with|Get more help at|Deprecated Gradle features|You can use|See https://docs\.gradle\.org|BUILD FAILED in|[[:space:]]*$)" "$log" \
         | tail -n "$lines" | sed 's/^/      /' || true
+    return 0
+}
+
+# ── Reporting ───────────────────────────────────────────────────────────────
+# Report ONE failed Gradle step, naming only the cause the log actually
+# supports. Lives here, next to the classifier, so a test can drive the real
+# branching with real Gradle logs instead of a re-implementation of it.
+#
+#   gradle_report_failure <label> <log> <code> <real-diagnosis> \
+#                         [real-remedy] [never-ran-note] [proof-regex]
+#
+# Four outcomes, in this order:
+#   1. host setup    → ⚠, the exact fix, INCOMPLETE++ (re-running changes nothing)
+#   2. infrastructure→ ⚠, INCOMPLETE++ (re-running may well work)
+#   3. no proof      → ⚠, INCOMPLETE++ (Gradle died before this check compared
+#                      anything — see <proof-regex> below)
+#   4. real failure  → ✗ <real-diagnosis> [+ <real-remedy>], ERRORS++
+#
+# <never-ran-note> is printed in cases 1-3 only: it is where a caller says what
+# was NOT established (e.g. "the public API was never compared"), so that an
+# unrun check can never be read as a passed one.
+#
+# <proof-regex>, when given, is the POSITIVE cue the tool prints when it truly
+# reached its verdict. Without it, "real failure" degrades to "anything Gradle
+# did not fail for a reason we recognise" — and every task that dies UPSTREAM
+# of the check inherits the check's diagnosis. Measured 2026-08-09 on this host
+# while fixing #3065: `apiCheck` died in `:sceneview:apiBuild`
+# (`kotlinx.validation.AbiBuildWorker` → `kotlin/metadata/jvm/JvmMetadataUtil`,
+# a poisoned instrumented-transform cache — CI was green throughout), so the
+# ABI was never compared, and both the old code AND the first cut of this fix
+# still called it "public-API surface drifted".
+#
+# Mutates the caller's ERRORS / INCOMPLETE counters, and records the first
+# setup fix in SETUP_FIX so the caller's summary can repeat it.
+gradle_report_failure() {
+    local label="$1" log="$2" code="$3" diag="$4" remedy="${5:-}" note="${6:-}" proof="${7:-}"
+    local red="${RED:-$'\033[0;31m'}" yellow="${YELLOW:-$'\033[1;33m'}" nc="${NC:-$'\033[0m'}"
+    local reason fix
+
+    reason="$(gradle_setup_reason "$log")"
+    if [ -n "$reason" ]; then
+        echo -e "${yellow}  ⚠ $label did NOT run — $reason${nc}"
+        [ -n "$note" ] && echo -e "${yellow}      $note${nc}"
+        gradle_log_tail "$log" 12
+        fix="$(gradle_setup_fix "$log")"
+        echo -e "${yellow}      Fix: $fix${nc}"
+        [ -n "${SETUP_FIX:-}" ] || SETUP_FIX="$fix"
+        echo -e "      Full log: $log"
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+        return 0
+    fi
+
+    reason="$(gradle_infra_reason "$log" "$code")"
+    if [ -n "$reason" ]; then
+        echo -e "${yellow}  ⚠ $label did not run to a verdict — Gradle infrastructure failure: $reason${nc}"
+        [ -n "$note" ] && echo -e "${yellow}      $note${nc}"
+        gradle_log_tail "$log" 12
+        echo -e "      Full log: $log"
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+        return 0
+    fi
+
+    if [ -n "$proof" ] && ! grep -qE "$proof" "$log" 2>/dev/null; then
+        echo -e "${yellow}  ⚠ $label did not run to a verdict — Gradle failed before $label compared anything${nc}"
+        [ -n "$note" ] && echo -e "${yellow}      $note${nc}"
+        gradle_log_tail "$log" 20
+        echo -e "      Full log: $log"
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+        return 0
+    fi
+
+    echo -e "${red}  ✗ $diag${nc}"
+    gradle_log_tail "$log" 20
+    [ -n "$remedy" ] && echo -e "      $remedy"
+    echo -e "      Full log: $log"
+    ERRORS=$((${ERRORS:-0} + 1))
+    return 0
+}
+
+# Report a failed NON-Gradle checker, on the same rule as above: a checker
+# that could not run has not found anything, so it may not be given a finding's
+# name. Same counters, same contract.
+#
+#   script_report_failure <label> <log> <code> <real-diagnosis> <proof-regex> [remedy]
+#
+# <proof-regex> is the POSITIVE cue the checker prints when it truly reached a
+# verdict (its own "✗ …" line). Requiring it is what separates "found a
+# problem" from "died on the way there": the repo's checkers all run under
+# `set -euo pipefail` (or `sys.exit(main())`), where an unexpected crash or a
+# Python traceback also exits 1 — so the exit code alone cannot carry the
+# distinction. Exit >= 2 is their documented "cannot run" code (bad args,
+# missing python3, wrong directory); 126/127 is the shell failing to execute
+# them at all.
+# Each `tail | sed` below carries the same `|| true` as gradle_log_tail, for
+# the same measured reason: `tail` on an absent log exits 1, and under
+# `set -euo pipefail` — which release-checklist.sh uses — pipefail promotes
+# that to the pipeline and errexit kills the caller AT THE PIPELINE, mid-report.
+script_report_failure() {
+    local label="$1" log="$2" code="$3" diag="$4" proof="$5" remedy="${6:-}"
+    local red="${RED:-$'\033[0;31m'}" yellow="${YELLOW:-$'\033[1;33m'}" nc="${NC:-$'\033[0m'}"
+    if [ "$code" -ge 2 ]; then
+        case "$code" in
+            126|127) echo -e "${yellow}  ⚠ $label NOT checked — the checker could not be executed (exit $code)${nc}" ;;
+            *)       echo -e "${yellow}  ⚠ $label NOT checked — the checker itself could not run (exit $code)${nc}" ;;
+        esac
+        tail -20 "$log" 2>/dev/null | sed 's/^/      /' || true
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+    elif ! grep -qE "$proof" "$log" 2>/dev/null; then
+        echo -e "${yellow}  ⚠ $label NOT checked — the checker exited $code without reaching its verdict${nc}"
+        tail -20 "$log" 2>/dev/null | sed 's/^/      /' || true
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+    else
+        echo -e "${red}  ✗ $diag${nc}"
+        tail -30 "$log" 2>/dev/null | sed 's/^/      /' || true
+        [ -n "$remedy" ] && echo -e "      $remedy"
+        ERRORS=$((${ERRORS:-0} + 1))
+    fi
     return 0
 }
 

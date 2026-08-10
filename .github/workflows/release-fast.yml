@@ -68,6 +68,13 @@ jobs:
           [ "$CURRENT" = "$V" ] && { echo "::error::VERSION_NAME already $V"; exit 1; }
           echo "Releasing $CURRENT -> $V"
 
+      # A patch tag must not carry a breaking change (#3037). `collate-changelog.sh`
+      # runs this same guard and cannot be bypassed, but it runs 40 minutes from
+      # now — after the web QA leg and the bump commit. Failing here instead costs
+      # seconds and points at the fragment, not at a half-built release branch.
+      - name: Breaking-change / patch-bump guard
+        run: bash .claude/scripts/check-breaking-change-bump.sh "$RELEASE_VERSION"
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22

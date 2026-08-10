@@ -290,7 +290,15 @@ jobs:
           # red. This detection only improves the error message; the grader's
           # fail-closed REVIEW_INCOMPLETE remains the actual gate either way, so
           # degrading to "assume unmodified" here cannot open a green path.
-          git fetch origin "$BASE" --depth=1 --quiet 2>/dev/null || true
+          # ⛔ NO `--depth` ON ANY FETCH IN THIS JOB. This line used to carry
+          # `--depth=1`, and a depth-limited fetch grafts a `.git/shallow` onto
+          # the `fetch-depth: 0` checkout above: `origin/main...HEAD` then stops
+          # resolving, and the diff step downstream loses the merge base it
+          # needs to know what the PR changed. Measured on run 31370116851 —
+          # the reviewers read a two-dot diff and filed two blocking errors
+          # against files the PR never touched. `test-pr-diff.sh` asserts that
+          # no fetch in this file carries the flag again.
+          git fetch origin "$BASE" --quiet 2>/dev/null || true
           if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
             echo "::warning title=Base ref unresolved::Could not resolve origin/$BASE to compare this workflow against; proceeding. If the action self-skips, the grader will still block with REVIEW_INCOMPLETE."
             echo "self_modified=false" >> "$GITHUB_OUTPUT"
@@ -418,36 +426,31 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -uo pipefail
-          BASE="${GITHUB_BASE_REF:-${DEFAULT_BRANCH:-main}}"
-          git fetch origin "$BASE" --quiet 2>/dev/null || true
-          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
-            echo "::error title=Base ref unresolved::Could not resolve origin/${BASE}, so the PR diff cannot be computed. No review is possible — this is a CI problem, not a finding about the PR."
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          BASE="${GITHUB_BASE_REF:-$DEFAULT_BRANCH}"
+          # ⛔ SAME PIN AS THE GRADER, for the same reason one layer earlier:
+          # the script that decides WHAT the judges read must not come from the
+          # code being judged. `pr-diff.sh` is fetched from the default branch,
+          # never read out of the checkout — a PR that edits it would otherwise
+          # be able to hand four reviewers a diff of its own choosing, including
+          # one that omits the edit.
+          git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null || true
+          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/pr-diff.sh" > "$RUNNER_TEMP/pr-diff.sh" 2>/dev/null; then
+            echo "::error title=Diff script unavailable::Could not read .claude/scripts/pr-diff.sh from origin/${DEFAULT_BRANCH}. Refusing to compute the reviewers' diff with whatever copy the PR happens to carry."
             exit 1
           fi
-          # PIN THE BASE COMMIT, for the clean-tree assertion at the end of the
-          # job. The action restores the eight config paths from the base branch
-          # as it stands NOW; resolving `origin/$BASE` again after a ~6-minute
-          # fan-out would resolve a MOVED ref, and any PR merged to the base in
-          # that window that touches those paths would make a correctly-restored
-          # file differ from it — a false "contaminated" red, of exactly the kind
-          # this workflow keeps relearning. This repo peaks at 30 PRs a day, so
-          # the window is not theoretical.
-          echo "base_sha=$(git rev-parse "origin/$BASE")" >> "$GITHUB_OUTPUT"
-          # Three-dot is what "the PR changed" means. It needs a merge base, and
-          # the fetches in this job are depth-limited, so fall back to the
-          # two-dot form rather than handing the reviewers a truncated file.
-          if ! git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/pr.diff" 2>/dev/null; then
-            echo "::warning title=No merge base::origin/${BASE}...HEAD did not resolve; falling back to a two-dot diff, which also shows anything the base gained since."
-            git diff "origin/$BASE" HEAD > "$RUNNER_TEMP/pr.diff"
-          fi
-          # An empty diff is the FALSE GREEN this workflow's header warns about:
-          # four reviewers read nothing, find nothing, and the PR collects a
-          # clean verdict it never earned. Refuse loudly instead.
-          if [ ! -s "$RUNNER_TEMP/pr.diff" ]; then
-            echo "::error title=Nothing to review::The diff against origin/${BASE} is empty, and a review of an empty diff would report a PASS the PR never earned. If this is a dispatch on an already-merged PR, that is expected — read the merge commit instead."
-            exit 1
-          fi
-          echo "Diff for the reviewers: $(wc -l < "$RUNNER_TEMP/pr.diff") lines, $(wc -c < "$RUNNER_TEMP/pr.diff") bytes."
+          # It writes `base_sha` to $GITHUB_OUTPUT: the base commit is PINNED
+          # here for the clean-tree assertion at the end of the job. The action
+          # restores the eight config paths from the base branch as it stands
+          # NOW; re-resolving `origin/$BASE` after a ~6-minute fan-out would
+          # follow a MOVED ref, and any PR merged to the base in that window
+          # that touches those paths would make a correctly-restored file read
+          # as contamination. This repo peaks at 30 PRs a day — not theoretical.
+          #
+          # Every other rule the diff must keep — three-dot or nothing, repair a
+          # shallow graft instead of falling back to two-dot, refuse an empty
+          # diff — lives in that script, next to the run that proved each one.
+          bash "$RUNNER_TEMP/pr-diff.sh" --base "$BASE" --out "$RUNNER_TEMP/pr.diff"
 
       # ⛔ THE DISPATCH PATH DOES NOT GET THE ACTION'S PR-HEAD HARDENING. WE DO IT HERE.
       #   `claude-code-action` only calls `restoreConfigFromBase()` under
@@ -893,8 +896,8 @@ jobs:
           # contamination. Every sibling fetch in this file is guarded the same
           # way. Nothing fails open: `git show` and the script's own
           # `rev-parse --verify` on the base are what actually gate.
-          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null || true
-          git fetch origin "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}" --depth=1 --quiet 2>/dev/null || true
+          git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null || true
+          git fetch origin "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}" --quiet 2>/dev/null || true
           if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/assert-review-tree-clean.sh" \
                  > "$RUNNER_TEMP/assert-review-tree-clean.sh" 2>/dev/null; then
             echo "::error title=Clean-tree assertion could not run::Could not read .claude/scripts/assert-review-tree-clean.sh from origin/${DEFAULT_BRANCH}. Refusing to assert with whatever copy the PR happens to carry — absent is not clean."
@@ -1076,7 +1079,7 @@ jobs:
           #   NOT cover this file; this pin is what closes that gap.
           DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
           GRADER="$RUNNER_TEMP/grade-pr-review.sh"
-          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null
+          git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null
           if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/grade-pr-review.sh" > "$GRADER" 2>/dev/null; then
             echo "::error title=Grader unavailable::Could not read .claude/scripts/grade-pr-review.sh from origin/$DEFAULT_BRANCH. Refusing to grade with whatever copy the PR happens to carry."
             echo "gate_rc=1" >> "$GITHUB_OUTPUT"

@@ -70,8 +70,12 @@ set -e
 
 if [ $rc -ne 0 ]; then
     # Further check: output must mention MISS cube.glb. Strip ANSI color
-    # codes first — the script prints with color even to pipes.
-    if sed 's/\x1b\[[0-9;]*m//g' /tmp/validate-test-2.log | grep -q "MISS cube.glb"; then
+    # codes first — the script prints with color even to pipes. ESC comes from
+    # printf rather than the `\x1b` escape, which is a GNU extension outside
+    # POSIX: macOS's BSD sed accepts it today, but on a sed that does not, the
+    # grep below would miss a message that IS there and the test would fail
+    # for a reason nothing in its output shows.
+    if sed "s/$(printf '\033')\[[0-9;]*m//g" /tmp/validate-test-2.log | grep -q "MISS cube.glb"; then
         pass "fixture with broken ref exits $rc AND reports MISS cube.glb"
     else
         fail "fixture with broken ref exits $rc but did not mention cube.glb:"

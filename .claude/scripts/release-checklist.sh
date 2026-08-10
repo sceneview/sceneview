@@ -24,6 +24,16 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 TARGET_VERSION="${1:-$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)}"
+# Most checks below only compare files against each other, so defaulting to the
+# CURRENT version is right for them. The breaking-change guard is the exception:
+# it judges a BUMP, and the current version is not the tag about to be pushed.
+# §6 uses this to report "not measured" instead of a PASS nobody asked for.
+# An `a && b && c` chain would be the obvious one-liner and would also END THE
+# SCRIPT under `set -e` whenever no argument is given — the common case.
+TARGET_EXPLICIT=false
+if [ $# -ge 1 ] && [ -n "${1:-}" ]; then
+    TARGET_EXPLICIT=true
+fi
 BLOCKERS=0
 WARNINGS=0
 
@@ -142,6 +152,56 @@ if [ -d "changelog.d" ]; then
     PENDING=$(find changelog.d -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l | tr -d ' ')
     [ "$PENDING" -eq 0 ] && check "changelog.d/ fragments collated" "PASS" "" || check "changelog.d/ fragments collated" "FAIL" "$PENDING pending — run collate-changelog.sh $TARGET_VERSION"
 fi
+
+# A breaking change must not ship as a PATCH (#3037). release.yml's publish-rn
+# derives the npm version from the git tag, so a patch tag publishes a
+# source-breaking change to a version class every caret range takes silently.
+#
+# The load-bearing copy of this guard lives inside collate-changelog.sh, which
+# cannot be skipped (the check above FAILs while fragments are pending) and runs
+# while the `<!-- breaking -->` markers still exist. Running it again here covers
+# the manual path — a checklist run BEFORE collating — and is a no-op once the
+# fragments are gone.
+BREAKING_GUARD="$REPO_ROOT/.claude/scripts/check-breaking-change-bump.sh"
+# `-f`, not `-x`: the guard is run with `bash "$BREAKING_GUARD"`, which never
+# consults the executable bit. Testing for `-x` would report a present, runnable
+# file as "missing" — a guard failing OPEN in the one direction that matters —
+# after a checkout on a no-exec filesystem or a perms-dropping copy.
+# collate-changelog.sh tests the same file the same way.
+if [ -f "$BREAKING_GUARD" ]; then
+    # Captured in a variable, not a temp file: the output is a few lines, and a
+    # `mktemp || /tmp/fixed-name-$$` fallback hands an attacker on a shared host
+    # a predictable path to pre-place a symlink at.
+    set +e
+    BG_OUT="$(bash "$BREAKING_GUARD" "$TARGET_VERSION" 2>&1)"
+    BG_RC=$?
+    set -e
+    case "$BG_RC" in
+        0) if [ "$TARGET_EXPLICIT" = true ]; then
+               # ESC via printf, not `\x1b`: the escape is a GNU extension and
+               # is not in POSIX. BSD sed on macOS 15 does honour it (measured:
+               # /usr/bin/sed strips the codes either way), so this is not a
+               # bug being fixed — it is a dependency on undocumented
+               # behaviour being removed.
+               check "breaking change vs bump level" "PASS" "$(printf '%s\n' "$BG_OUT" | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")"
+           else
+               # No target given, so TARGET_VERSION is the version already shipped.
+               # The guard then compares it against the release BEFORE it and
+               # reports a minor bump — true, and about the wrong pair of versions.
+               # Reporting that as PASS would answer a question nobody asked.
+               check "breaking change vs bump level" "WARN" \
+                   "not measured — no target version given, so the guard judged v$TARGET_VERSION (already released) instead of the tag you are about to push. Re-run: release-checklist.sh <target-version>"
+           fi ;;
+        1) check "breaking change vs bump level" "FAIL" "a pending fragment is breaking — $TARGET_VERSION is a patch bump (see below)"
+           printf '%s\n' "$BG_OUT" | sed 's/^/      /' ;;
+        *) check "breaking change vs bump level" "FAIL" "guard errored (exit $BG_RC) — a malformed fragment blocks the release rather than shipping unread"
+           printf '%s\n' "$BG_OUT" | sed 's/^/      /' ;;
+    esac
+else
+    # Not a WARN: this is the one check whose absence the release cannot detect
+    # any other way, and "unchecked" must never read as "clean" (#2988).
+    check "breaking change vs bump level" "FAIL" "check-breaking-change-bump.sh missing — bump level not verified"
+fi
 echo ""
 
 # ─── 7. Git state ───────────────────────────────────────────────────────
@@ -179,8 +239,16 @@ if [ -f "gradlew" ]; then
     if gradle_run "$ASSEMBLE_LOG" assembleDebug; then
         check "Android assembleDebug" "PASS" ""
     else
-        ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" $?)"
-        if [ -n "$ASSEMBLE_REASON" ]; then
+        ASSEMBLE_CODE=$?
+        # Host setup FIRST, same order as pre-push-check.sh (#3065): a machine
+        # with no local.properties dies before Gradle judges anything, and
+        # calling that "infrastructure" invites a re-run that cannot help.
+        ASSEMBLE_SETUP="$(gradle_setup_reason "$ASSEMBLE_LOG")"
+        ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" "$ASSEMBLE_CODE")"
+        if [ -n "$ASSEMBLE_SETUP" ]; then
+            check "Android assembleDebug" "FAIL" "did NOT run — $ASSEMBLE_SETUP (log: $ASSEMBLE_LOG)"
+            printf '      Fix: %s\n' "$(gradle_setup_fix "$ASSEMBLE_LOG")"
+        elif [ -n "$ASSEMBLE_REASON" ]; then
             check "Android assembleDebug" "FAIL" "did not run to a verdict — Gradle infrastructure failure: $ASSEMBLE_REASON (re-run; log: $ASSEMBLE_LOG)"
         else
             check "Android assembleDebug" "FAIL" "Build failed (log: $ASSEMBLE_LOG)"

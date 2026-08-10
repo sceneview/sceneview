@@ -148,8 +148,8 @@ where pixel precision has real ROI — never for the app chrome itself.
 
 ## When writing any SceneView code
 
-- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.26.0`)
-- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.26.0`)
+- Use `SceneView { }` for 3D-only scenes (`io.github.sceneview:sceneview:4.27.0`)
+- Use `ARSceneView { }` for augmented reality (`io.github.sceneview:arsceneview:4.27.0`)
 - Declare nodes as composables inside the trailing content block — not imperatively
 - Load models with `rememberModelInstance(modelLoader, "models/file.glb")` — returns `null`
   while loading, always handle the null case
@@ -212,7 +212,10 @@ Tests/Docs). Distinct filenames mean parallel PRs never conflict on the
 changelog. At release time `bash .claude/scripts/collate-changelog.sh X.Y.Z`
 collates every fragment into a new `## vX.Y.Z` section and deletes them. Never
 hand-edit the `## Unreleased` anchor — it is kept empty for backward-compat.
-See [`changelog.d/README.md`](changelog.d/README.md).
+A fragment's **HTML comments are stripped** — that is where maintainer-only
+notes go — and a fragment declaring a breaking change (`<!-- breaking -->`, or
+saying so in its prose) makes the release tooling **refuse a patch-level tag**;
+breaking ships MINOR. See [`changelog.d/README.md`](changelog.d/README.md).
 
 ## Session continuity
 

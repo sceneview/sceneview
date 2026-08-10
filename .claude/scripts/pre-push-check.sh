@@ -18,6 +18,10 @@ ERRORS=0
 # a report was never produced, …). These are neither ✓ nor ✗ — but a gate that
 # did not run is not a gate that passed, so they still block the push.
 INCOMPLETE=0
+# Set by gradle_report_failure when the host toolchain is not configured, so
+# the final summary repeats the fix instead of the (useless here) "re-run when
+# the daemon is free" advice. See #3065.
+SETUP_FIX=""
 
 # Gradle output is KEPT, never sent to /dev/null: the swallowed stderr is
 # exactly what would have shown that a "screenshot regression" was really a
@@ -33,25 +37,20 @@ LOG_DIR="${LOG_DIR%/}/sceneview-pre-push"
 mkdir -p "$LOG_DIR"
 chmod 700 "$LOG_DIR" 2>/dev/null || true
 
-# Report a failed Gradle step, distinguishing an ENVIRONMENT failure from a
-# real one. The specific diagnosis ($4) is only pronounced when the log does
-# not carry an infrastructure signature.
-#   gate_gradle_failure <label> <logfile> <exit-code> <real-diagnosis>
+# Report a failed Gradle step, distinguishing a HOST SETUP failure and an
+# ENVIRONMENT failure from a real one. The specific diagnosis ($4) is only
+# pronounced when the log carries neither signature. See
+# lib/gradle-run.sh → gradle_report_failure.
+#   gate_gradle_failure <label> <logfile> <exit-code> <real-diagnosis> [note]
 gate_gradle_failure() {
-    local label="$1" log="$2" code="$3" diag="$4"
-    local reason
-    reason="$(gradle_infra_reason "$log" "$code")"
-    if [ -n "$reason" ]; then
-        echo -e "${YELLOW}  ⚠ $label did not run to a verdict — Gradle infrastructure failure: $reason${NC}"
-        gradle_log_tail "$log" 12
-        echo -e "      Full log: $log"
-        INCOMPLETE=$((INCOMPLETE + 1))
-    else
-        echo -e "${RED}  ✗ $diag${NC}"
-        gradle_log_tail "$log" 20
-        echo -e "      Full log: $log"
-        ERRORS=$((ERRORS + 1))
-    fi
+    gradle_report_failure "$1" "$2" "$3" "$4" "" "${5:-}"
+}
+
+# Thin alias over lib/gradle-run.sh → script_report_failure, which carries the
+# rule and the hermetic tests (test-gradle-run.sh).
+#   gate_script_failure <label> <log> <code> <real-diagnosis> <proof-regex> [remedy]
+gate_script_failure() {
+    script_report_failure "$@"
 }
 
 echo "═══════════════════════════════════════════"
@@ -68,7 +67,7 @@ if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; 
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
     gate_gradle_failure "sceneview compilation" "$LOG_DIR/compile-sceneview.log" $? \
-        "sceneview FAILED to compile"
+        "sceneview FAILED to compile" "sceneview was never compiled"
 fi
 
 echo -e "${YELLOW}[2/14] Compiling arsceneview...${NC}"
@@ -76,7 +75,7 @@ if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotl
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
     gate_gradle_failure "arsceneview compilation" "$LOG_DIR/compile-arsceneview.log" $? \
-        "arsceneview FAILED to compile"
+        "arsceneview FAILED to compile" "arsceneview was never compiled"
 fi
 
 # 2. Unit tests
@@ -85,7 +84,7 @@ if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
     gate_gradle_failure "sceneview unit tests" "$LOG_DIR/test-sceneview.log" $? \
-        "sceneview tests FAILED"
+        "sceneview tests FAILED" "no sceneview test ever ran"
 fi
 
 echo -e "${YELLOW}[4/14] Running arsceneview unit tests...${NC}"
@@ -93,7 +92,7 @@ if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; th
     echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
 else
     gate_gradle_failure "arsceneview unit tests" "$LOG_DIR/test-arsceneview.log" $? \
-        "arsceneview tests FAILED"
+        "arsceneview tests FAILED" "no arsceneview test ever ran"
 fi
 
 # 3. Screenshot tests (Roborazzi — Android, JVM, no emulator)
@@ -161,10 +160,18 @@ if [ -d "$SNAPSHOTS_DIR" ] && [ "$(ls -A $SNAPSHOTS_DIR 2>/dev/null)" ]; then
             ;;
         ''|*[!0-9]*)
             # No fresh report => nothing was compared. Name the real cause.
-            RR_REASON="$(gradle_infra_reason "$RR_LOG" "$RR_EXIT")"
+            RR_REASON="$(gradle_setup_reason "$RR_LOG")"
+            RR_FIX=""
+            if [ -n "$RR_REASON" ]; then
+                RR_FIX="$(gradle_setup_fix "$RR_LOG")"
+                [ -n "$SETUP_FIX" ] || SETUP_FIX="$RR_FIX"
+            else
+                RR_REASON="$(gradle_infra_reason "$RR_LOG" "$RR_EXIT")"
+            fi
             [ -n "$RR_REASON" ] || RR_REASON="the run produced no Roborazzi comparison report"
             echo -e "${YELLOW}  ⚠ screenshots NOT verified — $RR_REASON${NC}"
             gradle_log_tail "$RR_LOG" 12
+            [ -n "$RR_FIX" ] && echo -e "${YELLOW}      Fix: $RR_FIX${NC}"
             echo -e "      Full log: $RR_LOG"
             INCOMPLETE=$((INCOMPLETE + 1))
             ;;
@@ -266,12 +273,15 @@ fi
 # models/*.glb, web-demo pointing at 404 CDN URLs) cannot come back.
 echo -e "\n${YELLOW}[9/14] Validating demo app asset references...${NC}"
 # --no-cdn to keep pre-push fast; CI runs the full check with CDN hits.
-if bash .claude/scripts/validate-demo-assets.sh --no-cdn > /tmp/validate-demo-assets.log 2>&1; then
+ASSETS_LOG="$LOG_DIR/validate-demo-assets.log"
+if bash .claude/scripts/validate-demo-assets.sh --no-cdn > "$ASSETS_LOG" 2>&1; then
     echo -e "${GREEN}  ✓ All demo asset refs resolve${NC}"
 else
-    echo -e "${RED}  ✗ Demo apps reference assets that don't exist:${NC}"
-    tail -30 /tmp/validate-demo-assets.log | sed 's/^/      /'
-    ERRORS=$((ERRORS + 1))
+    # The summary block is only reached when the scan completed, so it is the
+    # cue that "assets are missing" is a finding and not a crash on the way.
+    gate_script_failure "demo asset references" "$ASSETS_LOG" $? \
+        "Demo apps reference assets that don't exist:" \
+        "(Missing bundled|Broken CDN|Undeclared in catalog|Strict mode: stopping)"
 fi
 
 # 8. SceneView agent skill drift
@@ -282,12 +292,13 @@ fi
 # without ever hitting quality-gate.sh. Invoke it directly here too.
 echo -e "\n${YELLOW}[10/14] Checking agent skill drift...${NC}"
 if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
-    if bash .claude/scripts/check-sceneview-skill.sh > /tmp/skill-drift.log 2>&1; then
+    SKILL_LOG="$LOG_DIR/skill-drift.log"
+    if bash .claude/scripts/check-sceneview-skill.sh > "$SKILL_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ agents/sceneview/ in sync with library source${NC}"
     else
-        echo -e "${RED}  ✗ Agent skill drift — agents/sceneview/ out of sync:${NC}"
-        tail -30 /tmp/skill-drift.log | sed 's/^/      /'
-        ERRORS=$((ERRORS + 1))
+        gate_script_failure "agent skill drift" "$SKILL_LOG" $? \
+            "Agent skill drift — agents/sceneview/ out of sync:" \
+            "Skill drift check failed"
     fi
 else
     echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found, skipping${NC}"
@@ -301,13 +312,17 @@ fi
 # leg. Sub-second (a node regenerate-and-compare, no write).
 echo -e "\n${YELLOW}[11/14] Checking GPT knowledge base drift...${NC}"
 if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/dev/null)}" ]; then
-    if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > /tmp/gpt-knowledge-drift.log 2>&1; then
+    GPT_LOG="$LOG_DIR/gpt-knowledge-drift.log"
+    if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > "$GPT_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ gpt/knowledge-*.md in sync with llms.txt${NC}"
     else
-        echo -e "${RED}  ✗ gpt/knowledge-*.md drifted from llms.txt:${NC}"
-        tail -10 /tmp/gpt-knowledge-drift.log | sed 's/^/      /'
-        echo -e "      Fix: node tools/generate-gpt-knowledge.js"
-        ERRORS=$((ERRORS + 1))
+        # `DRIFT:` is printed per drifted file; the generator's OTHER exit-1
+        # path (a bucket with zero sections, i.e. llms.txt restructured) is a
+        # tooling failure and must not be reported as drift.
+        gate_script_failure "gpt/knowledge-*.md" "$GPT_LOG" $? \
+            "gpt/knowledge-*.md drifted from llms.txt:" \
+            "^DRIFT: gpt/" \
+            "Fix: node tools/generate-gpt-knowledge.js"
     fi
 else
     echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found, skipping${NC}"
@@ -318,12 +333,19 @@ fi
 # are still unverified / its symlink extraction unvalidated.
 echo -e "\n${YELLOW}[12/14] Checking the vendored download chain...${NC}"
 if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
-    if bash .claude/scripts/check-vendored-download-safety.sh > /tmp/vendored-dl.log 2>&1; then
+    VENDORED_LOG="$LOG_DIR/vendored-dl.log"
+    if bash .claude/scripts/check-vendored-download-safety.sh > "$VENDORED_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ vendored download chain: not built, or hardened${NC}"
     else
-        echo -e "${RED}  ✗ vendored download chain is BUILT but not hardened:${NC}"
-        tail -20 /tmp/vendored-dl.log | sed 's/^/      /'
-        ERRORS=$((ERRORS + 1))
+        # BOTH of the checker's genuine-finding exits, not just the tallied
+        # one: it also exits 1 with `FAIL  <downloads file> is missing, but
+        # something builds …` before it ever reaches the "requirement(s)
+        # unmet" tally. A cue covering only the tally would have filed that
+        # real finding as "could not run" — the very mistake this gate is
+        # being fixed for (#3065).
+        gate_script_failure "vendored download chain" "$VENDORED_LOG" $? \
+            "vendored download chain is BUILT but unsafe:" \
+            "(requirement\(s\) unmet|is missing, but something builds)"
     fi
 fi
 
@@ -333,12 +355,16 @@ fi
 # silently — one leaks reach, the other just quietly spends money.
 echo -e "\n${YELLOW}[13/14] Checking self-hosted runner routing...${NC}"
 if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
-    if python3 .claude/scripts/check-self-hosted-runner-routing.py > /tmp/runner-routing.log 2>&1; then
-        cat /tmp/runner-routing.log
+    ROUTING_LOG="$LOG_DIR/runner-routing.log"
+    if python3 .claude/scripts/check-self-hosted-runner-routing.py > "$ROUTING_LOG" 2>&1; then
+        cat "$ROUTING_LOG"
     else
-        echo -e "${RED}  ✗ self-hosted runner routing is wrong:${NC}"
-        tail -20 /tmp/runner-routing.log | sed 's/^/      /'
-        ERRORS=$((ERRORS + 1))
+        # A python traceback also exits 1, and `.github/workflows not found`
+        # (wrong directory) exits 1 too — neither is a routing verdict.
+        gate_script_failure "self-hosted runner routing" "$ROUTING_LOG" $? \
+            "self-hosted runner routing is wrong:" \
+            "self-hosted runner routing is wrong" \
+            "See the \`self-hosted-runner\` skill for the expression to copy."
     fi
 fi
 
@@ -351,20 +377,23 @@ if [ -f gradlew ]; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"
     else
         # "the public-API surface drifted" is a claim about the CODE — do not
-        # make it when Gradle died before comparing anything.
-        API_EXIT=$?
-        API_REASON="$(gradle_infra_reason "$LOG_DIR/api-check.log" "$API_EXIT")"
-        if [ -n "$API_REASON" ]; then
-            echo -e "${YELLOW}  ⚠ apiCheck did not run to a verdict — Gradle infrastructure failure: $API_REASON${NC}"
-            gradle_log_tail "$LOG_DIR/api-check.log" 12
-            INCOMPLETE=$((INCOMPLETE + 1))
-        else
-            echo -e "${RED}  ✗ apiCheck failed — public-API surface drifted:${NC}"
-            gradle_log_tail "$LOG_DIR/api-check.log" 20
-            echo -e "      Intentional change? Run ./gradlew apiDump and commit the .api diff."
-            ERRORS=$((ERRORS + 1))
-        fi
-        echo -e "      Full log: $LOG_DIR/api-check.log"
+        # make it when Gradle died before comparing anything, and above all do
+        # not prescribe `apiDump` then: with a broken SDK it fails the same
+        # way, and if it ever succeeded it would commit a bogus .api diff
+        # (#3065).
+        #
+        # The proof cue is the binary-compatibility-validator's own comparison
+        # failure. Both strings were read out of the plugin jar
+        # (binary-compatibility-validator-0.18.1.jar) rather than guessed:
+        # `API check failed for project <name>` when the dumps differ, and
+        # `Expected file with API declarations '<path>'` when a module has no
+        # committed dump at all. Anything else that turns apiCheck red — a
+        # compile break, a dead worker — never reached the comparison.
+        gradle_report_failure "apiCheck" "$LOG_DIR/api-check.log" $? \
+            "apiCheck failed — public-API surface drifted:" \
+            "Intentional change? Run ./gradlew apiDump and commit the .api diff." \
+            "The public API was NOT compared — this is not a pass. Do NOT run apiDump." \
+            "(API check failed for project|Expected file with API declarations)"
     fi
 else
     echo -e "${YELLOW}  ⚠ gradlew not found, skipping${NC}"
@@ -382,14 +411,25 @@ if [ "$ERRORS" -eq 0 ] && [ "$INCOMPLETE" -eq 0 ]; then
     exit 0
 elif [ "$ERRORS" -eq 0 ]; then
     echo -e "${YELLOW}  ⚠ $INCOMPLETE CHECK(S) COULD NOT RUN — no check failed, but the gate is INCOMPLETE${NC}"
-    echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
-    echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
+    if [ -n "$SETUP_FIX" ]; then
+        # Re-running fixes daemon contention; it does nothing for a toolchain
+        # that is not configured. Lead with the fix that actually applies.
+        echo -e "${YELLOW}    This host is not set up to build:${NC}"
+        echo -e "${YELLOW}      $SETUP_FIX${NC}"
+    else
+        echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
+        echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
+    fi
     echo -e "${YELLOW}    Logs: $LOG_DIR${NC}"
     exit 1
 else
     echo -e "${RED}  ✗ $ERRORS CHECK(S) FAILED — DO NOT PUSH${NC}"
     if [ "$INCOMPLETE" -gt 0 ]; then
         echo -e "${YELLOW}  ⚠ plus $INCOMPLETE check(s) that could not run at all${NC}"
+    fi
+    if [ -n "$SETUP_FIX" ]; then
+        echo -e "${YELLOW}  ⚠ this host is not set up to build:${NC}"
+        echo -e "${YELLOW}      $SETUP_FIX${NC}"
     fi
     echo -e "      Logs: $LOG_DIR"
     exit 1
