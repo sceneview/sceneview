@@ -8,7 +8,7 @@
   `website-static/.well-known/` mirror, the regenerated `gpt/knowledge-*`, the
   React Native quickstart, the plugin README, `src/index.tsx` (with the
   `bob`-generated `.d.ts`), the MCP server's RN setup guide, and the demo app's
-  Explore-tab help text and README bridge-status table. The #3072 citations in
+  AR-tab "AR Bridge Coverage" card and README bridge-status table. The #3072 citations in
   the plugin README's iOS section and in `react-native-sceneview.podspec` are
   about the podspec gap and are correct; they stay.
 
