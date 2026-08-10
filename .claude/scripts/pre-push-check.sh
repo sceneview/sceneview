@@ -53,6 +53,16 @@ gate_script_failure() {
     script_report_failure "$@"
 }
 
+# An `if [ -f <gate script> ]` with no else prints its banner and records
+# nothing — the leg silently evaporates and the run still ends on "ALL CHECKS
+# PASSED". These scripts are committed, so an absent one means a broken or
+# partial checkout, not a legitimate skip: report it as INCOMPLETE, which
+# keeps the gate from claiming a clean bill of health it did not earn.
+missing_gate_script() {
+    echo -e "${YELLOW}  ⚠ $1 not found — NOT checked here (CI still gates it)${NC}"
+    INCOMPLETE=$((INCOMPLETE + 1))
+}
+
 echo "═══════════════════════════════════════════"
 echo "  SceneView Pre-Push Quality Gate"
 echo "═══════════════════════════════════════════"
@@ -492,7 +502,7 @@ if [ -f .claude/scripts/check-demo-id-parity.sh ]; then
             "Fix: add the iOS registry entry, or a parity-manifest.yml row stating why the demo is Android-only."
     fi
 else
-    echo -e "${YELLOW}  ⚠ check-demo-id-parity.sh not found, skipping${NC}"
+    missing_gate_script "check-demo-id-parity.sh"
 fi
 
 # Asset credits (BLOCKING in ci.yml → repo-hygiene). assets/CREDITS.md is
@@ -514,6 +524,8 @@ if [ -f .claude/scripts/generate-credits.py ]; then
             "^DRIFT: assets/CREDITS\.md" \
             "Fix: python3 .claude/scripts/generate-credits.py"
     fi
+else
+    missing_gate_script "generate-credits.py"
 fi
 
 # Content gate (BLOCKING in ci.yml → repo-hygiene). Google's `android run` has
@@ -531,6 +543,8 @@ if [ -f .claude/scripts/check-android-run-not-taught.sh ]; then
             "check-android-run: FAIL" \
             "Fix: use .claude/scripts/lib/android-cli.sh, or cite #2796 / #2854 / #2990 next to the mention."
     fi
+else
+    missing_gate_script "check-android-run-not-taught.sh"
 fi
 
 # Workflow shell blocks (BLOCKING in ci.yml → repo-hygiene). `with.script:`
@@ -681,6 +695,8 @@ if [ -f .claude/scripts/quality-gate.sh ]; then
             "BLOCKED — [0-9]+ issue" \
             "The [FAIL] lines above name each blocker."
     fi
+else
+    missing_gate_script "quality-gate.sh"
 fi
 
 # Summary
