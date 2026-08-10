@@ -129,8 +129,13 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
 #    filename contains `sceneview-swift`, so a doc line naming `curl` and then
 #    the script matched the first draft — measured: the automation-map row
 #    failed the gate it documents. Only what can be cloned is a clone.
+#
+#    The fixture puts the filename in the ARGUMENT SLOT — the one token the
+#    verb-to-URL gap allows. An earlier version separated `curl` from the name
+#    by prose, which a bare-token pattern could not have matched either: the
+#    case passed against the regression it claimed to pin, and proved nothing.
 D="$(fixture prose_script_name CHANGELOG.md \
-    '- Use curl for downloads; the mirror ban lives in check-sceneview-swift-urls.sh.')"
+    '- Fetch it with `curl https://example.com/check-sceneview-swift-urls.sh`.')"
 set +e; OUT="$(run "$D")"; RC=$?; set -e
 { [[ $RC -eq 0 ]]; } \
   && ok "a fetch verb plus this script's NAME → not a clone of the mirror" \

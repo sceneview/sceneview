@@ -277,5 +277,32 @@ set -e
   && ok "changelog.d/ fragment excluded, like its CHANGELOG.md destination" \
   || bad "a fragment must not be a blocker that collating would silence (rc=$RC)"
 
+# 15. A keyword's right boundary. `exact` is also the first five letters of
+#     `exactly`, an ordinary English word, so a prose line that says "exactly
+#     4.26.0" downstream of the canonical URL would satisfy the verdict half
+#     and bless a snippet nobody checked. The boundary is in the SHARED
+#     constraint, so this line is not discovered either — the pair must never
+#     disagree about what a pin is.
+D="$(spm_repo spm_exactly 4.26.0)"
+printf '%s\n' '`https://github.com/sceneview/sceneview.git` (from: "4.4.0") — exactly 4.26.0 today' \
+    > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm exactly )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+{ grep -q 'llms.txt:1' <<<"$OUT" && [[ $RC -ne 0 ]]; } \
+  && ok "'exactly <current>' does not satisfy the 'exact' keyword" \
+  || bad "an English word must not be read as an SPM constraint (rc=$RC)"
+
+# 16. The VERSION's right boundary. `4.26.0-beta` and `4.26.0.1` are not
+#     4.26.0 — the current string is merely their prefix. Accepting a prefix
+#     means the gate blesses whatever ships next to it.
+D="$(spm_repo spm_prerelease 4.26.0)"
+printf '%s\n' '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.26.0-beta")' \
+    > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm prerelease )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+{ grep -q 'llms.txt:1' <<<"$OUT" && [[ $RC -ne 0 ]]; } \
+  && ok "a prerelease pin is not the release it prefixes" \
+  || bad "a prefix match blesses a version nobody verified (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

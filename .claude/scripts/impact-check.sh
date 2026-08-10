@@ -366,9 +366,18 @@ else
         # to contain "from" into a stale SPM pin. Measured: 25 files, 10 of
         # them prose. It also keeps the ARCHIVED `sceneview/sceneview-swift`
         # mirror out (banning that URL is check-sceneview-swift-urls.sh's job).
-        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)'
+        # Each keyword ends at a non-letter: bare `exact` also prefixes `exactly`,
+        # an ordinary English word, and a line reading "exactly 4.26.0" would
+        # otherwise be read as a satisfied pin. The boundary lives in the
+        # SHARED constraint, not in the verdict half alone — a keyword that
+        # discovers a line but cannot judge it turns that line into a false
+        # stale, which is the asymmetry this pair was built to avoid.
+        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)[^[:alpha:]]'
         SPM_PIN_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*'"$SPM_CONSTRAINT"
-        SPM_OK_RE="${SPM_CONSTRAINT}[^0-9]*${VER_ESC}([^0-9]|$)"
+        # The right boundary rejects `.` and `-` too, so `4.26.0-beta` and
+        # `4.26.0.1` are what they are — a DIFFERENT version — instead of
+        # passing because the current string happens to be their prefix.
+        SPM_OK_RE="${SPM_CONSTRAINT}[^0-9]*${VER_ESC}([^0-9.-]|$)"
 
         if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             check "SPM version refs" "SKIP" "not a git repository"
