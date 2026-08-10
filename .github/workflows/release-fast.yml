@@ -122,8 +122,9 @@ jobs:
           git checkout -b "$BRANCH"
           # Version/changelog surfaces only — never QA artifacts. Stage everything, then
           # unstage the artifacts: an exclude pathspec makes `git add` treat a gitignored
-          # match as explicitly named and EXIT 1 ("paths are ignored by .gitignore"), which
-          # under `bash -e` killed the whole release right after the changelog collate.
+          # match as explicitly named and EXIT 1 ("paths are ignored by .gitignore"). Only
+          # device-qa-report.json is gitignored today (.gitignore:317) — one is enough, and
+          # under `bash -e` it killed the whole release right after the changelog collate.
           git add -A
           git reset -q -- device-qa-report.json device-qa-artifacts ar-qa-summary.json web-qa-summary.json
           git commit -m "release: $V — version bump + changelog collate" \
