@@ -1133,6 +1133,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
 
+      # The reviewers' diff. Same failure shape one layer up: on run
+      # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
+      # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and
+      # pr-review.yml fell back to a two-dot diff — so four reviewers read
+      # everything main had gained since the branch point, reversed, and filed
+      # two BLOCKING errors against files the PR never touched. Hermetic: real
+      # temp git repos, no network, with a mutant carrying the old fallback to
+      # prove the assertions discriminate.
+      - name: Self-test the reviewers' diff computation
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-pr-diff.sh
+
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two
       # success-shaped lines, installed NOTHING, and left a build eight hours
@@ -1164,10 +1177,36 @@ jobs:
       # `### Tests`, because the parser buffered the whole file and wrote it once
       # under the LAST tag seen. Hermetic (fake repo root), with a mutation test
       # on the per-tag flush — drop it and the multi-tag assertions must go red.
+      #
+      # Second contract, same reason (#3037): every OTHER HTML comment in a
+      # fragment is maintainer-only. The parser used to append them verbatim, so
+      # a nine-line `<!-- RELEASE NOTE: ... -->` block — sign-off plus
+      # publish-rn/GITHUB_REF_NAME mechanics — was one release away from being
+      # published as user-facing notes. A second mutation test neutralises the
+      # stripper and asserts all six fixture note lines come back.
       - name: Self-test changelog collator
         if: always()
         shell: bash
         run: bash .claude/scripts/test-collate-changelog.sh
+
+      # Breaking-change vs patch-level tag (check-breaking-change-bump.sh,
+      # #3037). release.yml's `publish-rn` derives the npm version straight from
+      # the git tag (`VERSION=${GITHUB_REF_NAME#v}`), so tagging `v4.26.1` would
+      # publish a source-breaking `.d.ts` change to @sceneview-sdk/react-native
+      # as a semver PATCH — the class every consumer's caret range takes without
+      # review. The policy (breaking ships MINOR, major 4 frozen) previously
+      # existed only as prose, including inside the very fragment that needed it.
+      #
+      # The guard itself runs at RELEASE time, where the version is known; it
+      # fires only on a patch tag with a breaking fragment pending, which may not
+      # happen for months. That is the shape of gate that rots green (#2988), so
+      # the self-test is what keeps it honest — both directions (real #3037 prose
+      # must refuse; "non-breaking" and "groundbreaking", both taken from real
+      # fragments, must not) plus two mutation tests, one per direction.
+      - name: Self-test breaking-change/patch guard
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-breaking-change-bump.sh
 
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.

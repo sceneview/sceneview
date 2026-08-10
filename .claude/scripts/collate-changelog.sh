@@ -9,6 +9,12 @@
 # into the same new release section, and an empty `## Unreleased` placeholder
 # is left in place for backward compatibility.
 #
+# A fragment's HTML COMMENTS are maintainer-only and never reach CHANGELOG.md —
+# see lib/changelog-fragment.sh for the #3037 internal note that nearly shipped.
+# Before anything is written, the breaking-change/patch guard runs
+# (check-breaking-change-bump.sh): collation is the last moment a fragment's
+# `<!-- breaking -->` declaration still exists.
+#
 # Usage:
 #   ./collate-changelog.sh <version> [--date YYYY-MM-DD] [--dry-run]
 #   Example: ./collate-changelog.sh 4.5.0
@@ -19,6 +25,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
+
+# shellcheck source=lib/changelog-fragment.sh
+source "$REPO_ROOT/.claude/scripts/lib/changelog-fragment.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -70,6 +79,22 @@ done
 if [ "${#FRAGMENTS[@]}" -eq 0 ]; then
     echo -e "${YELLOW}No fragments in $FRAG_DIR/${NC} — only legacy ## Unreleased entries will be collated."
 fi
+
+# ─── 0. Breaking-change / patch-bump guard ───────────────────────────────
+# Runs BEFORE anything is written or deleted, and before --dry-run returns:
+# this is the last moment a fragment's `<!-- breaking -->` declaration exists.
+# Collation consumes the fragments and strips the markers, so after this script
+# succeeds there is nothing left for a later gate to read.
+#
+# A missing guard is an ERROR, not a skip — the #2988 lesson, where a gate
+# silently skipped itself inside every worktree because absence read as success.
+GUARD="$REPO_ROOT/.claude/scripts/check-breaking-change-bump.sh"
+if [ ! -f "$GUARD" ]; then
+    echo -e "${RED}Error:${NC} $GUARD is missing — the breaking-change/patch guard cannot run."
+    echo "  Refusing to collate rather than silently skipping it (#2988)."
+    exit 1
+fi
+bash "$GUARD" "$VERSION"
 
 # Canonical category order. "Changed" is the fallback bucket. `Performance` (#1844)
 # is dedicated to perf-only commits — splits them out of the noisy `Fixed` bucket so
@@ -129,19 +154,54 @@ flush_fragment_body() {
 }
 
 # ─── 1. Parse fragments ──────────────────────────────────────────────────
+# Every HTML comment is stripped here. Only the `<!-- category: X -->` tag has
+# meaning to this script; every OTHER comment is a maintainer-only note and must
+# never reach the public release notes (#3037 — see lib/changelog-fragment.sh).
 for f in "${FRAGMENTS[@]}"; do
     category="Changed"
     body=""
+    frag_strip_reset
     while IFS= read -r line || [ -n "$line" ]; do
-        # Category tag line: <!-- category: Fixed -->  (anywhere in the file)
-        if [[ "$line" =~ ^[[:space:]]*\<!--[[:space:]]*category:[[:space:]]*([A-Za-z]+)[[:space:]]*--\>[[:space:]]*$ ]]; then
+        # Category tag line: <!-- category: Fixed -->  (anywhere in the file).
+        # Recognised on the RAW line, before stripping — the tag is itself a
+        # comment. Suppressed while inside a multi-line comment, so an internal
+        # note that quotes a category tag stays inert.
+        if [ "$FRAG_IN_COMMENT" = false ] && frag_is_category_tag_line "$line"; then
             # Close the preceding block BEFORE switching bucket.
             flush_fragment_body
-            category="$(canonical_category "${BASH_REMATCH[1]}")"
+            category="$(canonical_category "$FRAG_CATEGORY_RAW")"
             continue
         fi
-        body+="$line"$'\n'
+
+        was_in_comment="$FRAG_IN_COMMENT"
+        frag_strip_comments_line "$line"
+
+        # Drop a line that contributed only comment: either it was pure comment
+        # text, or it lay inside an open one. A genuinely blank line OUTSIDE a
+        # comment is kept — it is what separates bullets in a multi-bullet
+        # fragment.
+        if [ -z "${FRAG_STRIPPED//[[:space:]]/}" ] &&
+           { [ "$was_in_comment" = true ] || [ -n "${line//[[:space:]]/}" ]; }; then
+            continue
+        fi
+
+        # Right-trim only when a comment was actually removed, so an author's
+        # deliberate two-space Markdown line break survives untouched elsewhere.
+        if [ "$FRAG_STRIPPED" != "$line" ]; then
+            FRAG_STRIPPED="${FRAG_STRIPPED%"${FRAG_STRIPPED##*[![:space:]]}"}"
+        fi
+        body+="$FRAG_STRIPPED"$'\n'
     done < "$f"
+
+    # An unterminated `<!--` swallowed everything after it. Failing loudly is the
+    # only honest option: the alternative is a release section that is silently
+    # missing bullets, discovered after the fragments have been deleted.
+    if [ "$FRAG_IN_COMMENT" = true ]; then
+        echo -e "${RED}Error:${NC} $f has an unterminated '<!--'."
+        echo "  Every bullet after it would be silently dropped from the release notes."
+        exit 1
+    fi
+
     flush_fragment_body
 done
 

@@ -158,8 +158,11 @@ HOME="$TEST_HOME" bash "$SCRIPT" \
 RUN1_RC=$?
 set -e
 
-# Strip ANSI colour for grep simplicity.
-strip_ansi() { sed 's/\x1b\[[0-9;]*m//g' "$1"; }
+# Strip ANSI colour for grep simplicity. ESC comes from printf rather than the
+# `\x1b` escape, which is a GNU extension outside POSIX — macOS's BSD sed does
+# accept it today, but every grep below would silently stop matching on a sed
+# that does not, and a colour code is invisible in the failure output.
+strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*m//g" "$1"; }
 
 if [ "$RUN1_RC" -eq 0 ]; then
     pass "run1 exit 0"

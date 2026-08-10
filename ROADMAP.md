@@ -6,7 +6,7 @@
 > release. The source of truth is `gradle.properties` → `VERSION_NAME` — read
 > that, not this file, if they ever disagree.
 
-## Current: v4.26.0 stable (May 2026)
+## Current: v4.27.0 stable (May 2026)
 
 **AI-first SDK** — 9 platforms, MCP server on npm, Claude Code plugin marketplace, Rerun.io debug integration.
 
@@ -25,7 +25,7 @@
 | Rerun.io debug integration | **Shipped** (Android + iOS + Python) |
 | Play Store demo app | Deployed |
 | App Store demo app | **Live** (`id6761329763`) |
-| GitHub Release | **v4.26.0 stable** |
+| GitHub Release | **v4.27.0 stable** |
 
 ### Completed since v4.0
 
