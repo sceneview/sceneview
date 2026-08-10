@@ -895,27 +895,27 @@ function AnimationTab() {
           {ANIMATED_MODELS.map((m, index) => {
             const available = modelSource(m) !== null;
             return (
-            <TouchableOpacity
-              key={m.label}
-              style={[
-                styles.typeChip,
-                modelIndex === index && styles.typeChipSelected,
-                !available && styles.typeChipDisabled,
-              ]}
-              onPress={() => setModelIndex(index)}
-              disabled={!available}
-              activeOpacity={0.7}
-            >
-              <Text
+              <TouchableOpacity
+                key={m.label}
                 style={[
-                  styles.typeChipText,
-                  modelIndex === index && styles.typeChipTextSelected,
+                  styles.typeChip,
+                  modelIndex === index && styles.typeChipSelected,
+                  !available && styles.typeChipDisabled,
                 ]}
+                onPress={() => setModelIndex(index)}
+                disabled={!available}
+                activeOpacity={0.7}
               >
-                {m.label}
-                {available ? '' : ' (Android)'}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    modelIndex === index && styles.typeChipTextSelected,
+                  ]}
+                >
+                  {m.label}
+                  {available ? '' : ' (Android)'}
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </View>

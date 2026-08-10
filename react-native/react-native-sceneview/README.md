@@ -57,9 +57,9 @@ so CocoaPods cannot resolve that name on its own. Add one of these lines to
 your `Podfile`:
 
 ```ruby
-# Released consumers — pin the podspec to the tag matching your npm version
+# Released consumers — no monorepo clone
 pod 'SceneViewSwift',
-    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/v4.27.0/SceneViewSwift.podspec'
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 
 # In-repo consumers — resolve from a local checkout
 pod 'SceneViewSwift', :path => '<repo-root>'
@@ -68,12 +68,19 @@ pod 'SceneViewSwift', :path => '<repo-root>'
 `samples/react-native-demo/ios/Podfile` takes the `:path` route, exactly as
 `samples/flutter-demo/ios/Podfile` does.
 
-> **Pin the tag, and always supply the coordinate.** Resolving the podspec off
-> `main` fetches whatever that branch holds at `pod install` time, so builds
-> stop being reproducible. And because the `SceneViewSwift` name is unclaimed
-> on the trunk, a `Podfile` that omits the coordinate entirely does not fail
-> closed forever — it would resolve to whatever someone else publishes under
-> that name. The explicit `:podspec` / `:path` line is what makes the source
+> **`main`, not a tag — for now.** A tagged coordinate would be the
+> reproducible one, but `SceneViewSwift.podspec` lives at the repo *root* and
+> landed after `v4.26.0` was cut, so no tag that currently exists carries it:
+> `pod install` against `.../v4.27.0/SceneViewSwift.podspec` is a 404, verified
+> with `git cat-file -e v4.27.0:SceneViewSwift.podspec`. The Flutter plugin
+> documents `main` for the same reason. Both move to
+> `:git => …, :tag => 'vX.Y.Z'` the first time a release is cut with that file
+> in it.
+
+> **Always supply the coordinate.** The `SceneViewSwift` name is unclaimed on
+> the CocoaPods trunk, so a `Podfile` that omits the line does not fail closed
+> forever — it would resolve to whatever someone else publishes under that
+> name. The explicit `:podspec` / `:path` line is what makes the source
 > unambiguous.
 
 > **Swift Package Manager does not work for this module.** Adding
