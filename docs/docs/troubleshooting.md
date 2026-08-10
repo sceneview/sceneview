@@ -65,16 +65,26 @@ rememberModelInstance(modelLoader, "models/helmet.glb")?.let { instance ->
 
 ### Model loads but renders untextured (WebP textures)
 
-If a glTF/GLB model loads and animates but every surface is flat black/grey, and Logcat shows
-`Missing texture provider for image/webp`, the model's textures are WebP-encoded
-(`EXT_texture_webp`). **WebP glTF textures are not supported on Android**: Filament's Android
-prebuilt ships `gltfio` with WebP support compiled out, so the textures silently fail to decode
+Filament's Android prebuilt ships `gltfio` with WebP support compiled out, so on its own it
+cannot decode glTF textures encoded as `EXT_texture_webp` (`image/webp`) and logs
+`Missing texture provider for image/webp` while the model renders untextured
 ([#2305](https://github.com/sceneview/sceneview/issues/2305)).
 
-**Fix:** re-encode the model's textures to PNG, JPEG, or KTX2 before bundling it (e.g. re-export
-from Blender with PNG/JPEG textures, or convert with a glTF texture tool). PNG, JPEG, and KTX2
-decode natively. The same limitation applies to the web build (Filament.js registers no
-`image/webp` provider either).
+**On Android, SceneView handles this for you.** Since 4.28.0, `ModelLoader` re-encodes WebP
+textures to PNG with Android's own decoder before handing the asset to Filament, so a WebP-textured
+glTF loads with its textures. This costs one decode + PNG encode per texture at load time; a model
+without WebP textures is untouched.
+
+Two cases are still **not** covered, and each logs an actionable `SceneView` error rather than
+failing silently:
+
+- textures stored as **separate `.webp` files** next to a `.gltf` (only images embedded in a GLB
+  buffer view or in a `data:` URI are converted);
+- the **web build** — Filament.js registers no `image/webp` provider either.
+
+**Fix for those:** re-encode the model's textures to PNG, JPEG, or KTX2, e.g.
+`npx @gltf-transform/cli optimize model.glb out.glb --texture-compress png`, or re-export from
+Blender with PNG/JPEG textures. PNG, JPEG, and KTX2 decode natively everywhere.
 
 ### Black screen / no rendering
 

@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
+import java.nio.ByteBuffer
 
 /**
  * Consumes a blob of glTF 2.0 content (either JSON or GLB) and produces a [Model] object, which is
@@ -57,6 +58,13 @@ class ModelLoader(
      * @param resourceResolver   Resolves GLTF external resource file names to buffers.
      * @return The loaded [Model].
      * @throws IllegalArgumentException if the buffer cannot be parsed.
+     *
+     * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
+     * because Filament's Android build registers no `image/webp` decoder and would otherwise render
+     * the model untextured (#2305). That costs one decode + PNG encode per WebP texture, **on the
+     * calling thread** here; the `suspend` [loadModel] does it off the main thread instead. A model
+     * without WebP textures is untouched.
+     *
      * @see AssetLoader.createAsset
      */
     @MainThread
@@ -64,7 +72,7 @@ class ModelLoader(
         buffer: Buffer,
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
-    ): Model = (assetLoader.createAsset(buffer)
+    ): Model = (assetLoader.createAsset(buffer.transcodeWebPTextures())
         ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
         models += model
         loadResources(model, resourceResolver)
@@ -128,8 +136,10 @@ class ModelLoader(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): Model? = context.loadFileBuffer(fileLocation)?.let { buffer ->
+        // Transcoding decodes and re-encodes images: keep it off the main thread.
+        val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
         val model = withContext(Dispatchers.Main) {
-            assetLoader.createAsset(buffer)
+            assetLoader.createAsset(source)
         } ?: return@let null
         models += model
         loadResourcesSuspended(model) { resourceFileName: String ->
@@ -258,6 +268,9 @@ class ModelLoader(
      * will populate the array with secondary instances whose resources are shared with the primary
      * asset.
      *
+     * Embedded WebP glTF textures are re-encoded to PNG on the calling thread first, as in
+     * [createModel].
+     *
      * @see AssetLoader.createInstancedAsset
      */
     @MainThread
@@ -267,7 +280,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
-            (assetLoader.createInstancedAsset(buffer, this)
+            (assetLoader.createInstancedAsset(buffer.transcodeWebPTextures(), this)
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, resourceResolver)
@@ -356,8 +369,9 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): List<ModelInstance> = context.loadFileBuffer(fileLocation)?.let { buffer ->
         val instances = arrayOfNulls<ModelInstance>(count)
+        val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
         val model = withContext(Dispatchers.Main) {
-            assetLoader.createInstancedAsset(buffer, instances)
+            assetLoader.createInstancedAsset(source, instances)
         } ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
         loadResourcesSuspended(model) { resourceFileName: String ->
@@ -478,3 +492,12 @@ class ModelLoader(
             "${baseFileName.substringBeforeLast("/")}/$resourceFileName"
     }
 }
+
+/**
+ * Re-encodes WebP glTF textures to PNG, because Filament's Android build registers no
+ * `image/webp` texture provider and would otherwise render the model untextured (#2305).
+ *
+ * A payload without WebP textures — the common case — is returned untouched.
+ */
+private fun Buffer.transcodeWebPTextures(): Buffer =
+    (this as? ByteBuffer)?.let { WebPTextureTranscoder.transcode(it) } ?: this
