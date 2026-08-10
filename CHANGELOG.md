@@ -108,9 +108,10 @@
   watched only `s.version`; a stale floor lets an older SceneViewSwift satisfy
   the dependency, so the bridge can link against a runtime predating the APIs
   it calls. Bumped to `~> 4.27` and registered as a checked, autofixable row.
-- **React Native's quickstart no longer implies the iOS 3D `onTap` works.** It
-  is described from source, never measured; the sibling Flutter bridge with the
-  same RealityKit hit test never fires (#3045), and the RN measurement is #3086.
+- **React Native's quickstart stopped implying the iOS 3D `onTap` works from
+  source alone.** #3086 then measured it in this same release and the quickstart
+  now states the measured result; only the sibling Flutter bridge stays dead on
+  iOS (#3045).
 - `changelog.d/3041-flutter-platformview-tap-arena.md` now carries an explicit
   `<!-- breaking -->` marker. It describes a behaviour break in prose without
   ever using the token `breaking`, so the patch-level guard would have let it
@@ -119,10 +120,10 @@
   `sync-versions.sh` only checked that its two slots agreed with *each other*,
   so a pair that drifted together stayed green. Both now track `VERSION_NAME`
   and the row reads OK rather than WARN.
-- **`llms.txt` and its two mirrors said the React Native iOS `onTap` is
-  delivered.** It routes through the same RealityKit `.targetedToAnyEntity`
-  hook the Flutter bridge measured never to fire (#3045); RN's own measurement
-  is #3086. All three AI-facing copies now say Android-only-for-now.
+- **`llms.txt` and its two mirrors asserted the React Native iOS `onTap` from
+  source alone.** All three AI-facing copies were walked back to "unverified"
+  pending RN's own measurement, #3086 — which lands in this same release and
+  confirms it does fire, so all three now carry the measured result.
 - **`llms.txt` taught a Flutter install that cannot `pod install`.** The
   mandatory `pod 'SceneViewSwift', :podspec => …` line existed in the
   quickstart, the plugin README and the MCP server but not in the file AI
@@ -161,10 +162,12 @@
   the floor. Both now strip the pre-release suffix before slicing; table-tested
   across `X.Y.Z`, `X.Y.Z-rc.N` and `X.Y.Z-SNAPSHOT`, matching and mismatching.
 - The React Native bridge's own TypeScript source — the fifth copy of the same
-  AI-facing claim, and the one consumers read as an IDE tooltip — still said the
-  3D `onTap` payload arrives "on both Android and iOS". Corrected in
-  `src/index.tsx` (both the `onTap` and `TapEvent.nodeName` doc comments) and the
-  packaged `lib/typescript/**/*.d.ts` regenerated with `bob`, never hand-edited.
+  AI-facing claim, and the one consumers read as an IDE tooltip — asserted the
+  3D `onTap` payload arrives "on both Android and iOS" from source alone. Both
+  the `onTap` and `TapEvent.nodeName` doc comments were walked back pending
+  measurement, then restored to the measured Android+iOS result by #3086 in this
+  same release, in `src/index.tsx` and the packaged
+  `lib/typescript/**/*.d.ts`.
 - The MCP Flutter 3D guide branched its asset path on `dart:io`'s
   `Platform.isIOS` — the exact import this PR removed from `viewer_page.dart`,
   because it makes a Flutter file uncompilable on web. It now uses
@@ -201,8 +204,9 @@
 - Continued the provenance cleanup started in #2827: the branding audit, the branding README favicon entry and the MkDocs stylesheet now credit the SceneView design system (`DESIGN.md`) for palette and token *values* instead of the tool that once produced them. Colors and tokens are unchanged. References describing the `DESIGN.md` *file format* are intentionally kept.
 - The React Native `onTap` "iOS is unverified" caveat pointed readers at
   [#3072], which tracks moving the module from SwiftPM to the root podspec — a
-  different problem. The measurement itself now has its own issue, [#3086], and
-  the caveat cites it on every surface that carries it: `llms.txt`, its
+  different problem. The measurement got its own issue, [#3086], and the caveat
+  cited it on every surface that carried it before that measurement landed in
+  this same release and replaced the caveat with the result: `llms.txt`, its
   `website-static/.well-known/` mirror, the regenerated `gpt/knowledge-*`, the
   React Native quickstart, the plugin README, `src/index.tsx` (with the
   `bob`-generated `.d.ts`), the MCP server's RN setup guide, and the demo app's

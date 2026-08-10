@@ -1,13 +1,18 @@
 # React Native Demo — Setup Status
 
-> **Status: scaffolded, NEVER built end-to-end.** JS, Android, and iOS
-> native projects are in place. The scaffold was generated with the RN
-> CLI and hand-rewritten with the SceneView namespace, but at the time
-> of commit it was never run through `./gradlew assembleDebug` or
-> Xcode. The first contributor to wire up `npm install` will very
-> likely hit issues and should fix them in place. See
-> *"What's still needed to run"* and *"Expected rough edges on first
-> run"* below.
+> **Status: iOS built, launched and driven on a simulator (2026-08-10, #3086).**
+> The app builds from `ios/SceneViewRNDemo.xcworkspace`, boots against Metro,
+> renders a bundled USDZ and dispatches `onTap` — that run is what measured the
+> iOS tap. **Android is still unbuilt here**; the notes below about `bob build`,
+> `settings.gradle` and asset `sourceSets` are still the expected first-run
+> hazards there.
+>
+> Three things had to be fixed before it would build, and they are now committed:
+> the module's `podspec` declares `SceneViewSwift` (a pod cannot see the host
+> app's SwiftPM packages), the demo `Podfile` points that dependency at the repo
+> root and re-pins `IPHONEOS_DEPLOYMENT_TARGET` to 18.0 after
+> `react_native_post_install` lowers it, and three `@react-native/*` dev
+> dependencies Metro needs were missing from `package.json`.
 >
 > This demo is deliberately NOT included in the root
 > `settings.gradle` (comment: `samples/react-native-demo/ (JS, not
@@ -59,8 +64,13 @@ Before a first `run-android` / `run-ios`, these steps are required:
    ```
 3. **iOS only — install pods:**
    ```bash
-   cd ios && bundle install && bundle exec pod install && cd -
+   cd ios && LANG=en_US.UTF-8 pod install && cd -
    ```
+   `bundle install` from the `Gemfile` fails on Ruby 4 (`activesupport`
+   requires `ruby >= 3.1.0` and resolves against the wrong ruby gem), so use
+   the system CocoaPods directly. `LANG` is not decoration: without a UTF-8
+   locale `pod install` aborts with
+   `Unicode Normalization not appropriate for ASCII-8BIT`.
 4. **Run:**
    ```bash
    npm run android   # requires an emulator or connected device
@@ -115,8 +125,18 @@ these are the likely problem areas when someone first tries to run it:
    app starts but can't load `environments/studio_small.hdr`, confirm
    the sourceSets hook resolved correctly.
 
-5. **iOS pods not installed.** `cd ios && bundle install && bundle
-   exec pod install` must succeed before the first Xcode build.
+5. **iOS pods not installed.** `cd ios && LANG=en_US.UTF-8 pod install` must
+   succeed before the first Xcode build — see step 3 for why `bundle install`
+   is not the command here.
+
+6. **No model on iOS.** The demo's sample models are remote `.glb` URLs, which
+   RealityKit cannot read and which the iOS bridge resolves as *bundle resource
+   names* anyway. Models that ship a `.usdz` in `ios/SceneViewRNDemo/Models/`
+   render; the others are disabled on iOS and labelled *(Android)*.
+
+7. **iOS bundle id is still the scaffold's.**
+   `org.reactjs.native.example.SceneViewRNDemo`, where Android uses
+   `io.github.sceneview.demo.rn` — `simctl launch` needs the former.
 
 When you do work through these, please update this section to record
 what actually worked.
