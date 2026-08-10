@@ -30,6 +30,7 @@
 #   - .claude/scripts/impact-check.sh                   — its sibling SPM gate, whose comments explain the split of duty
 #   - .claude/scripts/test-impact-check.sh              — that gate's self-test
 #   - .claude/scripts/quality-gate.sh                   — the consumer that runs this detector and parses its output
+#   - .claude/scripts/pre-push-check.sh                 — the other consumer: its CI-PARITY comment block names every gate it does and does not run (#3103)
 #   - .claude/scripts/sync-versions.sh                  — the SPM updater, which still recognises the legacy mirror clause
 #   - .claude/skills/automation-map/SKILL.md — the skill row indexing this detector
 #   - .github/workflows/ci.yml            — the repo-hygiene job comment that documents this detector
@@ -71,7 +72,7 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/pre-push-check\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
 
 # Surfaces where the mirror may be NAMED but never PINNED. The two changelog
 # entries are the only ones allowlisted WHOLESALE (any fragment, current or

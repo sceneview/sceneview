@@ -37,6 +37,18 @@ the documentation until it can.
 > ([#2988](https://github.com/sceneview/sceneview/issues/2988)). A short list reads
 > as complete precisely *because* it is short — when this file was 1126 lines
 > nobody believed they held the whole picture.
+>
+> The same warning applies one level down, to item 6 itself. `pre-push-check.sh`
+> now mirrors every cheap, deterministic, offline step of ci.yml's blocking
+> jobs — but it still cannot cover the network, Gradle-bound, device-bound and
+> Checks-API-bound ones. Which those are, and **why** each is out, is written in
+> the `CI-PARITY LEGS` comment block inside
+> [`.claude/scripts/pre-push-check.sh`](.claude/scripts/pre-push-check.sh). Read
+> it before trusting a green "ALL CHECKS PASSED": a CI check named in neither
+> the legs nor that block is an unaudited gap, not a decision. That block exists
+> because a green local run pushed a branch that CI then failed on demo-id
+> parity ([#3099](https://github.com/sceneview/sceneview/pull/3099)) — the
+> #2988 shape again, one layer in.
 
 ### Rules:
 - NEVER push code that doesn't compile
