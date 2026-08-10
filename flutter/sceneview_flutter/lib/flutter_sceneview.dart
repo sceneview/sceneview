@@ -358,9 +358,11 @@ class SceneViewController {
   ///
   /// **Delivered on Android only.** On iOS [SceneView] (3D) the callback is
   /// wired end to end — the platform view claims tap gestures and the entity
-  /// carries collision and input-target components — but RealityKit's
-  /// entity-targeted hit test resolves no entity, so this never fires. Measured
-  /// 2026-08-07; see the plugin README's `onTap` known-gap section. On iOS
+  /// carries collision and input-target components — but no entity resolves,
+  /// so this never fires. Measured 2026-08-07. Not the shared RealityKit hit
+  /// test: React Native reaches the same hook and was measured firing on iOS
+  /// (#3086), which leaves Flutter's platform-view touch delivery. See the
+  /// plugin README's `onTap` known-gap section. On iOS
   /// [ARSceneView] it is not delivered either: SceneViewSwift's `ARSceneView`
   /// exposes no entity hit-test hook (tracked in #2051).
   void Function(String nodeName)? onTap;

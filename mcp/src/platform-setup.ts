@@ -502,8 +502,9 @@ class My3DScreen extends StatelessWidget {
       initialModels: [
         ModelNode(modelPath: model, x: 0, y: 0, z: -2, scale: 1.0),
       ],
-      // Android only today — the iOS path is wired but RealityKit's
-      // entity-targeted hit test resolves no entity, so this never fires (#3045).
+      // Android only today — the iOS path is wired but no entity resolves, so
+      // this never fires (#3045). Not the shared RealityKit hit test: React
+      // Native reaches the same hook and fires on iOS (#3086).
       onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }
@@ -598,6 +599,8 @@ SceneView React Native uses **Fabric/Turbo** to bridge to native SceneView.
 
 \`\`\`bash
 npm install @sceneview/react-native
+# iOS: edit ios/Podfile as in step 3 FIRST — a stock Podfile makes this
+# \`pod install\` fail with "Unable to find a specification for 'SceneViewSwift'"
 cd ios && pod install
 \`\`\`
 
@@ -614,9 +617,16 @@ android {
 
 ### 3. iOS Setup
 
-In \`ios/Podfile\`:
+In \`ios/Podfile\` — both lines, before \`pod install\`. \`SceneViewSwift\` is not on
+the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve without
+an explicit coordinate (use \`:path => '<repo-root>'\` from a checkout), and a
+stock React Native Podfile's 13.4 target is below its iOS 18.0 floor. A Swift
+package added in Xcode does not work here: this module compiles inside
+\`Pods.xcodeproj\`, which cannot see the host project's packages.
 \`\`\`ruby
 platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 \`\`\`
 
 ### 4. Basic 3D Scene
@@ -631,9 +641,8 @@ export default function My3DScreen() {
       modelNodes={[{ src: 'models/chair.glb', position: [0, 0, -1], scale: 1.0 }]}
       environment="environments/sky_2k.hdr"
       cameraControlMode="orbit"
-      // Android only for now — the iOS path goes through the same RealityKit
-      // entity-targeted hit test that never fires on the Flutter bridge (#3045);
-      // the React Native measurement is #3086.
+      // Fires on Android and iOS — the iOS half is measured (#3086). Only the
+      // Flutter bridge's 3D onTap is still dead on iOS (#3045).
       onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );
@@ -651,6 +660,19 @@ export default function My3DScreen() {
 const REACT_NATIVE_AR = `## SceneView React Native — AR Setup
 
 ### 1. Install
+
+Both \`ios/Podfile\` lines are required before \`pod install\`: \`SceneViewSwift\` is
+not on the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve
+without an explicit coordinate, and a stock React Native Podfile's 13.4
+deployment target is below its iOS 18.0 floor. A Swift package added in Xcode
+does not replace that line — this module compiles inside \`Pods.xcodeproj\`,
+which cannot see the host project's packages.
+
+\`\`\`ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+\`\`\`
 
 \`\`\`bash
 npm install @sceneview/react-native

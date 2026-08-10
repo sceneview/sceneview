@@ -78,12 +78,34 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
  * Animated glTF sample models (Khronos sample assets). The RN native bridge
  * auto-plays a loaded model's animation clip, so any model that ships one
  * will animate without extra wiring.
+ *
+ * Each entry carries a source *per platform*, because the two renderers do not
+ * read the same formats. Android (Filament) loads `.glb`, straight from an
+ * `https://` URL. Apple (RealityKit) loads only `.usdz` / `.reality`, and the
+ * bridge resolves `src` there as a **bundle resource name**, not a URL — so a
+ * remote `.glb` fails twice over on iOS.
+ *
+ * Passing the GLB URL on both platforms is what left every iOS viewer in this
+ * demo empty: each load threw, the bridge logged it and moved on, and no model
+ * ever appeared — which also made `onTap` unmeasurable from here (#3086). Same
+ * failure and same fix as the Flutter demo's viewer page (#3048).
+ *
+ * `usdz` names a file bundled into `SceneViewRNDemo.app` (see
+ * `ios/SceneViewRNDemo/Models/`, wired into the target's Resources build
+ * phase). `undefined` means no USDZ ships for that model: the entry stays
+ * visible and is disabled on iOS rather than silently loading nothing.
  */
-const ANIMATED_MODELS: { label: string; src: string; scale: number }[] = [
+const ANIMATED_MODELS: {
+  label: string;
+  src: string;
+  scale: number;
+  usdz?: string;
+}[] = [
   {
     label: 'Fox (run)',
     src: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Fox/glTF-Binary/Fox.glb',
     scale: 0.03,
+    usdz: 'khronos_fox.usdz',
   },
   {
     label: 'Box Animated',
@@ -96,6 +118,12 @@ const ANIMATED_MODELS: { label: string; src: string; scale: number }[] = [
     scale: 0.7,
   },
 ];
+
+/** The platform's source for a sample model, or `null` when none ships. */
+function modelSource(model: { src: string; usdz?: string }): string | null {
+  if (Platform.OS !== 'ios') { return model.src; }
+  return model.usdz ?? null;
+}
 
 /**
  * HDR environments available to the Environment demo. Two visually distinct
@@ -366,7 +394,6 @@ function GeometryTab() {
           style={styles.scene}
           environment={ENVIRONMENT}
           geometryNodes={geometryNodes}
-          cameraControlMode="orbit"
           cameraControlMode={cameraMode}
           onTap={(e) => {
             const { x, y, z, nodeName } = e.nativeEvent;
@@ -720,9 +747,9 @@ function ARTab() {
             {'\u2022 Light nodes in AR \u2014 Android only\n'}
             {'\u2022 onTap \u2014 dispatched on Android and iOS. nodeName names '}
             {'the tapped model on Android; on iOS it is always null (#2051)\n'}
-            {'\u2022 onTap on the 3D tab \u2014 unverified on iOS. It goes '}
-            {'through the same hook whose Flutter equivalent was measured '}
-            {'never to fire (#3045); assume broken until #3086 measures it\n'}
+            {'\u2022 onTap on the 3D tab \u2014 dispatched on Android and iOS, '}
+            {'naming the tapped model. The iOS half is measured on a simulator '}
+            {'(#3086); only the Flutter bridge stays dead there (#3045)\n'}
             {'\u2022 onPlaneDetected \u2014 dispatched on Android only\n'}
             {'\nNot yet bridged \u2014 the controls below are present so the '}
             {'API is stable, but they have no native effect:\n'}
@@ -829,13 +856,13 @@ function MaterialsTab() {
  */
 function AnimationTab() {
   const [modelIndex, setModelIndex] = useState(0);
+  const [tapInfo, setTapInfo] = useState<string | null>(null);
 
   const model = ANIMATED_MODELS[modelIndex];
-  const modelNode: ModelNode = {
-    src: model.src,
-    scale: model.scale,
-    position: [0, -0.5, -2.5],
-  };
+  const src = modelSource(model);
+  const modelNode: ModelNode | null = src
+    ? { src, scale: model.scale, position: [0, -0.5, -2.5] }
+    : null;
 
   return (
     <View style={styles.tabContent}>
@@ -843,34 +870,54 @@ function AnimationTab() {
         <SceneView
           style={styles.scene}
           environment={ENVIRONMENT}
-          modelNodes={[modelNode]}
+          modelNodes={modelNode ? [modelNode] : []}
           cameraControlMode="orbit"
+          onTap={(e) => {
+            const { x, y, z, nodeName } = e.nativeEvent;
+            setTapInfo(
+              `Tap: (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})${nodeName ? ` [${nodeName}]` : ''}`
+            );
+          }}
         />
         <View style={styles.lightInfoBadge}>
           <Text style={styles.lightInfoText}>{model.label}</Text>
         </View>
+        {tapInfo && (
+          <View style={styles.tapBadge}>
+            <Text style={styles.tapBadgeText}>{tapInfo}</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView style={styles.controls} contentContainerStyle={styles.controlsContent}>
         <Text style={styles.controlLabel}>Animated Model</Text>
         <View style={styles.chipRow}>
-          {ANIMATED_MODELS.map((m, index) => (
-            <TouchableOpacity
-              key={m.label}
-              style={[styles.typeChip, modelIndex === index && styles.typeChipSelected]}
-              onPress={() => setModelIndex(index)}
-              activeOpacity={0.7}
-            >
-              <Text
+          {ANIMATED_MODELS.map((m, index) => {
+            const available = modelSource(m) !== null;
+            return (
+              <TouchableOpacity
+                key={m.label}
                 style={[
-                  styles.typeChipText,
-                  modelIndex === index && styles.typeChipTextSelected,
+                  styles.typeChip,
+                  modelIndex === index && styles.typeChipSelected,
+                  !available && styles.typeChipDisabled,
                 ]}
+                onPress={() => setModelIndex(index)}
+                disabled={!available}
+                activeOpacity={0.7}
               >
-                {m.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    modelIndex === index && styles.typeChipTextSelected,
+                  ]}
+                >
+                  {m.label}
+                  {available ? '' : ' (Android)'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <View style={styles.arInfoCard}>
@@ -1284,6 +1331,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1F28',
     borderWidth: 1,
     borderColor: '#2A3040',
+  },
+  typeChipDisabled: {
+    opacity: 0.4,
   },
   typeChipSelected: {
     backgroundColor: '#1A2332',

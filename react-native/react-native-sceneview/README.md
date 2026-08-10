@@ -50,39 +50,59 @@ Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
 `platform :ios, '18.0'` rather than React Native's `min_ios_version_supported`
 (13.4), or `pod install` fails to resolve this module.
 
-**The host app must add `SceneViewSwift` via Swift Package Manager.**
-A root `SceneViewSwift.podspec` exists, but it is **not published on the
-CocoaPods trunk**, so `pod install` cannot resolve it by name; this module's
-podspec therefore deliberately does **not** declare it as a `s.dependency` —
-add it once in Xcode (*File ▸ Add Package Dependencies…*):
+**`SceneViewSwift` must arrive as a pod, and your `Podfile` must give it a
+coordinate.** This module's podspec declares `s.dependency "SceneViewSwift",
+"~> 4.27"`, but `SceneViewSwift` is **not published on the CocoaPods trunk**,
+so CocoaPods cannot resolve that name on its own. Add one of these lines to
+your `Podfile`:
 
-> **Known gap ([#3072](https://github.com/sceneview/sceneview/issues/3072)).**
-> A root `SceneViewSwift.podspec` exists since the Flutter plugin moved to the
-> pod route — it is unpublished on the CocoaPods trunk, not missing. The SwiftPM
-> instruction below works when the module compiles with the host project's
-> packages in scope, as in `samples/react-native-demo`. If your app builds this
-> module inside `Pods.xcodeproj`, `import SceneViewSwift` will not resolve;
-> follow #3072 for the pod-based route.
+```ruby
+# Released consumers — no monorepo clone
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 
-- URL: `https://github.com/sceneview/sceneview`
-- Version: `4.27.0` (or *Up to Next Major*)
+# In-repo consumers — resolve from a local checkout
+pod 'SceneViewSwift', :path => '<repo-root>'
+```
 
-Unlike the Flutter plugin's pub.dev range, this version tracks the SDK release
-directly: SwiftPM resolves against a git tag in this same repository, which the
-release creates, so it is never ahead of something that does not exist yet.
+`samples/react-native-demo/ios/Podfile` takes the `:path` route, exactly as
+`samples/flutter-demo/ios/Podfile` does.
 
-> **Keep the two versions in step.** npm `4.27.0`'s Swift requires SPM tag
-> `v4.27.0` or newer: this module's `ios/*.swift` builds on
-> `SceneViewerHostView` — which landed *after* `v4.26.0`, so no `SceneViewer*`
-> type exists at that tag or any earlier one — and it calls the two-parameter
-> `onTapEntity` (the tapped model root is the second parameter). A mismatch is a
-> loud Swift compile error at build time, not a runtime surprise, but no CI job
-> here will catch it for you: `rn-ios-compile.yml` type-checks against the
-> `SceneViewSwift` sources *in this repo*, not against the tag your app
-> resolves.
+> **`main`, not a tag — for now.** A tagged coordinate would be the
+> reproducible one, but `SceneViewSwift.podspec` lives at the repo *root* and
+> landed after `v4.26.0` was cut, so no tag that currently exists carries it:
+> `pod install` against `.../v4.27.0/SceneViewSwift.podspec` is a 404, verified
+> with `git cat-file -e v4.27.0:SceneViewSwift.podspec`. The Flutter plugin
+> documents `main` for the same reason. Both move to
+> `:git => …, :tag => 'vX.Y.Z'` the first time a release is cut with that file
+> in it.
 
-The module's `ios/*.swift` `import SceneViewSwift` resolves against that
-app-level package at build time.
+> **Always supply the coordinate.** The `SceneViewSwift` name is unclaimed on
+> the CocoaPods trunk, so a `Podfile` that omits the line does not fail closed
+> forever — it would resolve to whatever someone else publishes under that
+> name. The explicit `:podspec` / `:path` line is what makes the source
+> unambiguous.
+
+> **Swift Package Manager does not work for this module.** Adding
+> `SceneViewSwift` to the host *project* in Xcode (*File ▸ Add Package
+> Dependencies…*) leaves it invisible here: this module's `ios/*.swift`
+> compiles inside the generated `Pods.xcodeproj`, which does not see the host
+> project's SwiftPM packages, and `import SceneViewSwift` fails with *"Unable
+> to find module dependency: 'SceneViewSwift'"*. The README used to document
+> the SwiftPM route as the supported one; it had never been built, and the
+> first real `xcodebuild` against it failed exactly that way. This closes the
+> React Native half of
+> [#3072](https://github.com/sceneview/sceneview/issues/3072).
+
+> **Keep the two versions in step.** npm `4.27.0`'s Swift requires
+> `SceneViewSwift` at tag `v4.27.0` or newer: this module's `ios/*.swift`
+> builds on `SceneViewerHostView` — which landed *after* `v4.26.0`, so no
+> `SceneViewer*` type exists at that tag or any earlier one — and it calls the
+> two-parameter `onTapEntity` (the tapped model root is the second parameter).
+> A mismatch is a loud Swift compile error at build time, not a runtime
+> surprise, but no CI job here will catch it for you: `rn-ios-compile.yml`
+> type-checks against the `SceneViewSwift` sources *in this repo*, not against
+> the tag your app resolves.
 
 ### Android
 
@@ -229,23 +249,25 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   configured natively** on either platform. Setting them has no effect today.
 - **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
-- **`onTap`** — dispatched on **Android** on both views; on iOS it is
-  **unverified and probably broken**, see the callout below. On `SceneView`
+- **`onTap`** — dispatched on **Android and iOS** on both views. On `SceneView`
   (3D) it carries the tapped model's world position and its file base name
   without extension as `nodeName`.
-  > **⚠️ The iOS half of that sentence is unverified, and there is now reason to
-  > doubt it ([#3086](https://github.com/sceneview/sceneview/issues/3086)).**
-  > This module's iOS 3D tap goes through `hostView.onTapEntity`
-  > ([`SceneViewModule.swift`](ios/SceneViewModule.swift)) — the *same*
-  > SceneViewSwift hook the Flutter bridge uses, and the Flutter bridge's 3D
-  > `onTap` was measured on an iPhone 17 Pro Max simulator, across two different
-  > native hosts, to **never fire**: RealityKit's entity-targeted hit test
-  > resolves no entity ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
-  > Nobody has yet run the same measurement here, so treat iOS 3D taps as
-  > *probably broken* until #3086 measures them. Do not ship a feature that
-  > depends on one. This caveat is deliberately not written as a fact in either
-  > direction — the claim above was an inference from the code, and replacing it
-  > with the opposite inference would repeat the mistake.
+  > **Measured, not inferred ([#3086](https://github.com/sceneview/sceneview/issues/3086)).**
+  > The iOS 3D tap was run on an iPhone 17 Pro Max simulator with the Fox USDZ
+  > rendering: 5 taps on the model, 5 dispatches, `nodeName` `khronos_fox` every
+  > time; a tap on empty space dispatched nothing, as documented below. The path
+  > was instrumented at all four stages — gesture arrival, entity resolution,
+  > `SceneViewerHostView.reportTap`, and this module's `onTapEntity` block — and
+  > every stage fired.
+  >
+  > This does **not** clear the sibling bridge: Flutter's 3D `onTap` still never
+  > fires on iOS ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
+  > The same run measured both hosts back to back against the *same*
+  > SceneViewSwift build and the same entity graph (11 entities, 1 collision
+  > shape, 9 input targets in each): 6 taps on the model under Flutter resolved
+  > no entity at all, while the plain, untargeted gesture arrived every time. So
+  > #3045 is a property of Flutter's platform-view touch delivery, not of
+  > RealityKit's entity-targeted hit test — which is what its write-up claims.
 
   On
   `ARSceneView` *what a hit reports* differs: **Android** hit-tests the AR

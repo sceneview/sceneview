@@ -23,24 +23,32 @@ Pod::Spec.new do |s|
 
   s.dependency "React-Core"
 
-  # KNOWN GAP — see issue #3072. A root `SceneViewSwift.podspec` now exists
-  # (added by #3048 for the Flutter plugin), so the sentence below is no longer
-  # the whole truth: the spec is unpublished on the CocoaPods trunk, not absent.
-  # This module still takes the SwiftPM route because switching it means editing
-  # `samples/react-native-demo/ios/Podfile` in the same breath — `rn-ios-compile.yml`
-  # runs a REAL `pod install` against it — which is a larger change than #3048.
-  # The SwiftPM route works for a host app arranged like that demo; it does not
-  # work for one where the module compiles inside `Pods.xcodeproj` without seeing
-  # the host project's packages. That is the bug #3072 exists to close.
+  # This module's `ios/*.swift` files `import SceneViewSwift`, so the module has
+  # to arrive as a POD, not as a Swift package on the host app's project: this
+  # source compiles inside the generated `Pods.xcodeproj`, which does not see
+  # the host project's SwiftPM packages ("Unable to find module dependency:
+  # 'SceneViewSwift'"). The SwiftPM route this spec used to document was never
+  # measured — the demo app was scaffolded and never built — and the first real
+  # `xcodebuild` against it failed exactly that way. Closes the RN half of #3072.
   #
-  # `SceneViewSwift` is distributed via Swift Package Manager only — there is
-  # no published CocoaPods spec for it — so it CANNOT be declared as a
-  # `s.dependency` here (CocoaPods would fail `pod install` resolving it).
-  # The host app must add it once via Xcode's SwiftPM integration:
-  #   File ▸ Add Package Dependencies… ▸ https://github.com/sceneview/sceneview
-  # The module's `ios/*.swift` `import SceneViewSwift` then resolves at the
-  # app build, exactly like any RN native module with a SwiftPM dependency.
-  # See this module's README "iOS" section.
+  # `SceneViewSwift` is NOT on the CocoaPods trunk, so a host app must give the
+  # dependency a coordinate of its own — one of:
+  #   pod 'SceneViewSwift',
+  #       :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  #   pod 'SceneViewSwift', :path => '<repo-root>'   # in-repo consumers
+  # `main`, not a tag, and not `:git =>, :tag =>`: the root podspec landed after
+  # v4.26.0 was cut, so no existing tag carries it and a tagged coordinate 404s
+  # (`git cat-file -e v4.27.0:SceneViewSwift.podspec`). `flutter_sceneview.podspec`
+  # says `main` for the same reason; both move to a tag once a release carries
+  # the file. Supply the coordinate always — the name is unclaimed on the trunk,
+  # so a Podfile that leaves it out does not fail closed, it resolves to
+  # whatever someone else publishes under that name.
+  # `samples/react-native-demo/ios/Podfile` takes the `:path` route, exactly as
+  # `samples/flutter-demo/ios/Podfile` does. See this module's README "iOS".
+  #
+  # Loose `~> 4.27` rather than `= s.version`: an app pinned to an older
+  # SceneViewSwift still resolves, mirroring `flutter_sceneview.podspec`.
+  s.dependency "SceneViewSwift", "~> 4.27"
 
   s.swift_version = "5.9"
 end

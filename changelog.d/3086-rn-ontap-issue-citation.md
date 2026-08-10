@@ -3,8 +3,9 @@
 <!-- Pure citation fix — no API, no behaviour. -->
 - The React Native `onTap` "iOS is unverified" caveat pointed readers at
   [#3072], which tracks moving the module from SwiftPM to the root podspec — a
-  different problem. The measurement itself now has its own issue, [#3086], and
-  the caveat cites it on every surface that carries it: `llms.txt`, its
+  different problem. The measurement got its own issue, [#3086], and the caveat
+  cited it on every surface that carried it before that measurement landed in
+  this same release and replaced the caveat with the result: `llms.txt`, its
   `website-static/.well-known/` mirror, the regenerated `gpt/knowledge-*`, the
   React Native quickstart, the plugin README, `src/index.tsx` (with the
   `bob`-generated `.d.ts`), the MCP server's RN setup guide, and the demo app's

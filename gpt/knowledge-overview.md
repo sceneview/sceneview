@@ -636,10 +636,11 @@ on both and renders nothing on iOS — branch on the platform and ship both asse
 `samples/flutter-demo/lib/pages/viewer_page.dart` does.
 `onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) —
 never a mesh name from inside the asset; empty when the tap hit no loaded model. For `SceneView`
-(3D) it is delivered on **Android only**: the iOS path is wired end to end, but RealityKit's
-entity-targeted hit test resolves no entity, so the callback never fires — measured on an
-iPhone 17 Pro Max simulator across two different native hosts (#3045). Do not generate iOS code
-that depends on it firing. For `ARSceneView` it is **Android-only** too: SceneViewSwift's
+(3D) it is delivered on **Android only**: the iOS path is wired end to end, but no entity
+resolves, so the callback never fires — measured on an iPhone 17 Pro Max simulator (#3045). Not
+RealityKit's entity-targeted hit test: the React Native bridge reaches the same hook and was
+measured firing on iOS (#3086), which leaves Flutter's platform-view touch delivery. Do not
+generate iOS code that depends on it firing. For `ARSceneView` it is **Android-only** too: SceneViewSwift's
 `ARSceneView` exposes no entity hit-test hook (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`, `setCameraControlMode(CameraControlMode)`,
@@ -669,7 +670,15 @@ Package: `@sceneview-sdk/react-native` (npm) — Alpha, Android + iOS only.
 Install:
 ```sh
 npm install @sceneview-sdk/react-native
-# iOS: cd ios && pod install
+# iOS: add the two lines below to ios/Podfile FIRST, then `cd ios && pod install`
+```
+The iOS half needs both lines in `ios/Podfile` before `pod install`. `SceneViewSwift` is not on the
+CocoaPods trunk, so the module's `s.dependency` on it cannot resolve without an explicit
+coordinate, and a stock React Native Podfile's 13.4 deployment target is below its iOS 18.0 floor:
+```ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 ```
 
 Components: `SceneView` (3D), `ARSceneView` (AR). Backed by Filament (Android) / RealityKit (iOS).
@@ -703,11 +712,12 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
 `onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
 without extension (`models/robot.glb` -> `robot`), never a mesh name from inside
-the asset. **On iOS this is unverified — treat `onTap` as Android-only for now.** The description
-here is read from the source, not measured; the sibling Flutter bridge goes through the same
-RealityKit `.targetedToAnyEntity` hook and never fires the callback at all, measured on an iPhone 17
-Pro Max simulator across two different native hosts (#3045). The React Native measurement is #3086.
-Do not generate iOS code whose only interaction path is `onTap`. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
+the asset. **It is delivered on Android and iOS**, measured on an iPhone 17 Pro Max simulator with a
+model rendering: 5 taps on the model, 5 dispatches, the model's base name as `nodeName` every time
+(#3086). Generating iOS code whose interaction path is `onTap` is fine here. The **Flutter** bridge is
+the one whose 3D `onTap` never fires on iOS (#3045) — the same run measured both hosts against one
+SceneViewSwift build and showed that belongs to Flutter's platform-view touch delivery, not to this
+shared RealityKit path. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
 `nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. That case is
 reported with the tapped node's real world position on Android when it landed on an unnamed geometry
 node, and `0,0,0` when it hit nothing at all. That `0,0,0` miss is **in practice Android-only** (iOS emits it only if a hit entity resolves outside every loaded model, unreachable today): iOS resolves the

@@ -9,18 +9,33 @@ npm install @sceneview-sdk/react-native
 cd ios && pod install
 ```
 
-### iOS: raise the Podfile deployment target first
+### iOS: edit the Podfile first
 
-`SceneViewSwift`'s floor is iOS 18.0, so the module's podspec declares
-`:ios => "18.0"`. A stock React Native `Podfile` uses
-`min_ios_version_supported` (13.4), and `pod install` then fails with
-*"Specs satisfying the `react-native-sceneview` dependency were found, but they
-required a higher minimum deployment target"*. Edit `ios/Podfile` before
-installing:
+Two lines have to be in `ios/Podfile` before `pod install`:
 
 ```ruby
 platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 ```
+
+The first because `SceneViewSwift`'s floor is iOS 18.0, so the module's podspec
+declares `:ios => "18.0"`, while a stock React Native `Podfile` uses
+`min_ios_version_supported` (13.4) — `pod install` then fails with *"Specs
+satisfying the `react-native-sceneview` dependency were found, but they required
+a higher minimum deployment target"*.
+
+The second because the module's podspec declares `s.dependency
+"SceneViewSwift"`, and that pod is **not published on the CocoaPods trunk**, so
+CocoaPods cannot resolve the name on its own: without the coordinate,
+`pod install` fails with *"Unable to find a specification for SceneViewSwift"*.
+Use `:path => '<repo-root>'` instead if you build from a checkout of this
+repository. A tagged URL does not work yet — the root podspec landed after
+`v4.26.0` was cut, so no existing tag carries it.
+
+Adding `SceneViewSwift` as a Swift package in Xcode does **not** replace that
+line: this module compiles inside `Pods.xcodeproj`, which cannot see the host
+project's Swift packages.
 
 Xcode 16+ is required to build against that target.
 
@@ -112,17 +127,20 @@ often it dispatches differs, though: on iOS a tap that hits no entity fires no
 dispatches a `0, 0, 0` miss — so tap-event totals are not comparable across
 platforms.
 
-!!! warning "iOS `SceneView.onTap` is unverified — do not build on it yet"
+!!! success "iOS `SceneView.onTap` is measured, and it works"
 
-    The 3D `onTap` above is described from the source, **not** from a measured
-    run on iOS. The sibling Flutter bridge — same RealityKit entity-targeted hit
-    test — is wired end to end and still never fires the callback, measured on an
-    iPhone 17 Pro Max simulator across two different native hosts
-    ([#3045](https://github.com/sceneview/sceneview/issues/3045)). Whether the
-    React Native path behaves the same is being measured under
-    [#3086](https://github.com/sceneview/sceneview/issues/3086). Until that
-    lands, treat `onTap` as **Android-only** on both views and keep an
-    interaction path that does not depend on it.
+    The 3D `onTap` above was run on an iPhone 17 Pro Max simulator with a model
+    rendering: 5 taps on the model, 5 dispatches, the model's base name as
+    `nodeName` every time
+    ([#3086](https://github.com/sceneview/sceneview/issues/3086)).
+
+    The sibling Flutter bridge still never fires its 3D `onTap` on iOS
+    ([#3045](https://github.com/sceneview/sceneview/issues/3045)). The same run
+    measured both hosts against the same SceneViewSwift build and the same
+    entity graph: under Flutter, 6 taps on the model resolved no entity, while
+    the untargeted gesture arrived every time. That failure belongs to Flutter's
+    platform-view touch delivery, not to the shared RealityKit path React Native
+    uses.
 
 ## Type Definitions
 
