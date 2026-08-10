@@ -1133,6 +1133,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
 
+      # The reviewers' diff. Same failure shape one layer up: on run
+      # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
+      # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and
+      # pr-review.yml fell back to a two-dot diff — so four reviewers read
+      # everything main had gained since the branch point, reversed, and filed
+      # two BLOCKING errors against files the PR never touched. Hermetic: real
+      # temp git repos, no network, with a mutant carrying the old fallback to
+      # prove the assertions discriminate.
+      - name: Self-test the reviewers' diff computation
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-pr-diff.sh
+
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two
       # success-shaped lines, installed NOTHING, and left a build eight hours
