@@ -1,13 +1,13 @@
 PODS:
   - Flutter (1.0.0)
-  - flutter_sceneview (4.26.0):
+  - flutter_sceneview (4.27.0):
     - Flutter
     - SceneViewSwift (~> 4.26)
   - integration_test (0.0.1):
     - Flutter
   - package_info_plus (0.4.5):
     - Flutter
-  - SceneViewSwift (4.26.0)
+  - SceneViewSwift (4.27.0)
   - url_launcher_ios (0.0.1):
     - Flutter
 
@@ -35,10 +35,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_sceneview: b7cbc25f654d60a63d7832800e0d5335d06bdfd8
+  flutter_sceneview: 68a8c87e2fca7ba0f51c017431c321b7c05c5640
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
-  SceneViewSwift: 84e88aa6da1f1fe8f582a562dc03920726d81f63
+  SceneViewSwift: dd96553b51329a6ab13c891ca9a68c3dcf70f946
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: 0e1f9a846ad6e619b137dac88628ce0f70b286bb
