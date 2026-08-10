@@ -127,6 +127,20 @@ which is where `SceneViewSwift.podspec` lives:
 
 `samples/flutter-demo/ios/Podfile` is a working reference.
 
+> **Pick the tag to match the plugin, not the pub.dev range.** The two versions
+> are resolved by different package managers and only the pub.dev one is allowed
+> to lag: `ios/Classes/*.swift` compiles against whatever tag *your* app pins.
+> The plugin builds on `SceneViewerHostView`, which landed **after** `v4.26.0` —
+> no `SceneViewer*` type exists at that tag or earlier — and it calls the
+> two-parameter `onTapEntity` (the tapped model root is the second parameter),
+> so pin `v4.27.0` or newer.
+>
+> Nothing in this repository's CI will warn you: `bridge-ios-compile.yml`
+> type-checks the plugin against the `SceneViewSwift` sources *in the repo*, not
+> against the tag your app resolves. A stale pin therefore surfaces as a Swift
+> compile error in your own build — loud and at build time, never a runtime
+> surprise, but yours to notice.
+
 > **iOS model format.** RealityKit loads `.usdz` and `.reality` natively. Pass
 > `.usdz` model paths to `loadModel(...)` on iOS — a `.glb` path fails to load
 > (the failure is logged; the rest of the scene is unaffected).
@@ -179,9 +193,15 @@ ARSceneView(
 | `isAttached`                           | Whether the controller is attached to a live view        |
 
 > ⚠️ **Bridge coverage.** This plugin exposes a subset of the native SceneView
-> SDK. `addGeometry` / `addLight` render natively on Android only; node taps,
-> plane events and the HDR environment are forwarded on Android but not yet on
-> iOS. Camera positioning, `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
+> SDK. `addGeometry` / `addLight` render natively on Android only; plane events
+> and the HDR environment are forwarded on Android but not yet on iOS. Node taps
+> reach `onTap` for `SceneView` (3D) on **Android**, carrying the model file's
+> base name without extension; the iOS 3D path is wired end to end but no tap
+> has ever been observed to arrive — see "`onTap` does not fire on iOS" below,
+> where it is measured. For `ARSceneView` taps stay Android-only,
+> since SceneViewSwift's `ARSceneView` exposes no entity hit-test hook
+> ([#2051](https://github.com/sceneview/sceneview/issues/2051)).
+> Camera positioning, `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
 > advanced AR anchors and the `sceneview-core` physics/geometry APIs are not
 > bridged at all. The full gap is tracked in the
 > [#909](https://github.com/sceneview/sceneview/issues/909) umbrella.
@@ -252,6 +272,9 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 
 - Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
 - AR tap-to-place is not yet implemented
+- `onTap` is delivered for `SceneView` (3D) on Android; on iOS the wiring is
+  complete but no tap has been observed to arrive (measured — see below).
+  `ARSceneView` taps are Android-only
 - `onModelLoaded` is not bridged; a model that fails to load is logged natively
   and not reported to Dart. The prefix to grep for differs by path, because the
   two paths report from different places: the 3D viewer logs

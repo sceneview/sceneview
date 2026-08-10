@@ -315,6 +315,8 @@ The Python sidecar maps `camera_trail` to `rr.LineStrips3D` and `scalar` to `rr.
 
 **Threading:** the bridge owns a private `Dispatchers.IO` + `SupervisorJob` scope and a `Channel.CONFLATED` outbox. Every `log*` call is non-blocking — the newest event overwrites any pending one (drop-on-backpressure). Filament's render thread is never blocked.
 
+**Connection lifetime:** the outbox belongs to the connection, not to the bridge — `connect()` installs a fresh one. So **events logged while disconnected are dropped, never buffered or replayed** on the next `connect()`; only what you log after `connect()` returns reaches the viewer. Log from your frame callback and let the connection state decide, rather than logging early and expecting a later `connect()` to flush a backlog. Same contract on iOS (`NWConnection` drops while disconnected).
+
 ### iOS — `RerunBridge` + new `ARSceneView.onFrame`
 
 ```swift

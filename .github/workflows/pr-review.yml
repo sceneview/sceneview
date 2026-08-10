@@ -49,6 +49,11 @@ name: PR Review (agents)
 #   re-run it via workflow_dispatch. It never reports a silent green review.
 #   `pull_request_target` would give secrets to fork-authored code — deliberately
 #   NOT used.
+#   That rescue dispatch checks out `refs/pull/N/head`, i.e. fork-authored code,
+#   WITH the token in the environment. `claude-code-action` does not harden that
+#   path — it only replaces the PR head's `.claude/`, `.mcp.json` & co. under a
+#   PR context, which a dispatch has none of. `Restore config paths from base`
+#   below does it instead, before the CLI ever reads a hook or a setting.
 
 on:
   pull_request:
@@ -329,6 +334,16 @@ jobs:
       #   cannot be edited by the PR it is judging. Same reasoning as the grader
       #   being read from `origin/$DEFAULT_BRANCH` rather than from the checkout.
       #
+      #   It runs BEFORE the action, so it reads the PR's copies — which is the
+      #   point, and worth stating precisely now that the whole picture is known:
+      #   the action itself later restores `.claude/` from the base branch, so
+      #   the toolsets actually loaded at runtime are the base ones regardless.
+      #   That makes this step a review signal rather than the last line of
+      #   defence — a PR that widens a reviewer's toolset is refused here instead
+      #   of being quietly neutralised and merged. Keep it: it is the only place
+      #   that says so out loud, and it does not depend on the action's
+      #   behaviour staying what it is today.
+      #
       #   Exact-match on purpose. `tools: Read, Glob, Grep, Bash` would read as a
       #   modest widening and would give the whole hole back: measured locally,
       #   a subagent with `Bash` overwrote a tracked file with one `echo`, while
@@ -391,9 +406,13 @@ jobs:
       #   * every reviewer reads the same bytes, instead of four models each
       #     re-deriving a diff and possibly disagreeing about what the PR is;
       #   * nothing the fan-out needs to read or write lives in the checkout,
-      #     which is what lets the assertion below demand a pristine tree with
-      #     no exclusions at all.
+      #     which is what lets the assertion below demand a tree byte-identical
+      #     to HEAD everywhere except the eight config paths the ACTION itself
+      #     restores from the base branch — or, on a `workflow_dispatch`, that
+      #     the step right after this one restores, since the action does not.
+      #     See both for why those are an asserted contract, not an exclusion.
       - name: Materialise the diff the reviewers read
+        id: diff
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -405,6 +424,15 @@ jobs:
             echo "::error title=Base ref unresolved::Could not resolve origin/${BASE}, so the PR diff cannot be computed. No review is possible — this is a CI problem, not a finding about the PR."
             exit 1
           fi
+          # PIN THE BASE COMMIT, for the clean-tree assertion at the end of the
+          # job. The action restores the eight config paths from the base branch
+          # as it stands NOW; resolving `origin/$BASE` again after a ~6-minute
+          # fan-out would resolve a MOVED ref, and any PR merged to the base in
+          # that window that touches those paths would make a correctly-restored
+          # file differ from it — a false "contaminated" red, of exactly the kind
+          # this workflow keeps relearning. This repo peaks at 30 PRs a day, so
+          # the window is not theoretical.
+          echo "base_sha=$(git rev-parse "origin/$BASE")" >> "$GITHUB_OUTPUT"
           # Three-dot is what "the PR changed" means. It needs a merge base, and
           # the fetches in this job are depth-limited, so fall back to the
           # two-dot form rather than handing the reviewers a truncated file.
@@ -420,6 +448,142 @@ jobs:
             exit 1
           fi
           echo "Diff for the reviewers: $(wc -l < "$RUNNER_TEMP/pr.diff") lines, $(wc -c < "$RUNNER_TEMP/pr.diff") bytes."
+
+      # ⛔ THE DISPATCH PATH DOES NOT GET THE ACTION'S PR-HEAD HARDENING. WE DO IT HERE.
+      #   `claude-code-action` only calls `restoreConfigFromBase()` under
+      #   `if (isEntityContext(context) && context.isPR)` — `src/entrypoints/run.ts`,
+      #   around line 259 of `anthropics/claude-code-action@v1`. A
+      #   `workflow_dispatch` has no PR context, so on THIS path the action
+      #   restores nothing and the CLI starts on the PR head's own `.claude/`.
+      #
+      #   That matters here more than anywhere else, because this trigger is the
+      #   documented rescue path for FORK PRs (see this file's header and the
+      #   two `workflow_dispatch` instructions this job prints into its own job
+      #   summary), it checks out `refs/pull/N/head` — fork-authored code — and
+      #   it runs WITH `CLAUDE_CODE_OAUTH_TOKEN` in the environment. `.claude/`
+      #   is tracked on the default branch: `.claude/settings.json` declares
+      #   `"defaultMode": "bypassPermissions"` plus `PreToolUse`/`PostToolUse`
+      #   hooks that exec `.claude/scripts/hook-dispatch.sh`, and the action runs
+      #   the CLI with `settingSources: ["user","project","local"]`. Hooks and
+      #   env vars are read from cwd and acted on BEFORE any tool-permission
+      #   gating. So a maintainer following the instruction this very workflow
+      #   showed them would execute fork-authored code on the runner.
+      #
+      #   Measured 2026-08-07 on run 31219325024 (a dispatch on PR #3048, which
+      #   DOES modify `.claude/scripts/sync-assets.sh`): the log carries no
+      #   "Restoring .claude…" line at all, and the clean-tree assertion ended
+      #   with "Working tree clean" — i.e. the PR's own `.claude/` was on disk
+      #   for the whole run. On the `pull_request` path the same PR ends with
+      #   those files reverted, which is the whole reason #3057/#3058 exist.
+      #
+      # WHY RESTORE RATHER THAN REFUSE THE DISPATCH
+      #   Refusing to dispatch on a fork PR closes the hole and closes the only
+      #   way a fork PR can ever be reviewed by this workflow — `pull_request`
+      #   from a fork has no secrets, and `pull_request_target` is deliberately
+      #   not used. Restoring is not a weaker mitigation: it is byte-for-byte the
+      #   mitigation the action applies on the trusted path, so both triggers now
+      #   run the reviewers against the same trusted config. The residual the
+      #   action documents for its own restore (a base-branch hook that shells
+      #   out to a PR-controlled script) is unchanged, and identical on both.
+      #
+      # ORDER IS THE ACTION'S, DELIBERATELY: snapshot the PR's copies for the
+      #   reviewers, delete, fetch, check out from base, unstage. Deleting
+      #   BEFORE the fetch is what keeps a PR-authored `.gitmodules` from being
+      #   read during a network operation. If anything here fails the paths stay
+      #   DELETED and the step exits non-zero, so the reviewers never start: the
+      #   fallback is "no config", never "the PR's config".
+      #
+      # It runs AFTER `Assert the CI reviewers cannot write` on purpose — that
+      # step is meant to read the PR's copies and refuse a widened toolset out
+      # loud, exactly as it does on the `pull_request` path.
+      - name: Restore config paths from base (dispatch has no PR context)
+        if: >-
+          github.event_name == 'workflow_dispatch'
+          && steps.budget.outputs.within_budget == 'true'
+          && steps.creds.outputs.has_token == 'true'
+          && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          # The SHA pinned by `Materialise the diff`, so this restore and the
+          # clean-tree assertion at the end of the job compare against exactly
+          # the same commit. Re-resolving the branch here would let a merge
+          # landing mid-run turn a correctly-restored file into a false
+          # "contaminated" red — the failure this workflow keeps relearning.
+          BASE_SHA: ${{ steps.diff.outputs.base_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -uo pipefail
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          if [ -z "${BASE_SHA:-}" ]; then
+            echo "::error title=Config restore could not run::No base SHA from the diff step, so the PR-head config cannot be replaced with a trusted one. Refusing to run the reviewers against a PR-controlled .claude/."
+            exit 1
+          fi
+          # Keep this list identical to the action's `SENSITIVE_PATHS`
+          # (`src/github/operations/restore-config.ts`) and to `SENSITIVE_PATHS`
+          # in `.claude/scripts/assert-review-tree-clean.sh`. If the three ever
+          # drift, the assertion reports the newcomer as contamination — red,
+          # not green.
+          SENSITIVE_PATHS=(.claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky)
+
+          # The PR's own copies, for the reviewers to READ. The orchestrator
+          # prompt already promises them `.claude-pr/<path>`; on this path that
+          # promise was simply untrue until now. Taken from HEAD rather than
+          # from disk so it is the committed PR content, and symlinks are
+          # dropped afterwards so nothing under `.claude-pr/` can resolve
+          # outside the checkout when a reviewer reads it.
+          rm -rf .claude-pr
+          mkdir -p .claude-pr
+          for p in "${SENSITIVE_PATHS[@]}"; do
+            git cat-file -e "HEAD:$p" 2>/dev/null || continue
+            git archive HEAD -- "$p" 2>/dev/null | tar -x -C .claude-pr 2>/dev/null || true
+          done
+          find .claude-pr -type l -delete 2>/dev/null || true
+          if [ -n "$(ls -A .claude-pr 2>/dev/null)" ]; then
+            # `git status` must not list the snapshot, or the clean-tree
+            # assertion reads it as an untracked file nobody can explain. The
+            # action appends the same pattern to the same file.
+            EXCLUDE_FILE="$(git rev-parse --git-path info/exclude)"
+            mkdir -p "$(dirname "$EXCLUDE_FILE")"
+            grep -qxF '/.claude-pr/' "$EXCLUDE_FILE" 2>/dev/null \
+              || printf '/.claude-pr/\n' >> "$EXCLUDE_FILE"
+            echo "Preserved the PR's sensitive paths -> .claude-pr/ for the reviewers (not executed)."
+          else
+            rmdir .claude-pr 2>/dev/null || true
+          fi
+
+          echo "Restoring ${SENSITIVE_PATHS[*]} from ${BASE_SHA} (dispatch checks out a PR head, which is untrusted)"
+          for p in "${SENSITIVE_PATHS[@]}"; do
+            rm -rf "$p"
+          done
+          git fetch origin "$DEFAULT_BRANCH" --no-recurse-submodules --quiet 2>/dev/null || true
+          if ! git rev-parse --verify --quiet "$BASE_SHA^{commit}" >/dev/null 2>&1; then
+            echo "::error title=Config restore could not run::${BASE_SHA} does not resolve, so the trusted config cannot be checked out. The eight paths have been deleted and the reviewers will not run — absent is safe, the PR's version is not."
+            exit 1
+          fi
+          for p in "${SENSITIVE_PATHS[@]}"; do
+            # Absent on base is not an error: the path stays deleted, which is
+            # exactly what the action does for a path a PR adds.
+            git checkout "$BASE_SHA" -- "$p" 2>/dev/null || true
+          done
+          # `git checkout <ref> -- <path>` STAGES what it wrote. Unstage, so the
+          # working tree — not the index — is what the clean-tree assertion at
+          # the end of the job reads, the same way it does after the action's
+          # own restore.
+          git reset --quiet -- "${SENSITIVE_PATHS[@]}" 2>/dev/null || true
+
+          # Fail closed on the one thing that actually matters: the settings the
+          # CLI is about to read must be the base ones. Comparing against the
+          # base blob (not merely "the file exists") is what makes this a
+          # measurement rather than a hope.
+          if git cat-file -e "$BASE_SHA:.claude/settings.json" 2>/dev/null; then
+            if [ "$(git hash-object -- .claude/settings.json 2>/dev/null)" != "$(git rev-parse "$BASE_SHA:.claude/settings.json")" ]; then
+              echo "::error title=Config restore failed::.claude/settings.json on disk does not match ${BASE_SHA}. The CLI reads hooks and permission mode from that file before any tool gating, so the reviewers will not run."
+              exit 1
+            fi
+          elif [ -e .claude/settings.json ]; then
+            echo "::error title=Config restore failed::.claude/settings.json exists on disk but not at ${BASE_SHA}, so it is the PR's own. Refusing to run the reviewers."
+            exit 1
+          fi
+          echo "Config restored from ${BASE_SHA}; the reviewers run against the base branch's .claude/, not the PR head's."
 
       - name: Run the four reviewers
         if: steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
@@ -493,10 +657,10 @@ jobs:
             comments; do not edit code; do not push. Report, and report honestly.
 
             ⛔ WRITE NOTHING INSIDE THE REPOSITORY. Not the verdict, not a
-            scratch file, not a note to yourself. The checkout must end this job
-            byte-identical to `HEAD`, and a step after you asserts exactly that
-            and fails the job if it is not — see below for why. Everything you
-            need to produce goes under `${{ runner.temp }}`.
+            scratch file, not a note to yourself. A step after you asserts that
+            the checkout is byte-identical to `HEAD` and fails the job if it is
+            not — see below for the one exception, which is not yours to use.
+            Everything you need to produce goes under `${{ runner.temp }}`.
 
             ## Scope
 
@@ -512,16 +676,29 @@ jobs:
             do not need `git diff`, and neither do the reviewers, who have no
             shell at all. Read the WHOLE diff and the surrounding code.
 
-            ⛔ THE PULL REQUEST IS THE COMMITTED DIFF, AND NOTHING ELSE. This
-            checkout is clean by construction — CI never has uncommitted work.
-            So anything `git status` or a bare `git diff` reports is damage this
-            job did to the tree during THIS run, never a defect in the PR.
-            Reporting it as a finding is how this workflow produced three false
-            `DO_NOT_MERGE` verdicts across #3009 and #3015: the finding names an
-            "uncommitted revert" and prescribes `git restore <file>` —
-            discarding a change nobody made. If you observe an uncommitted
-            change, that is a bug in this review, so re-read the file at `HEAD`
+            ⛔ THE PULL REQUEST IS THE COMMITTED DIFF, AND NOTHING ELSE. CI
+            never has uncommitted work, so anything `git status` or a bare
+            `git diff` reports is something this job did during THIS run, never
+            a defect in the PR. Reporting it as a finding is how this workflow
+            produced three false `DO_NOT_MERGE` verdicts across #3009 and #3015:
+            the finding names an "uncommitted revert" and prescribes
+            `git restore <file>` — discarding a change nobody made. If you
+            observe an uncommitted change, re-read the file at `HEAD`
             (`git show HEAD:<path>`) and judge THAT.
+
+            ⛔ AND ONE OF THOSE CHANGES IS EXPECTED, SO DO NOT CHASE IT. Before
+            you started, the action reverted `.claude/`, `.mcp.json`,
+            `.claude.json`, `.gitmodules`, `.ripgreprc`, `CLAUDE.md`,
+            `CLAUDE.local.md` and `.husky/` to the base branch, because this CLI
+            reads settings and hooks from the working directory and a PR head is
+            untrusted. On a PR that touches any of those paths, the files ON DISK
+            are the BASE versions, not this PR's. Reading them and concluding
+            "the change is missing" would be a false finding about a change that
+            is right there in the diff. For those paths the PR's real content is
+            `${{ runner.temp }}/pr.diff` or the snapshot the action leaves in
+            `.claude-pr/<path>` — the two a reviewer can `Read`, since it has no
+            shell. `git show HEAD:<path>` also works, but only for you. Tell
+            every reviewer you spawn the same thing if the diff touches them.
 
             ## Step 1 — four independent reviewers, in parallel
 
@@ -625,11 +802,48 @@ jobs:
       # restoring the files would hide a reviewer that mutates the checkout, and
       # the mutation is the bug worth seeing.
       #
+      # ⚠️ THERE IS A SECOND WRITER IN THIS JOB, AND IT IS NOT A REVIEWER.
+      #   `claude-code-action` rewrites the checkout before the CLI starts:
+      #     "Restoring .claude, .mcp.json, .claude.json, .gitmodules, .ripgreprc,
+      #      CLAUDE.md, CLAUDE.local.md, .husky from origin/main (PR head is
+      #      untrusted)"
+      #   The CLI reads `.claude/settings.json` and `.mcp.json` from cwd and acts
+      #   on them — hooks, env vars, apiKeyHelper — BEFORE any tool-permission
+      #   gating, so on a PR-head checkout they are attacker-controlled. The
+      #   action deletes those eight paths, checks them out from the base branch,
+      #   and unstages them; its own source calls the fallout a "Known
+      #   limitation". A PR that legitimately edits `.claude/**` therefore ends
+      #   the run with those files reverted in the working tree.
+      #
+      #   ON A DISPATCH THAT SECOND WRITER IS US, not the action: it gates that
+      #   restore on a PR context, which `workflow_dispatch` does not have, so
+      #   `Restore config paths from base` performs the identical rewrite from
+      #   the same pinned base SHA. Nothing below needs to know which one ran.
+      #
+      #   A bare `git status --porcelain | test -z` cannot tell that apart from a
+      #   reviewer's edit, and blamed the reviewers for it: run 31193247720
+      #   (PR #3048) failed with ` M .claude/scripts/sync-assets.sh`, zero
+      #   permission denials, and an error naming #3016 — the wrong cause. It was
+      #   this step that made the workflow red, not the review: 11 of the 14
+      #   failing runs sampled on 2026-08-07 died here, every reported path under
+      #   `.claude/`.
+      #
+      # The fix is NOT a path exclusion — an exempted path is a path a reviewer
+      # can hide in, and `.claude/` is the worst one to offer, since the reviewer
+      # mandates and the hook dispatch live there. `assert-review-tree-clean.sh`
+      # instead asserts the action's contract: a sensitive path is forgiven only
+      # when its bytes AND mode equal `origin/<base>` exactly. A reviewer editing
+      # `.claude/` to anything else still fails, and so does a file it invents
+      # there. Everything outside those eight paths must still be byte-identical
+      # to HEAD, with no carve-outs at all. The script is self-tested
+      # (`test-assert-review-tree-clean.sh`, wired into ci.yml → repo-hygiene)
+      # with a mutation test that turns red if it is ever weakened into an
+      # exclusion.
+      #
       # It has NO exclusions any more. It used to exempt `review-verdict.json`,
       # which the orchestrator wrote at the repo root; that file now lives under
       # RUNNER_TEMP with the diff, so nothing this job produces belongs in the
-      # checkout and the invariant is the strongest one available: byte-identical
-      # to HEAD, no carve-outs. An exempted path is a path a reviewer can hide in.
+      # checkout.
       #
       # The net stays even though the reviewers are now structurally incapable of
       # writing (no shell, no write tool — see the toolset assertion above). It
@@ -651,26 +865,46 @@ jobs:
       # its own terms instead of being laundered into a verdict.
       - name: Assert the reviewers left the tree clean
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_SHA: ${{ steps.diff.outputs.base_sha }}
         run: |
           set -uo pipefail
-          # A FAILED `git status` is not a clean tree. Assigning it straight into
-          # DIRT made this step fail-OPEN: a non-zero exit leaves the variable
-          # empty and the assertion then announces a pristine checkout it never
-          # managed to look at. Reproduced outside a repository: git printed
-          # "fatal: not a git repository" and the step still said "Working tree
-          # clean". Same class as "absent is not zero", which this workflow
-          # already learned the hard way for `permission_denials_count` below.
-          if ! DIRT="$(git status --porcelain)"; then
-            echo "::error title=Clean-tree assertion could not run::git status failed in ${PWD}, so this run proves nothing about the checkout. Absent is not clean — treating it as contaminated."
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          # The branch the ACTION restored from — `restoreConfigFromBase` uses
+          # the PR's base branch, so the comparison has to use the same one or
+          # every restored file reads as contamination. Prefer the SHA pinned
+          # BEFORE the fan-out (see `Materialise the diff`): re-resolving the
+          # branch here would follow it if it moved during the review. The
+          # branch name is only the fallback for the `always()` paths where that
+          # step never ran.
+          BASE="${BASE_SHA:-origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}}"
+          # ⛔ Same pin as the grader, for the same reason: the judge must not
+          # come from the code being judged. Reading the script out of the
+          # checkout would let a PR supply the assertion that clears it — and by
+          # this point in the job `.claude/` is whatever the action restored,
+          # which is the base version on a healthy run and the PR's version if
+          # the action never got that far. `git show` removes the ambiguity.
+          #
+          # ⚠️ `|| true` on both fetches is not sloppiness. GitHub runs this as
+          # `bash -e` and `set -uo pipefail` does NOT clear errexit, so a bare
+          # failing fetch would kill the step before the `::error` below could
+          # print — a red check with an empty log, indistinguishable from real
+          # contamination. Every sibling fetch in this file is guarded the same
+          # way. Nothing fails open: `git show` and the script's own
+          # `rev-parse --verify` on the base are what actually gate.
+          git fetch origin "$DEFAULT_BRANCH" --depth=1 --quiet 2>/dev/null || true
+          git fetch origin "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}" --depth=1 --quiet 2>/dev/null || true
+          if ! git show "origin/$DEFAULT_BRANCH:.claude/scripts/assert-review-tree-clean.sh" \
+                 > "$RUNNER_TEMP/assert-review-tree-clean.sh" 2>/dev/null; then
+            echo "::error title=Clean-tree assertion could not run::Could not read .claude/scripts/assert-review-tree-clean.sh from origin/${DEFAULT_BRANCH}. Refusing to assert with whatever copy the PR happens to carry — absent is not clean."
             exit 1
           fi
-          if [ -z "$DIRT" ]; then
-            echo "Working tree clean — the review did not mutate the checkout."
-            exit 0
-          fi
-          echo "$DIRT"
-          echo "::error title=Review contaminated its own checkout::This job modified the working tree during the run (see the paths above). CI checks out a clean tree and the review writes everything under RUNNER_TEMP, so every one of those changes was made here — any finding derived from them is false. This is #3016. Re-run the review; do not act on its verdict."
-          exit 1
+          # Invoked by literal path, not through a variable: this line is what
+          # `test-assert-review-tree-clean.sh`'s wiring check greps for, and a
+          # check that can be satisfied by a mention in a COMMENT is #3047 all
+          # over again. Keep the script name here.
+          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE"
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,

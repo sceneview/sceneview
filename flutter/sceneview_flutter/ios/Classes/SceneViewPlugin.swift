@@ -202,16 +202,22 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
         // Capture the channel weakly, never `self`: the host view holds this
         // closure, and this object holds the host view (issue #2069).
         //
-        // `onTapEntity` rather than the host's flattened `onTap`, because the
-        // name Dart receives is derived from the entity tree — walk up to the
-        // first named ancestor, then strip the extension. That derivation is
-        // this bridge's published contract, and the flattened callback carries
-        // a position, not an entity to walk.
+        // `onTapEntity` rather than the host's flattened `onTap`, because what
+        // Dart receives is a node name, and the flattened callback carries a
+        // position and no entity at all. The host resolves the tapped entity to
+        // the model root — the entity this bridge named after its file — so the
+        // name reported is the model's, never an asset-internal mesh's.
+        //
+        // A tap that resolved outside every configured model reports `""`, the
+        // value this bridge has always used for "hit nothing of mine": the Dart
+        // callback is `void Function(String)` and widening it to `String?` on a
+        // published pub.dev API would be source-breaking.
         let channel = self.channel
         MainActor.assumeIsolated {
             hostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            hostView.onTapEntity = { [weak channel] hit in
-                channel?.invokeMethod("onTap", arguments: flutterTappedNodeName(hit.entity))
+            hostView.onTapEntity = { [weak channel] _, modelRoot in
+                let name = ((modelRoot?.name ?? "") as NSString).deletingPathExtension
+                channel?.invokeMethod("onTap", arguments: name)
             }
             sceneState.cameraControlMode = mode ?? "orbit"
             sceneState.autoCenterContent = autoCenter
@@ -265,9 +271,10 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             // The Dart side's own per-entry id, so two `loadModel` calls with the
             // same path stay two models on screen rather than collapsing into one.
             model.identity = data.id.uuidString
-            // The file's base name — with its extension, which `flutterTappedNodeName`
-            // strips when reporting. Matches Android.
-            model.nodeName = (data.path as NSString).lastPathComponent
+            // The file's name — with its extension, which the tap report strips.
+            // Query and fragment go first, so a URL source cannot leak a CDN
+            // signature into the name. Matches Android's `tapNodeName`.
+            model.nodeName = sceneViewerModelFileName(data.path)
             model.setScale(data.scale)
             return model
         }
@@ -348,21 +355,6 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             result(FlutterMethodNotImplemented)
         }
     }
-}
-
-/// Derives the node name reported to Flutter for a tapped entity, matching the
-/// Android bridge convention: the model file's base name without extension.
-/// Walks up the entity tree past anonymous mesh children to the first named
-/// ancestor, since `SpatialTapGesture` may report a deep child whose `name`
-/// is empty. Falls back to the empty string when no name is available.
-func flutterTappedNodeName(_ entity: Entity) -> String {
-    var node: Entity? = entity
-    while let current = node {
-        let stem = (current.name as NSString).deletingPathExtension
-        if !stem.isEmpty { return stem }
-        node = current.parent
-    }
-    return ""
 }
 
 // MARK: - AR SceneView
@@ -624,7 +616,7 @@ final class ARPlacementController: ObservableObject {
             do {
                 let node = try await flutterLoadModel(path: data.path)
                 node.scale(data.scale)
-                node.entity.name = (data.path as NSString).lastPathComponent
+                node.entity.name = sceneViewerModelFileName(data.path)
                 templates.append((data, node.entity))
             } catch {
                 NSLog(

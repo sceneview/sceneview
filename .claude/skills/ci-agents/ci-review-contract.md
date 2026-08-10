@@ -34,10 +34,22 @@ workflow produced it from the committed merge ref, so it is the whole PR.
 ## The pull request is the committed diff, and nothing else
 
 CI checks out a clean tree: every file in the checkout is byte-identical to
-`HEAD`. There is no uncommitted work to hunt for. A finding whose evidence is
-"the working tree differs from what is committed" is structurally impossible
-here — if you ever believe you see one, it is a bug in this review, not a defect
-in the PR.
+`HEAD`, **except eight config paths**. There is no uncommitted work to hunt for.
+Outside those eight, a finding whose evidence is "the working tree differs from
+what is committed" is structurally impossible — if you ever believe you see one,
+it is a bug in this review, not a defect in the PR.
+
+⛔ **The eight exceptions, and why they matter to you.** Before the CLI starts,
+`claude-code-action` reverts `.claude/`, `.mcp.json`, `.claude.json`,
+`.gitmodules`, `.ripgreprc`, `CLAUDE.md`, `CLAUDE.local.md` and `.husky/` to the
+**base branch** — the CLI reads settings and hooks from the working directory
+and a PR head is untrusted. So if the PR touches any of those paths, the files
+**on disk are the base versions, not this PR's**. Reading one and concluding
+"the change is missing" is a false finding about a change that is right there in
+the diff. For those paths the PR's real content is the diff your prompt names,
+or the snapshot the action leaves in `.claude-pr/<path>` — both of which you can
+`Read`. (`git show HEAD:<path>` works too, but only for the orchestrator: you
+have no shell.)
 
 ## Your final message is your report
 

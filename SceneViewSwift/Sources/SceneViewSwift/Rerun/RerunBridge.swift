@@ -129,6 +129,14 @@ public final class RerunBridge: ObservableObject {
 
     /// Open the TCP connection on a background queue. Safe to call multiple
     /// times: no-op if already connecting or ready.
+    ///
+    /// Events logged while disconnected are **dropped, never buffered or
+    /// replayed** on the next `connect()`: `send(_:)` bails out when there is
+    /// no connection, and `NWConnection` holds no backlog across a cancel.
+    /// Only what you log after connecting reaches the viewer — which is what
+    /// you want from a live debug stream, where a replayed frame from a
+    /// session that ended minutes ago would just be misleading. Matches the
+    /// Android bridge, whose outbox likewise belongs to the connection.
     public func connect() {
         queue.async { [weak self] in
             guard let self = self else { return }

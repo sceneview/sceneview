@@ -718,11 +718,13 @@ function ARTab() {
             {'\u2022 Plane detection \u2014 wired into the ARCore session\n'}
             {'\u2022 Geometry nodes in AR \u2014 Android only\n'}
             {'\u2022 Light nodes in AR \u2014 Android only\n'}
+            {'\u2022 onTap \u2014 dispatched on Android and iOS. nodeName names '}
+            {'the tapped model on Android; on iOS it is always null (#2051)\n'}
+            {'\u2022 onPlaneDetected \u2014 dispatched on Android only\n'}
             {'\nNot yet bridged \u2014 the controls below are present so the '}
             {'API is stable, but they have no native effect:\n'}
             {'\u2022 Depth occlusion \u2014 prop not applied to the AR Config\n'}
-            {'\u2022 Instant placement \u2014 prop not applied to the AR Config\n'}
-            {'\u2022 onTap / onPlaneDetected \u2014 events not dispatched yet'}
+            {'\u2022 Instant placement \u2014 prop not applied to the AR Config'}
           </Text>
         </View>
       </ScrollView>

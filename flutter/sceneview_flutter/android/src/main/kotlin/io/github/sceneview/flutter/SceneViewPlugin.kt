@@ -146,6 +146,24 @@ private fun parseLightNode(call: MethodCall): FlutterLightNode = FlutterLightNod
     ),
 )
 
+/**
+ * The name reported to Dart as the tap payload: the model file's base name
+ * without extension, identical to what the iOS bridge derives.
+ *
+ * A model path may be a URL — `ModelLoader.loadModel` loads `https://` sources
+ * — so the query and fragment are stripped FIRST. Cutting at the last `.` on a
+ * raw URL only strips the extension when it is the last dot in the whole
+ * string: `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise yield
+ * `robot.glb?sig=SIG&v=1`, leaking a CDN signature into a payload apps put in
+ * labels and analytics events (PR #3037).
+ *
+ * [fallback] keeps a path with no usable base name from reporting "".
+ */
+private fun tapNodeName(path: String, fallback: String): String =
+    path.substringBefore('?').substringBefore('#')
+        .substringAfterLast('/').substringBeforeLast('.')
+        .ifEmpty { fallback }
+
 // ---------------------------------------------------------------------------
 // 3D SceneView
 // ---------------------------------------------------------------------------
@@ -228,7 +246,7 @@ class SceneViewPlatformView(
                             position = model.position,
                             rotation = model.rotation,
                             apply = {
-                                val nodeName = model.path.substringAfterLast('/').substringBeforeLast('.').ifEmpty { "node_$index" }
+                                val nodeName = tapNodeName(model.path, "node_$index")
                                 onTouch = { _: MotionEvent, _: HitResult ->
                                     Handler(Looper.getMainLooper()).post {
                                         channel.invokeMethod("onTap", nodeName)
@@ -472,7 +490,7 @@ class ARSceneViewPlatformView(
                             position = model.position,
                             rotation = model.rotation,
                             apply = {
-                                val nodeName = model.path.substringAfterLast('/').substringBeforeLast('.').ifEmpty { "node_$index" }
+                                val nodeName = tapNodeName(model.path, "node_$index")
                                 onTouch = { _: MotionEvent, _: HitResult ->
                                     Handler(Looper.getMainLooper()).post {
                                         channel.invokeMethod("onTap", nodeName)
