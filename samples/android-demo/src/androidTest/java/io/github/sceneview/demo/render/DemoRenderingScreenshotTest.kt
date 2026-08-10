@@ -38,12 +38,16 @@ import kotlin.math.abs
  *   - Or simply `connectedDebugAndroidTest` against a tethered Pixel during local dev
  *
  * **Goldens**: PNGs in `samples/android-demo/src/androidTest/assets/render-goldens/`.
- * On first run (no golden), the captured image is saved as the new golden and the
- * test is `assumeTrue`-skipped — re-run to verify.
+ * On first run (no golden), the captured image is saved for promotion and the test is
+ * `assumeTrue`-skipped — re-run to verify. That skip is available ONLY to a golden that
+ * has never been baselined: once a name is listed in [BASELINED_GOLDENS], a missing
+ * asset is a hard failure, so deleting a baseline cannot turn its case green by absence.
  *
- * **Diff images**: when a comparison fails, the diff image is written to
- * `getExternalFilesDir("render-test-output")` on the device with failing pixels
- * highlighted in red. Pull via `adb pull` for review.
+ * **Diff images**: when a comparison fails, the diff image is written with failing
+ * pixels highlighted in red — to `/sdcard/Download/SceneView/test-captures` when that
+ * is writable (it survives AGP's post-test uninstall), otherwise to
+ * `getExternalFilesDir("render-test-output")`. Every failure message states the path it
+ * actually used. Pull via `adb pull` for review.
  */
 @RunWith(AndroidJUnit4::class)
 class DemoRenderingScreenshotTest {
@@ -284,6 +288,20 @@ class DemoRenderingScreenshotTest {
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
 
+        // The slug is interpolated into a string that a shell interprets, so it is
+        // validated rather than quoted. Quoting was tried first and is WRONG here:
+        // `UiDevice.executeShellCommand` does not give the argument full shell-quoting
+        // semantics, and the quotes ended up inside the extra — every one of the 14
+        // demos then launched to the demo LIST, and the suite failed with "never
+        // composed". A whitelist is both correct and stricter: today every caller passes
+        // a constant, but the tab-aware deep-link parameter noted below is exactly the
+        // change that would start sourcing a slug from a Gradle property or a
+        // parameterised test.
+        require(demoSlug.matches(DEMO_SLUG_PATTERN)) {
+            "Refusing to build a shell command from slug '$demoSlug': demo slugs must " +
+                "match ${DEMO_SLUG_PATTERN.pattern}."
+        }
+
         // Launch the demo with qa_mode = true so spin loops, scene rotation, and
         // cinematic camera scripts freeze at deterministic values
         // (DemoMath.nextSpinDegrees pinned, rememberHeroYaw → staticYaw, AnimationDemo
@@ -312,7 +330,13 @@ class DemoRenderingScreenshotTest {
         // present on whatever screen preceded the launch, so it reads as "ready" a frame too
         // early. Measured on all 14 demo slugs: badge absent on the splash, present once the
         // demo is composed.
-        val demoComposed = device.wait(Until.hasObject(By.textContains("QA")), DEMO_COMPOSE_TIMEOUT_MS)
+        // Match the pill's full text, not the bare word: "QA" alone appears in demo copy
+        // and control labels, and a substring that loose would report "composed" on the
+        // wrong screen. The pill is `" QA ×"` in DemoScaffold — its testTag is not
+        // reachable from UiAutomator (the app does not set `testTagsAsResourceId`), so
+        // the visible text is the cue. Renaming the pill breaks this wait loudly, by
+        // timeout, which is the failure mode we want.
+        val demoComposed = device.wait(Until.hasObject(By.textContains(QA_PILL_TEXT)), DEMO_COMPOSE_TIMEOUT_MS)
         assertTrue(
             "Demo '$demoSlug' never composed: the qa_mode badge never appeared within " +
                 "${DEMO_COMPOSE_TIMEOUT_MS}ms, so the screen on display is not the demo. " +
@@ -597,6 +621,12 @@ class DemoRenderingScreenshotTest {
          * and ~6x below the weakest signal, so neither population is near the boundary.
          */
         const val MIN_CONTENT_SPREAD = 32
+
+        /** Exact text of `DemoScaffold`'s qa_mode pill — the positive cue that the demo composed. */
+        const val QA_PILL_TEXT = "QA ×"
+
+        /** Every demo slug in `DemoRegistry` is lower-kebab; nothing here reaches a shell unchecked. */
+        val DEMO_SLUG_PATTERN = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 
         const val MAX_SETTLE_MS = 25_000L
 
