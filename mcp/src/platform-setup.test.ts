@@ -134,6 +134,17 @@ describe("getPlatformSetup", () => {
   // LiDAR occlusion that never happens, and the RN README says the opposite in
   // the same repo. Enabling an unbridged prop in an example is the assertion;
   // `false` plus the comment is the truthful form.
+  // The per-platform asset branch must use `defaultTargetPlatform`, not
+  // `dart:io`'s `Platform`. Importing dart:io makes the file uncompilable on
+  // Flutter web — which is why viewer_page.dart was moved off it in this very
+  // repo. A setup guide teaching the pattern the codebase just abandoned is
+  // drift with extra steps.
+  it.each(["3d", "ar"] as const)("branches on defaultTargetPlatform, never dart:io, in the Flutter %s guide", (type: SetupType) => {
+    const result = getPlatformSetup("flutter", type);
+    expect(result).not.toContain("import 'dart:io'");
+    expect(result).not.toContain("Platform.isIOS");
+  });
+
   it.each(["3d", "ar"] as const)("never enables the unbridged depthOcclusion prop in the RN %s guide", (type: SetupType) => {
     const result = getPlatformSetup("react-native", type);
     expect(result).not.toContain("depthOcclusion={true}");

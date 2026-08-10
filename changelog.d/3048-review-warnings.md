@@ -72,3 +72,13 @@
   a floor that was correct — and `--fix` would then have written `4.27.0-rc` as
   the floor. Both now strip the pre-release suffix before slicing; table-tested
   across `X.Y.Z`, `X.Y.Z-rc.N` and `X.Y.Z-SNAPSHOT`, matching and mismatching.
+- The React Native bridge's own TypeScript source — the fifth copy of the same
+  AI-facing claim, and the one consumers read as an IDE tooltip — still said the
+  3D `onTap` payload arrives "on both Android and iOS". Corrected in
+  `src/index.tsx` (both the `onTap` and `TapEvent.nodeName` doc comments) and the
+  packaged `lib/typescript/**/*.d.ts` regenerated with `bob`, never hand-edited.
+- The MCP Flutter 3D guide branched its asset path on `dart:io`'s
+  `Platform.isIOS` — the exact import this PR removed from `viewer_page.dart`,
+  because it makes a Flutter file uncompilable on web. It now uses
+  `defaultTargetPlatform`, matching both the demo and the guidance this PR added
+  to `llms.txt`. Guarded and mutation-tested for both Flutter guides.

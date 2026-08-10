@@ -484,7 +484,7 @@ a release includes it.
 ### 4. Basic 3D Scene
 
 \`\`\`dart
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class My3DScreen extends StatelessWidget {
@@ -492,7 +492,11 @@ class My3DScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Not one path for both: Filament reads glTF/GLB, RealityKit reads USDZ and
     // cannot read glTF at all. A hardcoded .glb compiles and renders nothing on iOS.
-    final model = Platform.isIOS ? 'models/chair.usdz' : 'models/chair.glb';
+    // Branch on defaultTargetPlatform, never on dart:io's Platform — importing
+    // dart:io makes the file uncompilable on Flutter web.
+    final model = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'models/chair.usdz'
+        : 'models/chair.glb';
 
     return SceneView(
       initialModels: [
