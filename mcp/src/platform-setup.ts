@@ -683,7 +683,10 @@ export default function MyARScreen() {
       style={{ flex: 1 }}
       modelNodes={[{ src: 'models/robot.glb', scale: 0.5 }]}
       planeDetection={true}
-      depthOcclusion={true}
+      // Declared so the API surface is stable, but NOT bridged natively yet:
+      // setting it true changes nothing today (#909). Left explicitly false so
+      // nobody ships an app that silently expects LiDAR occlusion.
+      depthOcclusion={false}
       onPlaneDetected={(e) => console.log(e.nativeEvent.type)}
       // Android only: SceneViewSwift's ARSceneView exposes no entity
       // hit-test hook, so on iOS this never fires (#2051).

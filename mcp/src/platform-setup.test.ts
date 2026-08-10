@@ -127,6 +127,18 @@ describe("getPlatformSetup", () => {
     }
   });
 
+  // A third bug class, and the nastiest of the three: props that DO exist and
+  // DO compile, but are inert. `depthOcclusion` is declared on the RN bridge and
+  // configured nowhere native (#909), so the invented-props test above cannot see
+  // it — the identifier is real. A guide that enables it teaches an AI to promise
+  // LiDAR occlusion that never happens, and the RN README says the opposite in
+  // the same repo. Enabling an unbridged prop in an example is the assertion;
+  // `false` plus the comment is the truthful form.
+  it.each(["3d", "ar"] as const)("never enables the unbridged depthOcclusion prop in the RN %s guide", (type: SetupType) => {
+    const result = getPlatformSetup("react-native", type);
+    expect(result).not.toContain("depthOcclusion={true}");
+  });
+
   it("returns React Native setup with npm install", () => {
     const result = getPlatformSetup("react-native", "3d");
     expect(result).toContain("npm install");

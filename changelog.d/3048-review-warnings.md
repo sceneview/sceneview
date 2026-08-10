@@ -57,3 +57,11 @@
   document in the same PR says only `:podspec =>` resolves today, and the React
   Native README's `onTap` topic sentence still said "both platforms" three lines
   above the callout walking iOS back to *probably broken*.
+- The MCP React Native AR guide no longer sets `depthOcclusion={true}`. The prop
+  is declared on the bridge but configured nowhere native ([#909]), so the
+  example promised LiDAR occlusion the runtime never delivers — and said the
+  opposite of the RN README in the same repo. Real-but-inert props are invisible
+  to the invented-symbol test (the identifier exists), so a dedicated guard now
+  forbids enabling this one in either RN guide.
+
+[#909]: https://github.com/sceneview/sceneview/issues/909
