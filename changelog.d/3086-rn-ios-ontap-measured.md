@@ -4,9 +4,10 @@
   an iPhone 17 Pro Max simulator with a model rendering: 5 taps on the model,
   5 dispatches, `nodeName` naming the model every time. Every surface that
   called it unverified or probably broken now states the measured result —
-  `llms.txt` and its generated `gpt/knowledge-*` mirror, the module's `README`
-  and `onTap` JSDoc (source and published `.d.ts`), the React Native quickstart,
-  the MCP platform-setup snippet, and the demo's own coverage card.
+  `llms.txt`, its generated `gpt/knowledge-*` mirror and the unpublished
+  `.well-known/` copy, the module's `README` and `onTap` JSDoc (source and
+  published `.d.ts`), the React Native quickstart, the MCP platform-setup
+  snippet, and the demo's own coverage card.
 - The same run measured the Flutter bridge back to back, against the same
   SceneViewSwift build, the same simulator and the same entity graph (11
   entities, 1 collision shape, 9 input targets): 6 taps on the model resolved
@@ -18,7 +19,12 @@
   `podspec` declares `SceneViewSwift` (a pod cannot see the host app's SwiftPM
   packages), the demo `Podfile` resolves it from the repo root and re-pins
   `IPHONEOS_DEPLOYMENT_TARGET` to 18.0 after `react_native_post_install` lowers
-  it to React Native's 13.4 floor, and three `@react-native/*` dev dependencies
+  it to React Native's 13.4 floor. The module's `README` iOS section documented
+  the Swift Package Manager route as the supported one — it never worked, since
+  the module compiles inside `Pods.xcodeproj`, which cannot see the host
+  project's packages — and now gives the `Podfile` coordinate the unpublished
+  `SceneViewSwift` pod needs, pinned to a tag rather than `main`. That closes
+  the React Native half of [#3072]. Three `@react-native/*` dev dependencies
   Metro needs were missing. A `khronos_fox.usdz` is bundled so the Animation tab
   renders on iOS at all: the demo passed remote `.glb` URLs on both platforms,
   which RealityKit cannot read — the same failure, and the same fix, as the
@@ -26,3 +32,4 @@
 
 [#3045]: https://github.com/sceneview/sceneview/issues/3045
 [#3048]: https://github.com/sceneview/sceneview/pull/3048
+[#3072]: https://github.com/sceneview/sceneview/issues/3072

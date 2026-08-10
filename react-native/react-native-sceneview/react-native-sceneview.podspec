@@ -34,8 +34,12 @@ Pod::Spec.new do |s|
   # `SceneViewSwift` is NOT on the CocoaPods trunk, so a host app must give the
   # dependency a coordinate of its own — one of:
   #   pod 'SceneViewSwift',
-  #       :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  #       :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/v4.27.0/SceneViewSwift.podspec'
   #   pod 'SceneViewSwift', :path => '<repo-root>'   # in-repo consumers
+  # Pin a TAG, never `main`: a mutable ref makes `pod install` fetch whatever
+  # that branch holds at the time. And supply the coordinate always — the name
+  # is unclaimed on the trunk, so a Podfile that leaves it out does not fail
+  # closed, it resolves to whatever someone else publishes under that name.
   # `samples/react-native-demo/ios/Podfile` takes the `:path` route, exactly as
   # `samples/flutter-demo/ios/Podfile` does. See this module's README "iOS".
   #

@@ -217,6 +217,23 @@ if [ -f "$PODSPEC" ]; then
         "${FLOOR:+$FLOOR${SOURCE_VERSION#"$SV_MM"}}"
 fi
 
+# React Native module podspec's DEPENDENCY floor on SceneViewSwift.
+#
+# The module's own version comes from `package.json` (already watched); this is
+# the `s.dependency "SceneViewSwift", "~> X.Y"` line added when the module moved
+# off the SwiftPM route. Registered at the same time as the line itself, rather
+# than after it rots: the Flutter podspec's identical floor sat at '~> 4.26'
+# through the 4.27.0 release precisely because only `s.version` was watched.
+# Same rules as that check — MAJOR.MINOR only (a `~>` floor carries no patch),
+# both operands live in this repo so it is observable and safe to autofix.
+PODSPEC_RN="$REPO_ROOT/react-native/react-native-sceneview/react-native-sceneview.podspec"
+if [ -f "$PODSPEC_RN" ]; then
+    FLOOR_RN=$(grep 's\.dependency "SceneViewSwift"' "$PODSPEC_RN" | grep -oE '[0-9]+\.[0-9]+' | head -1 || true)
+    SV_MM_RN="${SOURCE_VERSION%%-*}"; SV_MM_RN="${SV_MM_RN%.*}"
+    add_check "react-native/.../react-native-sceneview.podspec SceneViewSwift floor" \
+        "${FLOOR_RN:+$FLOOR_RN${SOURCE_VERSION#"$SV_MM_RN"}}"
+fi
+
 # SceneViewSwift podspec (repo root)
 #
 # Registered because the file carries `s.version` and nothing was watching it.
