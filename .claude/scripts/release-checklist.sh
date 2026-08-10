@@ -179,8 +179,16 @@ if [ -f "gradlew" ]; then
     if gradle_run "$ASSEMBLE_LOG" assembleDebug; then
         check "Android assembleDebug" "PASS" ""
     else
-        ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" $?)"
-        if [ -n "$ASSEMBLE_REASON" ]; then
+        ASSEMBLE_CODE=$?
+        # Host setup FIRST, same order as pre-push-check.sh (#3065): a machine
+        # with no local.properties dies before Gradle judges anything, and
+        # calling that "infrastructure" invites a re-run that cannot help.
+        ASSEMBLE_SETUP="$(gradle_setup_reason "$ASSEMBLE_LOG")"
+        ASSEMBLE_REASON="$(gradle_infra_reason "$ASSEMBLE_LOG" "$ASSEMBLE_CODE")"
+        if [ -n "$ASSEMBLE_SETUP" ]; then
+            check "Android assembleDebug" "FAIL" "did NOT run — $ASSEMBLE_SETUP (log: $ASSEMBLE_LOG)"
+            printf '      Fix: %s\n' "$(gradle_setup_fix "$ASSEMBLE_LOG")"
+        elif [ -n "$ASSEMBLE_REASON" ]; then
             check "Android assembleDebug" "FAIL" "did not run to a verdict — Gradle infrastructure failure: $ASSEMBLE_REASON (re-run; log: $ASSEMBLE_LOG)"
         else
             check "Android assembleDebug" "FAIL" "Build failed (log: $ASSEMBLE_LOG)"
