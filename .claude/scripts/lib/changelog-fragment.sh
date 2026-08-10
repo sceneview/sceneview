@@ -213,11 +213,17 @@ frag_prose_claims_breaking() { # $1 = comment-stripped body text
     text="$(printf '%s' "$1" | tr '\n' ' ' | tr '[:upper:]' '[:lower:]')"
     # Code spans are dropped for the heuristic only — the stripper preserves them
     # in the published text. A backticked `breaking` is an identifier being
-    # discussed, never a declaration that this release breaks something.
-    text="$(printf '%s' "$text" | sed -E 's/`[^`]*`//g')"
+    # discussed, never a declaration that this release breaks something. The
+    # run is `+, not one backtick: Markdown closes a span with a run of the same
+    # length, and a ``breaking`` written with two would otherwise survive.
+    text="$(printf '%s' "$text" | sed -E 's/`+[^`]*`+//g')"
     # "no longer breaking" is a negation with a word in the middle; the general
     # "any word between" form would swallow real declarations
     # ("no workaround exists — breaking"), so only this one phrasing is added.
-    text="$(printf '%s' "$text" | sed -E "s/(non|not|no|isn.t|aren.t|won.t)([[:space:]-]+longer)?[[:space:]-]+breaking/xnegatedx/g")"
+    # The alternation is left-bounded for the same reason the final grep is:
+    # unbounded, any word ENDING in one of these tokens ("piano breaking",
+    # "casino breaking") reads as a negation and turns a real declaration into
+    # a pass — the one failure direction this guard must not have.
+    text="$(printf '%s' "$text" | sed -E "s/(^|[^a-z0-9])(non|not|no|isn.t|aren.t|won.t)([[:space:]-]+longer)?[[:space:]-]+breaking/\1xnegatedx/g")"
     printf '%s' "$text" | grep -qE '(^|[^a-z0-9])breaking'
 }

@@ -184,6 +184,28 @@ frag 0004f-codespan-and-real.md <<'EOF'
 EOF
 expect_rc "a real declaration beside a code span still refuses a patch tag" 1 4.26.1
 
+# ── 5i. A word merely ENDING in a negation is not a negation ─────────────────
+# Deliberately contrived prose: the point is that "piano" ends in "no", and an
+# unbounded negation alternation would read "piano breaking" as "no breaking"
+# and let a real declaration through. Wrong in the one direction that matters.
+setup_sandbox
+frag 0004i-piano.md <<'EOF'
+<!-- category: Changed -->
+- The piano breaking animation is gone from the public API.
+EOF
+expect_rc "'piano breaking' is not read as a negation" 1 4.26.1
+
+# ── 5j. A double-backtick code span is still a code span ─────────────────────
+# Markdown closes a span with a run of the same length; a one-backtick stripper
+# leaves the inner text exposed and the identifier reads as a declaration.
+setup_sandbox
+frag 0004j-double-tick.md <<'EOF'
+<!-- category: Added -->
+- The marker is written ``breaking`` when the surrounding prose needs a
+  literal backtick.
+EOF
+expect_rc "a double-backtick code span does not refuse a patch tag" 0 4.26.1
+
 # ── 5g. A multi-word marker value is malformed, not "no marker here" ─────────
 # The regex used to capture the value as a single alphanumeric token, so this
 # line failed to match at all, was stripped as an ordinary comment, and the
