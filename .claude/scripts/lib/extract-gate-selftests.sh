@@ -25,6 +25,17 @@
 #
 # Usage:
 #   bash .claude/scripts/lib/extract-gate-selftests.sh <workflow.yml> [job-name]
+#   bash .claude/scripts/lib/extract-gate-selftests.sh --count-steps <workflow.yml> [job-name]
+#
+# `--count-steps` prints how many steps in the job NAME themselves a self-test.
+# It exists so the caller can cross-check the scrape against a signal the
+# scrape does not share: a fixed floor only catches a total collapse, and a
+# regex that degrades from 29 matches to 21 sails past `>= 20` while eight
+# self-tests quietly stop running (raised on #3105). The two counts are not
+# equal by construction — a couple of self-tests run inside steps named after
+# what they guard — so the contract is `discovered >= named`, and both checks
+# are needed: if the job window itself stops matching, BOTH counts fall to
+# zero together and only the absolute floor notices.
 #
 # stdout: one `<interpreter> <script>` command per line, sorted, deduplicated.
 # stderr: one `REJECT: <line>` per scraped command that failed validation.
@@ -34,22 +45,37 @@
 
 set -u
 
+COUNT_STEPS=0
+if [ "${1:-}" = "--count-steps" ]; then
+    COUNT_STEPS=1
+    shift
+fi
+
 WORKFLOW="${1:-}"
 JOB="${2:-repo-hygiene}"
 
 if [ -z "$WORKFLOW" ] || [ ! -f "$WORKFLOW" ]; then
-    echo "usage: extract-gate-selftests.sh <workflow.yml> [job-name]" >&2
+    echo "usage: extract-gate-selftests.sh [--count-steps] <workflow.yml> [job-name]" >&2
     exit 64
+fi
+
+job_window() {
+    awk -v job="  $JOB:" '
+        $0 == job {f = 1; next}
+        /^  [a-z][a-z0-9_-]*:[[:space:]]*$/ {f = 0}
+        f
+    ' "$WORKFLOW"
+}
+
+if [ "$COUNT_STEPS" -eq 1 ]; then
+    job_window | grep -cE '^[[:space:]]+- name:.*[Ss]elf-test' || true
+    exit 0
 fi
 
 # A YAML comment is prose, not a step: `sed` strips it before the scrape so a
 # commented-out or merely-mentioned command is never executed. The awk window
 # closes on the next top-level job key, so only the requested job is scraped.
-awk -v job="  $JOB:" '
-    $0 == job {f = 1; next}
-    /^  [a-z][a-z0-9_-]*:[[:space:]]*$/ {f = 0}
-    f
-' "$WORKFLOW" \
+job_window \
     | sed 's/[[:space:]]#.*$//' \
     | grep -oE '(bash|python3) ([a-zA-Z0-9_.][a-zA-Z0-9_./-]*)?test-[a-zA-Z0-9_.-]+\.(sh|py)' \
     | sort -u \

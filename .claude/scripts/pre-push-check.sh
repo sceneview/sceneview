@@ -627,9 +627,24 @@ if [ -s "$LOG_DIR/selftests-refused.txt" ]; then
 fi
 SELFTEST_COUNT=$(grep -c . "$SELFTEST_LIST" 2>/dev/null || true)
 SELFTEST_COUNT=${SELFTEST_COUNT:-0}
+# Second, INDEPENDENT count: how many steps of that job name themselves a
+# self-test. The fixed floor below only catches a total collapse; a regex that
+# degrades from 29 matches to 21 clears `>= 20` while eight self-tests quietly
+# stop running here (raised on #3105). This one moves with the job, so the
+# window closes to whatever gap is real — 29 discovered vs 27 named today,
+# because two self-tests live in steps named after what they guard. Both
+# checks are load-bearing: if the job window itself breaks, BOTH counts fall
+# to zero together and only the absolute floor is left standing.
+SELFTEST_NAMED=$(bash .claude/scripts/lib/extract-gate-selftests.sh --count-steps \
+    .github/workflows/ci.yml repo-hygiene 2>/dev/null || true)
+SELFTEST_NAMED=${SELFTEST_NAMED:-0}
 if [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
     echo -e "${RED}  ✗ self-test discovery is broken — found $SELFTEST_COUNT command(s) in ci.yml → repo-hygiene, expected >= $SELFTEST_FLOOR${NC}"
     echo -e "      This is a bug in THIS script's extractor, not a clean tree."
+    ERRORS=$((ERRORS + 1))
+elif [ "$SELFTEST_COUNT" -lt "$SELFTEST_NAMED" ]; then
+    echo -e "${RED}  ✗ self-test discovery degraded — found $SELFTEST_COUNT command(s) but repo-hygiene names $SELFTEST_NAMED self-test step(s)${NC}"
+    echo -e "      Some self-tests are declared in ci.yml and never reached here."
     ERRORS=$((ERRORS + 1))
 else
     SELFTEST_FAILED=0
@@ -650,6 +665,18 @@ else
         case "$script" in
             -*|*..*|/*)
                 echo -e "${YELLOW}      ⚠ refusing non-repo-relative operand '$script' from ci.yml${NC}"
+                SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+                continue
+                ;;
+        esac
+        # The INTERPRETER is scraped too, and this is the line that execs it.
+        # The extractor anchors it to bash|python3, but a guard that lives only
+        # in the producer is the very "loosen the class in a hurry" failure the
+        # extractor's own header warns about — so the consumer states it again.
+        case "$ST_INTERP" in
+            bash|python3) ;;
+            *)
+                echo -e "${YELLOW}      ⚠ refusing interpreter '$ST_INTERP' from ci.yml${NC}"
                 SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
                 continue
                 ;;

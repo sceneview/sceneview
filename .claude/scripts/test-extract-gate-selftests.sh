@@ -11,7 +11,7 @@
 # in the repo would still have passed.
 #
 # So this suite is written against HOSTILE workflow fixtures, not against the
-# real ci.yml: the question is not "does it find our 28 self-tests" (leg 19's
+# real ci.yml: the question is not "does it find all of our self-tests" (leg 19's
 # floor already answers that, from the real file) but "what does it do when
 # the YAML it is scraping is trying to run something else". Every case asserts
 # on the OUTPUT, so it keeps meaning something if the pipeline is rewritten.
@@ -184,6 +184,52 @@ REAL_COUNT=$(printf '%s\n' "$REAL" | grep -c . || true)
 [ "$REAL_COUNT" -ge 20 ] \
     && ok "the real ci.yml repo-hygiene job still yields $REAL_COUNT self-tests (>= 20)" \
     || bad "discovery against the real ci.yml collapsed to $REAL_COUNT"
+
+# ─── 11. --count-steps, the independent cross-check ────────────────────────
+# Leg 19 compares the scrape against this number, so it has to come from a
+# signal the scrape does not share: step NAMES, not `run:` bodies.
+write_wf <<'EOF'
+jobs:
+  repo-hygiene:
+    steps:
+      - name: Self-test alpha
+        run: bash .claude/scripts/test-alpha.sh
+      - name: Self-test beta
+        run: python3 .claude/scripts/test-beta.py
+      - name: Check something entirely different
+        run: bash .claude/scripts/check-thing.sh
+  other-job:
+    steps:
+      - name: Self-test gamma
+        run: bash .claude/scripts/test-gamma.sh
+EOF
+[ "$("$SHELL_BIN" "$SCRIPT" --count-steps "$WF" 2>/dev/null)" = "2" ] \
+    && ok "--count-steps counts the job's self-test STEPS, not its run: lines" \
+    || bad "--count-steps returned $("$SHELL_BIN" "$SCRIPT" --count-steps "$WF" 2>/dev/null), expected 2"
+[ "$("$SHELL_BIN" "$SCRIPT" --count-steps "$WF" no-such-job 2>/dev/null)" = "0" ] \
+    && ok "--count-steps on an unknown job is 0, not an error" \
+    || bad "--count-steps on an unknown job did not return 0"
+# A workflow where every self-test step exists but the run: lines are
+# unscrapeable is the degradation leg 19 must catch: named 2, discovered 0.
+write_wf <<'EOF'
+jobs:
+  repo-hygiene:
+    steps:
+      - name: Self-test alpha
+        run: sh "test-alpha.sh"
+      - name: Self-test beta
+        run: sh "test-beta.sh"
+EOF
+run
+{ [ -z "$OUT" ] && [ "$("$SHELL_BIN" "$SCRIPT" --count-steps "$WF" 2>/dev/null)" = "2" ]; } \
+    && ok "declared-but-undiscoverable self-tests show up as named 2 / discovered 0" \
+    || bad "the two counts did not diverge on undiscoverable steps"
+
+# ─── 12. the real ci.yml satisfies the contract leg 19 enforces ────────────
+REAL_NAMED="$("$SHELL_BIN" "$SCRIPT" --count-steps "$ROOT/.github/workflows/ci.yml" 2>/dev/null)"
+[ "$REAL_COUNT" -ge "$REAL_NAMED" ] \
+    && ok "real ci.yml: $REAL_COUNT discovered >= $REAL_NAMED named" \
+    || bad "real ci.yml: only $REAL_COUNT discovered for $REAL_NAMED named self-test steps"
 
 # ─── Summary ───────────────────────────────────────────────────────────────
 echo ""
