@@ -315,6 +315,10 @@ class _ViewerPageState extends State<ViewerPage> {
           // An entry with no source for this platform stays listed but is
           // disabled and says why, rather than looking tappable and loading
           // nothing.
+          // Both locals are final, so Dart's flow analysis carries the null
+          // test through the boolean: `path` is promoted to non-null in every
+          // `!unavailable` branch below, including inside the onTap closure.
+          // No `!` needed — and adding one here would be the actual smell.
           final unavailable = path == null;
           return ListTile(
             enabled: !unavailable,

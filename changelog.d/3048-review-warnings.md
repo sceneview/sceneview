@@ -65,3 +65,10 @@
   forbids enabling this one in either RN guide.
 
 [#909]: https://github.com/sceneview/sceneview/issues/909
+- `sync-versions.sh`'s new SceneViewSwift floor row mis-handled a pre-release
+  `VERSION_NAME`. Both the check (`$FLOOR.${SOURCE_VERSION##*.}`) and its
+  autofix (`${SOURCE_VERSION%.*}`) took the last dot-segment as the patch, so
+  `4.27.0-rc.1` produced the expected value `4.27.1` — a *blocking* MISMATCH on
+  a floor that was correct — and `--fix` would then have written `4.27.0-rc` as
+  the floor. Both now strip the pre-release suffix before slicing; table-tested
+  across `X.Y.Z`, `X.Y.Z-rc.N` and `X.Y.Z-SNAPSHOT`, matching and mismatching.

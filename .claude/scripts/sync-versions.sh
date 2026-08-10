@@ -206,8 +206,15 @@ if [ -f "$PODSPEC" ]; then
     # unlike the pub.dev caret this one is genuinely observable and is safe to
     # autofix. Compared on MAJOR.MINOR — a `~>` floor carries no patch.
     FLOOR=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+    # Rebuild the full version by swapping SOURCE_VERSION's own MAJOR.MINOR for
+    # the floor, so a correct floor reproduces SOURCE_VERSION character for
+    # character whatever its shape. The first cut of this used
+    # `$FLOOR.${SOURCE_VERSION##*.}`, which on a pre-release like `4.27.0-rc.1`
+    # takes the LAST dot-segment (`1`) as the patch and reports `4.27.1` — a
+    # blocking MISMATCH on a floor that was right all along.
+    SV_MM="${SOURCE_VERSION%%-*}"; SV_MM="${SV_MM%.*}"
     add_check "flutter/.../ios/... SceneViewSwift floor" \
-        "${FLOOR:+$FLOOR.${SOURCE_VERSION##*.}}"
+        "${FLOOR:+$FLOOR${SOURCE_VERSION#"$SV_MM"}}"
 fi
 
 # SceneViewSwift podspec (repo root)
@@ -1181,7 +1188,10 @@ if changed:
             echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
         fi
         CURRENT=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
-        WANT="${SOURCE_VERSION%.*}"
+        # Same pre-release trap as the check above: `${SOURCE_VERSION%.*}` on
+        # `4.27.0-rc.1` yields `4.27.0-rc`, which this would then WRITE into the
+        # podspec as the floor. Strip the pre-release suffix first.
+        WANT="${SOURCE_VERSION%%-*}"; WANT="${WANT%.*}"
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
             _sed_inplace "s/s\.dependency 'SceneViewSwift', '~> $CURRENT'/s.dependency 'SceneViewSwift', '~> $WANT'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/... SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
