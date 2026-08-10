@@ -82,7 +82,15 @@ shallow clone).
   doing its job but has no expiry: it protects a branch forever, including branches
   whose content was superseded 700 commits ago.
 
-## Proposed follow-up (nothing below has been executed)
+## Follow-up — status
+
+Deletion is **done** (§3). The three surviving non-PR branches each have an issue:
+
+| Branch kept | Issue | Dies when |
+|---|---|---|
+| `claude/2443-build-number-timestamp` | [#3081](https://github.com/sceneview/sceneview/issues/3081) | the timestamp lands on `main` |
+| `claude/docs-1860-scene-reconstruction-parity` | [#3082](https://github.com/sceneview/sceneview/issues/3082) | the `.gimbal` question is settled — delete either way |
+| `claude/point-and-ask-voice` | [#3083](https://github.com/sceneview/sceneview/issues/3083) | voice ships, or is decided against |
 
 ### 1. Recover, as ordinary work
 
@@ -100,17 +108,40 @@ shallow clone).
   places; this branch asserts no. Whichever way it lands, `main` is what needs the fix
   — the branch itself is otherwise fully covered.
 
-### 3. Deletion command (for a human to run — **not** run by this session)
+### 3. Deletion — **executed 2026-08-10**, on Thomas's explicit go-ahead
 
-Verify each verdict above first; this is a one-way action on 21 remote refs.
+The 21 DELETE verdicts were deleted from `origin`. `claude/docs-1860-…` was **held
+back** — it dies only once follow-up 2 is settled. `claude/2443-build-number-timestamp`,
+`claude/point-and-ask-voice` and the two open-PR branches were never in the set.
 
-```bash
-git push origin --delete claude/2400-clear-keyed-followup claude/2801-parity-tally-gate claude/audit-fix-mcp-web claude/docs-1860-scene-reconstruction-parity claude/feat-1872-ios-demo-registry claude/feat-2148-ios-environment-demo claude/feat-2149-collision-gesture-v2 claude/feat-2152-ios-advanced-demos claude/feat-2152-ios-advanced-demos-v2 claude/feat-2154-ios-advanced-demos-v3 claude/feat-910-ios-debug-overlay claude/feat-910-ios-texture-streaming claude/feat-910-ios-texture-streaming-v2 claude/feat-gesture-editing-demo claude/festive-varahamihira-c4fb8d claude/fix-2224-plane-renderer-opacity claude/gifted-brahmagupta-1d7c7e claude/pedantic-robinson-cdb53e claude/perf-2267-quat claude/rn-tap-nodename-sentinel claude/tree-clean-cleanup claude/zen-saha-22a0ae
-```
+Every deleted tip is recorded below. A deleted remote branch is restorable by SHA
+(`git push origin <sha>:refs/heads/<name>`) until GitHub's GC reaps the unreferenced
+object — so this table is the undo, and it is the reason the SHAs were captured
+*before* the push, not after.
 
-`claude/docs-1860-scene-reconstruction-parity` is included above — delete it **after**
-follow-up 2 is settled, not before. `claude/2443-build-number-timestamp` and
-`claude/point-and-ask-voice` are deliberately absent; so are the two open-PR branches.
+| Deleted branch | Tip SHA |
+|---|---|
+| `claude/2400-clear-keyed-followup` | `8b2471bba9506825fc00c72076eda8955accf563` |
+| `claude/2801-parity-tally-gate` | `c686cd44d24ecb138a838a95a6f193cc714f5915` |
+| `claude/audit-fix-mcp-web` | `b62a2a3a88ee640f313d03f1e88ecdfe605ad990` |
+| `claude/feat-1872-ios-demo-registry` | `7b2f735cbc1bfe6c9fdb4157934b820cf74b8d95` |
+| `claude/feat-2148-ios-environment-demo` | `ebb48943aa92be2224ded6832dea8bd6f25e90b3` |
+| `claude/feat-2149-collision-gesture-v2` | `89cefe5e6e4d92b3029b22df8ef2f67007c59408` |
+| `claude/feat-2152-ios-advanced-demos` | `cdd2ed02531590b5856e2c153d14673863c729bd` |
+| `claude/feat-2152-ios-advanced-demos-v2` | `daf76319f0616cebda6f7b3a845e38039fd9f651` |
+| `claude/feat-2154-ios-advanced-demos-v3` | `3d6d9aec88d3fe511983d424becaac7fb4b733d2` |
+| `claude/feat-910-ios-debug-overlay` | `89483b736c8843e29ebe8ffdede058ecb0c39ba3` |
+| `claude/feat-910-ios-texture-streaming` | `18ffe4526a9ee2c4d31d1271f38b1d704ce6df9b` |
+| `claude/feat-910-ios-texture-streaming-v2` | `5f9915fc2c8439ee4c60b203a46abb041091003d` |
+| `claude/feat-gesture-editing-demo` | `a096c12ac80c5831fa74b3844cc413da491cde76` |
+| `claude/festive-varahamihira-c4fb8d` | `31b290b73a2d33e0666d586f3aebd3cfc7057c0a` |
+| `claude/fix-2224-plane-renderer-opacity` | `658544a2ecc2e4ad02d0b906a7f7c665b83850a2` |
+| `claude/gifted-brahmagupta-1d7c7e` | `f3d5d10cbcccfa8a530d200690a68ba91e52ba87` |
+| `claude/pedantic-robinson-cdb53e` | `2229927c17689c1557e71b2afa21b3af45b44127` |
+| `claude/perf-2267-quat` | `bf1ca0e2272d517585abced2ef86df1b2076d891` |
+| `claude/rn-tap-nodename-sentinel` | `d5670ebad2b7d5f263589e51376e48934e479aad` |
+| `claude/tree-clean-cleanup` | `c6505efd4f411004a5ce6166d7ad74927dd9fe4d` |
+| `claude/zen-saha-22a0ae` | `b56b6fd6fc0ed585edadeb89132ded520d306152` |
 
 ### 4. Fix the measurement, not just the symptom
 
