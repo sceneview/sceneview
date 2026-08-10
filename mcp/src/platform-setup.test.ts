@@ -72,8 +72,15 @@ describe("getPlatformSetup", () => {
   it("pins the Flutter pubspec to the pub.dev release, never to VERSION_NAME", () => {
     const result = getPlatformSetup("flutter", "3d");
     expect(result).toContain(`flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}`);
-    if (LATEST_FLUTTER_PUB_RELEASE !== LATEST_SCENEVIEW_RELEASE) {
-      expect(result).not.toContain(`flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}`);
+    // Widened to `string` on purpose. Both constants are `as const`, so
+    // comparing them directly is a TS2367 compile error ("no overlap")
+    // precisely when they differ — which is the only situation in which the
+    // guard has any work to do. Keeping the literal types here would mean the
+    // suite stops compiling the day the two versions diverge.
+    const pubRelease: string = LATEST_FLUTTER_PUB_RELEASE;
+    const sdkRelease: string = LATEST_SCENEVIEW_RELEASE;
+    if (pubRelease !== sdkRelease) {
+      expect(result).not.toContain(`flutter_sceneview: ^${sdkRelease}`);
     }
   });
 
