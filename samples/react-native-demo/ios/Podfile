@@ -33,6 +33,12 @@ end
 target 'SceneViewRNDemo' do
   config = use_native_modules!
 
+  # `react-native-sceneview` declares `s.dependency 'SceneViewSwift'`, which is
+  # not published to the CocoaPods trunk — this points it at the in-repo sources.
+  # The path is the REPO ROOT because that is where `SceneViewSwift.podspec`
+  # lives; `samples/flutter-demo/ios/Podfile` resolves it the same way.
+  pod 'SceneViewSwift', :path => '../../..'
+
   use_react_native!(
     :path => config[:reactNativePath],
     # Enables Flipper.
@@ -56,5 +62,15 @@ target 'SceneViewRNDemo' do
       config[:reactNativePath],
       :mac_catalyst_enabled => false
     )
+
+    # `react_native_post_install` rewrites every pod's deployment target to React
+    # Native's own floor (13.4), which is below SceneViewSwift's 18.0 — its
+    # RealityKit per-entity light and shadow calls then fail to compile with
+    # availability errors. Same override as `samples/flutter-demo/ios/Podfile`.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
+      end
+    end
   end
 end

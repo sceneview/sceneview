@@ -631,9 +631,8 @@ export default function My3DScreen() {
       modelNodes={[{ src: 'models/chair.glb', position: [0, 0, -1], scale: 1.0 }]}
       environment="environments/sky_2k.hdr"
       cameraControlMode="orbit"
-      // Android only for now — the iOS path goes through the same RealityKit
-      // entity-targeted hit test that never fires on the Flutter bridge (#3045);
-      // the React Native measurement is #3086.
+      // Fires on Android and iOS — the iOS half is measured (#3086). Only the
+      // Flutter bridge's 3D onTap is still dead on iOS (#3045).
       onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );

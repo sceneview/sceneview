@@ -184,15 +184,14 @@ export interface SceneViewProps {
   /**
    * Called when the user taps inside the scene.
    *
-   * ⚠️ **iOS is unverified — treat this as Android-only for now.** Everything
-   * below about iOS is read off `SceneViewSwift`, not measured. The sibling
-   * Flutter bridge goes through the same RealityKit entity-targeted hit test,
-   * is wired end to end, and still never fires its callback on an iPhone 17 Pro
-   * Max simulator across two different native hosts
-   * ({@link https://github.com/sceneview/sceneview/issues/3045 | #3045}).
-   * Whether this module behaves the same is being measured under
-   * {@link https://github.com/sceneview/sceneview/issues/3086 | #3086}. Until
-   * that lands, keep an interaction path that does not depend on `onTap`.
+   * Dispatched on **Android and iOS**. The iOS half was measured on an iPhone
+   * 17 Pro Max simulator — 5 taps on a rendering model, 5 dispatches, the
+   * model's name every time
+   * ({@link https://github.com/sceneview/sceneview/issues/3086 | #3086}).
+   * The sibling Flutter bridge still never fires its 3D `onTap` on iOS
+   * ({@link https://github.com/sceneview/sceneview/issues/3045 | #3045}); the
+   * same run showed that is Flutter's platform-view touch delivery, not this
+   * shared RealityKit path, so it does not apply here.
    *
    * The event payload carries the world-space position of the tapped model and
    * its `nodeName` (the model file's base name without extension). A tap that

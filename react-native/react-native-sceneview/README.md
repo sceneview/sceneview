@@ -229,23 +229,25 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   configured natively** on either platform. Setting them has no effect today.
 - **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
-- **`onTap`** — dispatched on **Android** on both views; on iOS it is
-  **unverified and probably broken**, see the callout below. On `SceneView`
+- **`onTap`** — dispatched on **Android and iOS** on both views. On `SceneView`
   (3D) it carries the tapped model's world position and its file base name
   without extension as `nodeName`.
-  > **⚠️ The iOS half of that sentence is unverified, and there is now reason to
-  > doubt it ([#3086](https://github.com/sceneview/sceneview/issues/3086)).**
-  > This module's iOS 3D tap goes through `hostView.onTapEntity`
-  > ([`SceneViewModule.swift`](ios/SceneViewModule.swift)) — the *same*
-  > SceneViewSwift hook the Flutter bridge uses, and the Flutter bridge's 3D
-  > `onTap` was measured on an iPhone 17 Pro Max simulator, across two different
-  > native hosts, to **never fire**: RealityKit's entity-targeted hit test
-  > resolves no entity ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
-  > Nobody has yet run the same measurement here, so treat iOS 3D taps as
-  > *probably broken* until #3086 measures them. Do not ship a feature that
-  > depends on one. This caveat is deliberately not written as a fact in either
-  > direction — the claim above was an inference from the code, and replacing it
-  > with the opposite inference would repeat the mistake.
+  > **Measured, not inferred ([#3086](https://github.com/sceneview/sceneview/issues/3086)).**
+  > The iOS 3D tap was run on an iPhone 17 Pro Max simulator with the Fox USDZ
+  > rendering: 5 taps on the model, 5 dispatches, `nodeName` `khronos_fox` every
+  > time; a tap on empty space dispatched nothing, as documented below. The path
+  > was instrumented at all four stages — gesture arrival, entity resolution,
+  > `SceneViewerHostView.reportTap`, and this module's `onTapEntity` block — and
+  > every stage fired.
+  >
+  > This does **not** clear the sibling bridge: Flutter's 3D `onTap` still never
+  > fires on iOS ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
+  > The same run measured both hosts back to back against the *same*
+  > SceneViewSwift build and the same entity graph (11 entities, 1 collision
+  > shape, 9 input targets in each): 6 taps on the model under Flutter resolved
+  > no entity at all, while the plain, untargeted gesture arrived every time. So
+  > #3045 is a property of Flutter's platform-view touch delivery, not of
+  > RealityKit's entity-targeted hit test — which is what its write-up claims.
 
   On
   `ARSceneView` *what a hit reports* differs: **Android** hit-tests the AR
