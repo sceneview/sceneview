@@ -95,8 +95,8 @@ export interface TapEvent {
    * (`models/robot.glb` → `robot`). Never an asset-internal mesh name — a tap
    * inside a model always reports the model.
    *
-   * **Measured on Android only.** The iOS shape is described from the source
-   * and has never been observed; see {@link SceneViewProps.onTap | `onTap`}.
+   * **Measured on Android and iOS** (#3086) — the iOS run named the
+   * tapped model on every dispatch; see {@link SceneViewProps.onTap | `onTap`}.
    *
    * `null` — never `undefined` — when the tap hit no model: an untitled
    * geometry node or nothing at all on Android, a plane or a miss in Android

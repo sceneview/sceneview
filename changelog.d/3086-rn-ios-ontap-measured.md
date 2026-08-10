@@ -4,7 +4,8 @@
   an iPhone 17 Pro Max simulator with a model rendering: 5 taps on the model,
   5 dispatches, `nodeName` naming the model every time. Every surface that
   called it unverified or probably broken now states the measured result —
-  `llms.txt`, its generated `gpt/knowledge-*` mirror and the unpublished
+  `llms.txt`, its `gpt/knowledge-*` mirror (regenerated with
+  `node tools/generate-gpt-knowledge.js`, never hand-edited) and the unpublished
   `.well-known/` copy, the module's `README` and `onTap` JSDoc (source and
   published `.d.ts`), the React Native quickstart, the MCP platform-setup
   snippet, and the demo's own coverage card.
