@@ -568,6 +568,8 @@ elif [ -f .claude/scripts/check-workflow-scripts.sh ]; then
             "::error::Workflow validation failed" \
             "The error lines above name the file and the offending construct."
     fi
+else
+    missing_gate_script "check-workflow-scripts.sh"
 fi
 
 # The repo-hygiene gate self-tests. Every one of them is hermetic (fixtures,
@@ -601,12 +603,18 @@ else
         [ -n "$cmd" ] || continue
         ST_INTERP="${cmd%% *}"
         script="${cmd#* }"
-        # The extractor's leading path class cannot start with `-`, so this
-        # can only fire if that regex is later widened. Quoted operand + this
-        # guard together keep an option from ever reaching the interpreter.
+        # What comes out of the extractor is a STRING SCRAPED FROM A YAML FILE,
+        # not a vetted path: `grep -oE` matches anywhere on a line, so a
+        # comment inside the repo-hygiene block is as good a source as a `run:`
+        # step. Whoever can write that line already owns CI, so this is not a
+        # trust boundary — it is the difference between running the repo's own
+        # self-tests and running whatever happens to be quoted nearby. The
+        # operand is quoted (never word-split) and must be a plain path under
+        # the repo: no leading `-` (an option, not a file) and no `..`
+        # (anything outside the tree this gate is judging).
         case "$script" in
-            -*)
-                echo -e "${YELLOW}      ⚠ refusing option-shaped operand '$script' from ci.yml${NC}"
+            -*|*..*|/*)
+                echo -e "${YELLOW}      ⚠ refusing non-repo-relative operand '$script' from ci.yml${NC}"
                 SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
                 continue
                 ;;
