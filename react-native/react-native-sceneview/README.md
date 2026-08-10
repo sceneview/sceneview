@@ -229,7 +229,8 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   configured natively** on either platform. Setting them has no effect today.
 - **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
-- **`onTap`** — dispatched on both platforms and on both views. On `SceneView`
+- **`onTap`** — dispatched on **Android** on both views; on iOS it is
+  **unverified and probably broken**, see the callout below. On `SceneView`
   (3D) it carries the tapped model's world position and its file base name
   without extension as `nodeName`.
   > **⚠️ The iOS half of that sentence is unverified, and there is now reason to

@@ -52,3 +52,8 @@
   unguarded `grep | grep | head` pipeline. Under `set -euo pipefail` a
   non-matching inner grep aborts the entire sweep before the emptiness guard
   runs, silently skipping every later autofix.
+- Two internal contradictions this PR introduced: `SceneViewSwift.podspec`'s own
+  comment called `:git =>` "the one form that works" while every install
+  document in the same PR says only `:podspec =>` resolves today, and the React
+  Native README's `onTap` topic sentence still said "both platforms" three lines
+  above the callout walking iOS back to *probably broken*.
