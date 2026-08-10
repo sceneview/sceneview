@@ -73,7 +73,11 @@ internal object WebPTextureTranscoder {
             if (bounds.outWidth !in 1..MAX_TEXTURE_EDGE || bounds.outHeight !in 1..MAX_TEXTURE_EDGE) {
                 return@runCatching null
             }
-            BitmapFactory.decodeByteArray(webP, 0, webP.size)?.let { bitmap ->
+            // Decode UNPREMULTIPLIED: the default premultiplies by alpha, and compress(PNG)
+            // un-premultiplies again, so a texture with partial transparency would come back with
+            // rounding error in its low-alpha texels — visible on base-color and emissive maps.
+            val decode = BitmapFactory.Options().apply { inPremultiplied = false }
+            BitmapFactory.decodeByteArray(webP, 0, webP.size, decode)?.let { bitmap ->
                 val out = ByteArrayOutputStream(webP.size)
                 val compressed = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 bitmap.recycle()
