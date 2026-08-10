@@ -199,6 +199,15 @@ PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/flutter_sceneview.podspec"
 if [ -f "$PODSPEC" ]; then
     V=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
+
+    # The podspec's DEPENDENCY floor on SceneViewSwift, not its own version.
+    # Registered because only `s.version` was watched: the floor sat at
+    # '~> 4.26' through the 4.27.0 release. Both operands are in this repo, so
+    # unlike the pub.dev caret this one is genuinely observable and is safe to
+    # autofix. Compared on MAJOR.MINOR — a `~>` floor carries no patch.
+    FLOOR=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+    add_check "flutter/.../ios/... SceneViewSwift floor" \
+        "${FLOOR:+$FLOOR.${SOURCE_VERSION##*.}}"
 fi
 
 # SceneViewSwift podspec (repo root)
@@ -1170,6 +1179,12 @@ if changed:
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+        WANT="${SOURCE_VERSION%.*}"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
+            _sed_inplace "s/s\.dependency 'SceneViewSwift', '~> $CURRENT'/s.dependency 'SceneViewSwift', '~> $WANT'/" "$PODSPEC"
+            echo -e "  Fixed: flutter/.../ios/... SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
         fi
     fi
 

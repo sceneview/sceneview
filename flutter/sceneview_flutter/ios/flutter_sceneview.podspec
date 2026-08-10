@@ -30,7 +30,14 @@ Pod::Spec.new do |s|
   # if the Podfile line above is omitted or mistyped, CocoaPods falls through to
   # the trunk and resolves whatever anyone has published under this name. The
   # constraint at least bounds what an unexpected resolution can pull in.
-  s.dependency 'SceneViewSwift', '~> 4.26'
+  #
+  # The floor tracks VERSION_NAME's MAJOR.MINOR and is enforced by
+  # `sync-versions.sh` (row "flutter/.../ios/... SceneViewSwift floor"). It sat at
+  # '~> 4.26' while the SDK shipped 4.27.0 because nothing watched this line —
+  # only `s.version` above was registered. A stale floor is not inert: it lets an
+  # older SceneViewSwift satisfy the dependency, so the bridge can link against a
+  # runtime that predates the APIs it calls.
+  s.dependency 'SceneViewSwift', '~> 4.27'
   # Must match SceneViewSwift/Package.swift's `.iOS("18.0")`. This said 17.0
   # while the package it bridges to required 18.0 — a host app that believed
   # the podspec and targeted 17.0 got availability errors from RealityKit's

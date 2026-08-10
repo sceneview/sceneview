@@ -5,3 +5,25 @@
 - The React Native README no longer says `SceneViewSwift` ships as SwiftPM only three lines above a callout announcing that a root podspec exists; the podspec exists, it is simply unpublished on the CocoaPods trunk.
 - The Flutter demo's viewer uses `defaultTargetPlatform` instead of `dart:io`'s `Platform`, which made the file uncompilable on Flutter web.
 - **`sync-versions.sh` no longer bumps `llms.txt`'s `flutter_sceneview: ^X.Y.Z` to `VERSION_NAME` at release time**, and the row is report-only rather than critical. This is the same defect as the MCP one above, in the surface that feeds it — and the `4.27.0` release ([`fe4d30b42`](https://github.com/sceneview/sceneview/commit/fe4d30b42)) proved it is not theoretical: the `--fix` sweep rewrote the caret to `^4.27.0` while pub.dev's `flutter_sceneview` had exactly **one** published version, `4.24.0` (checked against the registry API, not inferred). A guard that *repairs* a value it has no view of does not prevent drift, it manufactures it; what keeps this line honest is the absence of an autofix.
+- **Flutter iOS setup in the MCP server now ships a Podfile that actually
+  resolves.** Both Flutter guides stopped at `platform :ios, '18.0'`, so a
+  generated project failed with `Unable to find a specification for
+  'SceneViewSwift'`; they now carry the `pod 'SceneViewSwift', :podspec => …`
+  line and say why a Swift package cannot replace it.
+- **Fixed the Desktop setup guide, which named four APIs that do not exist**
+  (`DesktopScene`, `WireframeCube`, `WireframeSphere`, `Float3`) and leaked a
+  TypeScript `import` into a Kotlin block. It now shows `WireframeCubeViewer()`,
+  the only public entry point, and states plainly that no
+  `io.github.sceneview:sceneview-desktop` artifact is published.
+- **The Flutter plugin's podspec floor on `SceneViewSwift` is now enforced.**
+  It sat at `~> 4.26` through the 4.27.0 release because `sync-versions.sh`
+  watched only `s.version`; a stale floor lets an older SceneViewSwift satisfy
+  the dependency, so the bridge can link against a runtime predating the APIs
+  it calls. Bumped to `~> 4.27` and registered as a checked, autofixable row.
+- **React Native's quickstart no longer implies the iOS 3D `onTap` works.** It
+  is described from source, never measured; the sibling Flutter bridge with the
+  same RealityKit hit test never fires (#3045), and the RN measurement is #3072.
+- `changelog.d/3041-flutter-platformview-tap-arena.md` now carries an explicit
+  `<!-- breaking -->` marker. It describes a behaviour break in prose without
+  ever using the token `breaking`, so the patch-level guard would have let it
+  ship in a patch release.

@@ -89,7 +89,7 @@ packages:
       path: "../../flutter/sceneview_flutter"
       relative: true
     source: path
-    version: "4.26.0"
+    version: "4.27.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter

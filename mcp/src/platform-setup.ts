@@ -460,10 +460,26 @@ android {
 
 ### 3. iOS Setup
 
-In \`ios/Podfile\`:
+Both lines in \`ios/Podfile\` are required — skipping the second one fails the
+build with \`Unable to find a specification for 'SceneViewSwift'\`:
+
 \`\`\`ruby
 platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
 \`\`\`
+
+Adding \`SceneViewSwift\` as a **Swift package** in Xcode does not work: the bridge
+is itself a pod and compiles inside the generated \`Pods.xcodeproj\`, which cannot
+see a package added to \`Runner.xcodeproj\`. \`:podspec\` reads from the mutable
+\`main\` branch because no released tag carries the root podspec yet; the sources
+it pulls are tag-pinned via \`s.source\`, and this becomes a tagged coordinate once
+a release includes it.
 
 ### 4. Basic 3D Scene
 
@@ -514,14 +530,37 @@ dependencies:
 </application>
 \`\`\`
 
-### 3. iOS Info.plist
+### 3. iOS Setup
+
+Both lines in \`ios/Podfile\` are required — skipping the second one fails the
+build with \`Unable to find a specification for 'SceneViewSwift'\`:
+
+\`\`\`ruby
+platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+\`\`\`
+
+Adding \`SceneViewSwift\` as a **Swift package** in Xcode does not work: the bridge
+is itself a pod and compiles inside the generated \`Pods.xcodeproj\`, which cannot
+see a package added to \`Runner.xcodeproj\`. \`:podspec\` reads from the mutable
+\`main\` branch because no released tag carries the root podspec yet; the sources
+it pulls are tag-pinned via \`s.source\`, and this becomes a tagged coordinate once
+a release includes it.
+
+### 4. iOS Info.plist
 
 \`\`\`xml
 <key>NSCameraUsageDescription</key>
 <string>This app uses the camera for augmented reality.</string>
 \`\`\`
 
-### 4. Basic AR Scene
+### 5. Basic AR Scene
 
 \`\`\`dart
 import 'package:sceneview_flutter/sceneview_flutter.dart';
@@ -660,32 +699,31 @@ plugins {
 
 dependencies {
     implementation(compose.desktop.currentOs)
-    implementation("io.github.sceneview:sceneview-desktop:${LATEST_SCENEVIEW_RELEASE}") // when published
+    // NOTE: there is no published \`io.github.sceneview:sceneview-desktop\`
+    // artifact. Desktop is a Compose Canvas placeholder living in
+    // \`samples/desktop-demo\`, not a library you can depend on yet.
 }
 \`\`\`
 
 ### 2. Basic Desktop Scene
 
+There is no \`SceneView\` composable on desktop. The sample draws its wireframe
+with a plain Compose \`Canvas\`, so the starting point is ordinary Compose
+Desktop — copy \`samples/desktop-demo/src/desktopMain/kotlin/io/github/sceneview/desktop/Main.kt\`
+rather than importing a SceneView type that does not exist.
+
 \`\`\`kotlin
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "SceneView Desktop"
     ) {
-        // Current: software wireframe renderer
-        DesktopScene(
-            modifier = Modifier.fillMaxSize(),
-            shapes = listOf(
-                WireframeCube(position = Float3(0f, 0f, 0f), size = 1f),
-                WireframeSphere(position = Float3(2f, 0f, 0f), radius = 0.5f)
-            ),
-            cameraOrbit = true,
-            backgroundColor = Color(0xFF1A1A2E)
-        )
+        // From samples/desktop-demo — a Compose Canvas animating a wireframe,
+        // NOT a Filament scene. The only public entry point that exists today.
+        WireframeCubeViewer()
     }
 }
 \`\`\`

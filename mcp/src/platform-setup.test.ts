@@ -84,6 +84,34 @@ describe("getPlatformSetup", () => {
     }
   });
 
+  // `platform :ios, '18.0'` alone is not a working Podfile: without the
+  // explicit `pod 'SceneViewSwift'` line the build dies on "Unable to find a
+  // specification for 'SceneViewSwift'". Both Flutter guides used to stop at the
+  // platform line, so an AI reading this server produced a project that cannot
+  // build on iOS — the exact failure mode this repo exists to prevent.
+  it.each(["3d", "ar"] as const)("gives the Flutter %s guide a Podfile that resolves SceneViewSwift", (type: SetupType) => {
+    const result = getPlatformSetup("flutter", type);
+    expect(result).toContain("platform :ios, '18.0'");
+    expect(result).toContain("pod 'SceneViewSwift'");
+    expect(result).toContain(":podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'");
+  });
+
+  // The desktop guide invented an API. It showed `DesktopScene`, `WireframeCube`,
+  // `WireframeSphere` and `Float3` — none of which exist anywhere in the repo —
+  // and leaked a TypeScript `import` into a Kotlin block. The only public entry
+  // point is `WireframeCubeViewer()` in samples/desktop-demo. A fabricated symbol
+  // in a setup guide is worse than a missing guide: it compiles in the reader's
+  // head and fails in their IDE.
+  it("keeps the Desktop guide to symbols that actually exist", () => {
+    const result = getPlatformSetup("desktop", "3d");
+    expect(result).toContain("WireframeCubeViewer()");
+    for (const fabricated of ["DesktopScene", "WireframeCube(", "WireframeSphere", "Float3"]) {
+      expect(result).not.toContain(fabricated);
+    }
+    // No TypeScript in a Kotlin guide.
+    expect(result).not.toMatch(/^import \{/m);
+  });
+
   it("returns React Native setup with npm install", () => {
     const result = getPlatformSetup("react-native", "3d");
     expect(result).toContain("npm install");

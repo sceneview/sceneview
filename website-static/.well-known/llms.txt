@@ -3343,8 +3343,11 @@ ARSceneView(
 
 `ModelNode` fields: `modelPath` (required), `x/y/z` (world position), `scale`, `rotationX/Y/Z` (degrees).
 `onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) —
-never a mesh name from inside the asset; empty when the tap hit no loaded model. Delivered on
-Android and iOS for `SceneView` (3D). For `ARSceneView` it is **Android-only**: SceneViewSwift's
+never a mesh name from inside the asset; empty when the tap hit no loaded model. For `SceneView`
+(3D) it is delivered on **Android only**: the iOS path is wired end to end, but RealityKit's
+entity-targeted hit test resolves no entity, so the callback never fires — measured on an
+iPhone 17 Pro Max simulator across two different native hosts (#3045). Do not generate iOS code
+that depends on it firing. For `ARSceneView` it is **Android-only** too: SceneViewSwift's
 `ARSceneView` exposes no entity hit-test hook, so on iOS the AR `onTap` never fires (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`.
