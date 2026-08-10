@@ -18,6 +18,12 @@ ERRORS=0
 # a report was never produced, …). These are neither ✓ nor ✗ — but a gate that
 # did not run is not a gate that passed, so they still block the push.
 INCOMPLETE=0
+# Legs that never ran because a TOOL is absent from this host (node, gradlew,
+# dash, shellcheck). Unlike INCOMPLETE these do not block the push — CI still
+# gates them — but the final line may not claim "ALL CHECKS PASSED" while some
+# of them were never attempted. A verdict that reads complete because the
+# missing half printed a ⚠ nobody counted is the #2988 shape one level down.
+NOT_COVERED=0
 # Set by gradle_report_failure when the host toolchain is not configured, so
 # the final summary repeats the fix instead of the (useless here) "re-run when
 # the daemon is free" advice. See #3065.
@@ -280,7 +286,8 @@ if [ -n "$NODE_CMD" ]; then
         ERRORS=$((ERRORS + 1))
     fi
 else
-    echo -e "${YELLOW}  ⚠ node not found, skipping JS validation${NC}"
+    echo -e "${YELLOW}  ⚠ node not found — JS validation NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # 7. Demo app asset references
@@ -317,7 +324,8 @@ if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
             "Skill drift check failed"
     fi
 else
-    echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found — NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # 9. GPT knowledge base drift (#3026).
@@ -341,7 +349,8 @@ if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/d
             "Fix: node tools/generate-gpt-knowledge.js"
     fi
 else
-    echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found — NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # Vendored-download hardening gate. Passes silently while nothing builds
@@ -412,7 +421,8 @@ if [ -f gradlew ]; then
             "(API check failed for project|Expected file with API declarations)"
     fi
 else
-    echo -e "${YELLOW}  ⚠ gradlew not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ gradlew not found — apiCheck NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -555,6 +565,7 @@ echo -e "\n${YELLOW}[18/20] Validating workflow shell blocks...${NC}"
 if ! command -v dash >/dev/null 2>&1 || ! command -v shellcheck >/dev/null 2>&1; then
     echo -e "${YELLOW}  ⚠ dash or shellcheck missing — NOT checked here (CI still gates it)${NC}"
     echo -e "${YELLOW}      Arm it locally: brew install dash shellcheck${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 elif [ -f .claude/scripts/check-workflow-scripts.sh ]; then
     WF_LOG="$LOG_DIR/workflow-scripts.log"
     if bash .claude/scripts/check-workflow-scripts.sh > "$WF_LOG" 2>&1; then
@@ -589,6 +600,7 @@ echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
 SELFTEST_FLOOR=20
 SELFTEST_LIST="$LOG_DIR/selftests.txt"
 awk '/^  repo-hygiene:/{f=1;next} /^  [a-z][a-z0-9_-]*:[[:space:]]*$/{f=0} f' .github/workflows/ci.yml \
+    | sed 's/[[:space:]]#.*$//' \
     | grep -oE '(bash|python3) ([a-zA-Z0-9_.][a-zA-Z0-9_./-]*)?test-[a-zA-Z0-9_.-]+\.(sh|py)' \
     | sort -u > "$SELFTEST_LIST" || true
 SELFTEST_COUNT=$(wc -l < "$SELFTEST_LIST" | tr -d ' ')
@@ -715,7 +727,15 @@ fi
 # contention, so the remedy is to re-run once nothing else is building.
 echo -e "\n═══════════════════════════════════════════"
 if [ "$ERRORS" -eq 0 ] && [ "$INCOMPLETE" -eq 0 ]; then
-    echo -e "${GREEN}  ✓ ALL CHECKS PASSED — safe to push${NC}"
+    if [ "$NOT_COVERED" -eq 0 ]; then
+        echo -e "${GREEN}  ✓ ALL CHECKS PASSED — safe to push${NC}"
+    else
+        # Still exit 0: every one of these is gated in CI, and refusing the
+        # push because a Mac lacks shellcheck would make the gate something
+        # people work around. But the word ALL has to go.
+        echo -e "${GREEN}  ✓ CHECKS PASSED — safe to push${NC}"
+        echo -e "${YELLOW}      ($NOT_COVERED leg(s) not covered on this host — see the ⚠ lines above; CI gates them)${NC}"
+    fi
     exit 0
 elif [ "$ERRORS" -eq 0 ]; then
     echo -e "${YELLOW}  ⚠ $INCOMPLETE CHECK(S) COULD NOT RUN — no check failed, but the gate is INCOMPLETE${NC}"
