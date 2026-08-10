@@ -69,6 +69,15 @@ missing_gate_script() {
     INCOMPLETE=$((INCOMPLETE + 1))
 }
 
+# The summary must say what this run did NOT cover on every path, not only the
+# green one. A red run is the run whose output gets pasted into a PR thread and
+# argued over — omitting the not-covered legs there invites "the gate looked at
+# everything and found one problem", when it looked at less than everything.
+not_covered_recap() {
+    [ "$NOT_COVERED" -gt 0 ] || return 0
+    echo -e "${YELLOW}    (+ $NOT_COVERED leg(s) not covered on this host — see the ⚠ lines above; CI gates them)${NC}"
+}
+
 echo "═══════════════════════════════════════════"
 echo "  SceneView Pre-Push Quality Gate"
 echo "═══════════════════════════════════════════"
@@ -372,6 +381,8 @@ if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
             "vendored download chain is BUILT but unsafe:" \
             "(requirement\(s\) unmet|is missing, but something builds)"
     fi
+else
+    missing_gate_script "check-vendored-download-safety.sh"
 fi
 
 # Self-hosted runner routing. Three workflows share one `runs-on` expression;
@@ -391,6 +402,8 @@ if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
             "self-hosted runner routing is wrong" \
             "See the \`self-hosted-runner\` skill for the expression to copy."
     fi
+else
+    missing_gate_script "check-self-hosted-runner-routing.py"
 fi
 
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
@@ -594,16 +607,26 @@ fi
 # regex, "found nothing" is a broken extractor, never a clean bill of health
 # (#3050) — a count below the floor fails the leg instead of blessing it.
 echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
-# 28 self-tests on 2026-08-10. The floor guards against a regex that silently
+# 29 self-tests on 2026-08-10. The floor guards against a regex that silently
 # degrades to a handful of matches; raise it if repo-hygiene ever legitimately
 # shrinks, but never delete it.
 SELFTEST_FLOOR=20
 SELFTEST_LIST="$LOG_DIR/selftests.txt"
-awk '/^  repo-hygiene:/{f=1;next} /^  [a-z][a-z0-9_-]*:[[:space:]]*$/{f=0} f' .github/workflows/ci.yml \
-    | sed 's/[[:space:]]#.*$//' \
-    | grep -oE '(bash|python3) ([a-zA-Z0-9_.][a-zA-Z0-9_./-]*)?test-[a-zA-Z0-9_.-]+\.(sh|py)' \
-    | sort -u > "$SELFTEST_LIST" || true
-SELFTEST_COUNT=$(wc -l < "$SELFTEST_LIST" | tr -d ' ')
+# The scrape itself lives in lib/extract-gate-selftests.sh, which validates
+# every line it emits against an anchored `<bash|python3> <plain path>` shape
+# and reports what it refused. It is a separate file for one reason: these
+# strings get EXECUTED below, so the property that keeps that safe has to be
+# testable — test-extract-gate-selftests.sh pins it against hostile workflow
+# fixtures, and is itself one of the self-tests run here. Inline, the property
+# was a character class in the middle of this script that no test could reach.
+: > "$SELFTEST_LIST"
+bash .claude/scripts/lib/extract-gate-selftests.sh .github/workflows/ci.yml repo-hygiene \
+    > "$SELFTEST_LIST" 2> "$LOG_DIR/selftests-refused.txt" || true
+if [ -s "$LOG_DIR/selftests-refused.txt" ]; then
+    sed 's/^/      ⚠ /' "$LOG_DIR/selftests-refused.txt"
+fi
+SELFTEST_COUNT=$(grep -c . "$SELFTEST_LIST" 2>/dev/null || true)
+SELFTEST_COUNT=${SELFTEST_COUNT:-0}
 if [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
     echo -e "${RED}  ✗ self-test discovery is broken — found $SELFTEST_COUNT command(s) in ci.yml → repo-hygiene, expected >= $SELFTEST_FLOOR${NC}"
     echo -e "      This is a bug in THIS script's extractor, not a clean tree."
@@ -748,6 +771,7 @@ elif [ "$ERRORS" -eq 0 ]; then
         echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
         echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
     fi
+    not_covered_recap
     echo -e "${YELLOW}    Logs: $LOG_DIR${NC}"
     exit 1
 else
@@ -755,6 +779,7 @@ else
     if [ "$INCOMPLETE" -gt 0 ]; then
         echo -e "${YELLOW}  ⚠ plus $INCOMPLETE check(s) that could not run at all${NC}"
     fi
+    not_covered_recap
     if [ -n "$SETUP_FIX" ]; then
         echo -e "${YELLOW}  ⚠ this host is not set up to build:${NC}"
         echo -e "${YELLOW}      $SETUP_FIX${NC}"
