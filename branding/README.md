@@ -52,6 +52,6 @@ See `DESIGN.md` for full font scale, weights, and letter spacing.
 - [x] Package icon — `branding/npm-icon.svg` (256x256, for sceneview-mcp and sceneview.js)
 
 ### Website
-- [x] Favicon (blue cube) — `website-static/favicon.svg` (Stitch #005bc1 palette)
+- [x] Favicon (blue cube) — `website-static/favicon.svg` (`DESIGN.md` #005bc1 palette)
 - [x] OG image (1200x630) — `website-static/og-image.svg`
 - [x] Apple touch icon (180x180) — `website-static/apple-touch-icon.svg`

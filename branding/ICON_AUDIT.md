@@ -11,9 +11,9 @@ Audited: 2026-03-26 · **Refreshed: 2026-07-18 (#2773)**
 | `branding/app-icon-1024.svg` | **Store app icon** — cube on a blue→violet diagonal gradient |
 | `website-static/favicon.svg` | Favicon — 32x32, compact isometric cube + brackets |
 
-### Brand Colors (current — Stitch palette)
+### Brand Colors (current — SceneView design system palette)
 
-> **2026-07-18:** the palette below supersedes the pre-Stitch values this doc
+> **2026-07-18:** the palette below supersedes the older values this doc
 > originally listed (`#1A73E8` primary etc.). The whole codebase now uses
 > `#005BC1` — see `samples/android-demo/src/main/res/values/colors.xml`
 > (`md_theme_primary #005BC1`) and `samples/ios-demo/.../Theme.swift`.
@@ -49,7 +49,7 @@ Audited: 2026-03-26 · **Refreshed: 2026-07-18 (#2773)**
 - `AppIcon.appiconset/AppIcon.png` (1024×1024) is present and committed; it is
   pixel-identical to `branding/app-icon-1024.svg` (blue→violet gradient, cube,
   viewport brackets). `AppIcon_512x512.png` matches the Play Store `icon-512.png`.
-- AccentColor: `#005BC1` (light) / `#A4C1FF` (dark) — matches the Stitch palette.
+- AccentColor: `#005BC1` (light) / `#A4C1FF` (dark) — matches the [`DESIGN.md`](../DESIGN.md) palette.
 - **Store icons are consistent iOS ↔ Android** (both the gradient icon).
 
 ### Website (`website-static/`)
