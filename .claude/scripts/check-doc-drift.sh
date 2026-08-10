@@ -194,16 +194,26 @@ run_diff_mode() {
     local decl_changed=false
     if [[ -n "${DOC_DRIFT_FILES:-}" ]]; then
         decl_changed=true   # explicit file injection → no hunk to inspect, check docs
-    elif [[ -n "$range" ]]; then
-        # shellcheck disable=SC2086
-        local apidiff; apidiff="$(git diff $range -- $api_changed 2>/dev/null || true)"
-        if grep -E "^[+-]" <<<"$apidiff" \
-             | grep -vE "$nonpublic_re" \
-             | grep -qE "$public_decl_re|$swift_decl_re"; then
+    else
+        # The hunk delta MUST be computed over the same universe as
+        # `changed_files()` — commit range UNION working tree. A commit range
+        # alone excludes uncommitted work, so a developer running this by hand
+        # before committing (the case CLAUDE.md's quality list points at) got a
+        # false "no public declaration was added/removed/retyped": the file list
+        # saw the working tree, the decl regex never did (#3008).
+        # shellcheck disable=SC2086  # $range is word-split into "A B"; $api_changed is a file list.
+        local apidiff; apidiff="$(
+            { [[ -n "$range" ]] && git diff $range -- $api_changed 2>/dev/null || true
+              git diff -- $api_changed 2>/dev/null || true          # unstaged
+              git diff --cached -- $api_changed 2>/dev/null || true # staged
+            })"
+        if [[ -z "$apidiff" ]]; then
+            decl_changed=true   # can't compute a hunk diff → assume worth checking
+        elif grep -E "^[+-]" <<<"$apidiff" \
+               | grep -vE "$nonpublic_re" \
+               | grep -qE "$public_decl_re|$swift_decl_re"; then
             decl_changed=true
         fi
-    else
-        decl_changed=true   # can't compute a hunk diff → assume worth checking
     fi
 
     if [[ "$decl_changed" == false ]]; then
