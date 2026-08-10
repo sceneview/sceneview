@@ -1,7 +1,7 @@
 /* SceneView — Polished developer docs styling */
 /* Extends MkDocs Material with branded hero, stats, feature cards */
 
-/* SceneView M3 Expressive tokens — aligned with Stitch design system */
+/* SceneView M3 Expressive tokens — aligned with the SceneView design system (DESIGN.md) */
 :root {
   --md-primary-fg-color: #005bc1;
   --md-primary-fg-color--light: #3d7fd9;
