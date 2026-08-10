@@ -120,7 +120,7 @@ platforms.
     iPhone 17 Pro Max simulator across two different native hosts
     ([#3045](https://github.com/sceneview/sceneview/issues/3045)). Whether the
     React Native path behaves the same is being measured under
-    [#3072](https://github.com/sceneview/sceneview/issues/3072). Until that
+    [#3086](https://github.com/sceneview/sceneview/issues/3086). Until that
     lands, treat `onTap` as **Android-only** on both views and keep an
     interaction path that does not depend on it.
 

@@ -151,7 +151,7 @@ export interface SceneViewProps {
      * Max simulator across two different native hosts
      * ({@link https://github.com/sceneview/sceneview/issues/3045 | #3045}).
      * Whether this module behaves the same is being measured under
-     * {@link https://github.com/sceneview/sceneview/issues/3072 | #3072}. Until
+     * {@link https://github.com/sceneview/sceneview/issues/3086 | #3086}. Until
      * that lands, keep an interaction path that does not depend on `onTap`.
      *
      * The event payload carries the world-space position of the tapped model and

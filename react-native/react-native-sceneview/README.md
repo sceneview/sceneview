@@ -234,7 +234,7 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   (3D) it carries the tapped model's world position and its file base name
   without extension as `nodeName`.
   > **⚠️ The iOS half of that sentence is unverified, and there is now reason to
-  > doubt it ([#3072](https://github.com/sceneview/sceneview/issues/3072)).**
+  > doubt it ([#3086](https://github.com/sceneview/sceneview/issues/3086)).**
   > This module's iOS 3D tap goes through `hostView.onTapEntity`
   > ([`SceneViewModule.swift`](ios/SceneViewModule.swift)) — the *same*
   > SceneViewSwift hook the Flutter bridge uses, and the Flutter bridge's 3D
@@ -242,7 +242,7 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   > native hosts, to **never fire**: RealityKit's entity-targeted hit test
   > resolves no entity ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
   > Nobody has yet run the same measurement here, so treat iOS 3D taps as
-  > *probably broken* until #3072 measures them. Do not ship a feature that
+  > *probably broken* until #3086 measures them. Do not ship a feature that
   > depends on one. This caveat is deliberately not written as a fact in either
   > direction — the claim above was an inference from the code, and replacing it
   > with the opposite inference would repeat the mistake.
