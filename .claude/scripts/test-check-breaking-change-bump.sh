@@ -184,6 +184,30 @@ frag 0004f-codespan-and-real.md <<'EOF'
 EOF
 expect_rc "a real declaration beside a code span still refuses a patch tag" 1 4.26.1
 
+# ── 5g. A multi-word marker value is malformed, not "no marker here" ─────────
+# The regex used to capture the value as a single alphanumeric token, so this
+# line failed to match at all, was stripped as an ordinary comment, and the
+# fragment shipped unflagged — a typo silently doing the opposite of what the
+# author wrote.
+setup_sandbox
+frag 0004g-marker-multiword.md <<'EOF'
+<!-- category: Changed -->
+<!-- breaking: not sure -->
+- Something changed.
+EOF
+expect_rc "'<!-- breaking: not sure -->' exits 2 (malformed), not 0" 2 4.26.1
+
+# ── 5h. …and so is a colon with nothing after it ─────────────────────────────
+# Distinct from `<!-- breaking -->`, which is the shorthand for true: the colon
+# says a value was meant, and none arrived.
+setup_sandbox
+frag 0004h-marker-empty.md <<'EOF'
+<!-- category: Changed -->
+<!-- breaking: -->
+- Something changed.
+EOF
+expect_rc "'<!-- breaking: -->' exits 2 (malformed), not 0" 2 4.26.1
+
 # ── 6. Substring false positive ──────────────────────────────────────────────
 setup_sandbox
 frag 0005-substring.md <<'EOF'

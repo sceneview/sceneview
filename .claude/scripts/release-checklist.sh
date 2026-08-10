@@ -163,7 +163,12 @@ fi
 # the manual path — a checklist run BEFORE collating — and is a no-op once the
 # fragments are gone.
 BREAKING_GUARD="$REPO_ROOT/.claude/scripts/check-breaking-change-bump.sh"
-if [ -x "$BREAKING_GUARD" ]; then
+# `-f`, not `-x`: the guard is run with `bash "$BREAKING_GUARD"`, which never
+# consults the executable bit. Testing for `-x` would report a present, runnable
+# file as "missing" — a guard failing OPEN in the one direction that matters —
+# after a checkout on a no-exec filesystem or a perms-dropping copy.
+# collate-changelog.sh tests the same file the same way.
+if [ -f "$BREAKING_GUARD" ]; then
     # Captured in a variable, not a temp file: the output is a few lines, and a
     # `mktemp || /tmp/fixed-name-$$` fallback hands an attacker on a shared host
     # a predictable path to pre-place a symlink at.

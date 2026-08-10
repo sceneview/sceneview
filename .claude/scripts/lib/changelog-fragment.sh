@@ -159,11 +159,26 @@ frag_is_category_tag_line() {
 # must refuse on 2 rather than guess: reading it as false opens a hole in the
 # guard, reading it as true blocks a release for a typo. Neither is a decision a
 # script should make silently.
+#
+# The value is captured as "everything between the colon and the `-->`", not as
+# one alphanumeric token. A token-shaped capture makes the REGEX decide what is
+# malformed: `<!-- breaking: not sure -->` would fail to match at all, return 1
+# ("not a marker"), be stripped as an ordinary comment, and ship unflagged —
+# the fat-fingered marker silently doing the opposite of what it says. Matching
+# broadly and rejecting in the `case` below keeps that decision in one place.
 FRAG_BREAKING_MARKER=""
 frag_is_breaking_marker_line() {
-    [[ "$1" =~ ^[[:space:]]*\<!--[[:space:]]*breaking[[:space:]]*(:[[:space:]]*([A-Za-z0-9]+)[[:space:]]*)?--\>[[:space:]]*$ ]] || return 1
-    local value
-    value="$(printf '%s' "${BASH_REMATCH[2]:-true}" | tr '[:upper:]' '[:lower:]')"
+    [[ "$1" =~ ^[[:space:]]*\<!--[[:space:]]*breaking[[:space:]]*(:(.*))?--\>[[:space:]]*$ ]] || return 1
+    local value="${BASH_REMATCH[2]}"
+    # Trim, then lower-case. An empty BASH_REMATCH[1] means there was no colon
+    # at all (`<!-- breaking -->`), which is the shorthand for true; a colon
+    # with nothing after it is a typo and must reach the `*)` branch.
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [ -z "${BASH_REMATCH[1]}" ]; then
+        value=true
+    fi
+    value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
     case "$value" in
         true|yes|1)  FRAG_BREAKING_MARKER=true ;;
         false|no|0)  FRAG_BREAKING_MARKER=false ;;
