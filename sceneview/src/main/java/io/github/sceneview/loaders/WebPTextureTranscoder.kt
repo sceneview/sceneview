@@ -28,8 +28,10 @@ import java.nio.ByteOrder
  * - Only **embedded** images are transcoded — those stored in a GLB `bufferView` or in a
  *   `data:` URI. Images referenced by an external file URI are left untouched and reported through
  *   [onUnsupported], because their bytes are resolved later, by URI, inside Filament.
- * - A payload that contains no `image/webp` at all is returned **as-is** after a substring scan of
- *   the JSON chunk only, so the non-WebP path costs no parsing and no copy.
+ * - A payload that contains no `image/webp` at all is returned **as-is** after a substring scan,
+ *   with no JSON parsing and no copy of the binary payload. For a GLB the scan reads the JSON chunk
+ *   alone, so a non-WebP model costs nothing beyond it; a plain `.gltf` is all JSON, so the scan
+ *   necessarily reads the whole document — which for one with base64 textures means a full copy.
  */
 internal object WebPTextureTranscoder {
 
