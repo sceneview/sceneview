@@ -76,7 +76,9 @@ android_cli_ensure || true
 # a-priori guesses (#2854). Each frame was judged as a store listing a developer
 # scrolls past in two seconds; only frames that survive that bar ship:
 #   1 model-viewer   the core load-any-GLB promise; flagship hero model, framed
-#                    full-frame at 4.5 m (see camera_distance_for).
+#                    full-frame at 4.5 m on phone / 4.0 m on the tablet classes
+#                    (see camera_distance_for — the distance is form-factor
+#                    specific since #3106).
 #   2 dynamic-sky    the strongest frame — a lit drone against a vivid procedural
 #                    sky; a sky/sun/environment theme no other slot carries and
 #                    the shot most likely to sell the SDK. Deterministic noon
@@ -461,9 +463,30 @@ adb shell am force-stop "$PKG"
 #
 # Echoes empty for demos that frame well by default. bash 3.2 on macOS has no
 # associative arrays, hence the case statement (see project memory on 3.2).
+#
+# The value is FORM-FACTOR specific (#3106). 4.5 m was judged on the phone's
+# ~0.47 w/h portrait frame; re-judged on the tablet classes it left the helmet
+# at roughly a third of the frame height with ~60% empty black around it — a
+# weak store frame, and the exact "assume the phone number transfers" trap this
+# function now avoids. Probed live on Tablet7_QA against the captured frame:
+#   4.5 m  subject too small, most of the frame is black — rejected
+#   3.0 m  fills the frame but the chin piece is CROPPED at the bottom edge
+#   3.5 m  fills the frame on a 3/4 pose, but the hero orbit is free-running and
+#          the head-on pose CLIPS against the left edge — rejected on the pose
+#          lottery, not on the one frame that happened to be captured
+#   4.0 m  fills the frame and survives every orbit instant (probed at three
+#          points of the same orbit, widest pose still has margin) — SHIPPED
+# One tablet value covers both classes because both AVDs rotate to the SAME
+# portrait aspect: Tablet7_QA is 1200x1920 and Tablet10_QA 1600x2560 — 0.625
+# w/h either way. Re-probe if an AVD with a different ratio is ever added.
 camera_distance_for() {
   case "$1" in
-    model-viewer)    echo "4.5" ;;
+    model-viewer)
+      case "$FORM_FACTOR" in
+        tablet7|tablet10) echo "4.0" ;;
+        *)                echo "4.5" ;;
+      esac
+      ;;
     *)               echo "" ;;
   esac
 }
@@ -473,7 +496,7 @@ camera_distance_for() {
 # section since #2913. It is a silent no-op anywhere else, so never add one for a
 # demo that computes its own framing (e.g. double-pendulum has its own auto-fit
 # and never reads the extra).
-#   model-viewer → framed above (hero-orbit).
+#   model-viewer → framed above (hero-orbit), per form factor since #3106.
 #   multi-model  → deliberately UNFRAMED, and the 6.0 m that used to sit here is
 #     gone (#2913). That value was written when the section built a stock
 #     `rememberCameraManipulator`, which reads no DemoSettings at all — the extra
