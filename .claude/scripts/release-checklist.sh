@@ -173,7 +173,12 @@ if [ -x "$BREAKING_GUARD" ]; then
     set -e
     case "$BG_RC" in
         0) if [ "$TARGET_EXPLICIT" = true ]; then
-               check "breaking change vs bump level" "PASS" "$(printf '%s\n' "$BG_OUT" | tail -1 | sed 's/\x1b\[[0-9;]*m//g')"
+               # ESC via printf, not `\x1b`: the escape is a GNU extension and
+               # is not in POSIX. BSD sed on macOS 15 does honour it (measured:
+               # /usr/bin/sed strips the codes either way), so this is not a
+               # bug being fixed — it is a dependency on undocumented
+               # behaviour being removed.
+               check "breaking change vs bump level" "PASS" "$(printf '%s\n' "$BG_OUT" | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")"
            else
                # No target given, so TARGET_VERSION is the version already shipped.
                # The guard then compares it against the release BEFORE it and
