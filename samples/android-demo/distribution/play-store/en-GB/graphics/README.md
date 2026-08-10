@@ -153,7 +153,8 @@ variance — 3.0 m crops the chin piece, 3.5 m fits a 3/4 pose but clips the hea
 one (the hero orbit is free-running, so the pose is a lottery and a distance must
 survive the whole orbit, not the frame that happened to be captured), 4.0 m fills
 the frame at every instant. A single tablet value covers both classes because
-`Tablet7_QA` (1200x1920) and `Tablet10_QA` (2560x1600, rotated) land on the same
+`Tablet7_QA` (1200x1920 natively) and `Tablet10_QA` (2560x1600 natively, rotated
+to 1600x2560 by the capture script) land on the same
 0.625 aspect; re-probe if an AVD with a different ratio is ever added.
 
 ### Tablet AVDs

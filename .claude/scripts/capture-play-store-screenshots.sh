@@ -477,7 +477,8 @@ adb shell am force-stop "$PKG"
 #   4.0 m  fills the frame and survives every orbit instant (probed at three
 #          points of the same orbit, widest pose still has margin) — SHIPPED
 # One tablet value covers both classes because both AVDs rotate to the SAME
-# portrait aspect: Tablet7_QA is 1200x1920 and Tablet10_QA 1600x2560 — 0.625
+# portrait aspect: Tablet7_QA is 1200x1920 natively, Tablet10_QA is 2560x1600
+# natively and §3c rotates it to 1600x2560 before the capture loop — 0.625
 # w/h either way. Re-probe if an AVD with a different ratio is ever added.
 camera_distance_for() {
   case "$1" in
