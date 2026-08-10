@@ -7470,8 +7470,17 @@ Package: `@sceneview-sdk/react-native` (npm) — Alpha, Android + iOS only.
 Install:
 ```sh
 npm install @sceneview-sdk/react-native
-# iOS: cd ios && pod install
+# iOS: add the two lines below to ios/Podfile FIRST, then `cd ios && pod install`
 ```
+The iOS half needs both lines in `ios/Podfile` before `pod install`. `SceneViewSwift` is not on the
+CocoaPods trunk, so the module's `s.dependency` on it cannot resolve without an explicit
+coordinate, and a stock React Native Podfile's 13.4 deployment target is below its iOS 18.0 floor:
+```ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+```
+
 
 Components: `SceneView` (3D), `ARSceneView` (AR). Backed by Filament (Android) / RealityKit (iOS).
 

@@ -599,6 +599,8 @@ SceneView React Native uses **Fabric/Turbo** to bridge to native SceneView.
 
 \`\`\`bash
 npm install @sceneview/react-native
+# iOS: edit ios/Podfile as in step 3 FIRST — a stock Podfile makes this
+# \`pod install\` fail with "Unable to find a specification for 'SceneViewSwift'"
 cd ios && pod install
 \`\`\`
 
@@ -615,9 +617,16 @@ android {
 
 ### 3. iOS Setup
 
-In \`ios/Podfile\`:
+In \`ios/Podfile\` — both lines, before \`pod install\`. \`SceneViewSwift\` is not on
+the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve without
+an explicit coordinate (use \`:path => '<repo-root>'\` from a checkout), and a
+stock React Native Podfile's 13.4 target is below its iOS 18.0 floor. A Swift
+package added in Xcode does not work here: this module compiles inside
+\`Pods.xcodeproj\`, which cannot see the host project's packages.
 \`\`\`ruby
 platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 \`\`\`
 
 ### 4. Basic 3D Scene
@@ -651,6 +660,19 @@ export default function My3DScreen() {
 const REACT_NATIVE_AR = `## SceneView React Native — AR Setup
 
 ### 1. Install
+
+Both \`ios/Podfile\` lines are required before \`pod install\`: \`SceneViewSwift\` is
+not on the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve
+without an explicit coordinate, and a stock React Native Podfile's 13.4
+deployment target is below its iOS 18.0 floor. A Swift package added in Xcode
+does not replace that line — this module compiles inside \`Pods.xcodeproj\`,
+which cannot see the host project's packages.
+
+\`\`\`ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+\`\`\`
 
 \`\`\`bash
 npm install @sceneview/react-native

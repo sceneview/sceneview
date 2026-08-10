@@ -9,18 +9,33 @@ npm install @sceneview-sdk/react-native
 cd ios && pod install
 ```
 
-### iOS: raise the Podfile deployment target first
+### iOS: edit the Podfile first
 
-`SceneViewSwift`'s floor is iOS 18.0, so the module's podspec declares
-`:ios => "18.0"`. A stock React Native `Podfile` uses
-`min_ios_version_supported` (13.4), and `pod install` then fails with
-*"Specs satisfying the `react-native-sceneview` dependency were found, but they
-required a higher minimum deployment target"*. Edit `ios/Podfile` before
-installing:
+Two lines have to be in `ios/Podfile` before `pod install`:
 
 ```ruby
 platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 ```
+
+The first because `SceneViewSwift`'s floor is iOS 18.0, so the module's podspec
+declares `:ios => "18.0"`, while a stock React Native `Podfile` uses
+`min_ios_version_supported` (13.4) — `pod install` then fails with *"Specs
+satisfying the `react-native-sceneview` dependency were found, but they required
+a higher minimum deployment target"*.
+
+The second because the module's podspec declares `s.dependency
+"SceneViewSwift"`, and that pod is **not published on the CocoaPods trunk**, so
+CocoaPods cannot resolve the name on its own: without the coordinate,
+`pod install` fails with *"Unable to find a specification for SceneViewSwift"*.
+Use `:path => '<repo-root>'` instead if you build from a checkout of this
+repository. A tagged URL does not work yet — the root podspec landed after
+`v4.26.0` was cut, so no existing tag carries it.
+
+Adding `SceneViewSwift` as a Swift package in Xcode does **not** replace that
+line: this module compiles inside `Pods.xcodeproj`, which cannot see the host
+project's Swift packages.
 
 Xcode 16+ is required to build against that target.
 

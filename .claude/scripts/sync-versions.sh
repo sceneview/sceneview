@@ -1217,6 +1217,23 @@ if changed:
         fi
     fi
 
+    # Fix the React Native module podspec's SceneViewSwift floor.
+    #
+    # Paired with the check above in the same change, which is the invariant
+    # this file states a few handlers down: a blocking `add_check` with no
+    # `--fix` twin dead-ends the next one-click release, because the operator
+    # gets a MISMATCH that `--fix` cannot clear. The RN line is DOUBLE-quoted
+    # and lives at a different path, so the Flutter handler above does not
+    # reach it. Same pre-release strip, same reason.
+    if [ -f "$PODSPEC_RN" ]; then
+        CURRENT=$(grep 's\.dependency "SceneViewSwift"' "$PODSPEC_RN" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+        WANT="${SOURCE_VERSION%%-*}"; WANT="${WANT%.*}"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
+            _sed_inplace "s/s\.dependency \"SceneViewSwift\", \"~> $CURRENT\"/s.dependency \"SceneViewSwift\", \"~> $WANT\"/" "$PODSPEC_RN"
+            echo -e "  Fixed: react-native/.../react-native-sceneview.podspec SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
+        fi
+    fi
+
     # Fix the root SceneViewSwift podspec.
     #
     # This handler is not optional garnish: the matching check above is
