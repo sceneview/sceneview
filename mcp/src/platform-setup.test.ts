@@ -112,6 +112,21 @@ describe("getPlatformSetup", () => {
     expect(result).not.toMatch(/^import \{/m);
   });
 
+  // Same bug class as the Desktop guide, in the two bridges: props that read
+  // plausibly and exist nowhere. `modelUrl`, `onModelLoaded`, `tapToPlace`,
+  // `onAnchorCreated` and `PlaneDetection.horizontal` were never part of either
+  // bridge — the real surface is `initialModels`/`ModelNode(modelPath:)` in Dart
+  // and `modelNodes={[{ src }]}` in TSX. A guide that invents props produces code
+  // that fails at the first build, which is worse than no guide at all.
+  it.each([
+    ["flutter", "3d"], ["flutter", "ar"], ["react-native", "3d"], ["react-native", "ar"],
+  ] as const)("keeps the %s %s guide free of invented bridge props", (platform: Platform, type: SetupType) => {
+    const result = getPlatformSetup(platform, type);
+    for (const fabricated of ["modelUrl", "onModelLoaded", "tapToPlace", "onAnchorCreated", "PlaneDetection."]) {
+      expect(result).not.toContain(fabricated);
+    }
+  });
+
   it("returns React Native setup with npm install", () => {
     const result = getPlatformSetup("react-native", "3d");
     expect(result).toContain("npm install");

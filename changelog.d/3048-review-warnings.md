@@ -31,3 +31,24 @@
   `sync-versions.sh` only checked that its two slots agreed with *each other*,
   so a pair that drifted together stayed green. Both now track `VERSION_NAME`
   and the row reads OK rather than WARN.
+- **`llms.txt` and its two mirrors said the React Native iOS `onTap` is
+  delivered.** It routes through the same RealityKit `.targetedToAnyEntity`
+  hook the Flutter bridge measured never to fire (#3045); RN's own measurement
+  is #3072. All three AI-facing copies now say Android-only-for-now.
+- **`llms.txt` taught a Flutter install that cannot `pod install`.** The
+  mandatory `pod 'SceneViewSwift', :podspec => …` line existed in the
+  quickstart, the plugin README and the MCP server but not in the file AI
+  assistants actually read. Added, with the Swift-package dead end spelled out.
+- **`llms.txt` taught `modelPath: 'models/helmet.glb'` with no platform
+  caveat** — RealityKit cannot read glTF at all, so that line renders nothing on
+  iOS while compiling fine.
+- **Both bridge guides in the MCP server invented props** — `modelUrl`,
+  `onModelLoaded`, `tapToPlace`, `onAnchorCreated`, `PlaneDetection.horizontal`.
+  Rewritten against the real surface (`initialModels` / `ModelNode(modelPath:)`
+  in Dart, `modelNodes={[{ src }]}` in TSX) and guarded by a test.
+- `flutter_sceneview.podspec`'s `swift_version` lagged at 5.9 while the root
+  podspec that declares the sync invariant sets 5.10.
+- Three `--fix` handlers in `sync-versions.sh` read a version through an
+  unguarded `grep | grep | head` pipeline. Under `set -euo pipefail` a
+  non-matching inner grep aborts the entire sweep before the emptiness guard
+  runs, silently skipping every later autofix.

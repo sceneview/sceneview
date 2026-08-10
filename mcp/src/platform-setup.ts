@@ -484,23 +484,30 @@ a release includes it.
 ### 4. Basic 3D Scene
 
 \`\`\`dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'dart:io' show Platform;
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class My3DScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Not one path for both: Filament reads glTF/GLB, RealityKit reads USDZ and
+    // cannot read glTF at all. A hardcoded .glb compiles and renders nothing on iOS.
+    final model = Platform.isIOS ? 'models/chair.usdz' : 'models/chair.glb';
+
     return SceneView(
-      modelUrl: 'assets/models/chair.glb',  // Android: GLB, iOS: USDZ
-      environment: 'assets/environments/sky_2k.hdr',
-      cameraOrbit: true,
-      scaleToUnits: 1.0,
-      onModelLoaded: (controller) {
-        print('Model loaded');
-      },
+      initialModels: [
+        ModelNode(modelPath: model, x: 0, y: 0, z: -2, scale: 1.0),
+      ],
+      // Android only today — the iOS path is wired but RealityKit's
+      // entity-targeted hit test resolves no entity, so this never fires (#3045).
+      onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }
 }
 \`\`\`
+
+For imperative loading, attach a \`SceneViewController\` via \`onViewCreated\` and
+call \`loadModel\` / \`setEnvironment\` / \`clearScene\` on it.
 
 ### 5. Platform Differences
 
@@ -563,19 +570,17 @@ a release includes it.
 ### 5. Basic AR Scene
 
 \`\`\`dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class MyARScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ARSceneView(
-      modelUrl: 'assets/models/robot.glb',
-      planeDetection: PlaneDetection.horizontal,
-      tapToPlace: true,
-      scaleToUnits: 0.5,
-      onAnchorCreated: (anchor) {
-        print('Object placed at: \${anchor.position}');
-      },
+      planeDetection: true,
+      onPlaneDetected: (planeType) => print('plane: \$planeType'),
+      // Android only: SceneViewSwift's ARSceneView exposes no entity
+      // hit-test hook, so on iOS this never fires (#2051).
+      onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }
 }
@@ -619,11 +624,13 @@ export default function My3DScreen() {
   return (
     <SceneView
       style={{ flex: 1 }}
-      modelUrl={require('./assets/models/chair.glb')}
-      environment={require('./assets/environments/sky_2k.hdr')}
-      cameraOrbit={true}
-      scaleToUnits={1.0}
-      onModelLoaded={() => console.log('Model loaded')}
+      modelNodes={[{ src: 'models/chair.glb', position: [0, 0, -1], scale: 1.0 }]}
+      environment="environments/sky_2k.hdr"
+      cameraControlMode="orbit"
+      // Android only for now — the iOS path goes through the same RealityKit
+      // entity-targeted hit test that never fires on the Flutter bridge (#3045);
+      // the React Native measurement is #3072.
+      onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );
 }
@@ -674,11 +681,13 @@ export default function MyARScreen() {
   return (
     <ARSceneView
       style={{ flex: 1 }}
-      modelUrl={require('./assets/models/robot.glb')}
-      planeDetection="horizontal"
-      tapToPlace={true}
-      scaleToUnits={0.5}
-      onAnchorCreated={(anchor) => console.log('Placed:', anchor)}
+      modelNodes={[{ src: 'models/robot.glb', scale: 0.5 }]}
+      planeDetection={true}
+      depthOcclusion={true}
+      onPlaneDetected={(e) => console.log(e.nativeEvent.type)}
+      // Android only: SceneViewSwift's ARSceneView exposes no entity
+      // hit-test hook, so on iOS this never fires (#2051).
+      onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );
 }

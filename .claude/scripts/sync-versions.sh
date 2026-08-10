@@ -1166,7 +1166,7 @@ if changed:
 
     # Fix Flutter Android build.gradle
     if [ -f "$FLUTTER_ANDROID_GRADLE" ]; then
-        CURRENT=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        CURRENT=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/^version '$CURRENT'/version '$SOURCE_VERSION'/" "$FLUTTER_ANDROID_GRADLE"
             echo -e "  Fixed: flutter/.../android/build.gradle ($CURRENT -> $SOURCE_VERSION)"
@@ -1175,7 +1175,7 @@ if changed:
 
     # Fix Flutter iOS podspec
     if [ -f "$PODSPEC" ]; then
-        CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
@@ -1197,7 +1197,11 @@ if changed:
     # the check would report the mismatch it was asked to fix. Registering a
     # gate and teaching `--fix` to satisfy it are one change, never two.
     if [ -f "$PODSPEC_SWIFT" ]; then
-        CURRENT=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        # `|| echo ""` is mandatory, not defensive style: under `set -euo
+        # pipefail` (line 13) an inner grep that matches nothing kills the whole
+        # --fix sweep before the `[ -n "$CURRENT" ]` guard below can absorb it,
+        # silently skipping every later autofix.
+        CURRENT=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC_SWIFT"
             echo -e "  Fixed: SceneViewSwift.podspec ($CURRENT -> $SOURCE_VERSION)"

@@ -43,7 +43,11 @@ Pod::Spec.new do |s|
   # the podspec and targeted 17.0 got availability errors from RealityKit's
   # per-entity light/shadow APIs at link time, not a clear version error.
   s.platform         = :ios, '18.0'
-  s.swift_version    = '5.9'
+  # Matches SceneViewSwift.podspec and SceneViewSwift/Package.swift. The root
+  # podspec's comment names s.version / s.platform / s.swift_version as the
+  # three fields that must agree across the bridges' podspecs; this one lagged
+  # at 5.9 the moment that invariant was written.
+  s.swift_version    = '5.10'
 
   s.frameworks = 'RealityKit', 'ARKit'
 end
