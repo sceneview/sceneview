@@ -10,4 +10,5 @@
 
 <!-- The transcode runs off the main thread on the suspend/async loading paths and inline on the
      @MainThread createModel ones (same thread contract as before). The web build (Filament.js) is
-     unchanged and still needs PNG/JPEG/KTX2 — tracked separately. -->
+     unchanged and still needs PNG/JPEG/KTX2 — tracked in
+     https://github.com/sceneview/sceneview/issues/3085. -->

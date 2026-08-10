@@ -74,10 +74,13 @@ internal object WebPTextureTranscoder {
                 return@runCatching null
             }
             BitmapFactory.decodeByteArray(webP, 0, webP.size)?.let { bitmap ->
-                ByteArrayOutputStream(webP.size).also { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    bitmap.recycle()
-                }.toByteArray()
+                val out = ByteArrayOutputStream(webP.size)
+                val compressed = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                bitmap.recycle()
+                // A failed compress leaves an EMPTY stream, and an empty "PNG" would be counted as
+                // a successful conversion — the silent untextured model this whole class exists to
+                // prevent. Fall back to null so the image is reported instead.
+                out.toByteArray().takeIf { compressed && it.isNotEmpty() }
             }
         }.getOrNull()
     }
