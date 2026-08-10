@@ -58,6 +58,13 @@ class ModelLoader(
      * @param resourceResolver   Resolves GLTF external resource file names to buffers.
      * @return The loaded [Model].
      * @throws IllegalArgumentException if the buffer cannot be parsed.
+     *
+     * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
+     * because Filament's Android build registers no `image/webp` decoder and would otherwise render
+     * the model untextured (#2305). That costs one decode + PNG encode per WebP texture, **on the
+     * calling thread** here; the `suspend` [loadModel] does it off the main thread instead. A model
+     * without WebP textures is untouched.
+     *
      * @see AssetLoader.createAsset
      */
     @MainThread
@@ -260,6 +267,9 @@ class ModelLoader(
      * @param count must be sized to the desired number of instances. If successful, this method
      * will populate the array with secondary instances whose resources are shared with the primary
      * asset.
+     *
+     * Embedded WebP glTF textures are re-encoded to PNG on the calling thread first, as in
+     * [createModel].
      *
      * @see AssetLoader.createInstancedAsset
      */

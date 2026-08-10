@@ -57,9 +57,22 @@ internal object WebPTextureTranscoder {
         fun webPToPng(webP: ByteArray): ByteArray?
     }
 
+    /**
+     * Largest texture edge this will decode. A few-KB WebP may declare a canvas up to 16383², which
+     * would ask for ~1 GB of ARGB_8888 pixels; 8192 is the texture size GL implementations commonly
+     * cap at anyway, so a legitimate model never trips this. An image above it is left untranscoded
+     * and reported, exactly like one that fails to decode.
+     */
+    private const val MAX_TEXTURE_EDGE = 8192
+
     /** Backed by [BitmapFactory]; PNG is lossless so no quality is lost beyond the source WebP. */
     val platformTranscoder = ImageTranscoder { webP ->
         runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(webP, 0, webP.size, bounds)
+            if (bounds.outWidth !in 1..MAX_TEXTURE_EDGE || bounds.outHeight !in 1..MAX_TEXTURE_EDGE) {
+                return@runCatching null
+            }
             BitmapFactory.decodeByteArray(webP, 0, webP.size)?.let { bitmap ->
                 ByteArrayOutputStream(webP.size).also { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
@@ -114,8 +127,14 @@ internal object WebPTextureTranscoder {
         transcoder: ImageTranscoder,
         onUnsupported: (Int) -> Unit
     ): ByteBuffer? {
-        val (json, bin) = readGlbChunks(source) ?: return null
-        val jsonChunk = json.takeIf { it.contains(WEBP_MARKER, ignoreCase = true) } ?: return null
+        val chunks = readGlbChunks(source) ?: return null
+        // Gate BEFORE touching the BIN chunk: a non-WebP model must not pay a full-model-size copy,
+        // least of all on the main thread through the @MainThread createModel entry points.
+        val jsonChunk = chunks.json.takeIf { it.contains(WEBP_MARKER, ignoreCase = true) }
+            ?: return null
+        val bin = ByteArray(chunks.binLength).also {
+            source.duplicate().apply { position(chunks.binOffset) }.get(it)
+        }
 
         val gltf = JSONObject(jsonChunk)
         val appended = ByteArrayOutputStream().apply { write(bin) }
@@ -140,12 +159,16 @@ internal object WebPTextureTranscoder {
         return buildGlb(gltf.toString().toByteArray(Charsets.UTF_8), newBin)
     }
 
-    /** Splits a GLB into its JSON and BIN chunks, or `null` if its chunk table is not sane. */
-    private fun readGlbChunks(source: ByteBuffer): Pair<String, ByteArray>? {
+    /** The JSON chunk of a GLB, plus **where** its BIN chunk is — deliberately not its bytes. */
+    private class GlbChunks(val json: String, val binOffset: Int, val binLength: Int)
+
+    /** Locates a GLB's JSON and BIN chunks, or returns `null` if its chunk table is not sane. */
+    private fun readGlbChunks(source: ByteBuffer): GlbChunks? {
         val start = source.position()
         var offset = start + GLB_HEADER_SIZE
         var json: String? = null
-        var bin = ByteArray(0)
+        var binOffset = 0
+        var binLength = 0
         while (offset + CHUNK_HEADER_SIZE <= start + source.remaining()) {
             val chunkLength = source.getInt(offset)
             val chunkType = source.getInt(offset + 4)
@@ -157,15 +180,19 @@ internal object WebPTextureTranscoder {
             ) {
                 return null
             }
-            val chunk = ByteArray(chunkLength)
-            source.duplicate().apply { position(chunkStart) }.get(chunk)
             when (chunkType) {
-                CHUNK_JSON -> json = String(chunk, Charsets.UTF_8)
-                CHUNK_BIN -> bin = chunk
+                CHUNK_JSON -> json = ByteArray(chunkLength)
+                    .also { source.duplicate().apply { position(chunkStart) }.get(it) }
+                    .let { String(it, Charsets.UTF_8) }
+                // Only its bounds: the bytes are copied later, and only for a WebP-bearing model.
+                CHUNK_BIN -> {
+                    binOffset = chunkStart
+                    binLength = chunkLength
+                }
             }
             offset = chunkStart + chunkLength + (4 - chunkLength % 4) % 4
         }
-        return json?.let { it to bin }
+        return json?.let { GlbChunks(it, binOffset, binLength) }
     }
 
     /** The bytes of an image embedded in the BIN chunk or in a `data:` URI, if it is either. */

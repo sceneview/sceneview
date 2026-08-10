@@ -3060,6 +3060,12 @@ class ModelLoader(engine: Engine, context: Context) {
 }
 ```
 
+**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
+`createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
+texture is passed through untouched.
+
 ### MaterialLoader
 ```kotlin
 class MaterialLoader(engine: Engine, context: Context) {
