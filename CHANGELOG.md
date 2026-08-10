@@ -2,6 +2,463 @@
 
 ## Unreleased
 
+## v4.27.0 — 2026-08-10 — Compose Multiplatform, a shared iOS host, and one tap contract across the bridges
+
+`sceneview-compose` arrives: one `SceneViewer` composable from `commonMain`, viewer
+subset only, Android delegating to the existing Filament renderer. On Apple platforms
+`SceneViewerHostView` — the reusable `@objc UIView` around `SceneViewSwift` — is the
+missing half of that bridge, and the Flutter and React Native iOS bridges now render
+through it instead of each carrying its own host. The bridges' tap contract is unified
+in the same movement: a tap reports the *model*, not a mesh inside it, on every
+platform, and `nodeName == null` is now the single "hit nothing" test in React Native.
+
+
+### Added
+
+- **`SceneView.contentID(_:)` on Apple platforms — swap a model without
+  re-creating the renderer.** The content closure used to run only when the
+  scene was created, so every demo that shows a different model re-keyed the
+  whole view with SwiftUI's `.id(_:)`. That destroys the `RealityView` and
+  builds a new one, and a re-created `RealityView` on iOS 26 Simulator
+  intermittently renders *nothing at all* — no model, and no skybox either —
+  permanently ([#3008](https://github.com/sceneview/sceneview/issues/3008)).
+  `.contentID(_:)` keeps one renderer for the scene's lifetime: it removes the
+  previous content (unregistering its gesture handlers first, so it deallocates
+  instead of leaking), re-runs the closure, re-applies the render-quality
+  preset, and re-arms the auto-framing pass so the new subject is fitted to the
+  viewport instead of inheriting the previous one's camera distance. Additive
+  and non-breaking — a scene without the modifier builds its content exactly
+  once, as before. Android needs no equivalent: its DSL content is already
+  re-read on recomposition.
+- **`SceneViewer` gains an `onError` callback**, plus the `SceneViewerError` type it
+  reports. A failed load has no pixels of its own — the viewport keeps showing the
+  environment, which is indistinguishable from a load still in progress — so a failure
+  was previously observable only in the platform log. Handling it stays optional and the
+  log line is unchanged. Both shapes of failure are reported: an exception, and a loader
+  answering `null` without throwing — the second matters because the threading fix above
+  changed which one a malformed model produces (`createModelInstance` threw, the
+  suspending `loadModelInstance` returns `null`), so handling only exceptions would have
+  made unparseable models fail silently. Added now rather than deferred because the module
+  is unreleased, so it costs no compatibility; after publication it would.
+- **`check-vendored-download-safety.sh`** — refuses to *build* a vendored tree whose
+  build-logic downloads archives without verifying them and creates symlinks from an
+  unvalidated `entry.linkName`. Both defects are real in the `filament-kmp 0.3.0`
+  build-logic, and both are build-time code execution the moment something compiles it.
+  The tree was removed from `main` by
+  [#3015](https://github.com/sceneview/sceneview/pull/3015) while this change was in
+  flight, so the gate is dormant today; it arms itself when the desktop spike
+  ([#2540](https://github.com/sceneview/sceneview/issues/2540)) restores the copy and a
+  `settings.gradle` include lands, and fails from that moment naming both fixes. The
+  remediation is also written into `docs/docs/desktop-filament.md`
+  § *Re-vendoring the binding* as item 4 of the obligations that must ship in the same PR
+  as a restored tree — the requirement lands *before* the build chain, not after.
+  Wired into `repo-hygiene` and `pre-push-check.sh`, and its failing path is driven on
+  synthetic trees by `test-check-vendored-download-safety.sh` — a gate dormant on the real
+  tree is a gate whose breakage would otherwise surface only in the PR it must stop. That
+  self-test already caught one: the wiring probe matched `include("<path>")` and was blind
+  to the `projectDir = file(...)` form Gradle actually uses, so wiring the tree left the
+  gate green.
+- **Compose Multiplatform support** — new `sceneview-compose` module exposing a single
+  `SceneViewer` composable from `commonMain`, answering
+  [#558](https://github.com/sceneview/sceneview/issues/558) and
+  [#486](https://github.com/sceneview/sceneview/issues/486). Scope is the *viewer
+  subset* (model, orbit camera, key light, environment, tap hit-testing); AR, custom
+  materials and post-processing stay platform-native by design. Android is implemented
+  and delegates to the existing Filament `SceneView { }`; iOS (RealityKit) and Desktop
+  render an explicit placeholder until their renderers are wired. Purely additive — no
+  existing published surface changes. See
+  [docs/docs/compose-multiplatform.md](https://github.com/sceneview/sceneview/blob/main/docs/docs/compose-multiplatform.md).
+- **iOS bridge for `sceneview-compose`** — `SceneViewerBridge` lets an iOS app supply the
+  RealityKit renderer, since a KMP module cannot depend on a Swift Package. Gestures are
+  written back into `CameraState`, so reads stay truthful about what the user did. The
+  reusable `@objc UIView` wrapper around `SceneViewSwift` is not written yet; without a
+  registered factory `SceneViewer` draws a visible notice rather than an empty viewport.
+- **`ModelSource.Url` now rejects non-http/https URLs in `commonMain`**, so the documented
+  invariant holds on every platform instead of only inside the Android downloader.
+- **The vendored `third_party/filament-kmp/` copy was removed again before shipping.**
+  It was 31 700 lines that no `settings.gradle` referenced, so nothing compiled it, and
+  its Apache-2.0 §4(b) guard cloned a single-maintainer GitHub repo on every CI run —
+  making an unrelated upstream outage able to redden every PR in the monorepo. The
+  desktop track still plans to vendor; the *execution* moves to the P1 spike, where the
+  copy can be taken at a current upstream tag instead of ageing on `main`. Restoring it
+  is one command, documented in
+  [docs/docs/desktop-filament.md](https://github.com/sceneview/sceneview/blob/main/docs/docs/desktop-filament.md).
+- **`SceneViewerHostView` — the reusable `@objc UIView` around `SceneViewSwift`.** This is
+  the missing half of the `sceneview-compose` iOS bridge shipped in
+  [#3009](https://github.com/sceneview/sceneview/pull/3009): the Kotlin side declared it
+  needed a `UIView` factory, and every app had to write that `UIView` itself. It now ships
+  in `SceneViewSwift`, driven entirely by primitives on `SceneViewerConfiguration`, so a
+  `SceneViewerViewFactory` is a field-by-field copy plus two callbacks. The Flutter and
+  React Native bridges render their 3D path through this same wrapper — each keeps a
+  platform-view class only for its method channel or prop bag and for the AR path. See [`sceneview-compose/README.md`](https://github.com/sceneview/sceneview/blob/main/sceneview-compose/README.md).
+- **Four additive `SceneView` modifiers** the wrapper needed, all opt-in and none changing
+  existing behaviour: `cameraPose(_:)` (continuous camera write-through, applied only when
+  the value changes so it does not fight a live drag), `onCameraChanged(_:)` (the camera
+  read-back — fired for drag, pinch, auto-rotate and re-framing alike), `cameraGesturesEnabled(_:)`
+  (freeze the gestures without handing the camera to Apple's `realityViewCameraControls`,
+  which `CameraControlMode.none` does), and `onEntityTapHit(_:)` (tap plus a world-space
+  position). The distinct *base* name is deliberate and was arrived at the hard way: an
+  overload distinguished only by a `hit:` label does not protect existing call sites,
+  because an unlabelled trailing closure ignores the label — measured, every published
+  `.onEntityTapped { entity in }` snippet stopped compiling.
+- **`CameraState` is now genuinely two-way on iOS.** Gestures write into it and writes
+  drive the camera, verified on the iOS 26.3 simulator: a 180-point drag moved the camera
+  to the arithmetically expected −51.6° and reported exactly that back. A pose the renderer
+  has to clamp is reported back clamped, so the clamp is visible in your state instead of a
+  silent disagreement with the screen.
+
+### Changed
+
+- **React Native (iOS): the module's minimum iOS version is now 18.0, up from a declared 17.0.** The 17.0 figure was never real — `SceneViewSwift` has required iOS 18.0 since #719, so an iOS 17 host app resolved the pod and then failed later at build time with a confusing error. Declaring the true floor moves that failure to `pod install`, where it names its own cause. Host apps must set `platform :ios, '18.0'` in their `Podfile` and build with Xcode 16+.
+- **A React Native Android model tap now carries a name — on `SceneView` *and* on `ARSceneView`.** `nodeName` went from *always* `null` to the model's file base name. Both Android views dispatch through the same path, so tapping a model placed in an AR scene now reports it too. An app that read `nodeName == null` as "the tap missed every model" (for instance to place an object at that point) will now see model taps stop matching that test — in AR, that means a tap landing on an already-placed model no longer looks like a bare surface hit. Only Android changes: on iOS, `ARSceneView` still reports `null` for every tap, because `SceneViewSwift`'s `ARSceneView` exposes no entity hit-test hook ([#2051](https://github.com/sceneview/sceneview/issues/2051)). The type change that accompanies all this is a separate entry.
+- **`TapEvent.nodeName` is now typed `string | null` — no longer optional** (React Native). It was `string | undefined` in the type and `null` at runtime (Android has always used `putNull`), and `ARSceneView` on iOS built its payload from `onTapOnPlane` and left the key out entirely: `nodeName === null` meant "the tap hit no model" on three dispatch paths and `undefined` meant the same thing on the fourth, so every consumer needed a two-sentinel guard to be correct. The iOS payloads are now built by a single `rnTapPayload` seeded with `"nodeName": NSNull()`, matching Android's `putNull`, and all four paths — Android `SceneView`/`ARSceneView` (one shared `TapEvent.getEventData`), iOS `SceneView`, iOS `ARSceneView` — always emit the key. **One `nodeName == null` check is now correct everywhere.** Dropping `undefined` from the type is source-breaking under `strictNullChecks` for code that narrowed with `=== undefined` or assigned `nodeName` into a `string | undefined` binding; `== null`, truthy checks and `?.` are unaffected. Because it is source-breaking, it ships in a minor release, never a patch.
+- **Flutter's `onTap` is unchanged, and its "no model" value is still `''`, not `null`.** The Dart callback stays `void Function(String nodeName)`: unlike React Native's, it only fires *because* something was hit, so it has no "the tap missed everything" dispatch to carry a `null` through. The one near-miss it can reach — an iOS tap that resolved outside every model the bridge loaded — reports the empty string, on both platforms. Flutter code should keep testing `nodeName.isEmpty`; React Native code should use `nodeName == null`. On `ARSceneView` under iOS the Flutter callback does not fire at all, because `SceneViewSwift.ARSceneView` exposes no entity hit-test hook ([#2051](https://github.com/sceneview/sceneview/issues/2051)).
+- **The Flutter and React Native iOS bridges now render through the shared
+  `SceneViewerHostView`.** Both carried their own copy of "host a SwiftUI `SceneView`
+  inside a UIKit view, then load models into it imperatively" — two independent
+  `UIHostingController` wrappers, two content roots, two model reconcilers, drifting
+  apart. The 3D path of each now builds a `SceneViewerConfiguration` and hands it to the
+  same host that `sceneview-compose` uses; each bridge keeps only what is genuinely its
+  own, its method channel or its prop bag. Their **AR** paths are untouched: `ARSceneView`
+  is anchor-driven and shares nothing with the 3D viewer. Every method-channel name and
+  every prop name is unchanged. The one payload that did change is the tapped node's name,
+  and deliberately: both bridges were reporting a mesh from inside the asset, so the
+  definitions were unified rather than preserved — see the `nodeName` entries in this
+  release.
+- **`SceneViewerConfiguration` gained the four things a bridge cannot do without.**
+  `models` (a list — Flutter appends one at a time, React Native replaces the lot;
+  a per-entry `identity` is what keeps two copies of one path as two models),
+  `cameraControlMode` and `autoCenterContent` (both bridges expose them publicly),
+  and `cameraPoseAuthored` (neither bridge has a camera at all — without it every method
+  call would re-assert the default pose and snap the camera out of its framing and away
+  from wherever the user had orbited to). `cameraPoseAuthored: false` detaches the pose
+  rather than merely stopping it from being updated: `SceneView` applies the *first*
+  non-nil request it sees, so handing it a default pose still frames the scene, at
+  elevation 15° where `CameraControls`' own default is 30°. Auto-centering re-fits
+  distance and target and hides all of that except the angle — a camera-less bridge would
+  have come out of this migration looking down on the model from somewhere else. Caught
+  by the agent review on this PR. Every pre-existing member keeps its name, type
+  and default, so `sceneview-compose` is unaffected: a configuration with no `models` is
+  resolved into a one-element list built from the single-model fields, through the same
+  reconciliation path.
+- **`SceneViewerHostView.onTapEntity: ((SceneTapHit, Entity?) -> Void)?`**, a Swift-only
+  companion to the `@objc` `onTap` that hands over the `SceneTapHit` rather than five
+  primitives, plus the **model root** the hit entity sits inside — the direct child of the
+  content root, which is the entity `SceneViewerModel.nodeName` was written on, and `nil`
+  when the tap resolved outside every configured model. Both bridges were re-deriving that
+  from the hit entity and both got it wrong (see the tap fix below), so the resolution
+  lives in the host, which is the one place that knows what a model is. This member has
+  never shipped in a release, so its arity is free to be what it should have been.
+- **Entities are now eligible for entity-targeted SwiftUI gestures by default on Apple
+  platforms.** This is the other face of the `InputTargetComponent` fix, and it is a
+  behaviour change to code that did not ask for it: `NodeGesture` handlers
+  (`onTap` / `onDrag` / `onScale` / `onRotate` / `onLongPress`) that were registered and
+  silently never fired will now fire. If your app registered one, saw nothing, and worked
+  around it, re-check that wiring — the workaround and the handler will now both run.
+  Camera orbit and pinch are unaffected: the entity gestures are attached with
+  `.simultaneousGesture`, and a drag over a model was verified on the iOS 26.3 simulator
+  to still orbit the camera by the expected amount.
+- **`SceneCameraPose` write-through clamps to RealityKit's dolly envelope** (`1…50` scene
+  units) and to ±85° of elevation, and reports the clamped value back through
+  `onCameraChanged`. A pose that cannot be honoured verbatim now says so instead of
+  leaving your state and the screen disagreeing.
+
+### Fixed
+
+- **The release device-QA gate no longer grades every release against one frozen
+  run.** `device-qa-report.json` is harness *output*, but it was committed by accident
+  in [#3050](https://github.com/sceneview/sceneview/pull/3050) and never gitignored —
+  and `release-checklist.sh` takes its fast path whenever that file exists. So the
+  deterministic gate that dispatches its own uncancellable Device QA run
+  ([#1683](https://github.com/sceneview/sceneview/issues/1683)) became unreachable at
+  release time, and every release since was graded against a single 2026-07-12 report
+  whose `ios` leg was red — a permanent hard block built out of a stale artifact, which
+  is the failure mode #1683 existed to prevent. The file is now untracked and ignored,
+  so the gate dispatches again.
+- **Quality gate** ([#3065](https://github.com/sceneview/sceneview/issues/3065)): `pre-push-check.sh` no longer announces a cause it did not
+  establish. A Gradle step that dies because the host is not set up (no
+  `local.properties` / `sdk.dir` / `ANDROID_HOME`, missing SDK package or NDK,
+  unusable JDK) now reports `⚠ … did NOT run`, prints the exact one-line fix and
+  counts as an *incomplete* gate — instead of claiming the public API "drifted"
+  and prescribing `./gradlew apiDump`, a remedy that would have committed a bogus
+  `.api` diff. `apiCheck` additionally requires a positive comparison cue from the
+  Kotlin binary-compatibility validator, so a build that dies inside `apiBuild` is
+  reported as "not compared", never as a drift. The same rule now covers the
+  non-Gradle checkers (demo assets, skill drift, gpt knowledge, vendored chain,
+  runner routing) via `script_report_failure`.
+- **Agent review** ([#3076](https://github.com/sceneview/sceneview/issues/3076)): the PR reviewers could be handed a two-dot diff — everything `main` gained since the branch point, reversed — and report it as the author's work. A `--depth=1` fetch inside the job grafted `.git/shallow` onto its own `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and the fallback turned "I cannot compute this PR's diff" into two blocking errors about files the PR never touched. No fetch in that workflow is depth-limited any more, a shallow graft is now repaired rather than worked around, and an unresolvable merge base refuses the review instead of substituting a different one. The computation moved to `.claude/scripts/pr-diff.sh`, pinned to the default branch like the grader and covered by `test-pr-diff.sh` (hermetic git repos, plus a mutant carrying the old fallback so the assertions have to discriminate).
+- **`RerunBridge` no longer drops the first event after a reconnect ([#2777](https://github.com/sceneview/sceneview/issues/2777)).** The bridge shared a single `CONFLATED` channel across connections, so a `disconnect()` → `connect()` cycle could hand the next connection's first event to the writer it had just cancelled: a writer parked in `receive` is still a registered receiver until its cancellation is actually processed, and with no `onUndeliveredElement` hook the channel drops such an element on the floor — never buffered, so the incoming writer never sees it. Each connection now gets its own outbox, installed by `connect()` before the writer starts, which makes the hand-off structurally impossible. Measured on the pre-fix bridge, a reconnect lost the event **48% of the time (72/150)**; the fixed bridge scored **0/450**. This was surfacing as the long-standing `RerunBridgeTest > bridge can be disconnected and reconnected` flake (`SocketTimeoutException: Read timed out`) — a real product bug, not a tight test timeout: a Rerun session that reconnected silently swallowed its first frame. The single-shot test was too insensitive to hold the line (it passed 12/12 locally while the bug was live), so the regression guard is a 20-round loop that fails deterministically against the old bridge.
+- **The App Store screenshots now upload during the one window a release opens ([#2899](https://github.com/sceneview/sceneview/issues/2899)).** `app-store.yml` creates the App Store version, syncs the listing text, then submits for review — and Apple locks the metadata on submission. That left `app-store-screenshots.yml` with no reliable moment to run: dispatched after a release it skips honestly (`no editable iOS version`), dispatched before one there is nothing to write to. So v4.26.0 shipped with a correct `promotionalText` and a screenshot set four releases stale — the window was real, and nothing was writing in it. The release now calls `asc_listing.apply_screenshots()` between the listing sync and the submission, reusing the same uploader the manual workflow runs so the two paths cannot drift. It re-mints the API token first: the one minted at the top of the step is good for 1200 s and the build poll alone can burn 900 s of that, and a token expiring mid-upload is the one way this could leave the listing worse than it found it. The step is deliberately never fatal — a screenshot that fails to upload must not stop a release from reaching App Review — but it is loud, because a quiet skip is exactly what let the drift survive four releases.
+- `agent-cost-report.sh` now sees subagent transcripts. They live at
+  `<slug>/<sessionId>/subagents/agent-*.jsonl`, not `<slug>/*.jsonl`, so the
+  report globbed past them and printed no subagent line at all — measured
+  2026-08-03, 643 subagent transcripts on disk, 22% of all requests, invisible.
+- `agent-cost-report.sh` reports a **weighted** cost (cache read x0.1, cache
+  write x1.25-2, output x5) instead of headlining raw output tokens. The old
+  headline called output "the quota-binding number"; measured over 7 days across
+  all projects, output is 11.7% of the bill and cache reads are 60.8%. The
+  report now also prints the average context re-read per request — the quantity
+  the cost actually scales with.
+- `context-budget.sh` reported the standing session context at ~4 chars/token, a
+  plain-English default that understated it by ~35% for markdown full of tables,
+  paths and emoji. The ratio is now ~2.7, derived from two natural experiments in
+  the local transcripts, and the report gained the two items it never counted:
+  the user-level `CLAUDE.md` and the one-line skill/command/workflow descriptions
+  that ship in every preamble whether or not a body is ever opened. `STATE.md` and
+  `workflows/README.md` moved to a separate "read at bootstrap" block — they are
+  not in the preamble, and counting them as standing cost is what kept sending
+  each pass back to cut the same file ([#3001](https://github.com/sceneview/sceneview/issues/3001)).
+- **iOS demo: `Animation`, `Scene Gallery` and `Model Viewer` no longer go
+  permanently black when you change the model.** All three now keep their
+  `SceneView` mounted — spinner as an overlay rather than an `if let` that
+  unmounts the scene — and swap subjects through `.contentID(_:)`. Measured on
+  `QA-iPhone16-c` (iOS 26.3): a subject change used to build **two** fresh
+  `RealityView` instances and now builds **zero**.
+- **iOS demo: the asset-source pill no longer tears the scene down the first
+  time it appears.** `assetSourcePill(_:)` branched between `overlay(…)` and
+  `self`, which are structurally different views, so the first transition from
+  no-pill to pill discarded the modified subtree — `RealityView` included. It
+  now applies the overlay unconditionally and drops only the pill. This was
+  measured re-creating `AnimationDemo`'s scene on exactly the first subject
+  change and no other.
+- **iOS demo: `Model Viewer`'s "Surprise me" no longer skips a model when two
+  rolls share a title.** Its scene key was the model's display name, so two
+  consecutive picks with the same title left the key unchanged and the swap
+  silently did not happen. It is keyed on a monotonic load counter now. The
+  same collision existed with the previous `.id(_:)`.
+- **Docs: the iOS model-viewer recipe now renders its model.** `samples/recipes/model-viewer.md`
+  loaded a model asynchronously into a scene with no `.contentID(_:)`, so the
+  content closure — which runs once, at scene creation, while the model is still
+  `nil` — never ran again and the viewer stayed empty. It now carries the key
+  plus a model-swap section.
+- **`flutter_sceneview` publishes to pub.dev again, and cannot fail silently ([#3011](https://github.com/sceneview/sceneview/issues/3011)).** `flutter pub publish --force` does not fail when the OIDC credential is missing: it falls back to interactive OAuth, prints an `accounts.google.com` URL and blocks on `Waiting for your authorization…` until the job timeout kills it. The job then lands as `cancelled`, which reads as "someone stopped it" rather than "the publish failed", so nothing was ever red — and the plugin silently missed both v4.25.0 and v4.26.0 while every other target shipped. pub.dev still serves 4.24.0. The step now closes stdin so a prompt dies instead of waiting, bounds the call with `timeout` so a hang is attributable to the step instead of surfacing as a job cancellation, and treats the interactive banner as a hard failure whatever `pub` exits with afterwards. A new step then verifies the registry actually serves the tag's version, so a future failure mode that ends `0` without uploading cannot hide in the same way. This is the workflow's only post-publish re-verify: npm and Maven Central query their registries as a *pre*-publish skip guard and then trust a non-zero exit, which holds for them because their CLIs fail loudly on an auth error instead of dropping to an interactive prompt. Extending the check to them is tracked separately.
+- **A large release no longer ships notes cut off mid-sentence ([#3012](https://github.com/sceneview/sceneview/issues/3012)).** A GitHub release body is capped at 125,000 characters and the API truncates rather than rejecting, so the step stays green and nothing anywhere says the notes are incomplete. v4.26.0 extracted 132,833 characters from `CHANGELOG.md` and published 124,999 — the cap minus one — ending mid-sentence inside `### Fixed`, with all of `### Tests` and `### Docs` gone. It is a function of fragment count, not of anything unusual about that release: `### Fixed` alone was 73,275 characters. `create-release` now measures the extracted section and, when it overflows, drops whole trailing `###` subsections until it fits and appends a pointer naming what was omitted and linking `CHANGELOG.md` at the tag. Whole subsections keep the body valid markdown and keep the loss legible; a warning records which ones went, because a silent cap reads as "these are the complete notes" precisely because nothing says otherwise.
+- **The PR review workflow no longer reports its own edits as defects, and can no
+  longer make them.** Its four reviewers shared one working tree with a
+  process-wide `Write` grant, and the deny list stopped them from moving the
+  *branch* but not from reverting a *file*, while the prompt told the orchestrator
+  to treat uncommitted changes as part of the review surface. A reviewer that
+  touched the checkout therefore produced a `DO_NOT_MERGE` naming an "uncommitted
+  revert" nobody had made — three times across
+  [#3009](https://github.com/sceneview/sceneview/pull/3009) and
+  [#3015](https://github.com/sceneview/sceneview/pull/3015). `git restore`,
+  `git apply` and `git clean` are now denied, the prompt states that CI checkouts
+  are clean by construction so uncommitted work can only be the review's own
+  damage, and an assertion fails the job outright if the tree is dirty rather than
+  letting a poisoned verdict reach the pull request. That assertion was itself
+  fail-open at first — a failed `git status` left its output variable empty and the
+  step announced a pristine checkout it had never managed to look at, the same
+  "absent is not zero" trap this workflow already carries two steps below — so a
+  failed probe is now treated as contamination rather than as a clean result.
+  Above all, the reviewers are now five `sv-ci-*` agent types whose `tools:`
+  frontmatter grants `Read, Glob, Grep` and no shell, so contamination is
+  impossible rather than forbidden: the diff and the verdict file moved out of the
+  repository into `RUNNER_TEMP`, and the clean-tree assertion demands a checkout
+  byte-identical to `HEAD` (refined in #3057, which carves out — and asserts —
+  the eight config paths `claude-code-action` itself restores from the base
+  branch). Measured — dropping `Write` alone would have changed
+  nothing, since a subagent that still has `Bash` overwrites a tracked file with
+  one `echo`. Closes
+  [#3016](https://github.com/sceneview/sceneview/issues/3016).
+- **`CI Gate` no longer passes green over a check that vanished from one Checks API read ([#3018](https://github.com/sceneview/sceneview/issues/3018)).** The gate took every decision — what is still pending, whether the core-check guard is armed, and the final pass/fail — from a single instant's response to `GET /commits/{sha}/check-runs`. That read is not stable: while GitHub rebuilds a run attempt (`gh run rerun`, "Re-run failed jobs"), an entire check suite can be absent from one response and back in the next. On [#3015](https://github.com/sceneview/sceneview/pull/3015) that window landed on the last poll, and all three consequences pushed the same way — the 11 missing checks left `pending` so the loop broke, left `observed_names` so the core-check guard read its docs-only signature and disarmed, and left the aggregated set so the `cancelled` never reached `ci-gate-aggregate.sh`. The single check that branch protection requires went green over a `Compile KMP core` that had concluded `cancelled`, and its conclusions list held one entry where a dozen jobs had just finished — not a display bug, the aggregation genuinely saw one check. A check observed once for a head SHA is now carried across polls and kept as `status: vanished`, which the existing `pending` selector treats as not-completed, so the gate waits instead of concluding; when the check returns its fresh record replaces the remembered one, so a genuine `cancelled` → re-run → `success` still goes green, and if it never returns the gate times out red naming it. Both branches are fail-closed where the old behaviour was fail-open. The merge is monotone in check-run id rather than "the live read always wins": a response that drops the fresh run while still listing the superseded one no longer retires the fresh one, which was measured passing green over a check that had never concluded. This narrows the window from "any one read is partial" to "every read up to the decision is partial" — it does not close the class, because this workflow's own `cancel-in-progress` restart gives the new gate run an empty ledger; that residual is tracked in [#3024](https://github.com/sceneview/sceneview/issues/3024). This is orthogonal to the [#2492](https://github.com/sceneview/sceneview/issues/2492) latest-run-per-name collapse — that resolves two check runs sharing a name *within* one read, this carries names *across* reads — and the collapse still runs first, so a genuinely superseded `cancelled` is resolved before the ledger ever sees it.
+- **`sceneview-compose` no longer reads model assets on the main thread.**
+  `ModelSource.Asset` went through `ModelLoader.createModelInstance(assetFileLocation)`,
+  which is `@MainThread` and reads the file on the *calling* thread — and the caller here
+  is `produceState`, whose producer runs in the composition's context. The whole asset
+  landed on the main thread. It now uses the suspending `loadModelInstance`, which reads
+  through `Dispatchers.IO` and hops back to Main for the Filament JNI call alone. Sibling
+  resolution is preserved, so a multi-file `.gltf` still loads its external `.bin` and
+  textures.
+- **`SceneViewerSpec` (iOS) now compares by value, and its model bytes by content.** It
+  is the recomposition key the iOS `SceneViewer` publishes through
+  `rememberUpdatedState`, which only notifies on an *unequal* value — but it was a plain
+  class with identity equality, rebuilt on every composition. Every recomposition,
+  including the one each touch-move triggers through `CameraState`, therefore handed the
+  Swift renderer a new spec carrying the same model and asked it to apply it again.
+  `ModelSource.Bytes` already compared its array by content precisely to avoid this; the
+  guarantee was lost the moment the array was unpacked into a `ByteArray` field, whose
+  own `equals` is reference equality. The callbacks stay out of the comparison — they are
+  permanent forwarders that already read the app's current lambdas.
+- **The neutral fallback environment is no longer built for scenes that cannot use it.**
+  It was hoisted above the `when`, so every `EnvironmentSource.Color` scene paid a
+  synchronous `neutral_ibl.ktx` asset read and a cubemap upload for a value that branch
+  can never reach — a colour background has no image-based light. It is now built inside
+  the two branches that use it.
+
+- **`pre-push-check.sh` now checks the generated GPT knowledge base.**
+  `gpt/knowledge-*.md` is generated from `llms.txt` and gated in `ci.yml` →
+  `repo-hygiene`, but **no local gate ran it** — not `pre-push-check.sh`, not
+  `quality-gate.sh`, not `impact-check.sh`. Editing `llms.txt` therefore passed every
+  local check and only turned red on CI, which is exactly what happened to this PR. Added
+  as a twelfth leg (a sub-second regenerate-and-compare), and mutation-tested: appending a
+  line to `llms.txt` turns it red, restoring it turns it green.
+
+- **`ModelSource.Asset` now rejects any URI scheme**, and this closes a hole the
+  threading fix above had just opened. `loadModelInstance` dispatches on URI scheme,
+  where the replaced `createModelInstance(assetFileLocation)` went straight to
+  `AssetManager.open`. So for one commit an app resolving a deep link or a
+  server-supplied id into `ModelSource.Asset` could be handed `content://` (reading a
+  private ContentProvider under its own uid), `file://` (an arbitrary local read) or
+  `https://` (bypassing the timeouts and the 64 MB cap that `ModelSource.Url` enforces).
+  `Url`'s KDoc already argued this case — *"a `file://` slipped into a deep link would
+  otherwise turn into a local-file read on whichever platform happened not to re-check"* —
+  and the fix is its mirror: the check lives in `commonMain`, so every platform refuses
+  identically. Found by review, not by a gate; no test covered the widening because the
+  threading fix looked like a pure substitution.
+- **`onError` is now always called on the main thread.** `runCatching` sat *inside*
+  `withContext(Dispatchers.IO)` on the download path only, so a handler that worked for a
+  failed asset crashed for a failed download with `Can't create handler inside thread that
+  has not called Looper.prepare()` — and the failure most likely to happen in production
+  was the one delivered on the wrong thread. The thread is now documented on the parameter
+  and in `llms.txt`, alongside the fact that it is raised on Android only today.
+- **The pre-push gate no longer blames your code for a dead Gradle daemon ([#3029](https://github.com/sceneview/sceneview/issues/3029)).** Five steps of `pre-push-check.sh` ran `./gradlew <task> --quiet 2>/dev/null` and translated *any* non-zero exit into one hard-coded diagnosis — so a `Gradle build daemon disappeared unexpectedly` (daemon contention on the host) was reported as "Android screenshot regression detected", and `2>/dev/null` had deleted the one line that said otherwise. Measured 2026-08-06 and reproduced identically on a pristine clone of `main`, with no golden and no source change involved; re-running the task alone returned `BUILD SUCCESSFUL`. Gradle output is now written to a log under `$TMPDIR/sceneview-pre-push/` and quoted, and a specific diagnosis is only pronounced when the log carries no infrastructure signature — otherwise the step reports "did not run to a verdict" and the summary counts it separately. The gate still exits non-zero: a check that could not run is not a check that passed.
+- **The same gate could also pass while comparing no screenshot at all ([#3029](https://github.com/sceneview/sceneview/issues/3029)).** The goldens under `samples/android-demo/src/test/snapshots/` are not declared inputs of any Gradle task, so a second run came back `verifyRoborazziDebug UP-TO-DATE` / `BUILD SUCCESSFUL in 1s` — and the step printed "✓ Android screenshots match goldens" having read none of them (measured on a golden mutated by 8000 red pixels). The step now forces the comparison and takes its verdict from Roborazzi's `results-summary.json`, which must be newer than a marker taken just before the run; the diff count comes from the report, so "regression" names how many goldens differ and points at the `*_compare.png` images.
+- **The CI leg that actually gates merge had the same false green ([#3029](https://github.com/sceneview/sceneview/issues/3029)).** `ci.yml`'s `unit-test` job invoked `verifyRoborazziDebug` bare, with a restored Gradle cache, so a PR whose only change was a golden PNG could go green having compared nothing. It now forces the demo module's test task to re-run, like the local gate.
+- **`release-checklist.sh` names a Gradle infrastructure failure instead of calling it a failed build**, for the same reason — "fixing" code that was never broken costs a whole cycle. It stays a **blocker**: the checklist exits 0 whenever there are no blockers, so recording it as a warning would have let a release be tagged with `assembleDebug` never having run.
+- **React Native (iOS): the `pod install` of a host app no longer fails on this module's podspec.** `s.homepage` was fed `package["repository"]` — an object, which CocoaPods rejects outright (`Unacceptable type 'Hash' for 'homepage'`) — and `s.platforms` claimed iOS 17.0 while `SceneViewSwift` requires iOS 18.0, so CocoaPods could not resolve the module at all. Both are corrected, and `samples/react-native-demo`'s `Podfile`, Xcode deployment target and READMEs now state the real iOS 18.0 floor.
+- **A tap on a model now reports the model on iOS, not a mesh inside it ([#3037](https://github.com/sceneview/sceneview/pull/3037)).** Tapping `black_dragon.usdz` in the Flutter demo on an iOS 26 simulator reported `skin0` — the name of an internal mesh — while the same tap on Android reports `black_dragon`. `SpatialTapGesture` hands back the deepest hit entity, and USDZ assets name their meshes, so every derivation that started from that entity stopped inside the asset: the Flutter bridge walked up to the first *named* ancestor and found one immediately, and the React Native bridge reported `hit.entity.name` raw, with no walk at all. Android cannot reproduce it, so it was never the reference: the only collider a loaded model owns there is the `ModelNode` root (glTF child renderables get no collision shape), so its hit-test can only ever resolve to the model. The resolution now lives in `SceneViewerHostView`, which is the one place that knows what a model *is* — it climbs to the model root, the direct child of the content root and the only entity a bridge names — and both bridges report that entity's file base name without extension. The React Native Android side, which reported `nodeName: null` for *every* model tap because nothing ever named the `ModelNode`, now names each model after its file, so both platforms emit the identical string.
+- **`nodeName` no longer leaks a URL's query string.** A model source may be a URL — `ModelLoader` loads `https://` on Android and `SceneViewerModel.urlString` takes a remote `.usdz` — and cutting at the last `.` only strips the extension when it is the last dot in the whole string: `https://cdn/robot.glb?sig=SIG&v=1.2` derived `robot.glb?sig=SIG&v=1`, putting a CDN signature into a payload apps routinely show in a label or send to analytics. Query and fragment are now stripped first, on both platforms.
+- **The React Native tap payload's `x, y, z` is the tapped model's world position** on both platforms, matching Android's `node.worldPosition`. On iOS it was the origin of whichever entity RealityKit reported as hit — a mesh deep inside the asset, offset from the model itself — so the same tap on the same model gave different coordinates on the two platforms.
+- **The React Native README's SwiftPM install version is now swept like the other 30+ version locations.** `sync-versions.sh` tracked the bridge's machine-readable slots — `package.json`, `package-lock.json` — but not the version a host app types into Xcode's *Add Package Dependencies…* dialog, which sat at `4.14.0` while `VERSION_NAME` reached 4.26.0. It is anchored on its own `- Version: \`X.Y.Z\`` line shape so the `v4.3.0` feature notes in the same file are never swept, and a hermetic self-test (`test-sync-versions-bridge-readmes.sh`, wired into `ci.yml`'s `repo-hygiene` job) pins both the rewrite and that non-rewrite. That test earns its place: the handler only fires on drifted prose, so the normal in-tree run never executes it and a broken `sed` would stay green until the next release bump — the failure mode that bit the Kotlin rewriter twice (#2790, #2876). Its fixture gives the drifted slot the *same* version as the dated notes on purpose: with a non-colliding version, an anchored sed and a de-anchored one emit byte-identical output, and the guard passes against a broken handler.
+- **The RN README's SwiftPM instructions pointed at a repository that does not exist.** `https://github.com/sceneview/SceneViewSwift` returns *Repository not found*; `SceneViewSwift` is a product of the monorepo's root `Package.swift`, which is what the root README and `SceneViewSwift/README.md` have always said. Bumping only the stale version beside it would have produced a fresh-looking instruction that still fails in Xcode.
+- **The RN README's "not yet published to npm" status note was long dead.** It claimed `@sceneview-sdk/react-native@3.6.1` was `latest` and the 4.0.x line unpublished, pending #924 and #962 — both closed, with npm `latest` now tracking the release train at 4.26.0. It is replaced by the actual publishing rule. The GitHub-install fallback it justified is removed rather than re-pinned: this is a monorepo with no root `package.json`, so `npm install github:sceneview/sceneview` could never resolve the module under `react-native/react-native-sceneview/` — the pin was stale *and* the command was broken. The README now documents the clone-and-install-by-path route that actually works.
+- **The Flutter README's pub.dev install snippet is checked but deliberately never bumped.** `flutter_sceneview: ^X.Y.Z` is a caret range against a version that must already be live on pub.dev, so it belongs to the same lagging track as the plugins' consumed Maven coordinate (#1494), not to `VERSION_NAME`. pub.dev's newest is 4.24.0 against a 4.26.0 `VERSION_NAME`, and `^4.26.0` there matches nothing and fails `flutter pub get` outright — a release-time sweep would have converted a working install line into a broken one every single release. It is now reported as a WARN with no `--fix` handler, and the self-test's regression guard asserts the *absence* of that sweep.
+- **The Flutter README's naming note called this project's own old package a third-party upload.** It warned that both `sceneview` and `sceneview_flutter` on pub.dev were "unrelated third-party uploads". Only the second is: pub.dev's `sceneview` carries this repo's own `repository` URL and a byte-identical description — it is the project's pre-rename package, abandoned at 3.6.1. A reader who checks the first name finds the note obviously wrong and discounts the half that is true and actually matters. The note now separates the two cases. The RN module's podspec comment pointed at the same non-existent `sceneview/SceneViewSwift` URL as the README did, while telling readers to follow that README — corrected to the monorepo URL alongside it.
+- **The Flutter README's rename note named the wrong tag.** It read "at tags `v4.23.0` and earlier the package name was `sceneview_flutter`", but the rename commit (#2735) is first contained in **v4.25.0**: `v4.24.0`'s pubspec still reads `name: sceneview_flutter`. Since "the dependency key must match the name at the ref", a git-pin consumer at `v4.24.0` following that sentence got a failing `pub get`. Corrected to "at tags `v4.24.0` and earlier", verified against the tags' own pubspec contents rather than the release prose — `CHANGELOG.md`'s own "consumers at tags ≤ v4.22.0" line describes the rename as landing in 4.23.0 and is wrong for the same reason (left alone here as released history; the README is the surface people follow).
+- **The React Native Android bridge is compiled by CI, for the first time ([#3042](https://github.com/sceneview/sceneview/issues/3042)).** `react-native/react-native-sceneview/android/` — ~1130 lines of Kotlin across `SceneViewManager.kt`, `ARSceneViewManager.kt`, `SceneViewEvents.kt`, `SceneViewModule.kt` and `ARRecorderModule.kt` — was in no CI job and not in the root `settings.gradle`. It is the same exposure `rn-ios-compile.yml` closed on the iOS side (#2067), made worse by the fact that the module builds against `io.github.sceneview:sceneview:4.7.0`, the last *published* release, which lags `VERSION_NAME` on purpose (#1494): an API that exists in repo source can be absent from the artifact the bridge really compiles against, so reading the matching tag's source proves nothing the compiler agrees with. A new `rn-android-compile.yml` compiles the module through a standalone Gradle build (`tools/rn-android-compile/`) that includes it as the single project of a throwaway build — deliberately NOT the root build, which would resolve `io.github.sceneview:*` against local source and prove the wrong thing. The gate does not trust a green Gradle exit either: it asserts `compileReleaseKotlin` genuinely executed (not `NO-SOURCE`, `UP-TO-DATE` or `FROM-CACHE`) and that class files came out, because a moved source directory would otherwise turn the job into a no-op that reports success for life.
+
+- **The React Native Android module could not be built standalone at all.** It declared no JVM target, so `compileReleaseJavaWithJavac` (1.8) and `compileReleaseKotlin` (the toolchain default) disagreed and Gradle refused the build — and React Native's Gradle plugin does not fix this for a library module, it only supplies plugin versions. `compileOptions` / `jvmTarget` are now pinned to 17, matching the Flutter plugin and React Native's own JDK requirement. This was the first thing the new gate caught, on its first run.
+- **The React Native bridge's TypeScript is now actually linted, type-checked and tested — by CI, not by a script that could never run ([#3049](https://github.com/sceneview/sceneview/issues/3049)).** `react-native/react-native-sceneview/package.json` declared `"lint": "eslint \"src/**/*.{ts,tsx}\""` while `eslint` was in neither its devDependencies nor anywhere else in the repo: after a clean `npm ci`, `npm run lint` failed with `sh: eslint: command not found`, exit 127. No workflow invoked it either — the only RN npm script any job ever called was `npm run build`, inside `release.yml`'s `publish-rn`, at publish time on a tag. `npm run typescript` and `npm test` worked but were equally unreached, so the bridge's TypeScript shipped to npm having been checked only on a contributor's laptop. Rather than install a second linter to satisfy a stale string, the package joins the one the repo already has: `src/**`, `__tests__/**` and `example/src/**` are now listed in the root `biome.json`'s `files.includes`, and `lint` / `lint:fix` run Biome from the repo root the same way `mcp/` does. The new `rn-ts-check.yml` runs lint on all three directories, `tsc --noEmit` on `src` (that is what `tsconfig.json` includes) and jest on `__tests__`, for every PR touching the package's TypeScript.
+- **That new CI job cannot report coverage it did not compute.** Biome's exit code alone would not have been enough, and the first draft of this job wrongly assumed it was. Measured on Biome 2.5.7: a path argument excluded by `biome.json` is dropped silently, and the run still exits 0 as long as any other argument matched — so deleting just the `src/**` line from `files.includes` left the job green while the actually-shipped source went unlinted. The job now counts the `.ts`/`.tsx` files on disk and requires Biome to report exactly that many. Mutation-tested in both directions: dropping any one of the three `includes` lines fails the job, and all three passed green without the assertion. Same defect class the Kotlin-side `rn-android-compile.yml` guards against by asserting its compile task really executed.
+- **Kept `React` a value import in the RN bridge and its example.** Clearing the new lint baseline surfaced Biome offering *safe fixes* that would have broken both files — `useImportType` on `src/index.tsx`, `noUnusedImports` on `example/src/App.tsx`. Neither is safe here: `tsconfig.json` sets `"jsx": "react"`, the classic runtime, so every JSX element lowers to `React.createElement(...)` — verified in the published `lib/commonjs/index.js`, and independently against both the `tsc` path (`TS1361: 'React' cannot be used as a value`) and the babel path (which emits a bare undefined `React` with no import, a silent runtime `ReferenceError`). Biome sees the `React.FC` annotations, not the JSX lowering. Suppressed inline in both files, with the reason and the evidence next to it. Note that these rules are *warning* severity under `biome.json`, so the suppressions document a real hazard rather than unblock a red gate.
+- Fork pull requests no longer route to the self-hosted macOS runner. The three jobs opted into `sceneview-mac` (`ci.yml` → `kmp-native-test`, `bridge-ios-compile.yml`, `device-qa.yml` → `ios`) selected it purely on the heartbeat variable, so a pull request from any fork could have run its build steps on a persistent machine that carries the previous job's filesystem, `~/.gradle`, and the login user's reach. They now additionally require the PR head repository to be this repository, and fall back to the disposable `macos-15` runner otherwise — for `pull_request_target` as well as `pull_request`, since that event carries a fully populated fork payload under a different event name and would otherwise short-circuit straight to the self-hosted runner. The `github.event_name` terms are equally load-bearing in the other direction: `github.event.pull_request` is null on `push`, `workflow_dispatch`, `schedule` and `workflow_call`, so without it every non-PR run would have quietly lost the fast runner. This is defence in depth, not a trust boundary — a fork PR executes the workflow file from the merge ref, i.e. its own copy, so the boundary remains the repository's fork-PR approval policy.
+- CI: `pr-review.yml`'s clean-tree assertion no longer fails every PR that
+  touches `.claude/**`. `claude-code-action` reverts eight config paths
+  (`.claude/`, `.mcp.json`, `CLAUDE.md`, …) to the base branch before the CLI
+  starts, because the CLI reads settings and hooks from cwd and a PR head is
+  untrusted — so `git status` was dirty before a reviewer had read a line, and
+  the error blamed the reviewers for it (#3057). The guard is not weakened and
+  gains no path exclusion: `assert-review-tree-clean.sh` forgives a restored
+  path only when its bytes *and* mode equal `origin/<base>` exactly, so a
+  reviewer editing `.claude/` still blocks the job. Self-tested against real git
+  fixtures, with a mutation test and a wiring check.
+- **`flutter_lints` now actually runs on the published Flutter plugin, and a warning in it reddens CI ([#3064](https://github.com/sceneview/sceneview/pull/3064)).** `flutter/sceneview_flutter` — the package published to pub.dev as `flutter_sceneview` — declared `flutter_lints: ^3.0.0` in its dev_dependencies but shipped no `analysis_options.yaml`. Dart only applies the lints an options file includes, so the dependency was inert and not one of those rules ran on the artefact we ship. Adding the file (mirroring `samples/flutter-demo`) took the package from 3 to 8 issues; all 8 are fixed, so it lands clean at 0. The +5 being small is a real result rather than a blind spot: a `prefer_const_constructors` violation injected into `lib/`, `test/` and `example/lib/` was reported from all three, so the options file reaches the whole tree — the package is simply small (1 lib file, 2 test files, 1 example file). The two pre-existing warnings were `example/pubspec.yaml` declaring `models/` and `environments/` asset directories that do not exist, which is a hard build failure and not a style nit (`flutter build bundle` exits 1 with *"unable to find directory entry in pubspec.yaml"*). They are removed rather than backfilled, because that example is source-only — it has no `android/` or `ios/` runner, so `flutter build apk` there stops earlier still at *"unsupported Gradle project"*, and vendoring a GLB and an HDR into a package that cannot run them would only bloat the pub.dev tarball. With the package clean, the `flutter analyze (published plugin)` step in the `Flutter plugin + demo APK` job drops `--no-fatal-warnings`. That tightening was mutation-tested rather than assumed: an injected `asset_directory_does_not_exist` warning now exits 1, and the same warning under the old flags exited 0 — the gate really was blind to the class it now catches. `--no-fatal-infos` is deliberately kept, since infos churn with every Flutter SDK bump and a green build must not depend on the runner's SDK minor. Measuring this also exposed an adjacent hole: only `flutter/**/.dart_tool/` was gitignored while `flutter pub publish` ships every non-ignored file, so a single example build put `example/build/flutter_assets/*` into the publish dry-run tarball and took it from ~1 MB to 16 MB — `.gitignore` now covers the build output, `.flutter-plugins-dependencies` and the example's `pubspec.lock`.
+- CI: `pr-review.yml` now restores `.claude/`, `.mcp.json`, `CLAUDE.md` and the
+  other five sensitive config paths from the base branch when it runs on
+  `workflow_dispatch`. `claude-code-action` performs that restore only under a
+  pull-request context, so the dispatch path — the documented way to review a
+  fork PR — previously ran the CLI against the checked-out head's own settings
+  and hooks. Covered by a new self-test (`test-dispatch-config-restore.sh`)
+  wired into the repo-hygiene job.
+- **`bytesFileExtension` is validated before it reaches the filesystem.** The value is
+  public `@objc` on `SceneViewerConfiguration` and on the new `SceneViewerModel`, and it
+  was appended to a temp file name unvalidated. Anything that is not a short ASCII
+  alphanumeric run is now refused back to `usdz` rather than sanitised — a caller that
+  sent something else asked for something this API does not offer. No shipped bridge is
+  affected: Flutter and React Native only ever send an asset path.
+- **`setEnvironment` on the Flutter plugin and `environment` on the React Native
+  component were silently inert on iOS.** Both stored the HDR path in their scene state
+  and no view ever read it, so the call succeeded and nothing changed. Routed through the
+  shared host, both now apply the environment. The surface is unchanged; what changed is
+  that it does something. React Native's `cameraOrbit` prop stays deliberately inert —
+  `cameraControlMode` supersedes it and wiring both would make them contradict each other
+  — and is now documented as deprecated rather than left looking functional.
+- **`samples/flutter-demo` could not run `pod install` at all.** Its Xcode project
+  targeted iOS 13 while the plugin's podspec requires 17, so CocoaPods refused before
+  reaching any Swift. Bumped to 17. Note this unblocks `pod install` only: the demo still
+  cannot complete an iOS build, because the plugin's Swift is compiled inside the Pods
+  project, which does not see the `SceneViewSwift` Swift package — the structural gap
+  `bridge-ios-compile.yml` already documents and works around with a type-check.
+- **Entity tap and every `NodeGesture` handler never fired on iOS.** Nodes generated
+  collision shapes — `ModelNode.load`'s `enableCollision` parameter is documented "for
+  hit testing" — but SwiftUI's `targetedToAnyEntity()` gestures additionally require an
+  `InputTargetComponent`, which nothing in the package ever set. The failure was
+  completely silent: no error, no warning, a scene that looked correct until someone
+  tapped it. The repo's own `CollisionHitTestDemo` had never been tappable.
+  `SceneView` now applies it to the whole content subtree (so `GeometryNode`, `MeshNode`,
+  `TextNode`, `ImageNode`, `ShapeNode`, `ViewNode` and `PhysicsNode` are covered, not
+  just loaded models), `ModelNode.load` applies it under `enableCollision`, and
+  `NodeGesture` registration applies it to the entity it registers on. Measured on the
+  iOS 26.3 simulator: a tap on a loaded `.usdz` and on an inline `GeometryNode.cube`
+  produced no callback before and fired on the first try after. This also repairs the
+  Flutter bridge's `onTap` ([#2051](https://github.com/sceneview/sceneview/issues/2051)).
+- **`ModelNode.load(from:)` accepted any URL scheme.** Its documentation says "remote
+  HTTP/HTTPS URL", but `URLSession` honours `file://` — measured: it returns the bytes of
+  a local path, with a response that is not an `HTTPURLResponse` and therefore skipped
+  the status check entirely. A caller forwarding a user- or network-supplied string
+  turned it into an in-sandbox file read handed to RealityKit's USD parser. The scheme is
+  now enforced, the response check rejects rather than skips a non-HTTP response, and the
+  temporary files are cleaned up on the failure paths too. Use `load(contentsOf:)` for a
+  local file.
+- **`ModelNode.load(from:)` had no size ceiling**, where the Android downloader has capped
+  at 64 MB since the compose façade shipped. `timeout` is an inactivity timeout, so a host
+  trickling an endless body kept the connection alive and filled the device's storage. Now
+  capped at 64 MB by default (`maxBytes:`), enforced by a download delegate that cancels
+  the transfer mid-flight rather than measuring it after the fact, with an early refusal
+  when the server announces an oversized `Content-Length`.
+- **`ModelSource`'s format documentation was wrong about iOS.** It claimed every platform
+  accepts glTF and GLB; RealityKit reads neither. There is no format all platforms accept,
+  and the KDoc now says so instead of letting it be discovered as a load that fails
+  invisibly.
+
+### Tests
+
+- **iOS demo: an opt-in measurement rig for the intermittent black viewport of
+  [#3008](https://github.com/sceneview/sceneview/issues/3008).** A `SceneView`
+  re-created by `.id()` sometimes renders nothing at all — no model, no skybox —
+  and it does so on roughly a quarter to three-quarters of subject switches
+  depending on the session, which makes any fix impossible to sign off by eye.
+  `testBlackViewportProbe` drives the `AnimationDemo` subject row and attaches
+  two samples per switch, so a viewport counts as black only when it is *still*
+  black on the second one — a frame that has not rendered yet is not a black
+  viewport, and the first calibration run caught exactly that case (black at
+  +12 s, rendered at +20 s) which a single-sample method scores as a failure.
+  It skips unless `SV_BLACK_PROBE=1` is set, so it never runs in CI; it also
+  deliberately does **not** pass `-qa_mode 1`, because a zero auto-rotate speed
+  short-circuits `SceneView`'s auto-rotate task (#2896) and would exercise a
+  different render path from the one the defect lives on.
+- **`CI Gate`'s aggregation now has a regression suite for the observation ledger ([#3018](https://github.com/sceneview/sceneview/issues/3018)).** `.github/scripts/test-ci-gate-observations.sh` pins the disappearance case, the returning-check replacement, an unsuperseded `cancelled` end-to-end through `ci-gate-aggregate.sh`, the [#2492](https://github.com/sceneview/sceneview/issues/2492) collapse, the docs-only edges, and two hostile-input cases — a fork-controlled check name containing a newline (which forged all three `REQUIRED_CHECKS` into `observed_names` and reached column 0 of the Actions log as a workflow command) and one starting with `-` (which blanked the whole "still running" diagnostic through `grep`). The suite EXTRACTS the `pending` selector, `REQUIRED_CHECKS` and the name-normalisation filter out of `ci-gate.yml` rather than copying them, so it cannot keep passing against a workflow it no longer matches.
+- **Kotlin/Native unit tests now actually run in CI.** `iosSimulatorArm64Test` was never
+  invoked by any job — the KMP job compiles iOS targets to klibs on Linux, which cannot
+  link or run a native test binary — so an `iosTest` source set was unexecuted code. A
+  macOS job (self-hosted when awake, `macos-15` otherwise) now runs them, gated on a new
+  narrow `compose` path filter rather than the broad `kmp` one. `SceneViewerSpecTest` is
+  its first occupant, pinning the value-equality above; a compile-only check would have
+  passed on exactly the identity equality that was the defect.
+
+  The job also selects Xcode 26.x explicitly, as every other macOS job in this repo
+  already did. Kotlin/Native links against whatever SDK `DEVELOPER_DIR` points at, and
+  the `macos-15` image still defaults to Xcode 16.4 — whose iOS 18.5 SDK has no
+  `UIViewLayoutRegion`, a class the 2.4.10 platform klibs reference. Without the
+  selection the link fails with `Undefined symbols for architecture arm64`, which is
+  exactly how this job's first real run ended. It passed locally throughout because the
+  development machine runs Xcode 26.3 (SDK 26.2), where the class exists — a divergence
+  no local gate could have surfaced.
+- **The four `demo_list_*` screenshot goldens are compared by a test again ([#3031](https://github.com/sceneview/sceneview/issues/3031)).** `samples/android-demo/src/test/snapshots/` held 15 committed goldens but `verifyRoborazziDebug` reported `total: 11` — `demo_list_light`, `demo_list_dark`, `demo_list_large_font` and `demo_list_tablet` were compared by nothing, and mutating one by 8000 red pixels still gave BUILD SUCCESSFUL with `changed: 0`. They were not the residue of a deleted test: `git log -S'demo_list_light'` finds no non-binary file in any commit that ever referenced them, and `425618a48` added them while `ScreenshotTest.kt` was already an `@Ignore`d stub. So they had never been compared, while reading as dark-mode / large-font / tablet coverage of the Samples grid. Restored rather than deleted, because `DemoListScreen` is a screen the app ships and those three axes are where its fixed-height cards actually break. The new `DemoListScreenSnapshotTest` forces `LocalInspectionMode` on, which `ParticleBackground` now honours by short-circuiting to a static backdrop — the live one calls `rememberEngine()` (`UnsatisfiedLinkError: no filament-jni` on the JVM) and seeds its particle field from an *unseeded* `Random`, so a pixel-exact golden could never have matched it. That fixes `@Preview` for the Samples tab as a side effect. The dark golden carries a `night` qualifier because `DemoListScreen` and `ParticleBackground` branch on `isSystemInDarkTheme()`, which reads the device configuration and ignores the `darkTheme` argument passed to the theme — without it the "dark" golden recorded dark cards on a white backdrop with the light-mode accents, a combination the app never renders. All four goldens were re-recorded from the current UI, since the committed bytes predated three months of unchecked drift. `verifyRoborazziDebug` now reports `total: 15`, and the same 8000-pixel mutation applied to all four now fails all four.
+
+  These four compare with a per-pixel tolerance (`SimpleImageComparator(maxDistance = 0.02)`, `changeThreshold = 0`) where the other 11 stay byte-exact. Byte-exact comparison failed them on CI: goldens recorded on macOS and verified on the Linux runner drift by **at most 2 of 255** per channel across 0.06–0.67 % of pixels, confined to the cards' `Brush.linearGradient` icon tiles — gradient rasterisation rounds differently per host, and the other goldens are flat control panels with no gradient. The tolerance is per-pixel rather than a share-of-pixels threshold on purpose: a percentage would silently absorb a real, small, localised regression such as a clipped label. The value is measured with the real comparator, not guessed — the drift disappears between 0.012 and 0.014 on all four (0.010 still leaves 25–70 differing pixels), so 0.02 keeps ~40 % headroom while staying ~29× below a one-pixel text shift. Goldens stay as recorded on a developer machine so the Linux CI run exercises the tolerance on every build; committing CI-recorded goldens instead would make CI byte-exact and blind to the drift growing.
+- **The React Native iOS bridge is now type-checked against the real React API, not a hand-written stub.** `rn-ios-compile.yml` used to synthesise a Swift shim redeclaring the four React symbols the bridge touches; a stub like that silently drifts from the API it stands in for. The job now runs `npm ci` + `pod install` on the demo and imports CocoaPods' own generated `React-Core.modulemap` over React Native's real headers. Two negative controls run before the real check on every invocation — the same `swiftc` command without the SceneViewSwift module, and without the React modulemap — and each must fail with `no such module`, so the job can never report green on a check it did not actually perform.
+- New gate `.claude/scripts/check-self-hosted-runner-routing.py` (pre-push leg 13/14, and a blocking `repo-hygiene` step in CI) evaluates the real `runs-on` expression under 11 simulated event payloads instead of comparing strings, and finds the jobs by scanning `.github/workflows/` rather than from a hardcoded list — so a fourth workflow opted in by pasting the old two-term expression is caught. Discovery is itself falsifiable: any non-comment line naming `sceneview-mac` that no job's `runs-on` was attributed to fails the gate, because the regexes are a claim about formatting and a folded scalar, a block-sequence label list, or a `${{ matrix.runner }}` indirection would otherwise find nothing and exit 0 — reporting green over a job pinned to the persistent Mac with no fallback and no fork clause. `.claude/scripts/test-check-self-hosted-runner-routing.sh` drives the failing path across 15 synthetic trees so a loosened probe cannot report green on a repo that merely happens to be correct.
+- CI now runs `flutter analyze` and `flutter test` against the published
+  `flutter_sceneview` package itself. Previously every check in the
+  `flutter-demo` job except the pub.dev publish dry-run ran in
+  `samples/flutter-demo`, so the package's `lib/` and `test/` trees were
+  analyzed by nothing and its 18 Dart unit tests were run by nothing — an
+  analyzer error in the code shipped to pub.dev could reach `main` unnoticed.
+  The job is renamed `Flutter plugin + demo APK` to match what it now covers.
+
+### Docs
+
+- `sceneview-compose` is now documented in the `sceneview` agent skill, with the scope
+  boundary (viewer subset, no AR), the `ModelSource` rules and the per-platform status —
+  a published module absent from the skills is a module future AI sessions do not know
+  exists.
+- The `sceneview-compose` detekt reports are now uploaded as CI artifacts alongside the
+  other three library modules; the step already ran the module but discarded its reports.
+- **The React Native docs now say that the `0, 0, 0` "hit nothing" tap is Android-only.** iOS resolves a 3D tap through RealityKit's entity-targeted `SpatialTapGesture`, which fires only when an entity is hit, so a tap on empty space dispatches no `onTap` event at all rather than a `{0, 0, 0, nodeName: null}` one. `nodeName == null` is still the correct "no model was hit" test — but the two platforms do not deliver the same number of tap events, which matters to anything counting them. Stated on `src/index.tsx`, `llms.txt`, the module README and the React Native quickstart.
+- **The Flutter plugin README now documents its SwiftPM tag coupling**, the note React Native already carried. The plugin's `ios/Classes/*.swift` builds on `SceneViewerHostView`, which landed after `v4.26.0` — no `SceneViewer*` type exists at that tag or earlier — so a host app must pin `v4.27.0` or newer. Both READMEs now also state that no CI job here catches a stale pin: `bridge-ios-compile.yml` and `rn-ios-compile.yml` type-check the bridges against the `SceneViewSwift` sources *in this repo*, never against the tag the host app resolves, so the mismatch surfaces as a Swift compile error in the app's own build. The React Native note's stated reason was corrected at the same time — it read as though `onTapEntity` had merely gained a parameter at `v4.26.0`.
+- **`sceneViewerModelFileName` no longer presents its Kotlin↔Swift divergences as a closed set of two.** Measured, at least five inputs derive differently (`models/`, `.hidden`, `/`, `..`, `robot.` — the last because `deletingPathExtension` does not treat a trailing dot as an extension). None is a loadable model path; the comment now says so without claiming an exhaustiveness it cannot prove.
+
 ## v4.26.0 — 2026-08-04
 
 ### Added

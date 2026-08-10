@@ -309,3 +309,9 @@ __pycache__/
 # before pushing — it is a review aid, not a listing asset (#2796). The broad
 # pattern also covers any legacy `.mosaic.png` left inside the graphics dir.
 .mosaic*.png
+
+# Device-QA harness output — a *result*, never a source. Committed by accident in
+# #3050, which silently froze the release gate: release-checklist.sh takes the
+# fast path whenever this file exists, so every release was graded against one
+# 2026-07-12 run instead of dispatching its own.
+device-qa-report.json

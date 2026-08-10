@@ -56,7 +56,7 @@ module's podspec deliberately does **not** declare it as a `s.dependency` —
 add it once in Xcode (*File ▸ Add Package Dependencies…*):
 
 - URL: `https://github.com/sceneview/sceneview`
-- Version: `4.26.0` (or *Up to Next Major*)
+- Version: `4.27.0` (or *Up to Next Major*)
 
 Unlike the Flutter plugin's pub.dev range, this version tracks the SDK release
 directly: SwiftPM resolves against a git tag in this same repository, which the
