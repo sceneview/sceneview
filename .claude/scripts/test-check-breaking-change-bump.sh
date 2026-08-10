@@ -265,6 +265,17 @@ frag 0004m-marker-trailing-bad.md <<'EOF'
 EOF
 expect_rc "a malformed marker trailing a bullet exits 2" 2 4.26.1
 
+# ── 5n. A malformed span AFTER a valid one still errors ──────────────────────
+# Scanning must not stop on the first breaking-shaped span: returning the valid
+# one lets a typo sit next to a good marker and be swallowed, which is the very
+# silence 5k removed.
+setup_sandbox
+frag 0004n-marker-two-spans.md <<'EOF'
+<!-- category: Changed -->
+- Something changed. <!-- breaking: false --> <!-- breaking: maybe -->
+EOF
+expect_rc "a malformed span after a valid one exits 2" 2 4.26.1
+
 # ── 6. Substring false positive ──────────────────────────────────────────────
 setup_sandbox
 frag 0005-substring.md <<'EOF'

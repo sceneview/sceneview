@@ -194,11 +194,11 @@ frag_drop_code_spans() {
 # broadly and rejecting in the `case` below keeps that decision in one place.
 FRAG_BREAKING_MARKER=""
 frag_is_breaking_marker_line() {
-    local rest="$1" span value
+    local rest="$1" span value found=""
     while [ -n "$rest" ]; do
-        case "$rest" in *'<!--'*) ;; *) return 1 ;; esac
+        case "$rest" in *'<!--'*) ;; *) break ;; esac
         rest="${rest#*<!--}"
-        case "$rest" in *'-->'*) ;; *) return 1 ;; esac
+        case "$rest" in *'-->'*) ;; *) break ;; esac
         span="${rest%%-->*}"
         rest="${rest#*-->}"
         [[ "$span" =~ ^[[:space:]]*breaking[[:space:]]*(:(.*))?$ ]] || continue
@@ -214,13 +214,21 @@ frag_is_breaking_marker_line() {
         fi
         value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
         case "$value" in
-            true|yes|1)  FRAG_BREAKING_MARKER=true ;;
-            false|no|0)  FRAG_BREAKING_MARKER=false ;;
+            true|yes|1)  found=true ;;
+            false|no|0)  found=false ;;
+            # A malformed value ends the scan immediately, even if an earlier
+            # span on this line parsed cleanly: returning the good one would let
+            # a typo sit next to a valid marker and be swallowed — the same
+            # silence this function was rewritten to remove.
             *)           FRAG_BREAKING_MARKER=""; return 2 ;;
         esac
-        return 0
+        # No early return: the rest of the line is still scanned so a malformed
+        # span AFTER a valid one is not missed. Between two valid markers the
+        # last one wins, matching how the caller resolves two marker lines.
     done
-    return 1
+    [ -n "$found" ] || return 1
+    FRAG_BREAKING_MARKER="$found"
+    return 0
 }
 
 # ─── Prose heuristic ─────────────────────────────────────────────────────────
