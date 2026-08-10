@@ -304,5 +304,29 @@ set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
   && ok "a prerelease pin is not the release it prefixes" \
   || bad "a prefix match blesses a version nobody verified (rc=$RC)"
 
+# 17. A keyword is a constraint only in the syntax that carries one. The
+#     class chain between the coordinate and the keyword can bridge a comma
+#     and a space, so "`…/sceneview.git`, from v3 onward, resolved fine" was
+#     DISCOVERED as a pin — then judged stale, because an English sentence
+#     carries no version. The gate would have blocked a release note for
+#     describing history: the "only says no" failure, reintroduced in the
+#     half that decides what a pin IS.
+#     The canonical pin in llms.txt stays: emptying the population would
+#     make this pass through the "pattern is broken" sentinel instead of
+#     through the verdict under test.
+D="$(spm_repo spm_prose_from 4.26.0)"
+mkdir -p "$D/docs"
+printf '%s\n' 'The coordinate `https://github.com/sceneview/sceneview.git`, from v3 onward, never moved.' \
+    > "$D/docs/history.md"
+( cd "$D" && git add -A && git commit -qm prose )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+# The assertion is the POPULATION COUNT, not the absence of the filename:
+#     the prose file's path appears in the check's own trace output, so
+#     grepping for it would fail for a reason that has nothing to do with
+#     the verdict. One file scanned means the sentence was never a pin.
+{ [[ $RC -eq 0 ]] && grep -q '\[PASS\].*1 tracked file(s) scanned' <<<"$OUT"; } \
+  && ok "'from v3 onward' after the URL is prose, not a pin" \
+  || bad "a sentence must not be discovered as an install line (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

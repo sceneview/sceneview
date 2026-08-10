@@ -366,13 +366,16 @@ else
         # to contain "from" into a stale SPM pin. Measured: 25 files, 10 of
         # them prose. It also keeps the ARCHIVED `sceneview/sceneview-swift`
         # mirror out (banning that URL is check-sceneview-swift-urls.sh's job).
-        # Each keyword ends at a non-letter: bare `exact` also prefixes `exactly`,
-        # an ordinary English word, and a line reading "exactly 4.26.0" would
-        # otherwise be read as a satisfied pin. The boundary lives in the
+        # A keyword is a constraint only in the SYNTAX that carries one: `from:`,
+        # `.upToNextMajor(from:)`, `exact:`. The `[:(]` is what separates a pin
+        # from English — bare `exact` prefixes `exactly`, and "from v3 onward"
+        # three words after the URL is a sentence, not an install line. Both
+        # readings cost: one blesses a version nobody checked, the other turns
+        # a release note into a merge blocker. The boundary lives in the
         # SHARED constraint, not in the verdict half alone — a keyword that
         # discovers a line but cannot judge it turns that line into a false
         # stale, which is the asymmetry this pair was built to avoid.
-        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)[^[:alpha:]]'
+        SPM_CONSTRAINT='(from|upToNextMajor|upToNextMinor|exact)[[:space:]]*[:(]'
         SPM_PIN_RE='sceneview/sceneview(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*'"$SPM_CONSTRAINT"
         # The right boundary rejects `.` and `-` too, so `4.26.0-beta` and
         # `4.26.0.1` are what they are — a DIFFERENT version — instead of

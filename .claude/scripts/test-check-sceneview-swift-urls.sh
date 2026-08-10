@@ -164,5 +164,16 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "keyword-less SPM range pin → fail, line named" \
   || bad "a range pin names no constraint and must still be a pin (rc=$RC)"
 
+# 12. Same contract in the mirror gate's pin detector: a keyword without the
+#     `:` or `(` that makes it a constraint is English. This surface is
+#     allowlisted precisely so a release note may NAME the retired mirror,
+#     and a false FAIL here blocks the sentence the allowlist exists for.
+D="$(fixture prose_from_v3 changelog.d/1234-note.md \
+    '- `sceneview-swift`, from v3 onward, was the Apple coordinate; it is archived.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a constraint keyword used as an English word → not a pin" \
+  || bad "the keyword must carry pin SYNTAX to count as one (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

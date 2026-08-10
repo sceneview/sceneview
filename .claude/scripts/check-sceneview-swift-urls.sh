@@ -97,7 +97,7 @@ PROSE_ONLY=(
 # Near-adjacency, never `.*` — a permissive gap makes every prose sentence that
 # happens to contain "from" a false positive (measured on the sibling SPM gate:
 # 25 files matched, 10 of them plain prose).
-SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(from|upToNextMajor|upToNextMinor|exact)'
+SNIPPET='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*[.(]?[[:space:]]*(from|upToNextMajor|upToNextMinor|exact)[[:space:]]*[:(]'
 
 # A version constraint is not the only way to ship a runnable line. `git clone
 # https://…/sceneview-swift.git` carries no constraint at all and still fails
