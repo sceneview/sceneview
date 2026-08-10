@@ -28,20 +28,20 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.27.0` and
-  `io.github.sceneview:arsceneview:4.27.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.28.0` and
+  `io.github.sceneview:arsceneview:4.28.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.27.0`). RealityKit renderer.
+  via Swift Package Manager (tag `4.28.0`). RealityKit renderer.
 - **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
   (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
   orbit camera, key light, environment, tap. **No AR, no custom materials, no
   post-processing.** Android delegates to the Filament `SceneView { }` below; iOS needs a
   one-time renderer registration; Desktop draws a placeholder. Reach for it only when the
   ask is genuinely shared-source; for anything platform-specific, use the native API.
-- **Web** — `sceneview-web@4.27.0` on npm (Filament.js + WebXR).
+- **Web** — `sceneview-web@4.28.0` on npm (Filament.js + WebXR).
 - **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4.27.0` (Fabric bridge).
+- **React Native** — `@sceneview-sdk/react-native@4.28.0` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's

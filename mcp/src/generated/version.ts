@@ -6,7 +6,7 @@
 // stale hardcoded constants. See #941.
 
 export const PACKAGE_VERSION = "4.0.15" as const;
-export const LATEST_SCENEVIEW_RELEASE = "4.27.0" as const;
+export const LATEST_SCENEVIEW_RELEASE = "4.28.0" as const;
 // The pub.dev coordinate for `flutter_sceneview`, read from the plugin's
 // README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,
 // and a caret range against an unpublished version cannot be resolved.
