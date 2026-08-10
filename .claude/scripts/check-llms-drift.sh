@@ -83,6 +83,25 @@ fi
 # `mcp/src/generated/llms-txt.ts` is generated at build time and `.gitignore`d
 # (same rationale). No content check needed.
 
+# ─── 4. website-static/llms-full.txt must NOT be a committed mirror ─────
+# `docs/docs/llms-full.txt` is the single source of truth for the condensed
+# AI-context file, and `sync-versions.sh` keeps its version prose current.
+# `website-static/llms-full.txt` used to be a hand-maintained second copy of
+# it, outside the version sweep — it rotted to SceneView 3.6.2 / Filament
+# 1.70.0 / ARCore 1.53.0 (five minors behind) and, being copied into `site/`
+# ahead of the docs copy, it SHADOWED the canonical file on the deployed
+# site: the exact failure mode #1956 removed for `llms.txt`. It is gone from
+# source; `docs.yml` now copies `docs/docs/llms-full.txt` to `/llms-full.txt`.
+WEB_LLMS_FULL_REL="website-static/llms-full.txt"
+if git -C "$ROOT" ls-files --error-unmatch "$WEB_LLMS_FULL_REL" >/dev/null 2>&1; then
+    echo -e "${RED}MISMATCH: $WEB_LLMS_FULL_REL is committed again${NC}"
+    echo "  $WEB_LLMS_FULL_REL must NOT be tracked — /llms-full.txt is served"
+    echo "  from docs/docs/llms-full.txt by .github/workflows/docs.yml (step 3)."
+    echo "  Edit docs/docs/llms-full.txt instead, then:"
+    echo "    git rm --cached $WEB_LLMS_FULL_REL"
+    ERRORS=$((ERRORS + 1))
+fi
+
 if [ "$ERRORS" -eq 0 ]; then
     echo -e "${GREEN}llms.txt mirror in sync (mirrors are build-generated, cannot drift)${NC}"
     exit 0

@@ -700,7 +700,6 @@ done
 # geometry-demo.html, playground.html) and the AI-context llms.txt mirrors.
 for webfile in website-static/index.html website-static/web.html \
                website-static/geometry-demo.html website-static/playground.html \
-               website-static/llms-full.txt \
                website-static/.well-known/llms.txt; do
     F="$REPO_ROOT/$webfile"
     if [ -f "$F" ]; then
@@ -763,18 +762,21 @@ fi
 
 # Kotlin toolchain version — gradle/libs.versions.toml `kotlin = "X.Y.Z"` is
 # the source of truth; llms.txt + llms-full.txt quote it in prose and drift —
-# and so do their two website-static siblings, which sat outside this list and
+# and so did their website-static siblings, which sat outside this list and
 # rotted to 2.3.20 while the covered pair was fixed to 2.4.10 (#2886 follow-up).
-# `website-static/llms-full.txt` is a real hand-maintained file with no
-# canonical root counterpart (docs.yml says so explicitly), and
 # `website-static/.well-known/llms.txt` is repo-internal (docs.yml drops it
 # from the deployed site, #1998) but still a versioned surface swept above for
-# its Maven prose — both must track the toml like the first pair.
+# its Maven prose, so it must track the toml like the first pair.
+# `website-static/llms-full.txt` is GONE: it was a hand-maintained duplicate of
+# `docs/docs/llms-full.txt` whose SceneView/Filament/ARCore prose no scan here
+# covered, so it rotted five minors behind AND shadowed the canonical file on
+# the deployed site. `/llms-full.txt` is now copied from `docs/docs/` by
+# docs.yml, and `check-llms-drift.sh` fails if the committed copy returns.
 # Reported under a separate "Kotlin" banner since it's not VERSION_NAME.
 # `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
 # (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
-KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt website-static/.well-known/llms.txt website-static/llms-full.txt"
+KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt website-static/.well-known/llms.txt"
 if [ -n "$KOTLIN_TOML" ]; then
     for kfile in $KOTLIN_PROSE_FILES; do
         F="$REPO_ROOT/$kfile"
@@ -1364,7 +1366,6 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
                  website-static/index.html website-static/web.html \
                  website-static/geometry-demo.html website-static/playground.html \
-                 website-static/llms-full.txt \
                  website-static/.well-known/llms.txt; do
             F="$REPO_ROOT/$f"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V_RE" "$F" 2>/dev/null; then

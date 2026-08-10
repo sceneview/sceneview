@@ -88,10 +88,20 @@ jobs:
           # of `llms.txt` under `website-static/` used to drift 12 versions
           # behind and shadow the root file via the `[ ! -f site/llms.txt ]`
           # guard in step 3 (#1956). The stale copy has been removed from
-          # source; this guards against it returning. (`llms-full.txt` is
-          # NOT removed here — `website-static/llms-full.txt` is a real,
-          # version-synced file with no canonical root counterpart.)
+          # source; this guards against it returning.
           rm -f site/llms.txt
+
+          # Same shadowing class for `llms-full.txt`: `website-static/llms-full.txt`
+          # was a hand-maintained second copy of `docs/docs/llms-full.txt` that
+          # rotted to SceneView 3.6.2 / Filament 1.70.0 / ARCore 1.53.0 while
+          # the docs copy tracked every release — and, being copied into `site/`
+          # first, it shadowed the canonical file through the same
+          # `[ ! -f site/llms-full.txt ]` guard in step 3. It has been removed
+          # from source; `/llms-full.txt` is now served from
+          # `docs/docs/llms-full.txt` (the file `sync-versions.sh` keeps
+          # current), so the published surface cannot drift by construction.
+          # `check-llms-drift.sh` fails if the committed copy ever returns.
+          rm -f site/llms-full.txt
 
           # `.well-known/` ships only the two verified deep-link manifests
           # (`assetlinks.json` + `apple-app-site-association`). The
