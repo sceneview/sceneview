@@ -128,7 +128,15 @@ class AboutPage extends StatelessWidget {
                 _FeatureRow('Model loading — USDZ', _FeatureSupport.iosOnly, theme),
                 _FeatureRow('Camera gestures (pan, pinch)', _FeatureSupport.both, theme),
                 _FeatureRow('Model position, rotation', _FeatureSupport.androidOnly, theme),
-                _FeatureRow('onTap callback (3D)', _FeatureSupport.both, theme),
+                // 3D onTap is Android-only for a different reason than AR: the
+                // iOS path IS wired — the platform view claims the gesture, the
+                // entity carries collision AND input-target components — but
+                // RealityKit's entity-targeted hit test resolves no entity, so
+                // the handler never runs. Measured across two native hosts on
+                // an iPhone 17 Pro Max simulator (#3045). A green badge here
+                // would be the same false capability claim this page exists to
+                // prevent.
+                _FeatureRow('onTap callback (3D)', _FeatureSupport.androidOnly, theme),
                 // AR onTap is Android-only: SceneViewSwift's ARSceneView
                 // exposes no entity hit-test hook, so the callback never fires
                 // on iOS (#2051).

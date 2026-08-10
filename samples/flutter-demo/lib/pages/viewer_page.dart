@@ -425,7 +425,11 @@ class _ViewerPageState extends State<ViewerPage> {
     ));
     setState(() => _sceneReady = true);
     // Load the first sample this platform can actually render.
-    final first = _loadableSampleModels.firstOrNull;
+    // Not `firstOrNull`: that extension lives in package:collection, which this
+    // app never declares and never imports — it only resolves through a
+    // transitive re-export, which is exactly what depend_on_referenced_packages
+    // warns about. Plain dart:core keeps it stable across toolchains.
+    final first = _loadableSampleModels.isEmpty ? null : _loadableSampleModels.first;
     if (first != null) {
       _loadModel(first.modelPath!, first.name);
     }
