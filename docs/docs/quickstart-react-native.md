@@ -112,6 +112,18 @@ often it dispatches differs, though: on iOS a tap that hits no entity fires no
 dispatches a `0, 0, 0` miss — so tap-event totals are not comparable across
 platforms.
 
+!!! warning "iOS `SceneView.onTap` is unverified — do not build on it yet"
+
+    The 3D `onTap` above is described from the source, **not** from a measured
+    run on iOS. The sibling Flutter bridge — same RealityKit entity-targeted hit
+    test — is wired end to end and still never fires the callback, measured on an
+    iPhone 17 Pro Max simulator across two different native hosts
+    ([#3045](https://github.com/sceneview/sceneview/issues/3045)). Whether the
+    React Native path behaves the same is being measured under
+    [#3072](https://github.com/sceneview/sceneview/issues/3072). Until that
+    lands, treat `onTap` as **Android-only** on both views and keep an
+    interaction path that does not depend on it.
+
 ## Type Definitions
 
 ```typescript

@@ -92,8 +92,11 @@ export interface TapEvent {
   z: number;
   /**
    * Name of the tapped model: its file's base name without extension
-   * (`models/robot.glb` → `robot`), identical on Android and iOS. Never an
-   * asset-internal mesh name — a tap inside a model always reports the model.
+   * (`models/robot.glb` → `robot`). Never an asset-internal mesh name — a tap
+   * inside a model always reports the model.
+   *
+   * **Measured on Android only.** The iOS shape is described from the source
+   * and has never been observed; see {@link SceneViewProps.onTap | `onTap`}.
    *
    * `null` — never `undefined` — when the tap hit no model: an untitled
    * geometry node or nothing at all on Android, a plane or a miss in Android
@@ -181,9 +184,19 @@ export interface SceneViewProps {
   /**
    * Called when the user taps inside the scene.
    *
+   * ⚠️ **iOS is unverified — treat this as Android-only for now.** Everything
+   * below about iOS is read off `SceneViewSwift`, not measured. The sibling
+   * Flutter bridge goes through the same RealityKit entity-targeted hit test,
+   * is wired end to end, and still never fires its callback on an iPhone 17 Pro
+   * Max simulator across two different native hosts
+   * ({@link https://github.com/sceneview/sceneview/issues/3045 | #3045}).
+   * Whether this module behaves the same is being measured under
+   * {@link https://github.com/sceneview/sceneview/issues/3072 | #3072}. Until
+   * that lands, keep an interaction path that does not depend on `onTap`.
+   *
    * The event payload carries the world-space position of the tapped model and
-   * its `nodeName` (the model file's base name without extension) on both
-   * Android and iOS. A tap that hits no model reports `nodeName: null` — with
+   * its `nodeName` (the model file's base name without extension). A tap that
+   * hits no model reports `nodeName: null` — with
    * the tapped node's real world position on Android when it landed on an
    * (unnamed) geometry node, and `0, 0, 0` when it hit nothing at all. That
    * `0, 0, 0` miss is **in practice Android-only**: iOS resolves the tap

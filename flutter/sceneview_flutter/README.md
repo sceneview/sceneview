@@ -85,12 +85,47 @@ Minimum iOS 18 (`SceneViewSwift`'s `Package.swift` requires iOS 18.0). In
 platform :ios, '18.0'
 ```
 
-The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer). It is
-consumed via Swift Package Manager — CocoaPods does not natively integrate SPM
-dependencies — so the **host app** must add the package in Xcode:
+The plugin's iOS bridge wraps `SceneViewSwift` (the RealityKit renderer), and
+declares it as a **pod** dependency. `SceneViewSwift` is **not published to the
+CocoaPods trunk**, so your `Podfile` has to say where it comes from — otherwise
+`pod install` fails with `Unable to find a specification for 'SceneViewSwift'`.
 
-- File → Add Package Dependencies… → `https://github.com/sceneview/sceneview`
-- Pick the `SceneViewSwift` library product; depend on the latest `vX.Y.Z` tag.
+Installing the plugin from pub.dev (no clone of the SDK repo):
+
+```ruby
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+
+The `:podspec =>` form is deliberate, and the obvious `:git => …, :tag => 'vX.Y.Z'`
+alternative does **not** work yet. CocoaPods resolves `:git` by looking for
+`SceneViewSwift.podspec` at the root of the checked-out tag, and the podspec was
+added after `v4.26.0` was cut — so a tagged coordinate fails with exactly the
+`Unable to find a specification` error this section exists to prevent, until the
+first release that carries the file. `:podspec =>` reads the spec from `main`
+while the *sources* still come from the tag the spec pins (`:tag => "v#{s.version}"`),
+so the build stays reproducible. Once a release ships with the podspec at the
+root, `:git => …, :tag => 'vX.Y.Z'` becomes the better pin.
+
+Working from a checkout of the SDK monorepo instead — point at the **repo root**,
+which is where `SceneViewSwift.podspec` lives:
+
+```ruby
+  pod 'SceneViewSwift', :path => '<path-to>/sceneview'
+```
+
+> **Adding the Swift package to your Xcode project does not work**, and this
+> README used to tell you to do exactly that. The bridge is itself a pod, so it
+> compiles inside the generated `Pods.xcodeproj`, which cannot see a package
+> added to `Runner.xcodeproj`; the build fails with
+> `Unable to find module dependency: 'SceneViewSwift'`. The pod route is what
+> makes `import SceneViewSwift` resolve.
+
+`samples/flutter-demo/ios/Podfile` is a working reference.
 
 > **Pick the tag to match the plugin, not the pub.dev range.** The two versions
 > are resolved by different package managers and only the pub.dev one is allowed
@@ -160,8 +195,10 @@ ARSceneView(
 > ⚠️ **Bridge coverage.** This plugin exposes a subset of the native SceneView
 > SDK. `addGeometry` / `addLight` render natively on Android only; plane events
 > and the HDR environment are forwarded on Android but not yet on iOS. Node taps
-> reach `onTap` on **both** platforms for `SceneView` (3D), carrying the model
-> file's base name without extension; for `ARSceneView` they stay Android-only,
+> reach `onTap` for `SceneView` (3D) on **Android**, carrying the model file's
+> base name without extension; the iOS 3D path is wired end to end but no tap
+> has ever been observed to arrive — see "`onTap` does not fire on iOS" below,
+> where it is measured. For `ARSceneView` taps stay Android-only,
 > since SceneViewSwift's `ARSceneView` exposes no entity hit-test hook
 > ([#2051](https://github.com/sceneview/sceneview/issues/2051)).
 > Camera positioning, `ViewNode` / `ImageNode` / `VideoNode` / `TextNode`,
@@ -235,9 +272,77 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 
 - Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
 - AR tap-to-place is not yet implemented
-- `onTap` is delivered for `SceneView` (3D) on both platforms and for
-  `ARSceneView` on Android only; there is no `onModelLoaded` callback yet
+- `onTap` is delivered for `SceneView` (3D) on Android; on iOS the wiring is
+  complete but no tap has been observed to arrive (measured — see below).
+  `ARSceneView` taps are Android-only
+- `onModelLoaded` is not bridged; a model that fails to load is logged natively
+  and not reported to Dart. The prefix to grep for differs by path, because the
+  two paths report from different places: the 3D viewer logs
+  `[SceneViewSwift] SceneViewerHostView failed to load model '<path>': <error>`,
+  while AR logs `[flutter_sceneview] Cannot load AR model '<path>': <reason>`
+  for a format RealityKit cannot parse, and
+  `[flutter_sceneview] Failed to load AR model '<path>': <error>` for anything else
 - Only Android and iOS are supported; other platforms show a fallback message
+
+### `onTap` does not fire on iOS (known gap, measured 2026-08-07)
+
+`onTap` works on Android. On iOS the callback is wired end to end — the platform
+view now claims tap gestures, the model loads and renders, and its entity
+carries both a `CollisionComponent` and an `InputTargetComponent` — but
+RealityKit's entity-targeted hit test never resolves an entity, so the handler
+is never called. Verified on an iPhone 17 Pro Max simulator (iOS 26.3):
+
+- a plain `SpatialTapGesture` on the same view **does** fire, at the correct
+  location inside the viewport, so the touch reaches SwiftUI;
+- the same tap through `.targetedToAnyEntity()` fires for no entity, whether the
+  collision shape is the generated one or an explicit bounding box.
+
+**A missing component is not the explanation — that was ruled out by
+measurement, not by reading.** #3027 landed `Entity.makeInputTargetable()` and
+applies it to the *whole* `contentRoot` in `buildContent`, so every entity in
+the scene carries an `InputTargetComponent` regardless of collision. Re-measured
+against that code on the same simulator: four taps at three positions on a
+rendered, orbitable model produced no callback. A drag in the same session
+orbited the camera, so the touches were reaching the native view throughout.
+
+**`SceneViewerHostView` is not the fix either.** #3035 moved this bridge onto
+that shared host — an `@objc UIView` built for UIKit embedding, which was the
+most promising remaining lead. Re-measured on the same simulator after the move,
+with the fox rendering and the camera orbiting: three taps on the model, no
+callback. So the gap survives a change of host, which is evidence against the
+host being what breaks it.
+
+**The package itself picks correctly.** Measured on the same simulator, same
+session: `samples/ios-demo`'s `Collision & Hit Test` demo — the same
+`SceneView`, the same `.targetedToAnyEntity()` — highlights the shape that was
+tapped. So `targetedToAnyEntity()` resolving nothing is specific to how this
+bridge presents its scene, not a property of the modifier.
+
+**Asynchronous loading is not the difference either.** Same session, same
+simulator: `samples/ios-demo`'s Model Viewer, temporarily given an
+`onEntityTapped`, reported `car_019_0` on the first tap — a `.usdz` loaded
+through the same `ModelNode.load`, well after the first frame. So neither the
+loader nor `.usdz` content is what breaks the bridge.
+
+Three differences remain, and no measurement so far has varied only one:
+
+1. **Host** — a Flutter platform view versus plain SwiftUI.
+2. **How the entity reaches the scene** — the native demo re-runs `SceneView`'s
+   `content` closure through `.contentID(loadCount)`, so `buildContent` runs
+   again and `makeInputTargetable()` sweeps the tree with the model in it.
+   `SceneViewerHostView` hands `SceneView` an empty `SceneViewerContentRoot` once
+   and never re-keys it, so that sweep only ever sees an empty root; the attached
+   models depend entirely on the components `ModelNode.load` set on them.
+3. **Scale** — the native hero is normalised with `scaleToUnits(0.6)`; the fox
+   reaches the bridge at its authored 155 units.
+
+Whichever of these it is, note that (2) is a property of the shared host, not of
+Flutter — so the React Native bridge, which uses the same host, is likely to have
+the same gap.
+
+Do not describe `onTap` as working on iOS until a tap has been seen to reach
+Dart. Tracked in
+[#3045](https://github.com/sceneview/sceneview/issues/3045).
 
 ## Contributing
 

@@ -178,23 +178,47 @@ extract_refs() {
         case "$file" in
             */web-demo/site/js/*) skip_placeholder="model.glb" ;;
         esac
+        # Second filter, a regex rather than one exact literal. Two jobs:
+        #   * `example.com` / `example.org` are reserved for documentation
+        #     (RFC 2606) — a snippet quoting one is illustrating an API, never
+        #     naming an asset, so probing it can only ever produce a 404.
+        #   * `features_page.dart` is the Flutter demo's *code-snippet* tab: the
+        #     strings it displays are teaching material rendered as text, not
+        #     paths the app loads. They are the reason a naive `.dart` sweep
+        #     reports misses for assets nothing was ever supposed to bundle.
+        # Kept narrow on purpose: a broad "skip any .dart doc-looking string"
+        # would re-open the hole this discovery pass was added to close.
+        local skip_re='^https?://(www\.)?example\.(com|org)/'
+        case "$file" in
+            */flutter-demo/lib/pages/features_page.dart)
+                skip_re="$skip_re|^models/(helmet|andy)\.glb$" ;;
+        esac
         # 1. Quoted literals with a known extension ("models/foo.glb", "bar.hdr")
         # Skip strings containing `$`, `\` (Swift `\(slug.uid).usdz`
         # interpolation), or `<` (placeholder docs like `Models/<name>.usdz`) —
         # those are runtime/template references, not static asset paths.
         # `|| true` so files with no match (grep exit 1) don't abort pipefail.
         grep -oE "\"[^\"\$\\\\<]*\.($ext_pattern)\"" "$file" 2>/dev/null |
-            awk -v f="$file" -v skip="$skip_placeholder" \
-                '{ gsub(/"/, "", $0); if (skip != "" && $0 == skip) next; printf "%s|%s\n", $0, f }' || true
+            awk -v f="$file" -v skip="$skip_placeholder" -v skip_re="$skip_re" \
+                '{ gsub(/"/, "", $0); if (skip != "" && $0 == skip) next;
+                   if (skip_re != "" && $0 ~ skip_re) next;
+                   if ($0 ~ /[[:space:]]/) next;
+                   printf "%s|%s\n", $0, f }' || true
 
         # 1b. Single-quoted literals — JS/HTML commonly quote with `'…'`
         #     (e.g. the web demo's `file: 'khronos_damaged_helmet.glb'`
-        #     catalog). Only .html/.js/.jsx so we don't mis-parse other langs.
+        #     catalog). `.dart` is here because the Flutter demo quotes every
+        #     asset path this way: without it the whole flutter-demo leg
+        #     discovered ZERO refs and still printed "All references resolve ✓"
+        #     — a green tick that had checked nothing.
         case "$file" in
-            *.html|*.js|*.jsx)
+            *.html|*.js|*.jsx|*.dart)
                 grep -oE "'[^'\$\\\\<]*\.($ext_pattern)'" "$file" 2>/dev/null |
-                    awk -v f="$file" -v skip="$skip_placeholder" \
-                        '{ gsub(/'"'"'/, "", $0); if (skip != "" && $0 == skip) next; printf "%s|%s\n", $0, f }' || true
+                    awk -v f="$file" -v skip="$skip_placeholder" -v skip_re="$skip_re" \
+                        '{ gsub(/'"'"'/, "", $0); if (skip != "" && $0 == skip) next;
+                           if (skip_re != "" && $0 ~ skip_re) next;
+                           if ($0 ~ /[[:space:]]/) next;
+                           printf "%s|%s\n", $0, f }' || true
                 ;;
         esac
 
@@ -359,7 +383,7 @@ if [ "$platforms" = "all" ] || [ "$platforms" = "flutter" ]; then
     process_platform_refs \
         "flutter-demo" \
         "samples/flutter-demo/lib" \
-        "samples/flutter-demo/environments" \
+        "samples/flutter-demo/environments:samples/flutter-demo/ios/Runner/Models" \
         "glb|gltf|usdz|hdr"
 fi
 

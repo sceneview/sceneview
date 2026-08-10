@@ -565,7 +565,7 @@ Install:
 ```yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^4.27.0
+  flutter_sceneview: ^4.24.0
 ```
 
 Alternative — pin the repo via git (package name at tag v4.24.0 and earlier
@@ -578,6 +578,24 @@ dependencies:
       path: flutter/sceneview_flutter
       ref: v4.24.0
 ```
+
+**iOS also requires two lines in the host app's `ios/Podfile`** — the plugin
+declares `s.dependency 'SceneViewSwift'`, and that pod is deliberately not
+published to the CocoaPods trunk, so without the explicit source `pod install`
+fails with `Unable to find a specification for 'SceneViewSwift'`:
+```ruby
+platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+Adding `SceneViewSwift` as a Swift package in Xcode does **not** work: the bridge
+is itself a pod and compiles inside the generated `Pods.xcodeproj`, which cannot
+see a package added to `Runner.xcodeproj`.
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).
 Controller: `SceneViewController` — attach via `onViewCreated`, then call imperative methods.
@@ -612,10 +630,17 @@ ARSceneView(
 ```
 
 `ModelNode` fields: `modelPath` (required), `x/y/z` (world position), `scale`, `rotationX/Y/Z` (degrees).
+`modelPath` is **per-platform**: Android's Filament reads `.glb`/`.gltf`, iOS's RealityKit reads
+`.usdz`/`.reality` and cannot read glTF at all. A single hardcoded `'models/helmet.glb'` compiles
+on both and renders nothing on iOS — branch on the platform and ship both assets, as
+`samples/flutter-demo/lib/pages/viewer_page.dart` does.
 `onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) —
-never a mesh name from inside the asset; empty when the tap hit no loaded model. Delivered on
-Android and iOS for `SceneView` (3D). For `ARSceneView` it is **Android-only**: SceneViewSwift's
-`ARSceneView` exposes no entity hit-test hook, so on iOS the AR `onTap` never fires (#2051).
+never a mesh name from inside the asset; empty when the tap hit no loaded model. For `SceneView`
+(3D) it is delivered on **Android only**: the iOS path is wired end to end, but RealityKit's
+entity-targeted hit test resolves no entity, so the callback never fires — measured on an
+iPhone 17 Pro Max simulator across two different native hosts (#3045). Do not generate iOS code
+that depends on it firing. For `ARSceneView` it is **Android-only** too: SceneViewSwift's
+`ARSceneView` exposes no entity hit-test hook (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`, `setCameraControlMode(CameraControlMode)`,
 `setAutoCenterContent(bool)`.
@@ -677,8 +702,12 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 `ModelNode` fields: `src` (required), `position?: [x,y,z]`, `rotation?: [x,y,z]` (degrees),
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
 `onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
-without extension (`models/robot.glb` -> `robot`) on Android and iOS, never a mesh name from inside
-the asset. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
+without extension (`models/robot.glb` -> `robot`), never a mesh name from inside
+the asset. **On iOS this is unverified — treat `onTap` as Android-only for now.** The description
+here is read from the source, not measured; the sibling Flutter bridge goes through the same
+RealityKit `.targetedToAnyEntity` hook and never fires the callback at all, measured on an iPhone 17
+Pro Max simulator across two different native hosts (#3045). The React Native measurement is #3072.
+Do not generate iOS code whose only interaction path is `onTap`. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
 `nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. That case is
 reported with the tapped node's real world position on Android when it landed on an unnamed geometry
 node, and `0,0,0` when it hit nothing at all. That `0,0,0` miss is **in practice Android-only** (iOS emits it only if a hit entity resolves outside every loaded model, unreachable today): iOS resolves the

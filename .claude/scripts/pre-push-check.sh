@@ -151,11 +151,17 @@ if [ -d "$SNAPSHOTS_DIR" ] && [ "$(ls -A $SNAPSHOTS_DIR 2>/dev/null)" ]; then
                 echo -e "${GREEN}  ✓ Android screenshots match goldens${NC}"
             else
                 # The comparison ran and every golden matched, so the red build
-                # is something else in :samples:android-demo's test suite.
-                echo -e "${RED}  ✗ :samples:android-demo tests FAILED — every screenshot matched its golden, so this is NOT a golden regression${NC}"
-                gradle_log_tail "$RR_LOG" 20
-                echo -e "      Full log: $RR_LOG"
-                ERRORS=$((ERRORS + 1))
+                # is something else in :samples:android-demo's test suite —
+                # UNLESS the run never reached a verdict at all. This branch
+                # used to print "tests FAILED" unconditionally, and did exactly
+                # that on a run whose only error was `Timeout has been exceeded`
+                # (the 25-min task timeout firing on a host down to 2 Gi of free
+                # disk): a hardcoded diagnosis naming a culprit the log never
+                # named. `gate_gradle_failure` is the same triage every other
+                # Gradle leg already used; it downgrades to ⚠ INCOMPLETE, which
+                # still keeps the gate red, so nothing is waved through.
+                gate_gradle_failure ":samples:android-demo tests" "$RR_LOG" "$RR_EXIT" \
+                    ":samples:android-demo tests FAILED — every screenshot matched its golden, so this is NOT a golden regression"
             fi
             ;;
         ''|*[!0-9]*)

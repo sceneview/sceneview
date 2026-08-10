@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_sceneview/flutter_sceneview.dart';
 
@@ -38,13 +39,38 @@ class _ViewerPageState extends State<ViewerPage> {
   // Camera control mode (v4.3.0) — orbit / pan / firstPerson.
   CameraControlMode _cameraMode = CameraControlMode.orbit;
 
-  // Built-in sample model URLs (public GLB files)
+  // Built-in sample models.
+  //
+  // Each entry carries a source per platform because the two renderers do not
+  // read the same formats. Android (Filament) loads `.glb`, including straight
+  // from an `https://` URL. Apple (RealityKit) loads only `.usdz` / `.reality`
+  // and `ModelNode.load(_:)` resolves a *bundle resource name*, not a URL — so
+  // a remote `.glb` fails twice over there.
+  //
+  // Passing the GLB URL on both platforms is what left the iOS viewer empty:
+  // every `loadModel` threw, the bridge logged it and moved on, and no model
+  // ever appeared — which also made `onTap` unreachable from this demo.
+  //
+  // `usdzResource` names a file bundled into Runner.app (see
+  // ios/Runner/Models/, wired into the Runner target's Resources build phase).
+  // A null means no USDZ is bundled for that model: the entry stays visible and
+  // is disabled on iOS rather than silently loading nothing.
   static const _sampleModels = [
+    _SampleModel(
+      'Fox',
+      'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Fox/glTF-Binary/Fox.glb',
+      Icons.pets,
+      usdzResource: 'khronos_fox.usdz',
+    ),
     _SampleModel('Damaged Helmet', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb', Icons.sports_motorsports),
     _SampleModel('Avocado', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Avocado/glTF-Binary/Avocado.glb', Icons.eco),
     _SampleModel('Flight Helmet', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/FlightHelmet/glTF/FlightHelmet.gltf', Icons.flight),
     _SampleModel('Water Bottle', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/WaterBottle/glTF-Binary/WaterBottle.glb', Icons.water_drop),
   ];
+
+  /// The sample models this platform can actually render.
+  static List<_SampleModel> get _loadableSampleModels =>
+      _sampleModels.where((m) => m.isLoadableOnThisPlatform).toList();
 
   @override
   void dispose() {
@@ -284,13 +310,29 @@ class _ViewerPageState extends State<ViewerPage> {
             style: theme.textTheme.titleSmall,
           ),
         ),
-        ..._sampleModels.map((model) => ListTile(
-              leading: Icon(model.icon),
-              title: Text(model.name),
-              subtitle: const Text('glTF Sample Asset'),
-              trailing: const Icon(Icons.download),
-              onTap: () => _loadModelUrl(model.url, model.name),
-            )),
+        ..._sampleModels.map((model) {
+          final path = model.modelPath;
+          // An entry with no source for this platform stays listed but is
+          // disabled and says why, rather than looking tappable and loading
+          // nothing.
+          // Both locals are final, so Dart's flow analysis carries the null
+          // test through the boolean: `path` is promoted to non-null in every
+          // `!unavailable` branch below, including inside the onTap closure.
+          // No `!` needed — and adding one here would be the actual smell.
+          final unavailable = path == null;
+          return ListTile(
+            enabled: !unavailable,
+            leading: Icon(model.icon),
+            title: Text(model.name),
+            subtitle: Text(
+              unavailable
+                  ? 'No USDZ bundled — RealityKit cannot read .glb'
+                  : 'glTF Sample Asset',
+            ),
+            trailing: Icon(unavailable ? Icons.block : Icons.download),
+            onTap: unavailable ? null : () => _loadModel(path, model.name),
+          );
+        }),
       ],
     );
   }
@@ -385,8 +427,15 @@ class _ViewerPageState extends State<ViewerPage> {
       intensity: 100000,
     ));
     setState(() => _sceneReady = true);
-    // Load first sample model
-    _loadModelUrl(_sampleModels[0].url, _sampleModels[0].name);
+    // Load the first sample this platform can actually render.
+    // Not `firstOrNull`: that extension lives in package:collection, which this
+    // app never declares and never imports — it only resolves through a
+    // transitive re-export, which is exactly what depend_on_referenced_packages
+    // warns about. Plain dart:core keeps it stable across toolchains.
+    final first = _loadableSampleModels.isEmpty ? null : _loadableSampleModels.first;
+    if (first != null) {
+      _loadModel(first.modelPath!, first.name);
+    }
   }
 
   void _onNodeTapped(String nodeName) {
@@ -401,14 +450,17 @@ class _ViewerPageState extends State<ViewerPage> {
     });
   }
 
-  String? _currentModelUrl;
+  /// The source currently loaded — a remote `.glb` URL on Android, a bundled
+  /// `.usdz` resource name on iOS. Kept so the rotation/scale sliders can
+  /// reload the same model.
+  String? _currentModelPath;
 
-  void _loadModelUrl(String url, String name) {
+  void _loadModel(String path, String name) {
     if (!_sceneReady) return;
-    _currentModelUrl = url;
+    _currentModelPath = path;
     _controller.clearScene();
     _controller.loadModel(ModelNode(
-      modelPath: url,
+      modelPath: path,
       rotationX: _rotationX,
       rotationY: _rotationY,
       rotationZ: _rotationZ,
@@ -421,10 +473,10 @@ class _ViewerPageState extends State<ViewerPage> {
   }
 
   void _reloadWithTransform() {
-    if (!_sceneReady || _currentModelUrl == null) return;
+    if (!_sceneReady || _currentModelPath == null) return;
     _controller.clearScene();
     _controller.loadModel(ModelNode(
-      modelPath: _currentModelUrl!,
+      modelPath: _currentModelPath!,
       rotationX: _rotationX,
       rotationY: _rotationY,
       rotationZ: _rotationZ,
@@ -460,8 +512,29 @@ class _ViewerPageState extends State<ViewerPage> {
 
 class _SampleModel {
   final String name;
+
+  /// Remote `.glb` — the Android (Filament) source.
   final String url;
+
   final IconData icon;
 
-  const _SampleModel(this.name, this.url, this.icon);
+  /// Bundled `.usdz` resource name — the iOS (RealityKit) source. Null when no
+  /// USDZ is bundled for this model, which makes it unloadable on Apple
+  /// platforms.
+  final String? usdzResource;
+
+  const _SampleModel(this.name, this.url, this.icon, {this.usdzResource});
+
+  /// The path handed to `SceneViewController.loadModel` on the running
+  /// platform. Returns null when this platform has no usable source.
+  /// `defaultTargetPlatform` rather than `dart:io`'s `Platform`: the latter
+  /// makes this whole file uncompilable on Flutter web, and the demo has no
+  /// reason to be nailed to the two platforms it happens to ship on today.
+  String? get modelPath =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS
+          ? usdzResource
+          : url;
+
+  bool get isLoadableOnThisPlatform => modelPath != null;
 }

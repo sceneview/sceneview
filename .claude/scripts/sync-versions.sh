@@ -199,6 +199,64 @@ PODSPEC="$REPO_ROOT/flutter/sceneview_flutter/ios/flutter_sceneview.podspec"
 if [ -f "$PODSPEC" ]; then
     V=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     add_check "flutter/.../ios/flutter_sceneview.podspec" "$V"
+
+    # The podspec's DEPENDENCY floor on SceneViewSwift, not its own version.
+    # Registered because only `s.version` was watched: the floor sat at
+    # '~> 4.26' through the 4.27.0 release. Both operands are in this repo, so
+    # unlike the pub.dev caret this one is genuinely observable and is safe to
+    # autofix. Compared on MAJOR.MINOR — a `~>` floor carries no patch.
+    FLOOR=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+    # Rebuild the full version by swapping SOURCE_VERSION's own MAJOR.MINOR for
+    # the floor, so a correct floor reproduces SOURCE_VERSION character for
+    # character whatever its shape. The first cut of this used
+    # `$FLOOR.${SOURCE_VERSION##*.}`, which on a pre-release like `4.27.0-rc.1`
+    # takes the LAST dot-segment (`1`) as the patch and reports `4.27.1` — a
+    # blocking MISMATCH on a floor that was right all along.
+    SV_MM="${SOURCE_VERSION%%-*}"; SV_MM="${SV_MM%.*}"
+    add_check "flutter/.../ios/... SceneViewSwift floor" \
+        "${FLOOR:+$FLOOR${SOURCE_VERSION#"$SV_MM"}}"
+fi
+
+# SceneViewSwift podspec (repo root)
+#
+# Registered because the file carries `s.version` and nothing was watching it.
+# Every version-bearing surface this script does NOT enumerate drifts silently
+# until someone reads it — which is exactly how the Flutter demo's About tab sat
+# at v4.13.0 while the SDK shipped 4.26.0, defended by a test asserting the stale
+# string. A "keep this in sync" comment in the file itself is prose; this is the
+# enforcement.
+PODSPEC_SWIFT="$REPO_ROOT/SceneViewSwift.podspec"
+if [ -f "$PODSPEC_SWIFT" ]; then
+    # Two separate hazards, one line. Under `set -euo pipefail` (line 13) a
+    # `grep` that matches nothing fails the whole pipeline and kills the script
+    # mid-report, so the trailing `|| true` is load-bearing, not decoration —
+    # the idiom other checks spell `|| echo "NOT FOUND"`. And once the status is
+    # absorbed, an empty `$V` would reach `add_check` as SKIP, downgrading this
+    # gate to a warning exactly when `s.version` has drifted out of regex range.
+    # Absent is not clean: the file is here, so failing to read its version is
+    # an anomaly, and `UNPARSEABLE` lands as a MISMATCH that stops the release.
+    V=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || true)
+    add_check "SceneViewSwift.podspec" "${V:-UNPARSEABLE}"
+fi
+
+# Flutter demo About tab — hardcoded display string, WARN-only.
+# It is user-visible chrome rather than a coordinate anyone resolves against, so
+# a mismatch should not fail a release; it should stop being invisible.
+#
+# The version appears TWICE in this file (the header pill and the "Made with
+# SceneView SDK" footer). Reading `head -1` would leave the footer unguarded:
+# mutate only that line and the check stays green — a gate reporting on the
+# subset it picked itself. So collapse every occurrence to a unique set. One
+# value means they agree and it is the value to compare; several means they
+# have drifted apart from each other, which is a finding in its own right even
+# when one of them still matches VERSION_NAME.
+ABOUT_PAGE="$REPO_ROOT/samples/flutter-demo/lib/pages/about_page.dart"
+if [ -f "$ABOUT_PAGE" ]; then
+    V=$(grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" "$ABOUT_PAGE" | tr -d 'v' | sort -u || true)
+    if [ "$(printf '%s' "$V" | grep -c . || true)" -gt 1 ]; then
+        V="INCONSISTENT ($(printf '%s' "$V" | paste -sd, -))"
+    fi
+    add_check "samples/flutter-demo/lib/pages/about_page.dart" "${V:-UNPARSEABLE}" "false"
 fi
 
 # Flutter example pubspec
@@ -388,6 +446,15 @@ done
 
 # Flutter snippet inside llms.txt (`flutter_sceneview: ^X.Y.Z`) — separate
 # from the maven `sceneview:` line, so the existing -m1 check misses it.
+# REPORT-ONLY (WARN), never bumped: this is the same pub.dev caret coordinate
+# the Flutter README carries, and it must name a version that already EXISTS on
+# pub.dev. It was `critical` with a matching `--fix` until 2026-08-09, which is
+# precisely how it reached `^4.26.0` while pub.dev's newest was 4.24.0 — a line
+# `flutter pub get` cannot resolve, in the file an AI reads to write that line.
+# Read the row for what it is: it PRINTS the coordinate, it does not police it.
+# A hand-edit back to VERSION_NAME reads as OK here, because this script has no
+# view of the pub.dev registry. What prevents the drift is the absence of the
+# `--fix` handler below, not this row.
 # NOTE (#2735 rename): must grep the pub-form `flutter_sceneview:` line —
 # the legacy `sceneview_flutter:` string still appears in llms.txt as the
 # git-pin dependency key (versionless line), which would silently skip
@@ -395,7 +462,7 @@ done
 if [ -f "$LLMS" ]; then
     V=$(grep -m1 'flutter_sceneview:' "$LLMS" | grep -oE '\^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | sed 's/^\^//' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
-        add_check "llms.txt (flutter snippet)" "$V"
+        add_check "llms.txt (flutter snippet — lags pub.dev, not bumped)" "$V" "false"
     fi
 fi
 
@@ -1108,7 +1175,7 @@ if changed:
 
     # Fix Flutter Android build.gradle
     if [ -f "$FLUTTER_ANDROID_GRADLE" ]; then
-        CURRENT=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        CURRENT=$(grep "^version " "$FLUTTER_ANDROID_GRADLE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/^version '$CURRENT'/version '$SOURCE_VERSION'/" "$FLUTTER_ANDROID_GRADLE"
             echo -e "  Fixed: flutter/.../android/build.gradle ($CURRENT -> $SOURCE_VERSION)"
@@ -1117,10 +1184,39 @@ if changed:
 
     # Fix Flutter iOS podspec
     if [ -f "$PODSPEC" ]; then
-        CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1)
+        CURRENT=$(grep "s\.version" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC"
             echo -e "  Fixed: flutter/.../ios/flutter_sceneview.podspec ($CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep "s\.dependency 'SceneViewSwift'" "$PODSPEC" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+        # Same pre-release trap as the check above: `${SOURCE_VERSION%.*}` on
+        # `4.27.0-rc.1` yields `4.27.0-rc`, which this would then WRITE into the
+        # podspec as the floor. Strip the pre-release suffix first.
+        WANT="${SOURCE_VERSION%%-*}"; WANT="${WANT%.*}"
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$WANT" ]; then
+            _sed_inplace "s/s\.dependency 'SceneViewSwift', '~> $CURRENT'/s.dependency 'SceneViewSwift', '~> $WANT'/" "$PODSPEC"
+            echo -e "  Fixed: flutter/.../ios/... SceneViewSwift floor (~> $CURRENT -> ~> $WANT)"
+        fi
+    fi
+
+    # Fix the root SceneViewSwift podspec.
+    #
+    # This handler is not optional garnish: the matching check above is
+    # `critical`, and `release-fast.yml` runs `--fix` then asserts
+    # "Errors (MISMATCH): 0" on the verify pass. A critical check whose version
+    # `--fix` cannot move turns the next bump into a dead one-click release —
+    # the check would report the mismatch it was asked to fix. Registering a
+    # gate and teaching `--fix` to satisfy it are one change, never two.
+    if [ -f "$PODSPEC_SWIFT" ]; then
+        # `|| echo ""` is mandatory, not defensive style: under `set -euo
+        # pipefail` (line 13) an inner grep that matches nothing kills the whole
+        # --fix sweep before the `[ -n "$CURRENT" ]` guard below can absorb it,
+        # silently skipping every later autofix.
+        CURRENT=$(grep "s\.version" "$PODSPEC_SWIFT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/s\.version *= *'$CURRENT'/s.version          = '$SOURCE_VERSION'/" "$PODSPEC_SWIFT"
+            echo -e "  Fixed: SceneViewSwift.podspec ($CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 
@@ -1614,10 +1710,14 @@ if changed:
             _sed_inplace "s|sceneview-web@$SEMVER|sceneview-web@$SOURCE_VERSION|g" "$LLMS"
             echo -e "  Fixed: llms.txt (sceneview-web@ CDN snippet -> $SOURCE_VERSION)"
         fi
-        if grep -q "flutter_sceneview: ^" "$LLMS" && ! grep -q "flutter_sceneview: ^$SOURCE_VERSION" "$LLMS"; then
-            _sed_inplace "s/flutter_sceneview: ^$SEMVER/flutter_sceneview: ^$SOURCE_VERSION/" "$LLMS"
-            echo -e "  Fixed: llms.txt (flutter snippet -> $SOURCE_VERSION)"
-        fi
+        # NO `--fix` for llms.txt's `flutter_sceneview: ^X.Y.Z` — same reason
+        # the Flutter README has none (see the note next to the RN README fix).
+        # This handler used to exist and was the bug: it is the SAME pub.dev
+        # caret coordinate as the README's, so every release rewrote a live
+        # `^4.24.0` into a `^<VERSION_NAME>` that resolves to nothing and fails
+        # `flutter pub get`. Exempting one copy of a coordinate and auto-bumping
+        # the other does not make the surface consistent, it makes half of it
+        # wrong — llms.txt is the copy an AI reads to generate an install line.
     fi
 
     # samples/android-demo/build.gradle — versionName ternary default.

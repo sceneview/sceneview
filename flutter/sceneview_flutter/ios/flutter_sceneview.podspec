@@ -11,10 +11,43 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform         = :ios, '17.0'
-  s.swift_version    = '5.9'
+  # The bridge compiles inside Pods.xcodeproj, which cannot see a Swift package
+  # added to the host app's project — so SceneViewSwift has to arrive as a pod
+  # too. It is NOT on the CocoaPods trunk, so the host app's Podfile must say
+  # where it comes from. From a pub.dev install (no monorepo clone):
+  #   pod 'SceneViewSwift',
+  #       :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  # From a checkout of this repo:
+  #   pod 'SceneViewSwift', :path => '<repo-root>'
+  #
+  # Not `:git => …, :tag => 'vX.Y.Z'`: CocoaPods looks for the podspec at the
+  # root of the checked-out tag, and the root podspec landed after v4.26.0 was
+  # cut, so every tag that currently exists resolves to "Unable to find a
+  # specification". Switch to a tagged coordinate once a release carries it.
+  #
+  # The version is pinned rather than left open. An unversioned dependency on a
+  # name nobody has reserved on the trunk is a dependency-confusion foothold:
+  # if the Podfile line above is omitted or mistyped, CocoaPods falls through to
+  # the trunk and resolves whatever anyone has published under this name. The
+  # constraint at least bounds what an unexpected resolution can pull in.
+  #
+  # The floor tracks VERSION_NAME's MAJOR.MINOR and is enforced by
+  # `sync-versions.sh` (row "flutter/.../ios/... SceneViewSwift floor"). It sat at
+  # '~> 4.26' while the SDK shipped 4.27.0 because nothing watched this line —
+  # only `s.version` above was registered. A stale floor is not inert: it lets an
+  # older SceneViewSwift satisfy the dependency, so the bridge can link against a
+  # runtime that predates the APIs it calls.
+  s.dependency 'SceneViewSwift', '~> 4.27'
+  # Must match SceneViewSwift/Package.swift's `.iOS("18.0")`. This said 17.0
+  # while the package it bridges to required 18.0 — a host app that believed
+  # the podspec and targeted 17.0 got availability errors from RealityKit's
+  # per-entity light/shadow APIs at link time, not a clear version error.
+  s.platform         = :ios, '18.0'
+  # Matches SceneViewSwift.podspec and SceneViewSwift/Package.swift. The root
+  # podspec's comment names s.version / s.platform / s.swift_version as the
+  # three fields that must agree across the bridges' podspecs; this one lagged
+  # at 5.9 the moment that invariant was written.
+  s.swift_version    = '5.10'
 
-  # SceneViewSwift is consumed via SPM — the host app must add it to their Xcode project.
-  # CocoaPods doesn't natively support SPM dependencies, so we declare it as a framework.
   s.frameworks = 'RealityKit', 'ARKit'
 end

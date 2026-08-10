@@ -51,9 +51,18 @@ Requires iOS 18+ and Xcode 16+ — `SceneViewSwift`'s own floor is iOS 18.0
 (13.4), or `pod install` fails to resolve this module.
 
 **The host app must add `SceneViewSwift` via Swift Package Manager.**
-`SceneViewSwift` ships as a SwiftPM package only (no CocoaPods spec), so this
-module's podspec deliberately does **not** declare it as a `s.dependency` —
+A root `SceneViewSwift.podspec` exists, but it is **not published on the
+CocoaPods trunk**, so `pod install` cannot resolve it by name; this module's
+podspec therefore deliberately does **not** declare it as a `s.dependency` —
 add it once in Xcode (*File ▸ Add Package Dependencies…*):
+
+> **Known gap ([#3072](https://github.com/sceneview/sceneview/issues/3072)).**
+> A root `SceneViewSwift.podspec` exists since the Flutter plugin moved to the
+> pod route — it is unpublished on the CocoaPods trunk, not missing. The SwiftPM
+> instruction below works when the module compiles with the host project's
+> packages in scope, as in `samples/react-native-demo`. If your app builds this
+> module inside `Pods.xcodeproj`, `import SceneViewSwift` will not resolve;
+> follow #3072 for the pod-based route.
 
 - URL: `https://github.com/sceneview/sceneview`
 - Version: `4.27.0` (or *Up to Next Major*)
@@ -220,9 +229,25 @@ coverage map (tracked in [#909](https://github.com/sceneview/sceneview/issues/90
   configured natively** on either platform. Setting them has no effect today.
 - **`onPlaneDetected`** — dispatched on **Android** only; SceneViewSwift's
   `ARSceneView` exposes no plane-detection callback, so it never fires on iOS.
-- **`onTap`** — dispatched on both platforms and on both views. On `SceneView`
+- **`onTap`** — dispatched on **Android** on both views; on iOS it is
+  **unverified and probably broken**, see the callout below. On `SceneView`
   (3D) it carries the tapped model's world position and its file base name
-  without extension as `nodeName`, identically on Android and iOS. On
+  without extension as `nodeName`.
+  > **⚠️ The iOS half of that sentence is unverified, and there is now reason to
+  > doubt it ([#3072](https://github.com/sceneview/sceneview/issues/3072)).**
+  > This module's iOS 3D tap goes through `hostView.onTapEntity`
+  > ([`SceneViewModule.swift`](ios/SceneViewModule.swift)) — the *same*
+  > SceneViewSwift hook the Flutter bridge uses, and the Flutter bridge's 3D
+  > `onTap` was measured on an iPhone 17 Pro Max simulator, across two different
+  > native hosts, to **never fire**: RealityKit's entity-targeted hit test
+  > resolves no entity ([#3045](https://github.com/sceneview/sceneview/issues/3045)).
+  > Nobody has yet run the same measurement here, so treat iOS 3D taps as
+  > *probably broken* until #3072 measures them. Do not ship a feature that
+  > depends on one. This caveat is deliberately not written as a fact in either
+  > direction — the claim above was an inference from the code, and replacing it
+  > with the opposite inference would repeat the mistake.
+
+  On
   `ARSceneView` *what a hit reports* differs: **Android** hit-tests the AR
   scene, so a tap on a model reports that model's file base name just as
   `SceneView` does and a plane hit or a miss reports `null`; **iOS** always
