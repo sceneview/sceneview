@@ -223,6 +223,48 @@ class WebPTextureTranscoderTest {
     }
 
     @Test
+    fun `a glb with no binary buffer keeps its png in a data uri`() {
+        // Everything lives in `data:` URIs here, so appending a `buffer: 0` view would describe
+        // bytes no BIN chunk holds — a glTF Filament would then reject outright.
+        val webPDataUri = "data:image/webp;base64," + Base64.encodeToString(webPBytes, Base64.NO_WRAP)
+        val json = JSONObject(
+            """
+            {
+              "extensionsUsed": ["EXT_texture_webp"],
+              "images": [{"mimeType": "image/webp", "uri": "$webPDataUri"}],
+              "textures": [{"extensions": {"EXT_texture_webp": {"source": 0}}}]
+            }
+            """.trimIndent()
+        )
+
+        val (rewritten, bin) = parseGlb(transcode(glb(json, ByteArray(0))))
+
+        assertEquals(1, decodeCount)
+        assertEquals(0, bin.size)
+        assertNull(rewritten.optJSONArray("bufferViews"))
+        val image = rewritten.getJSONArray("images").getJSONObject(0)
+        assertFalse(image.has("bufferView"))
+        assertTrue(image.getString("uri").startsWith("data:image/png;base64,"))
+        assertArrayEquals(
+            pngBytes,
+            Base64.decode(image.getString("uri").substringAfter("base64,"), Base64.DEFAULT)
+        )
+    }
+
+    @Test
+    fun `a chunk length that would overflow the bounds check is passed through`() {
+        val hostile = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putInt(0x46546C67)
+            putInt(2)
+            putInt(20)
+            putInt(Int.MAX_VALUE) // chunkLength: an Int sum would wrap negative and pass the guard
+            putInt(0x4E4F534A)
+            rewind()
+        }
+        assertSame(hostile, transcode(hostile))
+    }
+
+    @Test
     fun `a truncated glb is passed through rather than throwing`() {
         val truncated = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).apply {
             putInt(0x46546C67)

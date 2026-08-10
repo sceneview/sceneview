@@ -114,6 +114,34 @@ internal object WebPTextureTranscoder {
         transcoder: ImageTranscoder,
         onUnsupported: (Int) -> Unit
     ): ByteBuffer? {
+        val (json, bin) = readGlbChunks(source) ?: return null
+        val jsonChunk = json.takeIf { it.contains(WEBP_MARKER, ignoreCase = true) } ?: return null
+
+        val gltf = JSONObject(jsonChunk)
+        val appended = ByteArrayOutputStream().apply { write(bin) }
+        // A GLB may legitimately carry no BIN chunk (everything in `data:` URIs) or a buffer 0 that
+        // is URI-backed. Appending a `buffer: 0` view there would describe bytes that do not exist,
+        // so those PNGs go back the way they came instead.
+        val binBacked = bin.isNotEmpty() &&
+                gltf.optJSONArray("buffers")?.optJSONObject(0)?.has("uri") == false
+        val rewritten = rewrite(
+            gltf,
+            transcoder,
+            readImageBytes = { image -> readEmbeddedImage(gltf, bin, image) },
+            storePng = { image, png ->
+                if (binBacked) appendPngView(gltf, appended, image, png) else storeAsDataUri(image, png)
+            }
+        )
+        onUnsupportedIfAny(rewritten, onUnsupported)
+        if (rewritten.transcodedCount == 0) return null
+
+        val newBin = appended.toByteArray()
+        if (binBacked) gltf.optJSONArray("buffers")?.optJSONObject(0)?.put("byteLength", newBin.size)
+        return buildGlb(gltf.toString().toByteArray(Charsets.UTF_8), newBin)
+    }
+
+    /** Splits a GLB into its JSON and BIN chunks, or `null` if its chunk table is not sane. */
+    private fun readGlbChunks(source: ByteBuffer): Pair<String, ByteArray>? {
         val start = source.position()
         var offset = start + GLB_HEADER_SIZE
         var json: String? = null
@@ -122,7 +150,13 @@ internal object WebPTextureTranscoder {
             val chunkLength = source.getInt(offset)
             val chunkType = source.getInt(offset + 4)
             val chunkStart = offset + CHUNK_HEADER_SIZE
-            if (chunkLength < 0 || chunkStart + chunkLength > start + source.remaining()) return null
+            // Long arithmetic on purpose: a crafted chunkLength near Int.MAX_VALUE would overflow
+            // an Int sum back to a negative value, sail past this guard and reach ByteArray().
+            if (chunkLength < 0 ||
+                chunkStart.toLong() + chunkLength > start.toLong() + source.remaining()
+            ) {
+                return null
+            }
             val chunk = ByteArray(chunkLength)
             source.duplicate().apply { position(chunkStart) }.get(chunk)
             when (chunkType) {
@@ -131,44 +165,54 @@ internal object WebPTextureTranscoder {
             }
             offset = chunkStart + chunkLength + (4 - chunkLength % 4) % 4
         }
-        val jsonChunk = json?.takeIf { it.contains(WEBP_MARKER, ignoreCase = true) } ?: return null
+        return json?.let { it to bin }
+    }
 
-        val gltf = JSONObject(jsonChunk)
-        val appended = ByteArrayOutputStream().apply { write(bin) }
-        val rewritten = rewrite(gltf, transcoder, readImageBytes = { image ->
-            image.optInt("bufferView", -1)
-                .takeIf { it >= 0 }
-                ?.let { gltf.getJSONArray("bufferViews").getJSONObject(it) }
-                ?.takeIf { it.optInt("buffer", 0) == 0 }
-                ?.let { view ->
-                    val byteOffset = view.optInt("byteOffset", 0)
-                    val byteLength = view.optInt("byteLength", 0)
-                    if (byteOffset + byteLength > bin.size) null
-                    else bin.copyOfRange(byteOffset, byteOffset + byteLength)
+    /** The bytes of an image embedded in the BIN chunk or in a `data:` URI, if it is either. */
+    private fun readEmbeddedImage(gltf: JSONObject, bin: ByteArray, image: JSONObject): ByteArray? =
+        image.optInt("bufferView", -1)
+            .takeIf { it >= 0 }
+            ?.let { gltf.optJSONArray("bufferViews")?.optJSONObject(it) }
+            ?.takeIf { it.optInt("buffer", 0) == 0 }
+            ?.let { view ->
+                val byteOffset = view.optInt("byteOffset", 0)
+                val byteLength = view.optInt("byteLength", 0)
+                if (byteOffset < 0 || byteLength < 0 ||
+                    byteOffset.toLong() + byteLength > bin.size
+                ) {
+                    null
+                } else {
+                    bin.copyOfRange(byteOffset, byteOffset + byteLength)
                 }
-                ?: image.optString("uri").takeIf { it.startsWith("data:") }?.let(::decodeDataUri)
-        }, storePng = { image, png ->
-            // Pad to the 4-byte alignment glTF requires of a buffer view holding image data.
-            repeat((4 - appended.size() % 4) % 4) { appended.write(0) }
-            val bufferViews = gltf.optJSONArray("bufferViews") ?: JSONArray().also {
-                gltf.put("bufferViews", it)
             }
-            bufferViews.put(
-                JSONObject()
-                    .put("buffer", 0)
-                    .put("byteOffset", appended.size())
-                    .put("byteLength", png.size)
-            )
-            appended.write(png)
-            image.put("bufferView", bufferViews.length() - 1)
-            image.remove("uri")
-        })
-        onUnsupportedIfAny(rewritten, onUnsupported)
-        if (rewritten.transcodedCount == 0) return null
+            ?: image.optString("uri").takeIf { it.startsWith("data:") }?.let(::decodeDataUri)
 
-        val newBin = appended.toByteArray()
-        gltf.optJSONArray("buffers")?.optJSONObject(0)?.put("byteLength", newBin.size)
-        return buildGlb(gltf.toString().toByteArray(Charsets.UTF_8), newBin)
+    /** Appends the PNG to the BIN chunk under a fresh, 4-byte-aligned buffer view. */
+    private fun appendPngView(
+        gltf: JSONObject,
+        appended: ByteArrayOutputStream,
+        image: JSONObject,
+        png: ByteArray
+    ) {
+        // Pad to the 4-byte alignment glTF requires of a buffer view holding image data.
+        repeat((4 - appended.size() % 4) % 4) { appended.write(0) }
+        val bufferViews = gltf.optJSONArray("bufferViews") ?: JSONArray().also {
+            gltf.put("bufferViews", it)
+        }
+        bufferViews.put(
+            JSONObject()
+                .put("buffer", 0)
+                .put("byteOffset", appended.size())
+                .put("byteLength", png.size)
+        )
+        appended.write(png)
+        image.put("bufferView", bufferViews.length() - 1)
+        image.remove("uri")
+    }
+
+    private fun storeAsDataUri(image: JSONObject, png: ByteArray) {
+        image.put("uri", "data:$PNG_MIME;base64," + Base64.encodeToString(png, Base64.NO_WRAP))
+        image.remove("bufferView")
     }
 
     /** Plain `.gltf` JSON: only `data:` URIs are embedded, so PNGs go back as `data:` URIs. */
@@ -184,9 +228,7 @@ internal object WebPTextureTranscoder {
         val gltf = JSONObject(text)
         val rewritten = rewrite(gltf, transcoder, readImageBytes = { image ->
             image.optString("uri").takeIf { it.startsWith("data:") }?.let(::decodeDataUri)
-        }, storePng = { image, png ->
-            image.put("uri", "data:$PNG_MIME;base64," + Base64.encodeToString(png, Base64.NO_WRAP))
-        })
+        }, storePng = ::storeAsDataUri)
         onUnsupportedIfAny(rewritten, onUnsupported)
         if (rewritten.transcodedCount == 0) return null
         return ByteBuffer.wrap(gltf.toString().toByteArray(Charsets.UTF_8))
