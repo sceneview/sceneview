@@ -706,7 +706,7 @@ without extension (`models/robot.glb` -> `robot`), never a mesh name from inside
 the asset. **On iOS this is unverified — treat `onTap` as Android-only for now.** The description
 here is read from the source, not measured; the sibling Flutter bridge goes through the same
 RealityKit `.targetedToAnyEntity` hook and never fires the callback at all, measured on an iPhone 17
-Pro Max simulator across two different native hosts (#3045). The React Native measurement is #3072.
+Pro Max simulator across two different native hosts (#3045). The React Native measurement is #3086.
 Do not generate iOS code whose only interaction path is `onTap`. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
 `nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. That case is
 reported with the tapped node's real world position on Android when it landed on an unnamed geometry
