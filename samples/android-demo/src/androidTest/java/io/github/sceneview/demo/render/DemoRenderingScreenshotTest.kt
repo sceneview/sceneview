@@ -5,10 +5,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,6 +56,18 @@ class DemoRenderingScreenshotTest {
         // Wake + unlock so the activity actually renders.
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
+        // Pin the UI to light mode. The demo chrome (app bar, controls panel, background)
+        // follows the system theme, so a device left in dark mode produces a capture that
+        // differs from a light-mode golden on ~50% of its pixels — a full-suite red that
+        // says nothing about rendering. The goldens are recorded light; the harness now
+        // enforces it instead of inheriting whatever the device happened to be set to.
+        device.executeShellCommand("cmd uimode night no")
+    }
+
+    @After
+    fun tearDown() {
+        // Give the device its theme back — this suite is not the only thing running on it.
+        device.executeShellCommand("cmd uimode night auto")
     }
 
     @Test
@@ -86,7 +101,7 @@ class DemoRenderingScreenshotTest {
         // last on. The Animation tab's `LaunchedEffect(qaMode) { stopAnimation(i) }` helps
         // (~22 % diff vs ~50 % without), but a true bind-pose freeze needs an explicit
         // `animator.applyAnimation(0, 0f)` call from inside ModelNodeImpl.
-        captureAndCompare(demoSlug = "animation-physics", goldenName = "animationphysics_default", settleSeconds = 4,
+        captureAndCompare(demoSlug = "animation-physics", goldenName = "animationphysics_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 30.0f, maxChannelDiff = 32)
     }
 
@@ -96,13 +111,17 @@ class DemoRenderingScreenshotTest {
         // depends on async glb load timing — visible difference between cold and warm
         // cache runs. 25 % covers cold + warm; tighten when the demo loads
         // synchronously or pre-warms.
-        captureAndCompare(demoSlug = "lighting", goldenName = "lighting_default", settleSeconds = 3,
+        // 14 s, not 3: at 3 s the camera is still mid-approach and the lit plane sits
+        // half off-frame, so the capture is a real render of the WRONG moment — the
+        // content probe cannot catch that, only the settle budget can. Measured stable
+        // from ~12 s on emulator-5554.
+        captureAndCompare(demoSlug = "lighting", goldenName = "lighting_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 25.0f, maxChannelDiff = 32)
     }
 
     @Test
     fun modelViewerDemo_default_state() {
-        captureAndCompare(demoSlug = "model-viewer", goldenName = "modelviewer_default", settleSeconds = 4)
+        captureAndCompare(demoSlug = "model-viewer", goldenName = "modelviewer_default", settleSeconds = 14)
     }
 
     @Test
@@ -134,13 +153,13 @@ class DemoRenderingScreenshotTest {
         // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
         // The default landing tab is Ray Hit-Test, so the captured frame is comparable to
         // the prior `collision_default` golden once it is re-baselined.
-        captureAndCompare(demoSlug = "picking-collision", goldenName = "pickingcollision_default", settleSeconds = 3,
+        captureAndCompare(demoSlug = "picking-collision", goldenName = "pickingcollision_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
     @Test
     fun fogDemo_default_state() {
-        captureAndCompare(demoSlug = "fog", goldenName = "fog_default", settleSeconds = 3,
+        captureAndCompare(demoSlug = "fog", goldenName = "fog_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
@@ -155,7 +174,7 @@ class DemoRenderingScreenshotTest {
         // need a tab-aware deep-link parameter (follow-up). The procedural-sky shader
         // has very high gradient sensitivity around the horizon, so TAA jitter bleeds
         // into entire pixel rows along the sun band — 15 % handles cold + warm runs.
-        captureAndCompare(demoSlug = "lighting-lab", goldenName = "lightinglab_default", settleSeconds = 4,
+        captureAndCompare(demoSlug = "lighting-lab", goldenName = "lightinglab_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
@@ -169,7 +188,7 @@ class DemoRenderingScreenshotTest {
         // deep-link parameter — follow-up). The streamed model resolves asynchronously and
         // the studio HDR IBL has cold/warm cache variance, so a generous tolerance handles
         // both; the test still catches "nothing rendered at all".
-        captureAndCompare(demoSlug = "materials", goldenName = "materials_default", settleSeconds = 5,
+        captureAndCompare(demoSlug = "materials", goldenName = "materials_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
@@ -209,12 +228,17 @@ class DemoRenderingScreenshotTest {
         // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into
         // `camera-gestures`. Default landing tab is Camera Modes; the captured frame
         // is comparable to the prior `cameracontrols_default` golden once re-baselined.
-        captureAndCompare(demoSlug = "camera-gestures", goldenName = "cameragestures_default", settleSeconds = 4)
+        captureAndCompare(demoSlug = "camera-gestures", goldenName = "cameragestures_default", settleSeconds = 14)
     }
 
     @Test
     fun secondaryCameraDemo_default_state() {
-        captureAndCompare(demoSlug = "secondary-camera", goldenName = "secondarycamera_default", settleSeconds = 4)
+        // 14 s, not 4. This demo is the one case the content probe cannot defend: the PiP
+        // inset draws a light 1 px frame inside the viewport, so an entirely unrendered
+        // scene still scores well above the flat-viewport threshold. The probe stays a
+        // floor against #2323's all-black baselines; the settle budget is what makes the
+        // capture right. Measured: model present from ~12 s, absent at 4 s.
+        captureAndCompare(demoSlug = "secondary-camera", goldenName = "secondarycamera_default", settleSeconds = 14)
     }
 
     @Test
@@ -275,29 +299,63 @@ class DemoRenderingScreenshotTest {
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK
                 "--es demo $demoSlug --ez qa_mode true"
         )
+        // Wait for the demo screen itself to be composed before anything else. Without this
+        // the capture loop below can settle on the launcher SPLASH screen: the splash draws
+        // the SceneView app icon on a dark field, which is "non-flat pixels" as far as the
+        // content probe is concerned, so the probe breaks out happily and the golden ends up
+        // being a picture of the app icon (#2323 — every re-record produced the identical
+        // 52 704-byte splash for five different demos, MD5-identical across all of them).
+        //
+        // The QA badge is the positive cue: it is rendered by the demo screen's top bar and
+        // only when `qa_mode` is set, so it cannot appear on the splash, on the demo list,
+        // or on a leftover previous screen. `Navigate back` was rejected as the cue — it is
+        // present on whatever screen preceded the launch, so it reads as "ready" a frame too
+        // early. Measured on all 14 demo slugs: badge absent on the splash, present once the
+        // demo is composed.
+        val demoComposed = device.wait(Until.hasObject(By.textContains("QA")), DEMO_COMPOSE_TIMEOUT_MS)
+        assertTrue(
+            "Demo '$demoSlug' never composed: the qa_mode badge never appeared within " +
+                "${DEMO_COMPOSE_TIMEOUT_MS}ms, so the screen on display is not the demo. " +
+                "Capturing here would bake the splash screen into $goldenName.",
+            demoComposed,
+        )
+
         // Wait for first frame + animation settle. Demos that load models or HDR need more.
         // We poll the SceneView center for non-flat pixels (model loading is async; fixed
         // sleep would either be too short for model demos or wastefully long for procedural
         // ones). `settleSeconds` is the MINIMUM wait — we keep polling up to MAX_SETTLE_MS
-        // beyond it for content to appear before giving up and capturing whatever's on screen.
+        // beyond it for content to appear.
         Thread.sleep(settleSeconds * 1000L)
 
         val captured = File(targetContext.cacheDir, "render-capture-$goldenName.png")
         var capturedBitmap: Bitmap? = null
+        var settled = false
         val pollDeadline = System.currentTimeMillis() + MAX_SETTLE_MS
         while (System.currentTimeMillis() < pollDeadline) {
             val ok = device.takeScreenshot(captured)
             if (!ok) { Thread.sleep(POLL_INTERVAL_MS); continue }
             val bmp = BitmapFactory.decodeFile(captured.absolutePath) ?: continue
-            if (sceneViewHasContent(bmp)) {
-                capturedBitmap = bmp
+            capturedBitmap = bmp // keep latest so a timeout still has something to report on
+            if (hasRenderedContent(bmp)) {
+                settled = true
                 break
             }
-            capturedBitmap = bmp // keep latest in case we time out
             Thread.sleep(POLL_INTERVAL_MS)
         }
         val rawCapture = capturedBitmap
             ?: throw AssertionError("UiAutomator screenshot capture failed entirely for $goldenName")
+        // Timing out used to fall through and capture "whatever's on screen" — which is how
+        // an unrendered black viewport becomes a committed golden. The scene either rendered
+        // within the settle budget or this run has nothing worth comparing (#2323).
+        if (!settled) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_settled")
+            throw AssertionError(
+                "Demo '$demoSlug' never rendered anything: its SceneView band stayed flat for " +
+                    "${settleSeconds}s + ${MAX_SETTLE_MS}ms of polling. Either the demo is broken " +
+                    "or the device is too slow for this budget — capture saved to $savedTo. " +
+                    "Refusing to capture or compare an empty viewport.",
+            )
+        }
         // Crop the system status bar overlay before saving + comparing. UiAutomator's
         // `takeScreenshot` returns the FULL composited frame including the system bars
         // — clock, wifi/cellular, battery, notification icons, weather — which would
@@ -318,6 +376,21 @@ class DemoRenderingScreenshotTest {
         val golden = runCatching {
             testContext.assets.open(goldenAsset).use { BitmapFactory.decodeStream(it) }
         }.getOrNull()
+
+        // A committed golden that shows an empty SceneView is worse than no golden at all:
+        // it freezes "nothing rendered" into the baseline, so the very regression this
+        // suite exists to catch becomes the expected result (#2323 — four goldens were
+        // committed as 320×544 all-black captures from a mis-sized AVD, and three more
+        // (fog, lighting, lines-paths) as full-size frames whose viewport never rendered).
+        // Separation is measured, not guessed — see MIN_CONTENT_SPREAD.
+        if (golden != null && !hasRenderedContent(golden)) {
+            throw AssertionError(
+                "Golden $goldenAsset is DEGENERATE — its SceneView band is a flat colour " +
+                    "(${golden.width}x${golden.height}), i.e. the baseline captured an " +
+                    "empty viewport. Re-record it on a 1080x2400-class device with the " +
+                    "demo fully settled; never commit a capture whose scene never rendered.",
+            )
+        }
 
         if (golden == null) {
             // First-run path: save the capture so it can be promoted to the golden.
@@ -405,42 +478,80 @@ class DemoRenderingScreenshotTest {
         return Result(passed, msg, if (passed) null else diff)
     }
 
-    private fun saveToDeviceForReview(bitmap: Bitmap, name: String): File {
-        // Public Downloads dir survives AGP's post-test uninstall — see the
-        // matching block in `ARDemoPlaybackSmokeTest.saveToDeviceForReview`.
-        device.executeShellCommand("mkdir -p /sdcard/Download/SceneView/test-captures")
-        val file = File("/sdcard/Download/SceneView/test-captures/$name.png")
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        return file
+    /**
+     * Best-effort debug artifact dump. Returns where the image landed, or a human-readable
+     * reason if it could not be written anywhere.
+     *
+     * This must NEVER throw. It used to: the public Downloads dir it writes to is created
+     * by `mkdir` running as `shell`, so the app — under scoped storage — cannot always
+     * write into it, and the resulting `FileNotFoundException: EACCES` propagated out of
+     * the failure path and REPLACED the assertion that was being reported. Six real
+     * verdicts (three golden mismatches, three missing baselines) surfaced as filesystem
+     * errors instead. A debugging convenience that can mask the verdict is worse than no
+     * debugging convenience (#2323).
+     */
+    private fun saveToDeviceForReview(bitmap: Bitmap, name: String): String {
+        // Public Downloads dir survives AGP's post-test uninstall — see the matching block
+        // in `ARDemoPlaybackSmokeTest.saveToDeviceForReview`. App-private external storage
+        // is the fallback: always writable, but wiped with the app.
+        val candidates = listOf(
+            File("/sdcard/Download/SceneView/test-captures"),
+            File(
+                InstrumentationRegistry.getInstrumentation().targetContext
+                    .getExternalFilesDir(null),
+                "render-test-output",
+            ),
+        )
+        val failures = mutableListOf<String>()
+        for (dir in candidates) {
+            val file = File(dir, "$name.png")
+            val saved = runCatching {
+                dir.mkdirs()
+                FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            }
+            if (saved.isSuccess) return file.absolutePath
+            failures += "${file.absolutePath} (${saved.exceptionOrNull()?.message})"
+        }
+        return "<not saved: ${failures.joinToString("; ")}>"
     }
 
     /**
      * Samples the whole SceneView vertical band (between status/title bar at the top and
      * the controls panel at the bottom) and reports whether it contains any non-flat
      * pixels. Used during settle polling so demos that load models async aren't captured
-     * while the SceneView is still solid black.
+     * while the SceneView is still solid black — and again on the loaded golden, so a
+     * baseline that froze an empty viewport is rejected instead of trusted.
      *
      * Why the wide band: each demo positions its scene differently — `geometry` puts the
      * primitives at upper-third, `modelviewer` at the middle, `text` extends top-to-bottom.
-     * A small centre crop misses the upper-third demos. We sample a generous y=200..1300
-     * stripe (covers the full SceneView area for all demos on the Pixel_7a AVD's
-     * 1080x2400 viewport) and step by 16 for speed.
+     * A small centre crop misses the upper-third demos. We sample from 15 % to 50 % of the
+     * height, which covers the full SceneView area on the Pixel_7a AVD's 1080x2400 viewport
+     * and keeps meaning the same band on any other geometry.
      *
-     * Threshold of 4 channel spread covers the case where a single coloured object is
-     * rendered against the dark SceneView background; a fully un-rendered SceneView (which
-     * we want to keep polling past) reports 0.
+     * The band is expressed in FRACTIONS, and there is deliberately no "unexpected
+     * geometry → trust it" escape hatch: the previous absolute y=200..1300 window came
+     * with `if (width < 1000) return true`, which is exactly how four all-black 320×544
+     * captures were blessed and committed as goldens (#2323). A probe that exempts the
+     * inputs it cannot measure asserts nothing about them.
+     *
+     * The threshold is [MIN_CONTENT_SPREAD] — measured, not guessed. It covers the case
+     * where a single coloured object is rendered against the dark SceneView background,
+     * while a fully un-rendered SceneView (which we want to keep polling past) reports 0-1.
      */
-    private fun sceneViewHasContent(bmp: Bitmap): Boolean {
-        // Trust unexpected geometries (we'll be less picky on tablets / different viewports).
-        if (bmp.width < 1000 || bmp.height < 2000) return true
+    private fun hasRenderedContent(bmp: Bitmap): Boolean {
         val x0 = 0
         val x1 = bmp.width
-        val y0 = 200    // skip status bar overlay region (drawn black in edge-to-edge anyway)
-        val y1 = 1300   // stop before controls panel
+        // Strictly INSIDE the SceneView viewport. The band used to start at 8%, which on a
+        // 1080x2400 frame still clips the app bar — its dark title on a near-white background
+        // scores a full 255 spread on its own, so a demo whose viewport never rendered still
+        // read as "content". Three committed goldens (fog, lighting, lines-paths) are all-black
+        // viewports that this exact off-by-a-band bug waved through (#2323).
+        val y0 = (bmp.height * 15) / 100   // below the app bar, inside the viewport
+        val y1 = (bmp.height * 50) / 100   // above the controls panel
         var minR = 255; var maxR = 0
         var minG = 255; var maxG = 0
         var minB = 255; var maxB = 0
-        val step = 16
+        val step = maxOf(1, bmp.width / 68)
         for (y in y0 until y1 step step) for (x in x0 until x1 step step) {
             val p = bmp.getPixel(x, y)
             val r = Color.red(p); val g = Color.green(p); val b = Color.blue(p)
@@ -449,7 +560,7 @@ class DemoRenderingScreenshotTest {
             if (b < minB) minB = b; if (b > maxB) maxB = b
         }
         val spread = maxOf(maxR - minR, maxG - minG, maxB - minB)
-        return spread > 4
+        return spread >= MIN_CONTENT_SPREAD
     }
 
     private companion object {
@@ -474,10 +585,25 @@ class DemoRenderingScreenshotTest {
             "materials_default",
             "modelviewer_default",
             "pickingcollision_default",
+            "secondarycamera_default",
             "twodinthreed_default",
         )
 
+        /**
+         * Minimum per-channel spread, over the in-viewport band, for a frame to count as
+         * "the scene rendered". Calibrated by measurement on emulator-5554 (1080x2400,
+         * 14s settle) over all 14 demo slugs: an unrendered viewport scores 0-1, the
+         * weakest real render (picking-collision) scores 213. 32 sits ~6x above the noise
+         * and ~6x below the weakest signal, so neither population is near the boundary.
+         */
+        const val MIN_CONTENT_SPREAD = 32
+
         const val MAX_SETTLE_MS = 25_000L
+
+        // How long we allow the demo screen to compose after `am start` — covers a cold
+        // app start (splash + dexopt) on the QA emulator, measured at ~3 s warm and up to
+        // ~12 s on the first launch after an install.
+        const val DEMO_COMPOSE_TIMEOUT_MS = 30_000L
         const val POLL_INTERVAL_MS = 1_000L
 
         // System status bar height on Pixel-class devices (1080×2400 portrait): 96 px.
