@@ -120,8 +120,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          # Version/changelog surfaces only — never QA artifacts.
-          git add -A ':!device-qa-report.json' ':!device-qa-artifacts' ':!ar-qa-summary.json' ':!web-qa-summary.json'
+          # Version/changelog surfaces only — never QA artifacts. Stage everything, then
+          # unstage the artifacts: an exclude pathspec makes `git add` treat a gitignored
+          # match as explicitly named and EXIT 1 ("paths are ignored by .gitignore"), which
+          # under `bash -e` killed the whole release right after the changelog collate.
+          git add -A
+          git reset -q -- device-qa-report.json device-qa-artifacts ar-qa-summary.json web-qa-summary.json
           git commit -m "release: $V — version bump + changelog collate" \
             -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
           git push origin "$BRANCH"
