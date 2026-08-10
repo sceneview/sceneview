@@ -477,17 +477,17 @@ class ModelLoader(
         }
     }
 
-    /**
-     * Re-encodes WebP glTF textures to PNG, because Filament's Android build registers no
-     * `image/webp` texture provider and would otherwise render the model untextured (#2305).
-     *
-     * A payload without WebP textures — the common case — is returned untouched.
-     */
-    private fun Buffer.transcodeWebPTextures(): Buffer =
-        (this as? ByteBuffer)?.let { WebPTextureTranscoder.transcode(it) } ?: this
-
     companion object {
         fun getFolderPath(baseFileName: String, resourceFileName: String) =
             "${baseFileName.substringBeforeLast("/")}/$resourceFileName"
     }
 }
+
+/**
+ * Re-encodes WebP glTF textures to PNG, because Filament's Android build registers no
+ * `image/webp` texture provider and would otherwise render the model untextured (#2305).
+ *
+ * A payload without WebP textures — the common case — is returned untouched.
+ */
+private fun Buffer.transcodeWebPTextures(): Buffer =
+    (this as? ByteBuffer)?.let { WebPTextureTranscoder.transcode(it) } ?: this

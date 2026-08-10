@@ -211,56 +211,63 @@ internal object WebPTextureTranscoder {
         val images = gltf.optJSONArray("images") ?: return Rewritten(0, 0)
         val textures = gltf.optJSONArray("textures") ?: JSONArray()
 
-        // A texture keeping a non-WebP `source` already has a usable fallback: the extension can be
-        // dropped without decoding anything.
-        val webPImages = mutableSetOf<Int>()
-        for (i in 0 until textures.length()) {
-            val texture = textures.optJSONObject(i) ?: continue
-            val webPSource = texture.optJSONObject("extensions")
-                ?.optJSONObject(WEBP_EXTENSION)
-                ?.optInt("source", -1)
-                ?: -1
-            if (webPSource >= 0 && !texture.has("source")) webPImages += webPSource
-        }
-        for (i in 0 until images.length()) {
-            if (images.optJSONObject(i)?.optString("mimeType") == WEBP_MIME) webPImages += i
-        }
-
-        var transcoded = 0
         var untranscodable = 0
         val converted = mutableSetOf<Int>()
-        for (index in webPImages) {
-            val image = images.optJSONObject(index) ?: continue
-            val png = readImageBytes(image)?.let { transcoder.webPToPng(it) }
+        collectWebPImages(images, textures).forEach { index ->
+            val image = images.optJSONObject(index)
+            val png = image?.let { readImageBytes(it) }?.let { transcoder.webPToPng(it) }
             if (png == null) {
                 untranscodable++
-                continue
+            } else {
+                storePng(image, png)
+                image.put("mimeType", PNG_MIME)
+                converted += index
             }
-            storePng(image, png)
-            image.put("mimeType", PNG_MIME)
-            converted += index
-            transcoded++
         }
 
-        for (i in 0 until textures.length()) {
-            val texture = textures.optJSONObject(i) ?: continue
-            val extensions = texture.optJSONObject("extensions") ?: continue
-            val webPSource = extensions.optJSONObject(WEBP_EXTENSION)?.optInt("source", -1) ?: -1
-            if (webPSource < 0) continue
-            // Keep the extension only when its image is still WebP and no fallback exists.
-            if (webPSource in converted || texture.has("source")) {
-                if (!texture.has("source")) texture.put("source", webPSource)
-                extensions.remove(WEBP_EXTENSION)
-                if (extensions.length() == 0) texture.remove("extensions")
-            }
-        }
+        repointTextures(textures, converted)
 
         if (untranscodable == 0) {
             removeExtensionDeclaration(gltf, "extensionsUsed")
             removeExtensionDeclaration(gltf, "extensionsRequired")
         }
-        return Rewritten(transcoded, untranscodable)
+        return Rewritten(converted.size, untranscodable)
     }
+
+    /** Indices of the images that hold WebP bytes, whether declared by `mimeType` or by extension. */
+    private fun collectWebPImages(images: JSONArray, textures: JSONArray): Set<Int> {
+        val webPImages = mutableSetOf<Int>()
+        for (i in 0 until textures.length()) {
+            val texture = textures.optJSONObject(i)
+            val webPSource = texture?.webPSource() ?: -1
+            // A texture keeping a non-WebP `source` already has a usable fallback: its extension
+            // can be dropped without decoding anything.
+            if (webPSource >= 0 && !texture.has("source")) webPImages += webPSource
+        }
+        for (i in 0 until images.length()) {
+            if (images.optJSONObject(i)?.optString("mimeType") == WEBP_MIME) webPImages += i
+        }
+        return webPImages
+    }
+
+    /** Points every texture at its now-PNG image and drops the extension it no longer needs. */
+    private fun repointTextures(textures: JSONArray, converted: Set<Int>) {
+        for (i in 0 until textures.length()) {
+            val texture = textures.optJSONObject(i) ?: continue
+            val webPSource = texture.webPSource()
+            // Keep the extension only when its image is still WebP and no fallback exists.
+            if (webPSource >= 0 && (webPSource in converted || texture.has("source"))) {
+                if (!texture.has("source")) texture.put("source", webPSource)
+                texture.optJSONObject("extensions")?.let { extensions ->
+                    extensions.remove(WEBP_EXTENSION)
+                    if (extensions.length() == 0) texture.remove("extensions")
+                }
+            }
+        }
+    }
+
+    private fun JSONObject.webPSource(): Int =
+        optJSONObject("extensions")?.optJSONObject(WEBP_EXTENSION)?.optInt("source", -1) ?: -1
 
     private fun removeExtensionDeclaration(gltf: JSONObject, key: String) {
         val declared = gltf.optJSONArray(key) ?: return
