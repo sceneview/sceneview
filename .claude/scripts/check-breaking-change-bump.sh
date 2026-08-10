@@ -136,10 +136,14 @@ for f in "$FRAG_DIR"/*.md; do
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "$FRAG_IN_COMMENT" = false ]; then
             rc=0
-            frag_is_breaking_marker_line "$line" || rc=$?
+            # The marker is looked for on a code-span-stripped COPY: a fragment
+            # documenting `<!-- breaking -->` in backticks must declare nothing.
+            # The ORIGINAL line still goes to the stripper below — a marker
+            # trailing a bullet must not take the bullet's public text with it.
+            frag_drop_code_spans "$line"
+            frag_is_breaking_marker_line "$FRAG_NO_SPANS" || rc=$?
             if [ "$rc" -eq 0 ]; then
                 marker="$FRAG_BREAKING_MARKER"
-                continue
             elif [ "$rc" -eq 2 ]; then
                 echo -e "${RED}Error:${NC} $f: unrecognised breaking marker value in:"
                 echo "    $line"
@@ -147,6 +151,11 @@ for f in "$FRAG_DIR"/*.md; do
                 exit 2
             fi
         fi
+        # No `continue` above: the stripper removes the marker comment like any
+        # other, so a marker alone on its line contributes an empty line and a
+        # trailing one leaves its bullet's public text behind. The body is only
+        # consulted when no marker was found, so keeping the text changes no
+        # verdict today — it removes the dependency on that ordering.
         frag_strip_comments_line "$line"
         body+="$FRAG_STRIPPED"$'\n'
     done < "$f"

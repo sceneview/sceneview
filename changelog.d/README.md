@@ -98,6 +98,10 @@ a fragment that carries one:
 for that release. It runs inside `collate-changelog.sh` (which cannot be
 skipped), early in `release-fast.yml`, and in the release checklist.
 
+The marker may sit on its own line or trail a bullet (`- Foo changed.
+<!-- breaking -->`) — both are read. Only a marker inside a code span is inert,
+so this README can quote one without declaring anything.
+
 The marker is optional in practice: a fragment whose **public prose** says the
 change is breaking is treated as breaking anyway — that is how #3037's fragment,
 written before the marker existed, would have been caught. Negated forms

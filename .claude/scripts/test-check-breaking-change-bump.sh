@@ -230,6 +230,52 @@ frag 0004h-marker-empty.md <<'EOF'
 EOF
 expect_rc "'<!-- breaking: -->' exits 2 (malformed), not 0" 2 4.26.1
 
+# ── 5k. A marker trailing a bullet is still a marker ─────────────────────────
+# The marker used to be anchored to a whole line, so this one was read as an
+# ordinary comment, stripped, and the fragment shipped as a patch — a misplaced
+# marker declaring the opposite of what its author wrote. Note the prose says
+# nothing about breaking: only the marker can refuse this tag.
+setup_sandbox
+frag 0004k-marker-trailing.md <<'EOF'
+<!-- category: Changed -->
+- `Scene`'s `onFrame` callback now takes a frame time. <!-- breaking -->
+EOF
+expect_rc "a marker trailing a bullet refuses a patch tag" 1 4.26.1
+
+# ── 5l. …including the opt-out form ──────────────────────────────────────────
+# Same placement, opposite meaning: the prose WOULD fire the heuristic, and the
+# trailing `false` must still win. Without 5l, 5k could pass by reading any
+# trailing comment as "breaking: true".
+setup_sandbox
+frag 0004l-marker-trailing-false.md <<'EOF'
+<!-- category: Changed -->
+- Renamed an internal helper; this is not a source-breaking change for callers
+  of the public API, whatever the word breaking above suggests. <!-- breaking: false -->
+EOF
+expect_rc "a trailing '<!-- breaking: false -->' opts out" 0 4.26.1
+
+# ── 5m. A malformed marker trailing a bullet still errors ────────────────────
+# The exit-2 path must not depend on the marker sitting alone on its line
+# either, or the typo goes back to being silent in the one placement 5k just
+# made legal.
+setup_sandbox
+frag 0004m-marker-trailing-bad.md <<'EOF'
+<!-- category: Changed -->
+- Something changed. <!-- breaking: not sure -->
+EOF
+expect_rc "a malformed marker trailing a bullet exits 2" 2 4.26.1
+
+# ── 5n. A malformed span AFTER a valid one still errors ──────────────────────
+# Scanning must not stop on the first breaking-shaped span: returning the valid
+# one lets a typo sit next to a good marker and be swallowed, which is the very
+# silence 5k removed.
+setup_sandbox
+frag 0004n-marker-two-spans.md <<'EOF'
+<!-- category: Changed -->
+- Something changed. <!-- breaking: false --> <!-- breaking: maybe -->
+EOF
+expect_rc "a malformed span after a valid one exits 2" 2 4.26.1
+
 # ── 6. Substring false positive ──────────────────────────────────────────────
 setup_sandbox
 frag 0005-substring.md <<'EOF'

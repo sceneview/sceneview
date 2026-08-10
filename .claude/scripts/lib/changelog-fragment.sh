@@ -150,40 +150,84 @@ frag_is_category_tag_line() {
     return 0
 }
 
+# Drop Markdown code spans from a piece of text. Used by everything that has to
+# tell a DECLARATION from an identifier being DISCUSSED: a backticked
+# `<!-- breaking -->` in a doc fragment documents the marker, it does not set it.
+# The run is `+, not one backtick: Markdown closes a span with a run of the same
+# length, so a ``breaking`` written with two would otherwise survive.
+#
+# This never touches the PUBLISHED text — callers strip a copy for their own
+# judgement and keep the original for the changelog.
+FRAG_NO_SPANS=""
+frag_drop_code_spans() {
+    FRAG_NO_SPANS="$(printf '%s' "$1" | sed -E 's/`+[^`]*`+//g')"
+}
+
 # `<!-- breaking -->` / `<!-- breaking: true|false -->` — the EXPLICIT
 # declaration read by check-breaking-change-bump.sh. Sets FRAG_BREAKING_MARKER
 # to true/false.
 #
-# Returns 1 when the line is not a breaking marker at all, and 2 when it IS one
-# but carries a value nobody defined (`<!-- breaking: maybe -->`). The caller
-# must refuse on 2 rather than guess: reading it as false opens a hole in the
-# guard, reading it as true blocks a release for a typo. Neither is a decision a
-# script should make silently.
+# Returns 1 when the line carries no breaking marker at all, and 2 when it DOES
+# carry one but with a value nobody defined (`<!-- breaking: maybe -->`). The
+# caller must refuse on 2 rather than guess: reading it as false opens a hole in
+# the guard, reading it as true blocks a release for a typo. Neither is a
+# decision a script should make silently.
 #
-# The value is captured as "everything between the colon and the `-->`", not as
-# one alphanumeric token. A token-shaped capture makes the REGEX decide what is
-# malformed: `<!-- breaking: not sure -->` would fail to match at all, return 1
-# ("not a marker"), be stripped as an ordinary comment, and ship unflagged —
-# the fat-fingered marker silently doing the opposite of what it says. Matching
+# The marker is looked for in EVERY comment span on the line, not just in a line
+# that is nothing but the marker. Anchoring it to the whole line made a marker
+# trailing a bullet (`- Foo changed. <!-- breaking -->`) unrecognisable: it fell
+# through to the comment stripper, which removed it before the prose heuristic
+# could see the word — a misplaced marker silently declaring nothing, which is
+# the same "the typo does the opposite" failure the malformed-value branch below
+# exists to prevent. Callers pass a code-span-stripped copy of the line, so a
+# fragment DOCUMENTING the marker in backticks still declares nothing.
+#
+# Each span's content is isolated by shell substring removal, then matched with
+# an ANCHORED regex — matching an un-anchored `<!--…-->` in one pass would need
+# a non-greedy quantifier ERE does not have, and would read
+# `<!-- a --> x <!-- b -->` as one span with " a --> x <!-- b " inside.
+#
+# The value is captured as "everything up to the `-->`", not as one alphanumeric
+# token. A token-shaped capture makes the REGEX decide what is malformed:
+# `<!-- breaking: not sure -->` would fail to match at all, return 1 ("not a
+# marker"), be stripped as an ordinary comment, and ship unflagged. Matching
 # broadly and rejecting in the `case` below keeps that decision in one place.
 FRAG_BREAKING_MARKER=""
 frag_is_breaking_marker_line() {
-    [[ "$1" =~ ^[[:space:]]*\<!--[[:space:]]*breaking[[:space:]]*(:(.*))?--\>[[:space:]]*$ ]] || return 1
-    local value="${BASH_REMATCH[2]}"
-    # Trim, then lower-case. An empty BASH_REMATCH[1] means there was no colon
-    # at all (`<!-- breaking -->`), which is the shorthand for true; a colon
-    # with nothing after it is a typo and must reach the `*)` branch.
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    if [ -z "${BASH_REMATCH[1]}" ]; then
-        value=true
-    fi
-    value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
-    case "$value" in
-        true|yes|1)  FRAG_BREAKING_MARKER=true ;;
-        false|no|0)  FRAG_BREAKING_MARKER=false ;;
-        *)           FRAG_BREAKING_MARKER=""; return 2 ;;
-    esac
+    local rest="$1" span value found=""
+    while [ -n "$rest" ]; do
+        case "$rest" in *'<!--'*) ;; *) break ;; esac
+        rest="${rest#*<!--}"
+        case "$rest" in *'-->'*) ;; *) break ;; esac
+        span="${rest%%-->*}"
+        rest="${rest#*-->}"
+        [[ "$span" =~ ^[[:space:]]*breaking[[:space:]]*(:(.*))?$ ]] || continue
+
+        value="${BASH_REMATCH[2]}"
+        # Trim, then lower-case. An empty BASH_REMATCH[1] means there was no
+        # colon at all (`<!-- breaking -->`), which is the shorthand for true; a
+        # colon with nothing after it is a typo and must reach the `*)` branch.
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        if [ -z "${BASH_REMATCH[1]}" ]; then
+            value=true
+        fi
+        value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+        case "$value" in
+            true|yes|1)  found=true ;;
+            false|no|0)  found=false ;;
+            # A malformed value ends the scan immediately, even if an earlier
+            # span on this line parsed cleanly: returning the good one would let
+            # a typo sit next to a valid marker and be swallowed — the same
+            # silence this function was rewritten to remove.
+            *)           FRAG_BREAKING_MARKER=""; return 2 ;;
+        esac
+        # No early return: the rest of the line is still scanned so a malformed
+        # span AFTER a valid one is not missed. Between two valid markers the
+        # last one wins, matching how the caller resolves two marker lines.
+    done
+    [ -n "$found" ] || return 1
+    FRAG_BREAKING_MARKER="$found"
     return 0
 }
 
@@ -213,10 +257,9 @@ frag_prose_claims_breaking() { # $1 = comment-stripped body text
     text="$(printf '%s' "$1" | tr '\n' ' ' | tr '[:upper:]' '[:lower:]')"
     # Code spans are dropped for the heuristic only — the stripper preserves them
     # in the published text. A backticked `breaking` is an identifier being
-    # discussed, never a declaration that this release breaks something. The
-    # run is `+, not one backtick: Markdown closes a span with a run of the same
-    # length, and a ``breaking`` written with two would otherwise survive.
-    text="$(printf '%s' "$text" | sed -E 's/`+[^`]*`+//g')"
+    # discussed, never a declaration that this release breaks something.
+    frag_drop_code_spans "$text"
+    text="$FRAG_NO_SPANS"
     # "no longer breaking" is a negation with a word in the middle; the general
     # "any word between" form would swallow real declarations
     # ("no workaround exists — breaking"), so only this one phrasing is added.
