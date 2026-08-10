@@ -18,6 +18,12 @@ ERRORS=0
 # a report was never produced, …). These are neither ✓ nor ✗ — but a gate that
 # did not run is not a gate that passed, so they still block the push.
 INCOMPLETE=0
+# Legs that never ran because a TOOL is absent from this host (node, gradlew,
+# dash, shellcheck). Unlike INCOMPLETE these do not block the push — CI still
+# gates them — but the final line may not claim "ALL CHECKS PASSED" while some
+# of them were never attempted. A verdict that reads complete because the
+# missing half printed a ⚠ nobody counted is the #2988 shape one level down.
+NOT_COVERED=0
 # Set by gradle_report_failure when the host toolchain is not configured, so
 # the final summary repeats the fix instead of the (useless here) "re-run when
 # the daemon is free" advice. See #3065.
@@ -53,6 +59,25 @@ gate_script_failure() {
     script_report_failure "$@"
 }
 
+# An `if [ -f <gate script> ]` with no else prints its banner and records
+# nothing — the leg silently evaporates and the run still ends on "ALL CHECKS
+# PASSED". These scripts are committed, so an absent one means a broken or
+# partial checkout, not a legitimate skip: report it as INCOMPLETE, which
+# keeps the gate from claiming a clean bill of health it did not earn.
+missing_gate_script() {
+    echo -e "${YELLOW}  ⚠ $1 not found — NOT checked here (CI still gates it)${NC}"
+    INCOMPLETE=$((INCOMPLETE + 1))
+}
+
+# The summary must say what this run did NOT cover on every path, not only the
+# green one. A red run is the run whose output gets pasted into a PR thread and
+# argued over — omitting the not-covered legs there invites "the gate looked at
+# everything and found one problem", when it looked at less than everything.
+not_covered_recap() {
+    [ "$NOT_COVERED" -gt 0 ] || return 0
+    echo -e "${YELLOW}    (+ $NOT_COVERED leg(s) not covered on this host — see the ⚠ lines above; CI gates them)${NC}"
+}
+
 echo "═══════════════════════════════════════════"
 echo "  SceneView Pre-Push Quality Gate"
 echo "═══════════════════════════════════════════"
@@ -62,7 +87,7 @@ echo "════════════════════════�
 # often a poisoned Gradle build cache (an empty FROM-CACHE entry), not a real
 # break — `rm -rf <module>/build && ./gradlew … --no-build-cache` is the only
 # measured remedy. That is why the log tail is printed instead of hidden.
-echo -e "\n${YELLOW}[1/14] Compiling sceneview...${NC}"
+echo -e "\n${YELLOW}[1/20] Compiling sceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
@@ -70,7 +95,7 @@ else
         "sceneview FAILED to compile" "sceneview was never compiled"
 fi
 
-echo -e "${YELLOW}[2/14] Compiling arsceneview...${NC}"
+echo -e "${YELLOW}[2/20] Compiling arsceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
@@ -79,7 +104,7 @@ else
 fi
 
 # 2. Unit tests
-echo -e "\n${YELLOW}[3/14] Running sceneview unit tests...${NC}"
+echo -e "\n${YELLOW}[3/20] Running sceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
@@ -87,7 +112,7 @@ else
         "sceneview tests FAILED" "no sceneview test ever ran"
 fi
 
-echo -e "${YELLOW}[4/14] Running arsceneview unit tests...${NC}"
+echo -e "${YELLOW}[4/20] Running arsceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; then
     echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
 else
@@ -127,7 +152,7 @@ fi
 #     even when the test task FAILS (`changed:1` on a red run), and left
 #     untouched on an UP-TO-DATE run — so its mtime discriminates all four
 #     cases (pass / real diff / skipped / infra death).
-echo -e "\n${YELLOW}[5/14] Verifying Android screenshot goldens...${NC}"
+echo -e "\n${YELLOW}[5/20] Verifying Android screenshot goldens...${NC}"
 SNAPSHOTS_DIR="samples/android-demo/src/test/snapshots"
 RR_SUMMARY="samples/android-demo/build/test-results/roborazzi/debug/results-summary.json"
 RR_LOG="$LOG_DIR/roborazzi.log"
@@ -205,7 +230,7 @@ fi
 # Golden target = a STATIC screen (About) — never a network-fed screen like
 # Explore, whose remote gallery re-drifts a 1%-threshold pixel golden.
 # NB: the golden is resolution-bound — capture and verify on the same sim model.
-echo -e "${YELLOW}[6/14] Verifying iOS screenshot goldens...${NC}"
+echo -e "${YELLOW}[6/20] Verifying iOS screenshot goldens...${NC}"
 IOS_GOLDENS="samples/ios-demo/goldens"
 IOS_GOLDEN_NAME="about_static"
 IOS_BUNDLE_ID="io.github.sceneview.demo"
@@ -234,7 +259,7 @@ else
 fi
 
 # 5. Version sync
-echo -e "\n${YELLOW}[7/14] Checking version sync...${NC}"
+echo -e "\n${YELLOW}[7/20] Checking version sync...${NC}"
 # Capture sync-versions.sh output and exit code separately, so a crash of the
 # script is not swallowed by the pipeline (a piped crash would falsely report
 # "0 mismatches"). `set -o pipefail` is deliberately NOT used globally — many
@@ -255,7 +280,7 @@ else
 fi
 
 # 6. Website JS syntax
-echo -e "\n${YELLOW}[8/14] Validating website JS...${NC}"
+echo -e "\n${YELLOW}[8/20] Validating website JS...${NC}"
 NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
@@ -270,14 +295,15 @@ if [ -n "$NODE_CMD" ]; then
         ERRORS=$((ERRORS + 1))
     fi
 else
-    echo -e "${YELLOW}  ⚠ node not found, skipping JS validation${NC}"
+    echo -e "${YELLOW}  ⚠ node not found — JS validation NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # 7. Demo app asset references
 # Scans every samples/* for broken bundled paths or dead CDN URLs so the
 # class of bugs fixed in session 34 (TV demo pointing at non-existent
 # models/*.glb, web-demo pointing at 404 CDN URLs) cannot come back.
-echo -e "\n${YELLOW}[9/14] Validating demo app asset references...${NC}"
+echo -e "\n${YELLOW}[9/20] Validating demo app asset references...${NC}"
 # --no-cdn to keep pre-push fast; CI runs the full check with CDN hits.
 ASSETS_LOG="$LOG_DIR/validate-demo-assets.log"
 if bash .claude/scripts/validate-demo-assets.sh --no-cdn > "$ASSETS_LOG" 2>&1; then
@@ -296,7 +322,7 @@ fi
 # runs in quality-gate.sh, pr-check.yml and daily via maintenance.yml — but
 # the lighter pre-push gate skipped it, so a skill-only push could land drift
 # without ever hitting quality-gate.sh. Invoke it directly here too.
-echo -e "\n${YELLOW}[10/14] Checking agent skill drift...${NC}"
+echo -e "\n${YELLOW}[10/20] Checking agent skill drift...${NC}"
 if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
     SKILL_LOG="$LOG_DIR/skill-drift.log"
     if bash .claude/scripts/check-sceneview-skill.sh > "$SKILL_LOG" 2>&1; then
@@ -307,7 +333,8 @@ if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
             "Skill drift check failed"
     fi
 else
-    echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ check-sceneview-skill.sh not found — NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # 9. GPT knowledge base drift (#3026).
@@ -316,7 +343,7 @@ fi
 # not impact-check.sh — so editing llms.txt passed every local gate and only
 # turned red on CI. That is exactly what happened to the PR that added this
 # leg. Sub-second (a node regenerate-and-compare, no write).
-echo -e "\n${YELLOW}[11/14] Checking GPT knowledge base drift...${NC}"
+echo -e "\n${YELLOW}[11/20] Checking GPT knowledge base drift...${NC}"
 if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/dev/null)}" ]; then
     GPT_LOG="$LOG_DIR/gpt-knowledge-drift.log"
     if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > "$GPT_LOG" 2>&1; then
@@ -331,13 +358,14 @@ if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/d
             "Fix: node tools/generate-gpt-knowledge.js"
     fi
 else
-    echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ node or tools/generate-gpt-knowledge.js not found — NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
 fi
 
 # Vendored-download hardening gate. Passes silently while nothing builds
 # third_party/filament-kmp; fails the moment something does and its downloads
 # are still unverified / its symlink extraction unvalidated.
-echo -e "\n${YELLOW}[12/14] Checking the vendored download chain...${NC}"
+echo -e "\n${YELLOW}[12/20] Checking the vendored download chain...${NC}"
 if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
     VENDORED_LOG="$LOG_DIR/vendored-dl.log"
     if bash .claude/scripts/check-vendored-download-safety.sh > "$VENDORED_LOG" 2>&1; then
@@ -353,13 +381,15 @@ if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
             "vendored download chain is BUILT but unsafe:" \
             "(requirement\(s\) unmet|is missing, but something builds)"
     fi
+else
+    missing_gate_script "check-vendored-download-safety.sh"
 fi
 
 # Self-hosted runner routing. Three workflows share one `runs-on` expression;
 # it must keep sending fork PRs to a disposable hosted runner AND keep sending
 # push / dispatch / schedule to the Mac we already own. Both halves fail
 # silently — one leaks reach, the other just quietly spends money.
-echo -e "\n${YELLOW}[13/14] Checking self-hosted runner routing...${NC}"
+echo -e "\n${YELLOW}[13/20] Checking self-hosted runner routing...${NC}"
 if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
     ROUTING_LOG="$LOG_DIR/runner-routing.log"
     if python3 .claude/scripts/check-self-hosted-runner-routing.py > "$ROUTING_LOG" 2>&1; then
@@ -372,12 +402,14 @@ if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
             "self-hosted runner routing is wrong" \
             "See the \`self-hosted-runner\` skill for the expression to copy."
     fi
+else
+    missing_gate_script "check-self-hosted-runner-routing.py"
 fi
 
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
 # check — catch an unintentional public-API change locally before CI does.
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.
-echo -e "\n${YELLOW}[14/14] Checking public-API ABI (apiCheck)...${NC}"
+echo -e "\n${YELLOW}[14/20] Checking public-API ABI (apiCheck)...${NC}"
 if [ -f gradlew ]; then
     if gradle_run "$LOG_DIR/api-check.log" apiCheck; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"
@@ -402,7 +434,358 @@ if [ -f gradlew ]; then
             "(API check failed for project|Expected file with API declarations)"
     fi
 else
-    echo -e "${YELLOW}  ⚠ gradlew not found, skipping${NC}"
+    echo -e "${YELLOW}  ⚠ gradlew not found — apiCheck NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CI-PARITY LEGS (#3103)
+#
+# Everything below mirrors a BLOCKING step of ci.yml → `Repo hygiene checks`
+# or `Quality gate (full)` that had NO local counterpart. Measured on PR
+# #3099: this script printed "ALL CHECKS PASSED — safe to push", the branch
+# was pushed, and CI then failed on `Check Android <-> iOS demo id parity`,
+# because the new `ar-measure` demo had neither an iOS registry entry nor a
+# `parity-manifest.yml` row — exactly the #2769 silent-drift class that gate
+# exists to catch. A local gate that blesses a push while a blocking CI gate
+# is not represented in it teaches sessions to trust an incomplete verdict:
+# the same failure shape as #2988.
+#
+# ── WHAT IS DELIBERATELY NOT COVERED HERE, AND WHY ─────────────────────────
+# Read this list as the complement of the legs above. If a CI check appears
+# in NEITHER, nobody has audited it — that is a gap, not a decision.
+#
+#   NETWORK (a pre-push gate has to work offline)
+#     · validate-demo-assets.sh CDN half — leg 9 runs `--no-cdn`; CI's
+#       `Validate demo app asset references` hits every CDN URL for real.
+#     · MCP unit tests — quality-gate.sh runs them outside `--quick`; they
+#       need `npm ci` under mcp/, i.e. a registry round-trip.
+#     · `flutter-demo` job's pub.dev publish preflight (`--dry-run` resolves
+#       against pub.dev).
+#
+#   SLOW / GRADLE-BOUND (CI runs these on their own runners, in parallel)
+#     · `lint` job — lintRelease + detekt, several minutes.
+#     · `build` job — assembleDebug across every sample.
+#     · `web-desktop`, `compile-kmp`, `flutter-demo` and the rn-* compile
+#       workflows.
+#     · `coverage` job — and it is `continue-on-error: true` in CI, so it
+#       cannot block a merge in the first place.
+#     · check-demo-class-refs.sh — 77 s measured on this host, AND advisory
+#       (see below), so it buys nothing here. Its self-test IS in leg 19.
+#
+#   NEEDS A DEVICE OR A MACOS TOOLCHAIN
+#     · `kmp-native-test` (iOS-simulator unit tests), device-qa.yml,
+#       render-tests.yml, ios.yml. Leg 6 covers the one iOS check that works
+#       headless, and only when a sim is already booted with the demo running.
+#
+#   NO LOCAL COUNTERPART BY CONSTRUCTION
+#     · The `CI Gate` aggregator job: it polls the GitHub Checks API for the
+#       PR head SHA, so there is nothing to read before the push exists. Its
+#       DECISION LOGIC is still pinned locally — leg 19 runs
+#       .github/scripts/test-ci-gate-aggregation.sh and
+#       test-ci-gate-observations.sh, the suites that keep a cancelled
+#       advisory check from red-lighting the gate (#1984) and a partial
+#       Checks read from green-lighting a cancelled job (#3018).
+#
+#   ADVISORY IN CI — exits 0 on findings, so it can never block a merge
+#     · check-doc-drift.sh, check-demo-class-refs.sh. Both surface findings
+#       and return 0 by design (a heuristic false positive would erode
+#       trust); the weekly doc-audit.yml agent does the semantic pass.
+#
+#   OWNED BY A DIFFERENT MANDATE
+#     · impact-check.sh — CLAUDE.md requires it after ANY code/API/doc change,
+#       independently of this script, and it answers a different question
+#       (HEAD~1 diff impact, not "is the tree self-consistent"). Its
+#       self-test IS in leg 19.
+#
+# Legs 7, 9 and 10 are re-run inside leg 20 (quality-gate.sh covers version
+# sync, demo assets and skill drift too). That duplication is ~10 s and is
+# kept on purpose: the dedicated legs carry far better diagnosis than
+# quality-gate.sh's one-line [FAIL], and each one's comment records a
+# measured failure mode that must not be lost.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Android <-> iOS demo-id parity (BLOCKING in ci.yml → repo-hygiene). Diffs
+# Android's canonical demo ids against iOS's live registry and the committed
+# parity-manifest.yml. Self-contained: it regenerates iOS's (gitignored)
+# GeneratedScenes.swift itself, so it works in a fresh worktree.
+echo -e "\n${YELLOW}[15/20] Checking Android <-> iOS demo id parity...${NC}"
+if [ -f .claude/scripts/check-demo-id-parity.sh ]; then
+    PARITY_LOG="$LOG_DIR/demo-id-parity.log"
+    if bash .claude/scripts/check-demo-id-parity.sh > "$PARITY_LOG" 2>&1; then
+        echo -e "${GREEN}  ✓ every Android demo id is accounted for on iOS or in the manifest${NC}"
+    else
+        # The script's OTHER exit-1 paths are all "cannot run" and print
+        # `Error: …` (fragments dir absent, collator output shape changed, a
+        # DemoEntry with no id). Only the verdict block prints this line —
+        # read out of the script, not guessed.
+        gate_script_failure "demo id parity" "$PARITY_LOG" $? \
+            "Android <-> iOS demo ids diverged:" \
+            "check-demo-id-parity\.sh: FAILED" \
+            "Fix: add the iOS registry entry, or a parity-manifest.yml row stating why the demo is Android-only."
+    fi
+else
+    missing_gate_script "check-demo-id-parity.sh"
+fi
+
+# Asset credits (BLOCKING in ci.yml → repo-hygiene). assets/CREDITS.md is
+# GENERATED from assets/catalog.json and discharges the attribution clause of
+# every model's licence (CC-BY 4.0 §3a) — a drift here is a compliance gap in
+# a published release, not a tidiness one. Five Khronos models once shipped
+# uncredited. Deterministic regenerate-and-compare, no write, sub-second.
+echo -e "\n${YELLOW}[16/20] Checking asset credits...${NC}"
+if [ -f .claude/scripts/generate-credits.py ]; then
+    CREDITS_LOG="$LOG_DIR/asset-credits.log"
+    if python3 .claude/scripts/generate-credits.py --check > "$CREDITS_LOG" 2>&1; then
+        echo -e "${GREEN}  ✓ assets/CREDITS.md in sync with assets/catalog.json${NC}"
+    else
+        # `DRIFT:` is the comparison verdict; the generator's other exit-1
+        # paths print lowercase `error: …` (catalog missing / malformed) and
+        # are a tooling failure, not drift.
+        gate_script_failure "assets/CREDITS.md" "$CREDITS_LOG" $? \
+            "assets/CREDITS.md drifted from assets/catalog.json:" \
+            "^DRIFT: assets/CREDITS\.md" \
+            "Fix: python3 .claude/scripts/generate-credits.py"
+    fi
+else
+    missing_gate_script "generate-credits.py"
+fi
+
+# Content gate (BLOCKING in ci.yml → repo-hygiene). Google's `android run` has
+# a measured install no-op and has been rediscovered THREE times (#2796,
+# #2854, #2990) because each fix landed in one call site while the docs went
+# on recommending it. Documenting the trap is fine; recommending it is not.
+echo -e "\n${YELLOW}[17/20] Checking no file teaches \`android run\` for installing...${NC}"
+if [ -f .claude/scripts/check-android-run-not-taught.sh ]; then
+    ANDROID_RUN_LOG="$LOG_DIR/android-run-not-taught.log"
+    if bash .claude/scripts/check-android-run-not-taught.sh > "$ANDROID_RUN_LOG" 2>&1; then
+        echo -e "${GREEN}  ✓ no file recommends \`android run\` without naming the defect${NC}"
+    else
+        gate_script_failure "\`android run\` content gate" "$ANDROID_RUN_LOG" $? \
+            "file(s) teach \`android run\` for installing:" \
+            "check-android-run: FAIL" \
+            "Fix: use .claude/scripts/lib/android-cli.sh, or cite #2796 / #2854 / #2990 next to the mention."
+    fi
+else
+    missing_gate_script "check-android-run-not-taught.sh"
+fi
+
+# Workflow shell blocks (BLOCKING in ci.yml → repo-hygiene). `with.script:`
+# blocks are exec'd line-by-line through `sh -c` = dash on Linux runners, so a
+# bashism there only fails once it is on main. Needs dash + shellcheck, which
+# ship on the CI runner but not on every Mac — hence the guard.
+echo -e "\n${YELLOW}[18/20] Validating workflow shell blocks...${NC}"
+if ! command -v dash >/dev/null 2>&1 || ! command -v shellcheck >/dev/null 2>&1; then
+    echo -e "${YELLOW}  ⚠ dash or shellcheck missing — NOT checked here (CI still gates it)${NC}"
+    echo -e "${YELLOW}      Arm it locally: brew install dash shellcheck${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
+elif [ -f .claude/scripts/check-workflow-scripts.sh ]; then
+    WF_LOG="$LOG_DIR/workflow-scripts.log"
+    if bash .claude/scripts/check-workflow-scripts.sh > "$WF_LOG" 2>&1; then
+        echo -e "${GREEN}  ✓ workflow shell/JS blocks parse${NC}"
+    else
+        # The summary line is only printed once a real finding was recorded;
+        # the "dash not on PATH" / "workflows dir not found" bail-outs print
+        # `::error::` lines of their own and never reach it.
+        gate_script_failure "workflow shell blocks" "$WF_LOG" $? \
+            "workflow shell/JS block(s) are invalid:" \
+            "::error::Workflow validation failed" \
+            "The error lines above name the file and the offending construct."
+    fi
+else
+    missing_gate_script "check-workflow-scripts.sh"
+fi
+
+# The repo-hygiene gate self-tests. Every one of them is hermetic (fixtures,
+# stub adb, temp git repos — no network, no device, no secret) and the whole
+# set measured ~25 s on this host, so there is no reason for CI to be the
+# first place a regressed gate shows up.
+#
+# The list is DERIVED from ci.yml rather than copied into it: a hardcoded copy
+# goes stale the moment repo-hygiene gains a self-test, which is the #2988
+# shape this whole block exists to fix. And because the list comes from a
+# regex, "found nothing" is a broken extractor, never a clean bill of health
+# (#3050) — a count below the floor fails the leg instead of blessing it.
+echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
+# 29 self-tests on 2026-08-10. The floor guards against a regex that silently
+# degrades to a handful of matches; raise it if repo-hygiene ever legitimately
+# shrinks, but never delete it.
+SELFTEST_FLOOR=20
+SELFTEST_LIST="$LOG_DIR/selftests.txt"
+# The scrape itself lives in lib/extract-gate-selftests.sh, which validates
+# every line it emits against an anchored `<bash|python3> <plain path>` shape
+# and reports what it refused. It is a separate file for one reason: these
+# strings get EXECUTED below, so the property that keeps that safe has to be
+# testable — test-extract-gate-selftests.sh pins it against hostile workflow
+# fixtures, and is itself one of the self-tests run here. Inline, the property
+# was a character class in the middle of this script that no test could reach.
+: > "$SELFTEST_LIST"
+SELFTEST_SKIP=0
+if [ ! -f .claude/scripts/lib/extract-gate-selftests.sh ]; then
+    # An absent extractor and a degraded extractor both end at "found 0", and
+    # the floor branch below would call that "a bug in THIS script's
+    # extractor" — which sends the reader hunting a regex that is not there.
+    # Every sibling leg tells "the gate script is missing" apart from "the gate
+    # says no"; this one has to as well (#3105 review round 7). Both paths
+    # block the push — this only changes which sentence the reader gets.
+    missing_gate_script "lib/extract-gate-selftests.sh"
+    SELFTEST_SKIP=1
+else
+    bash .claude/scripts/lib/extract-gate-selftests.sh .github/workflows/ci.yml repo-hygiene \
+        > "$SELFTEST_LIST" 2> "$LOG_DIR/selftests-refused.txt" || true
+    if [ -s "$LOG_DIR/selftests-refused.txt" ]; then
+        sed 's/^/      ⚠ /' "$LOG_DIR/selftests-refused.txt"
+    fi
+fi
+SELFTEST_COUNT=$(grep -c . "$SELFTEST_LIST" 2>/dev/null || true)
+SELFTEST_COUNT=${SELFTEST_COUNT:-0}
+# Second, INDEPENDENT count: how many steps of that job name themselves a
+# self-test. The fixed floor below only catches a total collapse; a regex that
+# degrades from 29 matches to 21 clears `>= 20` while eight self-tests quietly
+# stop running here (raised on #3105). This one moves with the job, so the
+# window closes to whatever gap is real — 29 discovered vs 27 named today,
+# because two self-tests live in steps named after what they guard. Both
+# checks are load-bearing: if the job window itself breaks, BOTH counts fall
+# to zero together and only the absolute floor is left standing.
+SELFTEST_NAMED=$(bash .claude/scripts/lib/extract-gate-selftests.sh --count-steps \
+    .github/workflows/ci.yml repo-hygiene 2>/dev/null || true)
+SELFTEST_NAMED=${SELFTEST_NAMED:-0}
+# The two counts are not equal by construction and `discovered >= named` is the
+# contract, so one edge stays open: two differently-named steps invoking the
+# BYTE-IDENTICAL command collapse under the extractor's `sort -u` and would
+# read as degradation. No such pair exists in ci.yml today, and a duplicated
+# self-test command is itself worth looking at — flagged rather than special-cased.
+if [ "$SELFTEST_SKIP" -eq 1 ]; then
+    :
+elif [ "$SELFTEST_COUNT" -lt "$SELFTEST_FLOOR" ]; then
+    echo -e "${RED}  ✗ self-test discovery is broken — found $SELFTEST_COUNT command(s) in ci.yml → repo-hygiene, expected >= $SELFTEST_FLOOR${NC}"
+    echo -e "      This is a bug in THIS script's extractor, not a clean tree."
+    ERRORS=$((ERRORS + 1))
+elif [ "$SELFTEST_COUNT" -lt "$SELFTEST_NAMED" ]; then
+    echo -e "${RED}  ✗ self-test discovery degraded — found $SELFTEST_COUNT command(s) but repo-hygiene names $SELFTEST_NAMED self-test step(s)${NC}"
+    echo -e "      Some self-tests are declared in ci.yml and never reached here."
+    ERRORS=$((ERRORS + 1))
+else
+    SELFTEST_FAILED=0
+    SELFTEST_UNRUN=0
+    while IFS= read -r cmd; do
+        [ -n "$cmd" ] || continue
+        ST_INTERP="${cmd%% *}"
+        script="${cmd#* }"
+        # What comes out of the extractor is a STRING SCRAPED FROM A YAML FILE,
+        # not a vetted path: `grep -oE` matches anywhere on a line, so a
+        # comment inside the repo-hygiene block is as good a source as a `run:`
+        # step. Whoever can write that line already owns CI, so this is not a
+        # trust boundary — it is the difference between running the repo's own
+        # self-tests and running whatever happens to be quoted nearby. The
+        # operand is quoted (never word-split) and must be a plain path under
+        # the repo: no leading `-` (an option, not a file) and no `..`
+        # (anything outside the tree this gate is judging).
+        case "$script" in
+            -*|*..*|/*)
+                echo -e "${YELLOW}      ⚠ refusing non-repo-relative operand '$script' from ci.yml${NC}"
+                SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+                continue
+                ;;
+        esac
+        # The INTERPRETER is scraped too, and this is the line that execs it.
+        # The extractor anchors it to bash|python3, but a guard that lives only
+        # in the producer is the very "loosen the class in a hurry" failure the
+        # extractor's own header warns about — so the consumer states it again.
+        case "$ST_INTERP" in
+            bash|python3) ;;
+            *)
+                echo -e "${YELLOW}      ⚠ refusing interpreter '$ST_INTERP' from ci.yml${NC}"
+                SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+                continue
+                ;;
+        esac
+        if [ ! -f "$script" ]; then
+            echo -e "${YELLOW}      ⚠ $script is referenced by ci.yml but absent here${NC}"
+            SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+            continue
+        fi
+        # Flatten the path into the log name: two self-tests in different
+        # directories can share a basename, and a collision would silently
+        # overwrite the tail printed for a failure.
+        ST_LOG="$LOG_DIR/selftest-$(echo "$script" | tr '/' '_').log"
+        # Capture the code explicitly: after a bare `if cmd; then …; fi` with
+        # no else, `$?` is the IF's own 0, not the command's, and every
+        # failure would be filed as exit 0.
+        #
+        # `< /dev/null` is load-bearing: this loop's stdin IS "$SELFTEST_LIST",
+        # so a self-test that reads stdin would eat the remaining lines and end
+        # the loop early — while the "$SELFTEST_COUNT self-test(s) pass" line
+        # below still prints the full pre-computed count. A false green, in the
+        # script whose purpose is to stop false greens.
+        ST_CODE=0
+        "$ST_INTERP" "$script" > "$ST_LOG" 2>&1 < /dev/null || ST_CODE=$?
+        # No hardcoded diagnosis: a suite that exits non-zero is reported as
+        # what was observed (the code and its own tail), never as "the gate
+        # regressed" — the run may equally have died on the way there.
+        if [ "$ST_CODE" -eq 0 ]; then
+            :
+        elif [ "$ST_CODE" -ge 126 ]; then
+            echo -e "${YELLOW}      ⚠ $script could not be executed (exit $ST_CODE)${NC}"
+            SELFTEST_UNRUN=$((SELFTEST_UNRUN + 1))
+        else
+            echo -e "${RED}      ✗ $script exited $ST_CODE${NC}"
+            tail -12 "$ST_LOG" 2>/dev/null | sed 's/^/          /' || true
+            SELFTEST_FAILED=$((SELFTEST_FAILED + 1))
+        fi
+    done < "$SELFTEST_LIST"
+
+    if [ "$SELFTEST_FAILED" -eq 0 ] && [ "$SELFTEST_UNRUN" -eq 0 ]; then
+        echo -e "${GREEN}  ✓ $SELFTEST_COUNT gate self-test(s) pass${NC}"
+    else
+        if [ "$SELFTEST_FAILED" -gt 0 ]; then
+            echo -e "${RED}  ✗ $SELFTEST_FAILED of $SELFTEST_COUNT gate self-test(s) failed${NC}"
+            ERRORS=$((ERRORS + SELFTEST_FAILED))
+        fi
+        if [ "$SELFTEST_UNRUN" -gt 0 ]; then
+            echo -e "${YELLOW}  ⚠ $SELFTEST_UNRUN of $SELFTEST_COUNT gate self-test(s) could not run${NC}"
+            INCOMPLETE=$((INCOMPLETE + SELFTEST_UNRUN))
+        fi
+    fi
+fi
+
+# The full quality gate — ci.yml's `Quality gate (full)` job runs this very
+# script. Invoking it here rather than re-implementing its legs is what stops
+# THIS file from drifting away from it again: a leg added to quality-gate.sh
+# is picked up for free.
+#
+# `--quick` is the offline profile: it skips the Android build + unit tests
+# (legs 1-4 already ran them, with better diagnosis) and the MCP tests, and
+# passes `--no-cdn` to validate-demo-assets.sh. What it still covers, none of
+# which existed anywhere in this script before: llms.txt structural drift, the
+# collate-demos.sh llms.txt block, tracked-secret / staged-API-key scans,
+# check-deprecated-api.sh, check-sceneview-swift-urls.sh, check-web-dts.sh,
+# the .filamat ↔ Filament-runtime ABI invariant (GenerateFilamat.sh --check),
+# the worktree-prune regression suite, and the website asset rules (no Google
+# Fonts, no Three.js, no <model-viewer>). Measured ~50 s.
+echo -e "\n${YELLOW}[20/20] Running the full quality gate (offline profile)...${NC}"
+if [ -f .claude/scripts/quality-gate.sh ]; then
+    QG_LOG="$LOG_DIR/quality-gate.log"
+    if bash .claude/scripts/quality-gate.sh --quick > "$QG_LOG" 2>&1; then
+        QG_WARNINGS=$(grep -c '\[WARN\]' "$QG_LOG" 2>/dev/null || true)
+        QG_WARNINGS=${QG_WARNINGS:-0}
+        if [ "$QG_WARNINGS" -gt 0 ]; then
+            echo -e "${GREEN}  ✓ quality gate clear${NC} ${YELLOW}($QG_WARNINGS warning(s) — not blocking; see $QG_LOG)${NC}"
+            grep '\[WARN\]' "$QG_LOG" 2>/dev/null | sed 's/^/      /' || true
+        else
+            echo -e "${GREEN}  ✓ quality gate clear${NC}"
+        fi
+    else
+        # quality-gate.sh runs under `set -euo pipefail`, so an unexpected
+        # crash exits non-zero too. Only its summary line proves it reached a
+        # verdict; without it, nothing was judged.
+        gate_script_failure "quality gate" "$QG_LOG" $? \
+            "quality gate BLOCKED:" \
+            "BLOCKED — [0-9]+ issue" \
+            "The [FAIL] lines above name each blocker."
+    fi
+else
+    missing_gate_script "quality-gate.sh"
 fi
 
 # Summary
@@ -413,7 +796,15 @@ fi
 # contention, so the remedy is to re-run once nothing else is building.
 echo -e "\n═══════════════════════════════════════════"
 if [ "$ERRORS" -eq 0 ] && [ "$INCOMPLETE" -eq 0 ]; then
-    echo -e "${GREEN}  ✓ ALL CHECKS PASSED — safe to push${NC}"
+    if [ "$NOT_COVERED" -eq 0 ]; then
+        echo -e "${GREEN}  ✓ ALL CHECKS PASSED — safe to push${NC}"
+    else
+        # Still exit 0: every one of these is gated in CI, and refusing the
+        # push because a Mac lacks shellcheck would make the gate something
+        # people work around. But the word ALL has to go.
+        echo -e "${GREEN}  ✓ CHECKS PASSED — safe to push${NC}"
+        echo -e "${YELLOW}      ($NOT_COVERED leg(s) not covered on this host — see the ⚠ lines above; CI gates them)${NC}"
+    fi
     exit 0
 elif [ "$ERRORS" -eq 0 ]; then
     echo -e "${YELLOW}  ⚠ $INCOMPLETE CHECK(S) COULD NOT RUN — no check failed, but the gate is INCOMPLETE${NC}"
@@ -426,6 +817,7 @@ elif [ "$ERRORS" -eq 0 ]; then
         echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
         echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
     fi
+    not_covered_recap
     echo -e "${YELLOW}    Logs: $LOG_DIR${NC}"
     exit 1
 else
@@ -433,6 +825,7 @@ else
     if [ "$INCOMPLETE" -gt 0 ]; then
         echo -e "${YELLOW}  ⚠ plus $INCOMPLETE check(s) that could not run at all${NC}"
     fi
+    not_covered_recap
     if [ -n "$SETUP_FIX" ]; then
         echo -e "${YELLOW}  ⚠ this host is not set up to build:${NC}"
         echo -e "${YELLOW}      $SETUP_FIX${NC}"

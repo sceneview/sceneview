@@ -1308,6 +1308,17 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-demo-id-parity.sh
 
+      # pre-push-check.sh leg 19 DERIVES its self-test list from this very job
+      # and then executes what it finds, so the extractor must be incapable of
+      # emitting a shell metacharacter or a path outside the tree. That
+      # property is pinned here against hostile workflow fixtures — never
+      # against this file, so a green run says "the extractor is safe", not
+      # "today's ci.yml happens to be tame". Pure bash, sub-second.
+      - name: Self-test extract-gate-selftests.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-extract-gate-selftests.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:
