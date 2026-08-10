@@ -27,3 +27,7 @@
   `<!-- breaking -->` marker. It describes a behaviour break in prose without
   ever using the token `breaking`, so the patch-level guard would have let it
   ship in a patch release.
+- **The Flutter demo's About tab read `v4.26.0` while the SDK shipped 4.27.0.**
+  `sync-versions.sh` only checked that its two slots agreed with *each other*,
+  so a pair that drifted together stayed green. Both now track `VERSION_NAME`
+  and the row reads OK rather than WARN.

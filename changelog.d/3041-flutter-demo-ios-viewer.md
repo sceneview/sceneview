@@ -1,4 +1,9 @@
 <!-- category: Fixed -->
+<!-- breaking: false -->
+<!-- Explicit, so the release level does not depend on a sibling fragment. The
+     iOS floor moves 17.0 -> 18.0 on paper only: the podspec DECLARED 17.0 while
+     SceneViewSwift/Package.swift has always required 18.0, so no host app ever
+     had a working iOS 17 build to lose. Consumer-visible, not breaking. -->
 - **Flutter demo: the iOS 3D viewer now builds and renders.** `samples/flutter-demo`
   could not be built for iOS at all — it shipped no `Podfile`, so `flutter build ios`
   generated one targeting iOS 13, below what the plugin required. The demo now commits
@@ -11,12 +16,13 @@
   The podspec claimed 17.0 while `SceneViewSwift/Package.swift` has always required
   18.0, so a host app that believed it got RealityKit availability errors at link time
   instead of a clear version error. The podspec now also depends on `SceneViewSwift`
-  (pinned `~> 4.26`), which is **not** on the CocoaPods trunk: host apps must add a
+  (pinned `~> 4.27`), which is **not** on the CocoaPods trunk: host apps must add a
   `pod 'SceneViewSwift', :podspec => '<raw URL of SceneViewSwift.podspec>'` line,
   documented in the plugin README. Not the `:git => …, :tag =>` form: CocoaPods reads
-  the podspec from the root of the checked-out tag, and the root podspec landed after
-  v4.26.0 was cut, so every tag that exists today resolves to "Unable to find a
-  specification". The `:podspec =>` URL reads the spec from `main` while the sources
+  the podspec from the root of the checked-out tag, and the root podspec is not in
+  any tag yet — verified with `git cat-file -e vX.Y.Z:SceneViewSwift.podspec` on
+  v4.26.0 and v4.27.0, the two most recent — so every tag that exists today resolves
+  to "Unable to find a specification". The `:podspec =>` URL reads the spec from `main` while the sources
   still come from the tag the spec names.
 - **React Native stays on the SwiftPM route for now**, deliberately. The same pod
   treatment would need `samples/react-native-demo`'s `Podfile` changed in the same
@@ -46,6 +52,6 @@
   pointed at `samples/flutter-demo/example/…`, so the demo never received the assets
   its catalog entries already claimed it used. The Flutter legs now refresh the assets
   the demo actually bundles rather than pushing the whole shared library at it.
-- **Flutter demo About tab showed `v4.13.0`** while the SDK was at 4.26.0 — and the
+- **Flutter demo About tab showed `v4.13.0`** while the SDK had moved on — and the
   integration test asserted that exact string, so it defended the drift instead of
   catching it.
