@@ -28,7 +28,8 @@
   the Swift Package Manager route as the supported one — it never worked, since
   the module compiles inside `Pods.xcodeproj`, which cannot see the host
   project's packages — and now gives the `Podfile` coordinate the unpublished
-  `SceneViewSwift` pod needs, pinned to a tag rather than `main`. That closes
+  `SceneViewSwift` pod needs — pointed at `main` rather than a tag, because no
+  released tag carries `SceneViewSwift.podspec` yet and a tagged raw URL 404s. That closes
   the React Native half of [#3072]. Three `@react-native/*` dev dependencies
   Metro needs were missing. A `khronos_fox.usdz` is bundled so the Animation tab
   renders on iOS at all: the demo passed remote `.glb` URLs on both platforms,

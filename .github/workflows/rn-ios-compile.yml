@@ -14,13 +14,15 @@ name: React Native iOS bridge compile
 #
 # WHY A TYPE-CHECK, NOT A FULL APP BUILD
 # --------------------------------------
-# `SceneViewSwift` is distributed via Swift Package Manager ONLY — there is no
-# published CocoaPods spec — so the demo's `pod install` cannot resolve it and
-# the module's podspec cannot declare it as a `s.dependency`. A host app adds
-# it once through Xcode's SwiftPM integration. Building the demo app end-to-end
-# would therefore require scaffolding that SwiftPM wiring into a generated
-# `.xcodeproj`; a `swiftc -typecheck` against a freshly built `.swiftmodule`
-# catches the #2067 defect class without it.
+# `SceneViewSwift` is not on the CocoaPods trunk, so `pod install` cannot
+# resolve it by name: the host app's Podfile has to supply a coordinate of its
+# own (`:podspec =>` the raw URL, or `:path =>` a checkout), which a generated
+# CI project does not have. The module's podspec DOES declare the dependency
+# since #3086 — the SwiftPM route this comment used to describe never worked,
+# because the module compiles inside `Pods.xcodeproj`, which cannot see the
+# host project's Swift packages. Building the demo app end-to-end therefore
+# needs that Podfile wiring scaffolded in; a `swiftc -typecheck` against a
+# freshly built `.swiftmodule` catches the #2067 defect class without it.
 #
 # WHY THE REACT MODULE IS REAL, NOT A STUB
 # ----------------------------------------
