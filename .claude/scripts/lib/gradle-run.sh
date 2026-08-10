@@ -107,6 +107,7 @@ error=24, Too many open files => the host hit its open-file limit
 Could not (GET|HEAD) ' => a dependency repository could not be reached
 Received fatal alert: => a TLS error while contacting a repository
 Could not open .* (generic class|proj\.dir) cache => the Gradle cache is corrupt (rm -rf the module build/ dirs)
+Timeout has been exceeded => the task hit its Gradle `timeout` and was KILLED before rendering any verdict (host load, or a genuinely hung test — the log carries a thread dump naming the stuck thread)
 The supplied javaHome seems to be invalid => org\.gradle\.java\.home points at an invalid JDK
 PATTERNS
 

@@ -107,6 +107,23 @@ Execution failed for task ':samples:android-demo:mergeDebugAssets'.
 BUILD FAILED in 14s
 LOG
 
+# The per-task `timeout` from the root build.gradle (#2692) firing. Gradle kills
+# the task, so the run rendered NO verdict — neither pass nor fail. Measured on
+# 2026-08-09: pre-push printed ":samples:android-demo tests FAILED — every
+# screenshot matched its golden" off a log whose ONLY error was this line, on a
+# host down to 2 Gi of free disk. Re-running the same task on a healthy host:
+# BUILD SUCCESSFUL in 18s.
+cat > "$TMP/task-timeout.log" <<'LOG'
+> Task :samples:android-demo:testDebugUnitTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':samples:android-demo:testDebugUnitTest'.
+> Timeout has been exceeded
+BUILD FAILED in 25m 3s
+LOG
+
 # A GENUINE compile break — the most important negative case.
 cat > "$TMP/compile.log" <<'LOG'
 > Task :sceneview:compileReleaseKotlin FAILED
@@ -139,6 +156,7 @@ assert_infra "$TMP/oom.log"     "JVM out of memory"
 assert_infra "$TMP/network.log" "dependency resolution / network"
 assert_infra "$TMP/disk.log"    "disk full"
 assert_infra "$TMP/nope.log"    "log file was never written"
+assert_infra "$TMP/task-timeout.log" "per-task timeout killed the run before any verdict"
 
 echo "── gradle_infra_reason: REAL failures must stay real ──"
 assert_real "$TMP/compile.log"       "unresolved reference (compile break)"
