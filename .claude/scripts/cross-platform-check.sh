@@ -390,7 +390,12 @@ if [ "$WITH_APK" -eq 1 ]; then
 
     ANDROID_DEMO_COUNT=0
     if [ -f "$DEMO_REGISTRY" ]; then
-        ANDROID_DEMO_COUNT="$(grep -cE '^[[:space:]]*DemoEntry\(' "$DEMO_REGISTRY" 2>/dev/null || echo 0)"
+        # `grep -c` prints `0` AND exits 1 on no match, so `|| echo 0` yielded the
+        # two-line value `0\n0` and every numeric comparison below it died. Take
+        # the first line only.
+        ANDROID_DEMO_COUNT="$(grep -cE '^[[:space:]]*DemoEntry\(' "$DEMO_REGISTRY" 2>/dev/null || true)"
+        ANDROID_DEMO_COUNT="${ANDROID_DEMO_COUNT%%$'\n'*}"
+        ANDROID_DEMO_COUNT="${ANDROID_DEMO_COUNT:-0}"
     fi
     IOS_DEMO_COUNT=0
     if [ -f "$IOS_SAMPLES" ]; then

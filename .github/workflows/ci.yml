@@ -989,6 +989,32 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-web-dts.sh
 
+      # Filament-on-a-background-thread detector behind `quality-gate.sh`. It is
+      # a self-test only — the check itself reads `git diff HEAD`, which is empty
+      # on a CI checkout, so CI can never exercise it on real content. That is
+      # precisely how it stayed broken: the inline grep it replaced reported a
+      # THREADING VIOLATION on every clean LOCAL diff and matched nothing on the
+      # multi-line `withContext(Dispatchers.IO) { … }` shape, while this job
+      # stayed green because the whole block was skipped here.
+      - name: Self-test detect-filament-bg-thread.py
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-detect-filament-bg-thread.sh
+
+      # `grep -c` prints `0` and exits 1 on no match, so `$(grep -c … || echo 0)`
+      # yields the two-line value `0\n0`. lib/as-count.sh normalises it. This is
+      # the same CI blind spot as the step above and needs its own guard for a
+      # different reason: the detector was one consumer, the counting helper is
+      # the shape EVERY consumer goes through, and it failed two distinct ways at
+      # once — a comparison that dies takes the FAIL branch of `A && x || y` (a
+      # false red), while a `$((TOTAL + N))` that dies under `set -e` kills the
+      # enclosing block and prints NO check line at all. The second one is worse:
+      # nothing on screen says a check went missing. Pure string work, no repo.
+      - name: Self-test lib/as-count.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-as-count.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
