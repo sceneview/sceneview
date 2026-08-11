@@ -62,9 +62,17 @@ fun View.motionEventToWorld(motionEvent: MotionEvent): Position? = screenToWorld
  *
  * The device coordinate space is unaffected by the orientation of the device.
  *
+ * Returns `null` when the point cannot be placed on screen: when this view has no camera, or when
+ * [worldPosition] is **behind the camera** (at or behind the camera's eye plane). A behind-camera point has no
+ * screen location — historically it was projected to a finite, *mirrored* pixel on the wrong side
+ * of the view, which made overlays that project e.g. the 8 corners of a bounding box flicker as a
+ * corner crossed the camera's eye plane. Always handle the `null` case: skip the point rather than draw at
+ * a bogus pixel.
+ *
  * @param worldPosition The world position to convert.
  *
- * @return Screen coordinate in pixels where the world position is.
+ * @return Screen coordinate in pixels where the world position is, or `null` if there is no camera
+ * or [worldPosition] is at or behind the camera's eye plane.
  * (0 = left, View Width = right)
  * (0 = top, View Height = bottom)
  * Screen space is in Android device screen coordinates

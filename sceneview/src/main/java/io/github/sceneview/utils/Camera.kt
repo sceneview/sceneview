@@ -17,6 +17,7 @@ import io.github.sceneview.math.toColumnsDoubleArray
 import io.github.sceneview.math.toDirection
 import io.github.sceneview.math.toFloat4
 import io.github.sceneview.math.toTransform
+import io.github.sceneview.math.worldToView as coreWorldToView
 import kotlin.math.log2
 
 /**
@@ -277,20 +278,23 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
 /**
  * Get a view space position from a world position.
  *
- * The device coordinate space is unaffected by the orientation of the device
+ * The device coordinate space is unaffected by the orientation of the device.
+ *
+ * Returns `null` when [worldPosition] is **behind the camera** (at or behind the camera's eye plane). Such a
+ * point has no on-screen location: its clip-space `w` is `<= 0`, and dividing by a non-positive
+ * `w` yields a *finite, mirrored* coordinate on the wrong side of the view — a plausible-but-wrong
+ * value that no `isFinite` check downstream would reject. Reporting `null` instead lets callers
+ * (e.g. an overlay projecting the corners of a bounding box) skip the point rather than draw it at
+ * a mirrored pixel. A point exactly on the camera (`w == 0`) is also reported as `null`.
  *
  * @param worldPosition The world position to convert.
  *
- * @return normalized view coordinate
+ * @return normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane.
  * x = (0 = left, 0.5 = center, 1 = right)
  * y = (0 = bottom, 0.5 = center, 1 = top)
  */
-fun Camera.worldToView(worldPosition: Position): Float2 {
-    val viewProjectionTransform = cullingProjectionTransform * viewTransform
-    val viewPosition = viewProjectionTransform * Float4(worldPosition, w = 1.0f)
-    // Divide by w component to convert to clip space
-    return (viewPosition / viewPosition.w).xy / 2.0f + 0.5f
-}
+fun Camera.worldToView(worldPosition: Position): Float2? =
+    coreWorldToView(worldPosition, cullingProjectionTransform, viewTransform)
 
 /**
  * Calculates a ray in world space going from the near-plane of the camera and through a point in
