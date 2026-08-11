@@ -1045,7 +1045,7 @@ jobs:
       # multi-line `withContext(Dispatchers.IO) { … }` shape, while this job
       # stayed green because the whole block was skipped here.
       - name: Self-test detect-filament-bg-thread.py
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-detect-filament-bg-thread.sh
 
@@ -1059,7 +1059,7 @@ jobs:
       # enclosing block and prints NO check line at all. The second one is worse:
       # nothing on screen says a check went missing. Pure string work, no repo.
       - name: Self-test lib/as-count.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-as-count.sh
 

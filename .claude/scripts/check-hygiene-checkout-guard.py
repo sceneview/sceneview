@@ -414,7 +414,7 @@ def main():
     lines = workflow.read_text().splitlines(keepends=True)
     window = job_window(lines, job)
     if window is None:
-        print(f"{RED}  ✗ no `{job}:` job in {workflow}{OFF}")
+        print(f"{RED}  ✗ no `{job}:` job with a `steps:` block in {workflow}{OFF}")
         return 1
     start, end = window
 
