@@ -218,11 +218,29 @@ class SceneRenderer(
     // ── Render frame ────────────────────────────────────────────────────────────────────────────
 
     /**
+     * How many frames this renderer has actually **presented** — incremented after `endFrame`,
+     * and never on a call that drew nothing because no swap chain was ready or because
+     * `Renderer.beginFrame` refused the frame for pacing.
+     *
+     * [SceneView]'s render loop needs to tell "I asked for a frame" apart from "a frame reached
+     * the surface" (#3109): a loop that is about to park must not clear its owed-frame debt on an
+     * attempt that presented nothing, or a freshly created swap chain stays blank until something
+     * unrelated wakes the loop. `internal` because it is a render-loop implementation detail, not
+     * a metric — it adds no public surface and no `.api` entry.
+     */
+    internal var presentedFrameCount: Long = 0L
+        private set
+
+    /**
      * Presents a single frame if a swap chain is available.
      *
      * Call this from a `withFrameNanos` block. The [onBeforeRender] callback is invoked
      * after the swap chain check but before `beginFrame`, giving the caller a chance to
      * run per-frame logic (model loading, node updates, camera manipulator, AR frame, etc.).
+     *
+     * Whether a frame actually reached the surface is observable through [presentedFrameCount] —
+     * this function returns `Unit` on both paths, and callers that need to know must compare that
+     * counter across the call.
      *
      * @param frameTimeNanos The choreographer timestamp for this frame.
      * @param onBeforeRender Pre-render callback; skipped if no swap chain is ready.
@@ -238,6 +256,7 @@ class SceneRenderer(
             // Must run between render() and endFrame() — Filament's copyFrame contract.
             surfaceMirrorer?.onFrame(engine, renderer, view)
             renderer.endFrame()
+            presentedFrameCount++
         }
 
         // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main

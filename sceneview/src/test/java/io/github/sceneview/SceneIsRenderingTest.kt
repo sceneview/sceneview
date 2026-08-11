@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -128,9 +129,104 @@ class SceneIsRenderingTest {
     }
 
     /**
+     * A parked loop must still wake for a surface that is owed a frame (#3109).
+     *
+     * A Filament swap chain is created empty: `SceneRenderer.onNativeWindowChanged` presents
+     * nothing into it. So every surface generation — first attach, app foregrounded, foldable
+     * folded or unfolded, split-screen resize — starts blank, and a loop parked on `isRendering`
+     * alone would leave it blank *indefinitely*: black, or transparent with `isOpaque = false`,
+     * until something unrelated happened to flip the flag. This reproduces the exact production
+     * shape: `SceneView` parks on `derivedStateOf { isRendering || needsPresent }`, and the
+     * surface callbacks set the debt from the main thread.
+     */
+    @Test
+    fun anOwedFrameWakesTheParkedLoopWhileRenderingStaysDisabled() = runTest {
+        val isRendering = mutableStateOf(false)
+        val needsPresent = mutableStateOf(false)
+        val shouldRender = derivedStateOf { isRendering.value || needsPresent.value }
+        var resumedAtVirtualTime = -1L
+
+        val job = launch {
+            awaitRenderingEnabled(shouldRender)
+            resumedAtVirtualTime = currentTime
+        }
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals("must be parked while nothing is owed", -1L, resumedAtVirtualTime)
+
+        // What onSurfaceReady / onSurfaceResized do when a new swap chain arrives.
+        val parkedUntilVirtualTime = currentTime
+        needsPresent.value = true
+        Snapshot.sendApplyNotifications()
+        runCurrent()
+
+        assertTrue(
+            "a new or resized surface must get a frame even while isRendering is false — otherwise " +
+                "a fold/unfold or an app return leaves a permanently blank view, which is worse " +
+                "than the stale frame the pause promises",
+            job.isCompleted
+        )
+        assertEquals(
+            "the wake must come from the snapshot apply itself: no virtual time may pass between " +
+                "the debt being set and the loop resuming. A later time means the debt is being " +
+                "noticed by a poll tick instead.",
+            parkedUntilVirtualTime,
+            resumedAtVirtualTime
+        )
+        assertFalse("isRendering itself must not be mutated by the debt path", isRendering.value)
+    }
+
+    /**
+     * The debt is a one-shot, not a licence to spin: once the owed frame has been presented the
+     * loop must park again, or `isRendering = false` would stop meaning anything after the first
+     * surface event.
+     */
+    @Test
+    fun settlingTheOwedFrameParksTheLoopAgain() = runTest {
+        val isRendering = mutableStateOf(false)
+        val needsPresent = mutableStateOf(true)
+        val shouldRender = derivedStateOf { isRendering.value || needsPresent.value }
+
+        // First pass: the debt is outstanding, so the loop does not park at all.
+        var firstPassCompleted = false
+        launch {
+            awaitRenderingEnabled(shouldRender)
+            firstPassCompleted = true
+        }
+        runCurrent()
+        assertTrue("an owed frame must not park", firstPassCompleted)
+
+        // The frame was presented — what the render loop writes back after renderFrame.
+        needsPresent.value = false
+        Snapshot.sendApplyNotifications()
+
+        var secondPassCompleted = false
+        val job = launch {
+            awaitRenderingEnabled(shouldRender)
+            secondPassCompleted = true
+        }
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertFalse(
+            "with the debt settled and isRendering still false, the loop must go back to parking — " +
+                "a surface event must not leave the scene rendering forever",
+            secondPassCompleted
+        )
+        assertTrue(job.isActive)
+
+        job.cancel()
+    }
+
+    /**
      * Wiring pin, mirroring [SceneAutoFitWiringTest]: the parameter must exist on the public
      * composable *and* on the deprecated `Scene` alias. The alias forwards every other parameter,
      * so a caller still on the old name would otherwise be silently unable to pause rendering.
+     *
+     * Scope, stated so nobody reads more into a green run than it earns: this pins the *declaration*
+     * on both facades, not the forwarding. An alias that declared `isRendering` and dropped it on
+     * the floor would still pass here — proving the value reaches the loop needs a Compose runtime
+     * host, which is `SceneAutoFitWiringTest`'s level for every other parameter too.
      */
     @Test
     fun bothComposablesDeclareIsRenderingParameter() {
