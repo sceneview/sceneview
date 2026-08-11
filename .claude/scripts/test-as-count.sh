@@ -74,6 +74,30 @@ expect "a failed checker that itemised nothing reads '?'" "?" "$(as_count_or_unk
 expect "a failed checker with items reads the count" "6" "$(as_count_or_unknown "6")"
 expect "no argument reads '?'" "?" "$(as_count_or_unknown)"
 
+# ── Static guard: no positional dereferenced without a default ───────────────
+# The behavioural "no argument at all" case above only FAILS on bash 5. On the
+# bash 3.2 that ships with macOS, `${1%%…}` with no positional silently yields
+# the empty string instead of erroring under `set -u`, so this whole file passed
+# locally while the runner went red. That is the local-vs-runner divergence the
+# helper is supposed to eliminate, so it gets a check that does not depend on
+# which bash is running: every `${N…}` in the library must open with a default.
+#
+# Full-line comments are dropped first — the library's own header quotes the
+# broken form on purpose, and a guard that flags the documentation of a bug it
+# fixed is a guard nobody keeps. Anything outside a full-line comment counts.
+LIB="$REPO_ROOT/.claude/scripts/lib/as-count.sh"
+UNSAFE=""
+while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    case "$ref" in
+        '${'[0-9]'-'* | '${'[0-9]':-'*) ;;
+        *) UNSAFE="$UNSAFE $ref" ;;
+    esac
+done <<EOF
+$(grep -v '^[[:space:]]*#' "$LIB" | grep -o '\${[0-9][^}]*' || true)
+EOF
+expect "no positional is dereferenced without a default" "" "$UNSAFE"
+
 echo ""
 if [ "$FAILURES" -eq 0 ]; then
     echo "as-count.sh: all scenarios hold"

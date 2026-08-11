@@ -29,8 +29,17 @@
 
 # Takes the first line, strips everything that is not a digit, and defaults to
 # `0`. Every input shape a failing grep can produce collapses to one integer.
+#
+# `${1-}` FIRST, and only then the pattern strip: under `set -u` a combined
+# `${1%%…}` on an absent positional is an unbound-variable error on bash 5 (every
+# GitHub runner) but NOT on the bash 3.2 that ships with macOS. So a caller that
+# forgets the argument dies in CI and passes locally — the exact local-vs-runner
+# divergence this file exists to stop. test-as-count.sh pins it two ways: the
+# behavioural `as_count` with no argument, plus a static assertion that no
+# positional here is dereferenced without a default (that one holds on 3.2 too).
 as_count() {
-    local first="${1%%$'\n'*}"
+    local first="${1-}"
+    first="${first%%$'\n'*}"
     first="${first//[^0-9]/}"
     printf '%s' "${first:-0}"
 }
