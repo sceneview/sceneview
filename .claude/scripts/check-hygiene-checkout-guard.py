@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: repo-hygiene's `always()` steps never run without their checkout.
 
-`repo-hygiene` puts `if: always()` on every one of its 43 gate steps on purpose —
+`repo-hygiene` puts `if: always()` on every one of its gate steps on purpose —
 a PR author must see EVERY hygiene violation in one run, not fix them one check
 at a time. But `always()` also fires when the job's own `actions/checkout` never
 completed, and then every gate measures an empty working directory.
@@ -38,7 +38,7 @@ sequential-stop bug that `always()` exists to prevent.
 Plus the failure mode that would be worst of all, checked separately: every
 `steps.<id>` an expression names must be the `id:` of an earlier step. Rename
 the checkout's `id:` and `steps.checkout.outcome` resolves to null forever, so
-all 43 gates skip and the job reports GREEN having measured nothing — a false
+every gate skips and the job reports GREEN having measured nothing — a false
 green strictly worse than the false red this gate was written to fix.
 
 No third-party imports: this runs on a bare CI python3.
@@ -50,7 +50,7 @@ import re
 import sys
 from pathlib import Path
 
-# `repo-hygiene` had 44 gate steps when this gate was written. The floor exists
+# The job has had 40+ gate steps for its whole life. The floor exists
 # for the same reason leg 19 of pre-push-check.sh has one: this parser is a set
 # of regexes, and "found nothing" is a broken parser, never a clean bill of
 # health (#3050). Lower it only if the job genuinely shrinks.
@@ -225,6 +225,17 @@ def ctx_for(checkout_outcome, prior_gate_failed=False, run_cancelled=False,
             "failure": lost or prior_gate_failed,
             "cancelled": run_cancelled,
         },
+    }
+
+
+def rebind(ctx, ckid):
+    """Re-key the simulated `steps` context onto the job's real checkout id."""
+    if ckid == "checkout":
+        return ctx
+    return {
+        **ctx,
+        "steps": {(ckid if k == "checkout" else k): v
+                  for k, v in ctx["steps"].items()},
     }
 
 
@@ -445,6 +456,25 @@ def main():
             "that is a broken parser, not a small job"
         )
 
+    # The contract is written against a step whose id is `checkout`; the job is
+    # free to call it anything. Bind the simulated `steps` key to the id the real
+    # checkout step declares, so renaming it and every reference to it stays a
+    # semantically identical rewrite instead of a false red — the same reason
+    # `conclusion` and `!(… != 'success')` are accepted. With no id at all, the
+    # id-visibility check below is what fires, so leave the key alone.
+    ckid = next(
+        (
+            st.keys["id"]
+            for st in steps
+            if st.keys.get("uses", "").startswith("actions/checkout")
+            and "id" in st.keys
+        ),
+        "checkout",
+    )
+    cases = [
+        (name, rebind(ctx, ckid), want) for name, ctx, want in CASES
+    ]
+
     # `id:`s available to an expression: only steps that already ran.
     seen_ids, gates = set(), []
     for st in steps:
@@ -473,7 +503,7 @@ def main():
         except SyntaxError as exc:
             failures.append(f"line {st.if_line}: step {st.label!r} — {exc}")
             continue
-        for name, ctx, want in CASES:
+        for name, ctx, want in cases:
             try:
                 got = RUN if evaluate(expr, ctx) else SKIP
             except SyntaxError as exc:
@@ -493,7 +523,7 @@ def main():
         for f in failures:
             print(f"    - {f}")
         print("      Every gate step needs: "
-              "if: always() && steps.checkout.outcome == 'success'")
+              f"if: always() && steps.{ckid}.outcome == 'success'")
         return 1
 
     print(f"{GREEN}  ✓ {len(gates)}/{len(steps)} `{job}` steps guarded on the checkout, "

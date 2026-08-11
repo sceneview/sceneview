@@ -43,6 +43,7 @@ new_wf() {
 # cases below is always about the mutation and never about the job being small.
 write_job() {
     local file="$1" ckid="$2"; shift 2
+    local g="${WJ_GUARD:-$GUARD}"
     {
         printf 'name: t\non:\n  push:\n\njobs:\n'
         printf '  repo-hygiene:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n'
@@ -51,7 +52,7 @@ write_job() {
         local i=1
         while [ "$i" -le 24 ]; do
             printf '\n      # a gate\n      - name: gate %d\n        if: %s\n        shell: bash\n        run: bash .claude/scripts/g%d.sh\n' \
-                "$i" "$GUARD" "$i"
+                "$i" "$g" "$i"
             i=$((i + 1))
         done
         local expr
@@ -162,6 +163,17 @@ check 0 "double-quoted scalar" "$w"
 
 w="$(new_wf)"; write_job "$w" checkout "steps.checkout.outcome == 'success' && always()"
 check 0 "operands in the other order" "$w"
+
+# The id is DISCOVERED from the `actions/checkout` step, not assumed to be
+# "checkout". Renaming it and every reference consistently is a rewrite, not a
+# defect; a gate that hardcoded the name would evaluate steps.scm.outcome as
+# null in all seven states and refuse the canonical guard — a false red on a
+# correct tree. (Raised as a warning by the #3118 review.)
+w="$(new_wf)"
+WJ_GUARD="always() && steps.scm.outcome == 'success'"
+write_job "$w" scm
+unset WJ_GUARD
+check 0 "the checkout id is discovered, not assumed to be 'checkout'" "$w"
 
 # ── 4. discovery must be falsifiable, not merely thorough ────────────────────
 # The gate reads raw text, i.e. it makes claims about FORMATTING. Each of these

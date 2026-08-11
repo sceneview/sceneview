@@ -825,7 +825,7 @@ jobs:
   #
   # Every gate carries `always() && steps.checkout.outcome == 'success'`, never
   # a bare `always()`. `always()` alone also fires when the CHECKOUT never
-  # completed, and then all 43 gates measure an empty directory and report
+  # completed, and then every gate measures an empty directory and reports
   # `failure` at once. Measured on run 31516160366 (PR #3114): checkout hung,
   # ate the 10-minute timeout, was cancelled — and the run showed 40 red gates
   # ("agent skill out of sync", "asset credits out of sync", …) that had
@@ -833,7 +833,7 @@ jobs:
   # the merge, so this costs diagnosis time rather than correctness: the single
   # real cause was visible only by listing the steps and noticing the first said
   # `cancelled` while the rest said `failure`. Guarded, a lost checkout skips
-  # all 43 and leaves exactly one red step — the one that actually broke.
+  # them all and leaves exactly one red step — the one that actually broke.
   #
   # The guard must stay `always() && …` and never become `success() && …`:
   # `success()` is false once ANY earlier step failed, which is precisely the
