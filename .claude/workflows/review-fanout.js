@@ -123,9 +123,17 @@ const reviewed = await pipeline(
 
 Try to REFUTE it. Read the actual code at that location and reproduce the failure if it is a runtime/compile claim (e.g. grep the call site, check the signature, trace the thread). Default to real=false if you cannot independently confirm a genuine, merge-blocking problem. Only real=true if you confirm it.`,
           { label: `verify:${r.key}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus', effort: 'xhigh' },
-        ).then((v) => ({ ...f, reviewer: r.key, verified: v })),
+        ).then((v) => ({ ...f, reviewer: r.key, verified: v || null })),
       ),
-    ).then((verified) => ({ ...res, verifiedErrors: verified.filter(Boolean) }))
+      // A verifier that returned NOTHING refuted nothing. Dropping it (the old
+      // `.filter(Boolean)`) erased the ERROR and let merge_recommendation reach MERGE on a
+      // finding nobody ever checked — the exact false-green this workflow guards against one
+      // branch up (REVIEW_INCOMPLETE). A dead verifier is reachable: `model:'opus'` above is
+      // hard-pinned, so an exhausted Opus quota kills it. Keep the finding, mark it unverified.
+    ).then((verified) => ({
+      ...res,
+      verifiedErrors: verified.map((v, i) => v || { ...errors[i], reviewer: r.key, verified: null }),
+    }))
   },
 )
 
@@ -133,6 +141,8 @@ const results = reviewed.filter(Boolean)
 const reviewersRan = results.length
 const reviewersExpected = REVIEWERS.length
 const confirmedErrors = results.flatMap((res) => (res.verifiedErrors || []).filter((f) => f.verified?.real))
+// Neither confirmed nor refuted — the verifier died. These are NOT clean.
+const unverifiedErrors = results.flatMap((res) => (res.verifiedErrors || []).filter((f) => !f.verified))
 const allWarnings = results.flatMap((res) => (res.findings || []).filter((f) => f.severity === 'warning').map((f) => ({ ...f, reviewer: res.reviewer })))
 const propagation = results.flatMap((res) => res.propagation || [])
 
@@ -144,7 +154,7 @@ const breakingApi = confirmedErrors.some((f) => f.reviewer === 'impact')
 // NEVER recommend MERGE on an incomplete review — a dropped reviewer makes "no findings"
 // meaningless (absence of evidence ≠ evidence of safety).
 const merge_recommendation =
-  reviewersRan < reviewersExpected ? 'REVIEW_INCOMPLETE'
+  reviewersRan < reviewersExpected || unverifiedErrors.length ? 'REVIEW_INCOMPLETE'
     : confirmedErrors.length ? 'DO_NOT_MERGE'
       : allWarnings.length ? 'MERGE_AFTER_WARNINGS'
         : 'MERGE'
@@ -154,12 +164,15 @@ const merge_recommendation =
 const autonomousAction =
   merge_recommendation === 'MERGE' ? 'auto-merge (squash --auto), no maintainer gate'
     : merge_recommendation === 'MERGE_AFTER_WARNINGS' ? 'fix warnings in the same PR, then auto-merge'
-      : merge_recommendation === 'REVIEW_INCOMPLETE' ? 'NEVER merge — re-run, investigate why a reviewer dropped'
+      : merge_recommendation === 'REVIEW_INCOMPLETE' ? 'NEVER merge — re-run, investigate why a reviewer or a verifier dropped'
         : breakingApi ? 'DRAFT PR + STOP for the maintainer — breaking public-API / cross-platform divergence'
           : 'fix the confirmed root cause, then re-run review-fanout (do not merge)'
 
 if (reviewersRan < reviewersExpected) {
   log(`⚠️ only ${reviewersRan}/${reviewersExpected} reviewers completed — REVIEW_INCOMPLETE, not MERGE`)
+}
+if (unverifiedErrors.length) {
+  log(`⚠️ ${unverifiedErrors.length} ERROR finding(s) got no verdict (verifier died) — REVIEW_INCOMPLETE, not MERGE`)
 }
 log(`Verdict: ${merge_recommendation}${breakingApi ? ' (BREAKING public-API — maintainer gate)' : ''} → ${autonomousAction}`)
 
@@ -195,6 +208,7 @@ return {
   reviewersRan,
   reviewersExpected,
   confirmedErrors,
+  unverifiedErrors,
   warnings: allWarnings,
   propagation,
   perReviewer: results.map((r) => ({ reviewer: r.reviewer, verdict: r.verdict, errorCount: (r.findings || []).filter((f) => f.severity === 'error').length })),
