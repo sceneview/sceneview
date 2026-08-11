@@ -47,10 +47,17 @@ fun viewToWorld(
 /**
  * Convert a world-space position to a normalized view-space position.
  *
+ * Returns `null` when [worldPosition] is **behind the camera** (at or behind the camera's eye plane). Such a
+ * point has no on-screen location: its clip-space `w` is `<= 0`, and dividing by a non-positive
+ * `w` yields a *finite, mirrored* coordinate on the wrong side of the view — a plausible-but-wrong
+ * value no `isFinite` check would reject. Callers that project several world points (e.g. the 8
+ * corners of a bounding box) must skip the `null` ones rather than draw them at a mirrored pixel.
+ * A point exactly on the camera (`w == 0`) is likewise reported as `null`.
+ *
  * @param worldPosition The world-space position to convert.
  * @param projectionMatrix The camera's culling projection matrix.
  * @param viewMatrix The camera's view matrix.
- * @return Normalized view coordinate:
+ * @return Normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane:
  *   x = (0 = left, 0.5 = center, 1 = right)
  *   y = (0 = bottom, 0.5 = center, 1 = top)
  */
@@ -58,9 +65,12 @@ fun worldToView(
     worldPosition: Position,
     projectionMatrix: Mat4,
     viewMatrix: Mat4
-): Float2 {
+): Float2? {
     val viewProjectionTransform = projectionMatrix * viewMatrix
     val viewPosition = viewProjectionTransform * Float4(worldPosition, w = 1.0f)
+    // A point at or behind the camera's eye plane has w <= 0; dividing by it produces a mirrored, finite
+    // (and therefore silently wrong) coordinate. Report "no view position" instead.
+    if (viewPosition.w <= 0.0f) return null
     // Divide by w component to convert to clip space
     return (viewPosition / viewPosition.w).xy / 2.0f + 0.5f
 }

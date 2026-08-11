@@ -8,6 +8,8 @@ import dev.romainguy.kotlin.math.inverse
 import kotlin.math.abs
 import kotlin.math.tan
 import kotlin.test.Test
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CameraProjectionTest {
@@ -69,8 +71,101 @@ class CameraProjectionTest {
         val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
 
         val viewPos = worldToView(Float3(0f, 0f, 0f), proj, view)
+        assertNotNull(viewPos, "A point in front of the camera must project to a non-null coordinate")
         assertTrue(abs(viewPos.x - 0.5f) < 0.1f, "Origin should project near center x, got ${viewPos.x}")
         assertTrue(abs(viewPos.y - 0.5f) < 0.1f, "Origin should project near center y, got ${viewPos.y}")
+    }
+
+    // ── worldToView near-plane guard ─────────────────────────────────────────────────────────
+    // A world point at or behind the camera's eye plane has clip-space w <= 0. Dividing by a non-positive w
+    // produces a finite, MIRRORED coordinate on the wrong side of the view (or NaN/Inf right on the
+    // plane) — silently wrong, so no isFinite check downstream catches it. worldToView must return
+    // null for such points. (This is what made an AR bbox overlay blink as the camera panned and a
+    // corner crossed the eye plane.)
+    //
+    // Conventions of the matrix builders above (standard OpenGL: the camera looks down -Z, so
+    // clip.w = -viewZ): with eye at z = 5 looking at the origin, points at world z < 5 are IN FRONT
+    // (w > 0), world z = 5 is exactly on the eye/near boundary (w = 0), and world z > 5 is BEHIND
+    // (w < 0). All the coordinates below were verified numerically against these exact builders.
+
+    /** The exact pre-fix math, inlined so the regression baseline is real (no w guard). */
+    private fun unguardedWorldToView(worldPosition: Float3, proj: Mat4, view: Mat4): Float2 {
+        val clip = (proj * view) * Float4(worldPosition, w = 1.0f)
+        return (clip / clip.w).xy / 2.0f + 0.5f
+    }
+
+    @Test
+    fun worldToViewBehindCameraWasAFiniteMirroredPointBeforeTheFix() {
+        // Reproduce baseline: prove the pre-fix behaviour this guard replaces. An off-axis corner
+        // BEHIND the camera (world z = 12, up-and-right) had w = -7 and pre-fix projected to a
+        // finite (0.25, 0.31) — mirrored to the lower-LEFT although the corner is upper-right.
+        val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
+        val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+        val behindOffAxis = Float3(2f, 1.5f, 12f)
+
+        val clipW = ((proj * view) * Float4(behindOffAxis, w = 1.0f)).w
+        assertTrue(clipW <= 0f, "precondition: behind-camera point must have w <= 0, got $clipW")
+
+        val raw = unguardedWorldToView(behindOffAxis, proj, view)
+        // The whole reason the bug was silent: a perfectly finite pixel, not NaN/Inf.
+        assertTrue(raw.x.isFinite() && raw.y.isFinite(), "pre-fix value must be finite, got $raw")
+        // And it is MIRRORED: the corner is up-and-right (would be x>0.5, y>0.5 in front) yet lands
+        // lower-left. This is precisely the wrong-side pixel the guard must suppress.
+        assertTrue(raw.x < 0.5f && raw.y < 0.5f, "pre-fix behind-camera point is mirrored, got $raw")
+    }
+
+    @Test
+    fun worldToViewReturnsNullForPointBehindEyePlane() {
+        val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
+        val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+
+        // world z = 10 → w = -5, behind the camera.
+        assertNull(
+            worldToView(Float3(0f, 0f, 10f), proj, view),
+            "A point behind the camera's eye plane has no view position"
+        )
+    }
+
+    @Test
+    fun worldToViewReturnsNullForPointOnTheEyePlaneBoundary() {
+        val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
+        val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+
+        // Exactly on the eye plane (world z = 5) → w == 0. The divide is undefined (pre-fix this
+        // off-axis point produced (Inf, NaN)); the `w <= 0` guard must report null.
+        assertNull(
+            worldToView(Float3(1f, 0f, 5f), proj, view),
+            "A point on the near-plane boundary (w == 0) has no view position"
+        )
+    }
+
+    @Test
+    fun worldToViewReturnsNullForOffAxisPointBehindTheCamera() {
+        // The real failure mode: a bbox corner up-and-to-the-side that crossed behind the near
+        // plane. Pre-fix this gave the finite mirrored pixel proven above; post-fix it must be null.
+        val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
+        val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+        val behindOffAxis = Float3(2f, 1.5f, 12f)
+
+        val clipW = ((proj * view) * Float4(behindOffAxis, w = 1.0f)).w
+        assertTrue(clipW <= 0f, "precondition: this corner is behind the camera (w <= 0), got $clipW")
+        assertNull(worldToView(behindOffAxis, proj, view))
+    }
+
+    @Test
+    fun worldToViewIsUnchangedForPointsInFrontOfTheCamera() {
+        // The guard must not perturb the normal (in-front) path: it matches the raw divide exactly.
+        val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
+        val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+        val front = Float3(2f, 1.5f, 0f) // in front (w = 5), off the view axis (upper-right)
+
+        val guarded = worldToView(front, proj, view)
+        val raw = unguardedWorldToView(front, proj, view)
+        assertNotNull(guarded, "an in-front point must still project")
+        assertTrue(abs(guarded.x - raw.x) < 1e-5f, "x must match the raw divide, got ${guarded.x} vs ${raw.x}")
+        assertTrue(abs(guarded.y - raw.y) < 1e-5f, "y must match the raw divide, got ${guarded.y} vs ${raw.y}")
+        // Correct side: upper-right corner in front projects right-and-up of centre (NOT mirrored).
+        assertTrue(guarded.x > 0.5f && guarded.y > 0.5f, "in-front upper-right must stay upper-right, got $guarded")
     }
 
     @Test

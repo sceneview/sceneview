@@ -7,16 +7,15 @@
     <ID>ComplexCondition:DepthMeshCollision.kt:x + radius &lt; minX || x - radius > maxX || z + radius &lt; minZ || z - radius > maxZ</ID>
     <ID>ComplexCondition:DepthMeshGeometry.kt:!valid[tl] || !valid[tr] || !valid[bl] || !valid[br]</ID>
     <ID>ConstructorParameterNaming:ARSceneScope.kt:ARSceneScope$_nodes: SnapshotStateList&lt;NodeImpl></ID>
-    <ID>CyclomaticComplexMethod:ARSessionFailure.kt:ARSessionFailure.Companion$@JvmStatic public fun from(exception: Exception): ARSessionFailure</ID>
-    <ID>CyclomaticComplexMethod:DepthMeshCollision.kt:@Suppress("UNUSED_PARAMETER") // y reserved for a future 3D variant — keep stable API internal fun nearestSurfaceYBelow( positionsWorld: FloatArray, indices: IntArray, x: Float, y: Float, z: Float, radius: Float, ): Float?</ID>
-    <ID>CyclomaticComplexMethod:LightEstimator.kt:LightEstimator$fun update(session: Session, frame: Frame, camera: Camera): Estimation?</ID>
+    <ID>CyclomaticComplexMethod:ARSessionFailure.kt:ARSessionFailure.Companion$@JvmStatic public fun from: ARSessionFailure</ID>
+    <ID>CyclomaticComplexMethod:DepthMeshCollision.kt:@Suppress("UNUSED_PARAMETER") // y reserved for a future 3D variant — keep stable API internal fun nearestSurfaceYBelow: Float?</ID>
+    <ID>CyclomaticComplexMethod:LightEstimator.kt:LightEstimator$fun update: Estimation?</ID>
     <ID>DestructuringDeclarationWithTooManyEntries:ARFogNodeTest.kt:ARFogNodeTest$(depth, density, start, end)</ID>
-    <ID>LongMethod:ARSessionFailureTest.kt:ARSessionFailureTest$@Test fun `from() maps every ARCore exception subclass to its typed ARSessionFailure subtype`()</ID>
-    <ID>LongMethod:AugmentedFaceNode.kt:AugmentedFaceNode$override fun update(trackable: AugmentedFace?)</ID>
-    <ID>LongMethod:DepthMeshCollision.kt:@Suppress("UNUSED_PARAMETER") // y reserved for a future 3D variant — keep stable API internal fun nearestSurfaceYBelow( positionsWorld: FloatArray, indices: IntArray, x: Float, y: Float, z: Float, radius: Float, ): Float?</ID>
-    <ID>LongMethod:DepthMeshGeometry.kt:internal fun buildDepthMeshGeometry( depthBuffer: ShortBuffer, depthWidth: Int, depthHeight: Int, rowStrideShorts: Int, fx: Float, fy: Float, cx: Float, cy: Float, stride: Int = DEFAULT_DEPTH_MESH_STRIDE, edgeThresholdMeters: Float = DEFAULT_DEPTH_EDGE_THRESHOLD_METERS, ): DepthMeshGeometry</ID>
-    <ID>LongMethod:LightEstimator.kt:LightEstimator$fun update(session: Session, frame: Frame, camera: Camera): Estimation?</ID>
-    <ID>LongMethod:LightEstimatorConcurrentDestroyTest.kt:LightEstimatorConcurrentDestroyTest$@Test fun `100 iterations of concurrent update + destroy at 50 percent — zero crashes`()</ID>
+    <ID>LongMethod:ARSessionFailureTest.kt:ARSessionFailureTest$@Test fun `from() maps every ARCore exception subclass to its typed ARSessionFailure subtype`</ID>
+    <ID>LongMethod:DepthMeshCollision.kt:@Suppress("UNUSED_PARAMETER") // y reserved for a future 3D variant — keep stable API internal fun nearestSurfaceYBelow: Float?</ID>
+    <ID>LongMethod:DepthMeshGeometry.kt:internal fun buildDepthMeshGeometry: DepthMeshGeometry</ID>
+    <ID>LongMethod:LightEstimator.kt:LightEstimator$fun update: Estimation?</ID>
+    <ID>LongMethod:LightEstimatorConcurrentDestroyTest.kt:LightEstimatorConcurrentDestroyTest$@Test fun `100 iterations of concurrent update + destroy at 50 percent — zero crashes`</ID>
     <ID>LoopWithTooManyJumpStatements:DepthMeshCollision.kt:while</ID>
     <ID>LoopWithTooManyJumpStatements:RerunBridge.kt:RerunBridge$while</ID>
     <ID>LoopWithTooManyJumpStatements:XrHandNode.kt:for</ID>
@@ -37,10 +36,10 @@
     <ID>MaxLineLength:ARTypedConfigModesTest.kt:ARTypedConfigModesTest$"""streetscapeGeometryMode\s*:\s*Config\.StreetscapeGeometryMode\s*=\s*Config\.StreetscapeGeometryMode\.DISABLED"""</ID>
     <ID>MaxLineLength:DepthMeshNode.kt:DepthMeshNode$boundingBox = Box(0f, 0f, 0f, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M, DEGENERATE_AABB_HALF_EXTENT_M)</ID>
     <ID>MaxLineLength:RerunWireFormatEdgeCaseTest.kt:RerunWireFormatEdgeCaseTest$assertFalse("timestamp must not use 'E' notation", line.contains("E") &amp;&amp; line.indexOf("E") &lt; line.indexOf("\"type\""))</ID>
-    <ID>NestedBlockDepth:ARSceneView.kt:private fun onARFrame( engine: Engine, scene: Scene, view: View, cameraNode: ARCameraNode, cameraStream: ARCameraStream?, lightEstimator: LightEstimator?, mainLightNode: LightNode?, environment: Environment, arPlaneRenderer: PlaneRendererBase, childNodes: List&lt;Node>, prevTrackingFailureRef: AtomicReference&lt;TrackingFailureReason?>, onTrackingFailureChangedRef: AtomicReference&lt;((TrackingFailureReason?) -> Unit)?>, onSessionUpdatedRef: AtomicReference&lt;((Session, Frame) -> Unit)?&gt;, baselineMainLightColorRef: AtomicReference&lt;io.github.sceneview.math.Color?>, baselineMainLightIntensityRef: AtomicReference&lt;Float?>, builtIndirectLightRef: AtomicReference&lt;IndirectLight?>, session: Session, frame: Frame )</ID>
-    <ID>NestedBlockDepth:LightEstimator.kt:LightEstimator$fun update(session: Session, frame: Frame, camera: Camera): Estimation?</ID>
-    <ID>NestedBlockDepth:PlaneRenderer.kt:PlaneRenderer$override fun update(session: Session, frame: Frame)</ID>
-    <ID>NestedBlockDepth:PlaneRendererV2.kt:PlaneRendererV2$override fun update(session: Session, frame: Frame)</ID>
+    <ID>NestedBlockDepth:ARSceneView.kt:private fun onARFrame</ID>
+    <ID>NestedBlockDepth:LightEstimator.kt:LightEstimator$fun update: Estimation?</ID>
+    <ID>NestedBlockDepth:PlaneRenderer.kt:PlaneRenderer$override fun update</ID>
+    <ID>NestedBlockDepth:PlaneRendererV2.kt:PlaneRendererV2$override fun update</ID>
     <ID>NewLineAtEndOfFile:ARCameraNode.kt:io.github.sceneview.ar.node.ARCameraNode.kt</ID>
     <ID>NewLineAtEndOfFile:ARCameraStream.kt:io.github.sceneview.ar.camera.ARCameraStream.kt</ID>
     <ID>NewLineAtEndOfFile:Anchor.kt:io.github.sceneview.ar.scene.Anchor.kt</ID>

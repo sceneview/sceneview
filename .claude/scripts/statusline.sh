@@ -38,8 +38,17 @@ if [[ -z "$ROOT" ]]; then
   exit 0
 fi
 
-# Branch — short, omit "(HEAD detached at …)" verbosity.
-BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null || git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+# Branch — short, omit "(HEAD detached at …)" verbosity. A detached HEAD is called out
+# explicitly: in a repo worked through worktrees it is a real footgun (commits land on no
+# branch, and the checkout silently serves weeks-old files), and a bare SHA does not say
+# so. The main clone sat detached for three weeks before anyone noticed.
+# `|| true` is load-bearing: under `set -e`, symbolic-ref's non-zero exit on a detached
+# HEAD kills the whole statusline and prints nothing at all.
+BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null || true)"
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="detached@$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+  DETACHED=1
+fi
 
 # Worktree marker: when ROOT lives under .claude/worktrees/, prefix the slug.
 WORKTREE_MARKER=""
@@ -56,6 +65,15 @@ if [[ -f "$ROOT/gradle.properties" ]]; then
   VERSION="$(awk -F= '$1=="VERSION_NAME"{print $2; exit}' "$ROOT/gradle.properties" 2>/dev/null)"
 fi
 
+# Unsafe work — the two signals that answer "is anything of mine still stranded?".
+# Both are local git, sub-10ms; deliberately SILENT when zero, so the line only speaks
+# when something can actually be lost. This is what a /status turn used to cost a model
+# call to find out (546 invocations in 30 days, measured 2026-08-11).
+DIRTY="$( { git -C "$ROOT" status --porcelain 2>/dev/null || true; } | wc -l | tr -d ' ')"
+[[ "$DIRTY" == "0" ]] && DIRTY=""
+UNPUSHED="$(git -C "$ROOT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)"
+[[ "$UNPUSHED" == "0" ]] && UNPUSHED=""
+
 # Free RAM (GB) — useful for the emulator pool. macOS-only path; Linux fallback skipped.
 FREE_RAM=""
 if command -v vm_stat >/dev/null 2>&1; then
@@ -70,7 +88,12 @@ fi
 
 # Compose the line — terse, single-line, no trailing newline (Claude adds one).
 parts=()
-[[ -n "$BRANCH" ]]     && parts+=("${CYAN}${BRANCH}${RESET}${WORKTREE_MARKER}")
+if [[ -n "$BRANCH" ]]; then
+  BRANCH_COLOR="$CYAN"; [[ -n "${DETACHED:-}" ]] && BRANCH_COLOR="$YELLOW"
+  parts+=("${BRANCH_COLOR}${BRANCH}${RESET}${WORKTREE_MARKER}")
+fi
+[[ -n "$DIRTY" ]]      && parts+=("${YELLOW}●${DIRTY}${RESET}")
+[[ -n "$UNPUSHED" ]]   && parts+=("${YELLOW}↑${UNPUSHED}${RESET}")
 [[ -n "$VERSION" ]]    && parts+=("${GREEN}v${VERSION}${RESET}")
 [[ -n "$FREE_RAM" ]]   && parts+=("${YELLOW}${FREE_RAM}GB free${RESET}")
 [[ -n "$MODEL_NAME" ]] && parts+=("${DIM}${MODEL_NAME}${RESET}")
