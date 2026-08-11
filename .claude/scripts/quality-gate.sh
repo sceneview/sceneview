@@ -27,26 +27,13 @@ NC='\033[0m'
 echo -e "${CYAN}=== SceneView Quality Gate ===${NC}"
 echo ""
 
-# `grep -c` prints `0` AND exits 1 when nothing matches, so the familiar
-# `$(grep -c … || echo 0)` yields the TWO-LINE value `0\n0`. Every arithmetic
-# test downstream then dies ("integer expression expected"), and in a
-# `A && x || y` chain that failure silently takes the `y` branch — which is how
-# this file's threading check came to report a violation on a clean diff. Use
-# `|| true` on the grep and pipe the result through here.
-as_count() {
-    local first="${1%%$'\n'*}"
-    first="${first//[^0-9]/}"
-    printf '%s' "${first:-0}"
-}
-
-# Same normalisation for the diagnostic counts scraped out of a failed
-# checker's log, where `?` means "it failed but itemised nothing" — a real
-# distinction, and one `0` would misreport as "no offending lines".
-as_count_or_unknown() {
-    local n
-    n="$(as_count "${1:-}")"
-    if [ "$n" = "0" ]; then printf '?'; else printf '%s' "$n"; fi
-}
+# `as_count` / `as_count_or_unknown` — normalise a `grep -c` result so neither a
+# comparison nor a `$((…))` sum can be broken by the two-line `0\n0` a failing
+# grep produces. Extracted into lib/ so test-as-count.sh can pin both consumption
+# shapes: the arithmetic one silently skipped every check below it, which no
+# amount of reading this file would have shown.
+# shellcheck source=lib/as-count.sh
+source "$REPO_ROOT/.claude/scripts/lib/as-count.sh"
 
 check() {
     local name="$1"
