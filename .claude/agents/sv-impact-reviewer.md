@@ -40,7 +40,7 @@ precise, not trigger-happy — but never wave through a real break.
    flagship documented path wrong.
 
 4. **Version/coordinate integrity (ERROR).** A bumped major (4 is FROZEN), a bridge consumed-dep
-   pointed at an in-flight/unreleased version (breaks `Build flutter-demo APK` — see
+   pointed at an in-flight/unreleased version (breaks `Flutter plugin + demo APK` — see
    `feedback_bridge_consumed_dep_lag`), or an unsynced version-bearing file.
 
 ## Output (map to the review schema)

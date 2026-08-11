@@ -37,7 +37,7 @@ class AboutPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'v4.13.0',
+                    'v4.27.0',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: theme.colorScheme.onPrimaryContainer.withOpacity(0.7),
                     ),
@@ -120,10 +120,29 @@ class AboutPage extends StatelessWidget {
               children: [
                 _FeatureRow('SceneView (3D)', _FeatureSupport.both, theme),
                 _FeatureRow('ARSceneView (AR)', _FeatureSupport.both, theme),
-                _FeatureRow('Model loading (GLB/glTF)', _FeatureSupport.both, theme),
+                // Deliberately split by format rather than claiming "both":
+                // Filament reads GLB/glTF, RealityKit reads neither. Saying
+                // "Model loading (GLB/glTF) — both" was the claim this app's
+                // own iOS viewer disproved by rendering nothing for a release.
+                _FeatureRow('Model loading — GLB/glTF', _FeatureSupport.androidOnly, theme),
+                _FeatureRow('Model loading — USDZ', _FeatureSupport.iosOnly, theme),
                 _FeatureRow('Camera gestures (pan, pinch)', _FeatureSupport.both, theme),
                 _FeatureRow('Model position, rotation', _FeatureSupport.androidOnly, theme),
-                _FeatureRow('onTap callback', _FeatureSupport.androidOnly, theme),
+                // 3D onTap is Android-only for a different reason than AR: the
+                // iOS path IS wired — the platform view claims the gesture, the
+                // entity carries collision AND input-target components — but
+                // no entity resolves, so the handler never runs. Measured on
+                // an iPhone 17 Pro Max simulator (#3045). Not the shared
+                // RealityKit hit test: React Native reaches the same hook and
+                // was measured firing on iOS (#3086), which leaves Flutter's
+                // platform-view touch delivery. A green badge here
+                // would be the same false capability claim this page exists to
+                // prevent.
+                _FeatureRow('onTap callback (3D)', _FeatureSupport.androidOnly, theme),
+                // AR onTap is Android-only: SceneViewSwift's ARSceneView
+                // exposes no entity hit-test hook, so the callback never fires
+                // on iOS (#2051).
+                _FeatureRow('onTap callback (AR)', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('onPlaneDetected callback', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('Environment HDR', _FeatureSupport.androidOnly, theme),
                 _FeatureRow('Geometry nodes (cube, sphere, etc.)', _FeatureSupport.androidOnly, theme),
@@ -154,7 +173,11 @@ class AboutPage extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.article),
                   title: const Text('pub.dev Package'),
-                  subtitle: const Text('pub.dev/packages/sceneview'),
+                  // `flutter_sceneview`, not `sceneview`: the latter is this
+                  // project's own pre-rename package, abandoned at 3.6.1 and
+                  // still on pub.dev, so the old link sent users to a package
+                  // that will never match this app.
+                  subtitle: const Text('pub.dev/packages/flutter_sceneview'),
                 ),
                 ListTile(
                   leading: const Icon(Icons.description),
@@ -188,7 +211,7 @@ class AboutPage extends StatelessWidget {
           // Footer
           Center(
             child: Text(
-              'Made with SceneView SDK v4.13.0',
+              'Made with SceneView SDK v4.27.0',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -262,6 +285,12 @@ enum _FeatureSupport {
   /// Implemented on Android; the iOS port is not yet bridged (#909).
   androidOnly,
 
+  /// Implemented on iOS only. Not a gap in the bridge — a difference between
+  /// the renderers themselves. Filament reads glTF/GLB and RealityKit reads
+  /// USD, so a model format is supported on exactly one side by construction,
+  /// and no amount of bridging changes that.
+  iosOnly,
+
   /// Not yet bridged on either platform.
   planned,
 }
@@ -271,6 +300,8 @@ Widget _FeatureRow(String name, _FeatureSupport support, ThemeData theme) {
     _FeatureSupport.both => (Icons.check_circle, Colors.green, 'Android + iOS'),
     _FeatureSupport.androidOnly =>
       (Icons.adjust, Colors.blue, 'Android only'),
+    _FeatureSupport.iosOnly =>
+      (Icons.adjust, Colors.purple, 'iOS only'),
     _FeatureSupport.planned =>
       (Icons.radio_button_unchecked, Colors.grey, 'Not yet bridged'),
   };

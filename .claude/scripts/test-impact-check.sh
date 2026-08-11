@@ -102,5 +102,231 @@ set -e
   && ok "single-commit history (no HEAD~1) → runs without crashing under set -e" \
   || bad "missing HEAD~1 must not crash the script (rc=$RC)"
 
+# ── SPM version gate (#3068) ─────────────────────────────────────────────
+# The gate used to `grep -r .` the working directory, so it FAILed on untracked
+# local files that exist in no clone — while its own tracked population was
+# empty, making the CI verdict a silent PASS. These four cases pin both halves:
+# it must see the repository, ignore the disk, stay loud when its own pattern
+# breaks, and still SKIP (never false-FAIL) when the doc surface isn't present.
+
+# Tracked file carrying the canonical SPM snippet, plus the version source.
+spm_repo() {
+    local dir; dir="$(setup_repo "$1")"
+    printf 'VERSION_NAME=4.26.0\n' > "$dir/gradle.properties"
+    printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "%s")\n' \
+        "$2" > "$dir/llms.txt"
+    ( cd "$dir" && git add -A && git commit -qm base )
+    printf '%s' "$dir"
+}
+
+# 5. Tracked file left behind by a version bump → FAIL, and NAME the file.
+#    A bare count ("15 file(s)") is what made the original unactionable.
+#    Run under --fail: printing [FAIL] is worthless if the quality gate the
+#    check feeds still exits 0.
+D="$(spm_repo spm_stale 4.25.0)"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs stale' <<<"$OUT" \
+  && grep -q 'llms.txt' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "stale version in a TRACKED file → FAIL, file named, --fail exit non-zero" \
+  || bad "a stale tracked SPM ref must FAIL, name the file, and exit non-zero (rc=$RC)"
+
+# 6. Same tree, version aligned → PASS (no false alarm on a good bump).
+D="$(spm_repo spm_ok 4.26.0)"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT"; } \
+  && ok "aligned tracked SPM ref → PASS" \
+  || bad "an aligned tracked SPM ref should PASS"
+
+# 7. The original bug: an UNTRACKED stale draft must not block anything. It is
+#    in no clone and no CI run, so it cannot be a merge blocker — including the
+#    archived `sceneview-swift` coordinate that used to be the whole pattern.
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/untracked-draft.md"
+printf '.package(url: "https://github.com/sceneview/sceneview-swift.git", from: "4.0.2")\n' \
+    > "$D/untracked-draft (1).md"
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "stale UNTRACKED drafts → ignored (repo, not disk), --fail exit 0" \
+  || bad "untracked files must never trip the SPM gate (rc=$RC)"
+
+# 8. Lean/sparse clone: version source present, SPM doc surface absent. Nothing
+#    can be concluded → SKIP, exit 0 under --fail. Same contract as case 1.
+D="$(setup_repo spm_lean)"
+printf 'VERSION_NAME=4.26.0\n' > "$D/gradle.properties"
+printf '# lean\n' > "$D/README.md"
+( cd "$D" && git add -A && git commit -qm base )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[SKIP\].*SPM version refs' <<<"$OUT" \
+  && ! grep -q '\[FAIL\].*SPM version refs' <<<"$OUT" \
+  && [[ $RC -eq 0 ]]; } \
+  && ok "lean/sparse clone without the SPM doc surface → SKIP, --fail exit 0" \
+  || bad "a missing SPM doc surface must SKIP, not false-FAIL (rc=$RC)"
+
+# 9. The headline contract: doc surface PRESENT but the pattern matches nothing.
+#    That is the detector broken, not the tree, and it must be loud — case 8
+#    only covers the absent-surface SKIP, so without this a regression flipping
+#    this branch to PASS or SKIP would sail through every other case.
+D="$(setup_repo spm_blind)"
+printf 'VERSION_NAME=4.26.0\n' > "$D/gradle.properties"
+printf 'SceneView docs with no SPM snippet at all.\n' > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm base )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs' <<<"$OUT" \
+  && grep -q 'pattern is broken' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "sentinel present but 0 matches → FAIL (broken pattern), --fail non-zero" \
+  || bad "an empty discovery with the doc surface present must FAIL (rc=$RC)"
+
+# 10. Discovery and verdict must be anchored to the SAME LINE. A stale canonical
+#     snippet alongside any other line that happens to quote the current version
+#     used to PASS at file granularity — the gate confirming a version no reader
+#     resolves. Must FAIL, and name the offending LINE.
+D="$(spm_repo spm_decoupled 4.25.0)"
+printf 'Released in 4.26.0 — notes mention (from: "4.26.0") in prose.\n' >> "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm prose )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[FAIL\].*SPM version refs stale' <<<"$OUT" \
+  && grep -q 'llms.txt:1' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "stale snippet + current version elsewhere in the file → FAIL, line named" \
+  || bad "file-granularity matching must not excuse a stale pinning line (rc=$RC)"
+
+# 11. CHANGELOG.md / MIGRATION.md are excluded by WHAT THEY ARE, so the
+#     exclusion must hold at any path depth — a docs/MIGRATION.md quotes old
+#     versions for the same reason the root one does.
+D="$(spm_repo spm_nested_migration 4.26.0)"
+mkdir -p "$D/docs"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")\n' \
+    > "$D/docs/MIGRATION.md"
+( cd "$D" && git add -A && git commit -qm nested )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "MIGRATION.md excluded at any depth, not just repo root" \
+  || bad "a nested MIGRATION.md must stay excluded (rc=$RC)"
+
+# 12. Pathological TRACKED filenames must survive the `git ls-files` → array
+#     path. Case 7's space-in-name draft is UNTRACKED, so it never reaches it:
+#     the NUL-delimited read and the `-e … --` end-of-options guard were
+#     defended by comment only. A leading-dash name is the sharp one — without
+#     `--`, grep reads `-i.md` as an option and the file leaves the population
+#     SILENTLY, which is this gate's whole failure mode in miniature.
+D="$(spm_repo spm_odd_names 4.26.0)"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/spm guide.md"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.0.2")\n' \
+    > "$D/-i.md"
+( cd "$D" && git add -A -- '.' && git commit -qm odd )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '2 of 3 tracked file(s)' <<<"$OUT" \
+  && grep -q 'spm guide.md:1' <<<"$OUT" \
+  && grep -q '\-i.md:1' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "tracked '-i.md' and 'spm guide.md' → scanned and flagged, not swallowed" \
+  || bad "pathological tracked filenames must reach the scan and be named (rc=$RC)"
+
+# 13. A file with SEVERAL stale pins must surface all of them. Reporting only
+#     the first makes the second bump look like a fresh regression, and the
+#     entries must be one-per-line: space-joined, `spm guide.md:1` is
+#     indistinguishable from two separate entries.
+D="$(spm_repo spm_multi 4.25.0)"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.24.0")\n' \
+    >> "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm multi )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '1 of 1 tracked file(s), 2 line(s)' <<<"$OUT" \
+  && grep -qx '    llms.txt:1' <<<"$OUT" \
+  && grep -qx '    llms.txt:2' <<<"$OUT" \
+  && [[ $RC -ne 0 ]]; } \
+  && ok "several stale pins in one file → every line reported, one per line" \
+  || bad "only the first stale pin per file was reported (rc=$RC)"
+
+# 14. `changelog.d/` is the PRE-IMAGE of CHANGELOG.md, so it inherits its
+#     exclusion. Excluding one and not the other reopens, inside this gate,
+#     the very "same sentence, two verdicts" hole #3068 closes in the sibling
+#     mirror gate: a release note quoting an old install line would be a merge
+#     blocker as a fragment and exempt the second collate-changelog.sh moves
+#     it — same text, opposite verdicts, decided by nothing but timing.
+D="$(spm_repo spm_fragment 4.26.0)"
+mkdir -p "$D/changelog.d"
+printf '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.4.0")\n' \
+    > "$D/changelog.d/1234-note.md"
+( cd "$D" && git add -A && git commit -qm fragment )
+set +e
+OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?
+set -e
+{ grep -q '\[PASS\].*SPM version refs match 4.26.0' <<<"$OUT" && [[ $RC -eq 0 ]]; } \
+  && ok "changelog.d/ fragment excluded, like its CHANGELOG.md destination" \
+  || bad "a fragment must not be a blocker that collating would silence (rc=$RC)"
+
+# 15. A keyword's right boundary. `exact` is also the first five letters of
+#     `exactly`, an ordinary English word, so a prose line that says "exactly
+#     4.26.0" downstream of the canonical URL would satisfy the verdict half
+#     and bless a snippet nobody checked. The boundary is in the SHARED
+#     constraint, so this line is not discovered either — the pair must never
+#     disagree about what a pin is.
+D="$(spm_repo spm_exactly 4.26.0)"
+printf '%s\n' '`https://github.com/sceneview/sceneview.git` (from: "4.4.0") — exactly 4.26.0 today' \
+    > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm exactly )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+{ grep -q 'llms.txt:1' <<<"$OUT" && [[ $RC -ne 0 ]]; } \
+  && ok "'exactly <current>' does not satisfy the 'exact' keyword" \
+  || bad "an English word must not be read as an SPM constraint (rc=$RC)"
+
+# 16. The VERSION's right boundary. `4.26.0-beta` and `4.26.0.1` are not
+#     4.26.0 — the current string is merely their prefix. Accepting a prefix
+#     means the gate blesses whatever ships next to it.
+D="$(spm_repo spm_prerelease 4.26.0)"
+printf '%s\n' '.package(url: "https://github.com/sceneview/sceneview.git", from: "4.26.0-beta")' \
+    > "$D/llms.txt"
+( cd "$D" && git add -A && git commit -qm prerelease )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+{ grep -q 'llms.txt:1' <<<"$OUT" && [[ $RC -ne 0 ]]; } \
+  && ok "a prerelease pin is not the release it prefixes" \
+  || bad "a prefix match blesses a version nobody verified (rc=$RC)"
+
+# 17. A keyword is a constraint only in the syntax that carries one. The
+#     class chain between the coordinate and the keyword can bridge a comma
+#     and a space, so "`…/sceneview.git`, from v3 onward, resolved fine" was
+#     DISCOVERED as a pin — then judged stale, because an English sentence
+#     carries no version. The gate would have blocked a release note for
+#     describing history: the "only says no" failure, reintroduced in the
+#     half that decides what a pin IS.
+#     The canonical pin in llms.txt stays: emptying the population would
+#     make this pass through the "pattern is broken" sentinel instead of
+#     through the verdict under test.
+D="$(spm_repo spm_prose_from 4.26.0)"
+mkdir -p "$D/docs"
+printf '%s\n' 'The coordinate `https://github.com/sceneview/sceneview.git`, from v3 onward, never moved.' \
+    > "$D/docs/history.md"
+( cd "$D" && git add -A && git commit -qm prose )
+set +e; OUT="$(cd "$D" && bash "$SCRIPT" --fail 2>&1)"; RC=$?; set -e
+# The assertion is the POPULATION COUNT, not the absence of the filename:
+#     the prose file's path appears in the check's own trace output, so
+#     grepping for it would fail for a reason that has nothing to do with
+#     the verdict. One file scanned means the sentence was never a pin.
+{ [[ $RC -eq 0 ]] && grep -q '\[PASS\].*1 tracked file(s) scanned' <<<"$OUT"; } \
+  && ok "'from v3 onward' after the URL is prose, not a pin" \
+  || bad "a sentence must not be discovered as an install line (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

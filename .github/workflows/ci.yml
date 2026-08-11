@@ -19,7 +19,7 @@ name: CI
 #   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
 #   - coverage       JaCoCo coverage (advisory, off the critical path) (gated on `android`)
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
-#   - flutter-demo   flutter-demo APK               (gated on `flutter`)
+#   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
 #   - repo-hygiene   grep/validate micro-gates       (always, when workflow runs)
 #   - quality-gate   full .claude/scripts/quality-gate.sh (gated on `quality_gate`)
@@ -608,13 +608,21 @@ jobs:
           path: samples/web-demo/test-results/
           if-no-files-found: ignore
 
-  # ── Flutter demo build ──────────────────────────────────────────────────
+  # ── Flutter plugin + demo build ─────────────────────────────────────────
   # Protects the Kotlin 2.0 Compose Compiler plugin wiring in
   # flutter/sceneview_flutter/android/build.gradle. Without this job, a
   # direct push to main that removes the plugin (or downgrades Kotlin)
   # only shows up the next time someone runs `flutter build apk`.
+  #
+  # It also gates the PUBLISHED Dart package itself. Until #3056 every step
+  # here except the publish dry-run ran in `samples/flutter-demo`, so
+  # `flutter/sceneview_flutter/lib` and `test` were analyzed by nothing and
+  # their 18 unit tests were run by nothing — an analyzer ERROR in the
+  # package we ship to pub.dev could sit on main indefinitely. Building the
+  # demo does NOT cover this: the demo consumes the plugin from Maven/pub,
+  # and `flutter build apk` never compiles the plugin's `test/` tree at all.
   flutter-demo:
-    name: Build flutter-demo APK
+    name: Flutter plugin + demo APK
     needs: changes
     if: inputs.force-all || needs.changes.outputs.flutter == 'true'
     runs-on: ubuntu-latest
@@ -645,6 +653,30 @@ jobs:
       - name: pub.dev publish preflight (--dry-run)
         working-directory: flutter/sceneview_flutter
         run: flutter pub publish --dry-run
+
+      # ── The published package (#3056) ──────────────────────────────────
+      # STRICTER than the demo step below, on purpose: this is the artefact
+      # that goes to pub.dev. `--no-fatal-warnings` is deliberately absent,
+      # so an analyzer WARNING reddens the job — the demo keeps it because
+      # its 27 issues have not been triaged, but the plugin is at 0.
+      #
+      # It could only be dropped once the package was actually clean. The
+      # two warnings that forced it (`example/pubspec.yaml` declaring
+      # `models/` and `environments/` asset dirs that do not exist — a hard
+      # `flutter build bundle` failure, not a style nit) are fixed, and
+      # `flutter/sceneview_flutter/analysis_options.yaml` now exists at all,
+      # so the package's own `flutter_lints` dependency is no longer inert.
+      # Measured on this commit: `flutter analyze` reports "No issues found".
+      #
+      # `--no-fatal-infos` stays: infos churn with every Flutter SDK bump,
+      # and a green build should not depend on the runner's SDK minor.
+      - name: flutter analyze (published plugin)
+        working-directory: flutter/sceneview_flutter
+        run: flutter analyze --no-fatal-infos
+
+      - name: flutter test (published plugin)
+        working-directory: flutter/sceneview_flutter
+        run: flutter test
 
       - name: flutter analyze
         working-directory: samples/flutter-demo
@@ -857,6 +889,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
 
+      # Self-test first, same discipline as the pairs above. The gate has two
+      # passes pulling opposite ways — everything outside the allowlist fails,
+      # while the two WHOLESALE-allowlisted changelog surfaces must be free to
+      # NAME the retired mirror and must never ship a PIN to it. A gate that
+      # only says no blocks legitimate release notes; one that only says yes
+      # is prose. Mutation-tested on all three: dropping the second pass,
+      # dropping changelog.d/ from the allowlist, and widening the pin regex
+      # to `.*` each break the suite (#3068).
+      - name: Self-test check-sceneview-swift-urls.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-sceneview-swift-urls.sh
+
       # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
       # mirror was archived in PR #1215; SceneViewSwift now resolves from the
       # monorepo root Package.swift. Any NEW reference to the dead mirror URL
@@ -1032,6 +1077,34 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-grade-pr-review.sh
 
+      # PR-review contamination net (assert-review-tree-clean.sh). It has to
+      # hold two opposite things true: the `.claude/` revert that
+      # claude-code-action performs on every PR-head checkout must PASS, and a
+      # reviewer editing that same directory must FAIL. The version it replaced
+      # could not tell those apart and blamed the reviewers for the action's own
+      # write — 11 of 14 sampled failing runs on 2026-08-07. Real git fixtures,
+      # plus a mutation test proving the suite goes red if the assertion is ever
+      # softened into a path exclusion, and a wiring check that the workflow
+      # still calls it.
+      - name: Self-test PR-review contamination net
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-assert-review-tree-clean.sh
+
+      # PR-head config hardening on the DISPATCH path. `claude-code-action` only
+      # restores `.claude/`, `.mcp.json` & co. under a PR context, so on
+      # `workflow_dispatch` — the documented rescue path for FORK PRs, which
+      # checks out `refs/pull/N/head` WITH the token in the environment — it
+      # restores nothing and the CLI reads the PR head's own hooks and
+      # permission mode. `pr-review.yml` does that restore itself there. This
+      # suite extracts that step's shipped `run:` block from the YAML and runs it
+      # against real git fixtures, because CI otherwise only ever exercises it
+      # during a real dispatch — i.e. never, until it matters.
+      - name: Self-test PR-review dispatch config restore
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-dispatch-config-restore.sh
+
       # Agent-cost measurement (agent-cost-report.sh). It reads local session
       # transcripts, so CI can never exercise it on real data — but its one
       # silent failure mode is arithmetic: a transcript emits several records
@@ -1073,6 +1146,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
 
+      # The reviewers' diff. Same failure shape one layer up: on run
+      # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
+      # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and
+      # pr-review.yml fell back to a two-dot diff — so four reviewers read
+      # everything main had gained since the branch point, reversed, and filed
+      # two BLOCKING errors against files the PR never touched. Hermetic: real
+      # temp git repos, no network, with a mutant carrying the old fallback to
+      # prove the assertions discriminate.
+      - name: Self-test the reviewers' diff computation
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-pr-diff.sh
+
       # android_cli_install_and_launch (#2990). The helper used to `return $?`
       # from `android run`. On a real emulator that command printed two
       # success-shaped lines, installed NOTHING, and left a build eight hours
@@ -1104,10 +1190,36 @@ jobs:
       # `### Tests`, because the parser buffered the whole file and wrote it once
       # under the LAST tag seen. Hermetic (fake repo root), with a mutation test
       # on the per-tag flush — drop it and the multi-tag assertions must go red.
+      #
+      # Second contract, same reason (#3037): every OTHER HTML comment in a
+      # fragment is maintainer-only. The parser used to append them verbatim, so
+      # a nine-line `<!-- RELEASE NOTE: ... -->` block — sign-off plus
+      # publish-rn/GITHUB_REF_NAME mechanics — was one release away from being
+      # published as user-facing notes. A second mutation test neutralises the
+      # stripper and asserts all six fixture note lines come back.
       - name: Self-test changelog collator
         if: always()
         shell: bash
         run: bash .claude/scripts/test-collate-changelog.sh
+
+      # Breaking-change vs patch-level tag (check-breaking-change-bump.sh,
+      # #3037). release.yml's `publish-rn` derives the npm version straight from
+      # the git tag (`VERSION=${GITHUB_REF_NAME#v}`), so tagging `v4.26.1` would
+      # publish a source-breaking `.d.ts` change to @sceneview-sdk/react-native
+      # as a semver PATCH — the class every consumer's caret range takes without
+      # review. The policy (breaking ships MINOR, major 4 frozen) previously
+      # existed only as prose, including inside the very fragment that needed it.
+      #
+      # The guard itself runs at RELEASE time, where the version is known; it
+      # fires only on a patch tag with a breaking fragment pending, which may not
+      # happen for months. That is the shape of gate that rots green (#2988), so
+      # the self-test is what keeps it honest — both directions (real #3037 prose
+      # must refuse; "non-breaking" and "groundbreaking", both taken from real
+      # fragments, must not) plus two mutation tests, one per direction.
+      - name: Self-test breaking-change/patch guard
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-check-breaking-change-bump.sh
 
       # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
       # API surface without updating llms.txt / KDoc / docs/docs / recipes.
@@ -1195,6 +1307,17 @@ jobs:
         if: always()
         shell: bash
         run: bash .claude/scripts/check-demo-id-parity.sh
+
+      # pre-push-check.sh leg 19 DERIVES its self-test list from this very job
+      # and then executes what it finds, so the extractor must be incapable of
+      # emitting a shell metacharacter or a path outside the tree. That
+      # property is pinned here against hostile workflow fixtures — never
+      # against this file, so a green run says "the extractor is safe", not
+      # "today's ci.yml happens to be tame". Pure bash, sub-second.
+      - name: Self-test extract-gate-selftests.sh
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-extract-gate-selftests.sh
 
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run

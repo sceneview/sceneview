@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.26.0)
+  Source of truth: /llms.txt  (SceneView 4.28.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.26.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.28.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -63,7 +63,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions
 - **APK size**: +3.2MB (sceneview), +5.1MB (sceneview + arsceneview).
 - **Memory**: ~25MB empty 3D scene, ~45MB empty AR scene.
 - **Triangle budget**: <100K per model, <200K total scene (mid-tier devices).
-- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP is NOT supported on Android**: Filament's Android prebuilt ships `gltfio` with WebP compiled out, so glTF textures encoded as `EXT_texture_webp` (`image/webp`) fail with "Missing texture provider for image/webp" and render untextured. Re-encode such models' textures to PNG/JPEG or KTX2 before loading on Android (#2305). PNG/JPEG/KTX2 are decoded natively.
+- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android since 4.28.0**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes embedded WebP textures to PNG (via Android's own decoder) before handing the asset to Filament — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. Still unsupported and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`, and the **web** build (Filament.js registers no `image/webp` provider). Prefer PNG/JPEG/KTX2 when you control the asset (#2305).
 - **Draw calls**: aim for <100 per frame. Merge static geometry in Blender before export.
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
@@ -314,6 +314,8 @@ bridge.logScalar(value = trackingQuality, entity = "world/camera/tracking_qualit
 The Python sidecar maps `camera_trail` to `rr.LineStrips3D` and `scalar` to `rr.Scalars`. Same surface in Swift: `bridge.logCameraTrail(positions:timestampNanos:)` and `bridge.logScalar(_:entity:timestampNanos:)`.
 
 **Threading:** the bridge owns a private `Dispatchers.IO` + `SupervisorJob` scope and a `Channel.CONFLATED` outbox. Every `log*` call is non-blocking — the newest event overwrites any pending one (drop-on-backpressure). Filament's render thread is never blocked.
+
+**Connection lifetime:** the outbox belongs to the connection, not to the bridge — `connect()` installs a fresh one. So **events logged while disconnected are dropped, never buffered or replayed** on the next `connect()`; only what you log after `connect()` returns reaches the viewer. Log from your frame callback and let the connection state decide, rather than logging early and expecting a later `connect()` to flush a backlog. Same contract on iOS (`NWConnection` drops while disconnected).
 
 ### iOS — `RerunBridge` + new `ARSceneView.onFrame`
 

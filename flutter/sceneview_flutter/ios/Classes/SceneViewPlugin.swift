@@ -23,6 +23,78 @@ public class SceneViewPlugin: NSObject, FlutterPlugin {
     }
 }
 
+// MARK: - AR model loading
+
+// The 3D path no longer loads anything itself — `SceneViewerHostView` resolves an
+// asset / URL / bytes request and reports failures. The AR path still does, because
+// `ARSceneView` is anchor-driven and shares no host with the viewer, so the two
+// helpers below survive for `ARPlacementController` alone. Deleting them with the
+// rest of the pre-host loading code would have left AR loading `.glb` paths and
+// remote URLs by falling into `ModelNode.load(_:)`, which handles neither.
+
+/// Formats RealityKit can actually parse. `Entity(named:)` and
+/// `Entity(contentsOf:)` read USD variants and `.reality` — nothing else. A
+/// `.glb` fails with a generic error that reads like a missing file, so the
+/// bridge names the real reason instead of relaying it.
+let flutterSupportedModelExtensions: Set<String> = [
+    "usdz", "usda", "usdc", "usd", "reality"
+]
+
+/// Returns an actionable reason why `path` cannot be loaded on Apple platforms,
+/// or nil when the format is loadable.
+///
+/// An extension-less path is accepted: `Entity(named:)` resolves bundle
+/// resources by name alone.
+func flutterUnsupportedModelReason(_ path: String) -> String? {
+    // Query strings and fragments are not part of the file's extension. Both
+    // separators are stripped: splitting on "?" alone left `fox.usdz#frag` with
+    // an extension of `usdz#frag`, which failed the allowlist and told the
+    // caller RealityKit cannot parse a format that is in fact supported.
+    let withoutQueryOrFragment = path
+        .split(whereSeparator: { $0 == "?" || $0 == "#" })
+        .first
+        .map(String.init) ?? path
+    let ext = (withoutQueryOrFragment as NSString).pathExtension.lowercased()
+    guard !ext.isEmpty else { return nil }
+    guard !flutterSupportedModelExtensions.contains(ext) else { return nil }
+    return "RealityKit cannot parse '.\(ext)' — it reads "
+        + flutterSupportedModelExtensions.sorted().map { ".\($0)" }.joined(separator: ", ")
+        + " only. Convert the model (tools/convert-usdz.sh) and bundle the .usdz "
+        + "as an app resource, or point modelPath at a remote .usdz."
+}
+
+/// Loads one AR model, choosing between a remote download and a bundle-resource
+/// lookup.
+///
+/// The Android bridge hands `modelPath` straight to Filament's `ModelLoader`,
+/// which accepts both an asset path and an `https://` URL. `ModelNode.load(_:)`
+/// on Apple is a *bundle resource* lookup only, so a URL used to fail here
+/// while the same Dart code worked on Android. Routing HTTP(S) through
+/// `ModelNode.load(from:)` — which downloads first — closes that divergence.
+///
+/// The 3D path gets the same treatment a layer down, by putting the URL in
+/// `SceneViewerModel.urlString` instead of `assetPath` (see `applyState`).
+@MainActor
+func flutterLoadModel(path: String) async throws -> ModelNode {
+    if let url = flutterRemoteModelURL(path) {
+        return try await ModelNode.load(from: url)
+    }
+    return try await ModelNode.load(path)
+}
+
+/// The `http(s)` URL `path` denotes, or nil when it is a bundle-resource path.
+///
+/// Only these two schemes are treated as remote. Anything else — including
+/// `file://` — stays an asset path, and `SceneViewerModelRequest.make` refuses it
+/// again on the host side; a `file://` reaching `URLSession.download` would be an
+/// in-sandbox file read handed to RealityKit's USD parser.
+func flutterRemoteModelURL(_ path: String) -> URL? {
+    guard let url = URL(string: path),
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https" else { return nil }
+    return url
+}
+
 // MARK: - Model data
 
 struct FlutterModelData: Identifiable, Equatable {
@@ -130,16 +202,22 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
         // Capture the channel weakly, never `self`: the host view holds this
         // closure, and this object holds the host view (issue #2069).
         //
-        // `onTapEntity` rather than the host's flattened `onTap`, because the
-        // name Dart receives is derived from the entity tree — walk up to the
-        // first named ancestor, then strip the extension. That derivation is
-        // this bridge's published contract, and the flattened callback carries
-        // a position, not an entity to walk.
+        // `onTapEntity` rather than the host's flattened `onTap`, because what
+        // Dart receives is a node name, and the flattened callback carries a
+        // position and no entity at all. The host resolves the tapped entity to
+        // the model root — the entity this bridge named after its file — so the
+        // name reported is the model's, never an asset-internal mesh's.
+        //
+        // A tap that resolved outside every configured model reports `""`, the
+        // value this bridge has always used for "hit nothing of mine": the Dart
+        // callback is `void Function(String)` and widening it to `String?` on a
+        // published pub.dev API would be source-breaking.
         let channel = self.channel
         MainActor.assumeIsolated {
             hostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            hostView.onTapEntity = { [weak channel] hit in
-                channel?.invokeMethod("onTap", arguments: flutterTappedNodeName(hit.entity))
+            hostView.onTapEntity = { [weak channel] _, modelRoot in
+                let name = ((modelRoot?.name ?? "") as NSString).deletingPathExtension
+                channel?.invokeMethod("onTap", arguments: name)
             }
             sceneState.cameraControlMode = mode ?? "orbit"
             sceneState.autoCenterContent = autoCenter
@@ -179,13 +257,24 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
 
         configuration.models = sceneState.models.map { data in
             let model = SceneViewerModel()
-            model.assetPath = data.path
+            // An `http(s)` path is a download, not a bundle resource. The host reads
+            // exactly one of these two fields, checking `assetPath` first, so sending a
+            // URL as `assetPath` would make it a resource lookup for a name starting
+            // "https:" — which fails as "model not found" and never reaches the
+            // downloader. `modelPath`'s Dart doc promises a URL works, and it does on
+            // Android, where Filament's ModelLoader takes either.
+            if let url = flutterRemoteModelURL(data.path) {
+                model.urlString = url.absoluteString
+            } else {
+                model.assetPath = data.path
+            }
             // The Dart side's own per-entry id, so two `loadModel` calls with the
             // same path stay two models on screen rather than collapsing into one.
             model.identity = data.id.uuidString
-            // The file's base name — with its extension, which `flutterTappedNodeName`
-            // strips when reporting. Matches Android.
-            model.nodeName = (data.path as NSString).lastPathComponent
+            // The file's name — with its extension, which the tap report strips.
+            // Query and fragment go first, so a URL source cannot leak a CDN
+            // signature into the name. Matches Android's `tapNodeName`.
+            model.nodeName = sceneViewerModelFileName(data.path)
             model.setScale(data.scale)
             return model
         }
@@ -266,21 +355,6 @@ class SceneViewPlatformView: NSObject, FlutterPlatformView {
             result(FlutterMethodNotImplemented)
         }
     }
-}
-
-/// Derives the node name reported to Flutter for a tapped entity, matching the
-/// Android bridge convention: the model file's base name without extension.
-/// Walks up the entity tree past anonymous mesh children to the first named
-/// ancestor, since `SpatialTapGesture` may report a deep child whose `name`
-/// is empty. Falls back to the empty string when no name is available.
-func flutterTappedNodeName(_ entity: Entity) -> String {
-    var node: Entity? = entity
-    while let current = node {
-        let stem = (current.name as NSString).deletingPathExtension
-        if !stem.isEmpty { return stem }
-        node = current.parent
-    }
-    return ""
 }
 
 // MARK: - AR SceneView
@@ -535,10 +609,14 @@ final class ARPlacementController: ObservableObject {
 
         let loadedIds = Set(templates.map(\.data.id))
         for data in models where !loadedIds.contains(data.id) {
+            if let reason = flutterUnsupportedModelReason(data.path) {
+                NSLog("[flutter_sceneview] Cannot load AR model '%@': %@", data.path, reason)
+                continue
+            }
             do {
-                let node = try await ModelNode.load(data.path)
+                let node = try await flutterLoadModel(path: data.path)
                 node.scale(data.scale)
-                node.entity.name = (data.path as NSString).lastPathComponent
+                node.entity.name = sceneViewerModelFileName(data.path)
                 templates.append((data, node.entity))
             } catch {
                 NSLog(

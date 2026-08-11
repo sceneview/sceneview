@@ -5,7 +5,7 @@
  * Consolidates Android, iOS, Web, Flutter, React Native, Desktop, and TV.
  */
 
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 export type Platform = "android" | "ios" | "web" | "flutter" | "react-native" | "desktop" | "tv";
 export type SetupType = "3d" | "ar";
@@ -440,7 +440,7 @@ SceneView Flutter uses **PlatformView** to embed native SceneView (Android: Fila
 \`\`\`yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}
 \`\`\`
 
 ### 2. Android Setup
@@ -460,31 +460,59 @@ android {
 
 ### 3. iOS Setup
 
-In \`ios/Podfile\`:
+Both lines in \`ios/Podfile\` are required — skipping the second one fails the
+build with \`Unable to find a specification for 'SceneViewSwift'\`:
+
 \`\`\`ruby
 platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
 \`\`\`
+
+Adding \`SceneViewSwift\` as a **Swift package** in Xcode does not work: the bridge
+is itself a pod and compiles inside the generated \`Pods.xcodeproj\`, which cannot
+see a package added to \`Runner.xcodeproj\`. \`:podspec\` reads from the mutable
+\`main\` branch because no released tag carries the root podspec yet; the sources
+it pulls are tag-pinned via \`s.source\`, and this becomes a tagged coordinate once
+a release includes it.
 
 ### 4. Basic 3D Scene
 
 \`\`\`dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class My3DScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Not one path for both: Filament reads glTF/GLB, RealityKit reads USDZ and
+    // cannot read glTF at all. A hardcoded .glb compiles and renders nothing on iOS.
+    // Branch on defaultTargetPlatform, never on dart:io's Platform — importing
+    // dart:io makes the file uncompilable on Flutter web.
+    final model = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'models/chair.usdz'
+        : 'models/chair.glb';
+
     return SceneView(
-      modelUrl: 'assets/models/chair.glb',  // Android: GLB, iOS: USDZ
-      environment: 'assets/environments/sky_2k.hdr',
-      cameraOrbit: true,
-      scaleToUnits: 1.0,
-      onModelLoaded: (controller) {
-        print('Model loaded');
-      },
+      initialModels: [
+        ModelNode(modelPath: model, x: 0, y: 0, z: -2, scale: 1.0),
+      ],
+      // Android only today — the iOS path is wired but no entity resolves, so
+      // this never fires (#3045). Not the shared RealityKit hit test: React
+      // Native reaches the same hook and fires on iOS (#3086).
+      onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }
 }
 \`\`\`
+
+For imperative loading, attach a \`SceneViewController\` via \`onViewCreated\` and
+call \`loadModel\` / \`setEnvironment\` / \`clearScene\` on it.
 
 ### 5. Platform Differences
 
@@ -501,7 +529,7 @@ const FLUTTER_AR = `## SceneView Flutter — AR Setup
 \`\`\`yaml
 # pubspec.yaml — published on pub.dev (the names sceneview / sceneview_flutter are unrelated third-party uploads)
 dependencies:
-  flutter_sceneview: ^${LATEST_SCENEVIEW_RELEASE}
+  flutter_sceneview: ^${LATEST_FLUTTER_PUB_RELEASE}
 \`\`\`
 
 ### 2. Android Manifest
@@ -514,29 +542,50 @@ dependencies:
 </application>
 \`\`\`
 
-### 3. iOS Info.plist
+### 3. iOS Setup
+
+Both lines in \`ios/Podfile\` are required — skipping the second one fails the
+build with \`Unable to find a specification for 'SceneViewSwift'\`:
+
+\`\`\`ruby
+platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+\`\`\`
+
+Adding \`SceneViewSwift\` as a **Swift package** in Xcode does not work: the bridge
+is itself a pod and compiles inside the generated \`Pods.xcodeproj\`, which cannot
+see a package added to \`Runner.xcodeproj\`. \`:podspec\` reads from the mutable
+\`main\` branch because no released tag carries the root podspec yet; the sources
+it pulls are tag-pinned via \`s.source\`, and this becomes a tagged coordinate once
+a release includes it.
+
+### 4. iOS Info.plist
 
 \`\`\`xml
 <key>NSCameraUsageDescription</key>
 <string>This app uses the camera for augmented reality.</string>
 \`\`\`
 
-### 4. Basic AR Scene
+### 5. Basic AR Scene
 
 \`\`\`dart
-import 'package:sceneview_flutter/sceneview_flutter.dart';
+import 'package:flutter_sceneview/flutter_sceneview.dart';
 
 class MyARScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ARSceneView(
-      modelUrl: 'assets/models/robot.glb',
-      planeDetection: PlaneDetection.horizontal,
-      tapToPlace: true,
-      scaleToUnits: 0.5,
-      onAnchorCreated: (anchor) {
-        print('Object placed at: \${anchor.position}');
-      },
+      planeDetection: true,
+      onPlaneDetected: (planeType) => print('plane: \$planeType'),
+      // Android only: SceneViewSwift's ARSceneView exposes no entity
+      // hit-test hook, so on iOS this never fires (#2051).
+      onTap: (nodeName) => print('tapped: \$nodeName'),
     );
   }
 }
@@ -550,6 +599,8 @@ SceneView React Native uses **Fabric/Turbo** to bridge to native SceneView.
 
 \`\`\`bash
 npm install @sceneview/react-native
+# iOS: edit ios/Podfile as in step 3 FIRST — a stock Podfile makes this
+# \`pod install\` fail with "Unable to find a specification for 'SceneViewSwift'"
 cd ios && pod install
 \`\`\`
 
@@ -566,9 +617,16 @@ android {
 
 ### 3. iOS Setup
 
-In \`ios/Podfile\`:
+In \`ios/Podfile\` — both lines, before \`pod install\`. \`SceneViewSwift\` is not on
+the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve without
+an explicit coordinate (use \`:path => '<repo-root>'\` from a checkout), and a
+stock React Native Podfile's 13.4 target is below its iOS 18.0 floor. A Swift
+package added in Xcode does not work here: this module compiles inside
+\`Pods.xcodeproj\`, which cannot see the host project's packages.
 \`\`\`ruby
 platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 \`\`\`
 
 ### 4. Basic 3D Scene
@@ -580,11 +638,12 @@ export default function My3DScreen() {
   return (
     <SceneView
       style={{ flex: 1 }}
-      modelUrl={require('./assets/models/chair.glb')}
-      environment={require('./assets/environments/sky_2k.hdr')}
-      cameraOrbit={true}
-      scaleToUnits={1.0}
-      onModelLoaded={() => console.log('Model loaded')}
+      modelNodes={[{ src: 'models/chair.glb', position: [0, 0, -1], scale: 1.0 }]}
+      environment="environments/sky_2k.hdr"
+      cameraControlMode="orbit"
+      // Fires on Android and iOS — the iOS half is measured (#3086). Only the
+      // Flutter bridge's 3D onTap is still dead on iOS (#3045).
+      onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );
 }
@@ -601,6 +660,19 @@ export default function My3DScreen() {
 const REACT_NATIVE_AR = `## SceneView React Native — AR Setup
 
 ### 1. Install
+
+Both \`ios/Podfile\` lines are required before \`pod install\`: \`SceneViewSwift\` is
+not on the CocoaPods trunk, so the module's \`s.dependency\` on it cannot resolve
+without an explicit coordinate, and a stock React Native Podfile's 13.4
+deployment target is below its iOS 18.0 floor. A Swift package added in Xcode
+does not replace that line — this module compiles inside \`Pods.xcodeproj\`,
+which cannot see the host project's packages.
+
+\`\`\`ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+\`\`\`
 
 \`\`\`bash
 npm install @sceneview/react-native
@@ -635,11 +707,16 @@ export default function MyARScreen() {
   return (
     <ARSceneView
       style={{ flex: 1 }}
-      modelUrl={require('./assets/models/robot.glb')}
-      planeDetection="horizontal"
-      tapToPlace={true}
-      scaleToUnits={0.5}
-      onAnchorCreated={(anchor) => console.log('Placed:', anchor)}
+      modelNodes={[{ src: 'models/robot.glb', scale: 0.5 }]}
+      planeDetection={true}
+      // Declared so the API surface is stable, but NOT bridged natively yet:
+      // setting it true changes nothing today (#909). Left explicitly false so
+      // nobody ships an app that silently expects LiDAR occlusion.
+      depthOcclusion={false}
+      onPlaneDetected={(e) => console.log(e.nativeEvent.type)}
+      // Android only: SceneViewSwift's ARSceneView exposes no entity
+      // hit-test hook, so on iOS this never fires (#2051).
+      onTap={(e) => console.log(e.nativeEvent.nodeName)}
     />
   );
 }
@@ -660,32 +737,31 @@ plugins {
 
 dependencies {
     implementation(compose.desktop.currentOs)
-    implementation("io.github.sceneview:sceneview-desktop:${LATEST_SCENEVIEW_RELEASE}") // when published
+    // NOTE: there is no published \`io.github.sceneview:sceneview-desktop\`
+    // artifact. Desktop is a Compose Canvas placeholder living in
+    // \`samples/desktop-demo\`, not a library you can depend on yet.
 }
 \`\`\`
 
 ### 2. Basic Desktop Scene
 
+There is no \`SceneView\` composable on desktop. The sample draws its wireframe
+with a plain Compose \`Canvas\`, so the starting point is ordinary Compose
+Desktop — copy \`samples/desktop-demo/src/desktopMain/kotlin/io/github/sceneview/desktop/Main.kt\`
+rather than importing a SceneView type that does not exist.
+
 \`\`\`kotlin
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "SceneView Desktop"
     ) {
-        // Current: software wireframe renderer
-        DesktopScene(
-            modifier = Modifier.fillMaxSize(),
-            shapes = listOf(
-                WireframeCube(position = Float3(0f, 0f, 0f), size = 1f),
-                WireframeSphere(position = Float3(2f, 0f, 0f), radius = 0.5f)
-            ),
-            cameraOrbit = true,
-            backgroundColor = Color(0xFF1A1A2E)
-        )
+        // From samples/desktop-demo — a Compose Canvas animating a wireframe,
+        // NOT a Filament scene. The only public entry point that exists today.
+        WireframeCubeViewer()
     }
 }
 \`\`\`

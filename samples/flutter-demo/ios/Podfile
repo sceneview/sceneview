@@ -1,0 +1,73 @@
+# SceneView Flutter demo — iOS pods.
+#
+# This file is committed on purpose. Without it, `flutter build ios` generates a
+# default Podfile that assigns `platform :ios, '13.0'`, and `pod install` then
+# fails outright: `flutter_sceneview` bridges to SceneViewSwift, whose
+# Package.swift declares `.iOS("18.0")` (RealityKit's per-entity light and
+# shadow APIs). The generated default is not merely suboptimal — it is the
+# reason the demo's whole iOS path could not be built at all.
+#
+# Keep this in sync with:
+#   - IPHONEOS_DEPLOYMENT_TARGET in Runner.xcodeproj/project.pbxproj
+#   - s.platform in flutter/sceneview_flutter/ios/flutter_sceneview.podspec
+#   - platforms: [.iOS(...)] in SceneViewSwift/Package.swift
+platform :ios, '18.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  # `flutter_sceneview` declares `s.dependency 'SceneViewSwift'`, which is not
+  # published to the CocoaPods trunk — this points it at the in-repo sources.
+  # The path is the REPO ROOT, because that is where `SceneViewSwift.podspec`
+  # lives: CocoaPods resolves `:git` by looking for `<name>.podspec` at the root
+  # of the repository, and a consumer installing the plugin from pub.dev has no
+  # clone to point `:path` at. Keeping the podspec inside `SceneViewSwift/`
+  # would have left them with no resolvable coordinate at all.
+  pod 'SceneViewSwift', :path => '../../..'
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # `flutter_additional_ios_build_settings` only raises a pod's deployment
+    # target when it is *below* Flutter's own minimum, which is lower than 18.0.
+    # Without this, pods keep their own (lower) target and linking the
+    # SceneViewSwift SPM product emits availability errors.
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
+    end
+  end
+end

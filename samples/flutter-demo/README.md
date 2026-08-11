@@ -48,7 +48,8 @@ The Flutter bridge is alpha and exposes only part of the SceneView SDK. The
 | `ModelNode` position / rotation | Android only; iOS honours path + scale (#909) |
 | `addGeometry`, `addLight` | Rendered on **Android** only; iOS RealityKit port pending (#909) |
 | `setEnvironment` (HDR IBL) | Works on Android; iOS acknowledges the call but does not apply it (#909) |
-| `onTap`, `onPlaneDetected` | Forwarded on Android; not yet forwarded on iOS (#909) |
+| `onTap` | `SceneView` (3D): Android only, reporting the tapped model's file base name. The iOS path is wired end to end, but no entity resolves, so the callback never fires ([#3045](https://github.com/sceneview/sceneview/issues/3045)). Not RealityKit's entity-targeted hit test: React Native reaches the same hook and was measured firing on iOS ([#3086](https://github.com/sceneview/sceneview/issues/3086)), which leaves Flutter's platform-view touch delivery. `ARSceneView`: Android only too — SceneViewSwift's `ARSceneView` exposes no entity hit-test hook ([#2051](https://github.com/sceneview/sceneview/issues/2051)) |
+| `onPlaneDetected` | Forwarded on Android; not yet forwarded on iOS (#909) |
 | `cameraControlMode` `pan` / `firstPerson` | iOS-only; fall back to orbit on Android |
 
 Tracked in the [#909](https://github.com/sceneview/sceneview/issues/909)
@@ -73,5 +74,5 @@ flutter test integration_test/screenshot_test.dart
 
 - Flutter 3.10+
 - Android SDK 24+ (for Android)
-- iOS 17+ (for iOS)
+- iOS 18+ (for iOS — `SceneViewSwift`'s `Package.swift` requires iOS 18.0)
 - `http` package (for Sketchfab search)

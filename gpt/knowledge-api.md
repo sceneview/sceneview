@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.26.0)
+  Source of truth: /llms.txt  (SceneView 4.28.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.26.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.28.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -3030,6 +3030,12 @@ class ModelLoader(engine: Engine, context: Context) {
 }
 ```
 
+**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
+`createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
+texture is passed through untouched.
+
 ### MaterialLoader
 ```kotlin
 class MaterialLoader(engine: Engine, context: Context) {
@@ -3705,12 +3711,24 @@ AI extending a bridge should know they exist (v4.27.0+):
 | `autoCenterContent: Bool` | Fit-to-bounds on the first stable frame. Defaults to `false`, because the fit owns the orbit radius and would overwrite a caller-authored distance. Callers that author no camera turn it on |
 | `cameraPoseAuthored: Bool` | Defaults to `true`. Set it to `false` when the caller has no camera at all: `applyConfiguration` then applies no pose, instead of re-asserting the default one on every call and snapping the camera away from wherever the user orbited to |
 
-`SceneViewerHostView.onTapEntity: ((SceneTapHit) -> Void)?` is a Swift-only companion to
-the `@objc` `onTap`, handing over the `SceneTapHit` rather than five primitives. It
-exists because the bridges publish genuinely different things about a tapped entity —
-one walks to the first named ancestor and strips the extension, another reports the raw
-name and the entity's own origin where `onTap` reports the bounds centre. Not reachable
-from Kotlin; use `onTap` there.
+`SceneViewerHostView.onTapEntity: ((SceneTapHit, Entity?) -> Void)?` is a Swift-only
+companion to the `@objc` `onTap`, handing over the `SceneTapHit` rather than five
+primitives, plus the **model root** the hit entity sits inside — the direct child of the
+content root, which is the entity `SVSceneViewerModel.nodeName` was written on. It is
+`nil` when the tap resolved outside every configured model. Resolving the model root in
+the host is what makes a tap report the model: `SpatialTapGesture` hands back the deepest
+hit entity, so `hit.entity.name` is an asset-internal mesh name for any asset that names
+its meshes (a tap on `black_dragon.usdz` reported `skin0`). Not reachable from Kotlin;
+use `onTap` there.
+
+`sceneViewerModelFileName(_ path: String) -> String` is a Swift-only free function in the
+same module — the derivation a bridge should use to name a model, rather than rolling its
+own. It strips any query and fragment *before* taking the last path component, so a remote
+source (`SVSceneViewerModel.urlString` accepts a remote `.usdz`) cannot leak a CDN
+signature into the reported name: `https://cdn/robot.glb?sig=SIG&v=1.2` gives `robot.glb`,
+not `robot.glb?sig=SIG&v=1`. It keeps the extension — strip it at the report — and it is
+public only because both bridges are separate modules. Not `@objc`, so not reachable from
+Kotlin.
 
 Targets: `androidTarget`, `jvm("desktop")`, `iosArm64`, `iosSimulatorArm64`. No `iosX64`
 — Compose Multiplatform 1.11.1 publishes no such variant.
@@ -3820,7 +3838,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.26.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.28.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -3832,7 +3850,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.26.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.28.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4412,7 +4430,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.26.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.28.0")
 ```
 
 Import: `import SceneViewSwift`

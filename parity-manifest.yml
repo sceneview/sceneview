@@ -63,12 +63,14 @@
 #   python3 -c "import yaml,collections; print(collections.Counter(
 #     r['iosStatus'] for r in yaml.safe_load(open('parity-manifest.yml'))['demos']))"
 #
-# Measured 2026-07-22, after the Wave-A iOS ports (#2836 #2837 #2838 #2839
-# #2840 #2841) all landed:
-#   - Android: 53 fragments — 44 Working / 5 KnownIssue / 2 ComingSoon / 2 InReview.
+# Measured 2026-08-10, after `ar-measure` landed on Android (#531). Previous
+# reading: 2026-07-22, once the Wave-A iOS ports (#2836 #2837 #2838 #2839
+# #2840 #2841) had all landed — 53 Android ids, 34 working / 19 stub / 0
+# android-only.
+#   - Android: 54 fragments — 44 Working / 5 KnownIssue / 2 ComingSoon / 3 InReview.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪ 10 legacy/
 #     umbrella aliases ∪ 0 residual ids).
-#   - Of the 53 Android ids: 34 working, 19 stub, 0 android-only.
+#   - Of the 54 Android ids: 34 working, 19 stub, 1 android-only.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -360,8 +362,16 @@ demos:
       Scene file exists (L0.6, #2804 Job B) but @available false — added to
       Android after iOS stopped tracking the catalog.
 
-  # ─── android-only (0) — every id now has at least an honest stub ────────
-  # L0.6 (#2804) closed this section: the 6 #2239-umbrella ids became
+  # ─── android-only (1) — iOS has not reserved an id for these yet ────────
+  # L0.6 (#2804) had emptied this section: the 6 #2239-umbrella ids became
   # `working` (Job A aliases) and the remaining 7 became `stub` (Job B stub
-  # Scenes). Kept as a documented, currently-empty bucket — the landing spot
-  # for the next Android id iOS hasn't reserved an id for yet.
+  # Scenes). It is the landing spot for the next Android id iOS hasn't
+  # reserved an id for yet — which is exactly what `ar-measure` is.
+  - id: ar-measure
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      Landed on Android only (#531). NOT platform-locked — ARKit raycasting
+      plus scene reconstruction covers every brick this demo needs, so an iOS
+      port is expected rather than excluded; iOS simply has no id reserved for
+      it yet. Porting it is tracked by the iOS-parity epic #894 / #2798.

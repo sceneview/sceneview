@@ -98,5 +98,27 @@ set -e
     && ok "body-only change → no false-positive warning" \
     || bad "body-only change should not warn (rc=$RC)"
 
+# 6c. UNCOMMITTED public-decl change — the local pre-commit case a developer
+#     actually runs by hand. `changed_files()` unions the working tree, so the
+#     FILE list sees it; the decl delta must see it too. Before the fix it was
+#     computed from a COMMIT range only, so the hunk was invisible and the check
+#     reported a false "no public declaration was added/removed/retyped" —
+#     structurally blind exactly where CLAUDE.md points developers (#3008).
+(
+    cd "$SCRATCH"
+    mkdir -p SceneViewSwift/Sources
+    printf 'struct SceneView {\n    func internalThing() {}\n}\n' > SceneViewSwift/Sources/SceneView.swift
+    git add -A && git commit -qm "swift base"
+    # Uncommitted: add a genuinely public Swift declaration.
+    printf 'struct SceneView {\n    func internalThing() {}\n\n    public func contentID(_ id: String) {}\n}\n' \
+        > SceneViewSwift/Sources/SceneView.swift
+)
+set +e
+OUT="$(cd "$SCRATCH" && bash "$SCRIPT" 2>&1)"; RC=$?
+set -e
+{ [[ $RC -eq 0 ]] && ! grep -q "no public declaration was added" <<<"$OUT"; } \
+    && ok "uncommitted public-decl change → detected (not reported as 'no public declaration')" \
+    || bad "uncommitted public-decl change must not report 'no public declaration' (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

@@ -42,7 +42,15 @@ Desktop.ini
 RERUN-CHECK.md
 
 # ── Flutter tooling artefacts ─────────────────────────────
+# `.dart_tool/` was ignored but the rest of the build output was not, and
+# `flutter pub publish` ships every non-ignored file: one `flutter build`
+# inside flutter/sceneview_flutter/example was enough to put
+# example/build/flutter_assets/* into the pub.dev tarball and take it from
+# ~1 MB to 16 MB. Ignore the artefacts an example build actually produces.
 flutter/**/.dart_tool/
+flutter/**/build/
+flutter/**/.flutter-plugins-dependencies
+flutter/*/example/pubspec.lock
 
 # ── Off-topic personal-portfolio code (NEVER in sceneview org) ──
 hub-gateway/
@@ -301,3 +309,9 @@ __pycache__/
 # before pushing — it is a review aid, not a listing asset (#2796). The broad
 # pattern also covers any legacy `.mosaic.png` left inside the graphics dir.
 .mosaic*.png
+
+# Device-QA harness output — a *result*, never a source. Committed by accident in
+# #3050, which silently froze the release gate: release-checklist.sh takes the
+# fast path whenever this file exists, so every release was graded against one
+# 2026-07-12 run instead of dispatching its own.
+device-qa-report.json

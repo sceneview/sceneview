@@ -4,9 +4,26 @@ description: Full SceneView release workflow — version bump, changelog, tag, m
 
 # /release — SceneView release workflow
 
-Guided workflow to bump version, update all references, and prepare a release across ALL platforms.
+End-to-end release across ALL platforms: bump, changelog, tag, publish, verify live.
 
-Ask the user: "What version are we releasing? (current: check root gradle.properties)"
+**This workflow does not ask permission — not for the version, not for the push, not for
+the publish.** It runs to production and reports what shipped. A human is called only
+when a gate fails.
+
+## Step 0: Derive the version (do not ask)
+
+```bash
+grep '^VERSION_NAME=' gradle.properties
+ls changelog.d/*.md 2>/dev/null | grep -v README | wc -l
+grep -rliE 'breaking|<!-- breaking -->' changelog.d/*.md 2>/dev/null | grep -v README
+```
+
+- Any fragment declaring a breaking change → **MINOR** bump (a patch tag is refused).
+- Otherwise → **PATCH** bump.
+- Major `4` is FROZEN. `5.0.0` is the one version that *is* a product decision — that,
+  and only that, stops for Thomas.
+
+Announce the derived version in one line and continue.
 
 ---
 
@@ -191,9 +208,8 @@ git tag vX.Y.Z
 
 ## Step 8: Push
 
-Ask the user: "Push to main and trigger release workflow?"
+The gates ran. Push — do not ask.
 
-If yes:
 ```bash
 git push origin main --tags
 ```

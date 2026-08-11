@@ -46,7 +46,8 @@ honestly surfaces what does and does not work today:
 | `environment` (HDR IBL) | Works on Android 3D scenes; AR uses the camera feed |
 | `planeDetection` | Wired into the ARCore session on Android |
 | `depthOcclusion`, `instantPlacement` | **Not bridged** — the AR tab toggles them but the props are not yet applied to the native AR `Config` (#909) |
-| `onTap`, `onPlaneDetected` | Declared, but the native side does not yet dispatch the events |
+| `onTap` | Dispatched on Android and iOS, on both views — the iOS 3D half is **measured**, not inferred: 5 taps on a rendering model on an iPhone 17 Pro Max simulator produced 5 dispatches naming the model ([#3086](https://github.com/sceneview/sceneview/issues/3086)). The Flutter bridge's 3D `onTap` is still dead on iOS ([#3045](https://github.com/sceneview/sceneview/issues/3045)); the same run showed that is Flutter's platform-view touch delivery, not this shared RealityKit path. Payload is `{ x, y, z, nodeName }`; `nodeName` is the tapped model's file base name, or `null` when the tap hit no model. On `ARSceneView` that differs by platform: Android hit-tests the scene and names the tapped model (a plane hit or a miss stays `null`), while iOS is always `null` — its `ARSceneView` exposes no entity hit-test hook and can only resolve the surface point ([#2051](https://github.com/sceneview/sceneview/issues/2051)). The key is present on every dispatch path, so one `nodeName == null` check covers everything — it is never `undefined` |
+| `onPlaneDetected` | Dispatched on **Android** only; SceneViewSwift's `ARSceneView` exposes no plane-detection callback (#909) |
 
 Tracked in the [#909](https://github.com/sceneview/sceneview/issues/909)
 bridge-parity umbrella.

@@ -2,12 +2,12 @@
 
 SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament, ARCore) and Apple platforms — iOS, macOS, visionOS (SwiftUI, RealityKit, ARKit) — with shared core logic via Kotlin Multiplatform. Each platform uses its native renderer: Filament on Android, RealityKit on Apple.
 
-**Android — Maven artifacts (version 4.26.0):**
-- 3D only: `io.github.sceneview:sceneview:4.26.0`
-- AR + 3D: `io.github.sceneview:arsceneview:4.26.0`
+**Android — Maven artifacts (version 4.28.0):**
+- 3D only: `io.github.sceneview:sceneview:4.28.0`
+- AR + 3D: `io.github.sceneview:arsceneview:4.28.0`
 
 **Apple (iOS 17+ / macOS 14+ / visionOS 1+) — Swift Package:**
-- `https://github.com/sceneview/sceneview.git` (from: "4.26.0"))
+- `https://github.com/sceneview/sceneview.git` (from: "4.28.0"))
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.4.10 | **Compose BOM compatible**
 
@@ -18,8 +18,8 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 ### build.gradle (app module)
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.26.0")   // 3D only
-    implementation("io.github.sceneview:arsceneview:4.26.0") // AR (includes sceneview)
+    implementation("io.github.sceneview:sceneview:4.28.0")   // 3D only
+    implementation("io.github.sceneview:arsceneview:4.28.0") // AR (includes sceneview)
 }
 ```
 
@@ -2101,7 +2101,7 @@ React Native (Turbo Module / Fabric), KMP Compose iOS (UIKitView).
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.26.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.28.0")
 ]
 ```
 
@@ -2474,7 +2474,7 @@ ferrari_f40.glb
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.26.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.28.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -2785,7 +2785,7 @@ Renderer: **RealityKit**. Requires iOS 17+ / macOS 14+ / visionOS 1+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.26.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.28.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -3281,7 +3281,7 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
 
-SceneView Web (sceneview-web v4.26.0) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
+SceneView Web (sceneview-web v4.28.0) — see "## SceneView Web (Kotlin/JS + Filament.js)" section above for the full API reference.
 | Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
@@ -3308,6 +3308,24 @@ dependencies:
       path: flutter/sceneview_flutter
       ref: v4.24.0
 ```
+
+**iOS also requires two lines in the host app's `ios/Podfile`** — the plugin
+declares `s.dependency 'SceneViewSwift'`, and that pod is deliberately not
+published to the CocoaPods trunk, so without the explicit source `pod install`
+fails with `Unable to find a specification for 'SceneViewSwift'`:
+```ruby
+platform :ios, '18.0'
+
+target 'Runner' do
+  use_frameworks!
+  pod 'SceneViewSwift',
+      :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+```
+Adding `SceneViewSwift` as a Swift package in Xcode does **not** work: the bridge
+is itself a pod and compiles inside the generated `Pods.xcodeproj`, which cannot
+see a package added to `Runner.xcodeproj`.
 
 Widgets: `SceneView` (3D), `ARSceneView` (AR).
 Controller: `SceneViewController` — attach via `onViewCreated`, then call imperative methods.
@@ -3342,6 +3360,18 @@ ARSceneView(
 ```
 
 `ModelNode` fields: `modelPath` (required), `x/y/z` (world position), `scale`, `rotationX/Y/Z` (degrees).
+`modelPath` is **per-platform**: Android's Filament reads `.glb`/`.gltf`, iOS's RealityKit reads
+`.usdz`/`.reality` and cannot read glTF at all. A single hardcoded `'models/helmet.glb'` compiles
+on both and renders nothing on iOS — branch on the platform and ship both assets, as
+`samples/flutter-demo/lib/pages/viewer_page.dart` does.
+`onTap` reports the model file's base name without extension (`models/helmet.glb` -> `helmet`) —
+never a mesh name from inside the asset; empty when the tap hit no loaded model. For `SceneView`
+(3D) it is delivered on **Android only**: the iOS path is wired end to end, but no entity
+resolves, so the callback never fires — measured on an iPhone 17 Pro Max simulator (#3045). Not
+RealityKit's entity-targeted hit test: the React Native bridge reaches the same hook and was
+measured firing on iOS (#3086), which leaves Flutter's platform-view touch delivery. Do not
+generate iOS code that depends on it firing. For `ARSceneView` it is **Android-only** too: SceneViewSwift's
+`ARSceneView` exposes no entity hit-test hook, so on iOS the AR `onTap` never fires (#2051).
 Controller methods: `loadModel(ModelNode)`, `addGeometry(GeometryNode)`, `addLight(LightNode)`,
 `clearScene()`, `setEnvironment(hdrPath)`.
 Note: `GeometryNode` and `LightNode` are acknowledged by the bridge but not yet rendered natively.
@@ -3352,8 +3382,17 @@ Package: `@sceneview-sdk/react-native` (npm) — Alpha, Android + iOS only.
 Install:
 ```sh
 npm install @sceneview-sdk/react-native
-# iOS: cd ios && pod install
+# iOS: add the two lines below to ios/Podfile FIRST, then `cd ios && pod install`
 ```
+The iOS half needs both lines in `ios/Podfile` before `pod install`. `SceneViewSwift` is not on the
+CocoaPods trunk, so the module's `s.dependency` on it cannot resolve without an explicit
+coordinate, and a stock React Native Podfile's 13.4 deployment target is below its iOS 18.0 floor:
+```ruby
+platform :ios, '18.0'
+pod 'SceneViewSwift',
+    :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
+```
+
 
 Components: `SceneView` (3D), `ARSceneView` (AR). Backed by Filament (Android) / RealityKit (iOS).
 
@@ -3384,6 +3423,22 @@ import { SceneView, ARSceneView, ModelNode } from '@sceneview-sdk/react-native';
 
 `ModelNode` fields: `src` (required), `position?: [x,y,z]`, `rotation?: [x,y,z]` (degrees),
 `scale?: number | [x,y,z]`, `animation?: string` (auto-play animation name).
+`onTap` payload: `{ x, y, z, nodeName }` — the tapped model's world position plus its file base name
+without extension (`models/robot.glb` -> `robot`), never a mesh name from inside
+the asset. **It is delivered on Android and iOS**, measured on an iPhone 17 Pro Max simulator with a
+model rendering: 5 taps on the model, 5 dispatches, the model's base name as `nodeName` every time
+(#3086). Generating iOS code whose interaction path is `onTap` is fine here. The **Flutter** bridge is
+the one whose 3D `onTap` never fires on iOS (#3045) — the same run measured both hosts against one
+SceneViewSwift build and showed that belongs to Flutter's platform-view touch delivery, not to this
+shared RealityKit path. `nodeName` is typed `string | null` and the key is present on every dispatch path, so
+`nodeName == null` is the single "the tap hit no model" test — it is never `undefined`. A miss
+carries `0,0,0` **in practice only on Android**: iOS resolves the tap through RealityKit's
+entity-targeted gesture, which fires only on a hit, so a tap on empty space dispatches no `onTap`
+event at all — count taps and you see fewer events on iOS, not a `0,0,0` one. On
+`ARSceneView` *what a hit reports* diverges: **Android** hit-tests the scene, so a tap on a model
+reports its file base name just as `SceneView` does and a plane hit or a miss reports `null`;
+**iOS** always reports `null`, because SceneViewSwift's `ARSceneView` exposes no entity hit-test
+hook and can only resolve the surface point (#2051).
 Geometry types: `'box' | 'cube' | 'sphere' | 'cylinder' | 'plane'`.
 Light types: `'directional' | 'point' | 'spot'`.
 

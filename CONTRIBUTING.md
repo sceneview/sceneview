@@ -251,6 +251,18 @@ time `.claude/scripts/collate-changelog.sh` collates all fragments into a new
 `## vX.Y.Z` section. See [`changelog.d/README.md`](changelog.d/README.md) for
 the full convention.
 
+Two rules worth knowing before you write one:
+
+- **HTML comments are stripped**, so anything inside `<!-- … -->` is a
+  maintainer-only note and never reaches the published release notes. Close
+  them — an unterminated `<!--` would swallow the bullets after it, so the
+  collator refuses instead.
+- **Mark a breaking change** with a `<!-- breaking -->` comment, on its own line
+  or trailing the bullet it describes. Major `4` is frozen and breaking changes
+  ship as a **minor** bump; a marked (or plainly worded) fragment makes the
+  release tooling refuse a patch-level tag, because `release.yml` derives the
+  npm version straight from the git tag.
+
 After your changes are merged, the Discord bot will award you the **Contributor** role.
 
 ### Public API changes

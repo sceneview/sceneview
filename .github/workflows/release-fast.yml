@@ -68,6 +68,13 @@ jobs:
           [ "$CURRENT" = "$V" ] && { echo "::error::VERSION_NAME already $V"; exit 1; }
           echo "Releasing $CURRENT -> $V"
 
+      # A patch tag must not carry a breaking change (#3037). `collate-changelog.sh`
+      # runs this same guard and cannot be bypassed, but it runs 40 minutes from
+      # now — after the web QA leg and the bump commit. Failing here instead costs
+      # seconds and points at the fragment, not at a half-built release branch.
+      - name: Breaking-change / patch-bump guard
+        run: bash .claude/scripts/check-breaking-change-bump.sh "$RELEASE_VERSION"
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -113,8 +120,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          # Version/changelog surfaces only — never QA artifacts.
-          git add -A ':!device-qa-report.json' ':!device-qa-artifacts' ':!ar-qa-summary.json' ':!web-qa-summary.json'
+          # Version/changelog surfaces only — never QA artifacts. Stage everything, then
+          # unstage the artifacts: an exclude pathspec makes `git add` treat a gitignored
+          # match as explicitly named and EXIT 1 ("paths are ignored by .gitignore"). Only
+          # device-qa-report.json is gitignored today (.gitignore:317) — one is enough, and
+          # under `bash -e` it killed the whole release right after the changelog collate.
+          git add -A
+          git reset -q -- device-qa-report.json device-qa-artifacts ar-qa-summary.json web-qa-summary.json
           git commit -m "release: $V — version bump + changelog collate" \
             -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
           git push origin "$BRANCH"

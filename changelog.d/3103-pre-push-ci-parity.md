@@ -1,0 +1,3 @@
+<!-- category: Tests -->
+- `pre-push-check.sh` now mirrors the blocking CI gates it used to omit: Android ↔ iOS demo-id parity, `assets/CREDITS.md` drift, the `android run` content gate, workflow shell-block validation, every repo-hygiene gate self-test (list derived from `ci.yml`, not copied), and the full `quality-gate.sh` offline profile. A green "ALL CHECKS PASSED" no longer hides a red CI.
+- Everything the local gate deliberately does **not** cover — network, Gradle-bound, device-bound and Checks-API-bound CI steps — is now listed with its reason in a `CI-PARITY LEGS` comment block in the script, so "not covered here" is distinguishable from "covered".

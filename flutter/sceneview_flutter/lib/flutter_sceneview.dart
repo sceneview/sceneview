@@ -9,7 +9,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 // ---------------------------------------------------------------------------
@@ -349,11 +348,23 @@ class SceneViewController {
   MethodChannel? _channel;
   bool _disposed = false;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`), identical on Android
+  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
+  /// did not land on a loaded model, which in practice happens on iOS only:
+  /// Android attaches the handler per model node, so a tap that hit nothing
+  /// fires nothing at all and its no-name fallback is `node_<index>`, never
+  /// the empty string.
   ///
-  /// Wired on both Android and iOS for [SceneView] (3D). On iOS [ARSceneView]
-  /// this callback is not yet delivered — SceneViewSwift's `ARSceneView` does
-  /// not expose an entity hit-test hook (tracked in #2051).
+  /// **Delivered on Android only.** On iOS [SceneView] (3D) the callback is
+  /// wired end to end — the platform view claims tap gestures and the entity
+  /// carries collision and input-target components — but no entity resolves,
+  /// so this never fires. Measured 2026-08-07. Not the shared RealityKit hit
+  /// test: React Native reaches the same hook and was measured firing on iOS
+  /// (#3086), which leaves Flutter's platform-view touch delivery. See the
+  /// plugin README's `onTap` known-gap section. On iOS
+  /// [ARSceneView] it is not delivered either: SceneViewSwift's `ARSceneView`
+  /// exposes no entity hit-test hook (tracked in #2051).
   void Function(String nodeName)? onTap;
 
   /// Called when an AR plane is detected. Receives the plane type
@@ -488,9 +499,17 @@ class SceneView extends StatefulWidget {
   /// Models to load immediately when the view is created.
   final List<ModelNode> initialModels;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`), identical on Android
+  /// and iOS — never the name of a mesh inside the asset. Empty when the tap
+  /// did not land on a loaded model, which in practice happens on iOS only:
+  /// Android attaches the handler per model node, so a tap that hit nothing
+  /// fires nothing at all and its no-name fallback is `node_<index>`, never
+  /// the empty string.
   ///
-  /// Wired on both Android and iOS.
+  /// **Delivered on Android only.** On iOS the callback is wired but
+  /// RealityKit's hit test does not resolve an entity, so it never fires — see
+  /// [SceneViewController.onTap] and the plugin README's known-gap section.
   final void Function(String nodeName)? onTap;
 
   /// Camera interaction mode. Defaults to [CameraControlMode.orbit].
@@ -575,6 +594,12 @@ class _SceneViewState extends State<SceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       case TargetPlatform.iOS:
@@ -586,6 +611,12 @@ class _SceneViewState extends State<SceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       default:
@@ -622,7 +653,9 @@ class ARSceneView extends StatefulWidget {
   /// Whether to enable plane detection and rendering.
   final bool planeDetection;
 
-  /// Called when a model node is tapped. Receives the node name/id.
+  /// Called when a model node is tapped. Receives the model file's base name
+  /// without extension (`models/helmet.glb` → `helmet`) — never the name of a
+  /// mesh inside the asset.
   ///
   /// Delivered on Android only. On iOS, SceneViewSwift's `ARSceneView` does
   /// not yet expose an entity hit-test hook, so this is never invoked there
@@ -707,6 +740,12 @@ class _ARSceneViewState extends State<ARSceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       case TargetPlatform.iOS:
@@ -718,6 +757,12 @@ class _ARSceneViewState extends State<ARSceneView> {
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
             Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+            // A platform view only receives the gestures it claims in the
+            // arena. With pan and scale alone, camera drag and pinch reached
+            // the native view but a *tap* never did — Flutter kept it, so the
+            // native hit-test never ran and `onTap` could not fire. Claiming
+            // taps too is what makes the callback reachable at all.
+            Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
           },
         );
       default:
