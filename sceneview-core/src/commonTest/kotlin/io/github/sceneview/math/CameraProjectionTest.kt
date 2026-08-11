@@ -81,7 +81,7 @@ class CameraProjectionTest {
     // produces a finite, MIRRORED coordinate on the wrong side of the view (or NaN/Inf right on the
     // plane) — silently wrong, so no isFinite check downstream catches it. worldToView must return
     // null for such points. (This is what made an AR bbox overlay blink as the camera panned and a
-    // corner crossed the near plane.)
+    // corner crossed the eye plane.)
     //
     // Conventions of the matrix builders above (standard OpenGL: the camera looks down -Z, so
     // clip.w = -viewZ): with eye at z = 5 looking at the origin, points at world z < 5 are IN FRONT
@@ -115,7 +115,7 @@ class CameraProjectionTest {
     }
 
     @Test
-    fun worldToViewReturnsNullForPointBehindNearPlane() {
+    fun worldToViewReturnsNullForPointBehindEyePlane() {
         val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
         val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
 
@@ -127,7 +127,7 @@ class CameraProjectionTest {
     }
 
     @Test
-    fun worldToViewReturnsNullForPointOnTheNearPlaneBoundary() {
+    fun worldToViewReturnsNullForPointOnTheEyePlaneBoundary() {
         val proj = perspectiveMatrix(60f, 1f, 0.1f, 100f)
         val view = lookAtMatrix(Float3(0f, 0f, 5f), Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
 
