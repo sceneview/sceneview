@@ -127,9 +127,29 @@ def scan(lines):
             lineno += 1
 
 
+def usage():
+    """The `Usage:` block of the docstring above, verbatim.
+
+    Sliced on the marker, not by index: this used to print
+    `__doc__.strip().splitlines()[-4]`, which is the BLANK line above
+    `stdout:` — so the one path that exists to tell a caller how to invoke the
+    script printed an empty line and exited 64. Any edit to the docstring moved
+    that index; a marker slice cannot rot the same way, and
+    test-detect-filament-bg-thread.sh pins that the text comes out non-empty.
+    """
+    lines = __doc__.splitlines()
+    start = lines.index("Usage:")
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if not line.strip():
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
 def main(argv):
     if len(argv) > 2:
-        print(__doc__.strip().splitlines()[-4], file=sys.stderr)
+        print(usage(), file=sys.stderr)
         return 64
 
     if len(argv) == 2:
