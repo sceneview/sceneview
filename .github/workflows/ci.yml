@@ -822,17 +822,43 @@ jobs:
   # Don't write deprecated composable names verbatim in these comments —
   # check-deprecated-api.sh greps source files and would flag the comment
   # itself, as it did on commit ae433620.
+  #
+  # Every gate carries `always() && steps.checkout.outcome == 'success'`, never
+  # a bare `always()`. `always()` alone also fires when the CHECKOUT never
+  # completed, and then every gate measures an empty directory and reports
+  # `failure` at once. Measured on run 31516160366 (PR #3114): checkout hung,
+  # ate the 10-minute timeout, was cancelled — and the run showed 40 red gates
+  # ("agent skill out of sync", "asset credits out of sync", …) that had
+  # measured nothing. The job's own conclusion was right and `CI Gate` refused
+  # the merge, so this costs diagnosis time rather than correctness: the single
+  # real cause was visible only by listing the steps and noticing the first said
+  # `cancelled` while the rest said `failure`. Guarded, a lost checkout skips
+  # them all and leaves exactly one red step — the one that actually broke.
+  #
+  # The guard must stay `always() && …` and never become `success() && …`:
+  # `success()` is false once ANY earlier step failed, which is precisely the
+  # sequential-stop behaviour `always()` is here to prevent. Both halves are
+  # pinned by check-hygiene-checkout-guard.py, which evaluates the real `if:`
+  # expressions of this job under simulated step outcomes.
   repo-hygiene:
     name: Repo hygiene checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        id: checkout
 
       # Deprecated API regression detector — sub-second guard against AI
       # sessions reintroducing the pre-v3.6 composable names (renamed in
       # commit e6a26a06).
+      #
+      # Carries the same guard as every gate below even though it sits first,
+      # where the implicit `success()` would already skip on a lost checkout.
+      # Uniform is the point: the day a step is inserted between checkout and
+      # here, an implicit `success()` would start swallowing this gate on that
+      # step's failure — the sequential-stop bug, reintroduced silently.
       - name: Check for deprecated SceneView API refs
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-deprecated-api.sh --all
 
@@ -840,7 +866,7 @@ jobs:
       # agents/sceneview/ (e.g. `rememberARSession` or `AnchorNode.image()`)
       # BEFORE merge — see PR #1072 for the kind of drift this prevents.
       - name: Check SceneView agent skill is in sync with source
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-sceneview-skill.sh
 
@@ -851,7 +877,7 @@ jobs:
       # tree comes back AND something builds it (#2540) — which is the moment a
       # reviewer is thinking about CMake and jextract, not about tar entries.
       - name: Check vendored download chain is hardened before it is built
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-vendored-download-safety.sh
 
@@ -861,7 +887,7 @@ jobs:
       # on synthetic trees so a loosened probe is caught now, rather than in the
       # PR it was meant to stop.
       - name: Self-test the vendored-download gate
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-vendored-download-safety.sh
 
@@ -877,7 +903,7 @@ jobs:
       # runs it. A gate that skips itself on the very diff it polices is green
       # for life (#2988).
       - name: Check self-hosted runner routing
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: python3 .claude/scripts/check-self-hosted-runner-routing.py
 
@@ -885,9 +911,31 @@ jobs:
       # two-term expression it was written to catch. Without this, a loosened
       # probe reports green on a repo that happens to be correct.
       - name: Self-test the self-hosted routing gate
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
+
+      # This job's own `if:` guards. Self-test first, same discipline as the
+      # pair above — and here it is the whole point, because the gate's subject
+      # is the file it is running from: reading the YAML is exactly what this is
+      # meant to replace. The fixtures are synthetic workflows, so a green run
+      # says "the guard checker works", not "today's ci.yml happens to be right".
+      - name: Self-test the repo-hygiene checkout guard
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-check-hygiene-checkout-guard.sh
+
+      # Evaluates every `if:` in THIS job under simulated step outcomes. Two
+      # directions, both silent: a bare `always()` makes a lost checkout report
+      # 40 gate failures that measured nothing (run 31516160366), and a
+      # `success()`-based guard would stop the gates at the first failure, which
+      # is the behaviour `always()` is here to prevent. A third, worse than
+      # either: rename the checkout's `id:` and every gate skips while the job
+      # reports GREEN. Pure text + arithmetic, sub-second, no network.
+      - name: Check repo-hygiene gates are guarded on the checkout
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: python3 .claude/scripts/check-hygiene-checkout-guard.py
 
       # Self-test first, same discipline as the pairs above. The gate has two
       # passes pulling opposite ways — everything outside the allowlist fails,
@@ -898,7 +946,7 @@ jobs:
       # dropping changelog.d/ from the allowlist, and widening the pin regex
       # to `.*` each break the suite (#3068).
       - name: Self-test check-sceneview-swift-urls.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-sceneview-swift-urls.sh
 
@@ -907,7 +955,7 @@ jobs:
       # monorepo root Package.swift. Any NEW reference to the dead mirror URL
       # points users at a dead resolution path. Closes #1237.
       - name: Forbid archived sceneview-swift mirror URLs
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-sceneview-swift-urls.sh
 
@@ -915,7 +963,7 @@ jobs:
       # every .github/workflows/*.yml against `dash` so we catch bashisms
       # before they ship to CI. Closes #1114.
       - name: Install dash + shellcheck
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: |
           # Both ship in ubuntu-latest, but pin explicitly so the job is
@@ -933,7 +981,7 @@ jobs:
           python3 -c "import yaml" || pip install --quiet -r .github/workflows/requirements/ci.txt
 
       - name: Validate workflow shell blocks (dash + shellcheck)
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-workflow-scripts.sh
 
@@ -941,7 +989,7 @@ jobs:
       # rule so a concurrency-CANCELLED advisory check can never red-light
       # the `CI Gate` aggregator again (#1984, found unsticking PR #1889).
       - name: Test CI Gate aggregation logic
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .github/scripts/test-ci-gate-aggregation.sh
 
@@ -951,7 +999,7 @@ jobs:
       # during a run-attempt rebuild let `CI Gate` pass green over a
       # `Compile KMP core` that had concluded `cancelled`.
       - name: Test CI Gate observation ledger
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .github/scripts/test-ci-gate-observations.sh
 
@@ -959,19 +1007,19 @@ jobs:
       # any samples/* demo app, both for bundled file paths and CDN URLs.
       # Self-test first so a regressed validator can't report a false PASS.
       - name: Self-test validate-demo-assets.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-validate-demo-assets.sh
 
       - name: Validate demo app asset references
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/validate-demo-assets.sh
 
       # Doc-drift detector self-test — a regressed detector that silently
       # PASSes is worse than none, so pin its contract before trusting it.
       - name: Self-test check-doc-drift.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-doc-drift.sh
 
@@ -980,12 +1028,12 @@ jobs:
       # and the exported class surfaces match the d.ts bidirectionally.
       # Self-test first, same rationale as the doc-drift pair above.
       - name: Self-test check-web-dts.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-web-dts.sh
 
       - name: Check sceneview-web.d.ts drift
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-web-dts.sh
 
@@ -997,7 +1045,7 @@ jobs:
       # multi-line `withContext(Dispatchers.IO) { … }` shape, while this job
       # stayed green because the whole block was skipped here.
       - name: Self-test detect-filament-bg-thread.py
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-detect-filament-bg-thread.sh
 
@@ -1011,7 +1059,7 @@ jobs:
       # enclosing block and prints NO check line at all. The second one is worse:
       # nothing on screen says a check went missing. Pure string work, no repo.
       - name: Self-test lib/as-count.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-as-count.sh
 
@@ -1019,7 +1067,7 @@ jobs:
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
       - name: Self-test store-preflight.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-store-preflight.sh
 
@@ -1029,7 +1077,7 @@ jobs:
       # credential-less runs SKIP honestly, and pins the workflow↔script seam
       # (a workflow that silently stops calling the script must go red here).
       - name: Self-test store-sync scripts
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-store-sync.sh
 
@@ -1043,7 +1091,7 @@ jobs:
       # a stubbed App Store Connect. Stdlib only — no network, no secrets, no
       # Apple call.
       - name: Self-test app-store.yml submit step
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: python3 .claude/scripts/test-app-store-submit.py
 
@@ -1053,7 +1101,7 @@ jobs:
       # almost never hits — #2790 bumped the toml with no handler and reddened
       # pre-push-check leg 7 (relived #2876). Pins the handler hermetically.
       - name: Self-test sync-versions.sh Kotlin rewriter
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-sync-versions-kotlin.sh
 
@@ -1067,7 +1115,7 @@ jobs:
       # the #2735 "at tags vX.Y.Z and earlier" rename fact — must survive, or a
       # true sentence becomes a false one.
       - name: Self-test sync-versions.sh bridge READMEs
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-sync-versions-bridge-readmes.sh
 
@@ -1077,7 +1125,7 @@ jobs:
       # a broken lease still "works" for a single session. Hermetic (stub adb +
       # scratch lease dir), so it pins the contract anywhere.
       - name: Self-test emulator pool leases
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-emulator-lease.sh
 
@@ -1088,7 +1136,7 @@ jobs:
       # must stay frictionless (read-only adb, another serial, expired lease).
       # A guard that silently stops firing is worse than no guard at all.
       - name: Self-test hook emulator-lease guard
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-hook-lease-guard.sh
 
@@ -1099,7 +1147,7 @@ jobs:
       # regression that drops the reviewer-count check turns this step red
       # instead of quietly greenlighting half-reviewed PRs.
       - name: Self-test PR-review merge gate
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-grade-pr-review.sh
 
@@ -1113,7 +1161,7 @@ jobs:
       # softened into a path exclusion, and a wiring check that the workflow
       # still calls it.
       - name: Self-test PR-review contamination net
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-assert-review-tree-clean.sh
 
@@ -1127,7 +1175,7 @@ jobs:
       # against real git fixtures, because CI otherwise only ever exercises it
       # during a real dispatch — i.e. never, until it matters.
       - name: Self-test PR-review dispatch config restore
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-dispatch-config-restore.sh
 
@@ -1139,7 +1187,7 @@ jobs:
       # worse than none, because it drives throttling decisions. Fixture-based
       # and hermetic (fake $HOME), with a mutation test on the dedup key.
       - name: Self-test agent-cost report
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-agent-cost-report.sh
 
@@ -1153,7 +1201,7 @@ jobs:
       # which is strictly worse than the inline text it replaced. Both
       # directions are checked, and the suite mutation-tests its own ceiling.
       - name: Self-test context budget
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-context-budget.sh
 
@@ -1168,7 +1216,7 @@ jobs:
       # through as "infrastructure". Fixture-based (synthetic Gradle logs, no
       # Gradle), with a mutation test on the pattern table.
       - name: Self-test Gradle failure classification
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
 
@@ -1181,7 +1229,7 @@ jobs:
       # temp git repos, no network, with a mutant carrying the old fallback to
       # prove the assertions discriminate.
       - name: Self-test the reviewers' diff computation
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-pr-diff.sh
 
@@ -1194,7 +1242,7 @@ jobs:
       # device's lastUpdateTime is. Stub adb/android, no emulator, no lease —
       # the failure is logic, and a test needing a device would never run.
       - name: Self-test android-cli install proof
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-android-cli-install.sh
 
@@ -1204,7 +1252,7 @@ jobs:
       # site while the docs went on recommending it. Documenting the trap is
       # fine; recommending it is not.
       - name: No file teaches `android run` for installing
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-android-run-not-taught.sh
 
@@ -1224,7 +1272,7 @@ jobs:
       # published as user-facing notes. A second mutation test neutralises the
       # stripper and asserts all six fixture note lines come back.
       - name: Self-test changelog collator
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-collate-changelog.sh
 
@@ -1243,7 +1291,7 @@ jobs:
       # must refuse; "non-breaking" and "groundbreaking", both taken from real
       # fragments, must not) plus two mutation tests, one per direction.
       - name: Self-test breaking-change/patch guard
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-breaking-change-bump.sh
 
@@ -1253,7 +1301,7 @@ jobs:
       # by design (heuristic → false positives would erode trust); the weekly
       # `doc-audit.yml` agent does the deep semantic pass + proposes patches.
       - name: Doc-drift check (advisory)
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-doc-drift.sh
 
@@ -1266,7 +1314,7 @@ jobs:
       # regenerating the knowledge files, the AI-facing GPT surface goes stale
       # and CI must fail. Fix locally with `node tools/generate-gpt-knowledge.js`.
       - name: GPT knowledge base in sync with llms.txt
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: node tools/generate-gpt-knowledge.js --check
 
@@ -1281,7 +1329,7 @@ jobs:
       # Khronos models shipped uncredited until a manual re-run caught it.
       # Fix locally with `python3 .claude/scripts/generate-credits.py`.
       - name: Asset credits in sync with catalog.json
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: python3 .claude/scripts/generate-credits.py --check
 
@@ -1289,7 +1337,7 @@ jobs:
       # contract (catches deletions, ignores live iOS .swift refs + plain-prose
       # phrases) before trusting it. Same self-test-first discipline as above.
       - name: Self-test check-demo-class-refs.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-demo-class-refs.sh
 
@@ -1300,7 +1348,7 @@ jobs:
       # that no longer exists. Advisory like check-doc-drift.sh: surfaces the
       # finding, never blocks (a false positive would erode trust).
       - name: Stale demo-class reference check (advisory)
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-demo-class-refs.sh
 
@@ -1309,7 +1357,7 @@ jobs:
       # checkout still flags a real count mismatch, and missing HEAD~1 (shallow
       # history) never crashes it. Same self-test-first discipline as above.
       - name: Self-test impact-check.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-impact-check.sh
 
@@ -1325,12 +1373,12 @@ jobs:
       # (12 ids that diverged unnoticed for months). Pure bash/awk/python
       # against source text — no Xcode, no Gradle, zero macOS cost.
       - name: Self-test check-demo-id-parity.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-check-demo-id-parity.sh
 
       - name: Check Android <-> iOS demo id parity
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/check-demo-id-parity.sh
 
@@ -1341,7 +1389,7 @@ jobs:
       # against this file, so a green run says "the extractor is safe", not
       # "today's ci.yml happens to be tame". Pure bash, sub-second.
       - name: Self-test extract-gate-selftests.sh
-        if: always()
+        if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-extract-gate-selftests.sh
 
