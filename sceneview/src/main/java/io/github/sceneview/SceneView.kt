@@ -207,6 +207,11 @@ fun SceneView(
      */
     isOpaque: Boolean = true,
     /**
+     * Controls whether the internal frame render loop runs. Default `true`.
+     * Set to `false` when the scene is completely idle to pause `withFrameNanos` and save battery.
+     */
+    isRendering: Boolean = true,
+    /**
      * One-line rendering quality preset applied to [view]. Default [RenderQuality.Default] matches
      * the out-of-the-box `SceneView` settings. Use [RenderQuality.Cinematic] for hero shots on
      * capable devices, or [RenderQuality.Performance] on low-end Android or AR backgrounds where
@@ -624,6 +629,9 @@ fun SceneView(
     // never moves. Reading through a state ref here makes the frame loop pick up
     // every recomposition without restarting.
     val currentCameraManipulator = rememberUpdatedState(cameraManipulator)
+    // Read through a state ref so toggling `isRendering` at runtime is picked up by the
+    // frame loop without restarting it.
+    val currentIsRendering = rememberUpdatedState(isRendering)
     // Read through a state ref so toggling `autoCenterContent` at runtime is picked up by the
     // frame loop without restarting it (the loop's LaunchedEffect is keyed on engine/renderer/
     // view/scene only).
@@ -636,6 +644,10 @@ fun SceneView(
         while (true) {
             if (!isResumed.get()) {
                 delay(100)
+                continue
+            }
+            if (!currentIsRendering.value) {
+                delay(16)
                 continue
             }
             withFrameNanos { frameTimeNanos ->
