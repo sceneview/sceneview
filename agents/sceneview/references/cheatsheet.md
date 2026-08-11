@@ -26,6 +26,7 @@ SceneView(
     mainLightNode = rememberMainLightNode(engine),     // null to disable
     fillLightNode = rememberFillLightNode(engine),     // null to disable
     isOpaque = true,
+    isRendering = true,                                 // false parks the frame loop on a fully idle scene
     renderQuality = RenderQuality.Default,              // Cinematic / Default / Performance
     onGestureListener = rememberOnGestureListener(/* … */),
     onFrame = { frameTimeNanos -> /* … */ },

@@ -363,6 +363,72 @@ SceneView(/* ... */) {
     coroutine. `rememberModelInstance` handles this automatically. For imperative
     code, use `loadModelInstanceAsync`.
 
+### Stop rendering an idle scene
+
+A `SceneView` renders every vsync for as long as it is composed, whether or not anything
+changed. Compose's frame clock does not idle on its own, so a screen showing a static model —
+a product viewer nobody is touching, a board game between turns — keeps the GPU drawing an
+identical frame 60 or 120 times a second. On devices whose Choreographer keeps ticking a
+visually static UI it is a measurable source of battery drain and thermal throttling (#3108).
+
+Pass `isRendering = false` to park the frame loop:
+
+```kotlin
+SceneView(isRendering = sceneIsDirty) { /* … */ }
+```
+
+The loop *suspends* while paused, so an idle scene schedules no work at all — it does not
+trade GPU frames for a polling timer — and it resumes on the recomposition that passes `true`,
+with no restart. The resumed frame lands on the next vsync: `withFrameNanos` is awaited after
+the wake-up, so expect one frame of latency, not zero.
+
+!!! warning "Nothing is presented while `isRendering = false`"
+    A node added or moved, a camera or manipulator change and a material edit all leave the
+    **last drawn frame** on screen until rendering resumes. `onFrame` does not fire either.
+
+    Two things are *not* merely frozen:
+
+    - A **new or resized surface** holds no pixels of its own — first attach, app foregrounded,
+      foldable folded or unfolded, split-screen resize. Freezing there would mean a blank view,
+      so the library always presents one frame into a new or resized surface even while paused,
+      then parks again. You do not need to flip the flag on a configuration change.
+    - An **async model load does not finalise** while paused. Filament finishes texture uploads
+      from inside the frame loop, so a model whose load completes during a pause renders
+      *untextured* for as long as the scene stays paused. Hold `true` until
+      `modelLoader.progress == 1f`, not until the load call returns.
+
+    So derive the flag from "is anything dirty", holding it `true` for at least one frame after
+    the last mutation — **not** from "is an animation running". An animation flag is already
+    `false` at the instant a one-shot change is published, which strands that change undrawn.
+    And the dirty window itself has to be Compose state **in both directions**: a deadline
+    compared against a clock flips `true` on the mutation that recomposes it and then never
+    flips back, because time crossing a threshold invalidates no composition. The scene then
+    renders forever and the parameter silently does nothing — the app looks correct, which is
+    what makes this one expensive.
+
+    ```kotlin
+    // WRONG — a new position, a highlight, a finished load is never drawn.
+    SceneView(isRendering = isAnimating) { /* … */ }
+
+    // ALSO WRONG — `System.nanoTime()` is not snapshot state. Nothing recomposes when the
+    // window elapses, so this never returns to `false` after the first mutation.
+    SceneView(isRendering = isAnimating || System.nanoTime() < dirtyUntilNanos) { /* … */ }
+
+    // RIGHT — the window is state, and the effect writes it back to false.
+    var isDirty by remember { mutableStateOf(true) }
+    LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mutation
+        isDirty = true
+        delay(200)
+        isDirty = false
+    }
+    SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+    ```
+
+    Note the `mutableStateOf(true)` seed: a scene whose content is set once, before any
+    animation runs, would never render at all if the flag started `false`.
+
+    Not applicable to `ARSceneView`: a camera feed is never idle, so there is nothing to park.
+
 ---
 
 ## AR-Specific Optimization
@@ -501,6 +567,8 @@ Use this checklist before shipping:
 - [ ] **Shadows** — limited to 1-2 shadow-casting lights
 - [ ] **Post-processing** — adapted to device tier, SSAO disabled on low-end
 - [ ] **Compose** — no allocations in composition body, `remember` for stable refs
+- [ ] **Idle scenes** — `isRendering = false` when nothing changes, driven by a dirty
+      signal that outlives the last mutation by a frame (not by an animation flag)
 - [ ] **Engine** — single shared Engine, ModelLoader, and MaterialLoader
 - [ ] **AR callbacks** — no allocations in `onSessionUpdated`
 - [ ] **Plane renderer** — disabled after object placement

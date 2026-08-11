@@ -142,6 +142,10 @@ dependencies {
     // SDK_INT branches of SystemHapticEngine on a mocked Vibrator (pins the
     // API 24-25 VibrationEffect-absence crash). Mirrors :arsceneview's setup.
     testImplementation libs.robolectric
+    // Coroutines test — SceneIsRenderingTest drives `awaitRenderingEnabled` on virtual time to
+    // assert the `isRendering = false` path PARKS rather than polls (#3108). A poll loop cannot
+    // be distinguished from a park by inspection; it can by `advanceUntilIdle()`.
+    testImplementation libs.kotlin.coroutines.test
 
     // Instrumented tests
     androidTestImplementation libs.androidx.test.junit

@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -126,6 +128,10 @@ import io.github.sceneview.node.findActivity
  * @param environmentLoader     Loader for HDR/KTX environments. Use [rememberEnvironmentLoader].
  * @param view                  Filament [View] (one per window). Use [rememberView].
  * @param isOpaque              Whether the render target is opaque. Default `true`.
+ * @param isRendering           Whether the internal frame loop runs. Default `true`. Pass `false`
+ *                              on a completely idle scene to park the loop and stop drawing; a new
+ *                              or resized surface still gets one frame. See the parameter's own
+ *                              KDoc for how to drive it — the dirty signal must be Compose state.
  * @param renderQuality         One-line preset applied to `view` ([RenderQuality.Default],
  *                              [RenderQuality.Cinematic], or [RenderQuality.Performance]).
  * @param autoCenterContent     When `true` (default), the library translates all DSL [content]
@@ -206,6 +212,51 @@ fun SceneView(
      * Controls whether the render target is opaque or not. Default `true`.
      */
     isOpaque: Boolean = true,
+    /**
+     * Controls whether the internal frame render loop runs. Default `true`.
+     *
+     * Set to `false` when the scene is **completely idle** — nothing animating, no gesture in
+     * flight, no node / camera / material change pending — to park [withFrameNanos] and stop
+     * drawing. The loop *suspends* rather than spins, so a paused scene costs neither GPU frames
+     * nor a periodic CPU wake-up, and it resumes on the next composition that passes `true`
+     * without the frame loop being restarted.
+     *
+     * **Nothing is presented while this is `false`.** A node added or moved, a camera or
+     * manipulator change and a material edit all leave the last drawn frame on screen until
+     * rendering resumes. [onFrame] is part of the render loop, so it does not fire while paused
+     * either. Two consequences are stronger than "the picture freezes", and both are handled or
+     * called out rather than left to be discovered:
+     *
+     * - A **new surface** — first attach, app foregrounded, foldable folded or unfolded,
+     *   split-screen resize — starts with no pixels at all, so freezing there would mean a blank
+     *   view, not a stale one. The library therefore always presents one frame into a new or
+     *   resized surface even while paused, then parks again; you do not need to flip this flag on
+     *   a configuration change.
+     * - An **async model load does not finish** while paused. Filament finalises texture uploads
+     *   from inside the frame loop, so a model whose load completes during a pause renders
+     *   *untextured* until rendering resumes — hold `true` until `modelLoader.progress == 1f`
+     *   rather than until the load call returns.
+     *
+     * Drive it from an "is anything dirty" signal that stays `true` for at least one frame **after**
+     * the last mutation — not from "is an animation running", which is false at the exact moment a
+     * one-shot scene change is published and would strand that change undrawn. The dirty window
+     * must itself be **Compose state in both directions**: a deadline compared against
+     * `System.nanoTime()` turns `true` on the mutation that recomposes and then never turns back,
+     * because a clock passing a threshold invalidates nothing — the scene would render forever and
+     * this parameter would silently do nothing.
+     *
+     * ```kotlin
+     * // `dirtyToken` is bumped by every scene mutation, not just by animations.
+     * var isDirty by remember { mutableStateOf(true) }
+     * LaunchedEffect(dirtyToken) {
+     *     isDirty = true
+     *     delay(200)   // keep drawing briefly after the last mutation
+     *     isDirty = false
+     * }
+     * SceneView(isRendering = isAnimating || isInteracting || isDirty) { … }
+     * ```
+     */
+    isRendering: Boolean = true,
     /**
      * One-line rendering quality preset applied to [view]. Default [RenderQuality.Default] matches
      * the out-of-the-box `SceneView` settings. Use [RenderQuality.Cinematic] for hero shots on
@@ -577,6 +628,20 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
+    // A frame is *owed* to the surface currently attached: `true` until one has been presented
+    // into it. Snapshot state, not a plain flag, because the paused render loop parks on it —
+    // see [awaitRenderingEnabled] and the `shouldRender` gate below (#3109).
+    //
+    // Why this exists at all: a swap chain holds no pixels of its own. `SceneRenderer`'s
+    // `onNativeWindowChanged` creates a brand-new one and presents nothing into it, so every
+    // surface generation — first attach, app foregrounded, foldable folded or unfolded,
+    // split-screen resize — starts blank. With `isRendering = false` on an idle scene, which is
+    // this parameter's documented use, a parked loop would leave that new surface blank
+    // *indefinitely* (black, or transparent with `isOpaque = false`) until something unrelated
+    // flipped the flag. The debt makes the park wait on "rendering is on OR a frame is owed", so a
+    // re-created surface always gets exactly one frame and then parks again.
+    val needsPresent = remember(sceneRenderer) { mutableStateOf(true) }
+
     // Wire resize and surface callbacks.
     SideEffect {
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
@@ -586,8 +651,13 @@ fun SceneView(
             lastViewportRef.set(CameraViewportSeed.packViewport(width, height))
             cameraManipulator?.setViewport(width, height)
             cameraNode.updateProjection()
+            // The viewport just changed: whatever was on screen is the wrong size, and a paused
+            // loop would keep it. Both callbacks run on the main thread (UiHelper), so writing
+            // snapshot state here is safe and wakes the park through the normal apply path.
+            needsPresent.value = true
         }
         sceneRenderer.onSurfaceReady = { viewHeight ->
+            needsPresent.value = true
             if (cameraGestureDetectorRef.get() == null) {
                 cameraGestureDetectorRef.set(
                     CameraGestureDetector(
@@ -624,6 +694,9 @@ fun SceneView(
     // never moves. Reading through a state ref here makes the frame loop pick up
     // every recomposition without restarting.
     val currentCameraManipulator = rememberUpdatedState(cameraManipulator)
+    // Read through a state ref so toggling `isRendering` at runtime is picked up by the
+    // frame loop without restarting it.
+    val currentIsRendering = rememberUpdatedState(isRendering)
     // Read through a state ref so toggling `autoCenterContent` at runtime is picked up by the
     // frame loop without restarting it (the loop's LaunchedEffect is keyed on engine/renderer/
     // view/scene only).
@@ -632,54 +705,90 @@ fun SceneView(
     // parameter at runtime is picked up by the frame loop without restarting it.
     val currentAutoFitContent = rememberUpdatedState(autoFitContent)
 
+    // The loop's real wake condition: the caller wants frames, *or* the current surface is still
+    // owed one. Derived state so the park below observes both through a single snapshot read.
+    val shouldRender = remember(currentIsRendering, needsPresent) {
+        derivedStateOf { currentIsRendering.value || needsPresent.value }
+    }
+
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
-            if (!isResumed.get()) {
-                delay(100)
-                continue
-            }
-            withFrameNanos { frameTimeNanos ->
-                sceneRenderer.renderFrame(frameTimeNanos) {
-                    modelLoader.updateLoad()
-                    childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+            when {
+                // Not resumed — poll the lifecycle flag the DisposableEffect below flips.
+                !isResumed.get() -> delay(100)
 
-                    // Library-level auto-center (#1026). No-op once the content union has settled
-                    // and the gate latched, and skipped while the content bounds are still empty
-                    // (async model loads not finished). Runs here so it sees post-`updateLoad`
-                    // geometry, on the main render thread — Filament transform / renderable reads
-                    // require it. The diagonal-stability gate (#1596) re-runs the pass when an
-                    // async model grows the union, so deferred models still re-centre.
-                    if (currentAutoCenterContent.value) {
-                        autoCenterState.maybeCenter(contentRoot)
-                    }
-
-                    // Library-level auto-fit camera framing (#1439). Drives the `autoFitContent`
-                    // parameter: moves the camera so the content fills the viewport. Only applied
-                    // when there is NO camera manipulator — an active orbit manipulator owns the
-                    // camera transform every frame (it is overwritten just below from
-                    // `manipulator.getTransform()`), so a static auto-fit reposition cannot
-                    // coexist with it without manipulator re-seeding. With no manipulator, this is
-                    // the canonical model-viewer one-shot framing. Runs after auto-center so it
-                    // frames the already-centred content; the diagonal-stability gate re-frames
-                    // when a deferred async model grows the union (#1596).
-                    if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
-                        if (currentAutoCenterContent.value) {
-                            autoFitState.maybeFit(cameraNode, contentRoot)
-                        } else {
-                            autoFitState.maybeFit(cameraNode, childNodesRef.get())
-                        }
-                    }
-
-                    currentCameraManipulator.value?.let { manipulator ->
-                        val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
-                        manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
-                        cameraNode.transform = manipulator.getTransform()
-                    }
-
-                    currentOnFrame.value?.invoke(frameTimeNanos)
+                // Rendering paused and the surface is not owed a frame — park, don't poll. A
+                // `delay(16)` spin would stop the GPU work and still wake the CPU ~60x/s on a
+                // scene that is idle by definition: on the Samsung foldables in #3108 that wake-up
+                // is a measurable share of the drain this parameter exists to remove, and it
+                // survives even with the GPU work gone. Suspending on the snapshot instead lets
+                // the thread idle until a recomposition flips the flag back — or until a new
+                // surface arrives and sets the debt. Both gates re-enter the loop from the top, so
+                // a park that lasts minutes still re-reads the lifecycle before the next frame.
+                !shouldRender.value -> {
+                    // Don't hand the first frame after a long park a delta covering the whole
+                    // park: `manipulator.update()` reads this as elapsed time. Zero means "no
+                    // previous frame", which is what a resumed loop actually has.
+                    lastFrameTimeNanosRef.set(0L)
+                    awaitRenderingEnabled(shouldRender)
                 }
 
-                lastFrameTimeNanosRef.set(frameTimeNanos)
+                else -> withFrameNanos { frameTimeNanos ->
+                    val presentedBefore = sceneRenderer.presentedFrameCount
+                    sceneRenderer.renderFrame(frameTimeNanos) {
+                        modelLoader.updateLoad()
+                        childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+
+                        // Library-level auto-center (#1026). No-op once the content union has settled
+                        // and the gate latched, and skipped while the content bounds are still empty
+                        // (async model loads not finished). Runs here so it sees post-`updateLoad`
+                        // geometry, on the main render thread — Filament transform / renderable reads
+                        // require it. The diagonal-stability gate (#1596) re-runs the pass when an
+                        // async model grows the union, so deferred models still re-centre.
+                        if (currentAutoCenterContent.value) {
+                            autoCenterState.maybeCenter(contentRoot)
+                        }
+
+                        // Library-level auto-fit camera framing (#1439). Drives the `autoFitContent`
+                        // parameter: moves the camera so the content fills the viewport. Only applied
+                        // when there is NO camera manipulator — an active orbit manipulator owns the
+                        // camera transform every frame (it is overwritten just below from
+                        // `manipulator.getTransform()`), so a static auto-fit reposition cannot
+                        // coexist with it without manipulator re-seeding. With no manipulator, this is
+                        // the canonical model-viewer one-shot framing. Runs after auto-center so it
+                        // frames the already-centred content; the diagonal-stability gate re-frames
+                        // when a deferred async model grows the union (#1596).
+                        if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                            if (currentAutoCenterContent.value) {
+                                autoFitState.maybeFit(cameraNode, contentRoot)
+                            } else {
+                                autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                            }
+                        }
+
+                        currentCameraManipulator.value?.let { manipulator ->
+                            val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
+                            manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
+                            cameraNode.transform = manipulator.getTransform()
+                        }
+
+                        currentOnFrame.value?.invoke(frameTimeNanos)
+                    }
+
+                    // Settle the surface's owed frame only if one was really presented.
+                    // `renderFrame` returns early when no swap chain is ready, and
+                    // `Renderer.beginFrame` can refuse a frame for pacing — clearing the debt on
+                    // the *attempt* would park with a blank surface, which is the bug this guards.
+                    // Guarded by the read so a rendering scene does not write snapshot state every
+                    // frame.
+                    if (needsPresent.value &&
+                        sceneRenderer.presentedFrameCount != presentedBefore
+                    ) {
+                        needsPresent.value = false
+                    }
+
+                    lastFrameTimeNanosRef.set(frameTimeNanos)
+                }
             }
         }
     }
@@ -1665,6 +1774,7 @@ fun Scene(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
+    isRendering: Boolean = true,
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
@@ -1694,6 +1804,7 @@ fun Scene(
     environmentLoader = environmentLoader,
     view = view,
     isOpaque = isOpaque,
+    isRendering = isRendering,
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
