@@ -27,6 +27,7 @@ fun SceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
+    isRendering: Boolean = true,   // false parks the frame loop on an idle scene — see note below
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
@@ -50,6 +51,18 @@ fun SceneView(
 ```
 
 **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+
+**`isRendering` (default `true`, v4.29.0+ / #3108):** pass `false` when the scene is completely idle — nothing animating, no gesture in flight, no node / camera / material change pending — to park the frame loop. The loop suspends rather than spins, so a paused scene costs neither GPU frames nor a periodic CPU wake-up, and it resumes immediately on the next composition that passes `true` (the loop is not restarted). This is the fix for an idle 3D screen draining battery and thermally throttling on devices whose Choreographer does not idle on a static UI.
+
+**Nothing is presented while `isRendering = false`** — a node added or moved, a camera or manipulator change, a material edit, a model that finishes loading and a viewport resize all leave the *last drawn frame* on screen until rendering resumes; `onFrame` does not fire either. So drive it from an "is anything dirty" signal that stays `true` for at least one frame **after** the last mutation, never from "is an animation running" — the latter is already `false` at the instant a one-shot scene change is published, which strands that change undrawn:
+
+```kotlin
+// WRONG — a one-shot change (new position, highlight, finished load) is never drawn.
+SceneView(isRendering = isAnimating) { /* … */ }
+
+// RIGHT — every mutation extends a dirty window that outlives it by a few frames.
+SceneView(isRendering = isAnimating || isInteracting || System.nanoTime() < dirtyUntilNanos) { /* … */ }
+```
 
 **`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see "Camera"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 

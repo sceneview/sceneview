@@ -24,6 +24,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -74,6 +75,7 @@ import io.github.sceneview.utils.destroy
 import io.github.sceneview.utils.intervalSeconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -208,7 +210,26 @@ fun SceneView(
     isOpaque: Boolean = true,
     /**
      * Controls whether the internal frame render loop runs. Default `true`.
-     * Set to `false` when the scene is completely idle to pause `withFrameNanos` and save battery.
+     *
+     * Set to `false` when the scene is **completely idle** — nothing animating, no gesture in
+     * flight, no node / camera / material change pending — to park [withFrameNanos] and stop
+     * drawing. The loop *suspends* rather than spins, so a paused scene costs neither GPU frames
+     * nor a periodic CPU wake-up, and it resumes on the next composition that passes `true`
+     * without the frame loop being restarted.
+     *
+     * **Nothing is presented while this is `false`.** A node added or moved, a camera or
+     * manipulator change, a material edit, a model that finishes loading and a viewport resize all
+     * leave the *last drawn frame* on screen until rendering resumes. [onFrame] is part of the
+     * render loop, so it does not fire while paused either.
+     *
+     * Drive it from an "is anything dirty" signal that stays `true` for at least one frame **after**
+     * the last mutation — not from "is an animation running", which is false at the exact moment a
+     * one-shot scene change is published and would strand that change undrawn:
+     *
+     * ```kotlin
+     * // `dirtyUntil` is bumped by every scene mutation, not just by animations.
+     * SceneView(isRendering = isAnimating || isInteracting || System.nanoTime() < dirtyUntil) { … }
+     * ```
      */
     isRendering: Boolean = true,
     /**
@@ -647,7 +668,12 @@ fun SceneView(
                 continue
             }
             if (!currentIsRendering.value) {
-                delay(16)
+                // Park, don't poll. A `delay(16)` / `continue` spin would keep waking the CPU
+                // ~60x/s on a scene that is idle by definition — on the Samsung foldables in
+                // #3108 that wake-up is a measurable share of the drain this parameter exists to
+                // remove, and it survives even with the GPU work gone. Suspending on the snapshot
+                // instead lets the thread idle until a recomposition flips the flag back.
+                awaitRenderingEnabled(currentIsRendering)
                 continue
             }
             withFrameNanos { frameTimeNanos ->
@@ -741,6 +767,25 @@ fun SceneView(
         }
         scope.content()
     }
+}
+
+/**
+ * Suspends until [isRendering] reads `true`, then returns. Returns immediately — without
+ * allocating — when it already reads `true`, which is the per-frame hot path.
+ *
+ * This is the `isRendering = false` half of the render loop above, extracted so the parking
+ * *semantics* are unit-testable without a Filament engine or a device (`SceneIsRenderingTest`).
+ *
+ * The distinction it pins is the whole point of #3108: pausing must **park** the coroutine, not
+ * poll it. A `while (!value) delay(16)` loop stops the GPU work but keeps the CPU waking 60x a
+ * second forever on a scene that never changes, which on the reporting devices is a large part of
+ * what makes an idle 3D screen run hot. Reading through a [State] and suspending on
+ * [snapshotFlow] means an idle scene schedules nothing at all until a recomposition writes the
+ * flag back to `true`.
+ */
+internal suspend fun awaitRenderingEnabled(isRendering: State<Boolean>) {
+    if (isRendering.value) return
+    snapshotFlow { isRendering.value }.first { it }
 }
 
 // ── Async resource helpers ────────────────────────────────────────────────────────────────────────
@@ -1677,6 +1722,7 @@ fun Scene(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
+    isRendering: Boolean = true,
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
@@ -1706,6 +1752,7 @@ fun Scene(
     environmentLoader = environmentLoader,
     view = view,
     isOpaque = isOpaque,
+    isRendering = isRendering,
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
