@@ -168,6 +168,20 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
+# ── Bad usage prints usage text, not a blank line ───────────────────────────
+# The detector used to print `__doc__.strip().splitlines()[-4]` here, which is
+# the BLANK line above the `stdout:` paragraph: the only path whose entire job
+# is to say how to call the script said nothing at all. Assert the exit code AND
+# that the text names the invocation — an empty stderr must not read as a pass.
+USAGE_OUT=$(python3 "$DETECT" one two 2>&1 >/dev/null) && USAGE_EXIT=0 || USAGE_EXIT=$?
+if [ "$USAGE_EXIT" -eq 64 ] && grep -q 'detect-filament-bg-thread.py' <<< "$USAGE_OUT"; then
+    echo "[PASS] bad usage exits 64 with usage text on stderr"
+else
+    echo "[FAIL] bad usage exits 64 with usage text on stderr — exit $USAGE_EXIT, stderr:"
+    while IFS= read -r line; do echo "       | $line"; done <<< "$USAGE_OUT"
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo ""
 if [ "$FAILURES" -eq 0 ]; then
     echo "detect-filament-bg-thread.py: all scenarios hold"

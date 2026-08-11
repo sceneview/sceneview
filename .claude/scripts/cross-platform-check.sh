@@ -30,6 +30,14 @@ for arg in "$@"; do
     esac
 done
 
+# `grep -c` prints its count AND exits 1 on no match, so the guarded forms it
+# needs (`|| true` then a first-line/default normalisation) live in one place —
+# pinned in both directions by test-as-count.sh. Sourced rather than reinvented:
+# the two counters below had each grown their own version, and only one of them
+# was correct (#3115).
+# shellcheck source=lib/as-count.sh
+source "$SCRIPT_DIR/lib/as-count.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -383,35 +391,56 @@ if [ "$WITH_APK" -eq 1 ]; then
     fi
     echo ""
 
-    # ─── Demo-count parity: Android DemoRegistry vs iOS SamplesTab ──────
+    # ─── Demo-count parity: Android demo fragments vs iOS demo scenes ───
+    # ADVISORY only, and deliberately narrow: `check-demo-id-parity.sh` is the
+    # BLOCKING gate on demo-id drift (both directions, id by id, via
+    # parity-manifest.yml). All this leg adds is "did one platform's inventory
+    # vanish entirely" — an inequality between the two counts is legitimate
+    # (android-only and ios-only rows both exist), so it is never flagged here.
     echo -e "  ${CYAN}Demo inventory parity:${NC}"
-    DEMO_REGISTRY="$DEMO_MODULE/src/main/java/io/github/sceneview/demo/DemoRegistry.kt"
-    IOS_SAMPLES="$REPO_ROOT/samples/ios-demo/SceneViewDemo/Views/Tabs/SamplesTab.swift"
+    IOS_SCENES_DIR="$REPO_ROOT/samples/ios-demo/SceneViewDemo/Views/Demos/Scenes"
 
+    # Android demo ids come from the per-demo FRAGMENTS, not from DemoRegistry.kt:
+    # #1797 moved every `DemoEntry(` instantiation into
+    # `demo/fragments/*Fragment.kt` (collated into `GeneratedDemos`) and left
+    # `DemoRegistry.kt` holding only the `data class DemoEntry(` declaration — which
+    # the old probe's `^[[:space:]]*DemoEntry\(` cannot match, since that line starts
+    # with `data`. So this counter had been a structural 0 ever since, the `-gt 0`
+    # guard below could never be true, and the leg printed no drift because it
+    # measured nothing. Same source as check-demo-id-parity.sh, so the two gates
+    # cannot disagree about what an Android demo is.
+    ANDROID_FRAG_DIR="$DEMO_MODULE/src/main/java/io/github/sceneview/demo/fragments"
     ANDROID_DEMO_COUNT=0
-    if [ -f "$DEMO_REGISTRY" ]; then
-        # `grep -c` prints `0` AND exits 1 on no match, so `|| echo 0` yielded the
-        # two-line value `0\n0` and every numeric comparison below it died. Take
-        # the first line only.
-        ANDROID_DEMO_COUNT="$(grep -cE '^[[:space:]]*DemoEntry\(' "$DEMO_REGISTRY" 2>/dev/null || true)"
-        ANDROID_DEMO_COUNT="${ANDROID_DEMO_COUNT%%$'\n'*}"
-        ANDROID_DEMO_COUNT="${ANDROID_DEMO_COUNT:-0}"
+    if [ -d "$ANDROID_FRAG_DIR" ]; then
+        ANDROID_DEMO_COUNT="$(as_count "$( (grep -hoE 'id[[:space:]]*=[[:space:]]*"[a-z0-9-]+"' "$ANDROID_FRAG_DIR"/*Fragment.kt 2>/dev/null || true) | sort -u | wc -l | tr -d ' ')")"
     fi
+    # The iOS side counts `// @sceneId` directives under `Views/Demos/Scenes/` —
+    # the directive `collate-ios-demos.sh` itself parses to build the registry the
+    # Samples tab renders. It used to be `grep -ciE 'demo|sample'` on
+    # `SamplesTab.swift`, which counted doc comments and `@State` declarations:
+    # 33 on a file that declares no demo at all, and — since `struct SamplesTab`
+    # matches `sample` — a count that cannot reach 0 while the file exists. So the
+    # `-eq 0` guard below was unreachable from BOTH sides at once.
     IOS_DEMO_COUNT=0
-    if [ -f "$IOS_SAMPLES" ]; then
-        # Count demo references on the iOS Samples tab (id / case entries).
-        IOS_DEMO_COUNT="$(grep -ciE 'demo|sample' "$IOS_SAMPLES" 2>/dev/null || echo 0)"
+    if [ -d "$IOS_SCENES_DIR" ]; then
+        IOS_DEMO_COUNT="$(as_count "$( (grep -hoE '// @sceneId[[:space:]]+[a-z0-9-]+' "$IOS_SCENES_DIR"/*Scene.swift 2>/dev/null || true) | sort -u | wc -l | tr -d ' ')")"
     fi
 
-    echo "    Android DemoRegistry entries: $ANDROID_DEMO_COUNT"
-    if [ -f "$IOS_SAMPLES" ]; then
-        echo "    iOS SamplesTab references:    $IOS_DEMO_COUNT"
-        if [ "$ANDROID_DEMO_COUNT" -gt 0 ] && [ "$IOS_DEMO_COUNT" -eq 0 ]; then
-            echo -e "    ${YELLOW}iOS SamplesTab lists no demos — possible drift${NC}"
-            APK_ISSUES=$((APK_ISSUES + 1))
-        fi
-    else
-        echo -e "    ${YELLOW}iOS SamplesTab.swift not found${NC}"
+    echo "    Android demo fragment ids:    $ANDROID_DEMO_COUNT"
+    echo "    iOS demo scene ids:           $IOS_DEMO_COUNT"
+    # A discovery that finds nothing must never read as "no drift" (#3050, #3068).
+    # The repo has demos on both platforms; a zero here means the probe broke —
+    # the sources moved again — and it says so instead of printing green.
+    if [ "$ANDROID_DEMO_COUNT" -eq 0 ]; then
+        echo -e "    ${RED}Android demo discovery found 0 ids — the probe is broken, not the tree${NC}"
+        APK_ISSUES=$((APK_ISSUES + 1))
+    fi
+    if [ ! -d "$IOS_SCENES_DIR" ]; then
+        echo -e "    ${YELLOW}iOS Demos/Scenes/ not found — iOS inventory NOT checked${NC}"
+        APK_ISSUES=$((APK_ISSUES + 1))
+    elif [ "$IOS_DEMO_COUNT" -eq 0 ]; then
+        echo -e "    ${RED}iOS demo discovery found 0 ids — the probe is broken, not the tree${NC}"
+        APK_ISSUES=$((APK_ISSUES + 1))
     fi
     echo ""
 

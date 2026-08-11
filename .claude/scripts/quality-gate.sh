@@ -185,9 +185,18 @@ if [ -n "$CHANGED_KT" ]; then
     # nothing. It only looked green in CI, where `git diff HEAD` is empty and
     # this whole block is skipped.
     BG_LOG="${TMPDIR:-/tmp}/filament-bg-thread.log"
+    BG_DIFF="${TMPDIR:-/tmp}/filament-bg-thread.diff"
     if ! command -v python3 > /dev/null 2>&1; then
         check "Filament calls on background thread" "WARN" "python3 not found — check NOT run"
-    elif git diff HEAD 2>/dev/null | python3 .claude/scripts/lib/detect-filament-bg-thread.py > "$BG_LOG" 2>&1; then
+    elif ! git diff HEAD > "$BG_DIFF" 2>/dev/null; then
+        # Diff FIRST, judge second. `git diff HEAD` fails on a repo with no
+        # commit yet (`HEAD` unknown) and outside a work tree; under this
+        # script's `pipefail`, the old `git diff HEAD | python3 …` pipeline
+        # inherited that failure and reported it as the python side's verdict —
+        # a THREADING VIOLATION with an empty log to explain it. A git error
+        # means the code was never judged, which is a WARN, not a finding.
+        check "Filament calls on background thread" "WARN" "git diff HEAD failed — check NOT run"
+    elif python3 .claude/scripts/lib/detect-filament-bg-thread.py "$BG_DIFF" > "$BG_LOG" 2>&1; then
         check "No Filament calls on background thread" "PASS" ""
     else
         check "Filament on background thread" "FAIL" "THREADING VIOLATION — see $BG_LOG"
