@@ -316,36 +316,59 @@ def parse_steps(lines, start, end):
     The second return value is what makes discovery falsifiable. A parser that
     silently loses a step reports "all guarded" over an unguarded gate, which is
     the same green as a correct tree.
+
+    Block scalars (`run: |`) are consumed as literal text rather than scanned.
+    A multi-line `run:` is shell, not YAML, and a line inside one that merely
+    LOOKS like a step key is not a step key — without this, a step whose script
+    happened to print or write `if:` would be reported as an unattributed
+    condition, i.e. this gate failing CI over a false positive of its own making.
     """
     steps, cur = [], None
-    claimed = set()
+    claimed, literal = set(), set()
+    block_indent = None
     for i in range(start, end):
         line = lines[i].rstrip("\n")
-        if not line.strip() or line.lstrip().startswith("#"):
+        if not line.strip():
             continue
+        indent = len(line) - len(line.lstrip())
+        # Inside a block scalar: everything more-indented than the key belongs
+        # to the scalar, whatever it looks like.
+        if block_indent is not None:
+            if indent > block_indent:
+                literal.add(i + 1)
+                continue
+            block_indent = None
+        if line.lstrip().startswith("#"):
+            continue
+
         m = STEP_RE.match(line)
         if m:
             cur = Step(i + 1)
             steps.append(cur)
-            inline = KEY_RE.match("        " + m.group(1))
-            if inline:
-                cur.keys[inline.group(1)] = inline.group(2).strip()
-                if inline.group(1) == "if":
-                    cur.if_line = i + 1
-                    claimed.add(i + 1)
-            continue
-        m = KEY_RE.match(line)
-        if m and cur is not None:
-            cur.keys[m.group(1)] = m.group(2).strip()
-            if m.group(1) == "if":
-                cur.if_line = i + 1
-                claimed.add(i + 1)
+            # A step's first key may sit on the `- ` line itself. Re-indent it
+            # to the 8 columns KEY_RE expects rather than writing a second regex.
+            m, indent = KEY_RE.match("        " + m.group(1)), 8
+            if m is None:
+                continue
+        else:
+            m = KEY_RE.match(line)
+            if m is None or cur is None:
+                continue
+
+        key, value = m.group(1), m.group(2).strip()
+        cur.keys[key] = value
+        if key == "if":
+            cur.if_line = i + 1
+            claimed.add(i + 1)
+        if value[:1] in ("|", ">"):
+            block_indent = indent
     unattributed = [
         (i + 1, lines[i].strip())
         for i in range(start, end)
         if IF_RE.match(lines[i].rstrip("\n"))
         and not lines[i].lstrip().startswith("#")
         and i + 1 not in claimed
+        and i + 1 not in literal
     ]
     return steps, unattributed
 

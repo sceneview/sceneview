@@ -179,6 +179,20 @@ w="$(new_wf)"; write_job "$w" checkout
 { printf '\n      - name: oddly indented\n        shell: bash\n          if: always()\n        run: bash .claude/scripts/o.sh\n'; } >> "$w"
 check 1 "an if: the step parser could not attribute" "$w"
 
+# The other direction, and the reason the parser consumes block scalars instead
+# of scanning them: a multi-line `run:` is SHELL, not YAML. A step whose script
+# writes or prints something shaped like `if:` must not be reported as an
+# unattributed condition — that would be this gate failing CI over a false
+# positive of its own making, which is how a gate gets switched off.
+w="$(new_wf)"; write_job "$w" checkout
+{ printf '\n      - name: writes a workflow fixture\n        if: %s\n        shell: bash\n        run: |\n' "$GUARD"
+  printf '          cat > /tmp/fixture.yml <<YAML\n'
+  printf '          steps:\n'
+  printf '            - name: inner\n'
+  printf '              if: always()\n'
+  printf '          YAML\n'; } >> "$w"
+check 0 "an if:-shaped line inside a run: | block is shell, not a step key" "$w"
+
 # "Found nothing" must never read as "found nothing wrong".
 w="$(new_wf)"
 { printf 'name: t\non:\n  push:\n\njobs:\n  repo-hygiene:\n    runs-on: ubuntu-latest\n    steps:\n'
