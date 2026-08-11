@@ -298,16 +298,29 @@ class Step:
 
 
 def job_window(lines, job):
-    """Return (start, end) line indices of the job's body, or None."""
+    """Return (start, end) line indices of the job's STEPS, or None.
+
+    The window opens at `steps:`, not at the job key. A job-level `if:` — the
+    path-gate this job deliberately does not have (#2988) — is a job property,
+    not a step condition, and scanning from the job key would report it as a
+    step the parser lost.
+    """
     start = None
     for i, line in enumerate(lines):
         m = JOB_RE.match(line)
-        if m and m.group(1) == job:
-            start = i + 1
+        if m:
+            if start is not None:
+                return None  # the next job began before `steps:` did
+            if m.group(1) == job:
+                start = i + 1
             continue
-        if start is not None and m:
-            return start, i
-    return (start, len(lines)) if start is not None else None
+        if start is not None and line.rstrip("\n") == "    steps:":
+            end = next(
+                (j for j in range(i + 1, len(lines)) if JOB_RE.match(lines[j])),
+                len(lines),
+            )
+            return i + 1, end
+    return None
 
 
 def parse_steps(lines, start, end):

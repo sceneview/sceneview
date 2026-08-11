@@ -193,6 +193,20 @@ w="$(new_wf)"; write_job "$w" checkout
   printf '          YAML\n'; } >> "$w"
 check 0 "an if:-shaped line inside a run: | block is shell, not a step key" "$w"
 
+# Same direction, other source: a job-level `if:` is a property of the JOB. The
+# scan window opens at `steps:` for exactly this reason — starting it at the job
+# key would report the job's own condition as a step the parser lost, so this
+# gate would go red the first time someone path-gates the job. (This job is
+# deliberately not path-gated, #2988; the gate must not be what enforces that.)
+w="$(new_wf)"; write_job "$w" checkout
+python3 - "$w" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(
+    "    steps:\n", "    if: github.event_name == 'push'\n    steps:\n", 1))
+PY
+check 0 "a job-level if: is a job property, not an unattributed step key" "$w"
+
 # "Found nothing" must never read as "found nothing wrong".
 w="$(new_wf)"
 { printf 'name: t\non:\n  push:\n\njobs:\n  repo-hygiene:\n    runs-on: ubuntu-latest\n    steps:\n'
