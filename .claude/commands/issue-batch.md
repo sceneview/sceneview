@@ -13,9 +13,10 @@ agents flowing until the backlog is drained or they ask you to stop.
 > saved workflow** (`Workflow({ name: "fix-issue-batch" })` → `.claude/workflows/fix-issue-batch.js`):
 > claim → lean-clone → fix → self-review → fire-and-forget merge → release-claim, with
 > `claim.sh` killing the #2300 race. This skill is the orchestrator's *playbook* (the
-> *why*, plus the audit + release-checkpoint wrapping); the workflow is the *how* for the
-> fan-out. Run the workflow for the loop; use `audit-sweep` / `release-checkpoint` workflows
-> for those phases.
+> *why*, plus the audit + release wrapping); the workflow is the *how* for the
+> fan-out. Run the workflow for the loop; use the `audit-sweep` workflow for the audit
+> phase and `/release` for the release phase (the `release-checkpoint` workflow was
+> deleted 2026-08-11 — it was a second encoding of the same chain).
 
 The validated operating model (formalized 2026-05-15; rigor layer added 2026-06-02) is:
 
