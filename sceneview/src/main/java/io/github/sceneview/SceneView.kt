@@ -24,7 +24,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -75,7 +74,6 @@ import io.github.sceneview.utils.destroy
 import io.github.sceneview.utils.intervalSeconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -663,61 +661,62 @@ fun SceneView(
 
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
-            if (!isResumed.get()) {
-                delay(100)
-                continue
-            }
-            if (!currentIsRendering.value) {
-                // Park, don't poll. A `delay(16)` / `continue` spin would keep waking the CPU
-                // ~60x/s on a scene that is idle by definition — on the Samsung foldables in
-                // #3108 that wake-up is a measurable share of the drain this parameter exists to
-                // remove, and it survives even with the GPU work gone. Suspending on the snapshot
-                // instead lets the thread idle until a recomposition flips the flag back.
-                awaitRenderingEnabled(currentIsRendering)
-                continue
-            }
-            withFrameNanos { frameTimeNanos ->
-                sceneRenderer.renderFrame(frameTimeNanos) {
-                    modelLoader.updateLoad()
-                    childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+            when {
+                // Not resumed — poll the lifecycle flag the DisposableEffect below flips.
+                !isResumed.get() -> delay(100)
 
-                    // Library-level auto-center (#1026). No-op once the content union has settled
-                    // and the gate latched, and skipped while the content bounds are still empty
-                    // (async model loads not finished). Runs here so it sees post-`updateLoad`
-                    // geometry, on the main render thread — Filament transform / renderable reads
-                    // require it. The diagonal-stability gate (#1596) re-runs the pass when an
-                    // async model grows the union, so deferred models still re-centre.
-                    if (currentAutoCenterContent.value) {
-                        autoCenterState.maybeCenter(contentRoot)
-                    }
+                // Rendering paused — park, don't poll. A `delay(16)` spin would stop the GPU work
+                // and still wake the CPU ~60x/s on a scene that is idle by definition: on the
+                // Samsung foldables in #3108 that wake-up is a measurable share of the drain this
+                // parameter exists to remove, and it survives even with the GPU work gone.
+                // Suspending on the snapshot instead lets the thread idle until a recomposition
+                // flips the flag back. Both gates re-enter the loop from the top, so a park that
+                // lasts minutes still re-reads the lifecycle before the next frame is drawn.
+                !currentIsRendering.value -> awaitRenderingEnabled(currentIsRendering)
 
-                    // Library-level auto-fit camera framing (#1439). Drives the `autoFitContent`
-                    // parameter: moves the camera so the content fills the viewport. Only applied
-                    // when there is NO camera manipulator — an active orbit manipulator owns the
-                    // camera transform every frame (it is overwritten just below from
-                    // `manipulator.getTransform()`), so a static auto-fit reposition cannot
-                    // coexist with it without manipulator re-seeding. With no manipulator, this is
-                    // the canonical model-viewer one-shot framing. Runs after auto-center so it
-                    // frames the already-centred content; the diagonal-stability gate re-frames
-                    // when a deferred async model grows the union (#1596).
-                    if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                else -> withFrameNanos { frameTimeNanos ->
+                    sceneRenderer.renderFrame(frameTimeNanos) {
+                        modelLoader.updateLoad()
+                        childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+
+                        // Library-level auto-center (#1026). No-op once the content union has settled
+                        // and the gate latched, and skipped while the content bounds are still empty
+                        // (async model loads not finished). Runs here so it sees post-`updateLoad`
+                        // geometry, on the main render thread — Filament transform / renderable reads
+                        // require it. The diagonal-stability gate (#1596) re-runs the pass when an
+                        // async model grows the union, so deferred models still re-centre.
                         if (currentAutoCenterContent.value) {
-                            autoFitState.maybeFit(cameraNode, contentRoot)
-                        } else {
-                            autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                            autoCenterState.maybeCenter(contentRoot)
                         }
+
+                        // Library-level auto-fit camera framing (#1439). Drives the `autoFitContent`
+                        // parameter: moves the camera so the content fills the viewport. Only applied
+                        // when there is NO camera manipulator — an active orbit manipulator owns the
+                        // camera transform every frame (it is overwritten just below from
+                        // `manipulator.getTransform()`), so a static auto-fit reposition cannot
+                        // coexist with it without manipulator re-seeding. With no manipulator, this is
+                        // the canonical model-viewer one-shot framing. Runs after auto-center so it
+                        // frames the already-centred content; the diagonal-stability gate re-frames
+                        // when a deferred async model grows the union (#1596).
+                        if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
+                            if (currentAutoCenterContent.value) {
+                                autoFitState.maybeFit(cameraNode, contentRoot)
+                            } else {
+                                autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                            }
+                        }
+
+                        currentCameraManipulator.value?.let { manipulator ->
+                            val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
+                            manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
+                            cameraNode.transform = manipulator.getTransform()
+                        }
+
+                        currentOnFrame.value?.invoke(frameTimeNanos)
                     }
 
-                    currentCameraManipulator.value?.let { manipulator ->
-                        val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
-                        manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
-                        cameraNode.transform = manipulator.getTransform()
-                    }
-
-                    currentOnFrame.value?.invoke(frameTimeNanos)
+                    lastFrameTimeNanosRef.set(frameTimeNanos)
                 }
-
-                lastFrameTimeNanosRef.set(frameTimeNanos)
             }
         }
     }
@@ -767,25 +766,6 @@ fun SceneView(
         }
         scope.content()
     }
-}
-
-/**
- * Suspends until [isRendering] reads `true`, then returns. Returns immediately — without
- * allocating — when it already reads `true`, which is the per-frame hot path.
- *
- * This is the `isRendering = false` half of the render loop above, extracted so the parking
- * *semantics* are unit-testable without a Filament engine or a device (`SceneIsRenderingTest`).
- *
- * The distinction it pins is the whole point of #3108: pausing must **park** the coroutine, not
- * poll it. A `while (!value) delay(16)` loop stops the GPU work but keeps the CPU waking 60x a
- * second forever on a scene that never changes, which on the reporting devices is a large part of
- * what makes an idle 3D screen run hot. Reading through a [State] and suspending on
- * [snapshotFlow] means an idle scene schedules nothing at all until a recomposition writes the
- * flag back to `true`.
- */
-internal suspend fun awaitRenderingEnabled(isRendering: State<Boolean>) {
-    if (isRendering.value) return
-    snapshotFlow { isRendering.value }.first { it }
 }
 
 // ── Async resource helpers ────────────────────────────────────────────────────────────────────────
