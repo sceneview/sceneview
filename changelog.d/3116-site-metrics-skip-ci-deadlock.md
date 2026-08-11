@@ -1,6 +1,6 @@
 <!-- category: Fixed -->
 - The weekly community-metrics PR no longer carries `[skip ci]` in its commit subject. `CI Gate` is the single required context on `main` and a skipped run never reports it, so `gh pr merge --auto` waited on a check that could never arrive — #3075 sat open in that state with a body promising it would "merge itself once CI Gate reports green", and needed an admin merge.
-- `check-workflow-scripts.sh` now fails any workflow that commits with a CI-skip marker and then asks for `gh pr merge --auto`. The pair is the bug; either half alone is legitimate.
+- `check-workflow-scripts.sh` now fails any workflow that commits with a CI-skip marker and then asks for `gh pr merge --auto`. The pair is the bug; either half alone is legitimate. Matched case-insensitively and including the `skip-checks: true` trailer, since GitHub honours those identically.
 
 <!--
 Maintainer note — this PR reproduced its own bug. The first commit's subject

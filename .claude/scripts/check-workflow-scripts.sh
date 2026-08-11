@@ -377,7 +377,19 @@ fi
 # the normal case. Comment lines are stripped first — the fix for #3116 documents
 # the forbidden marker in a comment right next to the commit it fixed, and a
 # guard that flags the documentation of the bug it prevents is a guard someone
-# deletes. ──────────────────────────────────────────────────────────────────
+# deletes.
+#
+# Matched case-INSENSITIVELY, and the `skip-checks: true` trailer counts too:
+# GitHub honours `[Skip CI]` and `git commit -m … -m 'skip-checks: true'` exactly
+# like the lowercase bracket form, so a guard that knows only the spelling which
+# bit us once lets the next spelling through.
+#
+# Known conservatism: the pairing is matched per WORKFLOW FILE, not per
+# merge-chain. A file whose push-to-main job carries a marker while a *different*
+# job asks for `--auto` would be flagged even though neither starves the other.
+# No workflow in the repo has that shape, and if one appears the fix is to read
+# the file — cheaper than a rule that models which commit feeds which PR and gets
+# it subtly wrong. ─────────────────────────────────────────────────────────
 echo ""
 echo "── Validating no CI-skip marker starves an --auto merge ──"
 if ! python3 - "$WORKFLOWS_DIR" <<'PY'
@@ -393,11 +405,17 @@ except ImportError:
     sys.exit(2)
 
 # Every spelling GitHub Actions honours, plus the two Travis-era ones it also
-# accepts. Source: "Skipping workflow runs" in the Actions docs.
+# accepts. Source: "Skipping workflow runs" in the Actions docs. Kept lowercase
+# because matching is done on a lowercased copy — GitHub's own matching ignores
+# case, so `[Skip CI]` skips the run just as thoroughly.
 SKIP_MARKERS = (
     "[skip ci]", "[ci skip]", "[no ci]",
-    "[skip actions]", "[actions skip]", "***NO_CI***",
+    "[skip actions]", "[actions skip]", "***no_ci***",
 )
+
+# The trailer form, honoured as an alternative to the bracket markers:
+#   git commit -m "subject" -m "skip-checks: true"
+SKIP_TRAILER = re.compile(r"skip-checks:\s*true", re.IGNORECASE)
 
 workflows_dir = sys.argv[1]
 failures = 0
@@ -454,7 +472,10 @@ for wf in sorted(glob.glob(os.path.join(workflows_dir, "*.yml"))):
 
     for job_name, name, body in blocks:
         for invocation in commit_invocations(body):
-            hit = next((m for m in SKIP_MARKERS if m in invocation), None)
+            lowered = invocation.lower()
+            hit = next((m for m in SKIP_MARKERS if m in lowered), None)
+            if hit is None and SKIP_TRAILER.search(invocation):
+                hit = "skip-checks: true"
             if hit is None:
                 continue
             failures += 1
