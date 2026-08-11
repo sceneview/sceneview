@@ -27,6 +27,27 @@ NC='\033[0m'
 echo -e "${CYAN}=== SceneView Quality Gate ===${NC}"
 echo ""
 
+# `grep -c` prints `0` AND exits 1 when nothing matches, so the familiar
+# `$(grep -c … || echo 0)` yields the TWO-LINE value `0\n0`. Every arithmetic
+# test downstream then dies ("integer expression expected"), and in a
+# `A && x || y` chain that failure silently takes the `y` branch — which is how
+# this file's threading check came to report a violation on a clean diff. Use
+# `|| true` on the grep and pipe the result through here.
+as_count() {
+    local first="${1%%$'\n'*}"
+    first="${first//[^0-9]/}"
+    printf '%s' "${first:-0}"
+}
+
+# Same normalisation for the diagnostic counts scraped out of a failed
+# checker's log, where `?` means "it failed but itemised nothing" — a real
+# distinction, and one `0` would misreport as "no offending lines".
+as_count_or_unknown() {
+    local n
+    n="$(as_count "${1:-}")"
+    if [ "$n" = "0" ]; then printf '?'; else printf '%s' "$n"; fi
+}
+
 check() {
     local name="$1"
     local status="$2"
@@ -99,7 +120,7 @@ if [ -x ".claude/scripts/check-llms-drift.sh" ]; then
     if bash .claude/scripts/check-llms-drift.sh > /tmp/check-llms-drift.log 2>&1; then
         check "llms.txt mirror in sync" "PASS" ""
     else
-        DRIFT_COUNT=$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || echo "?")
+        DRIFT_COUNT=$(as_count_or_unknown "$(grep -c '^MISMATCH:' /tmp/check-llms-drift.log 2>/dev/null || true)")
         check "llms.txt mirror in sync" "FAIL" "$DRIFT_COUNT mirror(s) drifted; see /tmp/check-llms-drift.log"
     fi
 fi
@@ -159,15 +180,32 @@ if [ -n "$CHANGED_KT" ]; then
     FORCE_UNWRAP=0
     while IFS= read -r f; do
         if [ -f "$f" ]; then
-            COUNT=$(grep -c '!!' "$f" 2>/dev/null || echo "0")
+            COUNT=$(as_count "$(grep -c '!!' "$f" 2>/dev/null || true)")
             FORCE_UNWRAP=$((FORCE_UNWRAP + COUNT))
         fi
     done <<< "$CHANGED_KT"
     [ "$FORCE_UNWRAP" -eq 0 ] && check "No force unwrap (!!) in Kotlin" "PASS" "" || check "Force unwrap (!!) in Kotlin" "WARN" "$FORCE_UNWRAP occurrences"
 
-    # Check for Dispatchers.IO with Filament calls
-    BGTHREAD=$(git diff HEAD 2>/dev/null | grep "+.*Dispatchers\.IO" | grep -c "modelLoader\|materialLoader\|createModel\|createMaterial" || echo "0")
-    [ "$BGTHREAD" -eq 0 ] && check "No Filament calls on background thread" "PASS" "" || check "Filament on background thread" "FAIL" "THREADING VIOLATION"
+    # Filament factory calls reached from a background dispatcher (CLAUDE.md's
+    # main-thread rule). The detection lives in lib/detect-filament-bg-thread.py
+    # and is pinned in both directions by test-detect-filament-bg-thread.sh,
+    # because the two-stage grep that used to sit here was hollow twice over:
+    # it reported THREADING VIOLATION on every clean local diff (`grep -c`
+    # prints `0` AND exits 1, so `|| echo "0"` made the value `0\n0` and the
+    # comparison died with "integer expression expected"), and it required the
+    # dispatcher and the Filament call on the SAME line, so the multi-line
+    # `withContext(Dispatchers.IO) { … }` shape the rule exists to catch matched
+    # nothing. It only looked green in CI, where `git diff HEAD` is empty and
+    # this whole block is skipped.
+    BG_LOG="${TMPDIR:-/tmp}/filament-bg-thread.log"
+    if ! command -v python3 > /dev/null 2>&1; then
+        check "Filament calls on background thread" "WARN" "python3 not found — check NOT run"
+    elif git diff HEAD 2>/dev/null | python3 .claude/scripts/lib/detect-filament-bg-thread.py > "$BG_LOG" 2>&1; then
+        check "No Filament calls on background thread" "PASS" ""
+    else
+        check "Filament on background thread" "FAIL" "THREADING VIOLATION — see $BG_LOG"
+        sed 's/^/      /' "$BG_LOG" 2>/dev/null || true
+    fi
 fi
 
 # Check for TODO/FIXME in staged changes
@@ -184,7 +222,7 @@ if [ -x ".claude/scripts/check-deprecated-api.sh" ]; then
     if bash .claude/scripts/check-deprecated-api.sh --all > /tmp/check-deprecated-api.log 2>&1; then
         check "No deprecated Scene{} / ARScene{} refs" "PASS" ""
     else
-        DEPRECATED_COUNT=$(grep -cE '^    [^ ].+:[0-9]+:' /tmp/check-deprecated-api.log 2>/dev/null || echo "?")
+        DEPRECATED_COUNT=$(as_count_or_unknown "$(grep -cE '^    [^ ].+:[0-9]+:' /tmp/check-deprecated-api.log 2>/dev/null || true)")
         check "Deprecated Scene{} / ARScene{} refs" "FAIL" "$DEPRECATED_COUNT line(s); see /tmp/check-deprecated-api.log"
     fi
 fi
@@ -197,7 +235,7 @@ if [ -x ".claude/scripts/check-sceneview-swift-urls.sh" ]; then
     if bash .claude/scripts/check-sceneview-swift-urls.sh > /tmp/check-sceneview-swift-urls.log 2>&1; then
         check "No archived sceneview-swift mirror URLs" "PASS" ""
     else
-        SWIFT_URL_COUNT=$(grep -cE '^    [^ ]' /tmp/check-sceneview-swift-urls.log 2>/dev/null || echo "?")
+        SWIFT_URL_COUNT=$(as_count_or_unknown "$(grep -cE '^    [^ ]' /tmp/check-sceneview-swift-urls.log 2>/dev/null || true)")
         # "finding(s)", not "file(s)": the gate has two passes and they report
         # different units — pass 1 lists offending FILES, pass 2 offending
         # LINES (path:N:content), both indented four spaces. Counting one
@@ -220,7 +258,7 @@ if [ -d "agents/sceneview" ] && [ -x ".claude/scripts/check-sceneview-skill.sh" 
     if bash .claude/scripts/check-sceneview-skill.sh --quiet > /tmp/check-sceneview-skill.log 2>&1; then
         check "agents/sceneview/ in sync with source" "PASS" ""
     else
-        DRIFT_COUNT=$(grep -cE '^    - ' /tmp/check-sceneview-skill.log 2>/dev/null || echo "?")
+        DRIFT_COUNT=$(as_count_or_unknown "$(grep -cE '^    - ' /tmp/check-sceneview-skill.log 2>/dev/null || true)")
         check "agents/sceneview/ in sync with source" "FAIL" "$DRIFT_COUNT drift item(s); see /tmp/check-sceneview-skill.log"
     fi
 elif [ -d "agents/sceneview" ]; then
@@ -242,7 +280,7 @@ if [ -x ".claude/scripts/validate-demo-assets.sh" ]; then
         SUMMARY=$(grep -oE '[0-9]+ bundled, [0-9]+ CDN' /tmp/validate-demo-assets.log | tail -1)
         check "Demo app asset refs resolve" "PASS" "$SUMMARY"
     else
-        BAD=$(grep -cE '^  (MISS|DEAD)' /tmp/validate-demo-assets.log 2>/dev/null || echo "?")
+        BAD=$(as_count_or_unknown "$(grep -cE '^  (MISS|DEAD)' /tmp/validate-demo-assets.log 2>/dev/null || true)")
         check "Demo app asset refs resolve" "FAIL" "$BAD broken reference(s) — see /tmp/validate-demo-assets.log"
     fi
 else
@@ -278,7 +316,7 @@ if [ -x "tools/GenerateFilamat.sh" ]; then
             check "Filament .filamat blobs" "WARN" "see /tmp/check-filamat-drift.log"
         fi
     else
-        DRIFT_COUNT=$(grep -cE '^\[FAIL\] \[' /tmp/check-filamat-drift.log 2>/dev/null || echo "?")
+        DRIFT_COUNT=$(as_count_or_unknown "$(grep -cE '^\[FAIL\] \[' /tmp/check-filamat-drift.log 2>/dev/null || true)")
         check "Filament .filamat blobs in sync" "FAIL" "$DRIFT_COUNT blob(s) drifted — run tools/GenerateFilamat.sh"
     fi
 else

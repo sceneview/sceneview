@@ -607,7 +607,7 @@ fi
 # regex, "found nothing" is a broken extractor, never a clean bill of health
 # (#3050) — a count below the floor fails the leg instead of blessing it.
 echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
-# 29 self-tests on 2026-08-10. The floor guards against a regex that silently
+# 30 self-tests on 2026-08-11. The floor guards against a regex that silently
 # degrades to a handful of matches; raise it if repo-hygiene ever legitimately
 # shrinks, but never delete it.
 SELFTEST_FLOOR=20

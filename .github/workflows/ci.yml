@@ -989,6 +989,18 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-web-dts.sh
 
+      # Filament-on-a-background-thread detector behind `quality-gate.sh`. It is
+      # a self-test only — the check itself reads `git diff HEAD`, which is empty
+      # on a CI checkout, so CI can never exercise it on real content. That is
+      # precisely how it stayed broken: the inline grep it replaced reported a
+      # THREADING VIOLATION on every clean LOCAL diff and matched nothing on the
+      # multi-line `withContext(Dispatchers.IO) { … }` shape, while this job
+      # stayed green because the whole block was skipped here.
+      - name: Self-test detect-filament-bg-thread.py
+        if: always()
+        shell: bash
+        run: bash .claude/scripts/test-detect-filament-bg-thread.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
