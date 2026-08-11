@@ -364,6 +364,115 @@ then
     EXIT=1
 fi
 
+# ── Pass 4: a workflow MUST NOT commit with a CI-skip marker and then ask for
+# `--auto` merge. GitHub honours `[skip ci]` in the head commit's message by
+# firing NO workflow at all; `CI Gate` is the single required context on `main`,
+# and a context that never reports can never turn green. `gh pr merge --auto`
+# then waits on a check that cannot arrive — not a failure, a deadlock, with a
+# PR body cheerfully claiming it will "merge itself once CI Gate reports green".
+# #3075 sat open for a day in that state and needed an admin merge.
+#
+# The pair is what makes it a bug, so the pair is what is matched: a skip marker
+# alone is fine (a push straight to main starves nothing), and `--auto` alone is
+# the normal case. Comment lines are stripped first — the fix for #3116 documents
+# the forbidden marker in a comment right next to the commit it fixed, and a
+# guard that flags the documentation of the bug it prevents is a guard someone
+# deletes. ──────────────────────────────────────────────────────────────────
+echo ""
+echo "── Validating no CI-skip marker starves an --auto merge ──"
+if ! python3 - "$WORKFLOWS_DIR" <<'PY'
+import glob
+import os
+import re
+import sys
+
+try:
+    import yaml
+except ImportError:
+    print("::error::PyYAML not installed. Run 'pip install pyyaml'.")
+    sys.exit(2)
+
+# Every spelling GitHub Actions honours, plus the two Travis-era ones it also
+# accepts. Source: "Skipping workflow runs" in the Actions docs.
+SKIP_MARKERS = (
+    "[skip ci]", "[ci skip]", "[no ci]",
+    "[skip actions]", "[actions skip]", "***NO_CI***",
+)
+
+workflows_dir = sys.argv[1]
+failures = 0
+checked = 0
+
+
+def run_blocks(doc):
+    for job_name, job in (doc.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        for idx, step in enumerate(job.get("steps") or []):
+            if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                continue
+            name = step.get("name") or f"step{idx}"
+            # Drop full-line comments: prose may legitimately name a marker.
+            body = "\n".join(
+                ln for ln in step["run"].splitlines()
+                if not ln.lstrip().startswith("#")
+            )
+            yield job_name, name, body
+
+
+def commit_invocations(body):
+    """`git commit` plus its backslash-continued lines, as one string each."""
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        if not re.search(r"\bgit\s+commit\b", line):
+            continue
+        chunk, j = [line], i
+        while chunk[-1].rstrip().endswith("\\") and j + 1 < len(lines):
+            j += 1
+            chunk.append(lines[j])
+        yield "\n".join(chunk)
+
+
+for wf in sorted(glob.glob(os.path.join(workflows_dir, "*.yml"))):
+    try:
+        with open(wf) as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception as exc:  # noqa: BLE001 — a malformed file is Pass 1's job
+        print(f"::warning::skipping {os.path.basename(wf)}: {exc}")
+        continue
+    if not isinstance(doc, dict):
+        continue
+
+    blocks = list(run_blocks(doc))
+    checked += len(blocks)
+    wants_auto = [
+        (j, n) for j, n, b in blocks
+        if re.search(r"\bgh\s+pr\s+merge\b", b) and "--auto" in b
+    ]
+    if not wants_auto:
+        continue
+
+    for job_name, name, body in blocks:
+        for invocation in commit_invocations(body):
+            hit = next((m for m in SKIP_MARKERS if m in invocation), None)
+            if hit is None:
+                continue
+            failures += 1
+            where = f"{os.path.basename(wf)} job '{job_name}' step '{name}'"
+            auto_at = ", ".join(f"job '{j}' step '{n}'" for j, n in wants_auto)
+            print(f"::error::{where}: commits with '{hit}' while {auto_at}")
+            print(f"         asks for '--auto'. A skipped run never reports CI")
+            print(f"         Gate, so that auto-merge waits forever (#3075,")
+            print(f"         #3116). Drop the marker — one CI run is cheaper")
+            print(f"         than a PR that cannot merge.")
+
+print(f"check-workflow-scripts: checked {checked} run block(s) for skip/auto deadlock")
+sys.exit(1 if failures else 0)
+PY
+then
+    EXIT=1
+fi
+
 if [ $EXIT -ne 0 ]; then
     echo ""
     echo "::error::Workflow validation failed — see the error(s) above."
@@ -376,7 +485,10 @@ if [ $EXIT -ne 0 ]; then
     echo "         - an actions/github-script with.script: block has a"
     echo "           JavaScript syntax error (checked via 'node --check');"
     echo "         - an if: expression references a context disallowed in"
-    echo "           if: (e.g. 'secrets') — read it into env:/with: instead."
+    echo "           if: (e.g. 'secrets') — read it into env:/with: instead;"
+    echo "         - a workflow commits with a CI-skip marker and then asks"
+    echo "           for 'gh pr merge --auto' — the skipped run never reports"
+    echo "           CI Gate, so the auto-merge deadlocks (#3075, #3116)."
     exit 1
 fi
 

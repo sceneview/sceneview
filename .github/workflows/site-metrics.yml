@@ -108,11 +108,18 @@ jobs:
           BRANCH="chore/site-metrics-${{ github.run_id }}"
           git checkout -b "$BRANCH"
           git add website-static/index.html
-          git commit -m "chore(site): refresh community metrics [skip ci]" \
+          # NEVER put `[skip ci]` in this subject. `CI Gate` is the single
+          # required context on `main`, and a skipped run never reports it: the
+          # `--auto` merge below then waits forever on a check that cannot
+          # arrive. #3075 sat open for a day in exactly that state, with a PR
+          # body promising it would "merge itself once CI Gate reports green",
+          # and had to be merged with admin rights. One weekly CI run on a
+          # one-line docs diff is the price of the PR being able to merge at all.
+          git commit -m "chore(site): refresh community metrics" \
             -m "Automated weekly refresh (site-metrics.yml) — stars/contributors/releases from the GitHub API, web downloads from api.npmjs.org. Replaces the retired Claude scheduled routine; zero AI quota spent."
           git push origin "$BRANCH"
 
-          gh pr create --title "chore(site): refresh community metrics [skip ci]" \
+          gh pr create --title "chore(site): refresh community metrics" \
             --body "Automated weekly community-metrics refresh (site-metrics.yml). Docs-only diff (website-static/index.html) — merges itself once CI Gate reports green." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto
