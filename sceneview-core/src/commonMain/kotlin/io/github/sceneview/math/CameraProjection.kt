@@ -47,7 +47,7 @@ fun viewToWorld(
 /**
  * Convert a world-space position to a normalized view-space position.
  *
- * Returns `null` when [worldPosition] is **behind the camera** (behind the near plane). Such a
+ * Returns `null` when [worldPosition] is **behind the camera** (at or behind the camera's eye plane). Such a
  * point has no on-screen location: its clip-space `w` is `<= 0`, and dividing by a non-positive
  * `w` yields a *finite, mirrored* coordinate on the wrong side of the view — a plausible-but-wrong
  * value no `isFinite` check would reject. Callers that project several world points (e.g. the 8
@@ -57,7 +57,7 @@ fun viewToWorld(
  * @param worldPosition The world-space position to convert.
  * @param projectionMatrix The camera's culling projection matrix.
  * @param viewMatrix The camera's view matrix.
- * @return Normalized view coordinate, or `null` if [worldPosition] is behind the near plane:
+ * @return Normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane:
  *   x = (0 = left, 0.5 = center, 1 = right)
  *   y = (0 = bottom, 0.5 = center, 1 = top)
  */
@@ -68,7 +68,7 @@ fun worldToView(
 ): Float2? {
     val viewProjectionTransform = projectionMatrix * viewMatrix
     val viewPosition = viewProjectionTransform * Float4(worldPosition, w = 1.0f)
-    // A point on or behind the near plane has w <= 0; dividing by it produces a mirrored, finite
+    // A point at or behind the camera's eye plane has w <= 0; dividing by it produces a mirrored, finite
     // (and therefore silently wrong) coordinate. Report "no view position" instead.
     if (viewPosition.w <= 0.0f) return null
     // Divide by w component to convert to clip space

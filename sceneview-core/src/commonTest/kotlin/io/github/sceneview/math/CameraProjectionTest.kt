@@ -77,7 +77,7 @@ class CameraProjectionTest {
     }
 
     // ── worldToView near-plane guard ─────────────────────────────────────────────────────────
-    // A world point behind the near plane has clip-space w <= 0. Dividing by a non-positive w
+    // A world point at or behind the camera's eye plane has clip-space w <= 0. Dividing by a non-positive w
     // produces a finite, MIRRORED coordinate on the wrong side of the view (or NaN/Inf right on the
     // plane) — silently wrong, so no isFinite check downstream catches it. worldToView must return
     // null for such points. (This is what made an AR bbox overlay blink as the camera panned and a
@@ -122,7 +122,7 @@ class CameraProjectionTest {
         // world z = 10 → w = -5, behind the camera.
         assertNull(
             worldToView(Float3(0f, 0f, 10f), proj, view),
-            "A point behind the near plane has no view position"
+            "A point behind the camera's eye plane has no view position"
         )
     }
 

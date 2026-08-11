@@ -320,14 +320,14 @@ interface CameraComponent : Component {
      *
      * The device coordinate space is unaffected by the orientation of the device.
      *
-     * Returns `null` when [worldPosition] is **behind the camera** (behind the near plane): such a
+     * Returns `null` when [worldPosition] is **behind the camera** (at or behind the camera's eye plane): such a
      * point has no view-space position and was historically projected to a finite, mirrored
      * coordinate on the wrong side of the view. Handle the `null` case rather than draw at a bogus
      * point. See [io.github.sceneview.utils.worldToView].
      *
      * @param worldPosition The world position to convert.
      *
-     * @return normalized view coordinate, or `null` if [worldPosition] is behind the near plane.
+     * @return normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane.
      * x = (0 = left, 0.5 = center, 1 = right)
      * y = (0 = bottom, 0.5 = center, 1 = top)
      */

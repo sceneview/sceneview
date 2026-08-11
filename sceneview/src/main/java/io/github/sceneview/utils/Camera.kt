@@ -280,7 +280,7 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
  *
  * The device coordinate space is unaffected by the orientation of the device.
  *
- * Returns `null` when [worldPosition] is **behind the camera** (behind the near plane). Such a
+ * Returns `null` when [worldPosition] is **behind the camera** (at or behind the camera's eye plane). Such a
  * point has no on-screen location: its clip-space `w` is `<= 0`, and dividing by a non-positive
  * `w` yields a *finite, mirrored* coordinate on the wrong side of the view — a plausible-but-wrong
  * value that no `isFinite` check downstream would reject. Reporting `null` instead lets callers
@@ -289,7 +289,7 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
  *
  * @param worldPosition The world position to convert.
  *
- * @return normalized view coordinate, or `null` if [worldPosition] is behind the near plane.
+ * @return normalized view coordinate, or `null` if [worldPosition] is at or behind the camera's eye plane.
  * x = (0 = left, 0.5 = center, 1 = right)
  * y = (0 = bottom, 0.5 = center, 1 = top)
  */
