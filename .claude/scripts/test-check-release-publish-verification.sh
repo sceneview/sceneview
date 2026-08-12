@@ -131,6 +131,33 @@ if F="$(mutate false-claim 's|this is NOT a first-publish problem|the first vers
         "published manually — pub.dev has served it since 4.24.0"
 fi
 
+# Reported in review of PR #3130: the endpoint half of contract B was a bare
+# substring, and the step's own `::error::` message names the variable. Delete
+# the request itself — the curl and its audience — and what is left is the
+# #3011 shape verbatim: `--env-var PUB_TOKEN` pointing at nothing.
+if F="$(mutate no-oidc-request '/RESPONSE="\$(curl/,/audience=https/d')"; then
+    run "$F"
+    expect "deleting the token REQUEST, keeping the error message, is caught" 1 \
+        "pub-publish never exchanges the Actions id-token for a pub.dev credential"
+fi
+
+# Also reported in review: contract D read the whole job's text, so an
+# unrelated `timeout` in the --dry-run step satisfied it while the real
+# publish ran unbounded.
+if F="$(mutate timeout-elsewhere \
+    's|timeout 300 flutter pub publish|flutter pub publish|; s|run: flutter pub publish --dry-run|run: timeout 30 flutter pub publish --dry-run|')"; then
+    run "$F"
+    expect "a timeout on a DIFFERENT step does not satisfy the publish timeout" 1 \
+        "publish command is not wrapped in \`timeout <s>\`"
+fi
+
+# The v4.29.0 defect, quoted. The character class had no `"` in it.
+if F="$(mutate tee-quoted 's|tee "$PUB_LOG"|tee "publish.log"|')"; then
+    run "$F"
+    expect "a QUOTED relative tee target is caught too" 1 \
+        "tees the publish log to a RELATIVE path"
+fi
+
 echo
 echo "── 2. #3021 — registry verification, all five publishers ─────────────"
 
@@ -218,6 +245,34 @@ for job in publish-library publish-mcp publish-web publish-rn pub-publish; do
     fi
 done
 
+# Reported in review of PR #3130: contract A was a substring test over the
+# RAW step text, so a commented-out call satisfied the headline contract of
+# #3021 — in all five jobs. Two shapes, because they fail for different
+# reasons: one is a comment (stripped before matching), the other is a real
+# command that merely MENTIONS the verifier (not anchored at line start).
+RN_VERIFY='^        run: bash .claude/scripts/verify-published-version.sh npm "@sceneview-sdk/react-native".*'
+if F="$(mutate verify-commented \
+    "s|$RN_VERIFY|        run: \"# bash .claude/scripts/verify-published-version.sh npm x 1.0.0\"|")"; then
+    run "$F"
+    expect "a commented-out verify call does not satisfy contract A" 1 \
+        'publish-rn (npm (@sceneview-sdk/react-native)) never calls'
+fi
+
+if F="$(mutate verify-echoed \
+    "s|$RN_VERIFY|        run: echo bash .claude/scripts/verify-published-version.sh npm x 1.0.0|")"; then
+    run "$F"
+    expect "merely echoing the verifier's name does not satisfy contract A" 1 \
+        'publish-rn (npm (@sceneview-sdk/react-native)) never calls'
+fi
+
+# A verifier called with a hardcoded version checks SOME release, not this one.
+if F="$(mutate literal-version \
+    's|"${{ steps.check-rn.outputs.version }}"$|"4.29.0"|')"; then
+    run "$F"
+    expect "verifying a hardcoded version instead of this run's is caught" 1 \
+        "does not pass a"
+fi
+
 # Order matters: verifying BEFORE publishing inspects the PREVIOUS release's
 # state and says nothing about this one.
 if F="$(edit_steps publish-rn hoist)"; then
@@ -253,7 +308,7 @@ echo
 # "every check ran". A `set -u` abort inside a helper skipped all six of
 # section 2 while this summary still printed a green 12/12 — the exact false
 # green the gate under test exists to prevent, reproduced in its own suite.
-EXPECTED_CHECKS=18
+EXPECTED_CHECKS=24
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ check-release-publish-verification.py: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

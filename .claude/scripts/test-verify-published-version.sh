@@ -180,6 +180,26 @@ expect "a Central we never reached is UNREACHABLE, not INCONCLUSIVE" 1 \
 STUB_MAVEN_STATUS=200 run "$SCRIPT" maven sceneview 4.29.0
 expect "a bare artifactId defaults to the io.github.sceneview group" 0 "VERIFIED: Maven Central serves"
 
+# The shared deadline (four artifacts, one propagation budget, one job
+# timeout). The dangerous edge is the LAST artifact, called with the budget
+# already spent: if the deadline suppressed its first probe, the run would end
+# with saw_registry=0 and report UNREACHABLE — a false RED manufactured by the
+# very mechanism meant to prevent a false green. `1` is 1970.
+PUBLISH_VERIFY_DEADLINE=1 STUB_MAVEN_STATUS=200 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+expect "a spent deadline still asks the registry once, and reports the truth" 0 \
+    "VERIFIED: Maven Central serves io.github.sceneview:sceneview 4.29.0"
+
+PUBLISH_VERIFY_DEADLINE=1 STUB_MAVEN_STATUS=404 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+refute "a spent deadline is never reported as UNREACHABLE" 0 "UNREACHABLE"
+
+PUBLISH_VERIFY_DEADLINE=1 STUB_MAVEN_STATUS=404 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+expect "…it says the budget was spent, and stays INCONCLUSIVE" 0 \
+    "shared propagation budget spent"
+
+PUBLISH_VERIFY_DEADLINE=tomorrow STUB_MAVEN_STATUS=200 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+expect "a non-numeric deadline is a usage error, never a silent no-op" 2 \
+    "PUBLISH_VERIFY_DEADLINE must be epoch seconds"
+
 echo
 echo "── 4. Usage ──────────────────────────────────────────────────────────"
 
@@ -201,9 +221,12 @@ mutant() {
     local m="$TMPROOT/mutant-$name.sh"
     sed "$sed_expr" "$SCRIPT" > "$m"
     if cmp -s "$m" "$SCRIPT"; then
+        # stderr, because stdout of this function is captured into "$M1":
+        # printed to stdout the warning would become part of the mutant's
+        # path and never be read. The EXPECTED_CHECKS floor below is what
+        # turns a stale sed red — `fail` cannot escape a command substitution.
         printf '%s  ✗%s mutation "%s" changed nothing — the sed no longer matches the script\n' \
-            "$RED" "$OFF" "$name"
-        fail=$((fail + 1))
+            "$RED" "$OFF" "$name" >&2
         return 1
     fi
     printf '%s' "$m"
@@ -226,11 +249,23 @@ if M2="$(mutant sawregistry 's|if \[ "$saw_registry" -eq 0 \]; then|if false; th
         "UNREACHABLE: no probe reached the registry"
 fi
 
+# M3 — the deadline hoisted into the loop CONDITION, i.e. checked before the
+# first probe instead of after it. That is the plausible refactor, and it
+# turns a spent budget into a run that never asked the registry: UNREACHABLE,
+# exit 1, a red release invented by the guard that exists to avoid one.
+if M3="$(mutant deadline-first 's|while \[ "$attempt" -le "$ATTEMPTS" \]; do|while [ "$attempt" -le "$ATTEMPTS" ] \&\& ! deadline_reached; do|')"; then
+    PUBLISH_VERIFY_DEADLINE=1 STUB_MAVEN_STATUS=200 run "$M3" maven io.github.sceneview:sceneview 4.29.0
+    # rc=1: the mutant does not merely go quiet, it goes RED — a registry
+    # serving the artifact reported as never reached.
+    refute "M3 checking the deadline before the first probe loses the verdict" 1 \
+        "VERIFIED: Maven Central serves io.github.sceneview:sceneview 4.29.0"
+fi
+
 echo
 # A count floor: "every check passed" is not "every check ran". A `set -u`
 # abort inside a helper can skip a whole section while the summary still
 # prints green — that happened in the sibling suite while writing this pair.
-EXPECTED_CHECKS=19
+EXPECTED_CHECKS=24
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ verify-published-version.sh: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

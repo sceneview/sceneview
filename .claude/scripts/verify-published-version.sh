@@ -40,9 +40,18 @@
 #      ever reached the registry
 #   2  usage error
 #
-# Env overrides (tests set these; CI does not):
+# Env overrides:
 #   PUBLISH_VERIFY_ATTEMPTS  probe count
 #   PUBLISH_VERIFY_DELAY     seconds between probes
+#   PUBLISH_VERIFY_DEADLINE  absolute epoch-seconds cap, SHARED across calls
+#
+# The deadline exists because Maven's budget is per invocation while the job's
+# is not: four artifacts × a budget long enough to outlast Central's ~30 min
+# sync is longer than the job's own timeout-minutes, and a verification step
+# that burns the job timeout is the #3011 failure shape wearing a new hat.
+# Callers compute one deadline for the whole set and pass it to every call.
+# It never suppresses the FIRST probe — a call that never asked the registry
+# would report UNREACHABLE, turning a spent budget into a false red.
 set -uo pipefail
 
 usage() {
@@ -62,7 +71,10 @@ VERSION="$3"
 case "$REGISTRY" in
     npm)   DEF_ATTEMPTS=5;  DEF_DELAY=20 ;;
     pub)   DEF_ATTEMPTS=5;  DEF_DELAY=20 ;;
-    maven) DEF_ATTEMPTS=8;  DEF_DELAY=45 ;;
+    # 20 × 45s = 15 min, against the ~30 min OSSRH lag measured at v4.26.0.
+    # Short of the worst case on purpose: the shared deadline, not this
+    # number, is what keeps four artifacts inside one job timeout.
+    maven) DEF_ATTEMPTS=20; DEF_DELAY=45 ;;
     *)
         echo "USAGE: unknown registry '$REGISTRY' (expected npm, pub or maven)" >&2
         exit 2
@@ -71,6 +83,22 @@ esac
 
 ATTEMPTS="${PUBLISH_VERIFY_ATTEMPTS:-$DEF_ATTEMPTS}"
 DELAY="${PUBLISH_VERIFY_DELAY:-$DEF_DELAY}"
+
+DEADLINE="${PUBLISH_VERIFY_DEADLINE:-}"
+case "$DEADLINE" in
+    ''|*[!0-9]*)
+        [ -z "$DEADLINE" ] || {
+            echo "USAGE: PUBLISH_VERIFY_DEADLINE must be epoch seconds, got '$DEADLINE'" >&2
+            exit 2
+        }
+        ;;
+esac
+
+# False when no deadline is set, so the default behaviour is unchanged.
+deadline_reached() {
+    [ -n "$DEADLINE" ] || return 1
+    [ "$(date +%s)" -ge "$DEADLINE" ]
+}
 
 # `saw_registry` separates "the registry answered and does not have it" from
 # "we never got an answer". Collapsing those two is how a network outage turns
@@ -198,6 +226,13 @@ while [ "$attempt" -le "$ATTEMPTS" ]; do
             echo "no answer from the registry for $(subject) (attempt ${attempt}/${ATTEMPTS})"
             ;;
     esac
+
+    # Checked AFTER the probe above, never before: at least one question is
+    # always put to the registry, whatever the clock says.
+    if deadline_reached; then
+        echo "shared propagation budget spent — no further probes for $(subject)"
+        break
+    fi
 
     # Do not announce — or wait out — a retry that will not happen.
     if [ "$attempt" -lt "$ATTEMPTS" ] && [ "$DELAY" -gt 0 ]; then

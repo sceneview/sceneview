@@ -114,6 +114,27 @@ TOKEN_ADD = re.compile(
     re.MULTILINE,
 )
 
+# Same rule for contract A. `VERIFIER in text` was a substring test, so
+# `# TODO re-enable .claude/scripts/verify-published-version.sh` satisfied it —
+# the headline contract of #3021, falsifiable by a comment. Reported in review
+# of PR #3130.
+VERIFY_CALL = re.compile(
+    r"^\s*(?:\w+=\S+\s+)*(?:bash|sh)\s+\S*verify-published-version\.sh\s",
+    re.MULTILINE,
+)
+
+# The version handed to the verifier must be the one THIS job published, read
+# from its own check step's output. A literal would verify a release that is
+# not the one running.
+VERIFY_VERSION = re.compile(r"steps\.[\w-]+\.outputs\.version")
+
+# Contract B's other half. The variable name alone is not the exchange: it
+# appears verbatim inside this step's own `::error::` string, so a job that
+# only echoes it — and never calls the endpoint — used to read as compliant.
+# That mutant is #3011 exactly: `--env-var PUB_TOKEN` pointing at a variable
+# nothing sets. Reported in review of PR #3130.
+OIDC_REQUEST = re.compile(r"\$\{?ACTIONS_ID_TOKEN_REQUEST_URL")
+
 
 def main():
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".github/workflows/release.yml")
@@ -166,9 +187,12 @@ def main():
             )
             return 2
 
-        texts = [step_text(s) for s in steps]
+        # Comments stripped BEFORE any contract is evaluated: see commands().
+        # Doing this only for the pub job left contract A — the one #3021 is
+        # about — satisfiable by a commented-out call in all five jobs.
+        texts = [commands(step_text(s)) for s in steps]
         publish_at = [i for i, t in enumerate(texts) if publish_re.search(t)]
-        verify_at = [i for i, t in enumerate(texts) if VERIFIER in t]
+        verify_at = [i for i, t in enumerate(texts) if VERIFY_CALL.search(t)]
 
         # ── Contract A ────────────────────────────────────────────────────
         if not publish_at:
@@ -190,17 +214,26 @@ def main():
                 "that verifies the previous release and passes over a publish "
                 "that landed nothing (#3021)."
             )
+        elif not any(VERIFY_VERSION.search(texts[i]) for i in verify_at):
+            fail(
+                f"{job_name} ({label}) does not pass a "
+                "${{ steps.<check>.outputs.version }} to " + VERIFIER + " — a "
+                "literal or an unrelated variable verifies some version, not the "
+                "one this run published (#3021)."
+            )
 
         if job_name != PUB_JOB:
             continue
 
-        # Comments stripped: see commands().
-        cmd_texts = [commands(t) for t in texts]
+        cmd_texts = texts
         pub_text = "\n".join(cmd_texts)
 
         # ── Contract B ────────────────────────────────────────────────────
+        # All three in ONE step: the endpoint has to be EXPANDED (not merely
+        # named in an error message), an audience has to be asked for, and the
+        # result has to reach pub's token store.
         has_exchange = any(
-            "ACTIONS_ID_TOKEN_REQUEST_URL" in t and TOKEN_ADD.search(t)
+            OIDC_REQUEST.search(t) and "audience=" in t and TOKEN_ADD.search(t)
             for t in cmd_texts
         )
         if not has_exchange:
@@ -233,7 +266,16 @@ def main():
                 file=sys.stderr,
             )
             return 2
-        m = re.search(r"\btimeout\s+(\d+)\s+.*?pub publish", pub_text, re.DOTALL)
+        # Scoped to the ONE step that publishes. Over the whole job's text a
+        # `timeout 30 echo hi` in the --dry-run step three steps earlier
+        # satisfied this, while the real publish ran unbounded. Reported in
+        # review of PR #3130.
+        publish_step_text = "\n".join(
+            t for t in cmd_texts if re.search(r"pub publish\s+--force", t)
+        )
+        m = re.search(
+            r"\btimeout\s+(\d+)\s+[^\n]*pub publish", publish_step_text
+        )
         if not m:
             fail(
                 f"{job_name}'s publish command is not wrapped in `timeout <s>` — a "
@@ -256,7 +298,9 @@ def main():
         # A relative tee target lands in `working-directory`, i.e. inside the
         # package pub is about to archive. At v4.29.0 the run log shows
         # `├── publish.log (<1 KB)` in the file list pub was uploading.
-        if re.search(r"\btee\s+(?!/)(?!\"?\$)[\w./-]+", pub_text):
+        # The optional quote is load-bearing: `tee "publish.log"` — the v4.29.0
+        # defect, quoted — slipped through a class that had no `"` in it.
+        if re.search(r"""\btee\s+["']?(?!/)(?!\$)[\w.][\w./-]*""", pub_text):
             fail(
                 f"{job_name} tees the publish log to a RELATIVE path — that lands "
                 "inside working-directory and ships in the published archive "
