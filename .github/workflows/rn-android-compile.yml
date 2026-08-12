@@ -189,3 +189,57 @@ jobs:
             exit 1
           fi
           echo "RN Android bridge compiles against the published SceneView artifacts."
+
+      # ── JVM unit tests (#3062) ─────────────────────────────────────────
+      # The compile gate above proves every symbol resolves. It cannot prove a
+      # pure string derivation returns the right STRING — and the bridge has
+      # one whose output leaves the process on every tap (`nodeName`). #3071
+      # was precisely that: a derivation that compiled, ran, and published a
+      # URL's userinfo as the node name.
+      #
+      # These are plain JUnit tests on the JVM: no device, no emulator, no
+      # React Native runtime. They live in the same standalone harness so they
+      # run against the same published artifacts the compile gate uses.
+      - name: Unit-test the RN Android bridge
+        run: |
+          set -o pipefail
+          ./gradlew -p tools/rn-android-compile \
+            :react-native-sceneview:testDebugUnitTest \
+            --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/rn-android-test.log"
+
+      # Same reason as the compile assertion above, and the same failure shape:
+      # a moved or emptied test source set makes `testDebugUnitTest` NO-SOURCE
+      # and Gradle exits 0, so "tests passed" would mean "no test ran".
+      #
+      # Unlike the compile assertion, UP-TO-DATE / FROM-CACHE are NOT treated as
+      # failures here, because the count below is the stronger check and it
+      # survives both: Gradle restores the JUnit XML with a cached result, so an
+      # empty suite is still caught while a legitimate cache hit is not
+      # red-lighted. The compile step has no equivalent artefact to count.
+      - name: Assert the unit tests actually ran
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/rn-android-test.log"
+          TASK_LINE="$(grep -E '^> Task :react-native-sceneview:testDebugUnitTest' "$LOG" | head -1 || true)"
+          if [ -z "$TASK_LINE" ]; then
+            echo "::error::testDebugUnitTest never appeared in the build log — no test ran."
+            exit 1
+          fi
+          echo "Task line: $TASK_LINE"
+          case "$TASK_LINE" in
+            *NO-SOURCE*|*SKIPPED*)
+              echo "::error::testDebugUnitTest did not execute ($TASK_LINE) — check that src/test/java still holds the tests."
+              exit 1
+              ;;
+          esac
+
+          RESULTS=tools/rn-android-compile/build/react-native-sceneview/test-results/testDebugUnitTest
+          # `tests="N"` on each <testsuite>. Summing them is the only way to
+          # tell "all green" from "nothing to run" — both exit 0.
+          RAN="$(grep -ho 'tests="[0-9]*"' "$RESULTS"/*.xml 2>/dev/null \
+                 | sed -E 's/[^0-9]//g' | awk '{s+=$1} END {print s+0}')"
+          echo "Unit tests executed: $RAN"
+          if [ "$RAN" -lt 1 ]; then
+            echo "::error::testDebugUnitTest reported success with $RAN tests executed — the suite is empty or its results moved."
+            exit 1
+          fi

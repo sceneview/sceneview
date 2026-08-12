@@ -13,7 +13,8 @@
     "android",
     "ios",
     "react-native-sceneview.podspec",
-    "!**/__tests__"
+    "!**/__tests__",
+    "!android/src/test"
   ],
   "scripts": {
     "typescript": "tsc --noEmit",

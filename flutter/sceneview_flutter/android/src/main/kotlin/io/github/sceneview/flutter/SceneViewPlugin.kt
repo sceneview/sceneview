@@ -147,6 +147,38 @@ private fun parseLightNode(call: MethodCall): FlutterLightNode = FlutterLightNod
 )
 
 /**
+ * The path part of [source] when it is a URL, [source] unchanged otherwise.
+ *
+ * Taking the last `/`-separated segment of a raw URL lands on the AUTHORITY
+ * whenever the URL has no path, and an authority may carry userinfo:
+ * `https://user:pa55w0rd@cdn.example` yields `user:pa55w0rd@cdn`. An app that
+ * builds a signed CDN URL would then put its credentials one tap away from the
+ * Dart payload (#3071). Reducing to the path first makes that structural
+ * instead of depending on the URL happening to have a path.
+ *
+ * Returns `""` for a path-less URL: there is no file name in
+ * `https://cdn.example` to report, and the caller's [tapNodeName] fallback is
+ * the honest answer.
+ *
+ * Mirrored verbatim in the React Native bridge's `SceneViewManager.kt`. The two
+ * bridges are separately published packages with no shared Kotlin, so the
+ * duplication is the seam, not an oversight — both sides are pinned by their
+ * own unit tests.
+ */
+private fun urlPathOf(source: String): String {
+    val schemeEnd = source.indexOf("://")
+    if (schemeEnd < 0) return source
+    // A "://" that appears after a slash is not a scheme delimiter — the string
+    // is already a path (`models/odd://name.glb`) and cutting at it would drop
+    // real path segments.
+    val firstSlash = source.indexOf('/')
+    if (firstSlash in 0 until schemeEnd) return source
+    val afterScheme = source.substring(schemeEnd + 3)
+    val pathStart = afterScheme.indexOf('/')
+    return if (pathStart < 0) "" else afterScheme.substring(pathStart)
+}
+
+/**
  * The name reported to Dart as the tap payload: the model file's base name
  * without extension, identical to what the iOS bridge derives.
  *
@@ -155,12 +187,13 @@ private fun parseLightNode(call: MethodCall): FlutterLightNode = FlutterLightNod
  * raw URL only strips the extension when it is the last dot in the whole
  * string: `https://cdn/robot.glb?sig=SIG&v=1.2` would otherwise yield
  * `robot.glb?sig=SIG&v=1`, leaking a CDN signature into a payload apps put in
- * labels and analytics events (PR #3037).
+ * labels and analytics events (PR #3037). [urlPathOf] then drops the authority,
+ * which carries the other half of the same exposure (#3071).
  *
  * [fallback] keeps a path with no usable base name from reporting "".
  */
-private fun tapNodeName(path: String, fallback: String): String =
-    path.substringBefore('?').substringBefore('#')
+internal fun tapNodeName(path: String, fallback: String): String =
+    urlPathOf(path.substringBefore('?').substringBefore('#'))
         .substringAfterLast('/').substringBeforeLast('.')
         .ifEmpty { fallback }
 

@@ -205,6 +205,13 @@ func sceneViewerListKey(_ entries: [SceneViewerModelEntry]) -> String {
 /// The extension is kept here and stripped at the report, so a bridge that wants the file
 /// name for something else still has it.
 ///
+/// The authority goes with them, via ``sceneViewerSourcePath(_:)``: the last path component
+/// of a URL that has NO path is the authority itself, and an authority may carry userinfo,
+/// so `https://user:pa55w0rd@cdn.example` reported `user:pa55w0rd@cdn` (#3071). Android is
+/// the live surface for that one — `ModelLoader` genuinely loads `https://` sources, while
+/// an `.asset` here resolves through `Entity(named:)` — so this side hardens a reachable
+/// input class rather than closing a live leak, and stays derivation-identical to Kotlin.
+///
 /// Divergences from the Android bridges' Kotlin derivation
 /// (`substringAfterLast('/')` / `substringBeforeLast('.')`) on inputs no loader accepts.
 /// The cases below are the measured ones, not a closed set — `NSString` path semantics and
@@ -212,15 +219,40 @@ func sceneViewerListKey(_ entries: [SceneViewerModelEntry]) -> String {
 /// such input is unreachable for the `.glb` / `.gltf` / `.usdz` sources these bridges load:
 /// - Measured on the full derivation (this function plus the `deletingPathExtension` the
 ///   bridges apply at the report), as Kotlin → Swift: `models/` → `""` / `models`;
-///   `.hidden` → `""` / `.hidden`; `/` → `""` / `/`; `..` → `.` / `..`; and `robot.` →
-///   `robot` / `robot.`, because `deletingPathExtension` does not treat a trailing dot as
-///   an extension.
+///   `.hidden` → `""` / `.hidden`; `..` → `.` / `..`; and `robot.` → `robot` / `robot.`,
+///   because `deletingPathExtension` does not treat a trailing dot as an extension.
+/// - `/` is NO LONGER a divergence: `lastPathComponent` returns `"/"` for a root-only path,
+///   which is what a path-less URL reduces to. It is not a file name, and publishing it
+///   would be indistinguishable from a model genuinely called `/`, so it maps to `""` —
+///   the same value Kotlin produces, and the value that makes the Flutter bridge fall back.
 /// - Android's Flutter bridge falls back to `node_<index>` when the derived base name is
 ///   empty; this side has no fallback and names the entity `""`, which a tap then reports
 ///   as `""` — the same value a tap that hit no bridge-loaded model at all reports.
 public func sceneViewerModelFileName(_ path: String) -> String {
-    let stripped = path.prefix { $0 != "?" && $0 != "#" }
-    return (String(stripped) as NSString).lastPathComponent
+    let stripped = String(path.prefix { $0 != "?" && $0 != "#" })
+    let base = (sceneViewerSourcePath(stripped) as NSString).lastPathComponent
+    return base == "/" ? "" : base
+}
+
+/// The path part of `source` when it is a URL, `source` unchanged otherwise.
+///
+/// Deliberately string surgery rather than `URL(string:)?.path`: this must stay
+/// derivation-identical to the Kotlin `urlPathOf` in both Android bridges, and `URL`
+/// percent-DECODES its `path`, which would turn an encoded `%3F` into a real `?` *after*
+/// the query strip has already run — reintroducing on this side exactly the class of leak
+/// the strip exists to close.
+///
+/// Returns `""` for a path-less URL: there is no file name in `https://cdn.example`.
+func sceneViewerSourcePath(_ source: String) -> String {
+    guard let schemeEnd = source.range(of: "://") else { return source }
+    // A "://" that appears after a slash is not a scheme delimiter — the string is already
+    // a path (`models/odd://name.glb`) and cutting at it would drop real path segments.
+    if let firstSlash = source.firstIndex(of: "/"), firstSlash < schemeEnd.lowerBound {
+        return source
+    }
+    let afterScheme = source[schemeEnd.upperBound...]
+    guard let pathStart = afterScheme.firstIndex(of: "/") else { return "" }
+    return String(afterScheme[pathStart...])
 }
 
 /// Resolves a tapped entity to the bridge-loaded model root: the direct child of

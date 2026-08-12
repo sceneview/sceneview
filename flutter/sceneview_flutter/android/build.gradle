@@ -56,6 +56,7 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        test.java.srcDirs += 'src/test/kotlin'
     }
 }
 
@@ -73,4 +74,13 @@ dependencies {
     // is not on Maven Central until this release PR is published).
     implementation 'io.github.sceneview:sceneview:4.6.2'
     implementation 'io.github.sceneview:arsceneview:4.6.2'
+
+    // Local JVM unit tests (#3062). Until this existed, the plugin's pure-Kotlin
+    // derivations — the tap payload's `nodeName` above all — were exercised by
+    // NOTHING: `flutter test` only ever compiles the Dart tree, and
+    // `flutter build apk` compiles this module's `main` and never its tests. A
+    // string derivation that silently reports the wrong value is exactly the
+    // class a compiler cannot catch, and #3071 was one. These run on the JVM,
+    // with no device and no emulator.
+    testImplementation 'junit:junit:4.13.2'
 }

@@ -686,6 +686,78 @@ jobs:
         working-directory: samples/flutter-demo
         run: flutter build apk --debug
 
+      # ── The plugin's Android Kotlin (#3062) ────────────────────────────
+      # `flutter test` above covers the Dart tree only, and `flutter build apk`
+      # compiles this module's `main` source set and never its tests — so the
+      # plugin's Kotlin had NO unit tests at all, on either side of the channel.
+      # That matters because the Kotlin holds a pure string derivation whose
+      # output crosses to Dart on every tap (`nodeName`), and #3071 was exactly
+      # that derivation publishing a URL's userinfo. A compiler cannot catch a
+      # plausible wrong string.
+      #
+      # It runs from the demo's Gradle build because that is where the plugin
+      # becomes a Gradle project: the demo consumes it by `path:`, so
+      # `flutter pub get` (already run above) writes it into
+      # `samples/flutter-demo/.flutter-plugins-dependencies` and the
+      # `dev.flutter.flutter-plugin-loader` settings plugin includes it.
+      #
+      # Three details here are measured, not guessed — each was wrong on the
+      # first attempt and the build said so:
+      #   * the Gradle project is `:flutter_sceneview` (the plugin's *pub*
+      #     package name), NOT `:sceneview_flutter` (its directory name);
+      #   * the demo's own `android/gradlew` is gitignored — the Flutter tool
+      #     generates it — so this uses the repo-root wrapper with `-p`. The
+      #     step still requires the APK build above to have run, because the
+      #     demo's `settings.gradle.kts` reads `flutter.sdk` from a
+      #     `local.properties` that is gitignored too; only the wrapper
+      #     dependency is removed, not the ordering one;
+      #   * results land under the demo's shared build dir (asserted below),
+      #     not under `flutter/sceneview_flutter/android/build`.
+      - name: Unit-test the Flutter plugin's Android Kotlin
+        run: |
+          set -o pipefail
+          ./gradlew -p samples/flutter-demo/android :flutter_sceneview:testDebugUnitTest \
+            --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/flutter-android-test.log"
+
+      # A green Gradle exit is not proof a test ran: an emptied or moved test
+      # source set makes the task NO-SOURCE and the build succeeds. Count the
+      # tests the JUnit XML says were executed, so "all green" cannot be
+      # "nothing to run".
+      - name: Assert the plugin's Kotlin unit tests actually ran
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/flutter-android-test.log"
+          TASK_LINE="$(grep -E '^> Task :flutter_sceneview:testDebugUnitTest' "$LOG" | head -1 || true)"
+          if [ -z "$TASK_LINE" ]; then
+            echo "::error::testDebugUnitTest never appeared in the build log — no plugin Kotlin test ran."
+            exit 1
+          fi
+          echo "Task line: $TASK_LINE"
+          case "$TASK_LINE" in
+            *NO-SOURCE*|*SKIPPED*)
+              echo "::error::testDebugUnitTest did not execute ($TASK_LINE) — check that flutter/sceneview_flutter/android/src/test/kotlin still holds the tests."
+              exit 1
+              ;;
+          esac
+
+          # Flutter redirects every plugin's build dir into the app's, so the
+          # results are `samples/flutter-demo/build/flutter_sceneview/...` and
+          # NOT under the plugin's own directory. Searched rather than hardcoded
+          # so a Flutter-tool change to that layout re-points the assertion
+          # instead of silently finding nothing.
+          RESULTS="$(find samples/flutter-demo/build -type d -path '*test-results/testDebugUnitTest' | head -1)"
+          if [ -z "$RESULTS" ]; then
+            echo "::error::No testDebugUnitTest results directory — the task reported success without writing results."
+            exit 1
+          fi
+          RAN="$(grep -ho 'tests="[0-9]*"' "$RESULTS"/*.xml 2>/dev/null \
+                 | sed -E 's/[^0-9]//g' | awk '{s+=$1} END {print s+0}')"
+          echo "Plugin Kotlin unit tests executed: $RAN"
+          if [ "$RAN" -lt 1 ]; then
+            echo "::error::testDebugUnitTest reported success with $RAN tests executed — the suite is empty or its results moved."
+            exit 1
+          fi
+
   # ── KMP core (iOS-only native targets) ──────────────────────────────────
   # `web-desktop` already compiles the JS KMP targets and `build` consumes
   # the JVM/Android target via `assembleDebug`. The ONLY KMP targets nothing

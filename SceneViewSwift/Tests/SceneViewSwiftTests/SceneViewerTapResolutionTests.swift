@@ -47,6 +47,52 @@ final class SceneViewerTapResolutionTests: XCTestCase {
         XCTAssertEqual(sceneViewerModelFileName("models/robot"), "robot")
     }
 
+    // MARK: - Authority never reaches the name (#3071)
+
+    /// The leak this closes. A URL with userinfo and NO path has the authority as its last
+    /// `/`-separated segment, so the credentials themselves became the reported node name.
+    ///
+    /// The assertion is on the whole string rather than a `contains("pa55w0rd")` check:
+    /// a leak that changed shape (`cdn.example` alone, say, or a percent-encoded password)
+    /// would slip past a substring probe while still publishing the authority.
+    func testModelFileName_doesNotPublishTheUserinfoOfAPathLessURL() {
+        XCTAssertEqual(sceneViewerModelFileName("https://user:pa55w0rd@cdn.example"), "")
+    }
+
+    /// The same URL with a trailing slash: `lastPathComponent` answers `"/"` for a
+    /// root-only path, which is not a file name.
+    func testModelFileName_doesNotPublishARootOnlyPathAsAName() {
+        XCTAssertEqual(sceneViewerModelFileName("https://user:pa55w0rd@cdn.example/"), "")
+    }
+
+    /// The case that always worked, kept so the fix is shown to change only the broken
+    /// one: with a path, the cut already landed past the authority.
+    func testModelFileName_keepsWorkingWhenACredentialedURLHasAPath() {
+        XCTAssertEqual(
+            sceneViewerModelFileName("https://user:pa55w0rd@cdn.example/models/robot.glb"),
+            "robot.glb"
+        )
+    }
+
+    /// Userinfo plus a signature: both halves of the exposure in one input.
+    func testModelFileName_dropsUserinfoAndQueryTogether() {
+        XCTAssertEqual(
+            sceneViewerModelFileName("https://user:pa55w0rd@cdn.example?sig=SECRET"),
+            ""
+        )
+    }
+
+    /// A `://` that is not a scheme delimiter must not be treated as one, or a local path
+    /// containing it would lose every segment before it.
+    func testModelFileName_doesNotTreatAnInnerColonSlashSlashAsAScheme() {
+        XCTAssertEqual(sceneViewerModelFileName("models/odd://name.glb"), "name.glb")
+    }
+
+    /// Scheme-relative sources carry no scheme to cut at, so the derivation is unchanged.
+    func testModelFileName_leavesASchemeRelativeSourceAlone() {
+        XCTAssertEqual(sceneViewerModelFileName("//cdn.example/models/robot.glb"), "robot.glb")
+    }
+
     // MARK: - Resolving a tapped entity
 
     /// The `black_dragon.usdz` case: `SpatialTapGesture` hands back the deepest hit
