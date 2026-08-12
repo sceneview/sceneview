@@ -1128,6 +1128,17 @@ jobs:
         shell: bash
         run: bash .github/scripts/test-ci-gate-observations.sh
 
+      # CI Gate LOOP-level regression suite — the two suites above test the
+      # helper scripts; this one extracts ci-gate.yml's own poll loop and runs
+      # it end to end against scripted Checks API reads, with `gh`, `sleep` and
+      # `date` stubbed. #3047: the #3018 suites stayed 21/21 green with the
+      # fix's own wiring deleted from ci-gate.yml, because nothing tested the
+      # workflow. Every scenario here is proven by mutation.
+      - name: Test CI Gate poll loop
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .github/scripts/test-ci-gate-loop.sh
+
       # Demo app asset integrity — catches broken model/HDR references in
       # any samples/* demo app, both for bundled file paths and CDN URLs.
       # Self-test first so a regressed validator can't report a false PASS.

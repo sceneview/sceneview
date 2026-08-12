@@ -45,21 +45,38 @@
 # them before this script ever sees them.
 #
 # INPUT  (stdin): the current read, one compact JSON object per line, already
-#                 filtered and collapsed by the caller:
-#                 {"name":…, "status":…, "conclusion":…, "id":…}
+#                 filtered, attributed and collapsed by
+#                 `ci-gate-qualify-runs.sh`:
+#                 {"name":…, "status":…, "conclusion":…, "id":…, "workflow":…}
 # INPUT  (argv1): path to the ledger file — the previous invocation's stdout.
 #                 May be missing or empty on the first iteration.
 # OUTPUT (stdout): the merged view, one compact JSON object per line, sorted
 #                  by name. The caller writes it back over the ledger file.
 #
-# MERGE SEMANTICS
-#   - name present in the current read  → that record, verbatim. The live API
-#     is always authoritative for a name it still reports, so a re-run that
-#     turns `cancelled` into `success` is honoured on the next poll.
-#   - name present only in the ledger   → the remembered record with
-#     `status` rewritten to `vanished` and `conclusion` to `null`.
-#     `vanished` is a sentinel this script invents; the Checks API never emits
-#     it, so it cannot collide with a real status.
+# THE MERGE KEY IS `[workflow, name]`, NOT `name` (#3033)
+# -------------------------------------------------------
+# Two check runs sharing a name but produced by DIFFERENT workflow files are
+# two different checks — that is the whole point of the #3033 fix upstream, and
+# re-keying them together here would undo it one line later. `.workflow` is
+# absent from a record only when the caller could not attribute it, in which
+# case every such record already shares one qualifier, so `// ""` reproduces
+# the pre-#3033 name-only key exactly.
+#
+# MERGE SEMANTICS — MONOTONE IN `id`, not "live always wins"
+#   - The highest `id` seen for a key, from EITHER the live read or the ledger,
+#     is the record that survives. If it came from the live read it is used
+#     verbatim, so a re-run that turns `cancelled` into `success` is honoured on
+#     the next poll.
+#   - If the winning record is only in the ledger, it comes back with `status`
+#     rewritten to `vanished` and `conclusion` to `null`. `vanished` is a
+#     sentinel this script invents; the Checks API never emits it, so it cannot
+#     collide with a real status.
+#
+# ⛔ "The live API is authoritative for a name it still reports" is FALSE, and
+# this header used to say it was. It breaks when a response drops the FRESH run
+# while still listing the SUPERSEDED one — the very instability #3018 is built
+# on. See the measurement in the jq program below, which is where the rule is
+# actually implemented.
 #
 # Usage: … | bash .github/scripts/ci-gate-merge-observations.sh <ledger-file>
 
@@ -77,7 +94,9 @@ fi
   printf '%s\n' "$ledger" | jq -c '. + {__src: "mem"}'
   printf '%s\n' "$current" | jq -c '. + {__src: "now"}'
 } | jq -s -c '
-    group_by(.name)
+    # KEYED ON `[workflow, name]` (#3033) — see the header. `// ""` keeps a
+    # record the caller could not attribute on the pre-#3033 name-only key.
+    group_by([(.workflow // ""), .name])
     | map(
         # MONOTONE IN `id`, not "live always wins".
         #
@@ -112,5 +131,7 @@ fi
            end)
         | del(.__src)
       )
-    | sort_by(.name)[]
+    # Sorted by name AND workflow: two records can now share a name (#3033), so
+    # sorting on the name alone would leave their relative order to jq.
+    | sort_by(.name, (.workflow // ""))[]
   '
