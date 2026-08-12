@@ -49,7 +49,7 @@ https://github.com/sceneview/sceneview.git
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.29.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.30.0")
     ```
 
 ---

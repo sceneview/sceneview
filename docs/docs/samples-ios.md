@@ -11,7 +11,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **59 demos** covering every category.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.29.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.30.0")
 ```
 
 All demo source files live in
