@@ -1304,6 +1304,18 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-dispatch-config-restore.sh
 
+      # The self-modification guard in the same workflow, for the same reason:
+      # it is inline shell that only a real GitHub run executes, and only a PR
+      # that edits `pr-review.yml` reaches its interesting branch. It asked
+      # "does the checkout differ from the base tip?" while reporting "this PR
+      # edits the review workflow", and refused two PRs that did not (#3038,
+      # #2976). This suite runs the shipped block against git fixtures and
+      # mutates the comparison back to prove it still has teeth.
+      - name: Self-test PR-review self-modification guard
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-selfmod-guard.sh
+
       # Agent-cost measurement (agent-cost-report.sh). It reads local session
       # transcripts, so CI can never exercise it on real data — but its one
       # silent failure mode is arithmetic: a transcript emits several records
