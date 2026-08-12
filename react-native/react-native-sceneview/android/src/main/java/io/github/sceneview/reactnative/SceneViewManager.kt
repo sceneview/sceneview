@@ -404,13 +404,62 @@ data class ModelNodeData(
      * `robot.glb?sig=SIG&v=1` — a CDN signature leaking into a payload that
      * apps routinely put in a label or an analytics event.
      *
+     * [urlPathOf] then drops the authority, which carries the other half of the
+     * same exposure: the last `/`-separated segment of a path-less URL IS the
+     * authority, and an authority may carry userinfo, so
+     * `https://user:pa55w0rd@cdn.example` would report `user:pa55w0rd@cdn`
+     * (#3071).
+     *
      * `null` for a path with no usable base name, so the payload stays
      * `nodeName: null` rather than an empty string.
      */
-    fun nodeName(): String? =
-        src.substringBefore('?').substringBefore('#')
-            .substringAfterLast('/').substringBeforeLast('.')
-            .takeIf { it.isNotEmpty() }
+    fun nodeName(): String? = modelNodeName(src)
+}
+
+/**
+ * [ModelNodeData.nodeName]'s derivation, as a top-level function.
+ *
+ * Split out so it can be unit-tested without constructing a [ModelNodeData]:
+ * that data class defaults `position`/`rotation` to `Position`/`Rotation` from
+ * the **published** SceneView artifacts, which are compiled for JVM 21, while
+ * this module targets JVM 17 and its CI gate runs on a JDK 17. Compiling
+ * against a newer class file is fine; *loading* one is not, so instantiating
+ * the data class in a JVM unit test throws `UnsupportedClassVersionError`.
+ *
+ * That mismatch is harmless on a device — D8 re-compiles everything to DEX and
+ * the class-file version stops existing — so the fix belongs in the test's
+ * reach, not in the module's or the gate's toolchain.
+ *
+ * This also puts the derivation at the same level as the Flutter bridge's
+ * `tapNodeName`, which the shared case table already assumed.
+ */
+internal fun modelNodeName(src: String): String? =
+    urlPathOf(src.substringBefore('?').substringBefore('#'))
+        .substringAfterLast('/').substringBeforeLast('.')
+        .takeIf { it.isNotEmpty() }
+
+/**
+ * The path part of [source] when it is a URL, [source] unchanged otherwise.
+ *
+ * Returns `""` for a path-less URL: there is no file name in
+ * `https://cdn.example` to report, and `null` is the honest payload.
+ *
+ * Mirrored verbatim in the Flutter bridge's `SceneViewPlugin.kt`. The two
+ * bridges are separately published packages with no shared Kotlin, so the
+ * duplication is the seam, not an oversight — both sides are pinned by their
+ * own unit tests.
+ */
+internal fun urlPathOf(source: String): String {
+    val schemeEnd = source.indexOf("://")
+    if (schemeEnd < 0) return source
+    // A "://" that appears after a slash is not a scheme delimiter — the string
+    // is already a path (`models/odd://name.glb`) and cutting at it would drop
+    // real path segments.
+    val firstSlash = source.indexOf('/')
+    if (firstSlash in 0 until schemeEnd) return source
+    val afterScheme = source.substring(schemeEnd + 3)
+    val pathStart = afterScheme.indexOf('/')
+    return if (pathStart < 0) "" else afterScheme.substring(pathStart)
 }
 
 data class GeometryNodeData(

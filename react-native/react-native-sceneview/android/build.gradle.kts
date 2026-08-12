@@ -64,4 +64,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime")
+
+    // Local JVM unit tests (#3062). Until this existed, the bridge's pure-Kotlin
+    // derivations — the tap payload's `nodeName` above all — were exercised by
+    // NOTHING: `tools/rn-android-compile` is a compile gate, and the RN demo has
+    // never been built end-to-end. A string derivation that silently reports the
+    // wrong value is exactly the class a compiler cannot catch, and #3071 was one.
+    // These run on the JVM with no device and no emulator, in the same standalone
+    // harness that already compiles the module.
+    testImplementation("junit:junit:4.13.2")
 }
