@@ -141,8 +141,14 @@ while [ $# -gt 0 ]; do
 done
 if [ "$method" = "GET" ]; then
   # The step reads this through `--jq '… | .[0].id // empty'`; the stub answers
-  # post-jq, which is what the step's `$(...)` actually consumes.
-  [ -n "${GH_STUB_EXISTING_ID:-}" ] && echo "$GH_STUB_EXISTING_ID"
+  # post-jq, which is what the step's `$(...)` actually consumes. `--paginate`
+  # applies the filter ONCE PER PAGE, so a real multi-page lookup emits one id
+  # per matching page — the stub reproduces that with GH_STUB_PAGES, and a step
+  # that takes the raw output would build `repos/…/comments/99123\n99123`.
+  if [ -n "${GH_STUB_EXISTING_ID:-}" ]; then
+    n=0
+    while [ "$n" -lt "${GH_STUB_PAGES:-1}" ]; do echo "$GH_STUB_EXISTING_ID"; n=$((n + 1)); done
+  fi
   exit 0
 fi
 echo "$method $url" >> "$GH_STUB_LOG"
@@ -157,7 +163,9 @@ chmod +x "$STUB_BIN/gh"
 run_guard() {
   local step="$1" branch="$2" event="${3:-pull_request}"
   local work="$TMP/work.$$"
-  rm -rf "$work"
+  RUNNER_TMP="$TMP/runner-temp"
+  rm -rf "$work" "$RUNNER_TMP"
+  mkdir -p "$RUNNER_TMP"
   git clone -q "$UPSTREAM" "$work" 2>/dev/null
   git -C "$work" config core.hooksPath "$NOHOOKS"
   git -C "$work" checkout -q "$branch"
@@ -173,13 +181,19 @@ run_guard() {
     GITHUB_REPOSITORY=sceneview/sceneview \
     PR_NUM=4242 \
     GH_STUB_EXISTING_ID="${GH_STUB_EXISTING_ID:-}" \
+    GH_STUB_PAGES="${GH_STUB_PAGES:-1}" \
     GH_STUB_OUT="$TMP/posted-comment.md" \
     GH_STUB_LOG="$TMP/gh-calls" \
     GITHUB_OUTPUT="$TMP/output" \
     GITHUB_STEP_SUMMARY="$TMP/summary" \
+    RUNNER_TEMP="$RUNNER_TMP" \
     bash -e "$step"
   ) > "$TMP/out" 2>&1
   GUARD_RC=$?
+  # What the step left behind in the CHECKOUT. `Assert the reviewers left the
+  # tree clean` runs on the same working directory, so a scratch file written
+  # here is later blamed on a reviewer.
+  GUARD_DIRT="$(git -C "$work" status --porcelain 2>/dev/null)"
   GUARD_VERDICT="$(grep -oE 'self_modified=(true|false)' "$TMP/output" | tail -1 | cut -d= -f2)"
   rm -rf "$work"
   return 0
@@ -221,6 +235,11 @@ grep -q 'gh workflow run pr-review.yml -f pr=4242' "$TMP/posted-comment.md" 2>/d
 grep -qxF 'POST repos/sceneview/sceneview/issues/4242/comments' "$TMP/gh-calls" 2>/dev/null \
   && ok "with no marker comment present it POSTs a new one" \
   || bad "did not POST to the PR's comments endpoint (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
+# The comment is scratch, and the checkout is what `Assert the reviewers left
+# the tree clean` measures a few steps later.
+[ -z "$GUARD_DIRT" ] \
+  && ok "leaves the checkout clean — the comment file is written under RUNNER_TEMP" \
+  || bad "the step dirtied the checkout ($GUARD_DIRT); a later step blames that on a reviewer"
 # The comment must not be mistaken for the check going green.
 [ "$GUARD_RC" -eq 1 ] \
   && ok "still exits 1 — the comment explains the red, it does not replace it" \
@@ -246,6 +265,19 @@ grep -q '^POST ' "$TMP/gh-calls" 2>/dev/null \
 grep -q 'NOT REVIEWED' "$TMP/posted-comment.md" 2>/dev/null \
   && ok "the updated body still carries the explanation" \
   || bad "the PATCH sent a body that does not say NOT REVIEWED"
+
+echo
+echo "the same, on a PR whose comments span several API pages"
+# `gh api --paginate --jq` applies the filter per page, so the lookup emits one
+# id per matching page. Taking the raw output would build the endpoint
+# `…/issues/comments/99123 99123 99123` and every re-run would 404 back into
+# posting a duplicate.
+GH_STUB_PAGES=3
+run_guard "$TMP/step.sh" selfmod
+grep -qxF 'PATCH repos/sceneview/sceneview/issues/comments/99123' "$TMP/gh-calls" 2>/dev/null \
+  && ok "keeps one id across pages" \
+  || bad "a paginated lookup produced a malformed endpoint (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
+GH_STUB_PAGES=1
 
 # ---------------------------------------------------------------------------
 # MUTATION. Make the step ignore the lookup and always POST. The check is red

@@ -360,6 +360,13 @@ jobs:
             # a maintainer actually looks. Same `<!-- sceneview-agent-review -->`
             # marker as a real review comment, so it is updated in place and
             # replaced outright by a genuine verdict on the next run.
+            # Under RUNNER_TEMP, never in the checkout: `Assert the reviewers
+            # left the tree clean` compares the working tree against the base,
+            # so a file this job writes itself would be reported as a reviewer
+            # having edited the repo. Same defect shape as the `tee publish.log`
+            # one fixed in #3130. The `:-.` fallback is for the self-test, which
+            # runs the step outside a runner.
+            COMMENT_FILE="${RUNNER_TEMP:-.}/selfmod-comment.md"
             # shellcheck disable=SC2016  # the backticks below are Markdown code spans written into the summary and the comment, not command substitution — single quotes are exactly right here.
             {
               echo '<!-- sceneview-agent-review -->'
@@ -380,23 +387,29 @@ jobs:
               echo '```bash'
               echo "gh workflow run pr-review.yml -f pr=${PR_NUM:-<N>}"
               echo '```'
-            } > selfmod-comment.md
-            cat selfmod-comment.md >> "$GITHUB_STEP_SUMMARY"
+            } > "$COMMENT_FILE"
+            cat "$COMMENT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
             # Best effort, deliberately: a comment API failure must not swallow
             # the annotation and the `exit 1` below, which are what actually
             # redden this check. A warning is the honest report for it.
             if [ -n "${PR_NUM:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
               MARKER='<!-- sceneview-agent-review -->'
+              # `--paginate` applies `--jq` PER PAGE, so this filter emits one
+              # id per page that contains a match, not one id overall. It is
+              # safe today only because the marker comment is unique — `awk
+              # NR==1` makes that guarantee local instead of inherited. `awk`
+              # rather than `head -1`, which would SIGPIPE `gh` under pipefail.
               EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/comments" --paginate \
-                --jq "map(select(.body | contains(\"$MARKER\"))) | .[0].id // empty" 2>/dev/null || echo "")"
+                --jq "map(select(.body | contains(\"$MARKER\"))) | .[0].id // empty" 2>/dev/null \
+                | awk 'NR == 1 { print }' || echo "")"
               if [ -n "$EXISTING" ]; then
                 gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
-                  -F body=@selfmod-comment.md >/dev/null \
+                  -F "body=@$COMMENT_FILE" >/dev/null \
                   || echo "::warning title=Could not update the PR comment::The job summary still carries the explanation."
               else
                 gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/comments" \
-                  -F body=@selfmod-comment.md >/dev/null \
+                  -F "body=@$COMMENT_FILE" >/dev/null \
                   || echo "::warning title=Could not post the PR comment::The job summary still carries the explanation."
               fi
             fi
@@ -1206,8 +1219,12 @@ jobs:
         run: |
           set -euo pipefail
           MARKER='<!-- sceneview-agent-review -->'
+          # `--paginate` runs `--jq` once per page, so this emits one id per
+          # matching PAGE. `awk NR==1` keeps the first — `head -1` would
+          # SIGPIPE `gh` under the `pipefail` set above.
           EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/comments" --paginate \
-            --jq "map(select(.body | contains(\"$MARKER\"))) | .[0].id // empty" 2>/dev/null || echo "")"
+            --jq "map(select(.body | contains(\"$MARKER\"))) | .[0].id // empty" 2>/dev/null \
+            | awk 'NR == 1 { print }' || echo "")"
           if [ -n "$EXISTING" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
               -F body=@review-comment.md >/dev/null
