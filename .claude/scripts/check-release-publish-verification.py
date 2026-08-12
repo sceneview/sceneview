@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Pin the release publishers' two anti-false-green contracts.
+
+Usage: check-release-publish-verification.py [path/to/release.yml]
+
+── What this gate is for ──────────────────────────────────────────────────
+#3011: the pub.dev job carried `permissions: id-token: write` and a comment
+saying OIDC was in use, and yet three consecutive releases published nothing.
+The reason is that **nothing in the job ever exchanged the Actions id-token**.
+`dart pub` does not do that exchange itself — `dart-lang/setup-dart` does, in
+`createPubOIDCToken()`, and its own reusable publish workflow includes the
+action for that single purpose while the Flutter SDK shadows its `dart`
+binary. This job uses `subosito/flutter-action`, which does no such thing. So
+`flutter pub publish` found no credential, fell back to interactive OAuth, and
+waited on a browser that does not exist on a runner.
+
+Every part of that is invisible to a reader: the permission is present, the
+comment says OIDC, the audience is right. Only the *absence* of an exchange
+step tells the truth, and an absence is exactly what a human review misses and
+a gate does not.
+
+#3021: the same class one level up — a publish step's exit code is a claim,
+the registry is the fact, and only pub.dev was asking the registry.
+
+── What it checks ─────────────────────────────────────────────────────────
+Per publisher job:
+  A. it calls .claude/scripts/verify-published-version.sh, AFTER its publish
+     step (an order swap would verify the PREVIOUS release and pass);
+and for the pub.dev job specifically:
+  B. some step performs the OIDC exchange (ACTIONS_ID_TOKEN_REQUEST_URL +
+     `pub token add`);
+  C. the interactive-OAuth banner is a hard failure;
+  D. the publish command is bounded by a `timeout` well under the job's own
+     `timeout-minutes`, so a hang is attributable to the step;
+  E. the publish log is not tee'd into the package directory — at v4.29.0
+     `publish.log` appears in the archive listing pub was about to upload.
+
+Plus one contract with no job of its own:
+  F. release.yml does not repeat the false claim that flutter_sceneview's
+     first version must still be published manually. It is on pub.dev at
+     4.24.0 since 2026-07-20; a workflow that prints that sends the reader
+     to fix something that is not broken.
+
+Exit 0 = all contracts hold. Exit 1 = a contract is broken. Exit 2 = the gate
+could not measure (missing file, unparseable YAML, a job it cannot find) —
+never conflated with a pass, because "found nothing" must not read as a clean
+bill of health.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - CI installs it explicitly
+    print("MEASUREMENT FAILED: PyYAML is not available", file=sys.stderr)
+    sys.exit(2)
+
+VERIFIER = ".claude/scripts/verify-published-version.sh"
+
+# job name -> (human label, regex matching that job's publish command)
+PUBLISHERS = {
+    "publish-library": ("Maven Central", re.compile(r"publishAndReleaseToMavenCentral")),
+    "publish-mcp": ("npm (sceneview-mcp)", re.compile(r"npm publish")),
+    "publish-web": ("npm (sceneview-web)", re.compile(r"npm publish")),
+    "publish-rn": ("npm (@sceneview-sdk/react-native)", re.compile(r"npm publish")),
+    "pub-publish": ("pub.dev (flutter_sceneview)", re.compile(r"pub publish\s+--force")),
+}
+
+PUB_JOB = "pub-publish"
+
+FALSE_CLAIM = re.compile(
+    r"first version must be published manually", re.IGNORECASE
+)
+
+failures = []
+
+
+def fail(msg):
+    failures.append(msg)
+    print(f"  FAIL: {msg}")
+
+
+def step_text(step):
+    """Everything a step can carry a command in, flattened to one string."""
+    if not isinstance(step, dict):
+        return ""
+    parts = [str(step.get("run", "")), str(step.get("uses", ""))]
+    with_block = step.get("with")
+    if isinstance(with_block, dict):
+        parts.extend(str(v) for v in with_block.values())
+    return "\n".join(parts)
+
+
+def commands(text):
+    """`text` with shell comment lines removed.
+
+    Load-bearing, and this suite found out the hard way: contracts B-E ask
+    whether the job DOES something, and every one of them was satisfiable by a
+    comment or an error string that merely mentions it. Deleting the real
+    `dart pub token add` line left the gate green because the step's own
+    explanatory comment two lines below still said the words. A gate that a
+    comment can satisfy is a gate that describes documentation, not behaviour.
+    """
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
+# A command, not a mention: optional `VAR=value` prefixes, then dart/flutter.
+TOKEN_ADD = re.compile(
+    r"^\s*(?:\w+=\S+\s+)*(?:dart|flutter)\s+pub\s+token\s+add\s+https://pub\.dev",
+    re.MULTILINE,
+)
+
+
+def main():
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".github/workflows/release.yml")
+    if not path.is_file():
+        print(f"MEASUREMENT FAILED: {path} does not exist", file=sys.stderr)
+        return 2
+
+    raw = path.read_text(encoding="utf-8")
+    try:
+        doc = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        print(f"MEASUREMENT FAILED: {path} is not parseable YAML: {exc}", file=sys.stderr)
+        return 2
+
+    jobs = (doc or {}).get("jobs")
+    if not isinstance(jobs, dict) or not jobs:
+        print(f"MEASUREMENT FAILED: {path} declares no jobs", file=sys.stderr)
+        return 2
+
+    # Discovery floor. A gate that silently measures nothing is worse than no
+    # gate: it reports green over the exact tree it was written to catch.
+    missing = [j for j in PUBLISHERS if j not in jobs]
+    if missing:
+        print(
+            "MEASUREMENT FAILED: publisher job(s) not found in "
+            f"{path}: {', '.join(sorted(missing))}. Either they were renamed — "
+            "update this gate — or a publisher was deleted.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"Checking {path} ({len(PUBLISHERS)} publisher jobs)")
+
+    # ── Contract F: no false claim anywhere in the file ────────────────────
+    if FALSE_CLAIM.search(raw):
+        fail(
+            "release.yml still claims flutter_sceneview's first version must be "
+            "published manually — pub.dev has served it since 4.24.0 (2026-07-20). "
+            "An error message that sends the reader after a non-existent problem "
+            "is part of the bug (#3011)."
+        )
+
+    for job_name, (label, publish_re) in sorted(PUBLISHERS.items()):
+        job = jobs[job_name]
+        steps = job.get("steps") if isinstance(job, dict) else None
+        if not isinstance(steps, list) or not steps:
+            print(
+                f"MEASUREMENT FAILED: job {job_name} has no steps to measure",
+                file=sys.stderr,
+            )
+            return 2
+
+        texts = [step_text(s) for s in steps]
+        publish_at = [i for i, t in enumerate(texts) if publish_re.search(t)]
+        verify_at = [i for i, t in enumerate(texts) if VERIFIER in t]
+
+        # ── Contract A ────────────────────────────────────────────────────
+        if not publish_at:
+            print(
+                f"MEASUREMENT FAILED: job {job_name} has no step matching its "
+                f"publish command /{publish_re.pattern}/",
+                file=sys.stderr,
+            )
+            return 2
+        if not verify_at:
+            fail(
+                f"{job_name} ({label}) never calls {VERIFIER} — it trusts the "
+                "publish command's exit code, which is a claim, not the registry "
+                "(#3021)."
+            )
+        elif max(verify_at) < max(publish_at):
+            fail(
+                f"{job_name} ({label}) calls {VERIFIER} BEFORE it publishes — "
+                "that verifies the previous release and passes over a publish "
+                "that landed nothing (#3021)."
+            )
+
+        if job_name != PUB_JOB:
+            continue
+
+        # Comments stripped: see commands().
+        cmd_texts = [commands(t) for t in texts]
+        pub_text = "\n".join(cmd_texts)
+
+        # ── Contract B ────────────────────────────────────────────────────
+        has_exchange = any(
+            "ACTIONS_ID_TOKEN_REQUEST_URL" in t and TOKEN_ADD.search(t)
+            for t in cmd_texts
+        )
+        if not has_exchange:
+            fail(
+                f"{job_name} never exchanges the Actions id-token for a pub.dev "
+                "credential. `id-token: write` alone provisions nothing — the pub "
+                "client does not do the exchange itself, `dart-lang/setup-dart` "
+                "does (createPubOIDCToken: getIDToken('https://pub.dev') then "
+                "`dart pub token add https://pub.dev --env-var PUB_TOKEN`), and "
+                "subosito/flutter-action does not. Without it `flutter pub "
+                "publish` drops to interactive OAuth (#3011)."
+            )
+
+        # ── Contract C ────────────────────────────────────────────────────
+        # A `grep` over the captured log, not a mention of the banner: the
+        # step has to ACT on it.
+        if not re.search(r"grep[^\n]*Waiting for your authorization", pub_text):
+            fail(
+                f"{job_name} does not treat the interactive-OAuth banner "
+                '("Waiting for your authorization") as a hard failure — the exit '
+                "code alone did not catch it on three releases (#3011)."
+            )
+
+        # ── Contract D ────────────────────────────────────────────────────
+        job_timeout = job.get("timeout-minutes")
+        if not isinstance(job_timeout, int):
+            print(
+                f"MEASUREMENT FAILED: job {job_name} has no integer "
+                "timeout-minutes to compare a step timeout against",
+                file=sys.stderr,
+            )
+            return 2
+        m = re.search(r"\btimeout\s+(\d+)\s+.*?pub publish", pub_text, re.DOTALL)
+        if not m:
+            fail(
+                f"{job_name}'s publish command is not wrapped in `timeout <s>` — a "
+                "hang then burns the JOB timeout and lands as `cancelled`, which "
+                "reads as 'someone stopped it' rather than 'the publish failed' "
+                "(#3011)."
+            )
+        else:
+            step_seconds = int(m.group(1))
+            budget = job_timeout * 60 * 0.6
+            if step_seconds > budget:
+                fail(
+                    f"{job_name}'s publish timeout ({step_seconds}s) is not well "
+                    f"under the job timeout ({job_timeout}min) — cap it at or "
+                    f"below {int(budget)}s so a hang is attributable to the step, "
+                    "not to the job (#3011)."
+                )
+
+        # ── Contract E ────────────────────────────────────────────────────
+        # A relative tee target lands in `working-directory`, i.e. inside the
+        # package pub is about to archive. At v4.29.0 the run log shows
+        # `├── publish.log (<1 KB)` in the file list pub was uploading.
+        if re.search(r"\btee\s+(?!/)(?!\"?\$)[\w./-]+", pub_text):
+            fail(
+                f"{job_name} tees the publish log to a RELATIVE path — that lands "
+                "inside working-directory and ships in the published archive "
+                "(observed at v4.29.0). Write it under $RUNNER_TEMP."
+            )
+
+    print()
+    if failures:
+        print(f"BROKEN: {len(failures)} release-publisher contract(s) violated")
+        return 1
+    print("OK: every publisher verifies against its registry; pub.dev provisions OIDC")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1110,6 +1110,31 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-workflow-scripts.sh
 
+      # Release-publisher contracts (#3011, #3021). Both self-tests first,
+      # same discipline as the pairs above, and here it is load-bearing twice
+      # over: the gate's subject is an ABSENCE (no step spent the id-token, so
+      # three releases published nothing while the job read as correct), and
+      # the runtime verifier is the only thing standing between a green
+      # publish step and a release that shipped nothing. Writing this pair
+      # produced two false greens of its own — a gate satisfied by a comment
+      # mentioning the command it was checking for, and a suite printing
+      # 12/12 while six cases never ran — so neither is run unmeasured.
+      # No network: the verifier's suite stubs npm and curl on PATH.
+      - name: Self-test verify-published-version.sh
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-verify-published-version.sh
+
+      - name: Self-test check-release-publish-verification.py
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-check-release-publish-verification.sh
+
+      - name: Check every release publisher verifies against its registry
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: python3 .claude/scripts/check-release-publish-verification.py
+
       # CI Gate aggregation regression suite — pins the advisory-exclusion
       # rule so a concurrency-CANCELLED advisory check can never red-light
       # the `CI Gate` aggregator again (#1984, found unsticking PR #1889).

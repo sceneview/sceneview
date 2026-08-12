@@ -63,6 +63,24 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
+      # Post-publish registry verification (#3021). Central is the slow one:
+      # at v4.26.0 the POM 404'd for roughly half an hour after a green
+      # publish job, so this carries a propagation budget and reports an
+      # explicit INCONCLUSIVE rather than manufacturing a red release out of
+      # an OSSRH sync delay. All three artifacts, because a partial publish
+      # (one module's POM on Central, another's missing) is exactly the shape
+      # an exit code cannot show.
+      - name: Verify the artifacts are really on Maven Central
+        if: steps.check-maven.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.check-maven.outputs.version }}"
+          rc=0
+          for artifact in sceneview arsceneview sceneview-core; do
+            bash .claude/scripts/verify-published-version.sh \
+              maven "io.github.sceneview:$artifact" "$VERSION" || rc=1
+          done
+          exit "$rc"
+
   # ── 2. Build and publish Dokka API docs ────────────────────────────────────
   publish-api-docs:
     name: Publish API docs
@@ -289,6 +307,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # Post-publish registry verification (#3021). The version verified is
+      # the one `check-mcp` read out of mcp/package.json — sceneview-mcp is on
+      # its own release track and must never be pinned to VERSION_NAME.
+      - name: Verify sceneview-mcp is really on npm
+        if: steps.check-mcp.outputs.skip != 'true'
+        run: bash .claude/scripts/verify-published-version.sh npm sceneview-mcp "${{ steps.check-mcp.outputs.version }}"
+
   # ── 4. Publish sceneview-web to npm ────────────────────────────────────────
   publish-web:
     name: Publish sceneview-web to npm
@@ -375,6 +400,11 @@ jobs:
           cd "$BUILD_DIR"
           npm publish --access public
 
+      # Post-publish registry verification (#3021).
+      - name: Verify sceneview-web is really on npm
+        if: steps.check-web.outputs.skip != 'true'
+        run: bash .claude/scripts/verify-published-version.sh npm sceneview-web "${{ steps.check-web.outputs.version }}"
+
   # ── 4b. Publish React Native bindings to npm ──────────────────────────────
   publish-rn:
     name: Publish @sceneview-sdk/react-native to npm
@@ -439,6 +469,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
 
+      # Post-publish registry verification (#3021).
+      - name: Verify @sceneview-sdk/react-native is really on npm
+        if: steps.check-rn.outputs.skip != 'true'
+        run: bash .claude/scripts/verify-published-version.sh npm "@sceneview-sdk/react-native" "${{ steps.check-rn.outputs.version }}"
+
   # ── 4c. Tag SceneViewSwift for Swift Package Manager consumers ────────────
   # SPM has no central registry — consumers point Xcode at the git URL and
   # SPM resolves the highest tag matching their version constraint. We
@@ -495,16 +530,31 @@ jobs:
           echo "::notice::Both SPM manifests present and well-formed at tag ${GITHUB_REF_NAME}"
 
   # ── 4d. Publish flutter_sceneview to pub.dev (OIDC) ───────────────────────
-  # Automated pub.dev publishing via GitHub OIDC (no long-lived token — the
-  # pub client exchanges the Actions id-token when `id-token: write` is set
-  # and pub.dev has "Automated publishing" enabled for this repo + tag
-  # pattern). #2735 replaced the old "not yet automated" note (#962 follow-up).
+  # Automated pub.dev publishing via GitHub OIDC (no long-lived token).
+  #
+  # `permissions: id-token: write` is NECESSARY AND NOT SUFFICIENT, and that
+  # is what cost v4.27.0, v4.28.0 and v4.29.0 (#3011). The permission only
+  # makes ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN available to the job — *some
+  # step still has to spend them*. The pub client does not: it reads a token
+  # from its own token store and, finding none, opens interactive OAuth. The
+  # exchange is done by `dart-lang/setup-dart`, whose `createPubOIDCToken()`
+  # calls `getIDToken('https://pub.dev')` and then adds a `--env-var
+  # PUB_TOKEN` entry to pub's token store; its official reusable publish
+  # workflow includes that action for this single purpose, with a comment
+  # noting the Flutter SDK then shadows its `dart` binary. This job uses
+  # `subosito/flutter-action`, which does no OIDC work at all — so nothing
+  # here ever asked GitHub for a token, and the log shows no exchange, just
+  # an accounts.google.com URL and "Waiting for your authorization...".
+  #
+  # The step below does that exchange explicitly rather than pulling in a
+  # second SDK action, so the one thing that was missing is visible in the
+  # job that needs it. Pinned by check-release-publish-verification.py.
   #
   # In `create-release`'s needs-gate since the first publish landed
-  # (flutter_sceneview 4.24.0, manual debut — a brand-new package cannot
-  # debut via OIDC) and Automated publishing was enabled on the package
-  # (#2735). A red here now blocks the GitHub Release, same contract as the
-  # other user-installable artifacts.
+  # (flutter_sceneview 4.24.0, a manual debut — a brand-new package cannot
+  # debut via OIDC; the package has existed ever since, so a failure here is
+  # never "publish the first version by hand"). A red here blocks the GitHub
+  # Release, same contract as the other user-installable artifacts.
   pub-publish:
     name: Publish flutter_sceneview to pub.dev
     runs-on: ubuntu-latest
@@ -559,35 +609,83 @@ jobs:
       - name: Validate package archive (--dry-run)
         if: steps.check-pub.outputs.skip != 'true'
         working-directory: flutter/sceneview_flutter
-        # Runs BEFORE the real publish so an archive/pubspec problem is
-        # distinguishable from the auth failure you get while pub.dev-side
-        # OIDC activation (#2735) is still pending.
+        # Runs BEFORE both the credential exchange and the real publish, so an
+        # archive/pubspec problem is distinguishable from an auth problem —
+        # and so we do not mint a short-lived credential for a publish that
+        # was never going to happen.
         run: flutter pub publish --dry-run
+
+      # THE FIX for #3011. Everything else in this job was already correct.
+      #
+      # Fails closed on purpose: if the id-token endpoint is not reachable in
+      # this step's environment, we stop here with a sentence that names the
+      # cause, instead of handing an unauthenticated pub client a package and
+      # letting it ask a browser. `id-token: write` is declared above, but a
+      # `container:`, a nested `env -i`, or a reusable workflow called without
+      # the permission all drop these two variables — and the symptom of that
+      # is indistinguishable, from the log, from a pub.dev-side misconfiguration.
+      - name: Acquire pub.dev OIDC credential
+        if: steps.check-pub.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::No GitHub OIDC endpoint in this step's environment (ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN unset). The job declares 'permissions: id-token: write' — check that nothing between the job and this step (a container, a reusable workflow, an env -i) is dropping it. Refusing to run a publish that would fall back to interactive OAuth (#3011)."
+            exit 1
+          fi
+          # Same audience dart-lang/setup-dart requests: https://pub.dev.
+          RESPONSE="$(curl -sS --retry 3 --retry-connrefused --max-time 30 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            -H "Accept: application/json; api-version=2.0" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fpub.dev")"
+          PUB_TOKEN="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))' 2>/dev/null || true)"
+          if [ -z "$PUB_TOKEN" ]; then
+            echo "::error::The GitHub OIDC endpoint returned no token for audience https://pub.dev. Refusing to publish without a credential (#3011)."
+            exit 1
+          fi
+          echo "::add-mask::$PUB_TOKEN"
+          echo "PUB_TOKEN=$PUB_TOKEN" >> "$GITHUB_ENV"
+          # Stores a REFERENCE to the env var, not the token — pub re-reads
+          # $PUB_TOKEN at publish time, which is why the line above must
+          # export it to the job environment and not just to this shell.
+          # `flutter pub`, not `dart pub`: subosito/flutter-action guarantees
+          # `flutter` on PATH and forwards the subcommand to the SDK's own pub,
+          # which is the same client that runs the publish two steps below —
+          # so the token store written here is the one it reads.
+          PUB_TOKEN="$PUB_TOKEN" flutter pub token add https://pub.dev --env-var PUB_TOKEN
+          # Assert the store actually took it. `pub token add` returning 0 is
+          # one more exit code we would otherwise be trusting.
+          if ! flutter pub token list | grep -q "https://pub.dev"; then
+            echo "::error::'flutter pub token add' reported success but the token store has no entry for https://pub.dev (#3011)."
+            exit 1
+          fi
+          echo "OIDC credential provisioned for https://pub.dev"
 
       - name: Publish to pub.dev (OIDC)
         if: steps.check-pub.outputs.skip != 'true'
         working-directory: flutter/sceneview_flutter
         run: |
-          # `flutter pub publish --force` does NOT fail when the OIDC credential
-          # is missing — it falls back to INTERACTIVE OAuth, prints an
-          # accounts.google.com URL and blocks on "Waiting for your
-          # authorization…" until the job timeout kills it. The job then lands
-          # as `cancelled`, which reads as "someone stopped it" rather than "the
-          # publish failed", so nothing was ever red. That is how
-          # flutter_sceneview silently missed BOTH v4.25.0 and v4.26.0 while
-          # every other target shipped (#3011).
+          # The credential is provisioned by the OIDC step above; these guards
+          # are the net under it, because the exit code alone cannot be
+          # trusted here. Without a credential `flutter pub publish --force`
+          # does NOT fail — it prints an accounts.google.com URL and blocks on
+          # "Waiting for your authorization…" until something kills it, which
+          # is how the plugin missed v4.25.0 through v4.29.0 (#3011).
           #
-          # Three guards, because the exit code alone cannot be trusted here:
           #   - stdin closed, so a prompt dies instead of waiting;
           #   - `timeout`, so a hang is bounded and attributable to THIS step
           #     instead of surfacing as a job-level cancellation;
           #   - the interactive banner is a hard failure on its own, whatever
           #     pub exits with afterwards.
+          #
+          # The log goes to $RUNNER_TEMP, NOT to the working directory: pub
+          # archives the package directory, and at v4.29.0 the run log shows
+          # `├── publish.log (<1 KB)` in the file list pub was about to upload.
           set -o pipefail
+          PUB_LOG="${RUNNER_TEMP:-/tmp}/pub-publish.log"
           rc=0
-          timeout 300 flutter pub publish --force < /dev/null 2>&1 | tee publish.log || rc=$?
-          if grep -q "Waiting for your authorization" publish.log; then
-            echo "::error::pub.dev fell back to INTERACTIVE OAuth — the OIDC credential never reached dart pub. Enable 'Automated publishing' (GitHub Actions, repo sceneview/sceneview, tag pattern v{{version}}) on pub.dev for flutter_sceneview (the sceneview/sceneview_flutter names are third-party, see #2735/#3011). A brand-new package's FIRST version must be published manually once before OIDC applies."
+          timeout 300 flutter pub publish --force < /dev/null 2>&1 | tee "$PUB_LOG" || rc=$?
+          if grep -q "Waiting for your authorization" "$PUB_LOG"; then
+            echo "::error::pub.dev fell back to INTERACTIVE OAuth despite a provisioned OIDC credential. flutter_sceneview HAS been published before (4.24.0, 2026-07-20) — this is NOT a first-publish problem. Either the token store entry was lost between steps, or pub.dev rejected the token; if pub.dev's package settings have no 'Automated publishing' trust for repository sceneview/sceneview + tag pattern v{{version}}, only a package admin can add it. See #3011."
             exit 1
           fi
           if [ "$rc" -eq 124 ]; then
@@ -599,48 +697,13 @@ jobs:
             exit "$rc"
           fi
 
+      # The registry is the ground truth, never the step's exit code. #3013
+      # added this here; #3021 extended it to every other publisher and moved
+      # the logic into one script, so "published" means the same thing in all
+      # five jobs instead of five hand-rolled loops drifting apart.
       - name: Verify flutter_sceneview is really on pub.dev
         if: steps.check-pub.outputs.skip != 'true'
-        env:
-          PUB_VERSION: ${{ steps.check-pub.outputs.version }}
-        run: |
-          # The registry is the ground truth, never the publish step's exit
-          # code. Without this, #3011 stays possible in a new disguise: any
-          # future failure mode that ends 0 without uploading is invisible.
-          #
-          # This is currently the ONLY post-publish re-verify in the workflow —
-          # the npm and Maven jobs query their registries as a PRE-publish skip
-          # guard and then trust a non-zero exit, which holds for them because
-          # their CLIs fail loudly on an auth error rather than dropping to an
-          # interactive prompt the way `flutter pub publish --force` does. That
-          # is an asymmetry, not a rule everyone else already follows; extending
-          # it is tracked separately.
-          for attempt in 1 2 3 4 5; do
-            # Set membership in ['versions'], NOT equality against
-            # ['latest']['version'] — mirroring the check-pub step above. They
-            # agree for forward-only releases, but a backport would leave
-            # `latest` pointing at a higher version, so an equality test would
-            # exhaust its retries and ::error:: a release whose publish actually
-            # succeeded. That is this PR's own false-red, in mirror image.
-            # Raised in review of PR #3013.
-            FOUND=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
-              | python3 -c "import json,os,sys; print(any(v['version'] == os.environ['PUB_VERSION'] for v in json.load(sys.stdin)['versions']))" \
-              2>/dev/null || echo "False")
-            if [ "$FOUND" = "True" ]; then
-              echo "pub.dev serves flutter_sceneview $PUB_VERSION"
-              exit 0
-            fi
-            # Do not announce — or wait out — a retry that will not happen:
-            # the last pass falls straight through to the error below.
-            if [ "$attempt" -lt 5 ]; then
-              echo "pub.dev does not list $PUB_VERSION yet (attempt $attempt/5) — retrying in 20s"
-              sleep 20
-            else
-              echo "pub.dev does not list $PUB_VERSION (attempt $attempt/5) — no retries left"
-            fi
-          done
-          echo "::error::pub.dev does not serve $PUB_VERSION after a green publish — the step passed and nothing landed (#3011)."
-          exit 1
+        run: bash .claude/scripts/verify-published-version.sh pub flutter_sceneview "${{ steps.check-pub.outputs.version }}"
 
   # ── 5. Create GitHub Release with auto-generated notes ────────────────────
   create-release:
