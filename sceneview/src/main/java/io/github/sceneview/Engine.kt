@@ -75,9 +75,10 @@ fun Engine.safeDestroy() = runCatching {
 /**
  * Destroys every Filament component attached to [entity].
  *
- * `FEngine::destroy(Entity)` tears down the renderable, light, transform **and** camera
- * components in one call — so this reindexes all three packed component stores at once and must
- * bump all three generation counters below. `SplatNode.destroy()` is the production caller that
+ * `FEngine::destroy(Entity)` tears down the renderable, light, transform and camera components
+ * in one call. Three of those four live in packed component stores that reindex on removal, so
+ * this must bump all three generation counters below; the camera component has no cached-handle
+ * counterpart in this codebase, hence no fourth counter. `SplatNode.destroy()` is the caller that
  * relies on it: its batch entities carry a transform component (`SplatNode.kt`, `transformManager
  * .create(entity, transformInstance, …)`) which nothing else destroys (#3123).
  */
@@ -152,7 +153,11 @@ internal fun Engine.bumpLightGeneration() {
  * Public (unlike its transform and light siblings) only because `arsceneview`'s `ARCameraStream`
  * is a cross-module [io.github.sceneview.components.RenderableComponent] implementer that caches
  * the same handle. Bumping is deliberately **not** public: the counter is bumped by
- * [destroyRenderable] and [safeDestroyEntity], the only two calls that can reindex the array.
+ * [destroyRenderable], [safeDestroyEntity] and
+ * [io.github.sceneview.loaders.ModelLoader.destroyModel] — the three call sites that can reindex
+ * the array. `destroyModel` is easy to miss because it never touches `RenderableManager` from
+ * Kotlin: `AssetLoader.destroyAsset` tears the asset's renderable components down natively, and a
+ * glTF asset carries one on every mesh entity (#3129 review).
  */
 fun Engine.renderableGeneration(): Int =
     renderableGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }

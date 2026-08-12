@@ -76,7 +76,12 @@ echo ""
 # ─── 2. Version Sync ─────────────────────────────────────────────────
 echo -e "${CYAN}--- Version Sync ---${NC}"
 
-SOURCE_VERSION=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+# `|| echo "MISSING"` like its three siblings below, and for the same reason: a
+# gradle.properties without VERSION_NAME makes grep exit 1, pipefail promotes it
+# and `set -e` kills the gate right here — one line after the section header, with
+# no verdict and no summary. "MISSING" instead makes every module comparison below
+# print a FAIL that names the real problem.
+SOURCE_VERSION=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2 || echo "MISSING")
 check "Source version" "PASS" "$SOURCE_VERSION"
 
 for module in sceneview arsceneview sceneview-core; do
@@ -273,7 +278,9 @@ if [ -x ".claude/scripts/validate-demo-assets.sh" ]; then
     [ "$QUICK_MODE" = "--quick" ] && EXTRA_ARGS="--no-cdn"
     if bash .claude/scripts/validate-demo-assets.sh $EXTRA_ARGS > /tmp/validate-demo-assets.log 2>&1; then
         # Summary line counts how many refs were verified
-        SUMMARY=$(grep -oE '[0-9]+ bundled, [0-9]+ CDN' /tmp/validate-demo-assets.log | tail -1)
+        # `|| true`: the checker PASSED, so a missing summary line is cosmetic —
+        # without it, pipefail turns a green check into a gate that dies here.
+        SUMMARY=$( { grep -oE '[0-9]+ bundled, [0-9]+ CDN' /tmp/validate-demo-assets.log || true; } | tail -1)
         check "Demo app asset refs resolve" "PASS" "$SUMMARY"
     else
         BAD=$(as_count_or_unknown "$(grep -cE '^  (MISS|DEAD)' /tmp/validate-demo-assets.log 2>/dev/null || true)")
@@ -304,7 +311,10 @@ if [ -x "tools/GenerateFilamat.sh" ]; then
     if bash tools/GenerateFilamat.sh --check --ci-tolerant > /tmp/check-filamat-drift.log 2>&1; then
         # --ci-tolerant turns matc unavailability into exit-0; distinguish.
         if grep -q "All .* filamat blob" /tmp/check-filamat-drift.log; then
-            BLOB_COUNT=$(grep -oE 'All [0-9]+ filamat' /tmp/check-filamat-drift.log | grep -oE '[0-9]+' | head -1)
+            # The `grep -q` above matches `All .* filamat blob`, which does not
+            # guarantee a NUMBER — `${BLOB_COUNT:-21}` below already anticipates an
+            # empty result, so the pipeline must not be allowed to kill the gate.
+            BLOB_COUNT=$( { grep -oE 'All [0-9]+ filamat' /tmp/check-filamat-drift.log || true; } | { grep -oE '[0-9]+' || true; } | head -1)
             check "Filament .filamat blobs in sync" "PASS" "${BLOB_COUNT:-21} blob(s)"
         elif grep -q "matc unavailable" /tmp/check-filamat-drift.log; then
             check "Filament .filamat blobs" "WARN" "matc unavailable (no network?) — see /tmp/check-filamat-drift.log"
@@ -504,8 +514,22 @@ CHANGED_ANDROID=$(git diff --name-only HEAD 2>/dev/null | grep "^sceneview/src/\
 if [ -n "$CHANGED_ANDROID" ]; then
     CHANGED_LLMS=$(git diff --name-only HEAD 2>/dev/null | grep "^llms.txt$" || true)
     if [ -z "$CHANGED_LLMS" ]; then
-        # Check if the Android changes include new public APIs
-        NEW_PUBLIC=$(git diff HEAD -- sceneview/src/ arsceneview/src/ 2>/dev/null | grep "^+.*fun \|^+.*class.*Node\|^+.*@Composable" | wc -l | tr -d ' ')
+        # Check if the Android changes include new public APIs.
+        #
+        # The `|| true` is load-bearing under `set -o pipefail`: a grep that
+        # matches nothing exits 1, pipefail hands that 1 to the command
+        # substitution, and `set -e` then kills the script AT THIS LINE — before
+        # the Summary block, so the gate exits 1 having printed no `[FAIL]`, no
+        # count and no verdict. The caller can only report "the checker exited 1
+        # without reaching its verdict", which reads exactly like a real blocker.
+        #
+        # It fired on the safest possible change: a diff that touches
+        # `sceneview/src/` and adds no public API at all (a KDoc-only edit) is
+        # precisely the input with zero matches. CI never saw it because there
+        # `git diff HEAD` is empty and the `[ -n "$CHANGED_ANDROID" ]` guard above
+        # is false — same local-only blind spot as the `as_count` defect.
+        NEW_PUBLIC=$( { git diff HEAD -- sceneview/src/ arsceneview/src/ 2>/dev/null || true; } | { grep -c "^+.*fun \|^+.*class.*Node\|^+.*@Composable" || true; })
+        NEW_PUBLIC=$(as_count "$NEW_PUBLIC")
         if [ "$NEW_PUBLIC" -gt 0 ]; then
             check "llms.txt updated for new APIs" "WARN" "$NEW_PUBLIC new public API(s) — llms.txt not updated"
         else

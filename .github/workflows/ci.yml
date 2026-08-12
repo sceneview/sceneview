@@ -1188,6 +1188,18 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-as-count.sh
 
+      # Same family, the other failure mode: a grep that matches nothing exits 1,
+      # `pipefail` promotes it to the command substitution and `set -e` kills
+      # quality-gate.sh mid-run — before the Summary, so it exits 1 having printed
+      # no verdict at all and the caller can only call it a blocker. Measured on a
+      # KDoc-only diff touching sceneview/src/ (#3129 follow-up). CI cannot catch
+      # it by running the gate — there `git diff HEAD` is empty and the block is
+      # skipped — so the rule is pinned statically here instead. Pure string work.
+      - name: Self-test quality-gate pipefail guards
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-quality-gate-pipefail.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
