@@ -1,3 +1,0 @@
-<!-- category: Fixed -->
-- `check-doc-drift.sh` no longer reports a false "no public declaration was added/removed/retyped" for an uncommitted public-API change. The changed-file list unioned the working tree while the public-declaration delta was computed from a commit range only, so the gate was blind in the local pre-commit case a developer actually runs by hand.
-<!-- Measured on SceneViewSwift/Sources/SceneViewSwift/SceneView.swift (#3008): before → "✓ OK Public-API files changed, but no public declaration was added/removed/retyped."; after → "⚠ WARN Public API changed but `llms.txt` was not updated." Regression test 6c in test-check-doc-drift.sh fails before the fix (7/8) and passes after (8/8). -->

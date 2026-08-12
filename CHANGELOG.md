@@ -2,6 +2,151 @@
 
 ## Unreleased
 
+## v4.29.0 — 2026-08-12 — An idle scene that stops rendering, projections that admit what they cannot answer, and a tap name that no longer leaks a URL
+
+### Added
+
+- **`SceneView(isRendering = false)` parks the frame loop on an idle scene ([#3108](https://github.com/sceneview/sceneview/issues/3108)).** A static 3D screen kept calling `withFrameNanos` at display rate forever, because Compose's frame clock does not idle on its own — on devices whose Choreographer keeps ticking a visually static UI (Samsung foldables in the report) that is a continuously rendered frame per vsync with nothing to show, and it reads to the user as battery drain and thermal throttling. The new parameter defaults to `true`, so no *source* change is needed at a named call site; pre-compiled consumers must recompile, and a caller passing nine or more positional arguments gets a loud type error at slot 9, never a silent behaviour change.
+- The paused loop **suspends rather than spins**: it waits on the snapshot rather than polling on a timer, so an idle scene schedules no work at all instead of trading 60 GPU frames a second for 60 CPU wake-ups a second — and rendering resumes on the snapshot apply itself, not on the next poll tick. `SceneIsRenderingTest` discriminates the two on virtual time, which is the only way to tell them apart from the outside.
+- The parameter is also forwarded by the deprecated `Scene` alias, and documented with the one thing that makes it easy to misuse: **while it is `false` nothing is presented at all** — a moved node, a camera change and a material edit all leave the last drawn frame on screen. Two cases are not just frozen and are handled explicitly: a **new or resized surface** holds no pixels at all — a swap chain is created empty, so a parked loop would leave a foldable unfold or an app return blank rather than stale, and the loop therefore always presents one frame into a new surface before parking again — and an **async model load does not finalise** while paused, because Filament finishes texture uploads inside the frame loop, so such a model renders untextured until rendering resumes. The dirty signal that drives the parameter must also be Compose state in both directions: a `System.nanoTime()` deadline never recomposes when it elapses, so it would pin `isRendering` to `true` forever after the first mutation and silently disable the whole feature. It has to be driven from an "is anything dirty" signal that outlives the last mutation by a frame, not from "is an animation running", which is already `false` at the instant a one-shot change is published.
+
+- **Not ported to `ARSceneView`, on purpose:** a live camera feed is never idle, so there is no idle frame to skip. `SceneViewSwift` has no equivalent either — RealityKit owns its own render loop and exposes nothing to park — and `sceneview-web` already ships the capability imperatively as `startRendering()` / `stopRendering()`. Recorded as a row in `llms.txt`'s "Android-only — no port planned" table so an AI does not generate `ARSceneView(isRendering = …)` or an iOS `.isRendering(_:)` modifier that do not exist.
+- New Android demo **`ar-measure`** — tap points on the real world and read the distance between
+  them in centimetres on a 3D label anchored at the segment midpoint. Keep tapping for a chain
+  with a running total, close the loop for a perimeter, and read the bounding box (W · H · D) of
+  every point placed. Points are resolved in accuracy order — a detected plane's polygon first,
+  then a `DepthPoint`, then the depth image directly via `Frame.hitTestDepth` (so clutter, slopes
+  and edges that never grow a plane are measurable too), then a raw feature point — and the demo
+  names on screen which source produced each point. Answers
+  [#531](https://github.com/sceneview/sceneview/issues/531), asked in 2024, closed unanswered by
+  the stale bot, and re-asked by a second user in 2025.
+- [`samples/android-demo/AR_MEASURE.md`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/AR_MEASURE.md)
+  documents the use case (surveying a real space to size something you will build or 3D-print for
+  it) and, explicitly, the accuracy ceiling: several centimetres without a ToF sensor, approaching
+  one centimetre with ToF/LiDAR — enough for layout, never for a fitting dimension on a printed
+  part.
+
+### Changed
+
+- Rebuilt the contributor-facing working method around three measured laws — group calls, bound every result, keep one session to one subject — replacing ~40 lines of unenforced prose.
+- Removed 14 `PostToolUse` reminder hooks that fired *after* the action they advised on, and were redundant with either a blocking gate or `CLAUDE.md`. A hook now either blocks or does not exist.
+- Deleted four saved workflows with no entry point (`device-qa-orchestrate`, `doc-drift-fix`, `phase2-reconcile`, `release-checkpoint`) — each duplicated a script or a slash command that is the real path. `triptych` was in that list until a check found `/review high` invokes it; it stays, and the workflow README now states the rule it was deleted against: live means something invokes it.
+- `/release` no longer stops to ask for the version or for permission to push — the version is derived from the changelog fragments (breaking → minor, else patch) and the gates are the authority.
+- `CLAUDE.md` 263 → 121 lines and `.claude/workflows/README.md` 204 → 90, both re-sent on every turn of every session.
+The Claude Code statusline now shows unsafe work: `●n` uncommitted files and `↑n`
+unpushed commits, both silent when zero. These are the two signals that answer "is
+anything still stranded?" — previously that question cost a full model turn to answer.
+
+### Fixed
+
+- **`CI Gate` went red on roughly one PR run in four, with nothing failing ([#3005](https://github.com/sceneview/sceneview/issues/3005)).** `ci.yml`'s `Detect changed paths` job checked out the repo before running the path filter, and that checkout was bimodal — 26–36 s or exactly the 5-minute timeout, never in between. A timed-out job reports `cancelled`, the eight jobs gated on it report `skipped`, and the run read as "the path filter matched nothing" on the one required check on `main`. The checkout now runs only on `push`, where the filter actually needs git; on a pull request it reads the diff from the API and never touches the working tree. A new assertion fails the job if any filter reports something other than `true`/`false`, so a blank verdict can no longer skip every job and pass as green.
+- `check-doc-drift.sh` no longer reports a false "no public declaration was added/removed/retyped" for an uncommitted public-API change. The changed-file list unioned the working tree while the public-declaration delta was computed from a commit range only, so the gate was blind in the local pre-commit case a developer actually runs by hand.
+- **The review workflow refused PRs that had never touched it ([#3038](https://github.com/sceneview/sceneview/issues/3038), [#2976](https://github.com/sceneview/sceneview/issues/2976)).** `pr-review.yml`'s self-modification guard compared the checkout against the base *tip*, then reported that the PR edited the review workflow — two different questions. Any branch that had simply not merged `main` since that file last changed answered yes to the first and no to the second, and the guard is a hard failure, so the PR got no review at all along with an error that was false about it (measured on #2963 and #3036). The comparison now starts from the merge base, which is the question the messages claim to be answering; a PR that really does edit the workflow is still refused.
+- **`worldToView` / `worldToScreen` now return `null` for points behind the camera instead of a mirrored pixel ([#3059](https://github.com/sceneview/sceneview/pull/3059)).** Projecting a world position that sits at or behind the camera's eye plane divided by a clip-space `w <= 0`, which yields a *finite, mirrored* coordinate on the wrong side of the view — never `NaN`, so no downstream `isFinite` check caught it. Consumers that project several world points (e.g. the eight corners of a bounding box for an on-screen overlay) got a plausible-but-wrong pixel and their overlay flickered off/on as a corner crossed the camera's eye plane during a camera pan. The perspective divide (shared, pure `io.github.sceneview.math.worldToView(worldPosition, projectionMatrix, viewMatrix)` in `sceneview-core`, which the Android `Camera.worldToView` and `View.worldToScreen` extensions now delegate to) guards `w <= 0` and reports `null`, the honest "this point has no view-space position". **Source-compatibility note:** `Camera.worldToView` and `CameraComponent.worldToView` change return type from `Float2` to `Float2?`; `View.worldToScreen` was already `Float2?`. This is a **breaking** source change: `val p: Float2 = camera.worldToView(pos)` no longer compiles, and direct callers need a `?`/`!!`. It is binary-compatible — nullability is not part of the JVM descriptor, so pre-compiled consumers keep linking — but per [`changelog.d/README.md`](../changelog.d/README.md) a nullability widening on a public return type is declared breaking and forces a MINOR release, never a patch. `worldToScreen` callers that already handled its nullable result need no change.
+- **A tapped node's name could publish a URL's credentials ([#3071](https://github.com/sceneview/sceneview/issues/3071)).** On the Flutter and React Native bridges, `nodeName` was derived by taking the last `/`-separated segment of the model source. For a URL with no path (`https://user:pass@cdn.example`) that segment *is* the authority, so a signed CDN source put its own userinfo into the tap payload apps hand to labels and analytics. The derivation now cuts the authority off before taking the base name, on Flutter, React Native and the Swift bridge alike, and a source that yields no real name falls back (`node_<index>` on Flutter, `null` on React Native) instead of reporting a host.
+- React Native's 3D `SceneView.onTap` **does** fire on iOS. It was measured on
+  an iPhone 17 Pro Max simulator with a model rendering: 5 taps on the model,
+  5 dispatches, `nodeName` naming the model every time. Every surface that
+  called it unverified or probably broken now states the measured result —
+  `llms.txt`, its `gpt/knowledge-*` mirror (regenerated with
+  `node tools/generate-gpt-knowledge.js`, never hand-edited) and the unpublished
+  `.well-known/` copy, the module's `README` and `onTap` JSDoc (source and
+  published `.d.ts`), the React Native quickstart, the MCP platform-setup
+  snippet, and the demo's own coverage card.
+- The same run measured the Flutter bridge back to back, against the same
+  SceneViewSwift build, the same simulator and the same entity graph (11
+  entities, 1 collision shape, 9 input targets): 6 taps on the model resolved
+  no entity, while the untargeted gesture arrived every time. So
+  [#3045] is Flutter's platform-view touch delivery, not RealityKit's
+  entity-targeted hit test as its write-up states — React Native, which reaches
+  the same hook through a plain native view, is unaffected. Every Flutter-side
+  surface that stated the old root cause as fact now states the measured one:
+  the plugin README and its `onTap` KDoc, the demo README and About tab,
+  `llms.txt` with both mirrors, and the MCP Flutter snippet. The *guidance* on
+  those surfaces is unchanged — Flutter's iOS `onTap` still does not fire.
+- The React Native demo now builds and runs on iOS for the first time. Its
+  `podspec` declares `SceneViewSwift` (a pod cannot see the host app's SwiftPM
+  packages), the demo `Podfile` resolves it from the repo root and re-pins
+  `IPHONEOS_DEPLOYMENT_TARGET` to 18.0 after `react_native_post_install` lowers
+  it to React Native's 13.4 floor. The module's `README` iOS section documented
+  the Swift Package Manager route as the supported one — it never worked, since
+  the module compiles inside `Pods.xcodeproj`, which cannot see the host
+  project's packages — and now gives the `Podfile` coordinate the unpublished
+  `SceneViewSwift` pod needs — pointed at `main` rather than a tag, because no
+  released tag carries `SceneViewSwift.podspec` yet and a tagged raw URL 404s. That closes
+  the React Native half of [#3072]. Three `@react-native/*` dev dependencies
+  Metro needs were missing. A `khronos_fox.usdz` is bundled so the Animation tab
+  renders on iOS at all: the demo passed remote `.glb` URLs on both platforms,
+  which RealityKit cannot read — the same failure, and the same fix, as the
+  Flutter demo's viewer page in [#3048].
+
+[#3045]: https://github.com/sceneview/sceneview/issues/3045
+[#3048]: https://github.com/sceneview/sceneview/pull/3048
+[#3072]: https://github.com/sceneview/sceneview/issues/3072
+- Play Store: the 7" and 10" tablet listings now show the same three screenshots as the phone listing (`model-viewer`, `dynamic-sky`, `multi-model`) instead of only the first two, and `model-viewer` is framed for the tablet portrait aspect rather than at the phone distance (#3106).
+- The weekly community-metrics PR no longer carries `[skip ci]` in its commit subject. `CI Gate` is the single required context on `main` and a skipped run never reports it, so `gh pr merge --auto` waited on a check that could never arrive — #3075 sat open in that state with a body promising it would "merge itself once CI Gate reports green", and needed an admin merge.
+- `check-workflow-scripts.sh` now fails any workflow that commits with a CI-skip marker and then asks for `gh pr merge --auto`. The pair is the bug; either half alone is legitimate. Matched case-insensitively and including the `skip-checks: true` trailer, since GitHub honours those identically.
+- **A fork PR could show a green review check nobody had read ([#3117](https://github.com/sceneview/sceneview/issues/3117)).** A run without reviewer credentials — every pull request from a fork — reported its inability to review as a warning and exited zero, so `Agent review` went green on a PR no reviewer had opened (measured on #3109). The step now fails, which is honest rather than blocking: `Agent review` is advisory, so a red mark there does not stop the merge; it only stops the run from being mistaken for a clean review.
+`review-fanout` no longer recommends MERGE when an ERROR finding got no verdict. A
+verifier agent that dies (reachable via an exhausted quota on its pinned model) used to
+have its finding silently dropped, taking `confirmedErrors` to zero and clearing the
+auto-merge gate on a change whose blocking findings were never checked. Such a finding is
+now kept and marked unverified, which routes the run to `REVIEW_INCOMPLETE`.
+
+### Tests
+
+- `DemoRenderingScreenshotTest` now actually guards against visual regressions. Seven of
+  its fourteen baselines had been recorded as empty viewports — four as 320×544 all-black
+  captures, three (`fog`, `lighting`, `lines-paths`) as full-size frames whose SceneView
+  band never rendered — and one (`secondary-camera`) was missing entirely, so those cases
+  either compared against nothing or compared nothing against nothing. Eleven goldens are
+  re-recorded from settled renders and one (`secondary-camera`) is added; the two that
+  already depicted a correct settled render (`custom-geometry`, `two-d-in-three-d`) are
+  left byte-for-byte untouched. All fourteen cases pass under the new guards over two
+  consecutive full runs ([#2323](https://github.com/sceneview/sceneview/issues/2323)).
+- The harness refuses the states that produced those baselines: a committed golden with a
+  flat SceneView band fails as `DEGENERATE`, a capture whose viewport never rendered fails
+  instead of being recorded, and the run waits for the `qa_mode` badge so a splash screen
+  can never be captured as the demo. The content probe no longer exempts unexpected
+  viewport geometries, and its band sits inside the viewport rather than overlapping the
+  app bar — that overlap is what let three all-black baselines score as "has content".
+- Screenshot captures are pinned to light mode, so a device left in dark mode no longer
+  reddens the whole suite with a ~50 % pixel diff that says nothing about rendering.
+- Demos that load a `.glb` now settle for 14 s: a loaded skybox reads as "rendered" while
+  the model is still missing, which the content probe cannot detect.
+- Debug-artifact writes can no longer mask a verdict. `saveToDeviceForReview` threw
+  `FileNotFoundException: EACCES` from inside the failure path, replacing six real
+  assertions with filesystem errors; it is now best-effort and reports where it landed.
+- **The bridges' Android Kotlin now has unit tests, and CI proves they ran ([#3062](https://github.com/sceneview/sceneview/issues/3062)).** Neither the Flutter plugin nor the React Native module had a single JVM test: `flutter test` covers only the Dart tree, and `tools/rn-android-compile` is a compile gate. Both modules gain a test source set pinning the tap payload's node-name derivation — the transform #3071 broke — with a shared case table so a divergence between the two bridges shows up as a diff. Each CI leg then counts the tests the JUnit XML says were executed, so an emptied or moved source set cannot pass as green.
+- `DemoRenderingScreenshotTest` validates each demo slug against a lower-kebab pattern
+  before it reaches the shell command that launches the demo, and waits on the qa_mode
+  pill's full text (`QA ×`) rather than the bare substring `QA`, which demo copy and
+  control labels can also contain. Review follow-ups to
+  [#3100](https://github.com/sceneview/sceneview/pull/3100).
+- `pre-push-check.sh` now mirrors the blocking CI gates it used to omit: Android ↔ iOS demo-id parity, `assets/CREDITS.md` drift, the `android run` content gate, workflow shell-block validation, every repo-hygiene gate self-test (list derived from `ci.yml`, not copied), and the full `quality-gate.sh` offline profile. A green "ALL CHECKS PASSED" no longer hides a red CI.
+- Everything the local gate deliberately does **not** cover — network, Gradle-bound, device-bound and Checks-API-bound CI steps — is now listed with its reason in a `CI-PARITY LEGS` comment block in the script, so "not covered here" is distinguishable from "covered".
+- `quality-gate.sh`'s "Filament calls on background thread" check could only ever **fail**: `grep -c` prints `0` and exits 1 when it matches nothing, so `|| echo "0"` made the count `0\n0`, the numeric test died, and the `||` branch reported a THREADING VIOLATION on every clean local diff. It was also blind to the multi-line `withContext(Dispatchers.IO) { modelLoader.createModel… }` shape it exists to catch, since it required both on one line — and it read green in CI, where `git diff HEAD` is empty and the whole block is skipped. Detection now lives in `lib/detect-filament-bg-thread.py` with a 10-fixture self-test pinning both directions, wired into `ci.yml → repo-hygiene`.
+- The same `grep -c … || echo` defect had a **second, worse symptom** in the same script: `TOTAL=$((TOTAL + N))` on `0\n0` is a shell *syntax* error, which under `set -e` kills the enclosing `if [ -n "$CHANGED_KT" ]` block. On any diff touching Kotlin without a `!!`, the gate therefore printed **neither** the force-unwrap line nor the threading line and still exited 0 — a green gate that had verified nothing, with nothing on screen saying a check went missing. Verified before/after against `origin/main` with a `.kt` probe.
+- Because that failure lives in the *counting* helper rather than in any one detector, the normalisation moved into `lib/as-count.sh` (sourced by `quality-gate.sh`) with its own falsifiable guard, `test-as-count.sh`: it pins every input shape a failing `grep -c` can produce **and** both consumption shapes — the comparison (must return PASS, not the false red) and the arithmetic inside a `set -e` subshell (must not abort the block). Wired into `ci.yml → repo-hygiene`.
+- The same defect is fixed where it also fed numeric comparisons: `ANDROID_DEMO_COUNT` in the Android ↔ iOS demo-id parity gate, and the `!!` count plus six diagnostic counts in `quality-gate.sh`.
+- **A lost checkout no longer reports 40 false gate failures in `repo-hygiene`.** Every gate in that CI job carries `if: always()` so a PR author sees all hygiene violations in one run — but `always()` also fired when the job's own `actions/checkout` never completed, and 40 gates then "measured" an empty working directory and reported `failure` (run 31516160366: checkout hung, consumed the 10-minute timeout, was cancelled). The gates now carry `always() && steps.checkout.outcome == 'success'`, so a lost checkout leaves exactly one red step — the one that actually broke — instead of a wall of red whose single real cause was visible only by listing the job's steps.
+
+- `check-hygiene-checkout-guard.py` evaluates every `if:` expression in `repo-hygiene` under seven simulated job states, so the guard is verified by execution rather than by reading the YAML. It pins both directions: a bare `always()` is refused, and so is a `success()`-based guard, which would restore the fix-them-one-at-a-time behaviour `always()` exists to prevent. It also refuses a guard naming a step `id:` that no earlier step declares — that spelling makes every gate skip while the job reports green, a false green worse than the false red being fixed. Driven on synthetic workflows by `test-check-hygiene-checkout-guard.sh`, whose mutation pass deletes each contract assertion and requires a near-miss fixture to go green, so "this assertion is load-bearing" is measured rather than asserted.
+- Fixed two quality-gate legs that could not report what they claimed to check:
+  `quality-gate.sh`'s Filament background-thread check reported a THREADING
+  VIOLATION (with an empty log) whenever `git diff HEAD` itself failed, because
+  the failure propagated through the pipeline under `pipefail`; and
+  `cross-platform-check.sh --with-apk`'s demo-inventory leg counted its Android
+  demos in a file that no longer holds any, and its iOS demos with a pattern that
+  matched doc comments. Both sides now count the ids their collator parses, and a
+  count of zero is reported as a broken probe instead of as "no drift".
+- `cross-platform-check.sh` now shares `lib/as-count.sh` with `quality-gate.sh`
+  instead of carrying its own two counter idioms, only one of which was correct.
+- A bad invocation of `lib/detect-filament-bg-thread.py` prints its usage text
+  instead of a blank line, pinned by a new assertion in its self-test.
+- `automation-map` now documents `lib/as-count.sh`, `test-as-count.sh`,
+  `lib/detect-filament-bg-thread.py` and `test-detect-filament-bg-thread.sh`.
+
 ## v4.28.0 — 2026-08-10
 
 ### Added
