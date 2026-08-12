@@ -112,6 +112,31 @@ if [ "$(git -C "$UPSTREAM" rev-list --count main 2>/dev/null || echo 0)" -lt 2 ]
   exit 1
 fi
 
+# A `gh` that records instead of calling GitHub (#3028). The step now posts the
+# "NOT REVIEWED" explanation onto the PR, and a stub is the only way to assert
+# WHAT it posts. It answers the lookup with nothing (no existing comment) and
+# copies the `-F body=@<file>` payload out, so the assertions read the bytes the
+# step would have sent.
+STUB_BIN="$TMP/bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+method=GET
+body=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) method="${2:-}"; shift 2 ;;
+    -F) case "${2:-}" in body=@*) body="${2#body=@}" ;; esac; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "$method" = "GET" ]; then exit 0; fi   # lookup: no existing comment
+echo "$method" >> "$GH_STUB_LOG"
+[ -n "$body" ] && cp "$body" "$GH_STUB_OUT"
+exit 0
+STUB
+chmod +x "$STUB_BIN/gh"
+
 # run_guard <step-file> <branch> <event-name> — as GitHub runs it: `bash -e`
 # plus the step's own `set`. Each case gets a fresh clone so a previous case
 # cannot leave state behind.
@@ -124,10 +149,17 @@ run_guard() {
   git -C "$work" checkout -q "$branch"
   : > "$TMP/output"
   : > "$TMP/summary"
+  rm -f "$TMP/posted-comment.md" "$TMP/gh-calls"
+  : > "$TMP/gh-calls"
   (
     cd "$work" &&
+    PATH="$STUB_BIN:$PATH" \
     EVENT_NAME="$event" \
     GITHUB_BASE_REF=main \
+    GITHUB_REPOSITORY=sceneview/sceneview \
+    PR_NUM=4242 \
+    GH_STUB_OUT="$TMP/posted-comment.md" \
+    GH_STUB_LOG="$TMP/gh-calls" \
     GITHUB_OUTPUT="$TMP/output" \
     GITHUB_STEP_SUMMARY="$TMP/summary" \
     bash -e "$step"
@@ -154,6 +186,27 @@ run_guard "$TMP/step.sh" selfmod
 [ "$GUARD_VERDICT" = true ] && ok "refused: verdict=true" || bad "a self-modifying PR was let through (verdict='$GUARD_VERDICT')"
 [ "$GUARD_RC" -eq 1 ] && ok "exits 1 so the check is red" || bad "self-modifying PR did not exit 1 (rc=$GUARD_RC)"
 grep -q 'NOT REVIEWED' "$TMP/summary" && ok "writes the job summary" || bad "no job summary written — the maintainer gets an error with no explanation"
+
+# #3028: the job summary is not where a maintainer looks. Until this landed the
+# only trace on the PR was `Agent review (FAILURE)` — a red carrying nothing.
+if [ -s "$TMP/posted-comment.md" ]; then
+  ok "posts the explanation onto the PR, not only into the job summary"
+else
+  bad "nothing was posted to the PR — the maintainer sees a bare red 'Agent review (FAILURE)' (#3028)"
+fi
+grep -q 'NOT REVIEWED' "$TMP/posted-comment.md" 2>/dev/null \
+  && ok "the PR comment says NOT REVIEWED" \
+  || bad "the PR comment does not say NOT REVIEWED — 'failure' is the wrong word for 'not evaluated' (#3028)"
+grep -qF '<!-- sceneview-agent-review -->' "$TMP/posted-comment.md" 2>/dev/null \
+  && ok "carries the review marker, so a real verdict replaces it in place" \
+  || bad "no <!-- sceneview-agent-review --> marker — a later real review would post a second comment instead of replacing this one"
+grep -q 'gh workflow run pr-review.yml -f pr=4242' "$TMP/posted-comment.md" 2>/dev/null \
+  && ok "names the dispatch that DOES review this PR, with its number" \
+  || bad "the comment does not carry the runnable dispatch command for this PR"
+# The comment must not be mistaken for the check going green.
+[ "$GUARD_RC" -eq 1 ] \
+  && ok "still exits 1 — the comment explains the red, it does not replace it" \
+  || bad "posting the comment changed the verdict (rc=$GUARD_RC); a PR nobody reviewed must not look reviewed"
 
 echo
 echo "a workflow_dispatch"
@@ -217,6 +270,28 @@ else
     ok "the old comparison refuses the behind-main PR — the suite has teeth"
   else
     bad "the mutant did not produce the historical failure (verdict='$GUARD_VERDICT' rc=$GUARD_RC); expected verdict=true rc=1 — either the fix is untested or the mutant did not run"
+    sed -n '1,15p' "$TMP/out"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# MUTATION #3028. Disarm the PR-comment block. The step must still be red — so
+# a non-zero exit proves nothing here — and the assertions above must be the
+# thing that notices, which is exactly why they check the posted BYTES rather
+# than the exit code.
+# ---------------------------------------------------------------------------
+echo
+echo "mutation: disarm the PR comment (#3028)"
+sed 's|if \[ -n "\${PR_NUM:-}" \] && \[ -n "\${GITHUB_REPOSITORY:-}" \]; then|if false; then|' \
+  "$TMP/step.sh" > "$TMP/step-nocomment.sh"
+if cmp -s "$TMP/step.sh" "$TMP/step-nocomment.sh"; then
+  bad "the mutation changed nothing — the step no longer contains the comment block this suite claims to protect"
+else
+  run_guard "$TMP/step-nocomment.sh" selfmod
+  if [ "$GUARD_VERDICT" = true ] && [ "$GUARD_RC" -eq 1 ] && [ ! -s "$TMP/posted-comment.md" ]; then
+    ok "without it the PR gets a bare red and nothing else — the assertions above have teeth"
+  else
+    bad "the mutant did not reproduce the #3028 shape (verdict='$GUARD_VERDICT' rc=$GUARD_RC, comment posted=$([ -s "$TMP/posted-comment.md" ] && echo yes || echo no)); expected verdict=true rc=1 and no comment"
     sed -n '1,15p' "$TMP/out"
   fi
 fi
