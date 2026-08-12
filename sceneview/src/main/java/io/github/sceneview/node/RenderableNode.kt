@@ -10,6 +10,7 @@ import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.math.toVector3Box
+import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyMaterialInstance
 import io.github.sceneview.safeDestroyRenderable
 
@@ -36,15 +37,27 @@ open class RenderableNode(
      * read — the same lazy-once caching #2280 applied to [transformInstance] (#2269, #2285).
      *
      * Rebuilding the renderable in place (e.g. [setGeometry] / re-`build` on the same entity)
-     * keeps the same instance handle, so the cache stays valid for the node's lifetime.
+     * keeps the same instance handle.
+     *
+     * What does **not** keep it is another entity's renderable being destroyed: [RenderableManager]
+     * is a packed-array store that compacts on removal by swapping the last live entity into the
+     * freed slot, silently reindexing that entity's handle. A stale handle here is a write path
+     * too (`setLayerMask`, `setPriority`, `setBonesAsMatrices`, the AABB setter), so it can drive
+     * *another* renderable rather than merely misread this one (#3123, the [RenderableManager]
+     * half of #2977). [io.github.sceneview.renderableGeneration] is bumped on every renderable
+     * destroy, so the snapshotted generation is compared on each read and a mismatch forces a
+     * fresh lookup — an Int compare on the hot path, which keeps #2287's point.
      */
     private var _renderableInstance: RenderableInstance = 0
+    private var _renderableInstanceGeneration = -1
     override val renderableInstance: RenderableInstance
         get() {
             // Only freeze a *valid* handle: if the renderable component isn't built yet
             // `getInstance` returns 0, which we must not cache as final — re-look-up next read.
-            if (_renderableInstance == 0) {
+            val currentGeneration = engine.renderableGeneration()
+            if (_renderableInstance == 0 || _renderableInstanceGeneration != currentGeneration) {
                 _renderableInstance = renderableManager.getInstance(entity)
+                _renderableInstanceGeneration = currentGeneration
             }
             return _renderableInstance
         }
