@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **A fork PR could show a green review check nobody had read ([#3117](https://github.com/sceneview/sceneview/issues/3117)).** A run without reviewer credentials — every pull request from a fork — reported its inability to review as a warning and exited zero, so `Agent review` went green on a PR no reviewer had opened (measured on #3109). The step now fails, which is honest rather than blocking: `Agent review` is advisory, so a red mark there does not stop the merge; it only stops the run from being mistaken for a clean review.
