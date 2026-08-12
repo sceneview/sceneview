@@ -145,9 +145,11 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun createMaterialLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;)Lio/github/sceneview/loaders/MaterialLoader;
 	public static final fun createModelLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;)Lio/github/sceneview/loaders/ModelLoader;
 	public static final fun destroyGeometry (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Geometry;)V
+	public static final fun destroyLight (Lcom/google/android/filament/Engine;I)V
 	public static final fun destroyRenderable (Lcom/google/android/filament/Engine;I)V
 	public static final fun destroyTransformable (Lcom/google/android/filament/Engine;I)V
 	public static final fun drainFramePipeline (Lcom/google/android/filament/Engine;)V
+	public static final fun renderableGeneration (Lcom/google/android/filament/Engine;)I
 	public static final fun safeDestroy (Lcom/google/android/filament/Engine;)Ljava/lang/Object;
 	public static final fun safeDestroyCamera (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Camera;)Ljava/lang/Object;
 	public static final fun safeDestroyEntity (Lcom/google/android/filament/Engine;I)Ljava/lang/Object;
@@ -155,6 +157,7 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun safeDestroyGeometry (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Geometry;)V
 	public static final fun safeDestroyIndexBuffer (Lcom/google/android/filament/Engine;Lcom/google/android/filament/IndexBuffer;)Ljava/lang/Object;
 	public static final fun safeDestroyIndirectLight (Lcom/google/android/filament/Engine;Lcom/google/android/filament/IndirectLight;)Ljava/lang/Object;
+	public static final fun safeDestroyLight (Lcom/google/android/filament/Engine;I)Ljava/lang/Object;
 	public static final fun safeDestroyMaterial (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Material;)Ljava/lang/Object;
 	public static final fun safeDestroyMaterialInstance (Lcom/google/android/filament/Engine;Lcom/google/android/filament/MaterialInstance;)Ljava/lang/Object;
 	public static final fun safeDestroyMaterialLoader (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;)Ljava/lang/Object;

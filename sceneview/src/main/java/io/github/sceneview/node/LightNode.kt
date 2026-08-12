@@ -7,6 +7,8 @@ import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.LightComponent
+import io.github.sceneview.lightGeneration
+import io.github.sceneview.safeDestroyLight
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.toColor
 
@@ -33,19 +35,31 @@ open class LightNode(
     /**
      * Cached [LightManager] instance handle for this entity.
      *
-     * `0` means "not yet looked up". The handle is stable for the lifetime of the light
-     * component on this entity, so we only pay the `getInstance` JNI thunk once instead of on
+     * `0` means "not yet looked up". We only pay the `getInstance` JNI thunk once instead of on
      * every [LightComponent] getter/setter — reactive light setups (`rememberMainLightNode`'s
      * `SideEffect { node.apply(apply) }`) re-apply on every recomposition, so this is read at
      * recomposition frequency. Same lazy-once caching #2280 applied to [transformInstance]
      * (#2269, #2285). A `0` result (component not built yet) is never frozen — it re-looks-up
      * on the next read.
+     *
+     * The handle is **not** stable for the lifetime of the light component: [LightManager] is a
+     * packed-array store that compacts on removal by swapping the last live entity into the
+     * freed slot, silently reindexing that other entity's handle. So destroying *any* light on
+     * this [engine] can invalidate this cache, and every subsequent read/write would land on
+     * another light — reporting back exactly what was written while the renderer uses the real
+     * component (#2991, the [LightManager] half of #3123).
+     * [io.github.sceneview.lightGeneration] is bumped on every light-component destroy, so
+     * comparing the snapshotted generation against the current one on each read detects the
+     * reindex in O(1) and forces a fresh lookup.
      */
     private var _lightInstance: EntityInstance = 0
+    private var _lightInstanceGeneration = -1
     override val lightInstance: EntityInstance
         get() {
-            if (_lightInstance == 0) {
+            val currentGeneration = engine.lightGeneration()
+            if (_lightInstance == 0 || _lightInstanceGeneration != currentGeneration) {
                 _lightInstance = lightManager.getInstance(entity)
+                _lightInstanceGeneration = currentGeneration
             }
             return _lightInstance
         }
@@ -89,7 +103,11 @@ open class LightNode(
     ) : this(engine, entity, LightManager.Builder(type).apply(apply))
 
     override fun destroy() {
-        lightManager.destroy(entity)
+        // Not `lightManager.destroy(entity)` directly: this removal compacts LightManager's
+        // packed array and reindexes another live light's handle, so it must bump the engine's
+        // light generation or every other LightNode keeps a cache that now points elsewhere
+        // (#2991).
+        engine.safeDestroyLight(entity)
         super.destroy()
     }
 }
