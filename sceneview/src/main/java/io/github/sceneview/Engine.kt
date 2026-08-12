@@ -88,7 +88,33 @@ fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entit
 fun Engine.safeRecycleEntity(@FilamentEntity entity: Entity) =
     runCatching { EntityManager.get().destroy(entity) }
 
-fun Engine.destroyTransformable(@FilamentEntity entity: Entity) = transformManager.destroy(entity)
+// TransformManager compacts its packed array on removal by swapping the last live entity into
+// the freed slot, silently reindexing that entity's cached EntityInstance handles (Node's
+// transformInstance / parentInstance, #2977/#2978). This per-Engine generation counter lets
+// those caches detect "a transform component was destroyed since I last read" in O(1), without
+// tracking every live Node. Bumped by destroyTransformable() (Node.destroy()'s path) and by
+// ModelLoader.destroyModel() (glTF asset teardown destroys transform components directly via
+// AssetLoader.destroyAsset, bypassing Node.destroy() entirely).
+//
+// getOrPut below is check-then-act, not atomic — WeakHashMap has no internal synchronization.
+// Safe under this codebase's existing main-thread-only assumption for anything touching Filament
+// JNI (see e.g. the @MainThread annotations on ModelLoader's Filament-touching functions,
+// ModelLoader.kt's createInstance and others).
+private val transformGenerationByEngine =
+    java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
+
+internal fun Engine.transformGeneration(): Int =
+    transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }.get()
+
+internal fun Engine.bumpTransformGeneration() {
+    transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
+        .incrementAndGet()
+}
+
+fun Engine.destroyTransformable(@FilamentEntity entity: Entity) {
+    transformManager.destroy(entity)
+    bumpTransformGeneration()
+}
 fun Engine.safeDestroyTransformable(@FilamentEntity entity: Entity) =
     runCatching { destroyTransformable(entity) }
 

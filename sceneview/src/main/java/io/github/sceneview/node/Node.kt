@@ -45,6 +45,7 @@ import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
+import io.github.sceneview.transformGeneration
 import io.github.sceneview.safeRecycleEntity
 
 /**
@@ -511,10 +512,18 @@ open class Node protected constructor(
     // path for the parent is the `parentInstance` setter (`setParent`); it invalidates both caches,
     // so the first read after a reparent re-fetches the fresh value once and every read after that
     // is served without JNI.
+    //
+    // `_parentEntity` is an `Entity` id, stable across TransformManager reindexing, so a reparent
+    // is the only thing that invalidates it. `_parentInstance` is an `EntityInstance` handle from
+    // the SAME packed array as `transformInstance` above, and it feeds a WRITE path
+    // (`transformManager.setParent(transformInstance, value ?: 0)`) — a stale handle here doesn't
+    // just misread a transform, it can reparent the wrong entity. It needs the same generation
+    // check as `transformInstance` (#2978 review gap 1).
     private var _parentEntityValid = false
     private var _parentEntity: Entity? = null
     private var _parentInstanceValid = false
     private var _parentInstance: EntityInstance? = null
+    private var _parentInstanceGeneration = -1
 
     var parentEntity: Entity?
         get() {
@@ -532,9 +541,11 @@ open class Node protected constructor(
 
     var parentInstance: EntityInstance?
         get() {
-            if (!_parentInstanceValid) {
+            val currentGeneration = engine.transformGeneration()
+            if (!_parentInstanceValid || _parentInstanceGeneration != currentGeneration) {
                 _parentInstance = parentEntity?.let { transformManager.getInstance(it) }
                 _parentInstanceValid = true
+                _parentInstanceGeneration = currentGeneration
             }
             return _parentInstance
         }
@@ -739,12 +750,25 @@ open class Node protected constructor(
      * entity in the [TransformManager], so we only pay the JNI thunk once instead of
      * on every transform getter/setter — read by every `transform` / `worldTransform`
      * / `worldPosition` / smooth-animation tick at 60–120 Hz (#2269).
+     *
+     * That stability assumption only holds *between* other entities' transform-component
+     * destructions: [TransformManager] is a packed-array store that compacts on removal by
+     * swapping the last live entity into the removed slot, which silently reindexes that one
+     * other live entity's handle (creation only appends/copies in place and never reindexes
+     * an existing entity). [Engine.transformGeneration] is bumped every time any transform
+     * component is destroyed anywhere on this [engine] — including glTF asset teardown via
+     * [io.github.sceneview.loaders.ModelLoader.destroyModel], which bypasses [destroy] entirely
+     * — so comparing the snapshotted generation against the current one on every read detects a
+     * stale handle in O(1) and forces a fresh, correct lookup.
      */
     private var _transformInstance: EntityInstance = 0
+    private var _transformInstanceGeneration = -1
     val transformInstance: EntityInstance
         get() {
-            if (_transformInstance == 0) {
+            val currentGeneration = engine.transformGeneration()
+            if (_transformInstance == 0 || _transformInstanceGeneration != currentGeneration) {
                 _transformInstance = transformManager.getInstance(entity)
+                _transformInstanceGeneration = currentGeneration
             }
             return _transformInstance
         }
@@ -1281,6 +1305,9 @@ open class Node protected constructor(
             runCatching { scene.removeEntities(sceneEntities.toIntArray()) }
             attachedScene = null
         }
+        // safeDestroyTransformable bumps the engine-wide transform generation counter (see
+        // Engine.kt), so every other live Node's cached transformInstance/parentInstance
+        // re-resolves on next read instead of silently operating on a stale/reassigned slot.
         engine.safeDestroyTransformable(entity)
         engine.safeDestroyEntity(entity)
         // Components are gone; the id itself is only ours to give back when we allocated it.
