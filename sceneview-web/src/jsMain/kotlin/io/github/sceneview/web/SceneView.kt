@@ -568,13 +568,31 @@ class SceneView private constructor(
                         "(SceneView destroyed before fetch resolved)",
                 )
                 settleLoad()
+                return@then null
+            }
+            // #3085: Filament.js registers no `image/webp` texture provider, so a glTF using
+            // EXT_texture_webp renders untextured. Re-encode its embedded WebP images to PNG
+            // BEFORE createAsset — the browser decode is async, hence the extra `then` hop.
+            // A model without WebP resolves the very same ArrayBuffer instance, untouched.
+            WebPTextureTranscoder.transcode(buffer.unsafeCast<ArrayBuffer>())
+        }.then { transcoded ->
+            // `null` is the destroyed-before-fetch bail-out above, already settled.
+            val modelBytes = transcoded.unsafeCast<ArrayBuffer?>() ?: return@then
+            // destroy() can also land DURING the async WebP transcode — same use-after-free
+            // hazard as the fetch above, so the guard is repeated on this continuation.
+            if (destroyed) {
+                console.log(
+                    "SceneView: dropped stale model load for $url " +
+                        "(SceneView destroyed during WebP transcode)",
+                )
+                settleLoad()
                 return@then
             }
             // Filament.js gltfio `createAsset` expects a typed-array VIEW
             // (Uint8Array), NOT a raw ArrayBuffer — passing the ArrayBuffer
             // throws an embind BindingError. Mirrors the conversion the
             // hand-authored sceneview.js does after `response.arrayBuffer()`.
-            val asset = loader.createAsset(Uint8Array(buffer.unsafeCast<ArrayBuffer>()))
+            val asset = loader.createAsset(Uint8Array(modelBytes))
             if (asset != null) {
                 // #1597: a 2nd loadModel of the same URL must release the prior
                 // asset for this logical model before adopting the replacement,

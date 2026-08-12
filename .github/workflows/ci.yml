@@ -635,12 +635,19 @@ jobs:
       # (`continue-on-error: true`) only burned runner minutes, so it was
       # dropped per the drop-or-make-blocking decision in #1396.
 
-      - name: JS tests (informational)
-        continue-on-error: true
-        # sceneview-web jsTest covers the pure-JS node/tracker/splat maths
-        # (e.g. SplatWebBuffersTest, #2646) that the Karma suite runs without a
-        # WebGL context; the browser rendering itself is gated by the blocking
-        # bundle smoke test below.
+      # BLOCKING since #3085. sceneview-web jsTest covers the pure-JS
+      # node/tracker/splat maths (e.g. SplatWebBuffersTest, #2646) that the
+      # Karma suite runs without a WebGL context; the browser rendering itself
+      # is gated by the blocking bundle smoke test below.
+      #
+      # It was `continue-on-error: true` until #3085 put the WebP → PNG
+      # container surgery (WebPTextureTranscoderTest, 12 cases) behind it: a
+      # suite that cannot fail the job is a false green for the one change
+      # whose whole proof lives in it. Promoted on measured runner evidence,
+      # not hope — the informational step reported `success` on every
+      # `web-desktop` job of runs 31599579862, 31598215316 and 31584305654,
+      # i.e. Karma/ChromeHeadless does work on ubuntu-latest here.
+      - name: JS tests
         run: ./gradlew :sceneview-core:jsTest :sceneview-web:jsTest --stacktrace
 
       # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact

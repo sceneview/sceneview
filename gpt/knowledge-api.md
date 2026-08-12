@@ -4010,6 +4010,13 @@ sceneView.scene: Scene
 sceneView.view: View
 sceneView.camera: Camera
 sceneView.cameraController: OrbitCameraController?
+
+// WebP textures: `loadModel` re-encodes embedded `EXT_texture_webp` images to PNG in the browser
+// (createImageBitmap → canvas → toBlob) before `createAsset`, because Filament.js registers no
+// `image/webp` texture provider (#3085) — same fix as Android's ModelLoader (#2305). A model with
+// no WebP is passed through untouched. Not covered: WebP kept in separate `.webp` files beside a
+// `.gltf` (reported with a console error). Partial-alpha texels round-trip with rounding error,
+// because a canvas 2D context stores premultiplied colour.
 sceneView.autoResize: Boolean = true
 ```
 
