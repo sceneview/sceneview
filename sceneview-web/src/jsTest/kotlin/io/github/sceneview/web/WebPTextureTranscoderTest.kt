@@ -93,7 +93,7 @@ class WebPTextureTranscoderTest {
             assertEquals(
                 0,
                 offset % 4,
-                "a buffer view holding image data must start on a 4-byte boundary",
+                "an appended image view must stay on a 4-byte boundary",
             )
             assertBytesEqual(
                 pngBytes,
@@ -123,8 +123,8 @@ class WebPTextureTranscoderTest {
     /**
      * Two images whose PNG re-encodings are **not** a multiple of four bytes long. The first
      * append lands on the already-aligned end of the BIN chunk whatever the code does; only the
-     * second one proves the pad exists, and glTF requires a buffer view holding image data to
-     * start on a 4-byte boundary.
+     * second one proves the pad exists. glTF does not *require* this of an image-data view — the
+     * invariant is that the web output matches the Android twin's byte for byte.
      */
     @Test
     fun appendedViewsStayAlignedWhenAPngLengthIsNotAMultipleOfFour(): Promise<Unit> {
@@ -158,7 +158,7 @@ class WebPTextureTranscoderTest {
                 assertEquals(
                     0,
                     offset % 4,
-                    "appended image view $image must start on a 4-byte boundary",
+                    "appended image view $image must stay on a 4-byte boundary",
                 )
                 assertBytesEqual(
                     oddPng,
@@ -169,6 +169,52 @@ class WebPTextureTranscoderTest {
             assertTrue(
                 (parsed.json.buffers[0].byteLength as Int) <= parsed.bin.length,
                 "buffer 0 must not claim more bytes than the padded BIN chunk holds",
+            )
+        }
+    }
+
+    /**
+     * A hostile asset's *count* is bounded, not just each image's size: a few KB of JSON can
+     * declare thousands of images all pointing at one tiny WebP that inflates to 8192², and the
+     * decodes run sequentially. Everything past the budget must be reported through the same
+     * `onUnsupported` path as an undecodable image, never dropped in silence.
+     *
+     * 256 is the documented `MAX_TRANSCODED_IMAGES`, written out here rather than read from the
+     * production constant (which is private) so the oracle cannot move with the code.
+     */
+    @Test
+    fun theNumberOfDecodesIsBoundedAndTheOverflowIsReported(): Promise<Unit> {
+        val budget = 256
+        val declared = budget + 2
+        val images = (0 until declared).joinToString(",") {
+            """{"mimeType": "image/webp", "bufferView": 0}"""
+        }
+        val textures = (0 until declared).joinToString(",") {
+            """{"extensions": {"EXT_texture_webp": {"source": $it}}}"""
+        }
+        val json = """
+            {
+              "extensionsUsed": ["EXT_texture_webp"],
+              "buffers": [{"byteLength": 4}],
+              "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+              "images": [$images],
+              "textures": [$textures]
+            }
+        """.trimIndent()
+
+        var reported = -1
+        return WebPTextureTranscoder.transcode(glb(json, webPBytes), fakeTranscoder) {
+            reported = it
+        }.then {
+            assertEquals(
+                budget,
+                decodeCount,
+                "no more than $budget images may be decoded for one payload",
+            )
+            assertEquals(
+                declared - budget,
+                reported,
+                "every image past the decode budget must be reported to the caller",
             )
         }
     }

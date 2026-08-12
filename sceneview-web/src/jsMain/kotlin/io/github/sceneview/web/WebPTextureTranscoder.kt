@@ -72,6 +72,17 @@ internal object WebPTextureTranscoder {
     private const val MAX_TEXTURE_EDGE = 8192
 
     /**
+     * Most WebP images this will decode for one payload. Bounds a hostile asset's *count* the way
+     * [MAX_TEXTURE_EDGE] bounds its size — the two together cap the work a crafted file can buy
+     * with a few KB. Far above any real model (a texture-heavy glTF uses a few dozen images), and
+     * anything past it is reported through `onUnsupported` rather than dropped in silence.
+     *
+     * Web-only hardening: the Android twin runs on a payload the app itself packaged or fetched,
+     * whereas a browser tab is a shared, user-visible resource. Mirroring it on Android is #3136.
+     */
+    private const val MAX_TRANSCODED_IMAGES = 256
+
+    /**
      * Decodes a WebP byte array and re-encodes it as PNG, resolving `null` if it cannot.
      *
      * Async by construction — the browser has no synchronous image decoder. Injectable so the
@@ -175,6 +186,11 @@ internal object WebPTextureTranscoder {
                 buffer
             } else {
                 val newBin = appended.toUint8Array()
+                // The sink was seeded with the whole BIN *chunk*, so if the source declared
+                // `buffers[0].byteLength` shorter than its padded chunk, buffer 0 now also spans
+                // those pre-existing pad bytes. That is legal — no accessor or buffer view points
+                // into the gap — and it is what keeps every pre-existing byteOffset valid, which
+                // re-basing onto the declared length would not.
                 if (binBacked) firstBuffer.byteLength = newBin.length
                 buildGlb(encodeUtf8(JSON.stringify(gltf)), newBin)
             }
@@ -235,7 +251,11 @@ internal object WebPTextureTranscoder {
 
     /** Appends the PNG to the BIN chunk under a fresh, 4-byte-aligned buffer view. */
     private fun appendPngView(gltf: dynamic, appended: ByteSink, image: dynamic, png: Uint8Array) {
-        // Pad to the 4-byte alignment glTF requires of a buffer view holding image data.
+        // 4-byte-align every appended view. glTF 2.0 does NOT require this of a buffer view that
+        // holds image data — that alignment rule is about accessors — so this is an invariant we
+        // keep rather than one we owe: it matches the Android twin's output byte for byte, and it
+        // keeps every offset in the rewritten JSON on the same grid as the GLB chunks themselves,
+        // which is what a reader eyeballing a diff of the two containers expects.
         appended.pad((4 - appended.size % 4) % 4)
         var bufferViews = gltf.bufferViews
         if (bufferViews == null) {
@@ -315,7 +335,15 @@ internal object WebPTextureTranscoder {
         var untranscodable = 0
         val converted = mutableSetOf<Int>()
         var chain: Promise<Unit> = Promise.resolve(Unit)
-        collectWebPImages(images, textures).forEach { imageIndex ->
+        val webPImages = collectWebPImages(images, textures)
+        // Everything past the budget is reported, not decoded. Per-image cost is already bounded
+        // by MAX_TEXTURE_EDGE, but the image COUNT comes from the file: a few KB of crafted JSON
+        // can declare thousands of images all pointing at one tiny WebP that inflates to 8192²,
+        // and the decodes run sequentially, so the tab spends minutes on it. Same contract as an
+        // oversized image — untranscoded, and named in the console error rather than silent.
+        val budgeted = webPImages.take(MAX_TRANSCODED_IMAGES)
+        untranscodable += webPImages.size - budgeted.size
+        budgeted.forEach { imageIndex ->
             chain = chain.then<Any?> {
                 val image = index(images, imageIndex)
                 val webP = if (image == null) null else readImageBytes(image)
