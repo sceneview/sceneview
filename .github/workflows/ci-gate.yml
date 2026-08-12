@@ -44,12 +44,28 @@ name: CI Gate
 # slow, non-path-gated workflow has not yet registered ANY check run by the
 # time every *already-registered* `others` check has completed. To close
 # that race the gate refuses to exit green until every check in
-# `REQUIRED_CHECKS` (below) has been observed for this SHA — UNLESS none of
-# `ci.yml`'s checks appear at all, which is the legitimate signature of a
-# docs-only PR (ci.yml is workflow-level `paths-ignore`-filtered). This is a
-# name-based "wait for these IF expected" guard, so it never false-negatives
-# a genuinely light docs-only PR while still catching a core check that is
-# simply slow to register.
+# `REQUIRED_CHECKS` (below) has been observed for this SHA — UNLESS the core
+# checks are genuinely not expected, which is the legitimate signature of a
+# docs-only PR (ci.yml is workflow-level `paths-ignore`-filtered).
+#
+# "Not expected" used to mean "none of `ci.yml`'s checks appear at all", and
+# that is the #3024 hole: it is also what a read taken BEFORE ci.yml registers
+# looks like, so a single early poll in which the only visible checks happened
+# to be finished could disarm the guard and conclude green over checks that had
+# not started. The gate now asks the Actions API whether a run of
+# `$CORE_WORKFLOW` exists for this SHA (#3024). A PR whose paths are all in
+# ci.yml's `paths-ignore` produces NO run of it — measured on PR #3067, a
+# CLAUDE.md-only change: the only workflow runs at that SHA were `ci-gate.yml`
+# and `pr-review.yml`, and the only check runs were `CI Gate` and
+# `Agent review`. So the bypass still fires exactly where it should, while a
+# SHA that HAS a `ci.yml` run keeps requiring the core checks no matter what
+# one read returned. The observation is sticky: once seen, it is never unseen,
+# so a later failed read cannot reopen the hole.
+#
+# ⚠️ Do not re-derive this from "a PR with zero check runs". `[skip ci]` in a
+# commit title also produces zero runs (PR #3075 — a `website-static/` change
+# titled `[skip ci]`, zero workflow runs, zero check runs), and so does a
+# CONFLICTING PR. Those are three different causes with one symptom.
 #
 # AGENT REVIEW IS ADVISORY, DELIBERATELY
 # --------------------------------------
@@ -151,21 +167,53 @@ name: CI Gate
 # sharing a name WITHIN one read, this carries names ACROSS reads. #2492's
 # intent is untouched.
 #
-# WHAT THE LEDGER DOES *NOT* CLOSE (#3024)
-# ----------------------------------------
+# NAME COLLISION IS NOT A NAME MATCH (#3033)
+# ------------------------------------------
+# A `pull_request` event builds its workflows from the merge ref, so a PR —
+# including one from a fork — can add a workflow whose job carries any `name:`
+# it likes. While the #2492 collapse resolved by NAME ALONE, a second check run
+# named exactly `Unit tests` concluding `success` with a higher check-run id
+# displaced the genuine `Unit tests` `failure`: the real conclusion never
+# reached `ci-gate-aggregate.sh` and the verdict flipped GREEN. `CI Gate` is
+# the only check branch protection on `main` requires, so that was a bypass of
+# the merge gate, not a display problem.
+#
+# The collapse is now qualified by the WORKFLOW FILE that owns the check suite
+# (`GET /actions/runs?head_sha=…` publishes that mapping, and each workflow run
+# gets its own check suite). #2492's two runs of `ci.yml` still collapse; a job
+# from a different workflow file no longer does. The conclusions log annotates
+# any name carried by more than one workflow, because the collision's worst
+# property was being invisible. See `.github/scripts/ci-gate-qualify-runs.sh`.
+#
+# THE EMPTY-LEDGER ARM, AND HOW IT IS CLOSED (#3024)
+# ---------------------------------------------------
 # The ledger is per-gate-run: `mktemp` at the top of the step. This workflow
 # carries `cancel-in-progress`, and merging any sibling PR to `main` recomputes
 # every open PR's merge ref and re-fires `pull_request` — killing the in-flight
 # gate and starting a new one with an EMPTY ledger. If that restarted gate's
-# FIRST read lands in the rebuild window, there is nothing remembered, the
-# CORE-CHECK GUARD sees zero core checks and reads its docs-only signature, and
-# the #3015 shape reproduces verbatim. Measured, not hypothesised.
+# FIRST read landed in the rebuild window there was nothing remembered, the
+# CORE-CHECK GUARD saw zero core checks, read its docs-only signature and
+# disarmed, and the #3015 shape reproduced verbatim — green over one advisory
+# check. Measured, not hypothesised.
 #
-# So the ledger narrows the window from "any one read is partial" to "every
-# read up to the decision is partial" — it does not eliminate it. Closing it
-# means deciding INSIDE the gate whether `ci.yml` should have run for this PR,
-# which is the #2117 trade and needs its own measurement. Tracked in #3024;
-# do not read the section above as "the class is closed".
+# The ledger alone only narrows that window from "any one read is partial" to
+# "every read up to the decision is partial". What closes it is asking the
+# question directly instead of inferring it: `GET /actions/runs?head_sha=…`
+# says whether a run of `CORE_WORKFLOW` exists for this SHA at all. `ci.yml` is
+# workflow-level `paths-ignore`-filtered, so a genuinely docs-only PR produces
+# no such run (measured on PR #3067, CLAUDE.md only: the only runs at that SHA
+# were ci-gate.yml and pr-review.yml), while any PR that is not docs-only
+# produces one — and therefore all of
+# REQUIRED_CHECKS. The guard now disarms only when the core workflow is known
+# NOT to have run, so "I observed no core check" and "this PR does not run
+# ci.yml" stop being the same state. The #2117 direction is untouched: a
+# docs-only PR is still never held.
+#
+# ⚠️ WHAT IS STILL NOT CLOSED. The observation is sticky, but it is still an
+# API read: if the runs endpoint is unreadable for the whole life of the gate,
+# `core_workflow_seen` stays false and the guard degrades to its pre-#3024
+# behaviour. That is strictly the old state, never looser — but do not read
+# this section as "the class is closed".
 #
 # RECOVERY FROM A PERMANENT VANISH — AND WHY IT IS NOT A ONE-CLICK FIX
 # --------------------------------------------------------------------
@@ -199,6 +247,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  # `actions: read` is required by BOTH #3033 and #3024: the gate reads
+  # `GET /actions/runs?head_sha=…` to learn which WORKFLOW FILE owns each check
+  # suite, and whether the core workflow ran for this SHA at all.
+  actions: read
   checks: read
   contents: read
 
@@ -259,6 +311,13 @@ jobs:
           ADVISORY_CHECKS: |
             Coverage
             Agent review
+          # The workflow file that owns every name in REQUIRED_CHECKS. The
+          # CORE-CHECK GUARD arms itself when a workflow run for this path
+          # exists at the head SHA, instead of inferring it from the check runs
+          # it happens to have read (#3024). `test-ci-gate-loop.sh` asserts this
+          # file exists and that it declares every REQUIRED_CHECKS job name, so
+          # a rename here cannot silently disarm the guard.
+          CORE_WORKFLOW: .github/workflows/ci.yml
         shell: bash
         run: |
           set -euo pipefail
@@ -316,74 +375,88 @@ jobs:
           # this SHA, carried across poll iterations so a check cannot leave
           # the set just because one Checks API read did not return it.
           ledger_file=$(mktemp)
-          trap 'rm -f "$ledger_file"' EXIT
+          # `<check_suite_id>\t<workflow path>` for this SHA (#3033/#3024).
+          # Rewritten only on a SUCCESSFUL read, so one failed API call falls
+          # back to the previous map instead of losing every attribution.
+          suite_map_file=$(mktemp)
+          trap 'rm -f "$ledger_file" "$suite_map_file" "$suite_map_file.n"' EXIT
+
+          # STICKY: once a run of the core workflow has been observed for this
+          # SHA it is never un-observed, for the same reason the check ledger is
+          # sticky — a later partial read must not retract an observation.
+          core_workflow_seen=false
 
           # Normalise REQUIRED_CHECKS into a clean, non-empty list.
-          required_checks=$(echo "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
+          # `printf`, not `echo` — see the ⛔ note further down. These two lists
+          # are repo-controlled today, so this is the invariant being applied
+          # without exception rather than a bug being fixed; an invariant with
+          # one unexplained exception reads as optional to the next editor.
+          required_checks=$(printf '%s\n' "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
           # Normalise ADVISORY_CHECKS into a clean, non-empty list of
           # substrings (#1984). A check run whose name CONTAINS any of these
           # is advisory and is excluded from the pass/fail decision below,
           # regardless of conclusion.
-          advisory_checks=$(echo "${ADVISORY_CHECKS:-}" | sed '/^[[:space:]]*$/d')
+          advisory_checks=$(printf '%s\n' "${ADVISORY_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
           while :; do
+            # WHICH WORKFLOW FILE OWNS EACH CHECK SUITE (#3033, #3024)
+            # --------------------------------------------------------
+            # Measured on this repo: every `workflow_run` gets its OWN check
+            # suite, and this endpoint publishes the `check_suite_id` → workflow
+            # `path` mapping. Two things downstream need it:
+            #   - the #2492 collapse must not merge a fork-added job into a real
+            #     check that happens to share its name (#3033);
+            #   - the CORE-CHECK GUARD must know whether the core workflow ran
+            #     for this SHA at all, rather than inferring it (#3024).
+            # A failed read must never be worse than not having the feature, so
+            # the map is written only on success and both consumers degrade to
+            # their pre-fix behaviour when it is empty.
+            if gh api --paginate \
+              "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+              --jq '.workflow_runs[] | [(.check_suite_id | tostring), .path] | @tsv' \
+              > "$suite_map_file.n" 2>/dev/null; then
+              mv "$suite_map_file.n" "$suite_map_file"
+            else
+              rm -f "$suite_map_file.n"
+              echo "::warning title=CI Gate::Could not read the workflow runs for this SHA; reusing the last known check-suite → workflow map. Name-collision protection (#3033) and the core-workflow observation (#3024) degrade to their pre-fix behaviour while this persists."
+            fi
+
+            # DID THE CORE WORKFLOW RUN FOR THIS SHA? (#3024)
+            # -----------------------------------------------
+            # An OBSERVATION, not a heuristic. `ci.yml` is workflow-level
+            # `paths-ignore`-filtered, so a genuinely docs-only PR produces NO
+            # workflow run for it — measured on PR #3067 (CLAUDE.md only): the
+            # only runs at that head SHA were ci-gate.yml and pr-review.yml.
+            # Any PR that is not docs-only produces a run of ci.yml, and
+            # therefore all of REQUIRED_CHECKS.
+            #
+            # This is what lets the guard below stop treating "I have observed
+            # no core check" and "this PR does not run ci.yml" as the same
+            # state — they were indistinguishable, and only one of them is safe
+            # to pass green (#3024).
+            if [ "$core_workflow_seen" != true ] \
+              && cut -f2 "$suite_map_file" 2>/dev/null | grep -qxF -- "$CORE_WORKFLOW"; then
+              core_workflow_seen=true
+              echo "Observed a workflow run for $CORE_WORKFLOW at this SHA — the core checks are expected (#3024)."
+            fi
+
             # All check runs for the head commit (handles >100 via paging).
-            # `id` is carried so we can pick the LATEST run per name below
-            # (check-run ids increase monotonically with creation).
+            # `id` is carried so the collapse can pick the LATEST run per
+            # `[workflow, name]` (check-run ids increase monotonically with
+            # creation); `check_suite.id` and `app.id` carry the attribution.
             runs=$(gh api --paginate \
               "repos/$REPO/commits/$HEAD_SHA/check-runs" \
-              --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, id: .id}')
+              --jq '.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, id: .id, suite: .check_suite.id, app: .app.id}')
 
-            # NEWLINE-NORMALISE THE NAME, ONCE, HERE
-            # --------------------------------------
-            # A check-run name is attacker-influenceable: a FORK PR can add a
-            # workflow whose job `name:` contains `\n`. Every downstream use
-            # treats names as newline-separated records — `observed_names`
-            # (core-check guard), the `pending`/`vanished` lists, and the
-            # conclusions line that prints straight to the Actions log. A name
-            # carrying a newline therefore splits into several fake records:
-            # measured, `Evil\n::error title=CI Gate::forged` reaches column 0
-            # of the log and the runner parses it as a workflow command.
-            # Normalising at the single point where records are built closes
-            # every one of those sinks at once. Legitimate job names never
-            # contain newlines, so this is a no-op for real checks.
-            #
-            # Then drop this gate's own check run from consideration, plus every
-            # `Device QA — *` run: Device QA is deliberately NOT a per-PR gate
-            # (see header comment + device-qa.yml), so a manually-dispatched
-            # Device QA run on a branch SHA must never count here (#1588).
-            others=$(echo "$runs" | jq -c --arg self "$SELF_CHECK" \
-              '.name |= gsub("[\r\n]"; " ")
-               | select((.name != $self) and (.name | startswith("Device QA") | not))')
-
-            # LATEST-RUN-PER-NAME COLLAPSE (#2492)
-            # ------------------------------------
-            # `ci.yml`'s concurrency group is keyed on the PR HEAD SHA
-            # (`ci-<head.sha>`, ci.yml#L84). Merging a sibling PR to `main`
-            # makes GitHub recompute THIS PR's merge ref and re-fire its
-            # `pull_request` event — at the SAME head SHA, so `ci.yml`'s
-            # `cancel-in-progress` CANCELS the in-flight run and immediately
-            # starts a FRESH one for that same SHA. The check-runs API then
-            # returns BOTH the superseded `cancelled` run AND the fresh run
-            # under the same name (e.g. two `Detect changed paths`). The
-            # superseded `cancelled` conclusion is pure concurrency noise —
-            # exactly like `stale` — yet without this collapse it lands in
-            # the `failed` set and red-lights `CI Gate`, skipping every
-            # downstream job and blocking `--auto` until a manual re-run
-            # (#2492; this ping-ponged PR #2467 three times in one session).
-            #
-            # Fix: keep only the LATEST run (max id) for each name before the
-            # pending/fail decisions, so a name's verdict is its newest run.
-            # A genuinely-cancelled check with NO newer run stays the latest
-            # and STILL fails the gate (the #1984 advisory exclusion and the
-            # `blocking CANCELLED still fails` contract in
-            # test-ci-gate-aggregation.sh are untouched — the standalone
-            # aggregate script still receives one `<conclusion>\t<name>` line
-            # per name). Concurrency is unchanged, so the CI-minutes saving of
-            # `cancel-in-progress` is preserved.
-            others=$(echo "$others" \
-              | jq -s -c 'group_by(.name) | map(max_by(.id))[]')
+            # Normalise hostile names, drop this gate's own check run and every
+            # `Device QA — *` run (#1588), attribute each record to its workflow
+            # file, and apply the #2492 latest-run-per-name collapse WITHIN that
+            # workflow (#3033). All four live in one script so they can be
+            # tested without extracting shell out of YAML — and the loop-level
+            # harness `test-ci-gate-loop.sh` runs this very block end to end.
+            others=$(printf '%s\n' "$runs" \
+              | SELF_CHECK="$SELF_CHECK" bash .github/scripts/ci-gate-qualify-runs.sh "$suite_map_file")
 
             # STICKY OBSERVATION LEDGER (#3018)
             # ---------------------------------
@@ -429,7 +502,7 @@ jobs:
             seen_any_other=true
 
             # All check-run names observed for this SHA (completed or not).
-            observed_names=$(echo "$others" | jq -r '.name' | sort -u)
+            observed_names=$(printf '%s\n' "$others" | jq -r '.name' | sort -u)
 
             # CORE-CHECK GUARD (#1543): if ANY core check has appeared then
             # ci.yml is running for this PR (it is not a docs-only PR), so
@@ -442,15 +515,33 @@ jobs:
             if [ -n "$required_checks" ]; then
               while IFS= read -r rc; do
                 [ -z "$rc" ] && continue
-                if echo "$observed_names" | grep -qxF "$rc"; then
+                if printf '%s\n' "$observed_names" | grep -qxF "$rc"; then
                   any_core_seen=true
                 else
                   missing_core="${missing_core}${rc}"$'\n'
                 fi
               done <<< "$required_checks"
             fi
-            # Only enforce the guard once ci.yml has shown its hand.
-            if [ "$any_core_seen" != true ]; then
+            # DISARM ONLY WHEN THE CORE WORKFLOW IS KNOWN NOT TO HAVE RUN (#3024)
+            # --------------------------------------------------------------------
+            # This used to be `if [ "$any_core_seen" != true ]` alone, and that
+            # was the last arm of the #3015 false-green still open: "I have
+            # observed nothing from ci.yml" and "this PR does not run ci.yml"
+            # were the same state, and only the second is safe to pass. Measured
+            # (#3024): a restarted gate — a sibling merge re-fires
+            # `pull_request` and `cancel-in-progress` kills the in-flight gate,
+            # so the ledger is empty — whose FIRST read lands in a run-attempt
+            # rebuild window sees only the advisory `Agent review`, disarms the
+            # guard, breaks the loop and exits 0 having gated one advisory check.
+            #
+            # `core_workflow_seen` answers the question directly instead of
+            # inferring it from the check runs that happen to have been read.
+            # The #2117 direction is unchanged: a docs-only PR produces no
+            # `ci.yml` run at all, so both conditions are false, the guard
+            # disarms exactly as before and the PR is never held. If the runs
+            # API could not be read, `core_workflow_seen` stays false and this
+            # degrades to the pre-#3024 behaviour — never to something looser.
+            if [ "$any_core_seen" != true ] && [ "$core_workflow_seen" != true ]; then
               missing_core=""
             fi
 
@@ -523,15 +614,28 @@ jobs:
               running="$pending"
             fi
 
+            # ⛔ `printf '%s\n' "$X"`, NEVER `echo "$X"`, FOR A CHECK-NAME LIST.
+            # A check-run name is fork-controlled, and bash's `echo` builtin
+            # eats a leading `-n` / `-e` / `-E` argument as an option:
+            #     $ running='-n'; echo "$running" | sort -u   # prints NOTHING
+            #     $ printf '%s\n' "$running" | sort -u        # prints -n
+            # #3023 added `--` to the `grep`s just above for the same class, and
+            # stopped one stage short of the display. A single check named `-n`
+            # blanked the entire diagnostic of the repo's only required check
+            # (#3047). The verdict is unaffected — it comes from
+            # `ci-gate-aggregate.sh` — so this is diagnostic blinding, not a
+            # bypass, and a blinded diagnostic is how the next one gets missed.
+            # The rule is applied to EVERY name list below, not only the ones
+            # that look reachable today.
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::Timed out waiting for CI checks to complete."
               if [ -n "$running" ]; then
                 echo "  Still running / awaiting approval:"
-                echo "$running" | sort -u | while IFS= read -r n; do echo "    - $n"; done
+                printf '%s\n' "$running" | sort -u | while IFS= read -r n; do echo "    - $n"; done
               fi
               if [ -n "$missing_core" ]; then
                 echo "  Expected core checks that never registered:"
-                echo "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
+                printf '%s\n' "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
                   | while IFS= read -r n; do echo "    - $n"; done
               fi
               # DELIBERATE: the timeout prints the FULL `vanished` set, not
@@ -542,25 +646,25 @@ jobs:
               # evidence about the API, not a claim about the verdict.
               if [ -n "$vanished" ]; then
                 echo "  Observed earlier but missing from the final Checks API read (#3018):"
-                echo "$vanished" | sort -u | while IFS= read -r n; do echo "    - $n"; done
+                printf '%s\n' "$vanished" | sort -u | while IFS= read -r n; do echo "    - $n"; done
               fi
               exit 1
             fi
 
             if [ -n "$running" ]; then
               echo "Waiting for checks to finish (running, or fork PR awaiting approval):"
-              echo "$running" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+              printf '%s\n' "$running" | sort -u | while IFS= read -r n; do echo "  - $n"; done
             fi
             # A vanished check is almost always a run attempt being rebuilt
             # (`gh run rerun`). Say so loudly rather than silently dropping it
             # from the verdict, which is exactly what #3018 was.
             if [ -n "$vanished_gating" ]; then
               echo "Observed earlier but absent from this Checks API read — still gated, waiting (#3018):"
-              echo "$vanished_gating" | sort -u | while IFS= read -r n; do echo "  - $n"; done
+              printf '%s\n' "$vanished_gating" | sort -u | while IFS= read -r n; do echo "  - $n"; done
             fi
             if [ -n "$missing_core" ]; then
               echo "Waiting for expected core checks to register:"
-              echo "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
+              printf '%s\n' "$missing_core" | sed '/^[[:space:]]*$/d' | sort -u \
                 | while IFS= read -r n; do echo "  - $n"; done
             fi
             sleep 20
@@ -572,7 +676,19 @@ jobs:
           # or has vanished (#3018) prints `in_progress` / `vanished` instead
           # of a bare `null` — the loop is allowed to break on those, and the
           # log must say which of the two it was.
-          echo "$others" | jq -r '"  - \(.name): \(.conclusion // .status)"' | sort -u
+          #
+          # A NAME THAT APPEARS TWICE IS ANNOTATED WITH ITS WORKFLOW (#3033).
+          # Two records can now share a name — that is exactly the collision
+          # #3033 is about, and its worst property was being invisible: the
+          # maintainer saw one green `Unit tests` with no hint that a second
+          # check run under that name had displaced the real one. Unique names,
+          # which is every normal PR, print exactly as before.
+          echo "$others" | jq -s -r '
+              (group_by(.name) | map(select(length > 1) | .[0].name)) as $dupes
+              | .[]
+              | . as $r
+              | "  - \($r.name)\(if ($dupes | index($r.name)) then " (" + ($r.workflow // "?") + ")" else "" end): \($r.conclusion // $r.status)"
+            ' | sort -u
 
           # A real failure flips the gate red. `skipped`/`neutral`/`success`
           # all pass — path-filtered-out jobs report `skipped`.
@@ -612,7 +728,7 @@ jobs:
           if [ "$gate_rc" -ne 0 ]; then
             echo ""
             echo "::error::One or more required CI checks failed:"
-            echo "$failed" | sed '/^[[:space:]]*$/d' | sort -u \
+            printf '%s\n' "$failed" | sed '/^[[:space:]]*$/d' | sort -u \
               | while IFS= read -r n; do echo "  - $n"; done
             exit 1
           fi

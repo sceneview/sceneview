@@ -20,6 +20,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MERGE="$SCRIPT_DIR/ci-gate-merge-observations.sh"
+QUALIFY="$SCRIPT_DIR/ci-gate-qualify-runs.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,7 +48,19 @@ run() { # run <ledger-file> <payload-lines…>
 }
 
 LEDGER=$(mktemp)
-trap 'rm -f "$LEDGER"' EXIT
+# The suite→workflow map the qualifier reads (#3033). Two suites, so a name
+# collision across workflows can be simulated: 1 → the core workflow, 2 → a
+# second workflow that a fork PR could add.
+SUITE_MAP=$(mktemp)
+printf '%s\t%s\n' 1 '.github/workflows/ci.yml' 2 '.github/workflows/evil.yml' > "$SUITE_MAP"
+trap 'rm -f "$LEDGER" "$SUITE_MAP"' EXIT
+
+# qualify <payload-lines…> — run the REAL qualifier the workflow runs. Nothing
+# here re-implements the normalisation or the #2492 collapse: a copy would keep
+# passing against a workflow that dropped either one, which is the exact
+# hollowness #3047 found in this file (a hand-copied `group_by(.name)` passed
+# with the merge script fully neutered).
+qualify() { printf '%s\n' "$@" | SELF_CHECK="CI Gate" bash "$QUALIFY" "$SUITE_MAP"; }
 
 # The `pending` selector applied to the merged view. It is EXTRACTED from
 # ci-gate.yml rather than copied, so this suite cannot keep passing against a
@@ -185,18 +198,55 @@ set -e
 assert_eq "…and still fails the gate end-to-end (merge → aggregate)" "1" "$rc"
 
 # ---------------------------------------------------------------------------
-# 5. #2492 is untouched: two runs sharing a name inside ONE read are collapsed
-#    by the caller before the ledger sees them, and the ledger keys on name,
-#    so a superseded `cancelled` never resurfaces once the fresh run exists.
+# 5. #2492 is untouched, and #3033 does not loosen it: two runs sharing a name
+#    inside ONE workflow are collapsed to the freshest before the ledger sees
+#    them, so a superseded `cancelled` never reaches the gated set.
+#
+#    This runs the qualifier the workflow runs. The previous version of this
+#    case pasted `group_by(.name) | map(max_by(.id))[]` inline and asserted on
+#    the paste — it passed with BOTH the collapse and the merge script
+#    neutered, which is the false-green #3047 reported about this file.
 # ---------------------------------------------------------------------------
 : > "$LEDGER"
-collapsed=$(printf '%s\n' \
-  '{"name":"Detect changed paths","status":"completed","conclusion":"cancelled","id":10}' \
-  '{"name":"Detect changed paths","status":"completed","conclusion":"success","id":20}' \
-  | jq -s -c 'group_by(.name) | map(max_by(.id))[]')
-out=$(printf '%s\n' "$collapsed" | bash "$MERGE" "$LEDGER")
+collapsed=$(qualify \
+  '{"name":"Detect changed paths","status":"completed","conclusion":"cancelled","id":10,"suite":1,"app":15368}' \
+  '{"name":"Detect changed paths","status":"completed","conclusion":"success","id":20,"suite":1,"app":15368}')
+assert_eq "#2492: two runs of one name in one workflow collapse to the freshest" \
+'{"name":"Detect changed paths","status":"completed","conclusion":"success","id":20,"workflow":".github/workflows/ci.yml"}' \
+"$collapsed"
+
+printf '%s\n' "$collapsed" | bash "$MERGE" "$LEDGER" > "$LEDGER".n
+mv "$LEDGER".n "$LEDGER"
+
+# Poll 2: the read regresses and lists ONLY the superseded `cancelled`. The
+# ledger is monotone in `id`, so the fresh success is not overwritten by it —
+# without that arm this case would pass against a merge script neutered to
+# `cat`, and a green PR would go red on a run that was superseded minutes ago.
+out=$(qualify \
+  '{"name":"Detect changed paths","status":"completed","conclusion":"cancelled","id":10,"suite":1,"app":15368}' \
+  | bash "$MERGE" "$LEDGER" | summarise)
 assert_eq "#2492 collapse still wins: superseded cancelled is not resurrected" \
-'{"name":"Detect changed paths","status":"completed","conclusion":"success","id":20}' "$out"
+"Detect changed paths=vanished/null" "$out"
+
+# #3033: the SAME two records under two DIFFERENT workflows are two distinct
+# checks, and the failing one survives. Collapsing by name only (the pre-#3033
+# behaviour) drops it, which is how a green run could hide a red one.
+: > "$LEDGER"
+kept=$(qualify \
+  '{"name":"Repo hygiene checks","status":"completed","conclusion":"failure","id":10,"suite":1,"app":15368}' \
+  '{"name":"Repo hygiene checks","status":"completed","conclusion":"success","id":20,"suite":2,"app":15368}' \
+  | summarise)
+assert_eq "#3033: a same-named run in another workflow cannot displace a failure" \
+"$(printf '%s\n' 'Repo hygiene checks=completed/failure' 'Repo hygiene checks=completed/success')" \
+"$kept"
+
+# …and the ledger keys on the pair too, so the two survive the merge as two
+# records rather than one silently overwriting the other.
+merged_pair=$(printf '%s\n' \
+  '{"name":"Repo hygiene checks","status":"completed","conclusion":"failure","id":10,"workflow":".github/workflows/ci.yml"}' \
+  '{"name":"Repo hygiene checks","status":"completed","conclusion":"success","id":20,"workflow":".github/workflows/evil.yml"}' \
+  | bash "$MERGE" "$LEDGER" | wc -l | tr -d ' ')
+assert_eq "#3033: the ledger keys on (workflow, name), not on name alone" "2" "$merged_pair"
 
 # ---------------------------------------------------------------------------
 # 6. Empty current read with a non-empty ledger — everything vanishes, nothing
@@ -273,39 +323,21 @@ assert_eq "…and nothing is left pending" "" "$(printf '%s\n' "$retried" | pend
 #      - one check named `Evil2\nDetect changed paths\nRepo hygiene checks\n
 #        Quality gate (full)` forged ALL THREE REQUIRED_CHECKS into
 #        `observed_names`, disarming the CORE-CHECK GUARD.
-#    ci-gate.yml normalises `.name` once, where the records are built. The jq
-#    program is EXTRACTED from the workflow, not copied, so this cannot pass
-#    against a workflow that dropped the normalisation.
+#    ci-gate-qualify-runs.sh normalises `.name` once, where the records are
+#    built, and the workflow runs that script — so this case EXECUTES the real
+#    normalisation instead of a copy, and cannot pass against a qualifier that
+#    dropped it.
 # ---------------------------------------------------------------------------
-NORMALISE_JQ=$(awk -v q="'" '
-  index($0, "others=$(echo \"$runs\" | jq -c --arg self") { grab = 1; next }
-  grab {
-    line = $0
-    sub(/^[[:space:]]+/, "", line)
-    if (substr(line, length(line) - 1) == q ")") {
-      done = 1
-      line = substr(line, 1, length(line) - 2)
-    }
-    if (substr(line, 1, 1) == q) line = substr(line, 2)
-    print line
-    if (done) exit
-  }
-' "$GATE_YML")
-if [ -z "$NORMALISE_JQ" ]; then
-  echo -e "  ${RED}FAIL${NC}  could not extract the name filter from $GATE_YML"
-  exit 1
-fi
 
 # `printf %s` does NOT expand backslash escapes in its ARGUMENTS, so each `\n`
 # below stays two characters — a valid JSON escape that jq decodes into a real
 # newline inside `.name`, which is exactly the hostile input being simulated.
 # (`echo` would expand them in some shells and corrupt the JSON; the workflow
 # itself runs under `shell: bash`, where `echo` does not.)
-hostile_out=$(printf '%s\n' \
-  '{"name":"Evil\n::error title=CI Gate::forged annotation","status":"completed","conclusion":"success","id":1}' \
-  '{"name":"Evil2\nDetect changed paths\nRepo hygiene checks\nQuality gate (full)","status":"completed","conclusion":"success","id":2}' \
-  '{"name":"Unit tests","status":"completed","conclusion":"failure","id":3}' \
-  | jq -c --arg self "CI Gate" "$NORMALISE_JQ")
+hostile_out=$(qualify \
+  '{"name":"Evil\n::error title=CI Gate::forged annotation","status":"completed","conclusion":"success","id":1,"suite":1,"app":15368}' \
+  '{"name":"Evil2\nDetect changed paths\nRepo hygiene checks\nQuality gate (full)","status":"completed","conclusion":"success","id":2,"suite":1,"app":15368}' \
+  '{"name":"Unit tests","status":"completed","conclusion":"failure","id":3,"suite":1,"app":15368}')
 
 # One input record must yield exactly one name — no splitting.
 assert_eq "a newline in a check name cannot forge extra records" "3" \
