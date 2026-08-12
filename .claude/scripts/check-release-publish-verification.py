@@ -93,6 +93,26 @@ def step_text(step):
     return "\n".join(parts)
 
 
+def step_env(step):
+    """`{VAR: value}` for a step's `env:` block, as strings.
+
+    Separate from step_text on purpose. A step's environment is where a
+    `${{ steps.*.outputs.* }}` expression BELONGS (it is data there, code
+    inside `run:`), so contract A has to look for the version here — but
+    folding it into step_text would let an env value satisfy contracts B-E,
+    which are statements about commands.
+    """
+    env = step.get("env") if isinstance(step, dict) else None
+    if not isinstance(env, dict):
+        return {}
+    return {str(k): str(v) for k, v in env.items()}
+
+
+def uses_var(text, name):
+    """True if `text` dereferences shell variable `name`."""
+    return re.search(r"\$\{?" + re.escape(name) + r"\b", text) is not None
+
+
 def commands(text):
     """`text` with shell comment lines removed.
 
@@ -134,6 +154,37 @@ VERIFY_VERSION = re.compile(r"steps\.[\w-]+\.outputs\.version")
 # That mutant is #3011 exactly: `--env-var PUB_TOKEN` pointing at a variable
 # nothing sets. Reported in review of PR #3130.
 OIDC_REQUEST = re.compile(r"\$\{?ACTIONS_ID_TOKEN_REQUEST_URL")
+
+
+# Contract C, in two halves so the two failures read differently: the banner
+# has to be TESTED, and the test has to LEAD to a non-zero exit. The second
+# regex walks from the grep line down to the first `exit`, refusing to cross
+# the `fi` that closes the branch (an `exit 1` further down the step belongs to
+# another condition) and refusing a literal `exit 0`.
+BANNER_GREP = re.compile(r"grep[^\n]*Waiting for your authorization")
+BANNER_HARD_FAIL = re.compile(
+    r"grep[^\n]*Waiting for your authorization[^\n]*\n"
+    r"(?:(?!\s*fi\s*$)[^\n]*\n){0,12}?"
+    r"\s*exit\s+(?!0\s*$)\S+",
+    re.MULTILINE,
+)
+
+
+def carries_run_version(text, env):
+    """True if this step hands the verifier the version THIS run published.
+
+    Two accepted shapes, and the second is the one the workflow uses since
+    review of PR #3130 asked for it: the expression lives in `env:` (data)
+    and the script reads `"$VERSION"` (never code). An env var that holds the
+    version but is never dereferenced is not accepted — that is a step
+    verifying a literal with a decorative binding above it.
+    """
+    if VERIFY_VERSION.search(text):
+        return True
+    return any(
+        VERIFY_VERSION.search(value) and uses_var(text, name)
+        for name, value in env.items()
+    )
 
 
 def main():
@@ -191,6 +242,7 @@ def main():
         # Doing this only for the pub job left contract A — the one #3021 is
         # about — satisfiable by a commented-out call in all five jobs.
         texts = [commands(step_text(s)) for s in steps]
+        envs = [step_env(s) for s in steps]
         publish_at = [i for i, t in enumerate(texts) if publish_re.search(t)]
         verify_at = [i for i, t in enumerate(texts) if VERIFY_CALL.search(t)]
 
@@ -214,7 +266,7 @@ def main():
                 "that verifies the previous release and passes over a publish "
                 "that landed nothing (#3021)."
             )
-        elif not any(VERIFY_VERSION.search(texts[i]) for i in verify_at):
+        elif not any(carries_run_version(texts[i], envs[i]) for i in verify_at):
             fail(
                 f"{job_name} ({label}) does not pass a "
                 "${{ steps.<check>.outputs.version }} to " + VERIFIER + " — a "
@@ -249,12 +301,23 @@ def main():
 
         # ── Contract C ────────────────────────────────────────────────────
         # A `grep` over the captured log, not a mention of the banner: the
-        # step has to ACT on it.
-        if not re.search(r"grep[^\n]*Waiting for your authorization", pub_text):
+        # step has to ACT on it. And "acting on it" means EXITING NON-ZERO —
+        # asserting only that a grep exists let the branch degrade to a
+        # `echo "::warning::"` while this gate stayed green, which is the
+        # #3011 failure verbatim (three green-looking runs, nothing
+        # published). Reported in review of PR #3130.
+        if not BANNER_GREP.search(pub_text):
             fail(
                 f"{job_name} does not treat the interactive-OAuth banner "
                 '("Waiting for your authorization") as a hard failure — the exit '
                 "code alone did not catch it on three releases (#3011)."
+            )
+        elif not BANNER_HARD_FAIL.search(pub_text):
+            fail(
+                f"{job_name} greps for the interactive-OAuth banner but never "
+                "exits non-zero on it — a warning lets a publish that reached "
+                "interactive OAuth (i.e. published nothing) finish green, which "
+                "is #3011 exactly. The branch must `exit` with a non-zero status."
             )
 
         # ── Contract D ────────────────────────────────────────────────────

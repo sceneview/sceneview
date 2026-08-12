@@ -104,6 +104,17 @@ if F="$(mutate no-banner-guard 's/Waiting for your authorization/Waiting for som
         "does not treat the interactive-OAuth banner"
 fi
 
+# Reported in review of PR #3130: contract C only asked that a `grep` for the
+# banner EXISTED, so degrading the branch to a warning kept the gate green —
+# and a publish that reached interactive OAuth published nothing while the job
+# went green, which is #3011 verbatim.
+if F="$(mutate banner-warning-only \
+    '/if grep -q "Waiting for your authorization"/,/^          fi$/ s|^            exit 1$|            echo "::warning::interactive OAuth detected"|')"; then
+    run "$F"
+    expect "downgrading the banner guard to a warning is caught" 1 \
+        "greps for the interactive-OAuth banner but never exits non-zero on it"
+fi
+
 if F="$(mutate slack-timeout 's/timeout 300 flutter pub publish/timeout 900 flutter pub publish/')"; then
     run "$F"
     expect "a step timeout no longer under the job timeout is caught" 1 \
@@ -266,10 +277,22 @@ if F="$(mutate verify-echoed \
 fi
 
 # A verifier called with a hardcoded version checks SOME release, not this one.
+# The expression lives in the step's `env:` since review of PR #3130 asked for
+# it (data, not code) — so this pins the binding.
 if F="$(mutate literal-version \
-    's|"${{ steps.check-rn.outputs.version }}"$|"4.29.0"|')"; then
+    's|VERSION: ${{ steps.check-rn.outputs.version }}|VERSION: "4.29.0"|')"; then
     run "$F"
     expect "verifying a hardcoded version instead of this run's is caught" 1 \
+        "does not pass a"
+fi
+
+# The shape the `env:` indirection makes possible: the binding is right there
+# above the command and the command ignores it. Reading only the `env:` block
+# would call that compliant.
+if F="$(mutate decorative-env-binding \
+    's|"@sceneview-sdk/react-native" "$VERSION"|"@sceneview-sdk/react-native" "4.29.0"|')"; then
+    run "$F"
+    expect "an env binding the command never reads does not satisfy contract A" 1 \
         "does not pass a"
 fi
 
@@ -308,7 +331,7 @@ echo
 # "every check ran". A `set -u` abort inside a helper skipped all six of
 # section 2 while this summary still printed a green 12/12 — the exact false
 # green the gate under test exists to prevent, reproduced in its own suite.
-EXPECTED_CHECKS=24
+EXPECTED_CHECKS=26
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ check-release-publish-verification.py: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

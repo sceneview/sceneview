@@ -77,8 +77,14 @@ jobs:
       # reads is how "we check Maven now" becomes true on paper only.
       - name: Verify the artifacts are really on Maven Central
         if: steps.check-maven.outputs.skip != 'true'
+        # The version reaches the shell through the ENVIRONMENT, never through
+        # `${{ }}` inside `run:`. An expression in `run:` is substituted into
+        # the script text before bash parses it, so its value is code; through
+        # `env:` it is data. GitHub's own script-injection guidance, raised in
+        # review of PR #3130 — the same rule for all five verify steps.
+        env:
+          VERSION: ${{ steps.check-maven.outputs.version }}
         run: |
-          VERSION="${{ steps.check-maven.outputs.version }}"
           rc=0
           unverified=""
           # ONE propagation budget for the whole set, not one per artifact:
@@ -347,7 +353,9 @@ jobs:
       # its own release track and must never be pinned to VERSION_NAME.
       - name: Verify sceneview-mcp is really on npm
         if: steps.check-mcp.outputs.skip != 'true'
-        run: bash .claude/scripts/verify-published-version.sh npm sceneview-mcp "${{ steps.check-mcp.outputs.version }}"
+        env:
+          VERSION: ${{ steps.check-mcp.outputs.version }}
+        run: bash .claude/scripts/verify-published-version.sh npm sceneview-mcp "$VERSION"
 
   # ── 4. Publish sceneview-web to npm ────────────────────────────────────────
   publish-web:
@@ -438,7 +446,9 @@ jobs:
       # Post-publish registry verification (#3021).
       - name: Verify sceneview-web is really on npm
         if: steps.check-web.outputs.skip != 'true'
-        run: bash .claude/scripts/verify-published-version.sh npm sceneview-web "${{ steps.check-web.outputs.version }}"
+        env:
+          VERSION: ${{ steps.check-web.outputs.version }}
+        run: bash .claude/scripts/verify-published-version.sh npm sceneview-web "$VERSION"
 
   # ── 4b. Publish React Native bindings to npm ──────────────────────────────
   publish-rn:
@@ -507,7 +517,9 @@ jobs:
       # Post-publish registry verification (#3021).
       - name: Verify @sceneview-sdk/react-native is really on npm
         if: steps.check-rn.outputs.skip != 'true'
-        run: bash .claude/scripts/verify-published-version.sh npm "@sceneview-sdk/react-native" "${{ steps.check-rn.outputs.version }}"
+        env:
+          VERSION: ${{ steps.check-rn.outputs.version }}
+        run: bash .claude/scripts/verify-published-version.sh npm "@sceneview-sdk/react-native" "$VERSION"
 
   # ── 4c. Tag SceneViewSwift for Swift Package Manager consumers ────────────
   # SPM has no central registry — consumers point Xcode at the git URL and
@@ -742,7 +754,9 @@ jobs:
       # five jobs instead of five hand-rolled loops drifting apart.
       - name: Verify flutter_sceneview is really on pub.dev
         if: steps.check-pub.outputs.skip != 'true'
-        run: bash .claude/scripts/verify-published-version.sh pub flutter_sceneview "${{ steps.check-pub.outputs.version }}"
+        env:
+          VERSION: ${{ steps.check-pub.outputs.version }}
+        run: bash .claude/scripts/verify-published-version.sh pub flutter_sceneview "$VERSION"
 
   # ── 5. Create GitHub Release with auto-generated notes ────────────────────
   create-release:
