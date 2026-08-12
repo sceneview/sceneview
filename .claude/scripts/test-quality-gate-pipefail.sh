@@ -102,6 +102,19 @@ expect "the fixed shape still counts a real match" \
 # into a failure (the #3121 lesson, where an identical exclusion had to be made
 # load-bearing).
 #
+# The `||` must also be in the right PLACE. Accepting one anywhere on the line
+# (the first cut of this rule, caught in review of #3135) lets an unrelated
+# trailing guard vouch for an unguarded grep:
+#
+#     X=$(git diff … | grep …); [ -z "$X" ] || echo "none"
+#      ^ unguarded substitution                 ^ `||` that has nothing to do with it
+#
+# So the search is scoped to the span between the first `grep` and the LAST `)`
+# on the line — i.e. inside the command substitution, where a neutraliser has to
+# sit to actually neutralise anything. In the counter-example above the
+# substitution closes before the `;`, so that span holds no `||` and the line is
+# correctly flagged.
+#
 # Known limit, stated rather than hidden: the rule is line-scoped, so a command
 # substitution split across several physical lines is not covered. Every one in
 # this file is single-line today, and a line-scoped rule that is honest about its
@@ -111,9 +124,41 @@ scan_for_unguarded_grep() { # $1 = file; prints "<lineno>: <line>" per offender
     awk '
         # strip full-line comments; they carry example code on purpose
         /^[[:space:]]*#/ { next }
-        /\$\(/ && /grep/ && !/\|\|/ { printf "%d: %s\n", NR, $0 }
+        !/\$\(/ || !/grep/ { next }
+        {
+            g = index($0, "grep")
+            # last ")" on the line — the closing paren of the outermost
+            # substitution, since nothing here trails one
+            c = 0
+            for (i = length($0); i > 0; i--) {
+                if (substr($0, i, 1) == ")") { c = i; break }
+            }
+            if (c <= g) { printf "%d: %s\n", NR, $0; next }
+            span = substr($0, g, c - g + 1)
+            if (index(span, "||") == 0) printf "%d: %s\n", NR, $0
+        }
     ' "$1"
 }
+
+# POSITIVE INDICATOR FIRST — "0 offenders" is only good news if the scan could
+# see anything at all. Caught on this very file: run from the wrong directory,
+# awk printed `can't open file …/quality-gate.sh` to stderr, produced no lines,
+# and the assertion below reported PASS. A probe that reports success when its
+# subject is missing is the hollow-assertion defect, and it would have shipped
+# inside the suite whose whole job is to stop that shape.
+if [ ! -s "$GATE" ]; then
+    echo "[FAIL] quality-gate.sh not found or empty at $GATE — the scan below would report 0 offenders having read nothing"
+    FAILURES=$((FAILURES + 1))
+fi
+CANDIDATES=$(grep -c '\$(.*grep' "$GATE" 2>/dev/null || true)
+CANDIDATES=${CANDIDATES%%$'\n'*}
+CANDIDATES=${CANDIDATES:-0}
+if [ "$CANDIDATES" -lt 5 ]; then
+    echo "[FAIL] only $CANDIDATES command-substitution-with-grep line(s) found in quality-gate.sh — the detector is not reaching the file it claims to audit (broken probe, not a clean bill of health)"
+    FAILURES=$((FAILURES + 1))
+else
+    echo "[PASS] the detector reaches its subject — $CANDIDATES candidate line(s) scanned"
+fi
 
 OFFENDERS="$(scan_for_unguarded_grep "$GATE")"
 OFFENDER_COUNT=$(printf '%s' "$OFFENDERS" | grep -c . || true)
@@ -138,13 +183,15 @@ set -euo pipefail
 # This comment mentions $(grep …) on purpose and must NOT be flagged.
 CHANGED=$(git diff --name-only HEAD 2>/dev/null | grep "^sceneview/src/" || true)
 V=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2 || echo "MISSING")
+DECOY=$(git diff --name-only | grep "^docs/"); [ -z "$DECOY" ] || echo "docs changed"
 NEW_PUBLIC=$(git diff HEAD -- sceneview/src/ 2>/dev/null | grep "^+.*fun " | wc -l | tr -d ' ')
 FIX
 
 FIXTURE_HITS="$(scan_for_unguarded_grep "$FIXTURE")"
 FIXTURE_COUNT=$(printf '%s' "$FIXTURE_HITS" | grep -c . || true)
 FIXTURE_COUNT=${FIXTURE_COUNT%%$'\n'*}
-expect "the detector flags the pre-fix line, and only it" "1" "$FIXTURE_COUNT"
+expect "the detector flags the pre-fix line AND the trailing-'||' decoy, and nothing else" \
+    "2" "$FIXTURE_COUNT"
 case "$FIXTURE_HITS" in
     *NEW_PUBLIC*) expect "the flagged line is the NEW_PUBLIC assignment" "yes" "yes" ;;
     *)            expect "the flagged line is the NEW_PUBLIC assignment" "yes" "no ($FIXTURE_HITS)" ;;
@@ -160,6 +207,13 @@ esac
 case "$FIXTURE_HITS" in
     *"V=\$(grep"*) expect "a line guarded by a trailing '|| echo' is not flagged" "yes" "no" ;;
     *)             expect "a line guarded by a trailing '|| echo' is not flagged" "yes" "yes" ;;
+esac
+# The over-match this rule was narrowed for (#3135 review): an unguarded grep
+# inside the substitution, with an unrelated `||` after it closes. Accepting a
+# `||` anywhere on the line would have let this through.
+case "$FIXTURE_HITS" in
+    *DECOY*) expect "a '||' OUTSIDE the substitution does not vouch for the grep inside it" "yes" "yes" ;;
+    *)       expect "a '||' OUTSIDE the substitution does not vouch for the grep inside it" "yes" "no" ;;
 esac
 
 echo ""
