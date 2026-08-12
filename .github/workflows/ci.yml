@@ -119,7 +119,26 @@ jobs:
       # can never fire looks exactly like a gate that always passes.
       compose: ${{ steps.filter.outputs.compose }}
     steps:
+      # Checked out only on `push`. `dorny/paths-filter` reads the diff from
+      # the GitHub API on `pull_request` and never touches the working tree; it
+      # needs git only on `push`, where it diffs against the previous commit.
+      #
+      # The checkout was therefore pure cost on PRs — and it is the step that
+      # overran. Measured across #3005, #3053 and #3055: `actions/checkout@v7`
+      # in this job is BIMODAL, 26–36s or exactly 302–303s, with nothing in
+      # between, roughly 1 run in 4. That shape is a hang, not slowness, so
+      # raising `timeout-minutes` would only move the wall; removing the step
+      # from the path where it is not needed removes the failure mode.
+      #
+      # Every measured occurrence was a `pull_request` run (#3005 ×5, #3035 ×3,
+      # #3052 ×2). The consequence was severe out of proportion to the cause: a
+      # job that times out reports `cancelled`, not `failure`, the eight
+      # downstream jobs report `skipped`, and `Detect changed paths` is in
+      # `ci-gate.yml`'s REQUIRED_CHECKS — so the single required check on
+      # `main` went red on a run where nothing was measured, reading as "the
+      # path filter matched nothing".
       - uses: actions/checkout@v7
+        if: github.event_name != 'pull_request'
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -187,6 +206,40 @@ jobs:
             compose:
               - *shared
               - 'sceneview-compose/**'
+
+      # The `outputs:` block above warns that a missing output evaluates to the
+      # empty string and silently skips every downstream job — "a gate that can
+      # never fire looks exactly like a gate that always passes". That was a
+      # comment; this is the assertion.
+      #
+      # It matters more now that the checkout is conditional: if `paths-filter`
+      # ever needed the working tree on a path where it no longer has one, the
+      # damage would be blank outputs, and blank outputs are the silent kind of
+      # wrong. Falsifiable by construction — delete a line from `outputs:` and
+      # this step goes red naming it, rather than the whole workflow going
+      # quietly green.
+      - name: Assert every path filter produced a real verdict
+        env:
+          VERDICTS: |
+            android=${{ steps.filter.outputs.android }}
+            web=${{ steps.filter.outputs.web }}
+            flutter=${{ steps.filter.outputs.flutter }}
+            kmp=${{ steps.filter.outputs.kmp }}
+            compose=${{ steps.filter.outputs.compose }}
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS='=' read -r name value; do
+            [ -z "$name" ] && continue
+            case "$value" in
+              true|false) echo "  $name = $value" ;;
+              *)
+                echo "::error::Path filter '$name' produced '$value' instead of true/false — every job gated on it would be skipped, and the run would look green."
+                bad=1
+                ;;
+            esac
+          done <<< "$VERDICTS"
+          [ "$bad" -eq 0 ]
 
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
