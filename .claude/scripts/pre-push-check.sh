@@ -87,7 +87,7 @@ echo "════════════════════════�
 # often a poisoned Gradle build cache (an empty FROM-CACHE entry), not a real
 # break — `rm -rf <module>/build && ./gradlew … --no-build-cache` is the only
 # measured remedy. That is why the log tail is printed instead of hidden.
-echo -e "\n${YELLOW}[1/20] Compiling sceneview...${NC}"
+echo -e "\n${YELLOW}[1/21] Compiling sceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
@@ -95,7 +95,7 @@ else
         "sceneview FAILED to compile" "sceneview was never compiled"
 fi
 
-echo -e "${YELLOW}[2/20] Compiling arsceneview...${NC}"
+echo -e "${YELLOW}[2/21] Compiling arsceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
@@ -104,7 +104,7 @@ else
 fi
 
 # 2. Unit tests
-echo -e "\n${YELLOW}[3/20] Running sceneview unit tests...${NC}"
+echo -e "\n${YELLOW}[3/21] Running sceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
@@ -112,7 +112,7 @@ else
         "sceneview tests FAILED" "no sceneview test ever ran"
 fi
 
-echo -e "${YELLOW}[4/20] Running arsceneview unit tests...${NC}"
+echo -e "${YELLOW}[4/21] Running arsceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; then
     echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
 else
@@ -152,7 +152,7 @@ fi
 #     even when the test task FAILS (`changed:1` on a red run), and left
 #     untouched on an UP-TO-DATE run — so its mtime discriminates all four
 #     cases (pass / real diff / skipped / infra death).
-echo -e "\n${YELLOW}[5/20] Verifying Android screenshot goldens...${NC}"
+echo -e "\n${YELLOW}[5/21] Verifying Android screenshot goldens...${NC}"
 SNAPSHOTS_DIR="samples/android-demo/src/test/snapshots"
 RR_SUMMARY="samples/android-demo/build/test-results/roborazzi/debug/results-summary.json"
 RR_LOG="$LOG_DIR/roborazzi.log"
@@ -230,7 +230,7 @@ fi
 # Golden target = a STATIC screen (About) — never a network-fed screen like
 # Explore, whose remote gallery re-drifts a 1%-threshold pixel golden.
 # NB: the golden is resolution-bound — capture and verify on the same sim model.
-echo -e "${YELLOW}[6/20] Verifying iOS screenshot goldens...${NC}"
+echo -e "${YELLOW}[6/21] Verifying iOS screenshot goldens...${NC}"
 IOS_GOLDENS="samples/ios-demo/goldens"
 IOS_GOLDEN_NAME="about_static"
 IOS_BUNDLE_ID="io.github.sceneview.demo"
@@ -259,7 +259,7 @@ else
 fi
 
 # 5. Version sync
-echo -e "\n${YELLOW}[7/20] Checking version sync...${NC}"
+echo -e "\n${YELLOW}[7/21] Checking version sync...${NC}"
 # Capture sync-versions.sh output and exit code separately, so a crash of the
 # script is not swallowed by the pipeline (a piped crash would falsely report
 # "0 mismatches"). `set -o pipefail` is deliberately NOT used globally — many
@@ -280,7 +280,7 @@ else
 fi
 
 # 6. Website JS syntax
-echo -e "\n${YELLOW}[8/20] Validating website JS...${NC}"
+echo -e "\n${YELLOW}[8/21] Validating website JS...${NC}"
 NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
@@ -303,7 +303,7 @@ fi
 # Scans every samples/* for broken bundled paths or dead CDN URLs so the
 # class of bugs fixed in session 34 (TV demo pointing at non-existent
 # models/*.glb, web-demo pointing at 404 CDN URLs) cannot come back.
-echo -e "\n${YELLOW}[9/20] Validating demo app asset references...${NC}"
+echo -e "\n${YELLOW}[9/21] Validating demo app asset references...${NC}"
 # --no-cdn to keep pre-push fast; CI runs the full check with CDN hits.
 ASSETS_LOG="$LOG_DIR/validate-demo-assets.log"
 if bash .claude/scripts/validate-demo-assets.sh --no-cdn > "$ASSETS_LOG" 2>&1; then
@@ -322,7 +322,7 @@ fi
 # runs in quality-gate.sh, pr-check.yml and daily via maintenance.yml — but
 # the lighter pre-push gate skipped it, so a skill-only push could land drift
 # without ever hitting quality-gate.sh. Invoke it directly here too.
-echo -e "\n${YELLOW}[10/20] Checking agent skill drift...${NC}"
+echo -e "\n${YELLOW}[10/21] Checking agent skill drift...${NC}"
 if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
     SKILL_LOG="$LOG_DIR/skill-drift.log"
     if bash .claude/scripts/check-sceneview-skill.sh > "$SKILL_LOG" 2>&1; then
@@ -343,7 +343,7 @@ fi
 # not impact-check.sh — so editing llms.txt passed every local gate and only
 # turned red on CI. That is exactly what happened to the PR that added this
 # leg. Sub-second (a node regenerate-and-compare, no write).
-echo -e "\n${YELLOW}[11/20] Checking GPT knowledge base drift...${NC}"
+echo -e "\n${YELLOW}[11/21] Checking GPT knowledge base drift...${NC}"
 if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/dev/null)}" ]; then
     GPT_LOG="$LOG_DIR/gpt-knowledge-drift.log"
     if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > "$GPT_LOG" 2>&1; then
@@ -365,7 +365,7 @@ fi
 # Vendored-download hardening gate. Passes silently while nothing builds
 # third_party/filament-kmp; fails the moment something does and its downloads
 # are still unverified / its symlink extraction unvalidated.
-echo -e "\n${YELLOW}[12/20] Checking the vendored download chain...${NC}"
+echo -e "\n${YELLOW}[12/21] Checking the vendored download chain...${NC}"
 if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
     VENDORED_LOG="$LOG_DIR/vendored-dl.log"
     if bash .claude/scripts/check-vendored-download-safety.sh > "$VENDORED_LOG" 2>&1; then
@@ -389,7 +389,7 @@ fi
 # it must keep sending fork PRs to a disposable hosted runner AND keep sending
 # push / dispatch / schedule to the Mac we already own. Both halves fail
 # silently — one leaks reach, the other just quietly spends money.
-echo -e "\n${YELLOW}[13/20] Checking self-hosted runner routing...${NC}"
+echo -e "\n${YELLOW}[13/21] Checking self-hosted runner routing...${NC}"
 if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
     ROUTING_LOG="$LOG_DIR/runner-routing.log"
     if python3 .claude/scripts/check-self-hosted-runner-routing.py > "$ROUTING_LOG" 2>&1; then
@@ -409,7 +409,7 @@ fi
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
 # check — catch an unintentional public-API change locally before CI does.
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.
-echo -e "\n${YELLOW}[14/20] Checking public-API ABI (apiCheck)...${NC}"
+echo -e "\n${YELLOW}[14/21] Checking public-API ABI (apiCheck)...${NC}"
 if [ -f gradlew ]; then
     if gradle_run "$LOG_DIR/api-check.log" apiCheck; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"
@@ -509,7 +509,7 @@ fi
 # Android's canonical demo ids against iOS's live registry and the committed
 # parity-manifest.yml. Self-contained: it regenerates iOS's (gitignored)
 # GeneratedScenes.swift itself, so it works in a fresh worktree.
-echo -e "\n${YELLOW}[15/20] Checking Android <-> iOS demo id parity...${NC}"
+echo -e "\n${YELLOW}[15/21] Checking Android <-> iOS demo id parity...${NC}"
 if [ -f .claude/scripts/check-demo-id-parity.sh ]; then
     PARITY_LOG="$LOG_DIR/demo-id-parity.log"
     if bash .claude/scripts/check-demo-id-parity.sh > "$PARITY_LOG" 2>&1; then
@@ -533,7 +533,7 @@ fi
 # every model's licence (CC-BY 4.0 §3a) — a drift here is a compliance gap in
 # a published release, not a tidiness one. Five Khronos models once shipped
 # uncredited. Deterministic regenerate-and-compare, no write, sub-second.
-echo -e "\n${YELLOW}[16/20] Checking asset credits...${NC}"
+echo -e "\n${YELLOW}[16/21] Checking asset credits...${NC}"
 if [ -f .claude/scripts/generate-credits.py ]; then
     CREDITS_LOG="$LOG_DIR/asset-credits.log"
     if python3 .claude/scripts/generate-credits.py --check > "$CREDITS_LOG" 2>&1; then
@@ -555,7 +555,7 @@ fi
 # a measured install no-op and has been rediscovered THREE times (#2796,
 # #2854, #2990) because each fix landed in one call site while the docs went
 # on recommending it. Documenting the trap is fine; recommending it is not.
-echo -e "\n${YELLOW}[17/20] Checking no file teaches \`android run\` for installing...${NC}"
+echo -e "\n${YELLOW}[17/21] Checking no file teaches \`android run\` for installing...${NC}"
 if [ -f .claude/scripts/check-android-run-not-taught.sh ]; then
     ANDROID_RUN_LOG="$LOG_DIR/android-run-not-taught.log"
     if bash .claude/scripts/check-android-run-not-taught.sh > "$ANDROID_RUN_LOG" 2>&1; then
@@ -574,7 +574,7 @@ fi
 # blocks are exec'd line-by-line through `sh -c` = dash on Linux runners, so a
 # bashism there only fails once it is on main. Needs dash + shellcheck, which
 # ship on the CI runner but not on every Mac — hence the guard.
-echo -e "\n${YELLOW}[18/20] Validating workflow shell blocks...${NC}"
+echo -e "\n${YELLOW}[18/21] Validating workflow shell blocks...${NC}"
 if ! command -v dash >/dev/null 2>&1 || ! command -v shellcheck >/dev/null 2>&1; then
     echo -e "${YELLOW}  ⚠ dash or shellcheck missing — NOT checked here (CI still gates it)${NC}"
     echo -e "${YELLOW}      Arm it locally: brew install dash shellcheck${NC}"
@@ -606,7 +606,7 @@ fi
 # shape this whole block exists to fix. And because the list comes from a
 # regex, "found nothing" is a broken extractor, never a clean bill of health
 # (#3050) — a count below the floor fails the leg instead of blessing it.
-echo -e "\n${YELLOW}[19/20] Running the repo-hygiene gate self-tests...${NC}"
+echo -e "\n${YELLOW}[19/21] Running the repo-hygiene gate self-tests...${NC}"
 # 31 self-tests on 2026-08-11. The floor guards against a regex that silently
 # degrades to a handful of matches; raise it if repo-hygiene ever legitimately
 # shrinks, but never delete it.
@@ -763,7 +763,7 @@ fi
 # the .filamat ↔ Filament-runtime ABI invariant (GenerateFilamat.sh --check),
 # the worktree-prune regression suite, and the website asset rules (no Google
 # Fonts, no Three.js, no <model-viewer>). Measured ~50 s.
-echo -e "\n${YELLOW}[20/20] Running the full quality gate (offline profile)...${NC}"
+echo -e "\n${YELLOW}[20/21] Running the full quality gate (offline profile)...${NC}"
 if [ -f .claude/scripts/quality-gate.sh ]; then
     QG_LOG="$LOG_DIR/quality-gate.log"
     if bash .claude/scripts/quality-gate.sh --quick > "$QG_LOG" 2>&1; then
@@ -786,6 +786,33 @@ if [ -f .claude/scripts/quality-gate.sh ]; then
     fi
 else
     missing_gate_script "quality-gate.sh"
+fi
+
+# Release-publisher contracts (BLOCKING in ci.yml → repo-hygiene). Static,
+# offline, ~0.1 s: it reads .github/workflows/release.yml and nothing else, so
+# there is no reason for CI to be the first place a broken publisher shows up.
+# Its subject is the #3011 class — a publish job that looks correct and ships
+# nothing — and release.yml is edited far more often than it is exercised: the
+# next real run is the next release, which is the worst possible moment to
+# learn that a verification step was dropped. Its mutation suite runs in leg 19
+# (the suite proves the gate bites; this leg is the gate itself, on the tree
+# being pushed).
+echo -e "\n${YELLOW}[21/21] Checking the release publishers' contracts...${NC}"
+if [ -f .claude/scripts/check-release-publish-verification.py ]; then
+    RPV_LOG="$LOG_DIR/release-publish-verification.log"
+    if python3 .claude/scripts/check-release-publish-verification.py > "$RPV_LOG" 2>&1; then
+        echo -e "${GREEN}  ✓ every release publisher verifies against its registry${NC}"
+    else
+        # Exit 2 is "could not measure" (renamed job, unparseable YAML) and
+        # must never read as a finding — script_report_failure keeps those two
+        # apart, which is the whole reason the gate distinguishes them.
+        gate_script_failure "release-publisher contracts" "$RPV_LOG" $? \
+            "release.yml publisher contract(s) violated:" \
+            "BROKEN: [0-9]+ release-publisher contract" \
+            "The FAIL lines above name the job and the contract (#3011/#3021)."
+    fi
+else
+    missing_gate_script "check-release-publish-verification.py"
 fi
 
 # Summary
