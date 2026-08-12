@@ -199,6 +199,25 @@ run_guard() {
   return 0
 }
 
+# calls_were <expected-log> <pass-message> <fail-message>
+#
+# Compares the WHOLE recorded call log, never a line within it. `grep -qx` was
+# not enough and this is not theoretical: a lookup that returns three ids builds
+# the endpoint `…/comments/99123<newline>99123<newline>99123`, whose FIRST LINE
+# is byte-identical to the correct call — so `grep -qx` passed on a mutant that
+# had removed the pagination guard entirely. An exact comparison also makes
+# "PATCHed and then POSTed as well" a failure without a separate assertion.
+calls_were() {
+  local expected="$1" pass_msg="$2" fail_msg="$3"
+  local actual
+  actual="$(cat "$TMP/gh-calls" 2>/dev/null)"
+  if [ "$actual" = "$expected" ]; then
+    ok "$pass_msg"
+  else
+    bad "$fail_msg — expected exactly [$expected], got [$(tr '\n' ';' <<< "$actual")]"
+  fi
+}
+
 echo
 echo "a PR that is merely behind main"
 run_guard "$TMP/step.sh" behind
@@ -232,9 +251,9 @@ grep -qF '<!-- sceneview-agent-review -->' "$TMP/posted-comment.md" 2>/dev/null 
 grep -q 'gh workflow run pr-review.yml -f pr=4242' "$TMP/posted-comment.md" 2>/dev/null \
   && ok "names the dispatch that DOES review this PR, with its number" \
   || bad "the comment does not carry the runnable dispatch command for this PR"
-grep -qxF 'POST repos/sceneview/sceneview/issues/4242/comments' "$TMP/gh-calls" 2>/dev/null \
-  && ok "with no marker comment present it POSTs a new one" \
-  || bad "did not POST to the PR's comments endpoint (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
+calls_were "POST repos/sceneview/sceneview/issues/4242/comments" \
+  "with no marker comment present it POSTs a new one" \
+  "did not POST exactly once to the PR's comments endpoint"
 # The comment is scratch, and the checkout is what `Assert the reviewers left
 # the tree clean` measures a few steps later.
 [ -z "$GUARD_DIRT" ] \
@@ -256,12 +275,9 @@ echo "a second run on the same PR, with the marker comment already there"
 # later case would silently run with a marker comment present.
 GH_STUB_EXISTING_ID=99123
 run_guard "$TMP/step.sh" selfmod
-grep -qxF 'PATCH repos/sceneview/sceneview/issues/comments/99123' "$TMP/gh-calls" 2>/dev/null \
-  && ok "updates the existing comment in place, by its id" \
-  || bad "did not PATCH the existing marker comment (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
-grep -q '^POST ' "$TMP/gh-calls" 2>/dev/null \
-  && bad "posted a second comment even though the marker was already on the PR — a re-run stacks duplicates" \
-  || ok "does not also POST — no duplicate comment on a re-run"
+calls_were "PATCH repos/sceneview/sceneview/issues/comments/99123" \
+  "updates the existing comment in place, by its id, and does not also POST" \
+  "did not PATCH the existing marker comment exactly once"
 grep -q 'NOT REVIEWED' "$TMP/posted-comment.md" 2>/dev/null \
   && ok "the updated body still carries the explanation" \
   || bad "the PATCH sent a body that does not say NOT REVIEWED"
@@ -274,9 +290,9 @@ echo "the same, on a PR whose comments span several API pages"
 # posting a duplicate.
 GH_STUB_PAGES=3
 run_guard "$TMP/step.sh" selfmod
-grep -qxF 'PATCH repos/sceneview/sceneview/issues/comments/99123' "$TMP/gh-calls" 2>/dev/null \
-  && ok "keeps one id across pages" \
-  || bad "a paginated lookup produced a malformed endpoint (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
+calls_were "PATCH repos/sceneview/sceneview/issues/comments/99123" \
+  "keeps one id across pages" \
+  "a paginated lookup produced a malformed endpoint"
 GH_STUB_PAGES=1
 
 # ---------------------------------------------------------------------------
