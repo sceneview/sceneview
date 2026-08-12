@@ -24,7 +24,16 @@ import org.junit.Test
  */
 class NodeNameTest {
 
-    private fun name(src: String) = ModelNodeData(src = src).nodeName()
+    /**
+     * Calls the derivation directly rather than through `ModelNodeData(src).nodeName()`.
+     * The data class defaults `position`/`rotation` to types from the published
+     * SceneView artifacts, which are built for JVM 21 while this module and its
+     * CI gate are on 17 — constructing it in a JVM test throws
+     * `UnsupportedClassVersionError` (measured on run 31582255097, all 13 tests
+     * red at the constructor). `nodeName()` is a one-line delegate to this
+     * function, so nothing about the covered behaviour is lost.
+     */
+    private fun name(src: String) = modelNodeName(src)
 
     // ── The ordinary paths ────────────────────────────────────────────────
 

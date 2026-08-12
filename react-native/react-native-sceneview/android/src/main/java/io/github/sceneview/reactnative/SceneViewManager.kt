@@ -413,11 +413,30 @@ data class ModelNodeData(
      * `null` for a path with no usable base name, so the payload stays
      * `nodeName: null` rather than an empty string.
      */
-    fun nodeName(): String? =
-        urlPathOf(src.substringBefore('?').substringBefore('#'))
-            .substringAfterLast('/').substringBeforeLast('.')
-            .takeIf { it.isNotEmpty() }
+    fun nodeName(): String? = modelNodeName(src)
 }
+
+/**
+ * [ModelNodeData.nodeName]'s derivation, as a top-level function.
+ *
+ * Split out so it can be unit-tested without constructing a [ModelNodeData]:
+ * that data class defaults `position`/`rotation` to `Position`/`Rotation` from
+ * the **published** SceneView artifacts, which are compiled for JVM 21, while
+ * this module targets JVM 17 and its CI gate runs on a JDK 17. Compiling
+ * against a newer class file is fine; *loading* one is not, so instantiating
+ * the data class in a JVM unit test throws `UnsupportedClassVersionError`.
+ *
+ * That mismatch is harmless on a device — D8 re-compiles everything to DEX and
+ * the class-file version stops existing — so the fix belongs in the test's
+ * reach, not in the module's or the gate's toolchain.
+ *
+ * This also puts the derivation at the same level as the Flutter bridge's
+ * `tapNodeName`, which the shared case table already assumed.
+ */
+internal fun modelNodeName(src: String): String? =
+    urlPathOf(src.substringBefore('?').substringBefore('#'))
+        .substringAfterLast('/').substringBeforeLast('.')
+        .takeIf { it.isNotEmpty() }
 
 /**
  * The path part of [source] when it is a URL, [source] unchanged otherwise.
