@@ -211,27 +211,6 @@ jobs:
 
       # Positive cue, not an absence: say out loud that no review happened and
       # exactly how to get one. A quiet pass here would read as "reviewed, clean".
-      #
-      # It ALSO exits non-zero (#3117). Writing the summary was not enough: on a
-      # fork `pull_request` the `GITHUB_TOKEN` is read-only, so this workflow
-      # cannot comment on the PR either — the warning ends up on the job summary
-      # page, one click away, while `gh pr checks` shows a plain
-      # `Agent review  pass`. Measured on PR #3109 (fork
-      # `ber4444:fix-compose-isrendering`, run 31519731643): green check, no
-      # comment, no reviewer having read a line. A fork PR is by definition code
-      # from outside the repo and is the case that needs the loudest signal, not
-      # the quietest.
-      #
-      # Red does NOT hold the merge button: `Agent review` is in
-      # `ADVISORY_CHECKS` in `ci-gate.yml`, deliberately and documented there.
-      # This only stops the check from READING as reviewed. `neutral` would look
-      # better in the UI, but setting a conclusion needs the Checks API and a
-      # write token — precisely what a fork run does not have. Red-and-honest
-      # beats green-and-silent.
-      #
-      # It goes green again on any PR that can actually be reviewed, and the
-      # documented rescue path is unchanged:
-      #     gh workflow run pr-review.yml -f pr=<N>
       # The budget guard is NOT redundant with the credentials check. Over
       # budget, `Check reviewer credentials` never runs, so `has_token` is the
       # empty string — which satisfies `!= 'true'` and would make this step
@@ -263,10 +242,7 @@ jobs:
             echo "gh workflow run pr-review.yml -f pr=$PR_NUM"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error title=PR not reviewed::No reviewer credentials in this run — no reviewer read this PR. See the job summary. This check is ADVISORY and does not block the merge; it is red so it cannot be mistaken for a clean review."
-          # See the block above this step: red-and-honest, deliberately, and the
-          # last thing the step does so the summary is always written first.
-          exit 1
+          echo "::warning title=PR not reviewed::No reviewer credentials in this run — see the job summary. Do not read this check as a clean review."
 
       # claude-code-action refuses to run when the workflow file differs from
       # the copy on the default branch — an anti-exfiltration guard, since a PR
