@@ -72,9 +72,10 @@ jobs:
       # the shape an exit code cannot show — and `sceneview-compose` was left
       # out of this list on the first draft, which is that shape in miniature.
       #
-      # An INCONCLUSIVE here is NOT a verification. It is written to the job
-      # summary as well as the log so it cannot pass for one: a warning nobody
-      # reads is how "we check Maven now" becomes true on paper only.
+      # An INCONCLUSIVE here is NOT a verification, and the script itself writes
+      # it to $GITHUB_STEP_SUMMARY (not this step — a caller that has to
+      # remember is a caller that will forget): a warning nobody reads is how
+      # "we check Maven now" becomes true on paper only.
       - name: Verify the artifacts are really on Maven Central
         if: steps.check-maven.outputs.skip != 'true'
         # The version reaches the shell through the ENVIRONMENT, never through
@@ -86,40 +87,24 @@ jobs:
           VERSION: ${{ steps.check-maven.outputs.version }}
         run: |
           rc=0
-          unverified=""
           # ONE propagation budget for the whole set, not one per artifact:
           # 15 min here, against this job's `timeout-minutes: 30` and the
           # ~6 min the publish itself took at v4.29.0.
           PUBLISH_VERIFY_DEADLINE=$(( $(date +%s) + 900 ))
           export PUBLISH_VERIFY_DEADLINE
           for artifact in sceneview arsceneview sceneview-core sceneview-compose; do
-            # Captured, then echoed — NOT piped into tee. A pipeline reports
-            # the exit status of its LAST command, so `verify | tee` would
-            # have made every failure here read as success.
-            log="${RUNNER_TEMP:-/tmp}/maven-verify-$artifact.log"
+            # Not piped into anything. A pipeline reports the exit status of
+            # its LAST command, so `verify | tee` would have made every failure
+            # here read as success.
             vrc=0
             bash .claude/scripts/verify-published-version.sh \
-              maven "io.github.sceneview:$artifact" "$VERSION" > "$log" 2>&1 || vrc=$?
-            cat "$log"
+              maven "io.github.sceneview:$artifact" "$VERSION" || vrc=$?
+            # Every artifact is probed even after one fails — a partial publish
+            # is the finding, and stopping at the first would hide the rest.
             if [ "$vrc" -ne 0 ]; then
               rc=1
-            elif grep -q "INCONCLUSIVE" "$log"; then
-              unverified="$unverified $artifact"
             fi
           done
-          if [ -n "$unverified" ]; then
-            {
-              echo "### Maven Central verification INCONCLUSIVE"
-              echo
-              echo "Not confirmed on repo1.maven.org within the propagation budget:"
-              echo '`'"$unverified"'`' " at \`$VERSION\`."
-              echo
-              echo "Central has lagged ~30 min behind a green publish before (v4.26.0),"
-              echo "so this is not a failure — but it is **not a verification either**."
-              echo "Check https://repo1.maven.org/maven2/io/github/sceneview/ before"
-              echo "announcing the release."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
           exit "$rc"
 
   # ── 2. Build and publish Dokka API docs ────────────────────────────────────
@@ -580,7 +565,11 @@ jobs:
   # Automated pub.dev publishing via GitHub OIDC (no long-lived token).
   #
   # `permissions: id-token: write` is NECESSARY AND NOT SUFFICIENT, and that
-  # is what cost v4.27.0, v4.28.0 and v4.29.0 (#3011). The permission only
+  # is what cost every release from v4.25.0 to v4.29.0 (#3011) — five in which
+  # this job published nothing: v4.25.0 and v4.26.0 hung on the OAuth prompt
+  # until the run was cancelled, v4.27.0 through v4.29.0 ended in `failure`
+  # (runs 29843376874, 30902820085, 31372828471, 31407413836, 31598215819).
+  # pub.dev still serves 4.24.0. The permission only
   # makes ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN available to the job — *some
   # step still has to spend them*. The pub client does not: it reads a token
   # from its own token store and, finding none, opens interactive OAuth. The
@@ -720,7 +709,9 @@ jobs:
           # trusted here. Without a credential `flutter pub publish --force`
           # does NOT fail — it prints an accounts.google.com URL and blocks on
           # "Waiting for your authorization…" until something kills it, which
-          # is how the plugin missed v4.25.0 through v4.29.0 (#3011).
+          # is how the plugin missed all five of v4.25.0 → v4.29.0 (#3011):
+          # cancelled on the first two, `failure` on the last three, nothing
+          # published in any of them.
           #
           #   - stdin closed, so a prompt dies instead of waiting;
           #   - `timeout`, so a hang is bounded and attributable to THIS step

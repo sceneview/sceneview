@@ -14,7 +14,8 @@
 # ── Why this exists ────────────────────────────────────────────────────────
 # #3011: `flutter pub publish --force` found no credential, fell back to
 # INTERACTIVE OAuth, hung until the job timeout and landed as `cancelled`.
-# Three releases shipped with the Flutter plugin silently missing. The lesson
+# Five releases shipped with the Flutter plugin silently missing (v4.25.0 →
+# v4.29.0: cancelled on the first two, `failure` on the last three). The lesson
 # is not "that one CLI is broken" — it is that **a publish step's exit code is
 # a claim, and the registry is the fact**. #3013 added that re-verify to the
 # pub.dev job only; #3021 is the observation that npm and Maven Central were
@@ -205,6 +206,17 @@ subject() {
     esac
 }
 
+# The only outcome that is neither green nor red is also the only one a reader
+# can scroll past: INCONCLUSIVE exits 0, so the job goes green and the warning
+# sits in a log nobody opens. It is written to the run's step summary as well —
+# by THIS script, so every caller gets it and none has to remember to. Raised
+# in review of PR #3130: an inconclusive verification that reads like a pass is
+# how "published" became a lie in the first place.
+summarise() {
+    [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+    printf '%s\n' "$@" >> "$GITHUB_STEP_SUMMARY"
+}
+
 attempt=1
 while [ "$attempt" -le "$ATTEMPTS" ]; do
     case "$REGISTRY" in
@@ -252,6 +264,15 @@ if [ "$REGISTRY" = "maven" ]; then
     # out of a publish that landed. Saying "verified" would be worse.
     echo "::warning::INCONCLUSIVE: Maven Central has not served $(subject) within the propagation budget (${ATTEMPTS} attempts × ${DELAY}s). OSSRH sync ran ~30 min behind a green publish at v4.26.0 (#3021), so this is expected soon after a release."
     echo "MAVEN VERIFICATION INCONCLUSIVE — this is not a proof of publication (#3021). Confirm at https://repo1.maven.org/maven2/ before announcing the release."
+    summarise \
+        "### ⚠️ Maven Central verification INCONCLUSIVE — \`$(subject)\`" \
+        "" \
+        "repo1.maven.org did not serve it within the propagation budget (${ATTEMPTS} × ${DELAY}s)." \
+        "**This is not a proof of publication.** OSSRH sync ran ~30 min behind a" \
+        "green publish at v4.26.0 (#3021), so it is expected soon after a release —" \
+        "but confirm at <https://repo1.maven.org/maven2/io/github/sceneview/>" \
+        "before announcing it." \
+        ""
     exit 0
 fi
 
