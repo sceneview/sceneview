@@ -1304,11 +1304,17 @@ fun ARSceneView(
         cameraStreamRef.set(cameraStream)
         val prev = prevCameraStreamRef.get()
         if (prev != cameraStream) {
-            prev?.let { scene.removeEntity(it.entity) }
+            prev?.let {
+                scene.removeEntity(it.entity)
+                // Registration is now tracked on the stream so its `destroy()` can recycle the
+                // entity id safely (#2877).
+                it.attachedScene = null
+            }
             cameraStream?.let { stream ->
                 arCore.session?.let {
                     it.setCameraTextureNames(stream.cameraTextureIds)
                     scene.addEntity(stream.entity)
+                    stream.attachedScene = scene
                 }
             }
             prevCameraStreamRef.set(cameraStream)

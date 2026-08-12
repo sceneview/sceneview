@@ -8,6 +8,7 @@ import com.google.android.filament.IndexBuffer
 import com.google.android.filament.IndexBuffer.Builder.IndexType
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
+import com.google.android.filament.Scene
 import com.google.android.filament.Texture
 import com.google.android.filament.Texture.PixelBufferDescriptor
 import com.google.android.filament.VertexBuffer
@@ -27,6 +28,7 @@ import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
 import io.github.sceneview.math.Transform
 import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeRecycleEntity
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.OpenGL
@@ -83,6 +85,16 @@ open class ARCameraStream(
     final override val entity = EntityManager.get().create()
 
     /**
+     * The Filament [Scene] this stream's [entity] is currently registered in, or `null` (#2877).
+     *
+     * Tracked by `ARSceneView` so [destroy] can un-register the entity before recycling its id.
+     * Recycling an id the scene still holds would let Filament reissue it while the scene
+     * renders whatever renderable is built on it next — the same hazard [io.github.sceneview
+     * .node.Node.attachedScene] guards against (#2859 / #2872).
+     */
+    internal var attachedScene: Scene? = null
+
+    /**
      * Cached [RenderableManager] instance handle for [entity] (#2328 / #2402 MED-1).
      *
      * `0` means "not yet looked up". The camera-stream renderable is built once on this entity (the
@@ -136,11 +148,68 @@ open class ARCameraStream(
         }
 
     /**
-     * Extracted texture from the session depth image
+     * Extracted texture from the session depth image.
+     *
+     * Sized lazily — ARCore's depth resolution (typically 160×120 in
+     * [Config.DepthMode.AUTOMATIC]) is not known until the first depth frame arrives, and a
+     * Filament [Texture] is immutable-size. The texture is (re)built by [update] the first
+     * time a depth image lands, and again if the resolution ever changes (display rotation,
+     * camera-config switch), exactly like [personMaskTexture].
+     *
+     * Starts as a 1×1 placeholder so the occlusion materials always have a valid sampler
+     * bound — a 1×1 RG8 texel of value 0 decodes to `depth_mm == 0`, which
+     * `camera_stream_depth.mat` already treats as "no depth available", so occlusion is a
+     * clean no-op until the first real depth image lands.
+     *
+     * ⚠️ The explicit `width`/`height` are load-bearing (#1617). Filament's `Texture.Builder`
+     * defaults to 1×1, and the `setImage(engine, level, descriptor)` overload uploads
+     * `getWidth(level)`×`getHeight(level)` texels — so an unsized texture silently consumed
+     * only the depth image's FIRST texel and sampled that single value across the whole
+     * screen. Every fragment got the same real-world depth, which is why "DEPTH ON" appeared
+     * to do nothing: whichever side of that constant the virtual model fell on, it was
+     * uniformly in front of (or behind) the entire real world.
      */
-    val depthTexture =
-        Texture.Builder().sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.RG8)
+    var depthTexture: Texture =
+        Texture.Builder().width(1).height(1)
+            .sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.RG8)
             .levels(1).build(engine)
+        private set
+
+    // Current dimensions of [depthTexture]. (0, 0) means "still the 1×1 placeholder, never
+    // had a real depth image yet". A resolution change rebuilds the texture.
+    private var depthWidth = 0
+    private var depthHeight = 0
+
+    /**
+     * (Re)builds [depthTexture] at [width]×[height] when the depth resolution first becomes
+     * known or later changes (display rotation, camera-config switch), and rebinds it on both
+     * occlusion materials. A no-op when the size already matches, so [update] can call it on
+     * every depth frame: in steady state this runs a handful of times per session, never
+     * per-frame.
+     *
+     * A Filament [Texture] is immutable-size, hence destroy + rebuild rather than resize.
+     * Both occlusion material instances sample `depthTexture`, so both must be rebound or one
+     * of them keeps sampling the destroyed handle.
+     *
+     * `internal` rather than private so the regression test for #1617 can assert the resize
+     * on a real Filament engine without an ARCore session — the bug was precisely that this
+     * never happened and the texture stayed 1×1.
+     */
+    internal fun ensureDepthTexture(width: Int, height: Int) {
+        if (depthWidth == width && depthHeight == height) return
+
+        engine.safeDestroyTexture(depthTexture)
+        depthTexture = Texture.Builder().width(width).height(height)
+            .sampler(Texture.Sampler.SAMPLER_2D)
+            .format(Texture.InternalFormat.RG8)
+            .levels(1).build(engine)
+        depthWidth = width
+        depthHeight = height
+        depthOcclusionMaterial.defaultInstance
+            .setTexture(kDepthTextureParameter, depthTexture)
+        personOcclusionMaterial.defaultInstance
+            .setTexture(kDepthTextureParameter, depthTexture)
+    }
 
     /**
      * ### Flat camera material
@@ -575,9 +644,26 @@ open class ARCameraStream(
                 // position/limit metadata — it does NOT free native memory. The actual
                 // memory is owned by the ARCore [com.google.ar.core.Image] and freed
                 // by [depthImage.close].
-                val buffer = depthImage.planes[0].buffer
+                val depthPlane = depthImage.planes[0]
+                val buffer = depthPlane.buffer
+                val width = depthImage.width
+                val height = depthImage.height
+                if (width <= 0 || height <= 0) {
+                    // Nothing uploadable — close the ARCore image ourselves, since no
+                    // PixelBufferDescriptor callback will run to do it for us.
+                    depthImage.close()
+                    return@let
+                }
+
+                ensureDepthTexture(width, height)
+
+                // ARCore's depth plane may be row-padded, so the buffer's row pitch is
+                // `rowStride` BYTES while Filament wants a stride in TEXELS. RG8 is 2 bytes
+                // per texel — without this the padding is consumed as image data and every
+                // row drifts progressively sideways (a shear).
+                val strideTexels = depthPlane.rowStride / 2
                 depthTexture.setImage(engine, 0, PixelBufferDescriptor(
-                    buffer, Texture.Format.RG, Texture.Type.UBYTE, 1, 0, 0, 0, null
+                    buffer, Texture.Format.RG, Texture.Type.UBYTE, 1, 0, 0, strideTexels, null
                 ) {
                     // Close the ARCore image only after Filament has finished draining
                     // the buffer to the GPU. This callback is the load-bearing
@@ -669,6 +755,11 @@ open class ARCameraStream(
         // native object.
         //
         // See: https://github.com/sceneview/sceneview/issues/773
+        // Un-register before the id is recycled (#2877): a Scene holding a reissued id would
+        // render whatever renderable is built on it next. No-op when `ARSceneView` already
+        // removed the entity on a camera-stream swap.
+        attachedScene?.let { runCatching { it.removeEntity(entity) } }
+        attachedScene = null
         renderableManager.safeDestroy(entity)
         engine.safeDestroyVertexBuffer(vertexBuffer)
         engine.safeDestroyIndexBuffer(indexBuffer)
@@ -678,6 +769,10 @@ open class ARCameraStream(
         cameraTextures.values.forEach { engine.safeDestroyTexture(it) }
         engine.safeDestroyTexture(depthTexture)
         engine.safeDestroyTexture(personMaskTexture)
+        // Return the self-allocated entity id to the EntityManager (#2877). The stream always
+        // owns its entity — it is created in the constructor above, never handed in — so there
+        // is no borrowed-entity case to guard, unlike `Node.ownsEntity`.
+        engine.safeRecycleEntity(entity)
         uvCoordinates.clear()
         transformedUvCoordinates?.clear()
         Log.d("Sceneview", "CameraStream destroyed")
