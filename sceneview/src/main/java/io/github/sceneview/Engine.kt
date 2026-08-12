@@ -72,7 +72,21 @@ fun Engine.safeDestroy() = runCatching {
     Log.d("Sceneview", "Engine destroyed")
 }
 
-fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entity) }
+/**
+ * Destroys every Filament component attached to [entity].
+ *
+ * `FEngine::destroy(Entity)` tears down the renderable, light, transform **and** camera
+ * components in one call — so this reindexes all three packed component stores at once and must
+ * bump all three generation counters below. `SplatNode.destroy()` is the production caller that
+ * relies on it: its batch entities carry a transform component (`SplatNode.kt`, `transformManager
+ * .create(entity, transformInstance, …)`) which nothing else destroys (#3123).
+ */
+fun Engine.safeDestroyEntity(entity: Entity) = runCatching {
+    destroyEntity(entity)
+    bumpTransformGeneration()
+    bumpLightGeneration()
+    bumpRenderableGeneration()
+}
 
 /**
  * Returns [entity]'s id to the [EntityManager] so Filament can hand it out again.
@@ -88,13 +102,18 @@ fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entit
 fun Engine.safeRecycleEntity(@FilamentEntity entity: Entity) =
     runCatching { EntityManager.get().destroy(entity) }
 
-// TransformManager compacts its packed array on removal by swapping the last live entity into
-// the freed slot, silently reindexing that entity's cached EntityInstance handles (Node's
-// transformInstance / parentInstance, #2977/#2978). This per-Engine generation counter lets
-// those caches detect "a transform component was destroyed since I last read" in O(1), without
-// tracking every live Node. Bumped by destroyTransformable() (Node.destroy()'s path) and by
-// ModelLoader.destroyModel() (glTF asset teardown destroys transform components directly via
-// AssetLoader.destroyAsset, bypassing Node.destroy() entirely).
+// Every Filament component manager reachable from here — TransformManager, LightManager,
+// RenderableManager — is a `SingleInstanceComponentManager`, a packed array that compacts on
+// removal by swapping the LAST live entity into the freed slot. That silently reindexes the
+// moved entity's `EntityInstance`, invalidating any handle a caller cached
+// (`removeComponentsHelper`: `p[index] = std::move(p[last])`).
+//
+// SceneView caches such handles on the hot read path to skip a per-frame JNI thunk:
+// `Node.transformInstance` / `Node.parentInstance` (#2269/#2404), `LightNode.lightInstance`
+// (#2285), `RenderableNode.renderableInstance` and `ARCameraStream.renderableInstance` (#2287).
+// One per-Engine generation counter per manager lets each cache detect "a component of my kind
+// was destroyed on this Engine since I last read" in O(1), without tracking every live Node.
+// The read path stays a single Int compare, so the caches keep their point (#2977/#2991/#3123).
 //
 // getOrPut below is check-then-act, not atomic — WeakHashMap has no internal synchronization.
 // Safe under this codebase's existing main-thread-only assumption for anything touching Filament
@@ -102,12 +121,45 @@ fun Engine.safeRecycleEntity(@FilamentEntity entity: Entity) =
 // ModelLoader.kt's createInstance and others).
 private val transformGenerationByEngine =
     java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
+private val lightGenerationByEngine =
+    java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
+private val renderableGenerationByEngine =
+    java.util.WeakHashMap<Engine, java.util.concurrent.atomic.AtomicInteger>()
 
 internal fun Engine.transformGeneration(): Int =
     transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }.get()
 
 internal fun Engine.bumpTransformGeneration() {
     transformGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
+        .incrementAndGet()
+}
+
+internal fun Engine.lightGeneration(): Int =
+    lightGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }.get()
+
+internal fun Engine.bumpLightGeneration() {
+    lightGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
+        .incrementAndGet()
+}
+
+/**
+ * Monotonic counter of renderable-component destructions on this [Engine].
+ *
+ * Read it before serving a cached [com.google.android.filament.RenderableManager] handle and
+ * re-resolve the handle whenever the value changed since the snapshot — see
+ * [io.github.sceneview.node.RenderableNode.renderableInstance].
+ *
+ * Public (unlike its transform and light siblings) only because `arsceneview`'s `ARCameraStream`
+ * is a cross-module [io.github.sceneview.components.RenderableComponent] implementer that caches
+ * the same handle. Bumping is deliberately **not** public: the counter is bumped by
+ * [destroyRenderable] and [safeDestroyEntity], the only two calls that can reindex the array.
+ */
+fun Engine.renderableGeneration(): Int =
+    renderableGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
+        .get()
+
+internal fun Engine.bumpRenderableGeneration() {
+    renderableGenerationByEngine.getOrPut(this) { java.util.concurrent.atomic.AtomicInteger() }
         .incrementAndGet()
 }
 
@@ -138,10 +190,35 @@ fun Engine.safeDestroyTexture(texture: Texture) = runCatching { destroyTexture(t
 
 fun Engine.safeDestroyStream(stream: Stream) = runCatching { destroyStream(stream) }
 
-fun Engine.destroyRenderable(@FilamentEntity entity: Entity) = renderableManager.destroy(entity)
+/**
+ * Destroys [entity]'s renderable component and invalidates every cached `RenderableManager`
+ * handle on this [Engine].
+ *
+ * `RenderableManager` compacts on removal exactly like `TransformManager`, so this reindexes one
+ * other live entity's `RenderableInstance` (#3123).
+ */
+fun Engine.destroyRenderable(@FilamentEntity entity: Entity) {
+    renderableManager.destroy(entity)
+    bumpRenderableGeneration()
+}
 
 fun Engine.safeDestroyRenderable(@FilamentEntity entity: Entity) =
     runCatching { destroyRenderable(entity) }
+
+/**
+ * Destroys [entity]'s light component and invalidates every cached `LightManager` handle on this
+ * [Engine].
+ *
+ * `LightManager` compacts on removal exactly like `TransformManager`, so this reindexes one other
+ * live entity's `EntityInstance` — which `LightNode.lightInstance` caches (#2991).
+ */
+fun Engine.destroyLight(@FilamentEntity entity: Entity) {
+    lightManager.destroy(entity)
+    bumpLightGeneration()
+}
+
+fun Engine.safeDestroyLight(@FilamentEntity entity: Entity) =
+    runCatching { destroyLight(entity) }
 
 fun Engine.destroyGeometry(geometry: Geometry) {
     destroyVertexBuffer(geometry.vertexBuffer)
