@@ -113,8 +113,22 @@ LLMS_V=$(grep -m1 'io\.github\.sceneview:sceneview:' llms.txt | grep -oE '[0-9]+
 README_V=$(grep -m1 'io\.github\.sceneview:sceneview:' README.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "MISSING")
 [ "$README_V" = "$TARGET_VERSION" ] && check "README.md" "PASS" "$README_V" || check "README.md" "FAIL" "Expected $TARGET_VERSION, got $README_V"
 
+# ⛔ AN ABSENT COORDINATE IS A SKIP HERE, NOT A BLOCKER. CLAUDE.md carries no
+# `io.github.sceneview:sceneview:` line at all since the file was trimmed to
+# its current size, and it is held at that size by test-context-budget.sh — so
+# the coordinate is not coming back, and grading its absence FAIL asked the
+# release to satisfy a string the file is no longer allowed to contain. That is
+# a blocker nobody can clear, raised against the same input that
+# sync-versions.sh — the single source of truth for all 30+ version locations —
+# grades SKIP. Two gates, one predicate, opposite verdicts; this is the one
+# that was wrong, measured on the 4.29.0 release. A CLAUDE.md that DOES carry
+# the coordinate is still compared, and a stale one still FAILs: the only case
+# this changes is the absent one. README.md keeps the hard FAIL, and it is the
+# file a user actually copies the dependency line from.
 CLAUDE_V=$(grep -m1 'io\.github\.sceneview:sceneview:' CLAUDE.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "MISSING")
-[ "$CLAUDE_V" = "$TARGET_VERSION" ] && check "CLAUDE.md" "PASS" "$CLAUDE_V" || check "CLAUDE.md" "FAIL" "Expected $TARGET_VERSION, got $CLAUDE_V"
+if [ "$CLAUDE_V" != "MISSING" ]; then
+    [ "$CLAUDE_V" = "$TARGET_VERSION" ] && check "CLAUDE.md" "PASS" "$CLAUDE_V" || check "CLAUDE.md" "FAIL" "Expected $TARGET_VERSION, got $CLAUDE_V"
+fi
 
 # Docs site files
 for docfile in docs/docs/index.md docs/docs/quickstart.md docs/docs/llms-full.txt docs/docs/cheatsheet.md docs/docs/platforms.md; do
