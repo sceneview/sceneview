@@ -114,24 +114,38 @@ fi
 
 # A `gh` that records instead of calling GitHub (#3028). The step now posts the
 # "NOT REVIEWED" explanation onto the PR, and a stub is the only way to assert
-# WHAT it posts. It answers the lookup with nothing (no existing comment) and
-# copies the `-F body=@<file>` payload out, so the assertions read the bytes the
-# step would have sent.
+# WHAT it posts. It copies the `-F body=@<file>` payload out, so the assertions
+# read the bytes the step would have sent, and logs `<method> <endpoint>` for
+# every write.
+#
+# The lookup answer is a KNOB, not a constant. A stub that always replies "no
+# existing comment" exercises the POST branch and leaves the PATCH branch — the
+# entire point of the `<!-- sceneview-agent-review -->` marker — untested, so a
+# regression that posts a duplicate on every re-run would pass. `GH_STUB_EXISTING_ID`
+# makes the second run of the same PR a real case.
 STUB_BIN="$TMP/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/gh" <<'STUB'
 #!/usr/bin/env bash
 method=GET
 body=""
+url=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method="${2:-}"; shift 2 ;;
     -F) case "${2:-}" in body=@*) body="${2#body=@}" ;; esac; shift 2 ;;
-    *) shift ;;
+    --jq) shift 2 ;;
+    api|--paginate|-*) shift ;;
+    *) [ -n "$url" ] || url="$1"; shift ;;
   esac
 done
-if [ "$method" = "GET" ]; then exit 0; fi   # lookup: no existing comment
-echo "$method" >> "$GH_STUB_LOG"
+if [ "$method" = "GET" ]; then
+  # The step reads this through `--jq '… | .[0].id // empty'`; the stub answers
+  # post-jq, which is what the step's `$(...)` actually consumes.
+  [ -n "${GH_STUB_EXISTING_ID:-}" ] && echo "$GH_STUB_EXISTING_ID"
+  exit 0
+fi
+echo "$method $url" >> "$GH_STUB_LOG"
 [ -n "$body" ] && cp "$body" "$GH_STUB_OUT"
 exit 0
 STUB
@@ -158,6 +172,7 @@ run_guard() {
     GITHUB_BASE_REF=main \
     GITHUB_REPOSITORY=sceneview/sceneview \
     PR_NUM=4242 \
+    GH_STUB_EXISTING_ID="${GH_STUB_EXISTING_ID:-}" \
     GH_STUB_OUT="$TMP/posted-comment.md" \
     GH_STUB_LOG="$TMP/gh-calls" \
     GITHUB_OUTPUT="$TMP/output" \
@@ -203,10 +218,55 @@ grep -qF '<!-- sceneview-agent-review -->' "$TMP/posted-comment.md" 2>/dev/null 
 grep -q 'gh workflow run pr-review.yml -f pr=4242' "$TMP/posted-comment.md" 2>/dev/null \
   && ok "names the dispatch that DOES review this PR, with its number" \
   || bad "the comment does not carry the runnable dispatch command for this PR"
+grep -qxF 'POST repos/sceneview/sceneview/issues/4242/comments' "$TMP/gh-calls" 2>/dev/null \
+  && ok "with no marker comment present it POSTs a new one" \
+  || bad "did not POST to the PR's comments endpoint (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
 # The comment must not be mistaken for the check going green.
 [ "$GUARD_RC" -eq 1 ] \
   && ok "still exits 1 — the comment explains the red, it does not replace it" \
   || bad "posting the comment changed the verdict (rc=$GUARD_RC); a PR nobody reviewed must not look reviewed"
+
+echo
+echo "a second run on the same PR, with the marker comment already there"
+# The marker exists so the explanation is UPDATED rather than stacked: a push
+# burst on a workflow-editing PR must not leave five identical "NOT REVIEWED"
+# comments, and a genuine verdict later has to be able to replace this one in
+# place. Both properties live entirely in the PATCH branch.
+# Set as a plain variable, not as a `VAR=x run_guard …` prefix: bash keeps an
+# assignment that precedes a FUNCTION call in the shell afterwards, and every
+# later case would silently run with a marker comment present.
+GH_STUB_EXISTING_ID=99123
+run_guard "$TMP/step.sh" selfmod
+grep -qxF 'PATCH repos/sceneview/sceneview/issues/comments/99123' "$TMP/gh-calls" 2>/dev/null \
+  && ok "updates the existing comment in place, by its id" \
+  || bad "did not PATCH the existing marker comment (calls: $(tr '\n' ';' < "$TMP/gh-calls"))"
+grep -q '^POST ' "$TMP/gh-calls" 2>/dev/null \
+  && bad "posted a second comment even though the marker was already on the PR — a re-run stacks duplicates" \
+  || ok "does not also POST — no duplicate comment on a re-run"
+grep -q 'NOT REVIEWED' "$TMP/posted-comment.md" 2>/dev/null \
+  && ok "the updated body still carries the explanation" \
+  || bad "the PATCH sent a body that does not say NOT REVIEWED"
+
+# ---------------------------------------------------------------------------
+# MUTATION. Make the step ignore the lookup and always POST. The check is red
+# either way and the comment is still posted, so only the two assertions above
+# can notice — which is the point of asserting the METHOD and the endpoint
+# rather than "a comment was sent".
+# ---------------------------------------------------------------------------
+echo
+echo "mutation: always POST, ignoring the existing marker comment"
+sed 's|if \[ -n "\$EXISTING" \]; then|if false; then|' "$TMP/step.sh" > "$TMP/step-alwayspost.sh"
+if cmp -s "$TMP/step.sh" "$TMP/step-alwayspost.sh"; then
+  bad "the mutation changed nothing — the step no longer branches on an existing marker comment"
+else
+  run_guard "$TMP/step-alwayspost.sh" selfmod
+  if grep -q '^POST ' "$TMP/gh-calls" 2>/dev/null && ! grep -q '^PATCH ' "$TMP/gh-calls" 2>/dev/null; then
+    ok "the mutant stacks a duplicate comment — the update-in-place assertions have teeth"
+  else
+    bad "the mutant did not reproduce the duplicate-comment shape (calls: $(tr '\n' ';' < "$TMP/gh-calls")); expected a POST and no PATCH"
+  fi
+fi
+unset GH_STUB_EXISTING_ID
 
 echo
 echo "a workflow_dispatch"
