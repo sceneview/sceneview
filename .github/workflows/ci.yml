@@ -968,7 +968,13 @@ jobs:
   repo-hygiene:
     name: Repo hygiene checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10, and the reason is the CHECKOUT, not the checks. Measured on
+    # run 31607603142 (job 94150475933): `actions/checkout@v7` took 8m36s of a
+    # 10m31s job, and all ~55 gates below ran in ~1m50s after it. The job had
+    # been failing on `timeout-minutes` with every step green — a red that says
+    # nothing about the tree. Not `fetch-depth: 1`: several gates here compute
+    # a merge-base, and a shallow clone gives them a wrong one silently.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         id: checkout

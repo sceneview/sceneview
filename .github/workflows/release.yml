@@ -67,18 +67,53 @@ jobs:
       # at v4.26.0 the POM 404'd for roughly half an hour after a green
       # publish job, so this carries a propagation budget and reports an
       # explicit INCONCLUSIVE rather than manufacturing a red release out of
-      # an OSSRH sync delay. All three artifacts, because a partial publish
-      # (one module's POM on Central, another's missing) is exactly the shape
-      # an exit code cannot show.
+      # an OSSRH sync delay. Every user-installable module, because a partial
+      # publish (one module's POM on Central, another's missing) is exactly
+      # the shape an exit code cannot show — and `sceneview-compose` was left
+      # out of this list on the first draft, which is that shape in miniature.
+      #
+      # An INCONCLUSIVE here is NOT a verification. It is written to the job
+      # summary as well as the log so it cannot pass for one: a warning nobody
+      # reads is how "we check Maven now" becomes true on paper only.
       - name: Verify the artifacts are really on Maven Central
         if: steps.check-maven.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.check-maven.outputs.version }}"
           rc=0
-          for artifact in sceneview arsceneview sceneview-core; do
+          unverified=""
+          # ONE propagation budget for the whole set, not one per artifact:
+          # 15 min here, against this job's `timeout-minutes: 30` and the
+          # ~6 min the publish itself took at v4.29.0.
+          PUBLISH_VERIFY_DEADLINE=$(( $(date +%s) + 900 ))
+          export PUBLISH_VERIFY_DEADLINE
+          for artifact in sceneview arsceneview sceneview-core sceneview-compose; do
+            # Captured, then echoed — NOT piped into tee. A pipeline reports
+            # the exit status of its LAST command, so `verify | tee` would
+            # have made every failure here read as success.
+            log="${RUNNER_TEMP:-/tmp}/maven-verify-$artifact.log"
+            vrc=0
             bash .claude/scripts/verify-published-version.sh \
-              maven "io.github.sceneview:$artifact" "$VERSION" || rc=1
+              maven "io.github.sceneview:$artifact" "$VERSION" > "$log" 2>&1 || vrc=$?
+            cat "$log"
+            if [ "$vrc" -ne 0 ]; then
+              rc=1
+            elif grep -q "INCONCLUSIVE" "$log"; then
+              unverified="$unverified $artifact"
+            fi
           done
+          if [ -n "$unverified" ]; then
+            {
+              echo "### Maven Central verification INCONCLUSIVE"
+              echo
+              echo "Not confirmed on repo1.maven.org within the propagation budget:"
+              echo '`'"$unverified"'`' " at \`$VERSION\`."
+              echo
+              echo "Central has lagged ~30 min behind a green publish before (v4.26.0),"
+              echo "so this is not a failure — but it is **not a verification either**."
+              echo "Check https://repo1.maven.org/maven2/io/github/sceneview/ before"
+              echo "announcing the release."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit "$rc"
 
   # ── 2. Build and publish Dokka API docs ────────────────────────────────────
@@ -637,7 +672,11 @@ jobs:
             -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             -H "Accept: application/json; api-version=2.0" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fpub.dev")"
-          PUB_TOKEN="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value",""))' 2>/dev/null || true)"
+          # `or ""`, not `get("value","")`: a JSON null yields None, whose str
+          # is the literal "None" — non-empty, so it would pass the check
+          # below AND make `::add-mask::None` redact every "None" in the rest
+          # of the job's log.
+          PUB_TOKEN="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("value") or "")' 2>/dev/null || true)"
           if [ -z "$PUB_TOKEN" ]; then
             echo "::error::The GitHub OIDC endpoint returned no token for audience https://pub.dev. Refusing to publish without a credential (#3011)."
             exit 1
