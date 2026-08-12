@@ -326,7 +326,24 @@ jobs:
           if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
             echo "::warning title=Base ref unresolved::Could not resolve origin/$BASE to compare this workflow against; proceeding. If the action self-skips, the grader will still block with REVIEW_INCOMPLETE."
             echo "self_modified=false" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "origin/$BASE" -- .github/workflows/pr-review.yml; then
+          # ⛔ MERGE BASE, NOT BASE TIP (#3038, #2976). A two-dot
+          # `git diff origin/$BASE -- <file>` answers "does the checkout differ
+          # from the base tip?" — but every message this step writes answers
+          # "does this PR change that file?", and those are different
+          # predicates. Any branch that simply has not merged `main` since this
+          # file last changed satisfies the first and not the second, and this
+          # step is a hard `exit 1`, so the false positive is not a degraded
+          # review: it is NO review, on a PR the error tells a maintainer to go
+          # read by hand for a change the PR does not contain. Measured twice on
+          # two independent PRs that never touched this file — #2963 and #3036
+          # (run 31132517900). Diffing from the merge base asks the question the
+          # messages claim to be answering. A PR that DOES edit the file is
+          # still caught, so the freeze this guard provides for the steps below
+          # is unchanged.
+          elif ! MERGE_BASE="$(git merge-base "origin/$BASE" HEAD 2>/dev/null)" || [ -z "$MERGE_BASE" ]; then
+            echo "::warning title=Merge base unresolved::Could not compute the merge base of HEAD and origin/$BASE, so this step cannot tell a self-modification from a stale branch; proceeding. If the action self-skips, the grader will still block with REVIEW_INCOMPLETE."
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$MERGE_BASE" -- .github/workflows/pr-review.yml; then
             echo "self_modified=false" >> "$GITHUB_OUTPUT"
           else
             echo "self_modified=true" >> "$GITHUB_OUTPUT"
