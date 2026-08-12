@@ -196,6 +196,30 @@ PUBLISH_VERIFY_DEADLINE=1 STUB_MAVEN_STATUS=404 run "$SCRIPT" maven io.github.sc
 expect "…it says the budget was spent, and stays INCONCLUSIVE" 0 \
     "shared propagation budget spent"
 
+# INCONCLUSIVE exits 0, so the job stays green and the only thing standing
+# between that and "we verify Maven now" is whether a human sees it. It is
+# written to the run's STEP SUMMARY by the script itself — asserted on the
+# file, not on stdout, because stdout is the thing nobody opens.
+SUMMARY="$TMPROOT/step-summary.md"
+: > "$SUMMARY"
+GITHUB_STEP_SUMMARY="$SUMMARY" STUB_MAVEN_STATUS=404 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+OUT="$(cat "$SUMMARY")"
+expect "an INCONCLUSIVE Maven verdict reaches the job summary" 0 \
+    "Maven Central verification INCONCLUSIVE — \`io.github.sceneview:sceneview 4.29.0\`"
+
+: > "$SUMMARY"
+GITHUB_STEP_SUMMARY="$SUMMARY" STUB_MAVEN_STATUS=404 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+OUT="$(cat "$SUMMARY")"
+expect "…and says in the summary that it is not a proof of publication" 0 \
+    "This is not a proof of publication."
+
+# The other direction: a verified publish must not decorate the summary with a
+# warning. A block that appears every time is a block nobody reads.
+: > "$SUMMARY"
+GITHUB_STEP_SUMMARY="$SUMMARY" STUB_MAVEN_STATUS=200 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
+OUT="$(cat "$SUMMARY")"
+refute "a VERIFIED run writes nothing to the job summary" 0 "INCONCLUSIVE"
+
 PUBLISH_VERIFY_DEADLINE=tomorrow STUB_MAVEN_STATUS=200 run "$SCRIPT" maven io.github.sceneview:sceneview 4.29.0
 expect "a non-numeric deadline is a usage error, never a silent no-op" 2 \
     "PUBLISH_VERIFY_DEADLINE must be epoch seconds"
@@ -261,11 +285,22 @@ if M3="$(mutant deadline-first 's|while \[ "$attempt" -le "$ATTEMPTS" \]; do|whi
         "VERIFIED: Maven Central serves io.github.sceneview:sceneview 4.29.0"
 fi
 
+# M4 — the step-summary write deleted. stdout still says INCONCLUSIVE, so a
+# suite asserting only on stdout would stay green while the one surface a
+# maintainer actually reads went silent on an exit-0 non-verification.
+if M4="$(mutant no-summary '/^    summarise \\$/,/^        ""$/d')"; then
+    : > "$SUMMARY"
+    GITHUB_STEP_SUMMARY="$SUMMARY" STUB_MAVEN_STATUS=404 run "$M4" maven io.github.sceneview:sceneview 4.29.0
+    OUT="$(cat "$SUMMARY")"
+    refute "M4 deleting the summary write loses the INCONCLUSIVE banner" 0 \
+        "Maven Central verification INCONCLUSIVE"
+fi
+
 echo
 # A count floor: "every check passed" is not "every check ran". A `set -u`
 # abort inside a helper can skip a whole section while the summary still
 # prints green — that happened in the sibling suite while writing this pair.
-EXPECTED_CHECKS=24
+EXPECTED_CHECKS=28
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ verify-published-version.sh: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

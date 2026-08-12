@@ -169,6 +169,14 @@ if F="$(mutate tee-quoted 's|tee "$PUB_LOG"|tee "publish.log"|')"; then
         "tees the publish log to a RELATIVE path"
 fi
 
+# …and with a flag in front of it, the plausible refactor (append instead of
+# truncate). Raised in review of PR #3130.
+if F="$(mutate tee-append 's|tee "$PUB_LOG"|tee -a publish.log|')"; then
+    run "$F"
+    expect "\`tee -a\` onto a relative path is caught too" 1 \
+        "tees the publish log to a RELATIVE path"
+fi
+
 echo
 echo "── 2. #3021 — registry verification, all five publishers ─────────────"
 
@@ -296,6 +304,17 @@ if F="$(mutate decorative-env-binding \
         "does not pass a"
 fi
 
+# The multi-line shape, which the step-wide search could not see: `publish-
+# library` calls the verifier inside a `for` loop, so swapping the version
+# argument for a literal left the step's other `VERSION` references in place
+# and the contract satisfied. Reported in review of PR #3130.
+if F="$(mutate literal-version-maven \
+    's|maven "io.github.sceneview:$artifact" "$VERSION"|maven "io.github.sceneview:$artifact" "4.29.0"|')"; then
+    run "$F"
+    expect "a hardcoded version in the MAVEN loop is caught too" 1 \
+        "publish-library (Maven Central) does not pass a"
+fi
+
 # Order matters: verifying BEFORE publishing inspects the PREVIOUS release's
 # state and says nothing about this one.
 if F="$(edit_steps publish-rn hoist)"; then
@@ -331,7 +350,7 @@ echo
 # "every check ran". A `set -u` abort inside a helper skipped all six of
 # section 2 while this summary still printed a green 12/12 — the exact false
 # green the gate under test exists to prevent, reproduced in its own suite.
-EXPECTED_CHECKS=26
+EXPECTED_CHECKS=28
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ check-release-publish-verification.py: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

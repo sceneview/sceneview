@@ -9,6 +9,8 @@ import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import io.github.sceneview.bumpLightGeneration
+import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
@@ -431,10 +433,14 @@ class ModelLoader(
 
     fun destroyModel(model: Model) {
         assetLoader.safeDestroyModel(model)
-        // destroyAsset destroys every entity's transform component directly, bypassing
-        // Node.destroy() entirely — the sibling Nodes' cached transformInstance/parentInstance
-        // handles need to know a reindex may have happened here too (#2978 review gap 2).
+        // destroyAsset destroys every entity's components directly, bypassing Node.destroy()
+        // entirely — the sibling Nodes' cached handles need to know a reindex may have happened
+        // here too (#2978 review gap 2). A glTF asset carries renderable components on every
+        // mesh entity and light components whenever KHR_lights_punctual is present, so all three
+        // packed arrays can compact here, not just TransformManager (#3123).
         engine.bumpTransformGeneration()
+        engine.bumpRenderableGeneration()
+        engine.bumpLightGeneration()
         models -= model
     }
 

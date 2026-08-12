@@ -5,7 +5,9 @@ Usage: check-release-publish-verification.py [path/to/release.yml]
 
 ── What this gate is for ──────────────────────────────────────────────────
 #3011: the pub.dev job carried `permissions: id-token: write` and a comment
-saying OIDC was in use, and yet three consecutive releases published nothing.
+saying OIDC was in use, and yet five consecutive releases (v4.25.0 → v4.29.0)
+published nothing — the first two hung on the OAuth prompt until the run was
+cancelled, the last three ended in `failure`.
 The reason is that **nothing in the job ever exchanged the Actions id-token**.
 `dart pub` does not do that exchange itself — `dart-lang/setup-dart` does, in
 `createPubOIDCToken()`, and its own reusable publish workflow includes the
@@ -170,20 +172,45 @@ BANNER_HARD_FAIL = re.compile(
 )
 
 
+def verify_invocations(text):
+    """The verifier's own command lines out of a step, continuations included.
+
+    Scoped, not step-wide: `publish-library` calls the verifier inside a loop
+    whose step also carries a `VERSION=` line elsewhere, so a step-wide search
+    stayed satisfied when the verifier's own argument was swapped for a
+    literal. The single-line npm/pub jobs were covered; maven was not.
+    Reported in review of PR #3130.
+    """
+    lines = text.splitlines()
+    calls = []
+    for i, line in enumerate(lines):
+        if not VERIFY_CALL.search(line + "\n"):
+            continue
+        chunk = [line]
+        j = i
+        while lines[j].rstrip().endswith("\\") and j + 1 < len(lines):
+            j += 1
+            chunk.append(lines[j])
+        calls.append("\n".join(chunk))
+    return calls
+
+
 def carries_run_version(text, env):
-    """True if this step hands the verifier the version THIS run published.
+    """True if the verifier CALL is handed the version THIS run published.
 
     Two accepted shapes, and the second is the one the workflow uses since
     review of PR #3130 asked for it: the expression lives in `env:` (data)
-    and the script reads `"$VERSION"` (never code). An env var that holds the
-    version but is never dereferenced is not accepted — that is a step
-    verifying a literal with a decorative binding above it.
+    and the command reads `"$VERSION"` (never code). An env var that holds the
+    version but is never dereferenced BY THE CALL is not accepted — that is a
+    step verifying a literal with a decorative binding above it.
     """
-    if VERIFY_VERSION.search(text):
-        return True
     return any(
-        VERIFY_VERSION.search(value) and uses_var(text, name)
-        for name, value in env.items()
+        VERIFY_VERSION.search(call)
+        or any(
+            VERIFY_VERSION.search(value) and uses_var(call, name)
+            for name, value in env.items()
+        )
+        for call in verify_invocations(text)
     )
 
 
@@ -310,7 +337,7 @@ def main():
             fail(
                 f"{job_name} does not treat the interactive-OAuth banner "
                 '("Waiting for your authorization") as a hard failure — the exit '
-                "code alone did not catch it on three releases (#3011)."
+                "code alone did not catch it on five releases (#3011)."
             )
         elif not BANNER_HARD_FAIL.search(pub_text):
             fail(
@@ -362,8 +389,10 @@ def main():
         # package pub is about to archive. At v4.29.0 the run log shows
         # `├── publish.log (<1 KB)` in the file list pub was uploading.
         # The optional quote is load-bearing: `tee "publish.log"` — the v4.29.0
-        # defect, quoted — slipped through a class that had no `"` in it.
-        if re.search(r"""\btee\s+["']?(?!/)(?!\$)[\w.][\w./-]*""", pub_text):
+        # defect, quoted — slipped through a class that had no `"` in it. So
+        # are the optional flags: `tee -a publish.log` walks the same relative
+        # path past a pattern that expects the target first (review of #3130).
+        if re.search(r"""\btee\s+(?:-\S+\s+)*["']?(?!/)(?!\$)[\w.][\w./-]*""", pub_text):
             fail(
                 f"{job_name} tees the publish log to a RELATIVE path — that lands "
                 "inside working-directory and ships in the published archive "

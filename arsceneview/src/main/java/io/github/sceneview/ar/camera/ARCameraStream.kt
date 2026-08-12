@@ -26,6 +26,7 @@ import io.github.sceneview.material.setExternalTexture
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
 import io.github.sceneview.math.Transform
+import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
@@ -99,10 +100,17 @@ open class ARCameraStream(
      * un-synchronised field is race-free.
      */
     private var _renderableInstance: RenderableInstance = 0
+    private var _renderableInstanceGeneration = -1
     override val renderableInstance: RenderableInstance
         get() {
-            if (_renderableInstance == 0) {
+            // RenderableManager compacts its packed array on removal, so destroying any other
+            // renderable (an AR anchor node's model going away, a glTF asset teardown) can
+            // reindex this handle. The generation compare catches it in O(1) — same fix as
+            // RenderableNode (#3123).
+            val currentGeneration = engine.renderableGeneration()
+            if (_renderableInstance == 0 || _renderableInstanceGeneration != currentGeneration) {
                 _renderableInstance = renderableManager.getInstance(entity)
+                _renderableInstanceGeneration = currentGeneration
             }
             return _renderableInstance
         }

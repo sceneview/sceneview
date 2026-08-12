@@ -133,6 +133,16 @@ review workflow unmergeable by design. Promote it to blocking only after
 enough runs to *measure* the false-positive rate, the same bar the advisory
 device-QA legs have to clear.
 
+**A self-modifying PR gets a red that explains itself (#3028).** Editing
+`pr-review.yml` used to leave exactly one trace on the PR — `Agent review
+(FAILURE)` — a red meaning "not evaluated", which is the failure mode this repo
+argues against everywhere else. The red stays (a green or skipped job would fake
+coverage on a PR nobody read); the *explanation* now goes onto the PR as a
+comment carrying the `<!-- sceneview-agent-review -->` marker, so a genuine
+verdict later replaces it in place. `test-selfmod-guard.sh` asserts the posted
+bytes, with a mutation that disarms the comment block — the exit code cannot
+prove this one, since the step is red either way.
+
 ## Agent cost instrumentation
 
 Step-3 autonomy's stated bottleneck is *"ensuring tokens are used efficiently
