@@ -1054,7 +1054,18 @@ fun ARSceneView(
                         effectiveCameraConfig = session.cameraConfig
                     ).forEach(onDowngraded)
                 }
-                cameraStream?.let { scene.addEntity(it.entity) }
+                // Record the scene here too, not only in the camera-stream SideEffect (#2877).
+                // This is the add-site the normal cold launch takes: session creation is
+                // deferred until the camera permission is granted, so the SideEffect runs
+                // while `arCore.session` is still null, skips its own add branch, and yet
+                // advances `prevCameraStreamRef` — every later SideEffect then takes the
+                // `prev == cameraStream` early-out. Leaving `attachedScene` null on that path
+                // would make `destroy()`'s removeEntity a no-op and recycle an entity id the
+                // scene still holds, which is the very hazard this tracking exists to close.
+                cameraStream?.let {
+                    scene.addEntity(it.entity)
+                    it.attachedScene = scene
+                }
                 onSessionCreatedRef.get()?.invoke(session)
             },
             onSessionResumed = { session ->

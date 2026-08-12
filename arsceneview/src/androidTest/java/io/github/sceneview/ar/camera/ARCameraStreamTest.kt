@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Engine
 import com.google.android.filament.Filament
+import com.google.android.filament.Scene
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.Utils
 import io.github.sceneview.createEglContext
@@ -12,14 +13,20 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.safeDestroy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Device regression for [#1617](https://github.com/sceneview/sceneview/issues/1617) —
- * *"depth occlusion does not occlude anything at all"*.
+ * Device regressions for [ARCameraStream]: the depth-texture sizing bug
+ * [#1617](https://github.com/sceneview/sceneview/issues/1617) and the entity-recycling
+ * teardown [#2877](https://github.com/sceneview/sceneview/issues/2877). Both are Filament
+ * **native** properties, so they need a real engine — see below.
+ *
+ * ## #1617 — *"depth occlusion does not occlude anything at all"*
  *
  * ## The bug
  *
@@ -47,7 +54,7 @@ import org.junit.runner.RunWith
  * To run: `./gradlew :arsceneview:connectedDebugAndroidTest`.
  */
 @RunWith(AndroidJUnit4::class)
-class ARCameraStreamDepthTextureTest {
+class ARCameraStreamTest {
 
     private lateinit var engine: Engine
     private lateinit var materialLoader: MaterialLoader
@@ -122,6 +129,38 @@ class ARCameraStreamDepthTextureTest {
                 first,
                 cameraStream.depthTexture
             )
+        }
+    }
+
+    /**
+     * #2877 — `destroy()` must un-register the entity from the scene it was added to *before*
+     * recycling its id. Recycling an id the scene still holds lets Filament reissue it while
+     * the scene renders whatever renderable is built on it next.
+     *
+     * This pins the [ARCameraStream] half of the contract; `ARSceneView` owns the other half
+     * (setting `attachedScene` at **every** add-site — the deferred-session cold-launch path
+     * is a separate one from the camera-stream `SideEffect`, and missing it made this teardown
+     * a silent no-op).
+     */
+    @Test
+    fun destroy_removesTheEntityFromTheSceneItWasAddedTo() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val stream = ARCameraStream(materialLoader)
+            val scene: Scene = engine.createScene()
+            scene.addEntity(stream.entity)
+            stream.attachedScene = scene
+            assertTrue(
+                "Precondition: the entity must be in the scene before teardown",
+                scene.hasEntity(stream.entity)
+            )
+
+            stream.destroy()
+
+            assertFalse(
+                "destroy() must remove the entity from its scene before recycling the id",
+                scene.hasEntity(stream.entity)
+            )
+            engine.destroyScene(scene)
         }
     }
 
