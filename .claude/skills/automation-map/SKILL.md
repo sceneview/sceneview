@@ -75,6 +75,22 @@ Hooks trigger automatically on specific Claude Code actions:
 | `test-context-budget.sh` | Gates the COMMITTED half of the above in `ci.yml` → `repo-hygiene`: a `CLAUDE.md` ceiling (an oversized one breaks no build and fails no test — it just costs more, forever), skill frontmatter, and the index↔disk agreement **in both directions**. That bidirectionality is the point: an unindexed skill is a file no session will think to open, strictly worse than the inline text it replaced. Mutation-tested — including on the trap that a file-wide `grep` for the skill name passes after its index row is deleted, because the name also appears in the hard-rules pointers |
 | `cleanup-branches-worktrees.sh` | One-shot GC for stale `claude/*` branches **and** worktrees: deletes merged local + remote branches (single `git push --delete`, no bot-burst) and delegates worktree pruning to `worktree-auto-prune.sh`. Defaults to dry-run; `--yes` to act, `--keep <branch\|path>`, `--no-worktrees`. Current-branch / unmerged / open-PR guarded. Runs daily in `maintenance.yml` |
 
+### CI Gate scripts (.github/scripts/)
+
+A separate directory on purpose: `ci-gate.yml` is the ONE check branch
+protection requires, and everything it calls has to exist in a plain
+`actions/checkout` with no `.claude/` tooling around it. The gate's poll loop
+stays inline in the workflow — the file it judges must not be one a PR can
+rewrite — so each script here is a piece of that loop lifted out to be testable,
+and every one of them is exercised by a suite in `ci.yml` → `repo-hygiene`.
+
+| Script | Purpose |
+|---|---|
+| `ci-gate-qualify-runs.sh` | Attributes each check run to the WORKFLOW FILE that produced it, then collapses to one run per `[workflow, name]`. #2492 collapsed per NAME across the whole SHA, so a same-named run from another workflow with a higher `id` and `conclusion: success` displaced a real `failure` and the gate passed green over it (#3033). The map comes from `/actions/runs?head_sha=`, which publishes `check_suite_id → path`; a run whose suite is not in it (a non-Actions app) degrades to `app:<id>`, which is the pre-#3033 behaviour for that run and no worse. ⚠️ Do NOT "simplify" this to a collapse on `check_suite_id`: `cancel-in-progress` creates a NEW suite for the same workflow, which is exactly the duplicate #2492 exists to remove. Also carries the hostile-name normalisation (#3023) and drops the gate's own check and `Device QA — *`. Self-tested by `test-ci-gate-observations.sh` |
+| `ci-gate-merge-observations.sh` | The sticky observation ledger (#3018). A check name seen once for this SHA is never un-seen: while GitHub builds a re-run attempt an entire suite can vanish from one Checks API read and return in the next, and on #3015 that window landed on the final poll — the gate aggregated ONE check run and passed. A name missing from a later read is kept as `status: vanished`, which the pending selector treats as not-completed, so the gate WAITS rather than concluding. Keyed on `[workflow, name]`, same pair as the qualifier. ⚠️ The live API is authoritative for a name it still reports, with one exception that is the whole point: a recorded `completed` is not overwritten by a later `queued` for the same name. Self-tested by `test-ci-gate-observations.sh` |
+| `ci-gate-aggregate.sh` | Turns the merged observation set into the gate's verdict — required vs advisory (#1984/#2013), `Device QA` exclusion (#1588), `action_required` as pending rather than failure (#1543). Self-tested by `test-ci-gate-aggregation.sh` |
+| `test-ci-gate-loop.sh` | The only suite that tests the gate's own POLL LOOP rather than the helpers it calls. It extracts the `run:` block from `ci-gate.yml` **by step name** with PyYAML and executes those bytes with `gh`, `sleep` and `date` stubbed against scripted Checks API reads. It exists because the #3018 suites stayed 21/21 green with the fix's own wiring deleted from the workflow — a self-declared gate passing with its own subject removed (#3047). ⚠️ A missing step name is a hard failure, never a skip, or a rename empties the suite silently. Every scenario is proven by mutation, and the assertions name the SITE they cover: an early `grep -qE '^ +- -n'` passed on a mutant because the other of the two blocks it could match was untouched |
+
 ### Version location map
 
 **Not duplicated here — load the `versioning` skill.** Source of truth is

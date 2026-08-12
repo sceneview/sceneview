@@ -387,13 +387,17 @@ jobs:
           core_workflow_seen=false
 
           # Normalise REQUIRED_CHECKS into a clean, non-empty list.
-          required_checks=$(echo "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
+          # `printf`, not `echo` — see the ⛔ note further down. These two lists
+          # are repo-controlled today, so this is the invariant being applied
+          # without exception rather than a bug being fixed; an invariant with
+          # one unexplained exception reads as optional to the next editor.
+          required_checks=$(printf '%s\n' "${REQUIRED_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
           # Normalise ADVISORY_CHECKS into a clean, non-empty list of
           # substrings (#1984). A check run whose name CONTAINS any of these
           # is advisory and is excluded from the pass/fail decision below,
           # regardless of conclusion.
-          advisory_checks=$(echo "${ADVISORY_CHECKS:-}" | sed '/^[[:space:]]*$/d')
+          advisory_checks=$(printf '%s\n' "${ADVISORY_CHECKS:-}" | sed '/^[[:space:]]*$/d')
 
           while :; do
             # WHICH WORKFLOW FILE OWNS EACH CHECK SUITE (#3033, #3024)
@@ -498,7 +502,7 @@ jobs:
             seen_any_other=true
 
             # All check-run names observed for this SHA (completed or not).
-            observed_names=$(echo "$others" | jq -r '.name' | sort -u)
+            observed_names=$(printf '%s\n' "$others" | jq -r '.name' | sort -u)
 
             # CORE-CHECK GUARD (#1543): if ANY core check has appeared then
             # ci.yml is running for this PR (it is not a docs-only PR), so
@@ -511,7 +515,7 @@ jobs:
             if [ -n "$required_checks" ]; then
               while IFS= read -r rc; do
                 [ -z "$rc" ] && continue
-                if echo "$observed_names" | grep -qxF "$rc"; then
+                if printf '%s\n' "$observed_names" | grep -qxF "$rc"; then
                   any_core_seen=true
                 else
                   missing_core="${missing_core}${rc}"$'\n'
