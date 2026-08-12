@@ -115,10 +115,20 @@ expect "the fixed shape still counts a real match" \
 # substitution closes before the `;`, so that span holds no `||` and the line is
 # correctly flagged.
 #
-# Known limit, stated rather than hidden: the rule is line-scoped, so a command
-# substitution split across several physical lines is not covered. Every one in
-# this file is single-line today, and a line-scoped rule that is honest about its
-# reach beats a multi-line parser nobody can falsify.
+# Known limits, stated rather than hidden — two, both false NEGATIVES (the rule
+# stays silent where it should speak; it never invents an offender):
+#
+#   1. The rule is line-scoped, so a command substitution split across several
+#      physical lines is not covered. Every one in quality-gate.sh is single-line
+#      today.
+#   2. `index(span, "||")` cannot tell a shell `||` from a literal `||` inside the
+#      grep PATTERN — `$(… | grep -E 'a||b')` would read as guarded when it is not
+#      (#3135 review). No line in quality-gate.sh contains one today, so the
+#      current verdict is unaffected; a future one would be silently excused.
+#
+# Both are accepted deliberately: a line-scoped rule honest about its reach beats
+# a shell parser nobody can falsify. If the second ever bites, the fix is to strip
+# quoted spans before the `index` test, not to widen the neutraliser.
 
 scan_for_unguarded_grep() { # $1 = file; prints "<lineno>: <line>" per offender
     awk '
