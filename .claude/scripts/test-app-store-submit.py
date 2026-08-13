@@ -189,7 +189,7 @@ def builds_page(versions, with_platform=True):
 
 
 def run_step(scenario, env):
-    """Execute the extracted heredoc under stubs. Returns (stdout, exit, api)."""
+    """Execute the submit program under stubs. Returns (stdout, exit, api)."""
     api = FakeASC(scenario)
     fake_jwt = types.ModuleType("jwt")
     fake_jwt.encode = lambda *a, **k: "TOKEN"
