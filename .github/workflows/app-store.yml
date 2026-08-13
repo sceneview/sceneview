@@ -303,7 +303,7 @@ jobs:
           sleep 120
 
           # The submit program lives in .github/scripts/app_store_submit.py — it was a
-          # 932-line heredoc here until #PRNUM, which made this one step 65% of the
+          # 932-line heredoc here until #3146, which made this one step 65% of the
           # workflow file and forced its self-test to regex-carve the code back out of
           # the YAML. Nothing about the program changed in the move.
           #

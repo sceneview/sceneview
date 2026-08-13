@@ -7,7 +7,7 @@ review`, under that job's pinned venv:
 
 This is the single code path between a green tag build and an App Store
 submission. It lived as a 932-line heredoc inside the workflow YAML until
-#PRNUM; nothing about its behaviour changed in the move, only its address.
+#3146; nothing about its behaviour changed in the move, only its address.
 Two things it buys: `.claude/scripts/test-app-store-submit.py` now loads this
 file instead of regex-carving it back out of the YAML, and the program is
 editable — and greppable — as Python rather than as indented YAML scalar.

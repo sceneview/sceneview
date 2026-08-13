@@ -17,7 +17,7 @@ stubbed App Store Connect, with `requests` and `jwt` replaced in `sys.modules`
 and `time.sleep` neutered. Stdlib only: no network, no secrets, no Apple call,
 runs in under a second.
 
-Until #PRNUM the program was a heredoc inside the workflow and this test had to
+Until #3146 the program was a heredoc inside the workflow and this test had to
 regex-carve it back out of the YAML. It now lives in
 `.github/scripts/app_store_submit.py` and is read directly — which opens a
 drift hole the heredoc could not have: the workflow could stop invoking the
