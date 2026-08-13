@@ -22,7 +22,6 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 | | `flutter/.../ios/flutter_sceneview.podspec` | `s.version = 'X.Y.Z'` |
 | **Docs** | `llms.txt` | `io.github.sceneview:sceneview:X.Y.Z` |
 | | `README.md` | install snippets |
-| | `CLAUDE.md` | code examples section |
 | | `docs/docs/index.md` | install snippets |
 | | `docs/docs/quickstart.md` | dependency snippets |
 | | `docs/docs/llms-full.txt` | artifact versions |

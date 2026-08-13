@@ -4,8 +4,9 @@
 Compose code on the first try. Every API, doc and sample is judged by: *can an AI read
 this and emit working code?* If not, simplify the API or fix the doc until it can.
 
-Where we are right now → [`.claude/STATE.md`](.claude/STATE.md). This file holds stable
-facts only — **never session state**.
+Where we are right now → `.claude/STATE.md`, in the **main checkout only** (it is
+gitignored, so a worktree does not have it — that is absence, not "no state"). This file
+holds stable facts only — **never session state**.
 
 ## What "done" means
 

@@ -7,15 +7,27 @@ description: The full automation ecosystem — the settings.json hooks, the .cla
 
 ### Hooks (settings.json)
 
-Hooks trigger automatically on specific Claude Code actions:
+`settings.json` declares exactly **two** entries, and both dispatch to
+`.claude/scripts/hook-dispatch.sh`. Read that script for the truth; the table
+below is its summary, not a second source.
 
-| Trigger | When | Action |
+| settings.json entry | Dispatches to | Blocking? |
 |---|---|---|
-| Pre-commit version check | `git commit` | Blocks if VERSION_NAME mismatches across modules |
-| Post-edit gradle.properties | Any gradle.properties edit | Reminds to update ALL version locations |
-| Post-edit Android API | Edit in `sceneview/src/` | Reminds to check SceneViewSwift + llms.txt |
-| Post-edit Swift API | Edit in `SceneViewSwift/Sources/` | Reminds to check Android + llms.txt |
-| Post-push reminder | `git push` | Reminds to update CLAUDE.md and website |
+| `PreToolUse` / `Bash` | `hook-dispatch.sh pre-bash` — guards 1 and 2 below | Yes, `exit 2` |
+| `PostToolUse` / `EnterWorktree` | `hook-dispatch.sh post-worktree` | No, reminder only |
+
+Only **two** conditions ever block, both deterministic, local and sub-second:
+
+| Guard | Fires on | Blocks when |
+|---|---|---|
+| 1 — version mismatch | `git commit` | a module `gradle.properties` `VERSION_NAME` differs from the root one |
+| 2 — emulator lease (#2862, #2924) | a mutating `adb`/`android` command | the target serial carries a LIVE lease owned by another session. Inherit with `EMU_LEASE_SESSION=…`, or get your own device with `setup-ar-emulator.sh`. `EMU_LEASE_TAKEOVER=1` is refused |
+
+`PostToolUse:EnterWorktree` only reminds you to `claim.sh` the issue and prints
+the sibling worktrees. **No post-edit or post-push hook exists** — the five that
+did were removed on 2026-08-11 because each fired *after* the action, so it had
+no lever, and each re-injected 30–60 words into every later turn. The rule that
+replaced them: a hook either BLOCKS or it does not exist.
 
 ### Scripts (.claude/scripts/)
 
@@ -130,7 +142,7 @@ reading any table.
 3. Unit tests pass (`./gradlew :sceneview-core:allTests`)
 4. MCP tests pass (`cd mcp && npm test`)
 5. llms.txt matches current public API
-6. CLAUDE.md session state is current
+6. `STATE.md` reflects the work just done (CLAUDE.md holds stable facts only — putting session state there contradicts its own first rule)
 7. No model-viewer or Three.js in website code
 8. No external CDN dependencies in website
 9. Public-API ABI matches the committed `.api` dumps (`./gradlew apiCheck` — intentional changes re-run `apiDump` and commit the diff)

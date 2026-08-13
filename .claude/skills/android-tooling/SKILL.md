@@ -201,7 +201,8 @@ has RAM to spare. `setup-ar-emulator.sh` (via `lib/emulator-select.sh`):
   QA script this session starts next). Hand it back with
   `setup-ar-emulator.sh --release` — the emulator keeps running. A sticky lease
   expires after `EMU_LEASE_STICKY_TTL` (4 h) so a dead session cannot wedge the
-  pool, and `EMU_LEASE_TAKEOVER=1` forces past a peer's reservation;
+  pool. `EMU_LEASE_TAKEOVER=1` exists in the lib for an operator at a terminal;
+  **a session must never set it** — the hook refuses it (see below);
 - **refuses a device that is not the pool AVD (#2862)** — the pool filters by
   console PORT, so a stray emulator on 5554 used to be leased and driven as if
   it were the ARCore-ready `Pixel_7a`. `EMU_REQUIRE_AVD` (set by every QA
@@ -224,9 +225,14 @@ symptom (`app died, no saved state`) reads as a native crash in the demo.
 
 Since #2924 a **blocking `PreToolUse` hook** (`hook-dispatch.sh`, guard 2) closes
 that path for mutating `adb`/`android` commands a session issues: it reads the
-lease and exits 2 when the target carries a live one owned by someone else,
-telling you how to inherit (`EMU_LEASE_SESSION=…`) or take over
-(`EMU_LEASE_TAKEOVER=1`). Two limits are structural, so keep them in mind rather
+lease and exits 2 when the target carries a live one owned by someone else. It
+leaves you exactly two routes, and takeover is not one of them: inherit the
+lease if it is yours (`EMU_LEASE_SESSION=…`), or provision your own device
+(`setup-ar-emulator.sh`). Since 2026-08-13 the guard **refuses**
+`EMU_LEASE_TAKEOVER=1` rather than honouring it — it does not mirror
+`lib/emulator-select.sh` on this point, deliberately, because the lib serves an
+operator who can see the peer's run and a session cannot. Two limits are
+structural, so keep them in mind rather
 than assuming full protection: the hook only sees commands that go through a
 Claude Code session (a plain terminal, a wrapper script, or a shell alias is
 invisible to it), and it matches a fixed list of mutating verbs. Before driving
