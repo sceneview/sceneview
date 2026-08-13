@@ -232,8 +232,14 @@ def run_step(scenario, env):
     out, code = io.StringIO(), 0
     try:
         with contextlib.redirect_stdout(out):
+            # `__file__` must be present, and must be the real path: the
+            # program is now run as a FILE, so a harness without it would
+            # diverge from the runtime on every `__file__`-dependent branch —
+            # and there is one (the GITHUB_WORKSPACE fallback in the version
+            # resolution). Omitting it is what let that branch stay untested
+            # while it was a guaranteed NameError in the old heredoc form.
             exec(compile(CODE, str(SCRIPT), "exec"),
-                 {"__name__": "__main__"})
+                 {"__name__": "__main__", "__file__": str(SCRIPT)})
     except SystemExit as e:
         code = e.code or 0
     except BaseException as e:  # noqa: BLE001 — a crash is a test result here
@@ -606,6 +612,28 @@ def main():
     check("an absent release_notes.txt is still reported as absent",
           "No release_notes.txt" in out and "exists but is empty" not in out,
           out[out.find("::warning"):][:300] if "::warning" in out else out[-300:])
+
+    # ── versionString fallback on a dispatch (#3146) ──────────────────────
+    # A tag push sets ASC_VERSION_STRING from the tag; a workflow_dispatch
+    # leaves it empty and the program is documented to fall back to
+    # gradle.properties' VERSION_NAME. That fallback was dead code for as long
+    # as this ran from a heredoc: its first line is
+    #
+    #     os.environ.get("GITHUB_WORKSPACE", os.path.join(os.path.dirname(__file__), ...))
+    #
+    # and Python evaluates a `.get()` default EAGERLY — so `__file__`, absent
+    # from a program fed on stdin, raised NameError on every dispatch even
+    # though GITHUB_WORKSPACE was set. Nothing exercised it: every scenario
+    # above passes ASC_VERSION_STRING. Extracting the program to a file (#3146)
+    # gave it a `__file__` and made the branch live, so it gets a test.
+    print("\nversionString fallback (dispatch path)")
+    out, code, api = run_step({"builds": lambda n: builds_page([1300])},
+                              {"ASC_EXPECTED_BUILD": "1300",
+                               "ASC_VERSION_STRING": ""})
+    check("an empty ASC_VERSION_STRING resolves VERSION_NAME from gradle.properties",
+          "Target App Store versionString: 4.26.0" in out, out[-400:])
+    check("the dispatch path does not crash resolving the workspace",
+          not str(code).startswith("EXC NameError"), f"code={code}")
 
     print()
     if FAILURES:

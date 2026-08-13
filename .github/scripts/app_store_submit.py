@@ -7,14 +7,22 @@ review`, under that job's pinned venv:
 
 This is the single code path between a green tag build and an App Store
 submission. It lived as a 932-line heredoc inside the workflow YAML until
-#3146; nothing about its behaviour changed in the move, only its address.
+#3146; the extracted code is byte-identical to what the heredoc carried.
 Two things it buys: `.claude/scripts/test-app-store-submit.py` now loads this
 file instead of regex-carving it back out of the YAML, and the program is
 editable — and greppable — as Python rather than as indented YAML scalar.
 
-Everything comes from the environment, which is what made the extraction
-behaviour-preserving in the first place: there is no `${{ }}` interpolation
-anywhere below, so the program never depended on being expanded by Actions.
+Everything comes from the environment, which is what made the extraction a
+move rather than a rewrite: there is no `${{ }}` interpolation anywhere below,
+so the program never depended on being expanded by Actions.
+
+Identical code is not identical behaviour on one branch, and it is worth
+knowing which: the `GITHUB_WORKSPACE` fallback in the versionString resolution
+reads `__file__`, which is undefined in a program fed to `python3` on stdin.
+Python evaluates a `.get()` default eagerly, so as a heredoc that line raised
+NameError on every `workflow_dispatch` — GITHUB_WORKSPACE being set made no
+difference — and the documented gradle.properties fallback was dead code. As a
+file it works. That branch now has a test; see the suite's dispatch-path case.
 
     ASC_KEY_ID, ASC_ISSUER_ID   App Store Connect API credentials
     ASC_VERSION_STRING          versionString for the App Store record
