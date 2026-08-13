@@ -1280,14 +1280,19 @@ jobs:
         run: bash .claude/scripts/test-release-checklist-version-checks.sh
 
       # app-store.yml submit-step self-test (#2893). That step is a large Python
-      # program inside a YAML heredoc, sitting between a green tag build and an
-      # App Store submission, and it had NO test seam: the only way to exercise
-      # it was to dispatch the workflow, which archives, signs and uploads a
-      # real TestFlight build — so every fix to it was validated in production,
-      # on a release, after it broke one (#2731, #2885, #2893). This extracts
-      # the real heredoc (never a copy, so it cannot drift) and runs it against
-      # a stubbed App Store Connect. Stdlib only — no network, no secrets, no
-      # Apple call.
+      # program sitting between a green tag build and an App Store submission,
+      # and it had NO test seam: the only way to exercise it was to dispatch the
+      # workflow, which archives, signs and uploads a real TestFlight build — so
+      # every fix to it was validated in production, on a release, after it
+      # broke one (#2731, #2885, #2893). This runs the real program (never a
+      # copy, so it cannot drift) against a stubbed App Store Connect. Stdlib
+      # only — no network, no secrets, no Apple call.
+      #
+      # The program lives in .github/scripts/app_store_submit.py since #3146;
+      # it was a heredoc inside app-store.yml before, which the test had to
+      # regex-carve back out. Reading a file instead removed that coupling, so
+      # the suite now asserts up front that the workflow still INVOKES the file
+      # — otherwise a dropped step would leave it green over nothing.
       - name: Self-test app-store.yml submit step
         if: always() && steps.checkout.outcome == 'success'
         shell: bash

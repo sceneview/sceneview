@@ -2,22 +2,28 @@
 """Hermetic self-test for app-store.yml's `Submit build for App Store review`
 step (#2893).
 
-That step is a large Python program living inside a YAML heredoc (this test
-prints its exact size at run time — do not hard-code a line count anywhere, it
-drifts with every edit), and it is the single code path between a green tag
-build and an App Store submission. It has
-no test seam of any kind: the only way to exercise it has been to dispatch
-`app-store.yml`, which archives, signs, and uploads a real build to TestFlight
-— so every fix to it has historically been validated in production, on a real
-release, after it broke one. Four consecutive releases (4.19.0 → 4.22.0)
-"shipped" without ever reaching App Review before #2731 caught it; 4.24.0 and
-4.25.0 then failed on the build-platform 409 (#2885) and the empty required
-`whatsNew` (#2893 W4).
+That step is a large Python program (this test prints its exact size at run
+time — do not hard-code a line count anywhere, it drifts with every edit), and
+it is the single code path between a green tag build and an App Store
+submission. Dispatching `app-store.yml` archives, signs, and uploads a real
+build to TestFlight — so before this suite existed, every fix to the program
+was validated in production, on a real release, after it broke one. Four
+consecutive releases (4.19.0 → 4.22.0) "shipped" without ever reaching App
+Review before #2731 caught it; 4.24.0 and 4.25.0 then failed on the
+build-platform 409 (#2885) and the empty required `whatsNew` (#2893 W4).
 
-This test extracts the real heredoc from the workflow — never a copy, so it
-cannot drift — and runs it against a stubbed App Store Connect, with `requests`
-and `jwt` replaced in `sys.modules` and `time.sleep` neutered. Stdlib only: no
-network, no secrets, no Apple call, runs in under a second.
+This test runs the real program — never a copy, so it cannot drift — against a
+stubbed App Store Connect, with `requests` and `jwt` replaced in `sys.modules`
+and `time.sleep` neutered. Stdlib only: no network, no secrets, no Apple call,
+runs in under a second.
+
+Until #3146 the program was a heredoc inside the workflow and this test had to
+regex-carve it back out of the YAML. It now lives in
+`.github/scripts/app_store_submit.py` and is read directly — which opens a
+drift hole the heredoc could not have: the workflow could stop invoking the
+file, and a suite reading only the file would stay green while every release
+submitted nothing. `check_workflow_invokes_script()` closes it, and runs
+FIRST — the same discipline as the extractor's loud failure it replaces.
 
 It pins the behaviours that silently produced bad releases:
 
@@ -32,16 +38,15 @@ It pins the behaviours that silently produced bad releases:
       failure path, and never on success.
 
 Run:  python3 .claude/scripts/test-app-store-submit.py [repo-root]
-Wired into ci.yml → repo-hygiene. The optional argument points the extractor
-at another checkout, which is what makes the suite mutation-testable: copy the
-workflow, break one guard, and this must go red.
+Wired into ci.yml → repo-hygiene. The optional argument points the loader at
+another checkout, which is what makes the suite mutation-testable: copy the
+tree, break one guard, and this must go red.
 """
 import contextlib
 import io
 import json
 import os
 import pathlib
-import re
 import shutil
 import sys
 import tempfile
@@ -50,34 +55,40 @@ import types
 REPO = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
                     pathlib.Path(__file__).resolve().parents[2]).resolve()
 WORKFLOW = REPO / ".github/workflows/app-store.yml"
-HEREDOC_START = re.compile(r"^(\s*)\$RUNNER_TEMP/asc-venv/bin/python3 << 'PYEOF'\s*$")
+SCRIPT = REPO / ".github/scripts/app_store_submit.py"
+# What the workflow must contain for this suite to be testing the live path.
+# Deliberately matched on the script's repo-relative path rather than the whole
+# command line, so reformatting the invocation stays legal while MOVING or
+# DROPPING it does not.
+INVOCATION = "/.github/scripts/app_store_submit.py"
 
 
-def extract_heredoc():
-    """Pull the submit step's Python out of the workflow YAML, de-indented.
+def check_workflow_invokes_script():
+    """Assert app-store.yml still runs the file this suite tests.
 
-    Fails loudly rather than silently testing nothing if the step is renamed or
-    restructured — a self-test that quietly stops covering its target is worse
-    than no self-test (same rationale as the hook-guard test).
+    The heredoc this replaced could not drift from its caller: carving it out
+    of the YAML proved, by construction, that the workflow contained it. A file
+    on disk has no such guarantee — delete the step, rename the path, or let a
+    merge drop the invocation, and a suite that only reads the file reports
+    every guard green while releases silently submit nothing. That is the exact
+    shape of #2731 (four releases "shipped" without reaching App Review), so it
+    is checked before anything else rather than left implicit.
     """
-    lines = WORKFLOW.read_text().splitlines()
-    body = indent = None
-    for line in lines:
-        if body is None:
-            m = HEREDOC_START.match(line)
-            if m:
-                body, indent = [], len(m.group(1))
-        elif line.strip() == "PYEOF":
-            return "\n".join(body)
-        else:
-            body.append(line[indent:] if line.startswith(" " * indent) else line)
-    raise SystemExit(
-        f"::error::Could not find the PYEOF heredoc in {WORKFLOW} — the submit "
-        "step was renamed or restructured and this self-test now covers nothing."
-    )
+    if not SCRIPT.is_file():
+        raise SystemExit(
+            f"::error::{SCRIPT} does not exist — the submit program was moved or "
+            "deleted and this self-test now covers nothing."
+        )
+    if INVOCATION not in WORKFLOW.read_text():
+        raise SystemExit(
+            f"::error::{WORKFLOW} no longer invokes {INVOCATION} — the submit step "
+            "was renamed, restructured or dropped. This self-test would keep "
+            "passing while no release reaches App Review (#2731)."
+        )
 
 
-CODE = extract_heredoc()
+check_workflow_invokes_script()
+CODE = SCRIPT.read_text()
 
 
 class Response:
@@ -178,7 +189,7 @@ def builds_page(versions, with_platform=True):
 
 
 def run_step(scenario, env):
-    """Execute the extracted heredoc under stubs. Returns (stdout, exit, api)."""
+    """Execute the submit program under stubs. Returns (stdout, exit, api)."""
     api = FakeASC(scenario)
     fake_jwt = types.ModuleType("jwt")
     fake_jwt.encode = lambda *a, **k: "TOKEN"
@@ -221,8 +232,14 @@ def run_step(scenario, env):
     out, code = io.StringIO(), 0
     try:
         with contextlib.redirect_stdout(out):
-            exec(compile(CODE, "app-store.yml:submit-step", "exec"),
-                 {"__name__": "__main__"})
+            # `__file__` must be present, and must be the real path: the
+            # program is now run as a FILE, so a harness without it would
+            # diverge from the runtime on every `__file__`-dependent branch —
+            # and there is one (the GITHUB_WORKSPACE fallback in the version
+            # resolution). Omitting it is what let that branch stay untested
+            # while it was a guaranteed NameError in the old heredoc form.
+            exec(compile(CODE, str(SCRIPT), "exec"),
+                 {"__name__": "__main__", "__file__": str(SCRIPT)})
     except SystemExit as e:
         code = e.code or 0
     except BaseException as e:  # noqa: BLE001 — a crash is a test result here
@@ -263,7 +280,7 @@ def cancellations(api):
 
 
 def main():
-    print(f"Self-testing the submit step extracted from {WORKFLOW.relative_to(REPO) if WORKFLOW.is_relative_to(REPO) else WORKFLOW}")
+    print(f"Self-testing the submit program at {SCRIPT.relative_to(REPO) if SCRIPT.is_relative_to(REPO) else SCRIPT}")
     print(f"({len(CODE.splitlines())} lines of Python)\n")
 
     # ── W1 — attach the build THIS run uploaded ───────────────────────────
@@ -596,11 +613,33 @@ def main():
           "No release_notes.txt" in out and "exists but is empty" not in out,
           out[out.find("::warning"):][:300] if "::warning" in out else out[-300:])
 
+    # ── versionString fallback on a dispatch (#3146) ──────────────────────
+    # A tag push sets ASC_VERSION_STRING from the tag; a workflow_dispatch
+    # leaves it empty and the program is documented to fall back to
+    # gradle.properties' VERSION_NAME. That fallback was dead code for as long
+    # as this ran from a heredoc: its first line is
+    #
+    #     os.environ.get("GITHUB_WORKSPACE", os.path.join(os.path.dirname(__file__), ...))
+    #
+    # and Python evaluates a `.get()` default EAGERLY — so `__file__`, absent
+    # from a program fed on stdin, raised NameError on every dispatch even
+    # though GITHUB_WORKSPACE was set. Nothing exercised it: every scenario
+    # above passes ASC_VERSION_STRING. Extracting the program to a file (#3146)
+    # gave it a `__file__` and made the branch live, so it gets a test.
+    print("\nversionString fallback (dispatch path)")
+    out, code, api = run_step({"builds": lambda n: builds_page([1300])},
+                              {"ASC_EXPECTED_BUILD": "1300",
+                               "ASC_VERSION_STRING": ""})
+    check("an empty ASC_VERSION_STRING resolves VERSION_NAME from gradle.properties",
+          "Target App Store versionString: 4.26.0" in out, out[-400:])
+    check("the dispatch path does not crash resolving the workspace",
+          not str(code).startswith("EXC NameError"), f"code={code}")
+
     print()
     if FAILURES:
         print(f"::error::{len(FAILURES)} failure(s): " + "; ".join(FAILURES))
         return 1
-    print("ALL GREEN — app-store.yml submit step behaves as specified (#2893)")
+    print("ALL GREEN — the submit program behaves as specified (#2893)")
     return 0
 
 
