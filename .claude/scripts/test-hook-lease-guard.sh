@@ -69,10 +69,16 @@ expect "foreign live sticky lease + install -r -> BLOCKED" 2 \
 expect "foreign live sticky lease + am force-stop -> BLOCKED" 2 \
   "$(run_hook 'adb -s emulator-5554 shell am force-stop io.github.sceneview.demo')"
 
-# Escape hatches must mirror lib/emulator-select.sh semantics exactly.
+# Inheriting your own lease is the one escape hatch a session gets.
 expect "owner re-declares its session token -> allowed" 0 \
   "$(run_hook "EMU_LEASE_SESSION=$FOREIGN_SESSION adb -s emulator-5554 shell pm clear io.github.sceneview.demo")"
-expect "deliberate takeover -> allowed" 0 \
+
+# Takeover is NOT an escape hatch for a session, so this guard deliberately does
+# not mirror lib/emulator-select.sh (which still honours the var for an operator
+# at a terminal, where the hook does not run). CLAUDE.md states the hard rule;
+# before 2026-08-13 the guard contradicted it. Flipping this back to `allowed`
+# re-opens the 2026-07-27 incident path for sessions.
+expect "deliberate takeover -> STILL BLOCKED" 2 \
   "$(run_hook 'EMU_LEASE_TAKEOVER=1 adb -s emulator-5554 shell pm clear io.github.sceneview.demo')"
 
 # Read-only inspection is never the incident, and must stay frictionless.

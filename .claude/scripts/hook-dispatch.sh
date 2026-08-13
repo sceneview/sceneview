@@ -160,11 +160,22 @@ case "$ROUTE" in
                 esac
               fi
               [ "$LIVE" = 1 ] || continue
-              # The lease is mine, or I am taking over deliberately -> allowed.
+              # The lease is mine -> allowed.
+              #
+              # EMU_LEASE_TAKEOVER=1 is deliberately NOT an escape hatch here, and this
+              # guard therefore does NOT mirror lib/emulator-select.sh. The two serve
+              # different actors: the lib serves an operator at a terminal, who can see
+              # the peer's run and judge; this guard serves a Claude Code session, for
+              # which CLAUDE.md states a hard rule ("never set EMU_LEASE_TAKEOVER=1").
+              # Until 2026-08-13 the guard let the var through and its own refusal text
+              # advertised it, so the rule was unenforced and actively undermined at the
+              # one moment a session reads it. A session that needs a device has two
+              # honest routes, both below. Terminal use is unaffected: the hook only
+              # sees commands issued through a session.
               case "$CMD" in
-                *"EMU_LEASE_SESSION=$SESS"*|*"EMU_LEASE_TAKEOVER=1"*) continue ;;
+                *"EMU_LEASE_SESSION=$SESS"*) continue ;;
               esac
-              echo "EMULATOR LEASE GUARD: $SERIAL carries a LIVE lease (mode=${MODE:-pid}, session=${SESS:-none}) held by another session. Driving it raw corrupts that session's QA run (incident 2026-07-27). If the lease is yours: EMU_LEASE_SESSION=$SESS <your command>. To take over deliberately: EMU_LEASE_TAKEOVER=1 <your command>. To get your own device: bash .claude/scripts/setup-ar-emulator.sh" >&2
+              echo "EMULATOR LEASE GUARD: $SERIAL carries a LIVE lease (mode=${MODE:-pid}, session=${SESS:-none}) held by another session. Driving it raw corrupts that session's QA run (incident 2026-07-27). If the lease is yours: EMU_LEASE_SESSION=$SESS <your command>. Otherwise get your own device: bash .claude/scripts/setup-ar-emulator.sh — do NOT set EMU_LEASE_TAKEOVER=1, this guard refuses it." >&2
               exit 2
             done
         fi

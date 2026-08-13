@@ -1,6 +1,6 @@
 ---
 name: device-qa
-description: The autonomous device-QA harness for the SceneView demo apps — device-qa.sh and its four legs (Maestro Android/iOS, Playwright web, AR replay), the GRADED release gate (blocking web leg vs advisory android/ar/ios legs), the ARCore-ready emulator pool, the golden boot snapshot, Android Vitals and Play-review triage. USE THIS ONE for the SCRIPTED harness — you are running device-qa.sh / the Maestro flows / the release gate and reading their verdicts. For driving a device BY HAND (screenshots, taps, ad-hoc install, lease refusals), use `android-tooling` instead. Use when running or debugging a QA harness run, when a demo must be proven not to crash on a real screen, or at any release checkpoint before tagging.
+description: The autonomous device-QA harness for the SceneView demo apps — device-qa.sh and its four legs (Maestro Android/iOS, Playwright web, AR replay), the GRADED release gate (blocking web leg vs advisory android/ar/ios legs), Android Vitals and Play-review triage. The ARCore-ready emulator pool and the golden boot snapshot are NOT here — they live in `android-tooling`. USE THIS ONE for the SCRIPTED harness — you are running device-qa.sh / the Maestro flows / the release gate and reading their verdicts. For driving a device BY HAND (screenshots, taps, ad-hoc install, lease refusals), use `android-tooling` instead. Use when running or debugging a QA harness run, when a demo must be proven not to crash on a real screen, or at any release checkpoint before tagging.
 ---
 
 ## Device QA
@@ -34,10 +34,19 @@ platform as a failure), `--out <dir>`.
 
 | Leg | Harness | Drives | Report |
 |---|---|---|---|
-| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | All 53 demos on an emulator | `device-qa-report.json` |
-| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | 63 deep-linkable demos on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
+| `android` | Maestro flows `.maestro/android/` via `qa-android-demos.sh` | every demo in the Android catalog, on an emulator | `device-qa-report.json` |
+| `ios` | Maestro flows `.maestro/ios/` via `ios-device-qa.sh` | every deep-linkable demo on a simulator (AR = launch-only smoke) | `device-qa-report.json` |
 | `web` | Playwright suite `samples/web-demo/tests/` | Browser 3D viewer + every catalog tab | `web-qa-summary.json` |
 | `ar` | `ar-replay-qa.sh` + `ARReplayHarnessTest` | Every Android AR demo replayed against recorded ARCore sessions — no physical device | `ar-qa-summary.json` |
+
+**Never hardcode a demo count here.** This table said "53" and "63" until
+2026-08-13, when the real numbers were different again — no gate keeps a count
+written in a skill honest, and a stale count silently reads as "the leg covered
+everything". Get the live figures from the collators that the gate itself runs:
+
+```
+bash .claude/scripts/check-demo-id-parity.sh   # Android ids vs iOS registry, both regenerated
+```
 
 See [`.maestro/README.md`](/.maestro/README.md) for the Maestro flow layout and
 known limitations (no pinch gesture → 3D zoom is driven via deep-link param).

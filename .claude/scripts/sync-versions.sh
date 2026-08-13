@@ -327,9 +327,20 @@ if [ -f "$LLMS" ]; then
     [ -n "$V" ] && add_check "llms.txt (prose version label)" "$V"
 fi
 
-# CLAUDE.md (code examples section)
+# CLAUDE.md (code examples section) — ABSENCE IS THE NORMAL STATE, and is not reported.
+#
+# CLAUDE.md carries no dependency snippet and `test-context-budget.sh` holds it at its
+# current size, so the coordinate is not coming back. Until 2026-08-13 this block called
+# add_check unconditionally, so every single run scored MISSING -> SKIP and burned one of
+# the warning slots — training the reader to skim past SKIP rows, which is precisely the
+# signal the RN/Flutter README checks rely on to surface a genuinely reworded anchor.
+#
+# It is NOT deleted: #3128 settled that a CLAUDE.md which *does* carry a coordinate must
+# still be compared (and a stale one must still fail), and aligned release-checklist.sh
+# §4 on exactly this predicate. Deleting the block here would strip the reference that
+# decision points at. So: present -> checked as before; absent -> silent.
 CLAUDE_MD="$REPO_ROOT/CLAUDE.md"
-if [ -f "$CLAUDE_MD" ]; then
+if [ -f "$CLAUDE_MD" ] && grep -q 'io\.github\.sceneview:sceneview:' "$CLAUDE_MD"; then
     V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$CLAUDE_MD" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
     add_check "CLAUDE.md (code examples)" "$V"
 fi
