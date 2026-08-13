@@ -20,9 +20,10 @@ Desktop.ini
 # / llms-txt.ts). The durable cross-host shadow is the GitHub `in-progress` label.
 .claude/STATE.md
 # .claude/data/ = local runtime evidence for the Evidence-Stamped Claim Gate (#2346):
-# last-store-probe.json (the /store-status live-probe record) + claim-ledger.tsv (the
-# /caught miss ledger). Same policy as STATE.md — same-host, mutates constantly, never
-# committed; claim-gate.sh reads it on the git-push hook to block unevidenced claims.
+# last-store-probe.json, the /store-status live-probe record that claim-gate.sh reads on
+# the git-push hook to block unevidenced claims. Same policy as STATE.md — same-host,
+# mutates constantly, never committed. (It also held claim-ledger.tsv until 2026-08-13;
+# that ledger and its /caught command are gone, and claim-gate.sh never read it.)
 .claude/data/
 .claude/handoff*.md
 .claude/handoff-archive/

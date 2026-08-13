@@ -21,7 +21,7 @@ context reset, or whenever `.claude/STATE.md` has drifted from reality.
 
 4. **Memory:** if a durable cross-session LESSON emerged (a rule, a footgun, a preference — NOT a session snapshot), write/update a memory file + its `MEMORY.md` pointer. Snapshots never go in memory.
    - **Claim-gate check (#2346):** run `bash .claude/scripts/claim-gate.sh` against the drafted `## NOW`. A non-zero exit means a success-claim ("QA complete ✅", "all live ✅", "verified live") was persisted **without fresh agreeing evidence** — either re-run the verifier so the evidence file exists (`device-qa.sh` / `/store-status`) or restate the claim honestly (e.g. "iOS LIVE=4.0.3, 4.17.0 in review"). Never hand off a STATE.md the gate would block.
-   - **Ledger backstop:** if `.claude/data/claim-ledger.tsv` shows any class at ≥3 occurrences that has not yet been promoted, promote it to a `feedback_*.md` rule now (the `/caught` threshold action) — `/handoff` is the backstop for what `/caught` did not promote eagerly.
+   - A miss the gate did not catch, seen more than once, is what a memory file is *for* — write the rule when the second occurrence makes the class obvious. There is no ledger to consult: `/caught` kept one for six weeks, logged three entries, promoted nothing, and was deleted 2026-08-13. The deterministic gate above is the part that had leverage.
 
 5. **Never lose a raised point:** any bug / idea / improvement Thomas mentioned that isn't done becomes a GitHub issue NOW — not a "remember to".
 
