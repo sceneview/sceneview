@@ -6,22 +6,36 @@ below for what actually loads them). They are **intentionally distinct** from
 the 13 Android `sceneview/src/main/materials/` sources — same shading concept,
 leaner shader surface for the browser renderer.
 
-## Runtime status — source-of-record only (read before wiring the blobs)
+## Runtime status — not loaded yet, but loadable (#2783)
 
 **The current web viewers do NOT load these `.filamat` blobs at runtime.**
 `website-static/js/sceneview.js` builds its materials through gltfio's
 ubershader provider (glTF `baseColorFactor` / `baseColorMap`), and
 `sceneview-web` deliberately avoids custom `.filamat` files (see
 `GeometryGLBBuilder.kt`). The blobs are kept compiled as **source-of-record**,
-tracked by the unified `tools/GenerateFilamat.sh` inventory and drift gate, and
-follow the Android `filament` toolchain in `gradle/libs.versions.toml`
-(currently matc 1.72.1 → MATERIAL_VERSION 72).
+tracked by the unified `tools/GenerateFilamat.sh` inventory and drift gate.
 
-⚠️ Because Filament requires an **exact MATERIAL_VERSION match**, these v72
-blobs are NOT loadable by the web runtimes as shipped today (`sceneview-web`
-pins npm `filament` 1.52.3; `website-static` vendors Filament.js 1.70.2).
-Before wiring any of these blobs into a web viewer, bump that viewer's
-Filament.js runtime to a release whose material version matches the blobs.
+They are compiled with the **`filamentWebsite`** pin in
+`gradle/libs.versions.toml` — the Filament.js build vendored at
+`website-static/js/filament/` (currently matc 1.70.1 → MATERIAL_VERSION 70),
+**not** the Android `filament` pin (1.72.1 → v72). Filament requires an *exact*
+MATERIAL_VERSION match, so riding the Android pin made them unloadable by the
+only runtime that would ever load them: #2783 found all three at v72 against a
+v70 runtime — armed, never fired, because nothing calls `createMaterial()` yet.
+Wiring one in now works; no runtime bump needed first.
+
+Three pins, three runtimes, three material versions — keep them straight:
+
+| Blob group | Pin | Runtime | MATERIAL_VERSION |
+|---|---|---|---|
+| `sceneview/`, `arsceneview/` assets | `filament` | Filament AAR (Android) | 72 |
+| `website-static/materials/` | `filamentWebsite` | vendored `js/filament/` | 70 |
+| `sceneview-web/materials/` | `filamentWeb` | npm `filament` | 52 |
+
+`.claude/scripts/check-web-filamat-abi.sh` fails the quality gate if a web blob
+and its runtime ever diverge again — including a runtime swapped without moving
+its pin (the vendored bytes are sha256-pinned in
+`website-static/js/filament/RUNTIME.json`).
 
 | Material | Shading | Blending | Parameters |
 |---|---|---|---|

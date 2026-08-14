@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Provenance of the vendored Filament.js runtime — the machine-readable half of the",
+    "ABI invariant for the static site (#2783). Before this file, the only record of",
+    "which Filament.js was vendored was an HTML comment, and it was wrong: three pages",
+    "and the materials README all said 1.70.2, while the committed bytes are 1.70.1.",
+    "",
+    "`version` MUST equal `filamentWebsite` in gradle/libs.versions.toml — that pin is",
+    "what tools/GenerateFilamat.sh uses to compile website-static/materials/*.filamat,",
+    "and Filament parses a material package only when its MATERIAL_VERSION matches the",
+    "runtime exactly. `sha256` pins the bytes so the runtime cannot be swapped without",
+    "moving the pin (and regenerating the blobs) in the same change.",
+    "",
+    "Verified by .claude/scripts/check-web-filamat-abi.sh (offline, no network).",
+    "Regenerate the hashes after a runtime bump:",
+    "  shasum -a 256 website-static/js/filament/filament.js website-static/js/filament/filament.wasm"
+  ],
+  "version": "1.70.1",
+  "materialVersion": 70,
+  "source": "https://github.com/google/filament/releases/download/v1.70.1/filament-v1.70.1-web.tgz",
+  "files": {
+    "filament.js": "27433e67c83b215160c9cbe3d219f9759f0047556ecefe1b30ae9ce08d6ed8d8",
+    "filament.wasm": "4f43e17f6ef9bcfd7a4cff79cdd9d1d4c705a9358c3d6c6414714d48a2f03cac"
+  }
+}

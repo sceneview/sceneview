@@ -358,7 +358,17 @@ Recompile Filament materials using the [current Filament version](https://github
 
 #### Filament runtime ↔ `.filamat` ABI invariant
 
-> **The Filament runtime version (in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) → `filament = "X.Y.Z"`) and the `matc` toolchain that produced every committed `.filamat` blob MUST be the same major version.**
+> **Every committed `.filamat` blob MUST be produced by a `matc` toolchain whose version matches the Filament runtime *that loads that blob*.**
+
+There are **three runtimes**, so three pins in [`gradle/libs.versions.toml`](gradle/libs.versions.toml), and a blob is only correct against its own:
+
+| Blob group | Pin | Runtime | MATERIAL_VERSION |
+|---|---|---|---|
+| `sceneview/`, `arsceneview/` assets | `filament` | Filament AAR (Android) | 72 |
+| `website-static/materials/` | `filamentWebsite` | Filament.js vendored at `website-static/js/filament/` | 70 |
+| `sceneview-web/materials/` | `filamentWeb` | npm `filament` (Kotlin/JS bundle) | 52 |
+
+Wiring a group to the wrong pin is the same defect as forgetting to recompile: #2783 found the 3 `website-static` blobs at v72 (they rode the Android pin) against a v70 runtime — latent only because nothing on the site calls `createMaterial()` yet.
 
 Filament refuses any material whose binary version field does not match the runtime, with `Filament panic — material version N ≠ runtime M` on first frame. There is no compile-time check; the mismatch only manifests at runtime, demo by demo. v4.1.0 shipped with the runtime at 1.70.2 and blobs at 1.71 (two parallel branches each fixed half of the pair) — 10 demos crashed; v4.1.1 hot-fixed by realigning both sides to 1.71.
 
@@ -386,6 +396,8 @@ bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as
 The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable via `$XDG_CACHE_HOME`); the first run downloads it, subsequent runs reuse it. `--ci-tolerant` exists for sandboxed CI runners with no network — it lets the check pass with a WARN instead of failing the build when `matc` cannot be fetched.
 
 **The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
+
+**The runtime gate (#2783).** `--check` proves a blob matches its `.mat` *source*; it compiles with the pinned `matc`, so a blob wired to the wrong pin still passes. [`.claude/scripts/check-web-filamat-abi.sh`](.claude/scripts/check-web-filamat-abi.sh) closes that gap for the two web tracks: it reads each blob's `MATERIAL_VERSION` header and compares it to its own runtime pin, and sha256-pins the vendored `filament.js`/`.wasm` (via `website-static/js/filament/RUNTIME.json`) so the runtime cannot be swapped without moving the pin. It needs no `matc` and no network, so it is a hard gate leg.
 
 **The five matc flag profiles.** The committed blobs were compiled with five distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
 
