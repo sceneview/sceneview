@@ -103,6 +103,27 @@ class FrameSemanticsTest {
     }
 
     @Test
+    fun `semanticLabelFraction swallows FatalException on devices without semantics`() {
+        // The accessor's KDoc promises `0f` when `SemanticMode.ENABLED` is not set on the
+        // session — but ARCore does not report that case as NotYetAvailable. It reports it as
+        // AR_ERROR_FATAL, which surfaces as `FatalException`, so catching NotYetAvailable alone
+        // left the *documented* case as the one that threw. Measured on a Pixel 4a (no Scene
+        // Semantics model): 44 FatalException stack traces in nine seconds of `ar-people-
+        // occlusion`, one per frame, against a session that was otherwise healthy because
+        // `ARSession.configure` had already fallen the mode back to DISABLED.
+        //
+        // Swallowing it here cannot hide a genuinely dead session: the next `session.update()`
+        // raises the same fatal through the normal error path.
+        val body = extractAccessorBody("semanticLabelFraction")
+        assertTrue(
+            "`fun Frame.semanticLabelFraction()` must catch FatalException and return 0f — a " +
+                "device that does not support Scene Semantics is the common case, not an " +
+                "error the caller can act on. Observed body: $body",
+            Regex("""FatalException\s*\)\s*\{[\s\S]*?\n\s*0f\s*\n\s*}""").containsMatchIn(body)
+        )
+    }
+
+    @Test
     fun `semanticImage KDoc warns about Image lifecycle`() {
         // The `Image` returned by ARCore is caller-owned with a shallow pool — failing to
         // close it leaks a native handle and the next acquire() throws ResourceExhausted.

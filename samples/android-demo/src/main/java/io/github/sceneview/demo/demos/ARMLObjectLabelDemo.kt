@@ -139,6 +139,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     val lastDetectMs = remember { longArrayOf(0L) }
     val kDetectIntervalMs = 160L
 
+    // The time throttle alone is not a concurrency guard: it only says "160 ms have passed",
+    // not "the previous detection released its image". ML Kit holds the CPU image until its
+    // listener fires, and on a mid-range device object detection takes longer than the
+    // interval — so the next window acquires a second image while the first is still in
+    // flight, and ARCore's 2–3 slot pool runs dry. Measured on a Pixel 4a (2026-08-14):
+    // 28 `ResourceExhaustedException` from `acquireCameraImage` in a 9-second run.
+    val detectInFlight = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+
     // Pre-rendered label bitmaps cached by category — ML Kit returns a stable category
     // name per detection, so we memo the bitmap per category instead of re-rasterising
     // per frame (saves ~2–4 ms of canvas work per detector pass).
@@ -199,11 +207,24 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // would dominate the main thread.
                     val now = System.currentTimeMillis()
                     if (now - lastDetectMs[0] < kDetectIntervalMs) return@ARSceneView
+
+                    // Never acquire a second CPU image while ML Kit still holds the previous
+                    // one (see `detectInFlight`). Released in both listeners, next to the
+                    // matching `cameraImage.close()`.
+                    if (!detectInFlight.compareAndSet(false, true)) return@ARSceneView
                     lastDetectMs[0] = now
 
                     // Pull the CPU camera image. `null` is normal during session warm-up.
-                    val cameraImage = frame.cameraImage()
+                    // Any failure from here on must clear the in-flight flag, or the demo
+                    // stops detecting for the rest of the session.
+                    val cameraImage = try {
+                        frame.cameraImage()
+                    } catch (e: Throwable) {
+                        detectInFlight.set(false)
+                        throw e
+                    }
                     if (cameraImage == null) {
+                        detectInFlight.set(false)
                         if (statusBannerRes != R.string.demo_ar_ml_status_warming) {
                             statusBannerRes = R.string.demo_ar_ml_status_warming
                         }
@@ -235,7 +256,13 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // the success/failure listeners — never before. Closing earlier
                     // would throw IllegalStateException from the YUV reader inside
                     // ML Kit (caught in #1737 review pre-merge).
-                    val input = InputImage.fromMediaImage(cameraImage, rotationDegrees)
+                    val input = try {
+                        InputImage.fromMediaImage(cameraImage, rotationDegrees)
+                    } catch (e: Throwable) {
+                        cameraImage.close()
+                        detectInFlight.set(false)
+                        throw e
+                    }
                     val imageW = cameraImage.width
                     val imageH = cameraImage.height
 
@@ -257,6 +284,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                 statusBannerRes = R.string.demo_ar_ml_status_aim
                             } finally {
                                 cameraImage.close()
+                                detectInFlight.set(false)
                             }
                         }
                         .addOnFailureListener {
@@ -265,6 +293,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                             // image — leaking even a single CPU image is enough to stall
                             // ARCore within a few frames.
                             cameraImage.close()
+                            detectInFlight.set(false)
                         }
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
