@@ -286,6 +286,137 @@ for fixture in compile testfail missing-coord daemon apidrift; do
     fi
 done
 
+# ── The lost-file family (#3175) ────────────────────────────────────────────
+# Three shapes of ONE event: the host lost a file while the metadata indexing it
+# survived, so Gradle blames what the metadata describes instead of the absence.
+# All three read as "your code is wrong" and each cost a full diagnostic cycle
+# on 2026-08-14 before they were recognised as the same thing.
+
+# Verbatim from #3175. The jar is not corrupt — `ls` on its directory returns
+# nothing at all.
+#
+# ⚠️ The issue's code block is WRAPPED BY HAND, so the message and the
+# `wrapper/dists/` path it names land on different lines. `grep -E` in the
+# pattern table is line-based, and the first version of this row anchored on
+# both — it could never match, and this fixture is what said so. The raw log is
+# almost certainly one long line, but "almost certainly" is not a thing to build
+# a classifier on: the row now keys on the message alone, and BOTH renderings
+# are fixtures, so the pattern no longer depends on a guess about wrapping.
+cat > "$TMP/hollow-wrapper.log" <<'LOG'
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not determine implementation class for service
+'org.gradle.initialization.buildsrc.BuildSrcProjectConfigurationAction' specified in resource
+'jar:file:/Users/x/.gradle/wrapper/dists/gradle-8.14.5-bin/690y85m0j9nfaub7xoiayko8a/gradle-8.14.5/lib/plugins/gradle-plugin-development-8.14.5.jar!/META-INF/services/x'
+
+BUILD FAILED in 2s
+LOG
+
+# The same failure as Gradle actually emits it: one unwrapped line.
+cat > "$TMP/hollow-wrapper-oneline.log" <<'LOG'
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not determine implementation class for service 'org.gradle.initialization.buildsrc.BuildSrcProjectConfigurationAction' specified in resource 'jar:file:/Users/x/.gradle/wrapper/dists/gradle-8.14.5-bin/690y85m0j9nfaub7xoiayko8a/gradle-8.14.5/lib/plugins/gradle-plugin-development-8.14.5.jar!/META-INF/services/x'
+
+BUILD FAILED in 2s
+LOG
+
+# The artefact-eviction shape. #3175 describes this one from memory rather than
+# quoting it, so the exact wording was NOT captured — hence two fixtures, one
+# per phrasing Gradle uses for the same condition. The row keys on the
+# `caches/modules-2` path, which is what makes it unambiguous: a missing file
+# under the dependency cache is never the checkout's fault. `missing-coord.log`
+# above is the negative that keeps this honest — a genuinely nonexistent
+# coordinate carries no such path and must stay a REAL failure.
+cat > "$TMP/evicted-artifact.log" <<'LOG'
+* What went wrong:
+Could not resolve all files for configuration ':sceneview:debugUnitTestRuntimeClasspath'.
+> Failed to transform dynamicanimation-1.0.0.aar (androidx.dynamicanimation:dynamicanimation:1.0.0)
+   > java.io.FileNotFoundException: /Users/x/.gradle/caches/modules-2/files-2.1/androidx.dynamicanimation/dynamicanimation/1.0.0/abc/dynamicanimation-1.0.0.aar (No such file or directory)
+BUILD FAILED in 9s
+LOG
+cat > "$TMP/evicted-artifact-alt.log" <<'LOG'
+* What went wrong:
+Could not resolve all files for configuration ':sceneview:releaseCompileClasspath'.
+   > Could not read '/Users/x/.gradle/caches/modules-2/files-2.1/androidx.core/core-ktx/1.13.1/def/core-ktx-1.13.1.aar' as it does not exist.
+BUILD FAILED in 7s
+LOG
+
+# Verbatim from the 2026-08-14 measurement on this host (#3176): a diff of two
+# prose files, zero .kt, and four Gradle legs reporting `FAILED to compile`.
+# The remedy is the ONLY one in this table that is worktree-local, and the one
+# most likely to be mis-generalised into clearing the shared ~/.gradle.
+cat > "$TMP/confcache-poison.log" <<'LOG'
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not read workspace metadata from /Users/x/.gradle/caches/8.14.5/transforms/9f2a1c/metadata.bin
+> Could not isolate parameters MergeInstrumentationAnalysisTransform (and 158 more failures)
+   > A pending instrumentation exception prevented loading a class
+     com.android.build.gradle.internal.utils.AnalyticsEnabledValueSource
+
+BUILD FAILED in 12s
+LOG
+
+assert_setup() {  # <log> <reason substring> <fix substring> <label>
+    local reason fix
+    reason="$(gradle_setup_reason "$1")"
+    fix="$(gradle_setup_fix "$1")"
+    case "$reason" in
+        *"$2"*) ok "$4 → setup class" ;;
+        *) bad "$4 was NOT classified as setup (reason: '${reason:-<none>}')"; return ;;
+    esac
+    case "$fix" in
+        *"$3"*) ok "$4 → the fix names '$3'" ;;
+        *) bad "$4's fix does not tell the user what to do: '$fix'" ;;
+    esac
+}
+
+echo "── gradle_setup_reason: the lost-file family (#3175) ──"
+assert_setup "$TMP/hollow-wrapper.log" "cannot load its OWN service classes" \
+    'rm -rf "$HOME/.gradle/wrapper/dists' "an emptied wrapper distribution (as #3175 wraps it)"
+assert_setup "$TMP/hollow-wrapper-oneline.log" "cannot load its OWN service classes" \
+    'rm -rf "$HOME/.gradle/wrapper/dists' "the same, unwrapped as Gradle emits it"
+assert_setup "$TMP/evicted-artifact.log" "evicted from the shared dependency cache" \
+    "--refresh-dependencies" "an artefact evicted from caches/modules-2"
+assert_setup "$TMP/evicted-artifact-alt.log" "evicted from the shared dependency cache" \
+    "--refresh-dependencies" "the same, phrased 'as it does not exist'"
+assert_setup "$TMP/confcache-poison.log" "worktree's configuration cache" \
+    "rm -rf .gradle/configuration-cache" "a poisoned worktree-local configuration cache"
+
+# The remedies point at three DIFFERENT directories, and confusing them is the
+# expensive mistake: ~/.gradle is shared by every worktree on this host, so a
+# fix that says to clear it for a fault that is local would break the other
+# sessions. Assert the local one stays local.
+#
+# Grade the COMMAND lines, not the prose. The first version of this check
+# grepped the whole fix string and failed on the words "never touch ~/.gradle"
+# — a checker that cannot tell a warning from the defect makes documenting the
+# defect impossible, and the warning is the most useful sentence in that fix.
+# Herestring on the second grep, NOT a pipe into `grep -q`: this file runs under
+# `set -o pipefail` (line 16), and `grep -q` exits on its first match, so a
+# producer still writing takes EPIPE and fails the pipeline *because the match
+# succeeded* (#3180).
+fix_rm_lines="$(gradle_setup_fix "$TMP/confcache-poison.log" | grep -E 'rm -rf' || true)"
+if grep -qE '(\$HOME|~)/\.gradle' <<< "$fix_rm_lines"; then
+    bad "the worktree-local remedy has the user DELETE something under the shared ~/.gradle"
+else
+    ok "the worktree-local remedy deletes nothing under the shared ~/.gradle"
+fi
+
+# …and the reverse direction: these must not swallow a real failure. A build
+# that merely MENTIONS the cache path while failing on the code is still a code
+# failure.
+for fixture in compile testfail missing-coord apidrift init-script-repo; do
+    if [ -z "$(gradle_setup_reason "$TMP/$fixture.log")" ]; then
+        ok "$fixture survives the lost-file rows as a real failure"
+    else
+        bad "$fixture is now classified as host setup — a #3175 row is too broad"
+    fi
+done
+
 echo "── gradle_report_failure: the branch that names the cause ──"
 # Drive the real reporting helper the gates call, on the two logs that matter,
 # and read what it PRINTS and what it COUNTS.
@@ -352,6 +483,34 @@ case "$MUTANT_OUT" in
     *"drifted"*) ok "removing the SDK row brings the false 'drifted' verdict back (the assertions above are real)" ;;
     *) bad "mutant did NOT change the verdict — the setup assertions are hollow" ;;
 esac
+
+# Same control for each #3175 row. Without it, a row that silently stopped
+# matching — the exact way the `Could not resolve all (files|dependencies…)`
+# pattern died once, and the way the first draft of the wrapper row was born —
+# would leave these fixtures green, because "unclassified" is what the table
+# returns for a log it has never recognised. Each mutant deletes ONE row and
+# the fixture that row exists for must go unclassified.
+for mut in "Could not determine implementation class for service => " \
+           "(caches/modules-2" \
+           "(Could not read workspace metadata"; do
+    case "$mut" in
+        "Could not determine"*) fixture="hollow-wrapper-oneline" ;;
+        "(caches/modules-2"*)   fixture="evicted-artifact" ;;
+        *)                      fixture="confcache-poison" ;;
+    esac
+    ROW_MUTANT="$TMP/gradle-run-row-mutant.sh"
+    grep -vF "$mut" "$LIB" > "$ROW_MUTANT"
+    if [ "$(grep -cF "$mut" "$LIB")" -eq 0 ]; then
+        bad "mutation control is vacuous — no row matches '$mut', so nothing was removed"
+        continue
+    fi
+    MUT_REASON="$(bash -c "source '$ROW_MUTANT'; gradle_setup_reason '$TMP/$fixture.log'")"
+    if [ -z "$MUT_REASON" ]; then
+        ok "removing the row for $fixture leaves it unclassified (its assertions are real)"
+    else
+        bad "$fixture is still classified after its row was deleted — another row matches it, so the assertions above prove nothing (got '$MUT_REASON')"
+    fi
+done
 
 echo "── roborazzi_fresh_diff_count ──"
 SUMMARY="$TMP/results-summary.json"

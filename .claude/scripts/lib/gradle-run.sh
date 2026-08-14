@@ -196,6 +196,16 @@ PATTERNS
 # or committed a bogus .api diff. Adding one `sdk.dir=` line flipped the SAME
 # commit to 14/14 green.
 #
+# Measured 2026-08-14 (#3175): the last three rows are one family — a file the
+# host lost while the metadata that indexes it survived. Gradle then blames the
+# thing the metadata describes (a dependency, an API, a plugin service) instead
+# of the absence, so all three read as "your code is wrong" and cost a full
+# diagnostic cycle each. They belong HERE and not in the infra table because
+# re-running changes nothing: the file stays missing until someone deletes the
+# stale index. Note the remedies point at three DIFFERENT directories — one
+# shared, one shared-but-per-artefact, one worktree-local — and the third must
+# never be treated as a reason to clear ~/.gradle, which 9 sessions share.
+#
 # Same discipline as the table above: narrow, quoted from real AGP/Gradle
 # output. Row shape is `<extended-regex> => <reason> => <fix>`; the fix is
 # printed with `printf %b`, so `\n` breaks a line. Single quotes on the
@@ -217,6 +227,9 @@ SDK location not found => the Android SDK location is not configured => Point th
 Failed to find (target with hash string|Build Tools revision) => the Android platform / build-tools this project compiles against are not installed => Install the version quoted above with sdkmanager, then re-run:\n        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-<N>" "build-tools;<V>"
 (No version of NDK matched the requested version|NDK not configured) => the NDK version this project requests is not installed => Install the version quoted above, then re-run:\n        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;<version>"
 (The supplied javaHome seems to be invalid|Value '.*' given for org\.gradle\.java\.home) => the JDK this build points at is not usable => Fix org.gradle.java.home in gradle.properties (or JAVA_HOME) so it points at an installed JDK.
+Could not determine implementation class for service => the Gradle distribution cannot load its OWN service classes — the jar named in the error is absent or unreadable, not something this checkout can affect => Force the wrapper to fetch the distribution again; it will not do so on its own, because it launched from that directory:\n        rm -rf "$HOME/.gradle/wrapper/dists/gradle-<version>-bin"\n        ./gradlew --version\n      Delete ONLY that one dist directory: ~/.gradle is shared by every worktree on this host.
+(caches/modules-2.*(No such file or directory|does not exist)|(No such file or directory|does not exist).*caches/modules-2) => an artefact was evicted from the shared dependency cache while its METADATA survived, so Gradle reports a dependency or API problem instead of a missing file => Re-fetch the artefact, then re-run this gate:\n        ./gradlew --refresh-dependencies <the task that failed>\n      Nothing in this checkout caused this — it is host state, not a code change.
+(Could not read workspace metadata from .*/transforms/|A pending instrumentation exception prevented loading a class) => THIS worktree's configuration cache memoised a class whose instrumented-transform output has since been evicted from the shared ~/.gradle => Delete this worktree's own configuration cache — the fault is LOCAL, never touch ~/.gradle for it:\n        rm -rf .gradle/configuration-cache\n      ./gradlew --stop does NOT fix this (measured 2026-08-14, #3176: 4 legs red before, 4 after).
 PATTERNS
 
     return 0
