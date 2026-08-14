@@ -295,7 +295,11 @@ clean_build_output() {
 # --- Per-platform result accumulator ---------------------------------------
 # Parallel arrays — bash 3.2 (macOS default) has no associative-array export.
 RESULT_PLATFORMS=()
-RESULT_STATUSES=()   # passed | failed | skipped
+# `timeout` (#3141) is a FAILURE with a named cause: the leg's clock ran out
+# mid-flow, no demo failed. It carries exactly the weight of `failed`
+# everywhere it is graded — the only thing it adds is resolution, so an
+# expired budget and a real crash stop reading as the same line.
+RESULT_STATUSES=()   # passed | failed | timeout | skipped
 RESULT_REASONS=()
 RESULT_SUMMARIES=()  # path to a platform JSON summary, or "" if none
 RESULT_DURATIONS=()
@@ -309,6 +313,23 @@ record() {
   RESULT_DURATIONS+=("$5")
   RESULT_LOGS+=("${6:-}")
   log "$1 -> $2 ${3:+($3)}"
+}
+
+# timed_out_flow <leg-output-file> — echo `flow=<name>` for the flow whose
+# per-flow budget expired, as printed by lib/maestro.sh's TIMEOUT marker and
+# re-emitted by the qa wrapper (#3141). Echoes `an unnamed flow` when the
+# marker is absent (e.g. the wrapper itself was killed), never an empty string:
+# a verdict that reads "budget expired in " has lost the fact it exists for.
+timed_out_flow() {
+  local out="$1" name=""
+  if [[ -f "$out" ]]; then
+    name="$(sed -n 's/^\[[a-z-]*\] TIMEOUT — flow=\([^ ]*\).*/\1/p' "$out" | tail -n 1)"
+  fi
+  if [[ -n "$name" ]]; then
+    echo "flow=$name"
+  else
+    echo "an unnamed flow"
+  fi
 }
 
 # Echo the status last recorded for platform $1 (or empty if it never ran).
@@ -458,6 +479,8 @@ run_android() {
     record android passed "flow=$flow" "" "$(( $(date +%s) - started ))"
   elif [[ $rc -eq 0 ]]; then
     record android failed "qa-android-demos.sh exited 0 without its PASS marker — harness aborted mid-run (flow=$flow)" "" "$(( $(date +%s) - started ))"
+  elif [[ $rc -eq 124 ]]; then
+    record android timeout "per-flow budget expired in $(timed_out_flow "$ARTIFACTS/android-output.txt") — no demo failed (leg flow=$flow)" "" "$(( $(date +%s) - started ))"
   else
     record android failed "qa-android-demos.sh rc=$rc (flow=$flow)" "" "$(( $(date +%s) - started ))"
   fi
@@ -514,6 +537,8 @@ run_ios() {
     record ios passed "flow=$flow" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   elif [[ $rc -eq 0 ]]; then
     record ios failed "ios-device-qa.sh exited 0 without its PASS marker — harness aborted mid-run (flow=$flow)" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
+  elif [[ $rc -eq 124 ]]; then
+    record ios timeout "per-flow budget expired in $(timed_out_flow "$ARTIFACTS/ios-output.txt") — no demo failed (leg flow=$flow)" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   elif [[ $rc -eq 1 && ! $CI_MODE ]] && grep -q 'no available simulator' "$ARTIFACTS/ios-output.txt" 2>/dev/null; then
     record ios skipped "no iOS simulator available" "" "$(( $(date +%s) - started ))" "$ios_log_artifact"
   else
@@ -783,6 +808,7 @@ done
 # blocks the release gate. This split is what keeps an honest #1645 `skipped`
 # on the advisory `ar` leg from false-failing the gate (#1670).
 PASSED=0; FAILED=0; SKIPPED=0
+TIMED_OUT=0          # subset of FAILED whose cause was the clock (#3141)
 REQUIRED_FAILED=0    # failed legs that are NOT advisory  -> hard block
 REQUIRED_SKIPPED=0   # skipped legs that are NOT advisory -> block under --ci
 ADVISORY_FAILED=0    # failed/skipped advisory legs       -> WARN, never a block
@@ -793,8 +819,16 @@ for i in "${!RESULT_STATUSES[@]}"; do
   is_advisory "${RESULT_PLATFORMS[$i]}" && advisory=true
   case "$s" in
     passed)  PASSED=$((PASSED + 1)) ;;
-    failed)
+    # `timeout` carries the SAME weight as `failed` (#3141). It is graded here
+    # explicitly, and not left to fall through: this `case` has no default arm,
+    # so an unhandled status increments no counter at all and the run grades
+    # `passed` with a red leg in it — measured, and the exact false-green this
+    # repo pays the most for. Any status added later needs an arm here too.
+    failed|timeout)
       FAILED=$((FAILED + 1))
+      if [[ "$s" == "timeout" ]]; then
+        TIMED_OUT=$((TIMED_OUT + 1))
+      fi
       if $advisory; then
         ADVISORY_FAILED=$((ADVISORY_FAILED + 1))
         ADVISORY_NONPASS=$((ADVISORY_NONPASS + 1))
@@ -857,11 +891,11 @@ for i in "${!RESULT_PLATFORMS[@]}"; do
 done
 
 python3 - "$REPORT" "$RUN_STARTED" "$PLATFORM" "$FAST" "$CI_MODE" "$OVERALL" \
-          "$PASSED" "$FAILED" "$SKIPPED" <<'PYEOF'
+          "$PASSED" "$FAILED" "$SKIPPED" "$TIMED_OUT" <<'PYEOF'
 import json, sys, os
 
 (report_path, started, platform, fast, ci, overall,
- passed, failed, skipped) = sys.argv[1:10]
+ passed, failed, skipped, timed_out) = sys.argv[1:11]
 
 n = int(os.environ["DQ_N"])
 advisory_csv = os.environ.get("DQ_ADVISORY", "")
@@ -905,8 +939,13 @@ for i in range(n):
 def _nonpass(p):
     return p["status"] != "passed"
 
+# `timeout` blocks exactly like `failed` (#3141) — the distinction is in the
+# WORD and the reason string, never in the weight. Anything else would turn a
+# finer report into a laxer gate.
+FAILED_STATUSES = ("failed", "timeout")
+
 blocking_failed = [p["platform"] for p in platforms
-                   if p["status"] == "failed" and not p["advisory"]]
+                   if p["status"] in FAILED_STATUSES and not p["advisory"]]
 blocking_skipped = [p["platform"] for p in platforms
                     if p["status"] == "skipped" and not p["advisory"]]
 advisory_failed = [p["platform"] for p in platforms
@@ -943,6 +982,10 @@ report = {
         "passed": int(passed),
         "failed": int(failed),
         "skipped": int(skipped),
+        # A SUBSET of `failed`, not a fourth bucket: legs whose red came from
+        # an expired per-flow budget rather than a demo (#3141). Existing
+        # consumers that read `failed` keep the number they always read.
+        "timedOut": int(timed_out),
     },
     "platforms": platforms,
 }
@@ -966,7 +1009,7 @@ for i in "${!RESULT_PLATFORMS[@]}"; do
     # A non-passing advisory leg (failed OR skipped) is a release-gate WARN,
     # not a block — flag it so it is never silent (#1651 / #1670).
     case "${RESULT_STATUSES[$i]}" in
-      failed|skipped) tag="[advisory — WARN, not a release blocker]" ;;
+      failed|timeout|skipped) tag="[advisory — WARN, not a release blocker]" ;;
     esac
   fi
   printf "  %-9s %-8s %4ss  %s %s\n" \
@@ -977,7 +1020,7 @@ for i in "${!RESULT_PLATFORMS[@]}"; do
     "${RESULT_REASONS[$i]}"
 done
 echo "───────────────────────────────────────────────────────"
-echo "  passed=$PASSED  failed=$FAILED  skipped=$SKIPPED  ->  $OVERALL"
+echo "  passed=$PASSED  failed=$FAILED (of which timeout=$TIMED_OUT)  skipped=$SKIPPED  ->  $OVERALL"
 echo "  advisory legs: ${ADVISORY:-(none)}  (a red advisory leg is a release WARN, not a block — #1651)"
 echo "═══════════════════════════════════════════════════════"
 

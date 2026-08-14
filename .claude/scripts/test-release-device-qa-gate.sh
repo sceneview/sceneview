@@ -55,7 +55,7 @@ grade() {
     st="$(stat_of "$leg")"
     case "$st" in
       passed) ;;
-      failed) REQUIRED_FAIL=$((REQUIRED_FAIL + 1)) ;;
+      failed|timeout) REQUIRED_FAIL=$((REQUIRED_FAIL + 1)) ;;      # an expired budget is a named FAILURE (#3141)
       skipped|missing|*) ADVISORY_WARN=$((ADVISORY_WARN + 1)) ;;  # no-verdict required leg -> advisory (#1683)
     esac
   done
@@ -88,6 +88,19 @@ expect "FAIL"               "web=failed,ar=passed,android=passed"  "red web leg 
 expect "PASS"               "web=passed,ar=passed,android=passed"  "all legs green"
 expect "PASS-WITH-WARNINGS" "web=passed,ar=skipped,android=failed" "ar assumeTrue-SKIP + android fail = advisory WARN"
 expect "PASS-WITH-WARNINGS" "web=skipped,ar=passed,android=passed" "web no-verdict = advisory, not a block (#1683)"
+# #3141: `timeout` is a distinct VERDICT with identical WEIGHT. If it ever fell
+# through to the `skipped|missing|*` arm, a required leg that ran out of clock
+# would grade PASS-WITH-WARNINGS — a laxer gate bought with a finer report.
+expect "FAIL"               "web=timeout,ar=passed,android=passed" "required leg timeout blocks like a failure (#3141)"
+expect "PASS-WITH-WARNINGS" "web=passed,ar=timeout,android=passed" "advisory leg timeout is WARN, not a block (#3141)"
+
+# The mirror above is only worth as much as its fidelity to the gate: pin the
+# arm it mirrors, so deleting `timeout` from the gate cannot leave this test
+# green on a policy the gate no longer implements.
+if ! grep -qE '^[[:space:]]*failed\|timeout\)' "$GATE"; then
+  echo "REGRESSION: release-device-qa-gate.sh no longer grades 'timeout' as a required-leg failure (#3141)" >&2
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "ALL SELFTESTS PASSED"

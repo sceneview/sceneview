@@ -1420,6 +1420,17 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-emulator-lease.sh
 
+      # Maestro per-flow budget + the `timeout` verdict (#3141). No device runs
+      # in repo-hygiene, and the failure this pins is invisible everywhere else:
+      # the nightly device-qa runs `--fast` (one category), so only the
+      # release-checkpoint path — the non-`--fast` catalog — hit the wall, and
+      # it hit it as `failed`, indistinguishable from a demo crash. Hermetic
+      # (stub Maestro, no JDK/device), ~9 s.
+      - name: Self-test Maestro per-flow timeout verdict
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-maestro-flow-timeout.sh
+
       # Sibling of the check above, one layer out: the pool honours leases, but
       # raw `adb` typed by a session bypassed the pool entirely and wiped another
       # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;
