@@ -14,6 +14,8 @@ name: CI
 #
 # Jobs:
 #   - changes        path detection (one dorny/paths-filter run for the whole PR)
+#   - changes-verdict  non-PR only: reds the run when `changes` did not conclude,
+#                    so nine `skipped` legs cannot read as green (#3148)
 #   - build          libraries + sample APKs        (gated on `android`)
 #   - lint           Android lint                   (gated on `android`)
 #   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
@@ -106,7 +108,12 @@ jobs:
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # A cap exists to bound a HANG, and 5 minutes could not tell a hang from a
+    # slow checkout: the healthy `push` job took 2m40s of the 5 (#3148). With
+    # the blobless sparse checkout below the healthy job is ~5s, so 10 minutes
+    # is ~100x headroom that still bounds a hang — the cap can no longer fire
+    # on a run that was merely slow.
+    timeout-minutes: 10
     outputs:
       android: ${{ steps.filter.outputs.android }}
       web: ${{ steps.filter.outputs.web }}
@@ -137,8 +144,38 @@ jobs:
       # `ci-gate.yml`'s REQUIRED_CHECKS — so the single required check on
       # `main` went red on a run where nothing was measured, reading as "the
       # path filter matched nothing".
+      #
+      # That fix left the `push` path — the one that DEPLOYS — still paying a
+      # full checkout, and #3148 hit the same wall there twice (runs
+      # 31622872458 `266eabc044` and 31742400200 `f8d7868bfc`, both cancelled
+      # at 4m59s of checkout against the then-300s cap). On `push` it is not
+      # the PR-side hang: a healthy `push` checkout MEASURES 153s (attempt 2 of
+      # 31742400200, 20:52:39 → 20:55:12). It is slow because the depth-1 pack
+      # for this repo is 722 MiB of binary assets — so `fetch-depth` is not the
+      # lever, it is already at its floor of 1.
+      #
+      # BLOBS are the lever. `paths-filter` on `push` runs exactly one git
+      # command that reads history — `git diff --no-renames --name-status
+      # <before>..<head>` — a commit-to-commit TREE diff. It never opens a
+      # file, so it needs neither the blobs nor a populated working tree.
+      # Measured on the same commit pair as run 31742400200: fetch 1.1s +
+      # checkout 1.9s + diff 0.02s = ~3s, `.git` 3.5 MiB instead of 736 MiB,
+      # and the diff is byte-identical to the full checkout's.
+      #
+      # ⚠️ `filter` and `sparse-checkout` are BOTH required and they are not
+      # redundant. `filter` governs only the FETCH (action.yml's "Overrides
+      # sparse-checkout if set" is about that fetch filter, nothing else);
+      # `sparse-checkout` governs the WORKING TREE, which is applied
+      # independently. Drop `sparse-checkout` and `git checkout` materialises
+      # all 3140 files, lazily re-fetching every blob the filter just avoided —
+      # the win is silently gone with nothing red to show for it. Drop
+      # `filter` and the action re-adds `blob:none` implicitly, but do not
+      # rely on that: state it.
       - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
+        with:
+          filter: blob:none
+          sparse-checkout: .github
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -240,6 +277,57 @@ jobs:
             esac
           done <<< "$VERDICTS"
           [ "$bad" -eq 0 ]
+
+  # ── Push-side verdict on `changes` itself ────────────────────────────────
+  # THE FALSE-GREEN THIS CLOSES (#3148). Everything above makes the `changes`
+  # job fast; none of it makes a `changes` job that DIDN'T finish visible. Those
+  # are different problems and only the second one deploys bad code.
+  #
+  # `changes` is a `needs:` of nine jobs. When it concludes anything other than
+  # `success` — its own `timeout-minutes` firing, a runner loss — all nine
+  # report `skipped`, and GitHub grades `skipped` as passing. On a PR that is
+  # caught: `ci-gate.yml` fails on a `cancelled` conclusion and `CI Gate` is the
+  # only required check on `main`. But `ci-gate.yml` is `on: pull_request` ONLY.
+  # A `push` to `main` therefore had NOTHING grading it: the commit lands, nine
+  # legs never execute, the run reads `cancelled`, and the repo deliberately
+  # treats `cancelled` as non-blocking (#1984). Both runs in #3148 are exactly
+  # that, on the branch that deploys to the stores.
+  #
+  # So say it out loud where a PR gate cannot: "the filters evaluated nothing"
+  # must not be spellable the same way as "the filters said nothing to build".
+  #
+  # ⚠️ `!cancelled()`, NOT `always()`. `always()` also fires when the WORKFLOW
+  # RUN is cancelled, and a `push` to `main` is legitimately cancelled whenever
+  # a second push supersedes it (`concurrency` above falls back to
+  # `github.ref` for pushes) — this job would then turn a correct supersede
+  # into a red `main`. `!cancelled()` runs on success and on failure and skips
+  # a cancelled RUN, while a `changes` job that merely blew its own
+  # `timeout-minutes` does not cancel the run, so that case still lands here.
+  #
+  # Scoped to non-`pull_request` on purpose: PRs already have `CI Gate`, and
+  # adding a check name that never appears on a PR would be a name `ci-gate.yml`
+  # could never wait for. `workflow_call` from `nightly-ci.yml` reports the
+  # caller's event (`schedule`), so the nightly is covered too — it needs this
+  # more than anyone, since `inputs.force-all` cannot save a job whose `needs:`
+  # was cancelled.
+  changes-verdict:
+    name: Path filter completed
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless the path filter actually produced a verdict
+        env:
+          RESULT: ${{ needs.changes.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = "success" ]; then
+            echo "Detect changed paths: success — the downstream skips are real verdicts."
+            exit 0
+          fi
+          echo "::error::'Detect changed paths' concluded '$RESULT', not 'success'. Every job that needs it was skipped WITHOUT being evaluated, so this run measured nothing — it is not evidence that the tree is green. Re-run the CI workflow for this commit."
+          exit 1
 
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
