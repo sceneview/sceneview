@@ -29,8 +29,9 @@ kotlinMath = "1.8.0"
 jetpackXrArCore = "1.0.0-beta01"
 
 # Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
-# of the .filamat files committed under sceneview/src/main/assets/materials/,
-# arsceneview/src/main/assets/materials/ and website-static/materials/.
+# of the .filamat files committed under sceneview/src/main/assets/materials/ and
+# arsceneview/src/main/assets/materials/ (the ANDROID runtime track only; the two
+# web tracks have their own pins below).
 # Those were recompiled to material-binary version 71 in commit `efd296f1`
 # (Apr 11) when Filament was first bumped 1.70.2 → 1.71.0. The follow-up
 # `4a31b579` (May 11) reverted ONLY the runtime to 1.70.2 thinking the
@@ -60,6 +61,21 @@ filament = "1.72.1"
 # regenerate the web blobs in the same PR (the CONTRIBUTING.md invariant,
 # applied to the web runtime).
 filamentWeb = "1.52.3"
+# The WEBSITE Filament runtime — MUST match the Filament.js build vendored at
+# website-static/js/filament/{filament.js,filament.wasm}, which is a THIRD track,
+# independent of both `filament` (Android, v72) and `filamentWeb` (npm, v52).
+# tools/GenerateFilamat.sh compiles the website-static/materials/*.filamat blobs
+# with the matc matching THIS version (1.70.x → MATERIAL_VERSION 70), so the
+# static site could load them without the exact-version parse failure that made
+# v4.1.0 SIGABRT. Before #2783 those 3 blobs silently rode the Android pin and
+# were v72 against a v70 runtime — armed but never fired, because nothing on the
+# site calls createMaterial() yet.
+# The vendored bytes are pinned by sha256 in website-static/js/filament/
+# RUNTIME.json and gated by .claude/scripts/check-web-filamat-abi.sh, so swapping
+# the runtime without moving this pin (or vice versa) fails the quality gate.
+# Bumping the vendored Filament.js ⇒ bump this together and regenerate the 3
+# blobs in the same PR (the CONTRIBUTING.md invariant, applied to the site).
+filamentWebsite = "1.70.1"
 arCore = "1.54.0"
 
 # Networking

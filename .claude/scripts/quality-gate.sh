@@ -331,6 +331,28 @@ fi
 
 echo ""
 
+# ─── 4c-ter. Web .filamat ↔ web runtime ABI (issue #2783) ─────────────
+# The drift check above proves a blob matches its .mat SOURCE. It cannot prove
+# the blob matches the RUNTIME that loads it: it compiles with the pinned matc,
+# so a wrong pin yields a wrong blob it calls "in sync". #2783 fell through
+# exactly there — the 3 website-static blobs rode the Android pin (v72) against
+# a v70 Filament.js. This leg reads each web blob's MATERIAL_VERSION header
+# directly and compares it to its own runtime pin. No matc, no network, so
+# unlike 4c it is a HARD leg.
+if [ -f ".claude/scripts/check-web-filamat-abi.sh" ]; then
+    if WEB_ABI_OUT=$(bash .claude/scripts/check-web-filamat-abi.sh 2>&1); then
+        check "Web .filamat blobs match their runtimes" "PASS" "website + npm tracks"
+    else
+        WEB_ABI_COUNT=$(as_count_or_unknown "$(printf '%s\n' "$WEB_ABI_OUT" | grep -c '^MISMATCH' || true)")
+        check "Web .filamat blobs match their runtimes" "FAIL" \
+            "$WEB_ABI_COUNT mismatch(es) — run .claude/scripts/check-web-filamat-abi.sh"
+    fi
+else
+    check "Web .filamat blobs match their runtimes" "WARN" "check-web-filamat-abi.sh missing"
+fi
+
+echo ""
+
 # ─── 4c-bis. sceneview-web.d.ts ↔ Kotlin/JS surface drift (issue #2736) ─
 # The npm typings are hand-written (#946) and consumed by real users and by
 # AI codegen; check-web-dts.sh asserts the `sceneview` namespace registry
