@@ -249,7 +249,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 
 ## Quality
 
-The MCP server is tested with **1,898 unit tests** across 81 test suites covering:
+The MCP server is tested with **1,965 unit tests** across 83 test suites covering:
 
 - Every tool response (correct output, error handling, edge cases)
 - All 33 code samples (compilable structure, correct imports, no deprecated APIs)
@@ -258,8 +258,8 @@ The MCP server is tested with **1,898 unit tests** across 81 test suites coverin
 - Resource responses (API reference, GitHub issues integration)
 
 ```
- Test Files  81 passed (81)
-      Tests  1898 passed (1898)
+ Test Files  83 passed (83)
+      Tests  1965 passed (1965)
 ```
 
 All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
@@ -337,7 +337,9 @@ Enabled by default on the free tier (MCP client name/version and tool names — 
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 1898 tests
+npm test         # 1965 tests
+npm run lint     # Biome (repo-root biome.json) — lint + format + import assists
+npm run lint:fix # same, applying the safe fixes
 npm run dev      # Start with tsx (hot reload)
 ```
 

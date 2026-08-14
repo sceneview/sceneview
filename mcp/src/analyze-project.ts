@@ -20,7 +20,7 @@
  * knows the scan was truncated — we never throw.
  */
 
-import { promises as fs } from "node:fs";
+import { promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
@@ -248,7 +248,7 @@ async function collectSourceFiles(
   rootDir: string,
   dir: string,
   depth: number,
-  out: string[],
+  out: string[]
 ): Promise<void> {
   if (depth > MAX_DIR_DEPTH) return;
   if (out.length >= MAX_FILES_SCANNED) return;
@@ -297,7 +297,10 @@ async function readFileSafe(filePath: string): Promise<string | null> {
   }
 }
 
-async function tryRead(dir: string, ...relativeCandidates: string[]): Promise<{ path: string; contents: string } | null> {
+async function tryRead(
+  dir: string,
+  ...relativeCandidates: string[]
+): Promise<{ path: string; contents: string } | null> {
   for (const rel of relativeCandidates) {
     const abs = path.join(dir, rel);
     const contents = await readFileSafe(abs);
@@ -309,7 +312,7 @@ async function tryRead(dir: string, ...relativeCandidates: string[]): Promise<{ 
 /** Extract `X.Y.Z` from a Gradle-style `io.github.sceneview:sceneview:X.Y.Z` reference. */
 function extractGradleVersion(contents: string): string | null {
   const match = contents.match(
-    /io\.github\.sceneview:(?:sceneview|arsceneview|sceneview-core)[:"']?\s*[:"']?\s*(?:version\s*=\s*["'])?(\d+\.\d+\.\d+(?:-[\w.]+)?)/,
+    /io\.github\.sceneview:(?:sceneview|arsceneview|sceneview-core)[:"']?\s*[:"']?\s*(?:version\s*=\s*["'])?(\d+\.\d+\.\d+(?:-[\w.]+)?)/
   );
   if (match) return match[1];
   return null;
@@ -362,7 +365,10 @@ async function detectProject(rootDir: string): Promise<ProjectDetection> {
   ];
   for (const rel of androidCandidates) {
     const read = await tryRead(rootDir, rel);
-    if (read && /io\.github\.sceneview:(sceneview|arsceneview|sceneview-core)/.test(read.contents)) {
+    if (
+      read &&
+      /io\.github\.sceneview:(sceneview|arsceneview|sceneview-core)/.test(read.contents)
+    ) {
       return {
         projectType: "android",
         sceneViewVersion: extractGradleVersion(read.contents),
@@ -426,9 +432,7 @@ function isVersionOutdated(version: string | null): boolean {
  * Never throws for filesystem errors — missing directory, permission denied,
  * broken file: all surface as a warning in the returned result.
  */
-export async function analyzeProject(
-  input: AnalyzeProjectInput = {},
-): Promise<AnalysisResult> {
+export async function analyzeProject(input: AnalyzeProjectInput = {}): Promise<AnalysisResult> {
   const rawPath = input.path ?? process.cwd();
   const scannedPath = path.resolve(rawPath);
 
@@ -446,7 +450,7 @@ export async function analyzeProject(
   };
 
   // Verify the path exists and is a directory.
-  let stat;
+  let stat: Stats;
   try {
     stat = await fs.stat(scannedPath);
   } catch (err) {
@@ -575,7 +579,10 @@ export async function analyzeProject(
         "`withContext(Dispatchers.Main)`.",
     });
   }
-  if (result.projectType !== "unknown" && result.warnings.filter((w) => !w.type.startsWith("scan/")).length === 0) {
+  if (
+    result.projectType !== "unknown" &&
+    result.warnings.filter((w) => !w.type.startsWith("scan/")).length === 0
+  ) {
     result.suggestions.push({
       type: "suggestion/no-issues",
       message:
@@ -592,7 +599,7 @@ function scanFileForAntiPatterns(
   file: string,
   language: DetectedLanguage,
   contents: string,
-  warnings: AnalysisWarning[],
+  warnings: AnalysisWarning[]
 ): void {
   const lines = contents.split("\n");
   for (const detector of ANTI_PATTERNS) {
@@ -621,10 +628,10 @@ export function formatAnalysisReport(result: AnalysisResult): string {
   lines.push(`**Path:** \`${result.scannedPath}\``);
   lines.push(`**Project type:** ${result.projectType}`);
   lines.push(
-    `**SceneView version:** ${result.sceneViewVersion ?? "(not detected)"} — latest: ${result.latestVersion}${result.isOutdated ? " ⚠️ outdated" : ""}`,
+    `**SceneView version:** ${result.sceneViewVersion ?? "(not detected)"} — latest: ${result.latestVersion}${result.isOutdated ? " ⚠️ outdated" : ""}`
   );
   lines.push(
-    `**Scan:** ${result.filesScanned} file(s), ${result.bytesScanned} byte(s)${result.truncated ? " (truncated)" : ""}`,
+    `**Scan:** ${result.filesScanned} file(s), ${result.bytesScanned} byte(s)${result.truncated ? " (truncated)" : ""}`
   );
   lines.push(``);
 

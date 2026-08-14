@@ -460,6 +460,9 @@ fi
 #       `Validate demo app asset references` hits every CDN URL for real.
 #     · MCP unit tests — quality-gate.sh runs them outside `--quick`; they
 #       need `npm ci` under mcp/, i.e. a registry round-trip.
+#     · mcp-ts-check.yml (Biome + tsc over mcp/, #3054) and rn-ts-check.yml —
+#       same reason: the linter is a package-local binary, so both need an
+#       `npm ci` in their package first. `cd mcp && npm run lint` locally.
 #     · `flutter-demo` job's pub.dev publish preflight (`--dry-run` resolves
 #       against pub.dev).
 #

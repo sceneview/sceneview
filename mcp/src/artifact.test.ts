@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  validateArtifactInput,
-  generateArtifact,
-  formatArtifactResponse,
   type ArtifactInput,
+  formatArtifactResponse,
+  generateArtifact,
+  validateArtifactInput,
 } from "./artifact.js";
 
 // ─── validateArtifactInput ───────────────────────────────────────────────────
@@ -442,9 +442,7 @@ describe("HTML escaping", () => {
   it("escapes HTML in hotspot labels", () => {
     const result = generateArtifact({
       type: "product-360",
-      hotspots: [
-        { position: "0 0 0", normal: "0 1 0", label: '<img src=x onerror="alert(1)">' },
-      ],
+      hotspots: [{ position: "0 0 0", normal: "0 1 0", label: '<img src=x onerror="alert(1)">' }],
     });
     expect(result.html).not.toContain("<img");
     expect(result.html).toContain("&lt;img");

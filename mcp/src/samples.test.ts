@@ -1,8 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
-import { SAMPLES, SAMPLE_IDS, getSample } from "./samples.js";
+import { getSample, SAMPLE_IDS, SAMPLES } from "./samples.js";
 
-const ANDROID_IDS = SAMPLE_IDS.filter((id) => !SAMPLES[id].language || SAMPLES[id].language === "kotlin");
+const ANDROID_IDS = SAMPLE_IDS.filter(
+  (id) => !SAMPLES[id].language || SAMPLES[id].language === "kotlin"
+);
 const IOS_IDS = SAMPLE_IDS.filter((id) => SAMPLES[id].language === "swift");
 
 describe("SAMPLE_IDS", () => {
@@ -123,7 +125,9 @@ describe("AR samples", () => {
 
   it("all Android AR samples use arsceneview dependency", () => {
     for (const id of androidArIds) {
-      expect(SAMPLES[id].dependency).toBe(`io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}`);
+      expect(SAMPLES[id].dependency).toBe(
+        `io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}`
+      );
     }
   });
 
@@ -154,7 +158,9 @@ describe("3D samples", () => {
 
   it("all Android 3D samples use sceneview dependency", () => {
     for (const id of android3dIds) {
-      expect(SAMPLES[id].dependency).toBe(`io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`);
+      expect(SAMPLES[id].dependency).toBe(
+        `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`
+      );
     }
   });
 
@@ -212,13 +218,17 @@ describe("tag filtering (simulating list_samples tool)", () => {
   it("tag 'ar' returns only AR samples", () => {
     const results = filterByTag("ar");
     expect(results.length).toBe(8); // 6 Android + 2 iOS
-    results.forEach((s) => expect(s.tags).toContain("ar"));
+    results.forEach((s) => {
+      expect(s.tags).toContain("ar");
+    });
   });
 
   it("tag '3d' returns only 3D samples", () => {
     const results = filterByTag("3d");
     expect(results.length).toBe(30); // 22 Android + 6 iOS + 2 Web
-    results.forEach((s) => expect(s.tags).toContain("3d"));
+    results.forEach((s) => {
+      expect(s.tags).toContain("3d");
+    });
   });
 
   it("tag 'physics' returns physics samples", () => {
@@ -241,19 +251,25 @@ describe("tag filtering (simulating list_samples tool)", () => {
   it("tag 'anchor' returns AR samples that use anchors", () => {
     const results = filterByTag("anchor");
     expect(results.length).toBeGreaterThan(0);
-    results.forEach((s) => expect(s.tags).toContain("anchor"));
+    results.forEach((s) => {
+      expect(s.tags).toContain("anchor");
+    });
   });
 
   it("tag 'ios' returns only iOS samples", () => {
     const results = filterByTag("ios");
     expect(results).toHaveLength(8);
-    results.forEach((s) => expect(s.language).toBe("swift"));
+    results.forEach((s) => {
+      expect(s.language).toBe("swift");
+    });
   });
 
   it("tag 'swift' returns only Swift samples", () => {
     const results = filterByTag("swift");
     expect(results).toHaveLength(8);
-    results.forEach((s) => expect(s.language).toBe("swift"));
+    results.forEach((s) => {
+      expect(s.language).toBe("swift");
+    });
   });
 
   it("tag 'video' returns video samples", () => {
@@ -304,5 +320,35 @@ describe("tag filtering (simulating list_samples tool)", () => {
 
   it("unknown tag returns empty array", () => {
     expect(filterByTag("nonexistent-tag")).toHaveLength(0);
+  });
+});
+
+// #3054 — `"…${LATEST_SCENEVIEW_RELEASE}…"` in a DOUBLE-QUOTED string never
+// interpolates, so 28 sample prompts shipped the placeholder verbatim to the
+// caller: an AI reading `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`
+// writes exactly that into build.gradle.kts. Biome's `noTemplateCurlyInString`
+// had been reporting it since adoption, to a lint script no CI job ever ran.
+// That rule is a WARNING, so `mcp-ts-check.yml` would NOT fail on a relapse —
+// this test is what pins the fix.
+describe("version interpolation (#3054)", () => {
+  it("no sample field leaks the LATEST_SCENEVIEW_RELEASE identifier", () => {
+    for (const id of SAMPLE_IDS) {
+      for (const [field, value] of Object.entries(SAMPLES[id])) {
+        if (typeof value !== "string") continue;
+        expect(`${id}.${field} → ${value}`).not.toContain("LATEST_SCENEVIEW_RELEASE");
+      }
+    }
+  });
+
+  // Guards the assertion above against becoming vacuous: it would also pass if
+  // the prompts stopped naming a dependency at all.
+  it("every prompt naming a Maven coordinate carries the real version", () => {
+    const withCoordinate = SAMPLE_IDS.filter((id) =>
+      SAMPLES[id].prompt.includes("io.github.sceneview:")
+    );
+    expect(withCoordinate.length).toBeGreaterThan(0);
+    for (const id of withCoordinate) {
+      expect(SAMPLES[id].prompt).toContain(`:${LATEST_SCENEVIEW_RELEASE}`);
+    }
   });
 });

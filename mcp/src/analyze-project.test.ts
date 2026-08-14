@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import os from "node:os";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   analyzeProject,
@@ -93,7 +93,7 @@ describe("analyzeProject — anti-pattern detection", () => {
   it("flags threading violations in the warnings fixture", async () => {
     const result = await analyzeProject({ path: ANDROID_WARN });
     const threadingWarnings = result.warnings.filter(
-      (w) => w.type === "threading/filament-off-main-thread",
+      (w) => w.type === "threading/filament-off-main-thread"
     );
     expect(threadingWarnings.length).toBeGreaterThan(0);
     expect(threadingWarnings[0].line).toBeGreaterThan(0);
@@ -107,7 +107,7 @@ describe("analyzeProject — anti-pattern detection", () => {
   it("flags TransformableNode as deprecated 2.x API", async () => {
     const result = await analyzeProject({ path: ANDROID_WARN });
     expect(result.warnings.some((w) => w.type === "migration/transformable-node-removed")).toBe(
-      true,
+      true
     );
   });
 
@@ -206,7 +206,7 @@ describe("analyzeProject — scan limits", () => {
       // Minimal Gradle build so it's detected as Android.
       await fs.writeFile(
         path.join(tmp, "build.gradle.kts"),
-        'dependencies {\n  implementation("io.github.sceneview:sceneview:4.0.0-rc.1")\n}\n',
+        'dependencies {\n  implementation("io.github.sceneview:sceneview:4.0.0-rc.1")\n}\n'
       );
       const srcDir = path.join(tmp, "src");
       await fs.mkdir(srcDir, { recursive: true });

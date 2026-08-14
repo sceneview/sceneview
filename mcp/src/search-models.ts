@@ -130,7 +130,7 @@ function pickThumbnail(model: SketchfabModel): string {
   const images = model.thumbnails?.images ?? [];
   if (images.length === 0) return "";
   const sorted = [...images].sort(
-    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0),
+    (a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0)
   );
   return sorted[0]?.url ?? "";
 }
@@ -203,9 +203,7 @@ function missingKeyError(): SearchModelsError {
  * `SearchModelsError` rather than throwing, so the MCP dispatcher can render
  * a friendly message without wrapping the call in a try/catch.
  */
-export async function searchModels(
-  options: SearchModelsOptions,
-): Promise<SearchModelsResult> {
+export async function searchModels(options: SearchModelsOptions): Promise<SearchModelsResult> {
   if (!options || typeof options.query !== "string" || options.query.trim().length === 0) {
     return {
       ok: false,
@@ -320,9 +318,10 @@ export function formatSearchResults(result: SearchModelsResult): string {
   ];
 
   for (const model of result.results) {
-    const triangles = model.triangleCount > 0
-      ? `${model.triangleCount.toLocaleString()} triangles`
-      : "triangle count unknown";
+    const triangles =
+      model.triangleCount > 0
+        ? `${model.triangleCount.toLocaleString()} triangles`
+        : "triangle count unknown";
     const downloadable = model.downloadable ? "downloadable" : "view-only";
 
     lines.push(
@@ -334,13 +333,13 @@ export function formatSearchResults(result: SearchModelsResult): string {
       `- **Embed URL:** ${model.embedUrl}`,
       `- **Thumbnail:** ${model.thumbnailUrl}`,
       `- **UID:** \`${model.uid}\``,
-      "",
+      ""
     );
   }
 
   lines.push(
     "---",
-    "Tip: use the viewer URL to verify the model, then download a GLB from Sketchfab and load it with `rememberModelInstance(modelLoader, \"models/your-file.glb\")`.",
+    'Tip: use the viewer URL to verify the model, then download a GLB from Sketchfab and load it with `rememberModelInstance(modelLoader, "models/your-file.glb")`.'
   );
   return lines.join("\n");
 }

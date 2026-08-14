@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
-import { parseNodeSections, findNodeSection, listNodeTypes } from "./node-reference.js";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { findNodeSection, listNodeTypes, parseNodeSections } from "./node-reference.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

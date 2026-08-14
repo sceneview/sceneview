@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── execFile mock ───────────────────────────────────────────────────────────
 //
@@ -13,7 +13,7 @@ vi.mock("node:child_process", () => ({
     file: string,
     args: readonly string[],
     _opts: unknown,
-    cb: (err: unknown, stdout: string, stderr: string) => void,
+    cb: (err: unknown, stdout: string, stderr: string) => void
   ) => execFileMock(file, args, cb),
 }));
 
@@ -43,7 +43,7 @@ function programCliMissing(): void {
  * `docsImpl` lets a test override the `docs` branch (e.g. to fail it).
  */
 function programCliPresent(
-  docsImpl: (subcommand: string, arg: string) => { err: unknown; stdout: string; stderr: string },
+  docsImpl: (subcommand: string, arg: string) => { err: unknown; stdout: string; stderr: string }
 ): void {
   execFileMock.mockImplementation((_file, args: readonly string[], cb) => {
     if (args.includes("--version")) {
@@ -86,7 +86,7 @@ describe("isAndroidCliAvailable", () => {
     await isAndroidCliAvailable();
     await isAndroidCliAvailable();
     const versionProbes = execFileMock.mock.calls.filter((c) =>
-      (c[1] as string[]).includes("--version"),
+      (c[1] as string[]).includes("--version")
     );
     expect(versionProbes.length).toBe(1);
   });

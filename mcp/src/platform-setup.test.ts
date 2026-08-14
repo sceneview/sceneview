@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
-import { getPlatformSetup, listPlatforms, PLATFORM_IDS, type Platform, type SetupType } from "./platform-setup.js";
+import {
+  getPlatformSetup,
+  listPlatforms,
+  PLATFORM_IDS,
+  type Platform,
+  type SetupType,
+} from "./platform-setup.js";
 
 describe("PLATFORM_IDS", () => {
   it("contains all 7 platforms", () => {
@@ -89,12 +95,17 @@ describe("getPlatformSetup", () => {
   // specification for 'SceneViewSwift'". Both Flutter guides used to stop at the
   // platform line, so an AI reading this server produced a project that cannot
   // build on iOS — the exact failure mode this repo exists to prevent.
-  it.each(["3d", "ar"] as const)("gives the Flutter %s guide a Podfile that resolves SceneViewSwift", (type: SetupType) => {
-    const result = getPlatformSetup("flutter", type);
-    expect(result).toContain("platform :ios, '18.0'");
-    expect(result).toContain("pod 'SceneViewSwift'");
-    expect(result).toContain(":podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'");
-  });
+  it.each(["3d", "ar"] as const)(
+    "gives the Flutter %s guide a Podfile that resolves SceneViewSwift",
+    (type: SetupType) => {
+      const result = getPlatformSetup("flutter", type);
+      expect(result).toContain("platform :ios, '18.0'");
+      expect(result).toContain("pod 'SceneViewSwift'");
+      expect(result).toContain(
+        ":podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'"
+      );
+    }
+  );
 
   // The desktop guide invented an API. It showed `DesktopScene`, `WireframeCube`,
   // `WireframeSphere` and `Float3` — none of which exist anywhere in the repo —
@@ -119,13 +130,25 @@ describe("getPlatformSetup", () => {
   // and `modelNodes={[{ src }]}` in TSX. A guide that invents props produces code
   // that fails at the first build, which is worse than no guide at all.
   it.each([
-    ["flutter", "3d"], ["flutter", "ar"], ["react-native", "3d"], ["react-native", "ar"],
-  ] as const)("keeps the %s %s guide free of invented bridge props", (platform: Platform, type: SetupType) => {
-    const result = getPlatformSetup(platform, type);
-    for (const fabricated of ["modelUrl", "onModelLoaded", "tapToPlace", "onAnchorCreated", "PlaneDetection."]) {
-      expect(result).not.toContain(fabricated);
+    ["flutter", "3d"],
+    ["flutter", "ar"],
+    ["react-native", "3d"],
+    ["react-native", "ar"],
+  ] as const)(
+    "keeps the %s %s guide free of invented bridge props",
+    (platform: Platform, type: SetupType) => {
+      const result = getPlatformSetup(platform, type);
+      for (const fabricated of [
+        "modelUrl",
+        "onModelLoaded",
+        "tapToPlace",
+        "onAnchorCreated",
+        "PlaneDetection.",
+      ]) {
+        expect(result).not.toContain(fabricated);
+      }
     }
-  });
+  );
 
   // A third bug class, and the nastiest of the three: props that DO exist and
   // DO compile, but are inert. `depthOcclusion` is declared on the RN bridge and
@@ -139,16 +162,22 @@ describe("getPlatformSetup", () => {
   // Flutter web — which is why viewer_page.dart was moved off it in this very
   // repo. A setup guide teaching the pattern the codebase just abandoned is
   // drift with extra steps.
-  it.each(["3d", "ar"] as const)("branches on defaultTargetPlatform, never dart:io, in the Flutter %s guide", (type: SetupType) => {
-    const result = getPlatformSetup("flutter", type);
-    expect(result).not.toContain("import 'dart:io'");
-    expect(result).not.toContain("Platform.isIOS");
-  });
+  it.each(["3d", "ar"] as const)(
+    "branches on defaultTargetPlatform, never dart:io, in the Flutter %s guide",
+    (type: SetupType) => {
+      const result = getPlatformSetup("flutter", type);
+      expect(result).not.toContain("import 'dart:io'");
+      expect(result).not.toContain("Platform.isIOS");
+    }
+  );
 
-  it.each(["3d", "ar"] as const)("never enables the unbridged depthOcclusion prop in the RN %s guide", (type: SetupType) => {
-    const result = getPlatformSetup("react-native", type);
-    expect(result).not.toContain("depthOcclusion={true}");
-  });
+  it.each(["3d", "ar"] as const)(
+    "never enables the unbridged depthOcclusion prop in the RN %s guide",
+    (type: SetupType) => {
+      const result = getPlatformSetup("react-native", type);
+      expect(result).not.toContain("depthOcclusion={true}");
+    }
+  );
 
   it("returns React Native setup with npm install", () => {
     const result = getPlatformSetup("react-native", "3d");
@@ -198,8 +227,27 @@ describe("listPlatforms", () => {
   it("shows AR support status per platform", () => {
     const result = listPlatforms();
     // Platforms with AR
-    expect(result).toContain("| Yes | Yes |");  // Android, iOS, Flutter, React Native
+    expect(result).toContain("| Yes | Yes |"); // Android, iOS, Flutter, React Native
     // Platforms without AR
-    expect(result).toContain("| Yes | No |");   // Web, Desktop, TV
+    expect(result).toContain("| Yes | No |"); // Web, Desktop, TV
+  });
+});
+
+// #3054 — see samples.test.ts. Android's and iOS's `status` fields were
+// double-quoted strings holding `${LATEST_SCENEVIEW_RELEASE}`, so every
+// `get_platform_setup` answer opened with "**Status:** Stable
+// (v${LATEST_SCENEVIEW_RELEASE})".
+describe("version interpolation (#3054)", () => {
+  it("no platform setup leaks the LATEST_SCENEVIEW_RELEASE identifier", () => {
+    for (const platform of PLATFORM_IDS) {
+      expect(getPlatformSetup(platform, "3d")).not.toContain("LATEST_SCENEVIEW_RELEASE");
+      expect(getPlatformSetup(platform, "ar")).not.toContain("LATEST_SCENEVIEW_RELEASE");
+    }
+    expect(listPlatforms()).not.toContain("LATEST_SCENEVIEW_RELEASE");
+  });
+
+  it("Android and iOS status lines show the real version", () => {
+    expect(getPlatformSetup("android", "3d")).toContain(`Stable (v${LATEST_SCENEVIEW_RELEASE})`);
+    expect(getPlatformSetup("ios", "3d")).toContain(`Alpha (v${LATEST_SCENEVIEW_RELEASE})`);
   });
 });

@@ -30,8 +30,8 @@ export interface ArtifactOptions {
 }
 
 export interface Hotspot {
-  position: string;    // e.g. "0.5 1.2 0.3"
-  normal: string;      // e.g. "0 1 0"
+  position: string; // e.g. "0.5 1.2 0.3"
+  normal: string; // e.g. "0 1 0"
   label: string;
   description?: string;
 }
@@ -72,8 +72,16 @@ const DEFAULT_MODEL =
   "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";
 
 const DEFAULT_COLORS = [
-  "#4285F4", "#EA4335", "#FBBC04", "#34A853", "#FF6D01",
-  "#46BDC6", "#7BAAF7", "#F07B72", "#FCD04F", "#57BB8A",
+  "#4285F4",
+  "#EA4335",
+  "#FBBC04",
+  "#34A853",
+  "#FF6D01",
+  "#46BDC6",
+  "#7BAAF7",
+  "#F07B72",
+  "#FCD04F",
+  "#57BB8A",
 ];
 
 const BRANDING = `<div style="position:absolute;bottom:8px;right:12px;font-size:11px;color:#888;font-family:system-ui,sans-serif;pointer-events:none">Powered by SceneView</div>`;
@@ -100,13 +108,23 @@ ${body}
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 export function validateArtifactInput(input: ArtifactInput): string | null {
-  const validTypes: ArtifactType[] = ["model-viewer", "chart-3d", "scene", "product-360", "geometry"];
+  const validTypes: ArtifactType[] = [
+    "model-viewer",
+    "chart-3d",
+    "scene",
+    "product-360",
+    "geometry",
+  ];
   if (!validTypes.includes(input.type)) {
     return `Invalid type "${input.type}". Must be one of: ${validTypes.join(", ")}`;
   }
@@ -194,7 +212,7 @@ function filamentRendererScript(options: {
     fillIntensity = 30000,
   } = options;
 
-  return `<script src="${FILAMENT_CDN}"><\/script>
+  return `<script src="${FILAMENT_CDN}"></script>
 <script>
 Filament.init(['${modelUrl}'], function() {
   try {
@@ -280,7 +298,7 @@ Filament.init(['${modelUrl}'], function() {
     console.error(e);
   }
 });
-<\/script>`;
+</script>`;
 }
 
 /** Convert hex color to Filament RGBA [0-1] range */
@@ -422,17 +440,24 @@ function generateProduct360(input: ArtifactInput): ArtifactResult {
   // Product-360 always auto-rotates (with a slower speed handled in the core script)
   const autoRotate = true;
 
-  const hotspotHtml = hotspots.length > 0 ? `
+  const hotspotHtml =
+    hotspots.length > 0
+      ? `
 <div class="hotspots-overlay" id="hotspots">
-  ${hotspots.map((h, i) => `
+  ${hotspots
+    .map(
+      (h, i) => `
   <div class="hotspot" id="hotspot-${i}" data-position="${escapeHtml(h.position)}" data-normal="${escapeHtml(h.normal)}">
     <div class="hotspot-dot"></div>
     <div class="hotspot-annotation">
       <div class="hotspot-title">${escapeHtml(h.label)}</div>
       ${h.description ? `<div class="hotspot-desc">${escapeHtml(h.description)}</div>` : ""}
     </div>
-  </div>`).join("\n")}
-</div>` : "";
+  </div>`
+    )
+    .join("\n")}
+</div>`
+      : "";
 
   const body = `
 <style>
@@ -493,21 +518,31 @@ function generateGeometry(input: ArtifactInput): ArtifactResult {
   const camDist = Math.max(4, maxDist * 1.8);
 
   // Compute center-of-mass for the look-at target
-  let cx = 0, cy = 0, cz = 0;
+  let cx = 0,
+    cy = 0,
+    cz = 0;
   for (const s of shapes) {
     const p = s.position || [0, 0, 0];
-    cx += p[0]; cy += p[1]; cz += p[2];
+    cx += p[0];
+    cy += p[1];
+    cz += p[2];
   }
-  if (shapes.length > 0) { cx /= shapes.length; cy /= shapes.length; cz /= shapes.length; }
+  if (shapes.length > 0) {
+    cx /= shapes.length;
+    cy /= shapes.length;
+    cz /= shapes.length;
+  }
 
-  const shapesJson = JSON.stringify(shapes.map(s => ({
-    type: s.type,
-    position: s.position || [0, 0, 0],
-    scale: s.scale || [1, 1, 1],
-    color: s.color || [0.8, 0.8, 0.8],
-    metallic: s.metallic ?? 0.0,
-    roughness: s.roughness ?? 0.5,
-  })));
+  const shapesJson = JSON.stringify(
+    shapes.map((s) => ({
+      type: s.type,
+      position: s.position || [0, 0, 0],
+      scale: s.scale || [1, 1, 1],
+      color: s.color || [0.8, 0.8, 0.8],
+      metallic: s.metallic ?? 0.0,
+      roughness: s.roughness ?? 0.5,
+    }))
+  );
 
   const bgRgb = hexToRgb(bg);
   const bgR = (bgRgb.r / 255).toFixed(3);
@@ -725,7 +760,7 @@ function render(){
 }
 requestAnimationFrame(render);
 })();
-<\/script>`;
+</script>`;
 
   return {
     html: htmlShell(title, body),
@@ -748,7 +783,7 @@ function darken(hex: string, amount: number): string {
   return rgbToHex(
     Math.round(rgb.r * (1 - amount)),
     Math.round(rgb.g * (1 - amount)),
-    Math.round(rgb.b * (1 - amount)),
+    Math.round(rgb.b * (1 - amount))
   );
 }
 
@@ -758,7 +793,7 @@ function lighten(hex: string, amount: number): string {
   return rgbToHex(
     Math.min(255, Math.round(rgb.r + (255 - rgb.r) * amount)),
     Math.min(255, Math.round(rgb.g + (255 - rgb.g) * amount)),
-    Math.min(255, Math.round(rgb.b + (255 - rgb.b) * amount)),
+    Math.min(255, Math.round(rgb.b + (255 - rgb.b) * amount))
   );
 }
 

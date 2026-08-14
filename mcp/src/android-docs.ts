@@ -42,11 +42,7 @@ const INSTALL_URL = "https://developer.android.com/tools/agents/android-cli";
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
-export type AndroidDocsErrorCode =
-  | "cli_missing"
-  | "invalid_input"
-  | "cli_error"
-  | "timeout";
+export type AndroidDocsErrorCode = "cli_missing" | "invalid_input" | "cli_error" | "timeout";
 
 export interface AndroidDocsSuccess {
   ok: true;
@@ -81,7 +77,7 @@ let cliPresenceCache: boolean | undefined;
  */
 function run(
   file: string,
-  args: readonly string[],
+  args: readonly string[]
 ): Promise<{ error: (Error & { code?: string | number }) | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     execFile(
@@ -94,7 +90,7 @@ function run(
           stdout: stdout ?? "",
           stderr: stderr ?? "",
         });
-      },
+      }
     );
   });
 }
@@ -147,7 +143,7 @@ function cliMissingError(): AndroidDocsError {
  */
 async function runAndroidDocs(
   subcommand: "search" | "fetch",
-  arg: string,
+  arg: string
 ): Promise<AndroidDocsResult> {
   if (!(await isAndroidCliAvailable())) {
     return cliMissingError();

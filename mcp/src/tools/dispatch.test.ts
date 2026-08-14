@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { dispatchTool, getAllTools, getToolDefinition, TOOL_DEFINITIONS } from "./index.js";
 
 describe("tools library — getAllTools", () => {

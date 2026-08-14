@@ -25,104 +25,135 @@ export const COMMON_ISSUES: CommonIssue[] = [
   {
     id: "threading-sigabrt",
     title: "SIGABRT when loading model on background thread",
-    symptom: "App crashes with SIGABRT / `Filament::FEngine::assertThread` in logcat when loading a model in a coroutine.",
-    cause: "Filament JNI calls (modelLoader, materialLoader, Texture.Builder, engine.create*) must run on the main thread. Using `Dispatchers.IO` or `Dispatchers.Default` causes a native assertion failure.",
-    solution: "Use `rememberModelInstance(modelLoader, path)` in composables (it handles threading internally). For imperative code, use `modelLoader.loadModelInstanceAsync(path)` or wrap in `withContext(Dispatchers.Main) { ... }`.",
+    symptom:
+      "App crashes with SIGABRT / `Filament::FEngine::assertThread` in logcat when loading a model in a coroutine.",
+    cause:
+      "Filament JNI calls (modelLoader, materialLoader, Texture.Builder, engine.create*) must run on the main thread. Using `Dispatchers.IO` or `Dispatchers.Default` causes a native assertion failure.",
+    solution:
+      "Use `rememberModelInstance(modelLoader, path)` in composables (it handles threading internally). For imperative code, use `modelLoader.loadModelInstanceAsync(path)` or wrap in `withContext(Dispatchers.Main) { ... }`.",
     category: "crash",
   },
   {
     id: "null-model-instance",
     title: "rememberModelInstance returns null — model never appears",
     symptom: "Model never shows up. `rememberModelInstance` always returns `null`.",
-    cause: "Either the asset path is wrong (file not in `src/main/assets/`), the GLB file is corrupt, or the code doesn't handle the null loading state. `rememberModelInstance` returns `null` while loading AND if the file fails.",
-    solution: "1) Verify the file exists in `src/main/assets/models/`. 2) Test the GLB in https://gltf-viewer.donmccurdy.com/. 3) Add `Log.d(\"SV\", \"model: $modelInstance\")` to see if it's null vs loading. 4) Show a loading indicator while null.",
+    cause:
+      "Either the asset path is wrong (file not in `src/main/assets/`), the GLB file is corrupt, or the code doesn't handle the null loading state. `rememberModelInstance` returns `null` while loading AND if the file fails.",
+    solution:
+      '1) Verify the file exists in `src/main/assets/models/`. 2) Test the GLB in https://gltf-viewer.donmccurdy.com/. 3) Add `Log.d("SV", "model: $modelInstance")` to see if it\'s null vs loading. 4) Show a loading indicator while null.',
     category: "model-loading",
   },
   {
     id: "lightnode-trailing-lambda",
     title: "LightNode configuration silently ignored",
-    symptom: "Light has no effect. Model is completely dark despite having a LightNode in the scene.",
-    cause: "`LightNode`'s `apply` is a **named parameter**, not a trailing lambda. Writing `LightNode(...) { intensity(100_000f) }` silently ignores the block — Kotlin treats it as a trailing lambda to a different parameter.",
-    solution: "Change `LightNode(type) { intensity(...) }` to `LightNode(type = ..., apply = { intensity(100_000f) })`.",
+    symptom:
+      "Light has no effect. Model is completely dark despite having a LightNode in the scene.",
+    cause:
+      "`LightNode`'s `apply` is a **named parameter**, not a trailing lambda. Writing `LightNode(...) { intensity(100_000f) }` silently ignores the block — Kotlin treats it as a trailing lambda to a different parameter.",
+    solution:
+      "Change `LightNode(type) { intensity(...) }` to `LightNode(type = ..., apply = { intensity(100_000f) })`.",
     category: "api-misuse",
   },
   {
     id: "destroy-order-sigabrt",
     title: "SIGABRT on texture/material cleanup",
     symptom: "Crash when the scene is disposed or when manually destroying resources.",
-    cause: "Filament requires materials to be destroyed before their textures. Destroying in the wrong order triggers a native assertion.",
-    solution: "Destroy MaterialInstance first, then Texture: `materialLoader.destroyMaterialInstance(mi)` then `engine.safeDestroyTexture(tex)`. Better: use `rememberEngine()` which handles cleanup order automatically.",
+    cause:
+      "Filament requires materials to be destroyed before their textures. Destroying in the wrong order triggers a native assertion.",
+    solution:
+      "Destroy MaterialInstance first, then Texture: `materialLoader.destroyMaterialInstance(mi)` then `engine.safeDestroyTexture(tex)`. Better: use `rememberEngine()` which handles cleanup order automatically.",
     category: "crash",
   },
   {
     id: "double-engine-destroy",
     title: "SIGABRT from double engine.destroy()",
-    symptom: "Crash on Activity/Fragment destroy with `rememberEngine()` + manual `engine.destroy()` in DisposableEffect.",
-    cause: "`rememberEngine()` already destroys the Engine on composition disposal. Calling `engine.destroy()` manually causes a double-free.",
-    solution: "Remove manual `engine.destroy()` calls when using `rememberEngine()`. The composable handles the full lifecycle.",
+    symptom:
+      "Crash on Activity/Fragment destroy with `rememberEngine()` + manual `engine.destroy()` in DisposableEffect.",
+    cause:
+      "`rememberEngine()` already destroys the Engine on composition disposal. Calling `engine.destroy()` manually causes a double-free.",
+    solution:
+      "Remove manual `engine.destroy()` calls when using `rememberEngine()`. The composable handles the full lifecycle.",
     category: "crash",
   },
   {
     id: "ar-materials-crash-filament170",
     title: "AR crash with Filament 1.70.0 materials (issue #713)",
     symptom: "ARScene crashes on startup or when placing an object, with a native Filament error.",
-    cause: "Filament 1.70.0 changed internal material format. Pre-compiled `.filamat` files from older versions are incompatible.",
-    solution: "Upgrade to SceneView 3.3.0+ which includes compatible materials. If using custom `.filamat` files, recompile them with the `matc` tool from the matching Filament version.",
+    cause:
+      "Filament 1.70.0 changed internal material format. Pre-compiled `.filamat` files from older versions are incompatible.",
+    solution:
+      "Upgrade to SceneView 3.3.0+ which includes compatible materials. If using custom `.filamat` files, recompile them with the `matc` tool from the matching Filament version.",
     category: "crash",
   },
   {
     id: "meshnode-boundingbox",
     title: "MeshNode bounding box incorrect (issue #711)",
-    symptom: "Hit testing on MeshNode doesn't work, or the bounding box visual doesn't match the mesh.",
+    symptom:
+      "Hit testing on MeshNode doesn't work, or the bounding box visual doesn't match the mesh.",
     cause: "MeshNode's bounding box was not recalculated after mesh creation in earlier versions.",
-    solution: "Update to SceneView 3.3.0+ where MeshNode correctly computes its bounding box from vertex data.",
+    solution:
+      "Update to SceneView 3.3.0+ where MeshNode correctly computes its bounding box from vertex data.",
     category: "api-misuse",
   },
   {
     id: "ar-worldposition-drift",
     title: "AR objects drift / slide when moving phone",
-    symptom: "Objects placed in AR slowly drift or jump to different positions as the user walks around.",
-    cause: "Using `node.worldPosition = ...` instead of `AnchorNode`. ARCore remaps its coordinate system during tracking, and plain nodes don't compensate.",
-    solution: "Always use `AnchorNode(anchor = hitResult.createAnchor())` to place AR objects. Anchors automatically compensate for coordinate system changes.",
+    symptom:
+      "Objects placed in AR slowly drift or jump to different positions as the user walks around.",
+    cause:
+      "Using `node.worldPosition = ...` instead of `AnchorNode`. ARCore remaps its coordinate system during tracking, and plain nodes don't compensate.",
+    solution:
+      "Always use `AnchorNode(anchor = hitResult.createAnchor())` to place AR objects. Anchors automatically compensate for coordinate system changes.",
     category: "ar",
   },
   {
     id: "scene-missing-engine",
     title: "SceneView composable crashes — missing engine parameter",
     symptom: "Compilation error or runtime crash because `SceneView(...)` doesn't have an engine.",
-    cause: "In SceneView 3.0, the engine is explicit. `SceneView()` requires `engine = rememberEngine()`.",
-    solution: "Add `val engine = rememberEngine()` and pass it: `SceneView(engine = engine, modifier = Modifier.fillMaxSize())`.",
+    cause:
+      "In SceneView 3.0, the engine is explicit. `SceneView()` requires `engine = rememberEngine()`.",
+    solution:
+      "Add `val engine = rememberEngine()` and pass it: `SceneView(engine = engine, modifier = Modifier.fillMaxSize())`.",
     category: "api-misuse",
   },
   {
     id: "multiple-engines-oom",
     title: "Out of memory with multiple Engine instances",
-    symptom: "App uses excessive memory, eventually crashes with OOM. GPU memory grows continuously.",
-    cause: "Each `Engine.create()` or `rememberEngine()` allocates GPU resources. Multiple engines in different composables waste GPU memory.",
-    solution: "Use a single `rememberEngine()` at the top level and pass it down to all SceneView composables. Never create more than one Engine per app.",
+    symptom:
+      "App uses excessive memory, eventually crashes with OOM. GPU memory grows continuously.",
+    cause:
+      "Each `Engine.create()` or `rememberEngine()` allocates GPU resources. Multiple engines in different composables waste GPU memory.",
+    solution:
+      "Use a single `rememberEngine()` at the top level and pass it down to all SceneView composables. Never create more than one Engine per app.",
     category: "performance",
   },
   {
     id: "glb-not-gltf",
     title: "Model fails to load — using .gltf instead of .glb",
     symptom: "Model returns null. No error in logcat but the model never appears.",
-    cause: "`.gltf` is a multi-file format that references external `.bin` and texture files. If those files aren't at the expected relative paths, loading silently fails.",
-    solution: "Use `.glb` (binary glTF) which bundles geometry, textures, and animations into a single file. Convert in Blender: File > Export > glTF Binary (.glb).",
+    cause:
+      "`.gltf` is a multi-file format that references external `.bin` and texture files. If those files aren't at the expected relative paths, loading silently fails.",
+    solution:
+      "Use `.glb` (binary glTF) which bundles geometry, textures, and animations into a single file. Convert in Blender: File > Export > glTF Binary (.glb).",
     category: "model-loading",
   },
   {
     id: "ios-glb-not-usdz",
     title: "iOS: Model won't load — using GLB instead of USDZ",
     symptom: "RealityKit/SceneViewSwift: model loading fails or throws.",
-    cause: "RealityKit uses USDZ or .reality format, NOT GLB/glTF. GLB is Filament-only (Android/Web).",
-    solution: "Convert models to USDZ for iOS: use Apple's Reality Converter app, or Blender with the USDZ exporter. Each platform needs its own model format.",
+    cause:
+      "RealityKit uses USDZ or .reality format, NOT GLB/glTF. GLB is Filament-only (Android/Web).",
+    solution:
+      "Convert models to USDZ for iOS: use Apple's Reality Converter app, or Blender with the USDZ exporter. Each platform needs its own model format.",
     category: "ios",
   },
 ];
 
 export function getCommonIssuesSummary(): string {
   const lines: string[] = ["# SceneView — Common Issues & Solutions\n"];
-  lines.push(`*${COMMON_ISSUES.length} well-known issues with solutions. Always available offline.*\n`);
+  lines.push(
+    `*${COMMON_ISSUES.length} well-known issues with solutions. Always available offline.*\n`
+  );
 
   const categories = [...new Set(COMMON_ISSUES.map((i) => i.category))];
   for (const cat of categories) {
@@ -264,7 +295,9 @@ function formatIssues(issues: GitHubIssue[], fetchError: string | null): string 
   if (fetchError) {
     lines.push(`> ⚠️ ${fetchError}. Showing cached data if available.\n`);
   } else {
-    lines.push(`*Fetched live from GitHub — ${issues.length} open issue(s). Cached for 10 minutes.*\n`);
+    lines.push(
+      `*Fetched live from GitHub — ${issues.length} open issue(s). Cached for 10 minutes.*\n`
+    );
   }
 
   if (issues.length === 0) {

@@ -24,10 +24,10 @@
 //
 // Opt out with `SCENEVIEW_TELEMETRY=0` or by running in CI (`CI=true`).
 
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 
 import type { Tier } from "./tiers.js";
 
@@ -145,7 +145,7 @@ function loadOrCreateInstallId(): string | undefined {
     writeFileSync(
       path,
       JSON.stringify({ installId, createdAt: new Date().toISOString() }, null, 2),
-      { encoding: "utf8" },
+      { encoding: "utf8" }
     );
     cachedInstallId = installId;
     return cachedInstallId;

@@ -39,66 +39,370 @@ interface ObjectMapping {
 
 const OBJECT_MAPPINGS: ObjectMapping[] = [
   // Furniture
-  { keywords: ["table"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.0, defaultPosition: [0, 0.4, 0], color: "Color(0.55f, 0.35f, 0.17f)", comment: "Table (flat cube)" },
-  { keywords: ["chair"], nodeType: "ModelNode", defaultScale: 0.8, defaultPosition: [0, 0, -1], comment: "Chair (use GLB model)" },
-  { keywords: ["desk"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.2, defaultPosition: [0, 0.35, 0], color: "Color(0.55f, 0.35f, 0.17f)", comment: "Desk" },
-  { keywords: ["shelf", "bookshelf"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.5, defaultPosition: [2, 0.75, 0], color: "Color(0.55f, 0.35f, 0.17f)", comment: "Shelf" },
-  { keywords: ["bed"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 2.0, defaultPosition: [0, 0.25, 0], color: "Color.White", comment: "Bed" },
-  { keywords: ["sofa", "couch"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.8, defaultPosition: [0, 0.35, 0], color: "Color(0.3f, 0.3f, 0.6f)", comment: "Sofa" },
+  {
+    keywords: ["table"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.0,
+    defaultPosition: [0, 0.4, 0],
+    color: "Color(0.55f, 0.35f, 0.17f)",
+    comment: "Table (flat cube)",
+  },
+  {
+    keywords: ["chair"],
+    nodeType: "ModelNode",
+    defaultScale: 0.8,
+    defaultPosition: [0, 0, -1],
+    comment: "Chair (use GLB model)",
+  },
+  {
+    keywords: ["desk"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.2,
+    defaultPosition: [0, 0.35, 0],
+    color: "Color(0.55f, 0.35f, 0.17f)",
+    comment: "Desk",
+  },
+  {
+    keywords: ["shelf", "bookshelf"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.5,
+    defaultPosition: [2, 0.75, 0],
+    color: "Color(0.55f, 0.35f, 0.17f)",
+    comment: "Shelf",
+  },
+  {
+    keywords: ["bed"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 2.0,
+    defaultPosition: [0, 0.25, 0],
+    color: "Color.White",
+    comment: "Bed",
+  },
+  {
+    keywords: ["sofa", "couch"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.8,
+    defaultPosition: [0, 0.35, 0],
+    color: "Color(0.3f, 0.3f, 0.6f)",
+    comment: "Sofa",
+  },
 
   // Basic shapes
-  { keywords: ["box", "cube", "crate"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 0.5, defaultPosition: [0, 0.25, 0], color: "Color.Red", comment: "Box" },
-  { keywords: ["sphere", "ball", "globe", "orb"], nodeType: "SphereNode", geometryType: "sphere", defaultScale: 0.5, defaultPosition: [0, 0.5, 0], color: "Color.Blue", comment: "Sphere" },
-  { keywords: ["cylinder", "pillar", "column"], nodeType: "CylinderNode", geometryType: "cylinder", defaultScale: 0.5, defaultPosition: [0, 0.5, 0], color: "Color.Green", comment: "Cylinder" },
-  { keywords: ["plane", "floor", "ground"], nodeType: "PlaneNode", geometryType: "plane", defaultScale: 5.0, defaultPosition: [0, 0, 0], color: "Color.DarkGray", comment: "Ground plane" },
-  { keywords: ["wall"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 3.0, defaultPosition: [0, 1.5, -3], color: "Color.LightGray", comment: "Wall" },
+  {
+    keywords: ["box", "cube", "crate"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 0.5,
+    defaultPosition: [0, 0.25, 0],
+    color: "Color.Red",
+    comment: "Box",
+  },
+  {
+    keywords: ["sphere", "ball", "globe", "orb"],
+    nodeType: "SphereNode",
+    geometryType: "sphere",
+    defaultScale: 0.5,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color.Blue",
+    comment: "Sphere",
+  },
+  {
+    keywords: ["cylinder", "pillar", "column"],
+    nodeType: "CylinderNode",
+    geometryType: "cylinder",
+    defaultScale: 0.5,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color.Green",
+    comment: "Cylinder",
+  },
+  {
+    keywords: ["plane", "floor", "ground"],
+    nodeType: "PlaneNode",
+    geometryType: "plane",
+    defaultScale: 5.0,
+    defaultPosition: [0, 0, 0],
+    color: "Color.DarkGray",
+    comment: "Ground plane",
+  },
+  {
+    keywords: ["wall"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 3.0,
+    defaultPosition: [0, 1.5, -3],
+    color: "Color.LightGray",
+    comment: "Wall",
+  },
 
   // Environment
-  { keywords: ["tree", "plant"], nodeType: "ModelNode", defaultScale: 2.0, defaultPosition: [2, 0, 2], comment: "Tree (use GLB model)" },
-  { keywords: ["car", "vehicle"], nodeType: "ModelNode", defaultScale: 2.0, defaultPosition: [0, 0, 0], comment: "Car (use GLB model)" },
-  { keywords: ["house", "building"], nodeType: "ModelNode", defaultScale: 5.0, defaultPosition: [0, 0, -5], comment: "Building (use GLB model)" },
+  {
+    keywords: ["tree", "plant"],
+    nodeType: "ModelNode",
+    defaultScale: 2.0,
+    defaultPosition: [2, 0, 2],
+    comment: "Tree (use GLB model)",
+  },
+  {
+    keywords: ["car", "vehicle"],
+    nodeType: "ModelNode",
+    defaultScale: 2.0,
+    defaultPosition: [0, 0, 0],
+    comment: "Car (use GLB model)",
+  },
+  {
+    keywords: ["house", "building"],
+    nodeType: "ModelNode",
+    defaultScale: 5.0,
+    defaultPosition: [0, 0, -5],
+    comment: "Building (use GLB model)",
+  },
 
   // People / characters
-  { keywords: ["person", "character", "human", "avatar"], nodeType: "ModelNode", defaultScale: 1.7, defaultPosition: [0, 0, 0], comment: "Character (use GLB model)" },
-  { keywords: ["robot", "android"], nodeType: "ModelNode", defaultScale: 1.5, defaultPosition: [0, 0, 0], comment: "Robot (use GLB model)" },
+  {
+    keywords: ["person", "character", "human", "avatar"],
+    nodeType: "ModelNode",
+    defaultScale: 1.7,
+    defaultPosition: [0, 0, 0],
+    comment: "Character (use GLB model)",
+  },
+  {
+    keywords: ["robot", "android"],
+    nodeType: "ModelNode",
+    defaultScale: 1.5,
+    defaultPosition: [0, 0, 0],
+    comment: "Robot (use GLB model)",
+  },
 
   // Animals
-  { keywords: ["dog", "puppy"], nodeType: "ModelNode", defaultScale: 0.6, defaultPosition: [1, 0, 0], comment: "Dog (use GLB model)" },
-  { keywords: ["cat", "kitten"], nodeType: "ModelNode", defaultScale: 0.4, defaultPosition: [-1, 0, 0], comment: "Cat (use GLB model)" },
-  { keywords: ["bird"], nodeType: "ModelNode", defaultScale: 0.2, defaultPosition: [0, 2, 0], comment: "Bird (use GLB model)" },
-  { keywords: ["horse"], nodeType: "ModelNode", defaultScale: 2.5, defaultPosition: [0, 0, 2], comment: "Horse (use GLB model)" },
-  { keywords: ["fish"], nodeType: "ModelNode", defaultScale: 0.3, defaultPosition: [0, 0.5, 0], comment: "Fish (use GLB model)" },
-  { keywords: ["dinosaur", "dino", "t-rex"], nodeType: "ModelNode", defaultScale: 5.0, defaultPosition: [0, 0, -3], comment: "Dinosaur (use GLB model)" },
-  { keywords: ["dragon"], nodeType: "ModelNode", defaultScale: 4.0, defaultPosition: [0, 2, -3], comment: "Dragon (use GLB model)" },
+  {
+    keywords: ["dog", "puppy"],
+    nodeType: "ModelNode",
+    defaultScale: 0.6,
+    defaultPosition: [1, 0, 0],
+    comment: "Dog (use GLB model)",
+  },
+  {
+    keywords: ["cat", "kitten"],
+    nodeType: "ModelNode",
+    defaultScale: 0.4,
+    defaultPosition: [-1, 0, 0],
+    comment: "Cat (use GLB model)",
+  },
+  {
+    keywords: ["bird"],
+    nodeType: "ModelNode",
+    defaultScale: 0.2,
+    defaultPosition: [0, 2, 0],
+    comment: "Bird (use GLB model)",
+  },
+  {
+    keywords: ["horse"],
+    nodeType: "ModelNode",
+    defaultScale: 2.5,
+    defaultPosition: [0, 0, 2],
+    comment: "Horse (use GLB model)",
+  },
+  {
+    keywords: ["fish"],
+    nodeType: "ModelNode",
+    defaultScale: 0.3,
+    defaultPosition: [0, 0.5, 0],
+    comment: "Fish (use GLB model)",
+  },
+  {
+    keywords: ["dinosaur", "dino", "t-rex"],
+    nodeType: "ModelNode",
+    defaultScale: 5.0,
+    defaultPosition: [0, 0, -3],
+    comment: "Dinosaur (use GLB model)",
+  },
+  {
+    keywords: ["dragon"],
+    nodeType: "ModelNode",
+    defaultScale: 4.0,
+    defaultPosition: [0, 2, -3],
+    comment: "Dragon (use GLB model)",
+  },
 
   // More vehicles
-  { keywords: ["airplane", "plane", "jet"], nodeType: "ModelNode", defaultScale: 5.0, defaultPosition: [0, 5, 0], comment: "Airplane (use GLB model)" },
-  { keywords: ["boat", "ship"], nodeType: "ModelNode", defaultScale: 4.0, defaultPosition: [0, 0, -3], comment: "Boat (use GLB model)" },
-  { keywords: ["bicycle", "bike"], nodeType: "ModelNode", defaultScale: 1.2, defaultPosition: [2, 0, 0], comment: "Bicycle (use GLB model)" },
-  { keywords: ["motorcycle", "motorbike"], nodeType: "ModelNode", defaultScale: 1.5, defaultPosition: [2, 0, 0], comment: "Motorcycle (use GLB model)" },
-  { keywords: ["truck"], nodeType: "ModelNode", defaultScale: 3.0, defaultPosition: [0, 0, -2], comment: "Truck (use GLB model)" },
+  {
+    keywords: ["airplane", "plane", "jet"],
+    nodeType: "ModelNode",
+    defaultScale: 5.0,
+    defaultPosition: [0, 5, 0],
+    comment: "Airplane (use GLB model)",
+  },
+  {
+    keywords: ["boat", "ship"],
+    nodeType: "ModelNode",
+    defaultScale: 4.0,
+    defaultPosition: [0, 0, -3],
+    comment: "Boat (use GLB model)",
+  },
+  {
+    keywords: ["bicycle", "bike"],
+    nodeType: "ModelNode",
+    defaultScale: 1.2,
+    defaultPosition: [2, 0, 0],
+    comment: "Bicycle (use GLB model)",
+  },
+  {
+    keywords: ["motorcycle", "motorbike"],
+    nodeType: "ModelNode",
+    defaultScale: 1.5,
+    defaultPosition: [2, 0, 0],
+    comment: "Motorcycle (use GLB model)",
+  },
+  {
+    keywords: ["truck"],
+    nodeType: "ModelNode",
+    defaultScale: 3.0,
+    defaultPosition: [0, 0, -2],
+    comment: "Truck (use GLB model)",
+  },
 
   // More environment
-  { keywords: ["flower", "rose"], nodeType: "ModelNode", defaultScale: 0.3, defaultPosition: [1, 0, 1], comment: "Flower (use GLB model)" },
-  { keywords: ["rock", "stone", "boulder"], nodeType: "SphereNode", geometryType: "sphere", defaultScale: 0.8, defaultPosition: [1, 0.4, 1], color: "Color.Gray", comment: "Rock" },
-  { keywords: ["mountain", "hill"], nodeType: "ModelNode", defaultScale: 10.0, defaultPosition: [0, 0, -10], comment: "Mountain (use GLB model)" },
-  { keywords: ["fence"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 2.0, defaultPosition: [3, 0.5, 0], color: "Color(0.55f, 0.35f, 0.17f)", comment: "Fence" },
-  { keywords: ["bridge"], nodeType: "ModelNode", defaultScale: 5.0, defaultPosition: [0, 0, 0], comment: "Bridge (use GLB model)" },
+  {
+    keywords: ["flower", "rose"],
+    nodeType: "ModelNode",
+    defaultScale: 0.3,
+    defaultPosition: [1, 0, 1],
+    comment: "Flower (use GLB model)",
+  },
+  {
+    keywords: ["rock", "stone", "boulder"],
+    nodeType: "SphereNode",
+    geometryType: "sphere",
+    defaultScale: 0.8,
+    defaultPosition: [1, 0.4, 1],
+    color: "Color.Gray",
+    comment: "Rock",
+  },
+  {
+    keywords: ["mountain", "hill"],
+    nodeType: "ModelNode",
+    defaultScale: 10.0,
+    defaultPosition: [0, 0, -10],
+    comment: "Mountain (use GLB model)",
+  },
+  {
+    keywords: ["fence"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 2.0,
+    defaultPosition: [3, 0.5, 0],
+    color: "Color(0.55f, 0.35f, 0.17f)",
+    comment: "Fence",
+  },
+  {
+    keywords: ["bridge"],
+    nodeType: "ModelNode",
+    defaultScale: 5.0,
+    defaultPosition: [0, 0, 0],
+    comment: "Bridge (use GLB model)",
+  },
 
   // More furniture / objects
-  { keywords: ["lamp", "light fixture"], nodeType: "ModelNode", defaultScale: 0.5, defaultPosition: [1, 0.8, 0], comment: "Lamp (use GLB model)" },
-  { keywords: ["tv", "television", "screen", "monitor"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.2, defaultPosition: [0, 0.8, -2], color: "Color.Black", comment: "TV/Screen (flat cube)" },
-  { keywords: ["door", "gate"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 2.0, defaultPosition: [0, 1, -3], color: "Color(0.55f, 0.35f, 0.17f)", comment: "Door" },
-  { keywords: ["window"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 1.0, defaultPosition: [2, 1.5, -3], color: "Color(0.7f, 0.85f, 1f)", comment: "Window" },
-  { keywords: ["stairs", "staircase"], nodeType: "ModelNode", defaultScale: 2.0, defaultPosition: [3, 0, 0], comment: "Stairs (use GLB model)" },
-  { keywords: ["book", "books"], nodeType: "CubeNode", geometryType: "cube", defaultScale: 0.2, defaultPosition: [0, 0.5, 0], color: "Color(0.6f, 0.1f, 0.1f)", comment: "Book" },
-  { keywords: ["bottle", "vase"], nodeType: "CylinderNode", geometryType: "cylinder", defaultScale: 0.2, defaultPosition: [0, 0.3, 0], color: "Color(0.2f, 0.6f, 0.3f)", comment: "Bottle/Vase" },
-  { keywords: ["trophy", "cup"], nodeType: "ModelNode", defaultScale: 0.3, defaultPosition: [0, 0.5, 0], comment: "Trophy (use GLB model)" },
+  {
+    keywords: ["lamp", "light fixture"],
+    nodeType: "ModelNode",
+    defaultScale: 0.5,
+    defaultPosition: [1, 0.8, 0],
+    comment: "Lamp (use GLB model)",
+  },
+  {
+    keywords: ["tv", "television", "screen", "monitor"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.2,
+    defaultPosition: [0, 0.8, -2],
+    color: "Color.Black",
+    comment: "TV/Screen (flat cube)",
+  },
+  {
+    keywords: ["door", "gate"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 2.0,
+    defaultPosition: [0, 1, -3],
+    color: "Color(0.55f, 0.35f, 0.17f)",
+    comment: "Door",
+  },
+  {
+    keywords: ["window"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 1.0,
+    defaultPosition: [2, 1.5, -3],
+    color: "Color(0.7f, 0.85f, 1f)",
+    comment: "Window",
+  },
+  {
+    keywords: ["stairs", "staircase"],
+    nodeType: "ModelNode",
+    defaultScale: 2.0,
+    defaultPosition: [3, 0, 0],
+    comment: "Stairs (use GLB model)",
+  },
+  {
+    keywords: ["book", "books"],
+    nodeType: "CubeNode",
+    geometryType: "cube",
+    defaultScale: 0.2,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color(0.6f, 0.1f, 0.1f)",
+    comment: "Book",
+  },
+  {
+    keywords: ["bottle", "vase"],
+    nodeType: "CylinderNode",
+    geometryType: "cylinder",
+    defaultScale: 0.2,
+    defaultPosition: [0, 0.3, 0],
+    color: "Color(0.2f, 0.6f, 0.3f)",
+    comment: "Bottle/Vase",
+  },
+  {
+    keywords: ["trophy", "cup"],
+    nodeType: "ModelNode",
+    defaultScale: 0.3,
+    defaultPosition: [0, 0.5, 0],
+    comment: "Trophy (use GLB model)",
+  },
 
   // Food
-  { keywords: ["pizza"], nodeType: "CylinderNode", geometryType: "cylinder", defaultScale: 0.3, defaultPosition: [0, 0.5, 0], color: "Color(0.9f, 0.7f, 0.2f)", comment: "Pizza (flat cylinder)" },
-  { keywords: ["cake"], nodeType: "CylinderNode", geometryType: "cylinder", defaultScale: 0.3, defaultPosition: [0, 0.5, 0], color: "Color(1f, 0.85f, 0.7f)", comment: "Cake (cylinder)" },
-  { keywords: ["apple", "fruit"], nodeType: "SphereNode", geometryType: "sphere", defaultScale: 0.08, defaultPosition: [0, 0.5, 0], color: "Color.Red", comment: "Apple/Fruit" },
+  {
+    keywords: ["pizza"],
+    nodeType: "CylinderNode",
+    geometryType: "cylinder",
+    defaultScale: 0.3,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color(0.9f, 0.7f, 0.2f)",
+    comment: "Pizza (flat cylinder)",
+  },
+  {
+    keywords: ["cake"],
+    nodeType: "CylinderNode",
+    geometryType: "cylinder",
+    defaultScale: 0.3,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color(1f, 0.85f, 0.7f)",
+    comment: "Cake (cylinder)",
+  },
+  {
+    keywords: ["apple", "fruit"],
+    nodeType: "SphereNode",
+    geometryType: "sphere",
+    defaultScale: 0.08,
+    defaultPosition: [0, 0.5, 0],
+    color: "Color.Red",
+    comment: "Apple/Fruit",
+  },
 ];
 
 // ── Text keywords ───────────────────────────────────────────────────────────
@@ -131,8 +435,8 @@ function parseDescription(description: string): {
         new RegExp(`(\\d+)\\s+${keyword}s?`, "i"),
         new RegExp(`(one|two|three|four|five|six|seven|eight|nine|ten)\\s+${keyword}s?`, "i"),
         new RegExp(`(a|an)\\s+${keyword}\\b`, "i"),
-        new RegExp(`\\b${keyword}s\\b`, "i"),  // plural without number = 2
-        new RegExp(`\\b${keyword}\\b`, "i"),    // singular without article = 1
+        new RegExp(`\\b${keyword}s\\b`, "i"), // plural without number = 2
+        new RegExp(`\\b${keyword}\\b`, "i"), // singular without article = 1
       ];
 
       for (const pat of countPatterns) {
@@ -141,13 +445,22 @@ function parseDescription(description: string): {
           let count = 1;
           if (match[1]) {
             const numWords: Record<string, number> = {
-              one: 1, two: 2, three: 3, four: 4, five: 5,
-              six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-              a: 1, an: 1,
+              one: 1,
+              two: 2,
+              three: 3,
+              four: 4,
+              five: 5,
+              six: 6,
+              seven: 7,
+              eight: 8,
+              nine: 9,
+              ten: 10,
+              a: 1,
+              an: 1,
             };
             count = numWords[match[1].toLowerCase()] || parseInt(match[1]) || 1;
           }
-          if (pat.source.includes("s\\b") && !match[1]) count = 2;  // plural default
+          if (pat.source.includes("s\\b") && !match[1]) count = 2; // plural default
           objects.push({ mapping, count });
           break;
         }
@@ -176,27 +489,29 @@ function parseDescription(description: string): {
   };
 }
 
-function spreadPositions(count: number, basePos: [number, number, number], spacing: number): [number, number, number][] {
+function spreadPositions(
+  count: number,
+  basePos: [number, number, number],
+  spacing: number
+): [number, number, number][] {
   if (count === 1) return [basePos];
   const positions: [number, number, number][] = [];
   const halfSpan = ((count - 1) * spacing) / 2;
   for (let i = 0; i < count; i++) {
-    positions.push([
-      basePos[0] + i * spacing - halfSpan,
-      basePos[1],
-      basePos[2],
-    ]);
+    positions.push([basePos[0] + i * spacing - halfSpan, basePos[1], basePos[2]]);
   }
   return positions;
 }
 
 /** Generate a material variable name from a color expression */
 function colorToVarName(color: string): string {
-  return color
-    .replace("Color.", "")
-    .replace(/Color\(.*\)/, "custom")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase() + "Mat";
+  return (
+    color
+      .replace("Color.", "")
+      .replace(/Color\(.*\)/, "custom")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase() + "Mat"
+  );
 }
 
 export function generateScene(description: string): GeneratedScene {
@@ -284,8 +599,8 @@ export function generateScene(description: string): GeneratedScene {
   }
 
   // Add ground plane if not already present
-  const hasGround = elements.some((e) =>
-    e.nodeType === "PlaneNode" || (e.comment && e.comment.toLowerCase().includes("ground"))
+  const hasGround = elements.some(
+    (e) => e.nodeType === "PlaneNode" || (e.comment && e.comment.toLowerCase().includes("ground"))
   );
   if (!hasGround && !parsed.isAR) {
     hasGeometry = true;
@@ -304,7 +619,11 @@ export function generateScene(description: string): GeneratedScene {
 
   // Build the code
   const isAR = parsed.isAR;
-  dependencies.push(isAR ? "io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}" : "io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}");
+  dependencies.push(
+    isAR
+      ? `io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}`
+      : `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`
+  );
 
   // Build model instance declarations
   const modelElements = elements.filter((e) => e.type === "model");
@@ -312,7 +631,11 @@ export function generateScene(description: string): GeneratedScene {
   modelElements.forEach((e) => {
     const path = e.properties.modelPath;
     if (!uniqueModels.has(path)) {
-      const varName = path.replace("models/", "").replace(".glb", "").replace(/[^a-zA-Z0-9]/g, "") + "Instance";
+      const varName =
+        path
+          .replace("models/", "")
+          .replace(".glb", "")
+          .replace(/[^a-zA-Z0-9]/g, "") + "Instance";
       uniqueModels.set(path, varName);
     }
   });
@@ -371,7 +694,9 @@ export function generateScene(description: string): GeneratedScene {
     if (hasModel) lines.push("        modelLoader = modelLoader,");
     lines.push("        planeRenderer = true,");
     lines.push("        sessionConfiguration = { session, config ->");
-    lines.push("            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR");
+    lines.push(
+      "            config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR"
+    );
     lines.push("        },");
     lines.push("        onTouchEvent = { event, hitResult ->");
     lines.push("            if (event.action == MotionEvent.ACTION_UP && hitResult != null) {");
@@ -389,9 +714,9 @@ export function generateScene(description: string): GeneratedScene {
     if (hasModel) lines.push("        modelLoader = modelLoader,");
     lines.push("        cameraManipulator = rememberCameraManipulator(),");
     if (!parsed.isDark) {
-      lines.push('        environment = rememberEnvironment(environmentLoader) {');
+      lines.push("        environment = rememberEnvironment(environmentLoader) {");
       lines.push('            environmentLoader.createHDREnvironment("environments/sky_2k.hdr")');
-      lines.push('                ?: createEnvironment(environmentLoader)');
+      lines.push("                ?: createEnvironment(environmentLoader)");
       lines.push("        },");
       lines.push("        mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }");
     }
@@ -405,7 +730,9 @@ export function generateScene(description: string): GeneratedScene {
     for (const [color, varName] of uniqueColors) {
       const roughness = color.includes("DarkGray") ? "0.9f" : "0.6f";
       lines.push(`${indent}val ${varName} = remember(materialLoader) {`);
-      lines.push(`${indent}    materialLoader.createColorInstance(${color}, roughness = ${roughness})`);
+      lines.push(
+        `${indent}    materialLoader.createColorInstance(${color}, roughness = ${roughness})`
+      );
       lines.push(`${indent}}`);
     }
     lines.push("");
@@ -414,7 +741,9 @@ export function generateScene(description: string): GeneratedScene {
     const arMatIndent = "                ";
     for (const [color, varName] of uniqueColors) {
       lines.push(`${arMatIndent}val ${varName} = remember(materialLoader) {`);
-      lines.push(`${arMatIndent}    materialLoader.createColorInstance(${color}, roughness = 0.6f)`);
+      lines.push(
+        `${arMatIndent}    materialLoader.createColorInstance(${color}, roughness = 0.6f)`
+      );
       lines.push(`${arMatIndent}}`);
     }
     lines.push("");
@@ -523,17 +852,25 @@ export function generateScene(description: string): GeneratedScene {
 
   // Notes
   if (hasModel) {
-    notes.push("This scene references GLB model files. You need to provide actual .glb files in `src/main/assets/models/`.");
+    notes.push(
+      "This scene references GLB model files. You need to provide actual .glb files in `src/main/assets/models/`."
+    );
     notes.push("Free 3D models: https://sketchfab.com/features/free-3d-models (download as GLB)");
   }
   if (isAR) {
-    notes.push("AR requires camera permission at runtime and ARCore on the device. See `get_platform_setup(\"android\", \"ar\")` for full setup.");
+    notes.push(
+      'AR requires camera permission at runtime and ARCore on the device. See `get_platform_setup("android", "ar")` for full setup.'
+    );
   }
   if (elements.length <= 2 && !hasModel && !hasGeometry) {
-    notes.push("Only a light was generated. The description didn't match any known objects. Try mentioning specific objects like 'table', 'chair', 'sphere', 'cube', etc.");
+    notes.push(
+      "Only a light was generated. The description didn't match any known objects. Try mentioning specific objects like 'table', 'chair', 'sphere', 'cube', etc."
+    );
   }
   if (parsed.isAnimated) {
-    notes.push("Animation is enabled. For model animations, the GLB file must contain embedded animations. For geometry, rotation is applied via LaunchedEffect.");
+    notes.push(
+      "Animation is enabled. For model animations, the GLB file must contain embedded animations. For geometry, rotation is applied via LaunchedEffect."
+    );
   }
 
   return {
@@ -556,7 +893,9 @@ export function formatGeneratedScene(result: GeneratedScene): string {
 
   parts.push(`### Dependency\n`);
   parts.push("```kotlin");
-  result.dependencies.forEach((d) => parts.push(`implementation("${d}")`));
+  result.dependencies.forEach((d) => {
+    parts.push(`implementation("${d}")`);
+  });
   parts.push("```\n");
 
   parts.push(`### Code\n`);
@@ -566,7 +905,9 @@ export function formatGeneratedScene(result: GeneratedScene): string {
 
   if (result.notes.length > 0) {
     parts.push(`### Notes\n`);
-    result.notes.forEach((n, i) => parts.push(`${i + 1}. ${n}`));
+    result.notes.forEach((n, i) => {
+      parts.push(`${i + 1}. ${n}`);
+    });
   }
 
   return parts.join("\n");

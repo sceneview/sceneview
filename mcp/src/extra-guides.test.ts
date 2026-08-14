@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { MATERIAL_GUIDE, COLLISION_GUIDE, MODEL_OPTIMIZATION_GUIDE, WEB_RENDERING_GUIDE } from "./extra-guides.js";
+import { describe, expect, it } from "vitest";
+import {
+  COLLISION_GUIDE,
+  MATERIAL_GUIDE,
+  MODEL_OPTIMIZATION_GUIDE,
+  WEB_RENDERING_GUIDE,
+} from "./extra-guides.js";
 
 // ─── Material Guide Tests ───────────────────────────────────────────────────
 

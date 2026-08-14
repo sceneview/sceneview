@@ -393,28 +393,25 @@ describe("generateModel — submit errors", () => {
 // ─── Task failure ───────────────────────────────────────────────────────────
 
 describe("generateModel — task failure", () => {
-  it.each([
-    "failed",
-    "banned",
-    "expired",
-    "cancelled",
-    "unknown",
-  ])("surfaces finalized status %s as `task_failed`", async (status) => {
-    process.env[API_KEY_ENV] = "tsk_fake_key";
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(tripoResponse(SUBMIT_OK))
-        .mockResolvedValueOnce(tripoResponse({ code: 0, data: { status } }))
-    );
+  it.each(["failed", "banned", "expired", "cancelled", "unknown"])(
+    "surfaces finalized status %s as `task_failed`",
+    async (status) => {
+      process.env[API_KEY_ENV] = "tsk_fake_key";
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(tripoResponse(SUBMIT_OK))
+          .mockResolvedValueOnce(tripoResponse({ code: 0, data: { status } }))
+      );
 
-    const result = await generateModel({ prompt: "a robot", ...FAST_POLL });
-    const err = result as GenerateModelError;
-    expect(err.code).toBe("task_failed");
-    expect(err.message).toContain("task-123");
-    expect(err.message).toContain(status);
-  });
+      const result = await generateModel({ prompt: "a robot", ...FAST_POLL });
+      const err = result as GenerateModelError;
+      expect(err.code).toBe("task_failed");
+      expect(err.message).toContain("task-123");
+      expect(err.message).toContain(status);
+    }
+  );
 
   it("returns bad_response when a successful task carries no model URL", async () => {
     process.env[API_KEY_ENV] = "tsk_fake_key";

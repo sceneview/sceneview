@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ANIMATION_GUIDE, GESTURE_GUIDE, PERFORMANCE_TIPS } from "./advanced-guides.js";
 
 // ─── Animation Guide Tests ───────────────────────────────────────────────────

@@ -1,14 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import {
-  MATERIAL_GUIDE,
   COLLISION_GUIDE,
+  MATERIAL_GUIDE,
   MODEL_OPTIMIZATION_GUIDE,
   WEB_RENDERING_GUIDE,
 } from "./extra-guides.js";
@@ -16,15 +13,12 @@ import {
 // ─── Disclaimer (same as index.ts) ──────────────────────────────────────────
 
 const DISCLAIMER =
-  '\n\n---\n*Generated code suggestion. Review before use in production. See [TERMS.md](https://github.com/sceneview/sceneview/blob/main/mcp/TERMS.md).*';
+  "\n\n---\n*Generated code suggestion. Review before use in production. See [TERMS.md](https://github.com/sceneview/sceneview/blob/main/mcp/TERMS.md).*";
 
 function withDisclaimer<T extends { type: string; text: string }>(content: T[]): T[] {
   if (content.length === 0) return content;
   const last = content[content.length - 1];
-  return [
-    ...content.slice(0, -1),
-    { ...last, text: last.text + DISCLAIMER },
-  ];
+  return [...content.slice(0, -1), { ...last, text: last.text + DISCLAIMER }];
 }
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
@@ -58,7 +52,7 @@ let serverTransport: InMemoryTransport;
 beforeAll(async () => {
   server = new Server(
     { name: "sceneview-mcp-test", version: "0.0.1" },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} } }
   );
 
   // Register tools list

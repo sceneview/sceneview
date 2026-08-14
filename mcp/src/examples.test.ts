@@ -1,8 +1,5 @@
-import { describe, it, expect } from "vitest";
-import {
-  DEMO_WITH_SETTINGS_EXAMPLE,
-  SKETCHFAB_STREAMING_EXAMPLE,
-} from "./examples.js";
+import { describe, expect, it } from "vitest";
+import { DEMO_WITH_SETTINGS_EXAMPLE, SKETCHFAB_STREAMING_EXAMPLE } from "./examples.js";
 
 // These resources surface examples in the MCP client's context window, so we
 // pin their shape so we don't accidentally ship empty / dramatically-resized
@@ -30,9 +27,7 @@ describe("examples module — inline MCP resource bodies", () => {
     });
 
     it("points at the full recipe in docs/", () => {
-      expect(DEMO_WITH_SETTINGS_EXAMPLE).toContain(
-        "docs/docs/recipes/demo-settings-sheet.md",
-      );
+      expect(DEMO_WITH_SETTINGS_EXAMPLE).toContain("docs/docs/recipes/demo-settings-sheet.md");
     });
   });
 
@@ -67,9 +62,7 @@ describe("examples module — inline MCP resource bodies", () => {
     });
 
     it("points at the full recipe in docs/", () => {
-      expect(SKETCHFAB_STREAMING_EXAMPLE).toContain(
-        "docs/docs/recipes/sketchfab-streaming.md",
-      );
+      expect(SKETCHFAB_STREAMING_EXAMPLE).toContain("docs/docs/recipes/sketchfab-streaming.md");
     });
   });
 });

@@ -16,13 +16,12 @@
  * that no tier entry is a phantom.
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import * as path from "node:path";
-
-import { TOOL_DEFINITIONS } from "./tools/index.js";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 import { getFreeToolNames, getProToolNames, getToolTier } from "./tiers.js";
+import { TOOL_DEFINITIONS } from "./tools/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const mcpizeYaml = readFileSync(path.join(here, "..", "mcpize.yaml"), "utf8");
@@ -36,9 +35,7 @@ const mcpizeYaml = readFileSync(path.join(here, "..", "mcpize.yaml"), "utf8");
 const GATEWAY_ONLY_FREE_TOOLS = ["view_3d_model"];
 
 const localNames = new Set(TOOL_DEFINITIONS.map((t) => t.name));
-const localFreeCount = TOOL_DEFINITIONS.filter(
-  (t) => getToolTier(t.name) === "free",
-).length;
+const localFreeCount = TOOL_DEFINITIONS.filter((t) => getToolTier(t.name) === "free").length;
 
 describe("mcpize.yaml free/Pro tool counts", () => {
   it("every 'NN free tools' claim matches the stdio package's free surface", () => {
@@ -48,7 +45,7 @@ describe("mcpize.yaml free/Pro tool counts", () => {
       expect(
         Number(m[1]),
         `mcpize.yaml claims "${m[1]} free tools" but the stdio package ` +
-          `serves ${localFreeCount} free tools (TOOL_DEFINITIONS ∩ free tier).`,
+          `serves ${localFreeCount} free tools (TOOL_DEFINITIONS ∩ free tier).`
       ).toBe(localFreeCount);
     }
   });
@@ -60,7 +57,7 @@ describe("mcpize.yaml free/Pro tool counts", () => {
       expect(
         Number(m[1]),
         `mcpize.yaml claims "${m[1]} Pro tools" but PRO_TOOLS has ` +
-          `${getProToolNames().length} entries.`,
+          `${getProToolNames().length} entries.`
       ).toBe(getProToolNames().length);
     }
   });
@@ -69,13 +66,13 @@ describe("mcpize.yaml free/Pro tool counts", () => {
 describe("tier map vs stdio TOOL_DEFINITIONS", () => {
   it("every FREE_TOOLS entry exists locally, unless documented gateway-only", () => {
     const phantoms = getFreeToolNames().filter(
-      (n) => !localNames.has(n) && !GATEWAY_ONLY_FREE_TOOLS.includes(n),
+      (n) => !localNames.has(n) && !GATEWAY_ONLY_FREE_TOOLS.includes(n)
     );
     expect(
       phantoms,
       `These FREE_TOOLS entries are neither in TOOL_DEFINITIONS nor in the ` +
         `documented gateway-only list (the \`get_started\` bug class): ` +
-        phantoms.join(", "),
+        phantoms.join(", ")
     ).toEqual([]);
   });
 
@@ -84,19 +81,17 @@ describe("tier map vs stdio TOOL_DEFINITIONS", () => {
     expect(
       stale,
       `These tools are now in TOOL_DEFINITIONS — remove them from the ` +
-        `GATEWAY_ONLY_FREE_TOOLS exemption list: ${stale.join(", ")}`,
+        `GATEWAY_ONLY_FREE_TOOLS exemption list: ${stale.join(", ")}`
     ).toEqual([]);
   });
 
   it("every stdio tool has an explicit tier entry", () => {
     const mapped = new Set([...getFreeToolNames(), ...getProToolNames()]);
-    const unmapped = TOOL_DEFINITIONS.map((t) => t.name).filter(
-      (n) => !mapped.has(n),
-    );
+    const unmapped = TOOL_DEFINITIONS.map((t) => t.name).filter((n) => !mapped.has(n));
     expect(
       unmapped,
       `These stdio tools have no entry in tiers.ts and would silently ` +
-        `default to "pro": ${unmapped.join(", ")}`,
+        `default to "pro": ${unmapped.join(", ")}`
     ).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { dispatchTool, __resetSponsorCounter } from "./index.js";
+import { __resetSponsorCounter, dispatchTool } from "./index.js";
 
 const SPONSOR_MARKER = "github.com/sponsors/sceneview";
 
