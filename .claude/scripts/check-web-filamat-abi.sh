@@ -167,7 +167,10 @@ check_group() {
         fi
     done
     if [ "$found" -eq 0 ]; then
-        echo "  note: no .filamat blobs under $dir/ — nothing to check"
+        # NOT a silent pass. This leg promises to check *every* blob; a group that
+        # yields zero files means the blobs were deleted or moved, and reporting
+        # green would be the exact false-OK this script exists to prevent.
+        fail "no .filamat blobs under $dir/ — this group is declared in the pin table, so an empty directory is a missing-blob defect, not 'nothing to check'"
     fi
 }
 
@@ -177,15 +180,17 @@ check_group "sceneview-web/materials"  "$WEB_MV"     "filamentWeb"     "$FILAMEN
 # ─── 5. The human-readable labels ──────────────────────────────────────
 # Three pages carried "Filament.js v1.70.2" for a 1.70.1 runtime. A label that
 # names the wrong version is how the v4.1.0 pair went wrong in the first place.
-for html in "$ROOT"/website-static/*.html; do
-    [ -f "$html" ] || continue
+# Scans .js as well as .html: sceneview.js's banner carried the same wrong label
+# and an html-only scan let it through (caught in review of #2783).
+for labelled_file in "$ROOT"/website-static/*.html "$ROOT"/website-static/js/*.js; do
+    [ -f "$labelled_file" ] || continue
     while IFS= read -r labelled; do
         [ -n "$labelled" ] || continue
         if [ "$labelled" != "$FILAMENT_WEBSITE" ]; then
-            fail "${html#"$ROOT"/} says 'Filament.js v$labelled' but the vendored runtime is $FILAMENT_WEBSITE"
+            fail "${labelled_file#"$ROOT"/} says 'Filament.js v$labelled' but the vendored runtime is $FILAMENT_WEBSITE"
         fi
     done <<EOF
-$(grep -oE 'Filament\.js v[0-9]+\.[0-9]+\.[0-9]+' "$html" | sed -E 's/^Filament\.js v//')
+$(grep -oE 'Filament\.js v[0-9]+\.[0-9]+\.[0-9]+' "$labelled_file" | sed -E 's/^Filament\.js v//')
 EOF
 done
 

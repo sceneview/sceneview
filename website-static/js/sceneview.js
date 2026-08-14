@@ -15,7 +15,7 @@
  *   sv.setBloom(true);
  *   sv.addLight({ type: "point", position: [2, 3, 0], color: [1, 0.9, 0.8] });
  *
- * Powered by Filament.js v1.70.2 (Google's PBR renderer, WASM).
+ * Powered by Filament.js v1.70.1 (Google's PBR renderer, WASM).
  * https://sceneview.github.io
  *
  * @version 4.18.0

@@ -33,8 +33,9 @@ why. A CI check named in neither is an unaudited gap, not a decision. `.claude/s
 holds the other 109, indexed by the `automation-map` skill.
 
 Rules: never push code that does not compile · never push without tests · a review
-blocker is fixed before merge, all of them · if `gradle/libs.versions.toml` bumps
-`filament`, recompile every `.filamat` in the same PR with the matching `matc`
+blocker is fixed before merge, all of them · if `gradle/libs.versions.toml` bumps any
+of its three independent pins (`filament`, `filamentWebsite`, `filamentWeb`),
+recompile that pin's `.filamat` blobs in the same PR with the matching `matc`
 ([CONTRIBUTING.md](CONTRIBUTING.md#filament-runtime---filamat-abi-invariant) — v4.1.0
 shipped split halves and crashed 10 demos at runtime).
 
