@@ -319,7 +319,7 @@ fi
 # 8. SceneView agent skill drift
 # Catches the case where a library API was renamed/removed without updating
 # `agents/sceneview/` (the published android-CLI agent skill). The same check
-# runs in quality-gate.sh, pr-check.yml and daily via maintenance.yml — but
+# runs in quality-gate.sh, ci.yml and daily via maintenance.yml — but
 # the lighter pre-push gate skipped it, so a skill-only push could land drift
 # without ever hitting quality-gate.sh. Invoke it directly here too.
 echo -e "\n${YELLOW}[10/21] Checking agent skill drift...${NC}"

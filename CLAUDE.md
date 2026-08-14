@@ -30,7 +30,7 @@ That is the gate. It runs compile, tests, impact-check and the deterministic CI 
 **It is a floor, not the full set** — the `CI-PARITY LEGS` comment block inside the
 script names every CI check it cannot cover (network, Gradle, device, Checks-API) and
 why. A CI check named in neither is an unaudited gap, not a decision. `.claude/scripts/`
-holds the other 110, indexed by the `automation-map` skill.
+holds the other 109, indexed by the `automation-map` skill.
 
 Rules: never push code that does not compile · never push without tests · a review
 blocker is fixed before merge, all of them · if `gradle/libs.versions.toml` bumps
@@ -90,7 +90,7 @@ never opens that skill never learns it. Gated by `test-context-budget.sh`.
 | `samples/` | One demo app per platform — `android-demo` is the Play Store app |
 | `mcp/` | `sceneview-mcp` server + packages |
 | `docs/` · `website-static/` · `branding/` | Docs site, static site, brand assets |
-| `.claude/scripts/` | 111 checks and harnesses — the automation surface |
+| `.claude/scripts/` | 110 checks and harnesses — the automation surface |
 
 **Critical threading rule:** Filament JNI calls run on the **main thread**. Never call
 `modelLoader.createModel*` or `materialLoader.*` from a background coroutine.

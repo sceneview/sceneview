@@ -9,6 +9,11 @@ The audit that produced this list was deleted 2026-08-14: 23 of its 26 verdicts
 concerned branches that no longer exist, and the 3 survivors are tracked as issues
 #3081, #3082, #3083 — which is where their state is actually read.
 
+Those 23 are the 21 SHAs listed below plus 2 branches the audit marked KEEP, whose
+PRs merged on 2026-08-10 (#3048, #3078) and were deleted by the merge itself. They
+carry no undo row here on purpose: a merged branch's tip is reachable from `main`,
+so there is nothing to restore.
+
 8b2471bba9506825fc00c72076eda8955accf563  claude/2400-clear-keyed-followup
 c686cd44d24ecb138a838a95a6f193cc714f5915  claude/2801-parity-tally-gate
 b62a2a3a88ee640f313d03f1e88ecdfe605ad990  claude/audit-fix-mcp-web
