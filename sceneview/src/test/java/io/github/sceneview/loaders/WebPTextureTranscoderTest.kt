@@ -198,6 +198,59 @@ class WebPTextureTranscoderTest {
         assertEquals(1, reported)
     }
 
+    /**
+     * A hostile asset's *count* is bounded, not just each image's size: a few KB of JSON can
+     * declare thousands of images all pointing at one tiny WebP that inflates to 8192², and the
+     * decodes run one after another on the calling thread. Everything past the budget must be
+     * reported through the same [WebPTextureTranscoder.transcode] `onUnsupported` path as an
+     * undecodable image, never dropped in silence.
+     *
+     * 256 is the documented `MAX_TRANSCODED_IMAGES`, written out here rather than read from the
+     * production constant (which is private) so the oracle cannot move with the code. Twin of
+     * `sceneview-web`'s `theNumberOfDecodesIsBoundedAndTheOverflowIsReported` (#3136).
+     */
+    @Test
+    fun `the number of decodes is bounded and the overflow is reported`() {
+        val budget = 256
+        val declared = budget + 2
+        val images = (0 until declared).joinToString(",") {
+            """{"mimeType": "image/webp", "bufferView": 0}"""
+        }
+        val textures = (0 until declared).joinToString(",") {
+            """{"extensions": {"EXT_texture_webp": {"source": $it}}}"""
+        }
+        val json = JSONObject(
+            """
+            {
+              "extensionsUsed": ["EXT_texture_webp"],
+              "buffers": [{"byteLength": 4}],
+              "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+              "images": [$images],
+              "textures": [$textures]
+            }
+            """.trimIndent()
+        )
+
+        var reported = -1
+        val result = WebPTextureTranscoder.transcode(glb(json, webPBytes), fakeTranscoder) {
+            reported = it
+        }
+
+        assertEquals(budget, decodeCount)
+        assertEquals(declared - budget, reported)
+        // The overflow images keep their WebP mime type, so the extension declaration must stay:
+        // a payload that still contains WebP must not claim it no longer uses the extension.
+        val rewritten = parseGlb(result).first
+        assertEquals(
+            "image/webp",
+            rewritten.getJSONArray("images").getJSONObject(declared - 1).getString("mimeType")
+        )
+        assertEquals(
+            "EXT_texture_webp",
+            rewritten.getJSONArray("extensionsUsed").getString(0)
+        )
+    }
+
     @Test
     fun `gltf json data uris are re-encoded as png data uris`() {
         val webPDataUri = "data:image/webp;base64," + Base64.encodeToString(webPBytes, Base64.NO_WRAP)
