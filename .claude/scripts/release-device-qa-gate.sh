@@ -217,7 +217,7 @@ if ! gh run download "$RUN_ID" --dir "$TMP_DIR" >/dev/null 2>&1; then
     emit_proceed "could not download Device QA artifacts for run ${RUN_ID} (advisory) — proceeding"
 fi
 
-# leg_status <leg> — echoes passed|failed|skipped|missing for one leg by
+# leg_status <leg> — echoes passed|failed|timeout|skipped|missing for one leg by
 # reading device-qa-report-<leg>/device-qa-report.json. A leg's per-job
 # report is single-platform, so platforms[0] is authoritative.
 leg_status() {
@@ -254,8 +254,13 @@ for leg in ${REQUIRED_LEGS//,/ }; do
     case "$st" in
         passed)
             printf "  ${GREEN}[PASS]${NC}  %-10s (required) — passed\n" "$leg" ;;
-        failed)
-            printf "  ${RED}[FAIL]${NC}  %-10s (required) — FAILED — blocks the release\n" "$leg"
+        # `timeout` (#3141) is a NAMED failure, not a missing verdict: the leg
+        # ran and its clock expired mid-flow. It must land in the FAIL arm —
+        # left to the catch-all below it would grade a red required leg as
+        # "no clear verdict — advisory", i.e. a finer report bought with a
+        # laxer gate.
+        failed|timeout)
+            printf "  ${RED}[FAIL]${NC}  %-10s (required) — %s — blocks the release\n" "$leg" "$(echo "$st" | tr '[:lower:]' '[:upper:]')"
             REQUIRED_FAIL=$((REQUIRED_FAIL + 1)) ;;
         skipped|missing|*)
             # A required leg with no verdict is treated as advisory (do NOT

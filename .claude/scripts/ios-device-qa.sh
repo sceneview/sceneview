@@ -306,6 +306,11 @@ if [[ "$MAESTRO_RC" -eq 0 ]]; then
   if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" == "true" ]]; then
     echo "[ios-qa] (Sketchfab key WAS present — Explore/Sketchfab path was exercised.)"
   fi
+elif [[ "$MAESTRO_RC" -eq 124 ]]; then
+  # A budget that expired is NOT a demo crash — grading both as `FAIL` is what
+  # made the 4.30.0 checkpoint's `ios failed` unreadable (#3141). The `flow=`
+  # token is what device-qa.sh reads to name the flow in its verdict.
+  echo "[ios-qa] TIMEOUT — flow=${MAESTRO_TIMEOUT_FLOW:-unknown} exceeded its $(maestro_flow_budget)s budget; no demo failed, the clock did." >&2
 else
   echo "[ios-qa] FAIL — see Maestro output above (rc=$MAESTRO_RC)." >&2
 fi

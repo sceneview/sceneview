@@ -61,6 +61,13 @@ maestro test .maestro/android/lighting.yaml
 The legacy `.claude/scripts/qa-android-demos.sh` is now a thin wrapper that
 builds + installs the APK and invokes `catalog.yaml` through Maestro.
 
+Through the wrapper, `catalog.yaml` is **expanded**: each per-category flow
+runs as its own `maestro test` under its own `MAESTRO_FLOW_TIMEOUT` (default
+900 s), and an expired budget is reported as a `timeout` verdict naming the
+flow — not as a demo failure (#3141). A bare `maestro test catalog.yaml` as
+above runs the whole catalog in one unbounded invocation, which is fine for an
+interactive smoke and is *not* how the harness runs it.
+
 ## Run it — iOS
 
 ```bash

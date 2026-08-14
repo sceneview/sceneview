@@ -98,6 +98,24 @@ green; then promote them to blocking by shrinking the `--advisory=` set. A red
 *blocking* leg means a demo crashes for a real user — fix it before tagging,
 no exceptions.
 
+#### `timeout` is a fourth verdict, and it is NOT a crash (#3141)
+
+A leg's status is `passed | failed | timeout | skipped`. `timeout` means the
+Maestro budget expired mid-flow — the report names the flow (`per-flow budget
+expired in flow=interaction`), and **no demo failed**. It carries exactly the
+weight of `failed` at every grading site (`releaseGate`, the release gate, the
+totals — where it is also counted under `totals.timedOut`, a subset of
+`totals.failed`); the only thing it adds is the ability to tell an expired
+clock from a demo that crashed. Before #3141 both read `failed`, so a full
+android or ios catalog pass — which could only ever end at rc=124 — was
+indistinguishable from a real regression.
+
+The budget is **per flow**, not per `maestro test`: `lib/maestro.sh` expands
+`catalog.yaml` and runs each per-category flow under its own
+`MAESTRO_FLOW_TIMEOUT` (default 900 s, legacy alias `MAESTRO_TEST_TIMEOUT`),
+so the bound scales as the catalog grows while a single hung demo still fails
+fast. Pinned by `test-maestro-flow-timeout.sh`.
+
 #### Android Vitals release-gate (#1691)
 
 Device-QA validates the demo app on **emulators** *before* release. Android

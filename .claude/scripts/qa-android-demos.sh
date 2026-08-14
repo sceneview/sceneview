@@ -344,6 +344,11 @@ fi
 
 if [[ "$MAESTRO_RC" -eq 0 ]]; then
   echo "[qa] PASS — $FLOW flow completed, no crash/ANR detected."
+elif [[ "$MAESTRO_RC" -eq 124 ]]; then
+  # A budget that expired is NOT a demo failure, and saying `FAIL` for both
+  # made the two indistinguishable in every report downstream (#3141). The
+  # `flow=` token is what device-qa.sh reads to name the flow in its verdict.
+  echo "[qa] TIMEOUT — flow=${MAESTRO_TIMEOUT_FLOW:-unknown} exceeded its $(maestro_flow_budget)s budget; no demo failed, the clock did." >&2
 else
   echo "[qa] FAIL — see Maestro output above (rc=$MAESTRO_RC)." >&2
 fi
