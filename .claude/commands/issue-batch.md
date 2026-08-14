@@ -38,11 +38,8 @@ low-personal-risk repo: auto-merge on **all** platforms,
 the challenge is **self-decided** by the worker (no per-issue human gate), and the maintainer
 is surfaced ONLY for a breaking public-API change, a cross-cutting design call, or a revert.
 
-**Master playbook:** the full rationale lives in agent memory
-`feedback_continuous_issue_cycle.md`. Supporting detail: `feedback_issue_workflow.md`
-(Rapporteur/Correcteur split), `feedback_pr_review_workflow.md` (Tier 1 / Tier 2),
-`feedback_resource_hygiene.md` (disk gating). Read those for the *why*; this file is
-the *how* — keep it as the executable checklist.
+**This file is the executable checklist** — self-contained. It used to defer the *why*
+to four memory notes; they no longer exist, so anything load-bearing has to be here.
 
 ⛔ **Harness limitation (issue #1243)** — background agents launched via `spawn_task`
 or `Agent(isolation="worktree")` **cannot spawn nested `Agent()` reviewers**. The
@@ -72,7 +69,7 @@ harness silently rejects nested calls. So real multi-agent review only happens a
    orchestrator monitors for stuck PRs (see Phase 4).
 6. **Release checkpoint each iteration.** At the end of every cycle iteration, run a
    release checkpoint (`/release` or `release-checklist.sh`). **Semver is capped at
-   minor — major `4` is frozen** (cf. `feedback_version_policy.md`). v5 is a
+   minor — major `4` is frozen**. v5 is a
    deliberate milestone, never an auto-bump.
 7. **Autonomous dispatch; consult only on non-trivial decisions.** Routine batching
    and dispatch needs no approval. Pause and ask the maintainer only for: scope

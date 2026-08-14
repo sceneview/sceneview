@@ -2,8 +2,8 @@
 # disk-gated-spawn-check.sh — pre-flight safety gate before spawning agents
 #
 # Why: 2026-05-14 multi-agent orchestrator drove free disk down to 8.2 GB.
-# Memory rule feedback_resource_hygiene.md flags <15 GB as the alert
-# threshold. This script is the programmatic version of that rule:
+# The 15 GB alert threshold used to live in a memory note; that note is gone,
+# so this script IS the rule now, not a copy of one:
 # source it in any agent-spawn loop and bail before piling on more
 # worktrees / Gradle daemons / emulator AVDs.
 #
