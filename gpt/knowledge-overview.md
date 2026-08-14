@@ -334,6 +334,10 @@ FogNode.exponential(density: 0.15)
 ReflectionProbeNode.box(size: [4, 3, 4]).position(.init(x: 0, y: 1.5, z: 0)).intensity(1.0)
 ReflectionProbeNode.sphere(radius: 2.0)
 ```
+`intensity` is a **linear multiplier** (`1.0` = untouched), converted to
+RealityKit's power-of-two `intensityExponent` internally (#2956) — never
+pre-apply a `log2`. It takes effect once `environmentTexture(_:)` is set, and
+may be given before or after that call.
 
 **MeshNode** — custom geometry:
 ```swift
