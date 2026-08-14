@@ -209,8 +209,10 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     if (now - lastDetectMs[0] < kDetectIntervalMs) return@ARSceneView
 
                     // Never acquire a second CPU image while ML Kit still holds the previous
-                    // one (see `detectInFlight`). Released in both listeners, next to the
-                    // matching `cameraImage.close()`.
+                    // one (see `detectInFlight`). Released in all three terminal listeners —
+                    // success, failure, cancel — next to the matching `cameraImage.close()`,
+                    // and in the `finally` below for the paths that throw before any listener
+                    // is attached.
                     if (!detectInFlight.compareAndSet(false, true)) return@ARSceneView
                     lastDetectMs[0] = now
 
