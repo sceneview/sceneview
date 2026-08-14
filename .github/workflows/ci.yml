@@ -1608,6 +1608,18 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-extract-gate-selftests.sh
 
+      # The other half of that leg: the list it executes is written to a scratch
+      # directory that used to be one path for the whole machine, while this repo
+      # runs many worktrees in parallel. A neighbour truncating selftests.txt under
+      # the loop's open descriptor printed a pass count over a loop that ran fewer
+      # (#3074/#3131/#3137). The case that matters replays that interleaving and
+      # keeps a control that reproduces the old collapse, so a green line here means
+      # the isolation holds — not that the replay stopped exercising anything.
+      - name: Self-test pre-push log-dir isolation
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-pre-push-log-dir.sh
+
   # ── Full quality gate ────────────────────────────────────────────────────
   # Runs the same .claude/scripts/quality-gate.sh that contributors run
   # locally before pushing. Includes:

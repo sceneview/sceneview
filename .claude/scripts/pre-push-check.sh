@@ -7,6 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/gradle-run.sh
 source "$SCRIPT_DIR/lib/gradle-run.sh"
+# shellcheck source=lib/log-dir.sh
+source "$SCRIPT_DIR/lib/log-dir.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -38,10 +40,15 @@ SETUP_FIX=""
 # manifest and BuildConfig — so a manifest-merger or javac failure can write a
 # live key into one of these logs. With TMPDIR unset the fallback is a shared
 # world-readable /tmp.
-LOG_DIR="${TMPDIR:-/tmp}"
-LOG_DIR="${LOG_DIR%/}/sceneview-pre-push"
-mkdir -p "$LOG_DIR"
-chmod 700 "$LOG_DIR" 2>/dev/null || true
+#
+# The directory is PER WORKTREE, and that is not cosmetic: it used to be one
+# path for the whole machine while this repo runs many worktrees in parallel,
+# so concurrent runs overwrote each other's files — `Full log:` could name
+# another session's failure, and a neighbour truncating leg 19's `selftests.txt`
+# under this run's open descriptor printed a pass count over a loop that ran
+# fewer (#3074/#3131/#3137). The rule and its tests live in lib/log-dir.sh.
+CHECKOUT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOG_DIR="$(pre_push_log_dir_create "$CHECKOUT_ROOT")"
 
 # Report a failed Gradle step, distinguishing a HOST SETUP failure and an
 # ENVIRONMENT failure from a real one. The specific diagnosis ($4) is only
