@@ -2,6 +2,7 @@ import XCTest
 @testable import SceneViewSwift
 
 #if os(iOS) || os(macOS) || os(visionOS)
+import CoreGraphics
 import RealityKit
 
 // Test classes run on the main actor: their RealityKit node factories
@@ -302,6 +303,119 @@ final class ReflectionProbeNodeTests: XCTestCase {
         let probe = ReflectionProbeNode.sphere(radius: 1.0)
         // Point at (1, 1, 1): distance = sqrt(3) ~= 1.73, > 1.0
         XCTAssertFalse(probe.contains(.init(x: 1, y: 1, z: 1)))
+    }
+
+    // MARK: - intensity → intensityExponent (#2956)
+
+    /// The regression pin: the authored value is a linear multiplier, and the
+    /// documented `1.0` default must be a no-op. Assigning it straight to
+    /// RealityKit's `intensityExponent` rendered it at 2^1 = ×2.0.
+    func testDefaultIntensityIsANoOpNotDouble() {
+        XCTAssertEqual(ReflectionProbeNode.box().intensityExponent, 0.0, accuracy: 1e-6)
+        XCTAssertEqual(ReflectionProbeNode.sphere().intensityExponent, 0.0, accuracy: 1e-6)
+    }
+
+    func testIntensityMultiplierMapsToPowerOfTwoExponent() {
+        for (multiplier, expected) in [
+            (Float(0.25), Float(-2.0)),
+            (0.5, -1.0),
+            (1.0, 0.0),
+            (2.0, 1.0),
+            (4.0, 2.0)
+        ] {
+            let probe = ReflectionProbeNode.box().intensity(multiplier)
+            XCTAssertEqual(
+                probe.intensityExponent, expected, accuracy: 1e-6,
+                "multiplier \(multiplier) should map to exponent \(expected)"
+            )
+        }
+    }
+
+    func testFactoryIntensityMapsThroughTheSameConversion() {
+        XCTAssertEqual(
+            ReflectionProbeNode.box(intensity: 0.5).intensityExponent, -1.0, accuracy: 1e-6
+        )
+        XCTAssertEqual(
+            ReflectionProbeNode.sphere(intensity: 2.0).intensityExponent, 1.0, accuracy: 1e-6
+        )
+    }
+
+    func testIntensityMultiplierRoundTripsThroughTheEntityName() {
+        for multiplier in [Float(0.1), 0.8, 1.2, 3.0, 100.0] {
+            XCTAssertEqual(
+                ReflectionProbeNode.box(intensity: multiplier).intensityMultiplier,
+                multiplier, accuracy: 1e-6
+            )
+        }
+    }
+
+    /// RealityKit rejects a non-finite exponent, and `intensity` takes anything.
+    func testDegenerateIntensitiesStayFinite() {
+        for multiplier in [Float(0.0), -1.0, -.infinity, .infinity, .nan] {
+            let exponent = ReflectionProbeNode.box(intensity: multiplier).intensityExponent
+            XCTAssertTrue(
+                exponent.isFinite, "multiplier \(multiplier) produced \(exponent)"
+            )
+        }
+    }
+
+    func testIntensityFallsBackToNoOpWhenTheEntityIsRenamed() {
+        let probe = ReflectionProbeNode.box(intensity: 2.0)
+        probe.entity.name = "custom name with no marker"
+        XCTAssertEqual(probe.intensityMultiplier, 1.0, accuracy: 1e-6)
+        XCTAssertEqual(probe.intensityExponent, 0.0, accuracy: 1e-6)
+    }
+
+    // MARK: - intensity reaches RealityKit (#2956)
+
+    /// End-to-end: the multiplier authored *before* the texture must survive the
+    /// component swap. It used to be dropped — `environmentTexture(_:)` installed
+    /// a fresh component at exponent 0, so `box(intensity:)` never rendered.
+    func testIntensitySetBeforeEnvironmentTextureIsApplied() async throws {
+        let resource = try await Self.makeEnvironmentResource(named: "probe-before")
+        let probe = ReflectionProbeNode.box(intensity: 4.0)
+            .environmentTexture(resource)
+
+        let ibl = try XCTUnwrap(probe.entity.components[ImageBasedLightComponent.self])
+        XCTAssertEqual(ibl.intensityExponent, 2.0, accuracy: 1e-6)
+    }
+
+    func testIntensitySetAfterEnvironmentTextureIsApplied() async throws {
+        let resource = try await Self.makeEnvironmentResource(named: "probe-after")
+        let probe = ReflectionProbeNode.box()
+            .environmentTexture(resource)
+            .intensity(0.5)
+
+        let ibl = try XCTUnwrap(probe.entity.components[ImageBasedLightComponent.self])
+        XCTAssertEqual(ibl.intensityExponent, -1.0, accuracy: 1e-6)
+    }
+
+    func testDefaultIntensityLeavesTheEnvironmentUntouched() async throws {
+        let resource = try await Self.makeEnvironmentResource(named: "probe-default")
+        let probe = ReflectionProbeNode.sphere().environmentTexture(resource)
+
+        let ibl = try XCTUnwrap(probe.entity.components[ImageBasedLightComponent.self])
+        XCTAssertEqual(ibl.intensityExponent, 0.0, accuracy: 1e-6)
+    }
+
+    /// A gray equirectangular image is enough to build a real
+    /// `EnvironmentResource` headlessly — no bundled HDR asset needed.
+    private static func makeEnvironmentResource(
+        named name: String
+    ) async throws -> EnvironmentResource {
+        let width = 64, height = 32
+        let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.linearSRGB))
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        )
+        context.setFillColor(CGColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        return try await EnvironmentResource(equirectangular: image, withName: name)
     }
 }
 #endif

@@ -57,7 +57,10 @@ public struct ReflectionProbeNode: Sendable {
     ///
     /// - Parameters:
     ///   - size: Box extents in meters (width, height, depth).
-    ///   - intensity: Reflection intensity multiplier. Default 1.0.
+    ///   - intensity: Reflection intensity as a **linear multiplier** — `1.0`
+    ///     leaves the probe's environment radiance untouched, `0.5` halves it.
+    ///     Converted to RealityKit's power-of-two `intensityExponent` internally,
+    ///     so never pre-apply a `log2` (#2956). See ``intensity(_:)``.
     /// - Returns: A configured `ReflectionProbeNode`.
     public static func box(
         size: SIMD3<Float> = .init(repeating: 1.0),
@@ -75,7 +78,10 @@ public struct ReflectionProbeNode: Sendable {
     ///
     /// - Parameters:
     ///   - radius: Sphere radius in meters.
-    ///   - intensity: Reflection intensity multiplier. Default 1.0.
+    ///   - intensity: Reflection intensity as a **linear multiplier** — `1.0`
+    ///     leaves the probe's environment radiance untouched, `0.5` halves it.
+    ///     Converted to RealityKit's power-of-two `intensityExponent` internally,
+    ///     so never pre-apply a `log2` (#2956). See ``intensity(_:)``.
     /// - Returns: A configured `ReflectionProbeNode`.
     public static func sphere(
         radius: Float = 1.0,
@@ -98,10 +104,18 @@ public struct ReflectionProbeNode: Sendable {
         return self
     }
 
-    /// Sets the reflection intensity multiplier.
+    /// Sets the reflection intensity, as a **linear multiplier**.
     ///
-    /// Values above 1.0 amplify reflections; below 1.0 attenuate them.
-    /// Implemented via entity scale on the probe volume.
+    /// `1.0` leaves the probe's environment radiance untouched, `0.5` halves it,
+    /// `2.0` doubles it. Converted to RealityKit's
+    /// `ImageBasedLightComponent.intensityExponent` (a power of two) at apply
+    /// time, exactly like ``SceneEnvironment/intensity`` — callers never see the
+    /// exponent, and must never pre-apply a `log2` (#2956).
+    ///
+    /// The multiplier can be set before or after ``environmentTexture(_:)``: it
+    /// only reaches RealityKit once a texture gives the probe an
+    /// `ImageBasedLightComponent`, and setting a texture re-applies whatever
+    /// multiplier the probe already carries.
     @discardableResult
     public func intensity(_ value: Float) -> ReflectionProbeNode {
         return applyIntensityScale(value)
@@ -120,9 +134,12 @@ public struct ReflectionProbeNode: Sendable {
     /// ```
     @discardableResult
     public func environmentTexture(_ resource: EnvironmentResource) -> ReflectionProbeNode {
-        entity.components.set(
-            ImageBasedLightComponent(source: .single(resource))
-        )
+        // A fresh component starts at exponent 0 (×1), so re-apply the multiplier
+        // the probe already carries — otherwise `box(intensity:)` and any
+        // `.intensity()` set before this call would be silently dropped (#2956).
+        var iblComponent = ImageBasedLightComponent(source: .single(resource))
+        iblComponent.intensityExponent = intensityExponent
+        entity.components.set(iblComponent)
         entity.components.set(
             ImageBasedLightReceiverComponent(imageBasedLight: entity)
         )
@@ -131,13 +148,44 @@ public struct ReflectionProbeNode: Sendable {
 
     // MARK: - Internals
 
+    /// The linear intensity multiplier this probe currently carries.
+    ///
+    /// Read back from the entity name suffix, which is where the builder stores
+    /// it: `ReflectionProbeNode` is a value type wrapping a reference-type
+    /// `Entity`, so the entity is the only storage every copy shares — including
+    /// a `@discardableResult` builder call whose return value was dropped.
+    ///
+    /// Falls back to `1.0` (a no-op) if a caller renamed the entity.
+    var intensityMultiplier: Float {
+        guard
+            let marker = entity.name.range(of: Self.intensityMarker, options: .backwards),
+            let value = Float(entity.name[marker.upperBound...])
+        else { return 1.0 }
+        return value
+    }
+
+    /// The RealityKit `intensityExponent` ``intensityMultiplier`` maps to.
+    ///
+    /// Reuses `SceneEnvironment.intensityExponent(forMultiplier:)` so both IBL
+    /// surfaces share one conversion — and one set of `0` / negative / `NaN` /
+    /// `+infinity` guards, which RealityKit needs because it rejects a
+    /// non-finite exponent.
+    var intensityExponent: Float {
+        SceneEnvironment.intensityExponent(forMultiplier: intensityMultiplier)
+    }
+
+    private static let intensityMarker = "_i"
+
     private func applyIntensityScale(_ value: Float) -> ReflectionProbeNode {
-        // Intensity is stored as metadata; actual effect depends on the IBL component.
-        // We encode intensity in the entity name suffix for retrieval, and if an IBL
-        // component is present, we update its intensity scale.
-        entity.name = nameBase + "_i\(value)"
+        // The multiplier is stored in the entity name suffix; it only reaches
+        // RealityKit through an IBL component, which `environmentTexture(_:)`
+        // installs. `intensityExponent` is a power of two, NOT the multiplier —
+        // feeding the multiplier straight through rendered the documented `1.0`
+        // default at ×2.0, the same defect #2897 fixed for `SceneEnvironment`.
+        entity.name = nameBase + Self.intensityMarker + "\(value)"
         if var iblComponent = entity.components[ImageBasedLightComponent.self] {
-            iblComponent.intensityExponent = value
+            iblComponent.intensityExponent =
+                SceneEnvironment.intensityExponent(forMultiplier: value)
             entity.components.set(iblComponent)
         }
         return self

@@ -613,6 +613,7 @@ exposes have no iOS equivalent at all. Ported from the source of truth,
 | HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
 | Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |
 | Environmental IBL intensity | `IndirectLight.intensity`, absolute **lux** (`DEFAULT_IBL_INTENSITY` = 10 000) | `SceneEnvironment.intensity`, a linear **multiplier** (`1.0` = HDR untouched), converted to `ImageBasedLightComponent.intensityExponent` internally (#2897) — **not** interchangeable with the Android value |
+| Reflection-probe IBL intensity | `ReflectionProbeNode` inherits the scene `IndirectLight` level | `ReflectionProbeNode.intensity`, the same linear **multiplier** as `SceneEnvironment.intensity` and converted the same way (#2956) — applies once `environmentTexture(_:)` is set, before or after |
 | Person occlusion (AR) | (n/a) | via `ARView.renderOptions` (AR only, not on `RealityView`) |
 
 ---

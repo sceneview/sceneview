@@ -5052,8 +5052,11 @@ converts for you, so never pre-apply a `log2` to **this** property (#2897).
 > platforms are tuned to match on the key-light-to-IBL *ratio*, not on absolute
 > values, and iOS's exponent-0 baseline sits around 1000 lux equivalent. Web has
 > no intensity knob at all: `environment(iblUrl, skyboxUrl)` takes none.
-> The sibling `ReflectionProbeNode.intensity` is a **separate** property that
-> still takes a raw exponent — see #2956.
+> The sibling `ReflectionProbeNode.intensity` is a **separate** property, but it
+> now speaks the same linear multiplier and converts the same way (#2956) — so
+> "never pre-apply a `log2`" holds across the whole Apple IBL surface. A probe's
+> multiplier only reaches RealityKit once `environmentTexture(_:)` gives it an
+> `ImageBasedLightComponent`; it may be set before or after that call.
 
 `showSkybox: true` renders the HDR as a background. On iOS / macOS it uses
 `RealityViewContent.environment = .skybox(...)`. On visionOS a windowed /
