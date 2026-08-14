@@ -1431,6 +1431,19 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-maestro-flow-timeout.sh
 
+      # iOS Simulator destination resolver (#3174). The bug it guards is a
+      # CoreSimulator cold-start race: on run 31807717171 the same job failed on
+      # `iPhone 16 Pro` at 14:07:45 with no concrete simulator listed, then
+      # resolved that exact device at 14:08:01. So the resolver must WAIT, and
+      # must still fail closed when nothing ever appears — a version with no
+      # wait would turn a survivable one-step failure into a dead job, and one
+      # that degraded would hand back an empty `-destination`. Both halves are
+      # mutation-tested inside the suite. Hermetic (stub `xcrun`), runs on Linux.
+      - name: Self-test iOS Simulator resolver
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-ios-simulator.sh
+
       # Sibling of the check above, one layer out: the pool honours leases, but
       # raw `adb` typed by a session bypassed the pool entirely and wiped another
       # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;

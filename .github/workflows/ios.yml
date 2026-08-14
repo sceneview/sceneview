@@ -47,6 +47,43 @@ jobs:
           echo "Using Xcode: $(xcode-select -p)"
           xcodebuild -version
 
+      # Wait for CoreSimulator, then resolve the simulator ONCE by UDID and
+      # reuse it for every xcodebuild below (#3174).
+      #
+      # The WAIT is the actual fix. "Unable to find a device matching the
+      # provided destination specifier" reads like a missing device; it is not.
+      # On run 31807717171 attempt 1, inside ONE job on one runner: step 5 died
+      # on `iPhone 16 Pro` at 14:07:45 with no concrete simulator in the
+      # available-destination list, and 16 s later step 10 resolved that same
+      # device — `id:DB7A4F45-…, OS:26.2` — and went green. The device was there;
+      # CoreSimulator had not finished enumerating it. Reruns "fix" it, which is
+      # why this looks like flakiness.
+      #
+      # Resolving by UDID is the second, smaller half: `Select Xcode` above walks
+      # a preference list, and a `name=iPhone <model>` pin is a promise about a
+      # machine we do not own. Doing both here also means a genuinely
+      # simulator-less runner fails on this step, naming the cause, instead of
+      # three xcodebuilds each blaming their own scheme.
+      #
+      # ⛔ Do not "simplify" this to a single `simctl list`. Called at the top of
+      # a job it lands squarely in the cold window, and a resolver that gave up
+      # there would kill the whole job where today one step dies and the rest
+      # still runs. Pinned by .claude/scripts/test-ios-simulator.sh.
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          # ⛔ The assignment is load-bearing — do NOT fold it back into
+          # `echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"`.
+          # Under `set -e` a command substitution that fails inside another
+          # command's ARGUMENTS does not abort the shell: echo's own status (0)
+          # governs, and there is no pipe for `pipefail` to see. That form wrote
+          # an empty IOS_DEST and exited 0 on a simulator-less runner — throwing
+          # away the fail-closed guarantee this whole file exists to provide.
+          # Only the assignment form propagates the resolver's exit code.
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
+
       - name: Cache Swift Package dependencies
         uses: actions/cache@v6
         with:
@@ -67,7 +104,7 @@ jobs:
           set -o pipefail
           xcodebuild build \
             -scheme SceneViewSwift \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
@@ -98,7 +135,7 @@ jobs:
           set -o pipefail
           xcodebuild test \
             -scheme SceneViewSwift \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
 
@@ -161,7 +198,7 @@ jobs:
           xcodebuild test \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemo \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination "$IOS_DEST" \
             -clonedSourcePackagesDirPath SourcePackages \
             -skipPackagePluginValidation \
             -skipMacroValidation \
