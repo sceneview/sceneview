@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Self-test for pr-review.yml's `Detect self-modification of this workflow` step.
+# Self-test for pr-review.yml's two "why was this PR not reviewed?" guards:
+#   `Detect self-modification of this workflow`  (id: selfmod)
+#   `Detect a workflow-validation skip`          (id: wfval, #3140)
 #
 # WHY THIS EXISTS (#3038, #2976)
 #   The step used to ask `git diff origin/$BASE -- pr-review.yml` — "does the
@@ -18,6 +20,20 @@
 #   extracts the step's `run:` block from the YAML — the shipped bytes, not a
 #   copy — and runs it against synthetic repos, including a mutation that
 #   restores the old two-dot comparison and must turn the suite red.
+#
+# AND THE SECOND DOOR (#3140)
+#   `selfmod` asks "does this PR change pr-review.yml?". `claude-code-action`
+#   asks "does the file I am running differ from the default branch RIGHT NOW?".
+#   Those are different predicates, and on run 31612615435 the second fired on a
+#   PR (#3134) that satisfied neither the first nor any fault of its own: the
+#   run's workflow ref was pinned at 15:29:53, the job waited 27 minutes for a
+#   runner, #3138 edited this file on `main` at 15:54:40, and the action refused
+#   at 15:57:01. The result was a red `REVIEW_INCOMPLETE` whose "see the review
+#   comment on the PR" pointed at the PREVIOUS run's `MERGE_AFTER_WARNINGS`.
+#   `wfval` recognises the OUTCOME by comparing blob hashes — never the action's
+#   log wording, which would go silent on a rename — and only when the review
+#   produced nothing, so it can never relabel a healthy review. Both properties
+#   are mutation-tested below.
 #
 # USAGE   bash .claude/scripts/test-selfmod-guard.sh
 # EXIT    0 = every case passed, 1 = at least one failed
@@ -105,6 +121,15 @@ init_repo "$UPSTREAM"
   git checkout -q main
   printf 'name: review\n# v2\n' > "$GUARDED_FILE"
   git add -A && git commit -qm 'main: the review workflow changed'
+
+  # #3140's control case: a checkout whose copy of the guarded file IS main's.
+  # On a real `pull_request` this is the normal shape — the checkout is the
+  # MERGE ref, so it carries main's copy even for a branch that never merged it.
+  # `behind` is then the abnormal one: the file the run executes differs from
+  # the default branch, which is exactly what makes the action refuse.
+  git checkout -qb uptodate main
+  printf 'yet another ordinary change\n' > src/Thing.kt
+  git add -A && git commit -qm 'pr: unrelated change, workflow copy current'
 ) > /dev/null 2>&1
 
 if [ "$(git -C "$UPSTREAM" rev-list --count main 2>/dev/null || echo 0)" -lt 2 ]; then
@@ -402,6 +427,179 @@ else
     bad "the mutant did not reproduce the #3028 shape (verdict='$GUARD_VERDICT' rc=$GUARD_RC, comment posted=$([ -s "$TMP/posted-comment.md" ] && echo yes || echo no)); expected verdict=true rc=1 and no comment"
     sed -n '1,15p' "$TMP/out"
   fi
+fi
+
+# ===========================================================================
+# `Detect a workflow-validation skip` (#3140) — the SECOND door.
+# ===========================================================================
+WFVAL_STEP_NAME='Detect a workflow-validation skip'
+
+if ! python3 - "$WORKFLOW" "$WFVAL_STEP_NAME" > "$TMP/wfval.sh" <<'PY'
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML not installed. Run 'pip install pyyaml' or 'apt-get install python3-yaml'.")
+workflow, name = sys.argv[1], sys.argv[2]
+steps = yaml.safe_load(open(workflow))["jobs"]["review"]["steps"]
+match = [s for s in steps if s.get("name") == name]
+if len(match) != 1:
+    sys.exit(f"expected exactly 1 step named {name!r}, found {len(match)}")
+if match[0].get("id") != "wfval":
+    sys.exit("the step no longer carries id: wfval — later steps read steps.wfval.outputs")
+sys.stdout.write(match[0]["run"])
+PY
+then
+  echo "::error title=Workflow-validation recogniser missing::Could not extract '$WFVAL_STEP_NAME' from pr-review.yml. See this script's header (#3140)."
+  exit 1
+fi
+echo
+echo "step extracted from pr-review.yml: $WFVAL_STEP_NAME"
+
+# run_wfval <step-file> <branch> <event> <verdict-file:yes|no> [workflow-sha-rev]
+# The last argument, when given, is resolved in the fixture and exported as
+# WORKFLOW_SHA — the run's PINNED workflow ref, which is what the action really
+# validated and which is not always the checkout.
+run_wfval() {
+  local step="$1" branch="$2" event="${3:-pull_request}" verdict="${4:-no}" sha_rev="${5:-}"
+  local work="$TMP/wfval-work.$$" rt="$TMP/wfval-temp" sha=""
+  rm -rf "$work" "$rt"
+  mkdir -p "$rt"
+  git clone -q "$UPSTREAM" "$work" 2>/dev/null
+  git -C "$work" config core.hooksPath "$NOHOOKS"
+  git -C "$work" checkout -q "$branch"
+  [ -n "$sha_rev" ] && sha="$(git -C "$work" rev-parse "$sha_rev" 2>/dev/null || echo "")"
+  [ "$verdict" = yes ] && printf '{"reviewersExpected":4,"reviewersRan":4}\n' > "$rt/review-verdict.json"
+  : > "$TMP/output"
+  : > "$TMP/summary"
+  (
+    cd "$work" &&
+    EVENT_NAME="$event" \
+    DEFAULT_BRANCH=main \
+    WORKFLOW_SHA="$sha" \
+    GITHUB_OUTPUT="$TMP/output" \
+    GITHUB_STEP_SUMMARY="$TMP/summary" \
+    RUNNER_TEMP="$rt" \
+    bash -e "$step"
+  ) > "$TMP/wfval-out" 2>&1
+  WFVAL_RC=$?
+  WFVAL_DIRT="$(git -C "$work" status --porcelain 2>/dev/null)"
+  WFVAL_SKIP="$(grep -oE 'validation_skip=(true|false)' "$TMP/output" | tail -1 | cut -d= -f2)"
+  rm -rf "$work" "$rt"
+  return 0
+}
+
+echo
+echo "the workflow file the run executes differs from the default branch"
+run_wfval "$TMP/wfval.sh" behind pull_request no
+[ "$WFVAL_SKIP" = true ] && ok "recognised: validation_skip=true" \
+  || bad "the skip went unrecognised (validation_skip='$WFVAL_SKIP') — the PR gets REVIEW_INCOMPLETE naming the wrong cause (#3140)"
+[ "$WFVAL_RC" -eq 0 ] \
+  && ok "exits 0 — the grader below turns this into the verdict and the PR comment" \
+  || bad "the recogniser exited $WFVAL_RC; killing the job here would skip the comment that replaces the stale green one"
+grep -q '::error title=NOT EVALUATED' "$TMP/wfval-out" \
+  && ok "says NOT EVALUATED in the log, not 'failure'" \
+  || bad "no NOT EVALUATED annotation — the run record still reads as a finding about the PR"
+[ -z "$WFVAL_DIRT" ] \
+  && ok "leaves the checkout clean" \
+  || bad "the step dirtied the checkout ($WFVAL_DIRT); 'Assert the reviewers left the tree clean' blames that on a reviewer"
+
+echo
+echo "the normal shape: the running copy matches the default branch"
+run_wfval "$TMP/wfval.sh" uptodate pull_request no
+[ "$WFVAL_SKIP" = false ] && [ "$WFVAL_RC" -eq 0 ] \
+  && ok "not a validation skip — the empty review is diagnosed generically" \
+  || bad "claimed a validation skip on a matching workflow file (validation_skip='$WFVAL_SKIP' rc=$WFVAL_RC)"
+
+echo
+echo "a HEALTHY review, with main moving underneath it afterwards"
+# The default branch may legitimately change a second after a good review. If
+# the mismatch alone decided this, that review would be relabelled "NOT
+# EVALUATED" and its findings thrown away. The verdict file is what settles it.
+run_wfval "$TMP/wfval.sh" behind pull_request yes
+[ "$WFVAL_SKIP" = false ] \
+  && ok "a verdict file was written, so the action ran — not a skip" \
+  || bad "a completed review was relabelled NOT EVALUATED (validation_skip='$WFVAL_SKIP'); its findings would be discarded"
+
+echo
+echo "the run's pinned workflow ref, not the checkout, is what the action validated"
+run_wfval "$TMP/wfval.sh" behind pull_request no origin/main
+[ "$WFVAL_SKIP" = false ] \
+  && ok "WORKFLOW_SHA wins over HEAD" \
+  || bad "the recogniser read HEAD while WORKFLOW_SHA pointed at the default branch's copy (validation_skip='$WFVAL_SKIP')"
+
+echo
+echo "a workflow_dispatch"
+# Exempt for the same reason `selfmod` is: the dispatch runs the default
+# branch's copy of this workflow, whatever the checkout happens to contain.
+run_wfval "$TMP/wfval.sh" behind workflow_dispatch no
+[ "$WFVAL_SKIP" = false ] && [ "$WFVAL_RC" -eq 0 ] \
+  && ok "exempt: validation_skip=false, exit 0" \
+  || bad "a dispatch was reported as a validation skip (validation_skip='$WFVAL_SKIP' rc=$WFVAL_RC) — the fork rescue path would never be reviewed"
+
+echo
+echo "an unresolvable default branch"
+WFWORK="$TMP/wfval-nobase"
+rm -rf "$WFWORK"
+init_repo "$WFWORK"
+(
+  cd "$WFWORK" || exit 1
+  mkdir -p "$(dirname "$GUARDED_FILE")"
+  printf 'name: review\n' > "$GUARDED_FILE"
+  git add -A && git commit -qm only
+) > /dev/null 2>&1
+: > "$TMP/output"
+WF_RT="$TMP/wfval-temp-nobase"
+rm -rf "$WF_RT"; mkdir -p "$WF_RT"
+(
+  cd "$WFWORK" &&
+  EVENT_NAME=pull_request DEFAULT_BRANCH=main WORKFLOW_SHA="" \
+  GITHUB_OUTPUT="$TMP/output" GITHUB_STEP_SUMMARY="$TMP/summary" \
+  RUNNER_TEMP="$WF_RT" \
+  bash -e "$TMP/wfval.sh"
+) > "$TMP/wfval-out" 2>&1
+WF_NOBASE_RC=$?
+WF_NOBASE_SKIP="$(grep -oE 'validation_skip=(true|false)' "$TMP/output" | tail -1 | cut -d= -f2)"
+rm -rf "$WF_RT"
+[ "$WF_NOBASE_SKIP" = false ] && [ "$WF_NOBASE_RC" -eq 0 ] \
+  && ok "degrades to false rather than inventing a cause it cannot verify" \
+  || bad "an unresolvable default branch produced a verdict anyway (validation_skip='$WF_NOBASE_SKIP' rc=$WF_NOBASE_RC)"
+grep -q '::warning' "$TMP/wfval-out" && ok "says so in the log" || bad "degraded silently — no warning in the log"
+
+# ---------------------------------------------------------------------------
+# MUTATION. Drop the "only when there is no verdict file" guard. The recogniser
+# then fires on any run whose default branch has moved — including a review that
+# completed and wrote findings, which would be discarded as NOT EVALUATED.
+# ---------------------------------------------------------------------------
+echo
+echo "mutation: recognise a skip even when the review produced a verdict"
+sed 's|if \[ -s "\${RUNNER_TEMP:-\.}/review-verdict.json" \]; then|if false; then|' \
+  "$TMP/wfval.sh" > "$TMP/wfval-noguard.sh"
+if cmp -s "$TMP/wfval.sh" "$TMP/wfval-noguard.sh"; then
+  bad "the mutation changed nothing — the step no longer gates on the verdict file"
+else
+  run_wfval "$TMP/wfval-noguard.sh" behind pull_request yes
+  [ "$WFVAL_SKIP" = true ] \
+    && ok "the mutant discards a completed review — the guard has teeth" \
+    || bad "the mutant did not reproduce the relabelling (validation_skip='$WFVAL_SKIP'); expected true — either the ordering is untested or the mutant did not run"
+fi
+
+# ---------------------------------------------------------------------------
+# MUTATION. Neuter the content comparison. Everything else still prints, so
+# only the first case can notice — which is why it asserts the OUTPUT and not
+# merely that the step ran.
+# ---------------------------------------------------------------------------
+echo
+echo "mutation: never compare the workflow file"
+sed 's|if \[ "\$RUNNING" = "\$CURRENT" \]; then|if true; then|' \
+  "$TMP/wfval.sh" > "$TMP/wfval-nocompare.sh"
+if cmp -s "$TMP/wfval.sh" "$TMP/wfval-nocompare.sh"; then
+  bad "the mutation changed nothing — the step no longer compares the running workflow file against the default branch"
+else
+  run_wfval "$TMP/wfval-nocompare.sh" behind pull_request no
+  [ "$WFVAL_SKIP" = false ] \
+    && ok "the mutant misses the skip — #3140 is back, and the first case is what catches it" \
+    || bad "the mutant still reported the skip (validation_skip='$WFVAL_SKIP'); the comparison is not what decides"
 fi
 
 echo
