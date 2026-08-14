@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
@@ -333,11 +334,26 @@ private fun PbrSection(
                 // Every subject is normalised to the SAME size rather than to its own
                 // `scaleToUnits` (#2874) — the camera is fixed, so a per-model scale
                 // is what made one chip fill the viewport and the next read as a speck.
+                //
+                // `autoAnimate = !qaMode` mirrors ModelViewerDemo (#2958): `qaMode`
+                // freezes the orbit yaw but NOT model animation, so a subject with a
+                // baked animation would keep moving under it and the section's golden
+                // screenshots would drift frame to frame. Every subject the section can
+                // show today is static (ToyCar declares no animation; the three
+                // `materials` slugs are `hasBakedAnimation = false`), so this changes no
+                // pixel now — it is what keeps the contract true when the CATALOG gains
+                // an animated slug, which is a data edit no code review would catch.
+                // Read once at node creation, like ModelViewerDemo: the QA harness sets
+                // `DemoSettings.qaMode` before launching a demo, so the value is already
+                // settled when these nodes mount. Re-keying on it instead would destroy
+                // and rebuild the nodes, which is exactly the entity-teardown defect
+                // #2939 fixed above.
                 bundledInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
                         scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
                         isVisible = selectedSlug == null,
+                        autoAnimate = !DemoSettings.qaMode,
                     )
                 }
                 streamedInstance?.let { instance ->
@@ -345,6 +361,7 @@ private fun PbrSection(
                         modelInstance = instance,
                         scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
                         isVisible = selectedSlug != null,
+                        autoAnimate = !DemoSettings.qaMode,
                     )
                 }
             }

@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -116,6 +117,84 @@ class MaterialsSubjectsTest {
         assertEquals("Test Model", subject.displayName)
         assertEquals("tester", subject.author)
         assertEquals("KHR_materials_sheen", subject.extensionTag)
+    }
+
+    /**
+     * Every subject node in the section must derive `autoAnimate` from
+     * `DemoSettings.qaMode` (#2958).
+     *
+     * `qaMode` freezes the orbit yaw (`DemoHelpers`) but not model animation, and
+     * `SceneScope.ModelNode` defaults `autoAnimate` to `true` — so a subject with a
+     * baked animation would keep moving under `qaMode` and the section's golden
+     * screenshots would drift frame to frame.
+     *
+     * This is asserted on the SOURCE rather than on a frame on purpose: every subject
+     * the section can show today is static, so no capture — on any device, in either
+     * mode — can tell the fixed version from the broken one. The trigger is a CATALOG
+     * edit (one animated slug added to `SampleAssets`' `materials` category), which is
+     * a data change no rendering test would attribute to this parameter.
+     */
+    @Test
+    fun `every subject node derives autoAnimate from qaMode`() {
+        val subjectCalls = modelNodeCallArguments(demoSource("MaterialsDemo.kt"))
+            .filter { it.contains("MaterialsSubjects.FRAMING_UNITS") }
+        assertTrue(
+            "Expected the bundled + streamed subject nodes to be mounted with " +
+                "`scaleToUnits = MaterialsSubjects.FRAMING_UNITS`; found " +
+                "${subjectCalls.size}. If the section was restructured, update this " +
+                "test rather than dropping the contract it guards.",
+            subjectCalls.size >= 2,
+        )
+        subjectCalls.forEach { call ->
+            assertTrue(
+                "A Materials subject node is mounted without " +
+                    "`autoAnimate = !DemoSettings.qaMode` (#2958). `ModelNode` defaults " +
+                    "it to true, so an animated subject would break the section's qaMode " +
+                    "determinism contract. Offending call args: ${call.trim()}",
+                call.contains("autoAnimate = !DemoSettings.qaMode"),
+            )
+        }
+    }
+
+    /**
+     * The argument list of every `ModelNode(…)` call in [source], balanced on parentheses
+     * so a nested `Position(…)` / `Scale(…)` argument does not truncate the match.
+     */
+    private fun modelNodeCallArguments(source: String): List<String> = buildList {
+        var from = source.indexOf(CALL)
+        while (from >= 0) {
+            var depth = 1
+            var i = from + CALL.length
+            while (i < source.length && depth > 0) {
+                when (source[i]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                i++
+            }
+            if (depth == 0) add(source.substring(from + CALL.length, i - 1))
+            from = source.indexOf(CALL, from + CALL.length)
+        }
+    }
+
+    /**
+     * Reads a demo source file. The Gradle test task's working directory is the module
+     * directory, but the search walks up so the test also passes when a runner starts it
+     * from the repository root.
+     */
+    private fun demoSource(fileName: String): String {
+        val relative = "samples/android-demo/src/main/java/io/github/sceneview/demo/demos/$fileName"
+        var dir: File? = File("").absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, relative)
+            if (candidate.isFile) return candidate.readText()
+            dir = dir.parentFile
+        }
+        throw AssertionError("Could not locate $relative from ${File("").absolutePath}")
+    }
+
+    private companion object {
+        const val CALL = "ModelNode("
     }
 
     @Test
