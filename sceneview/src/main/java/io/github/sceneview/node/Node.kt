@@ -1188,6 +1188,24 @@ open class Node protected constructor(
     open fun onTouchEvent(e: MotionEvent, hitResult: HitResult) =
         gestureDelegate.onTouchEvent(e, hitResult)
 
+    /**
+     * Continuation of a touch stream **this node captured** by returning `true` from
+     * [onTouchEvent] on `ACTION_DOWN`, delivered for the events whose picking ray no longer hits
+     * the node — the pointer left it, or another node moved in front of it.
+     *
+     * This is Android's touch-target rule applied to picked 3D nodes: a stream belongs to whoever
+     * consumed its `DOWN`, so a node can end its own gesture (release a press, cancel a drag)
+     * instead of never hearing about the `UP` (#2845). There is no [HitResult] to pass: by
+     * definition this event does not hit the node.
+     *
+     * The default implementation returns `false`, which routes the event to the scene gesture and
+     * camera detectors exactly as before capture existed. Override it to keep owning the stream
+     * (see [ViewNode]) and return `true` for as long as the node consumes it.
+     *
+     * @return true when the node still owns the stream and the event must not be routed elsewhere.
+     */
+    open fun onCapturedTouchEvent(e: MotionEvent): Boolean = false
+
     override fun onDown(e: MotionEvent) = gestureDelegate.onDown(e)
     override fun onShowPress(e: MotionEvent) = gestureDelegate.onShowPress(e)
     override fun onSingleTapUp(e: MotionEvent) = gestureDelegate.onSingleTapUp(e)

@@ -870,30 +870,32 @@ Three gotchas that bite every `ViewNode`:
   streaming text panel drags its neighbours around while it types). Give every node
   sharing a manager the same explicit size — width *and* height — or give each node
   its own manager, at the cost of one system window per node.
-- **The rendered UI is NOT interactive** — see immediately below.
+- **The rendered UI IS interactive**, and a control that consumes a touch takes the
+  whole gesture away from the scene — see immediately below.
 
-**The rendered UI is NOT interactive.** A `ViewNode` draws its Compose content into a texture;
-the hosting window is `FLAG_NOT_TOUCHABLE` and touch events are never dispatched into it, so a
-`Button` placed inside **will render but its `onClick` will never fire** (no ripple, no press
-state, no inner scrolling either). Do not generate clickable controls inside a `ViewNode`.
-
-To react to a tap, pick the node from the scene instead:
+**The rendered UI IS interactive** (since #2845). A `ViewNode` draws its Compose content into a
+texture, so Android never dispatches touches to it; instead the node converts the scene's picking
+hit into a view pixel and forwards the whole `DOWN → MOVE → UP` stream into the embedded
+hierarchy. `Button.onClick`, press states, ripples and inner scrolling all work:
 ```kotlin
 val windowManager = rememberViewNodeManager()
 var tapCount by remember { mutableStateOf(0) }
-SceneView(
-    viewNodeWindowManager = windowManager,
-    onGestureListener = rememberOnGestureListener(
-        // `node` is the ray-cast hit — null when the tap missed every node.
-        onSingleTapUp = { _, node -> if (node is ViewNode) tapCount++ }
-    )
-) {
+SceneView(viewNodeWindowManager = windowManager) {
     ViewNode(windowManager = windowManager) {
-        Card { Text("Tapped $tapCount times") }
+        Button(onClick = { tapCount++ }) { Text("Tapped $tapCount times") }
     }
 }
 ```
-Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
+
+Two consequences to keep in mind:
+
+- **A consumed gesture never reaches the scene.** Like a view on screen, whatever the embedded
+  hierarchy consumes is invisible to `onGestureListener` and to the camera manipulator — and a
+  Material `Surface`/`Card` consumes touches even when nothing inside is clickable. An event the
+  content does **not** consume falls through untouched, so picking still works:
+  `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
+- **Opt out with `apply = { isTouchForwardingEnabled = false }`** for a purely decorative overlay
+  whose quad must never steal a gesture.
 
 ### LineNode — single line segment
 ```kotlin

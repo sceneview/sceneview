@@ -2532,6 +2532,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun lookTowards (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZF)Lio/github/sceneview/node/Node;
 	public static synthetic fun lookTowards$default (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZFILjava/lang/Object;)Lio/github/sceneview/node/Node;
 	public fun onAddedToScene (Lcom/google/android/filament/Scene;)V
+	public fun onCapturedTouchEvent (Landroid/view/MotionEvent;)Z
 	public fun onContextClick (Landroid/view/MotionEvent;)Z
 	public fun onDoubleTap (Landroid/view/MotionEvent;)Z
 	public fun onDoubleTapEvent (Landroid/view/MotionEvent;)Z
@@ -2994,11 +2995,14 @@ public final class io/github/sceneview/node/ViewNode : io/github/sceneview/node/
 	public final fun getTexture ()Lcom/google/android/filament/Texture;
 	public final fun getViewSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getWindowManager ()Lio/github/sceneview/node/ViewNode$WindowManager;
+	public final fun isTouchForwardingEnabled ()Z
 	public fun onAddedToScene (Lcom/google/android/filament/Scene;)V
+	public fun onCapturedTouchEvent (Landroid/view/MotionEvent;)Z
 	public fun onRemovedFromScene (Lcom/google/android/filament/Scene;)V
 	public fun onTouchEvent (Landroid/view/MotionEvent;Lio/github/sceneview/collision/HitResult;)Z
 	public fun setMaterialInstance (Lcom/google/android/filament/MaterialInstance;)V
 	public final fun setPxPerUnits (F)V
+	public final fun setTouchForwardingEnabled (Z)V
 	public final fun setViewSize (Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun updateGeometrySize ()V
 }

@@ -399,13 +399,20 @@ CameraNode(
 
 Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, and HUDs.
 
-!!! warning "The rendered UI is not interactive"
+!!! tip "The rendered UI is interactive"
 
-    A `ViewNode` draws its Compose content into a texture, and the hosting window is
-    `FLAG_NOT_TOUCHABLE` — a `Button` placed inside renders, but its `onClick` never
-    fires (no ripple, no press state, no inner scrolling). To react to a tap, hit-test
-    the node instead: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
-    Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
+    A `ViewNode` draws its Compose content into a texture, so Android never dispatches
+    touches to it. The node forwards them itself: the scene's picking hit is converted to a
+    view pixel and the whole `DOWN → MOVE → UP` stream is dispatched into the embedded
+    hierarchy, so `Button.onClick`, press states, ripples and inner scrolling work
+    ([#2845](https://github.com/sceneview/sceneview/issues/2845)).
+
+    As on screen, a gesture the content **consumes** never reaches the scene gesture
+    listener or the camera manipulator — and a Material `Surface`/`Card` consumes touches
+    even with nothing clickable inside. Anything it does not consume still falls through to
+    picking: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`. Pass
+    `apply = { isTouchForwardingEnabled = false }` for a decorative overlay that must never
+    steal a gesture.
 
 ### Signature
 

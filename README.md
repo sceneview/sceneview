@@ -283,7 +283,7 @@ What you can do across all 3D and AR scenes — beyond placing nodes.
 | **HDR environment** | IBL lighting + skybox from `.hdr` / `.ktx`. Async load + reactive swap. | `EnvironmentLoader`, `rememberEnvironment` |
 | **Custom materials** | Filament `.filamat` materials with parameters, plus built-in unlit / lit / overlay variants. | `MaterialLoader` |
 | **Post-processing** | Bloom, depth of field, SSAO, vignette, color grading, tone mapping. | `View.bloomOptions`, `dynamicResolutionOptions`, … |
-| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — labels, cards, lists, animations. Rendered only: hit-test the node to react to taps ([#2845](https://github.com/sceneview/sceneview/issues/2845)). | `ViewNode` + `ViewNode.WindowManager` |
+| **Compose UI in 3D** | Render any `@Composable` as a textured plane in world space — labels, cards, lists, animations. Fully interactive: picked touches are forwarded into the view, so `Button.onClick`, ripples and inner scrolling work. | `ViewNode` + `ViewNode.WindowManager` |
 | **Multiple cameras** | Picture-in-picture, mini-map, security-camera views. | `SecondaryCamera` |
 | **Reactive scene graph** | Compose-driven recomposition: change state → tree updates. No imperative `parent.addChild()`. | `SceneScope` / `ARSceneScope` DSL |
 
