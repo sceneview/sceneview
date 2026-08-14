@@ -12,7 +12,6 @@ import io.github.sceneview.createEngine
 import io.github.sceneview.environment.IBLPrefilter
 import io.github.sceneview.safeDestroy
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,8 +46,10 @@ import java.util.concurrent.atomic.AtomicReference
  *     here, not just an assertion fail.
  *  2. Reading the gate from up to 4 reader threads while the destroyer fires
  *     mid-run reproduces the worst-case dispose race in production. Asserts
- *     no exception, monotonic `isDestroyed` transition, and that no reader
- *     observed a non-null `cubeMapTexture` after observing `isDestroyed`.
+ *     no exception, a monotonic `isDestroyed` transition, and null textures
+ *     once the destroyer has joined. It deliberately does NOT assert that the
+ *     fields read null the instant a reader sees the gate flip — see the note
+ *     on that assertion in [concurrent_update_reads_and_destroy_areCrashFree].
  *  3. `destroy()` is idempotent under contention — 8 threads racing
  *     `destroy()` calls all return cleanly, the textures end up null, and a
  *     subsequent `destroy()` call from a calm thread also no-ops.
@@ -64,7 +65,8 @@ import java.util.concurrent.atomic.AtomicReference
  *    writer.
  *  - Reader threads check `isDestroyed` and, if false, reflectively read
  *    `cubeMapTexture` — this mirrors the dangerous read path inside the real
- *    `update()` cleanup branch.
+ *    `update()` cleanup branch, which reads the gate first and touches the
+ *    cubemap fields only while it reads false.
  *
  * The pure-JVM file `LightEstimatorRobustnessTest` still owns the algorithmic
  * pins for the destroy-gate / texture-leak / buffer-race trio shipped in
@@ -108,10 +110,11 @@ class LightEstimatorConcurrentDestroyTest {
     // ── tests ───────────────────────────────────────────────────────────────
 
     /**
-     * Hammers `isDestroyed` reads from 4 threads × 100 iterations each while a
+     * Hammers `isDestroyed` reads from 4 threads × 1000 iterations each while a
      * destroyer thread calls `destroy()` at ~50% of the read run. Pins the
-     * volatile-gate contract: once any reader observes `isDestroyed = true`,
-     * no reader can subsequently observe a non-null `cubeMapTexture`.
+     * volatile-gate contract: the gate flips monotonically under contention, no
+     * reader or destroyer throws against a live Filament engine, and both
+     * texture fields are null once `destroy()` has returned.
      */
     @Test
     fun concurrent_update_reads_and_destroy_areCrashFree() {
@@ -121,7 +124,6 @@ class LightEstimatorConcurrentDestroyTest {
 
             val readerExceptions = AtomicReference<Throwable?>(null)
             val readerObservedDestroyed = AtomicBoolean(false)
-            val orderingViolation = AtomicBoolean(false)
 
             val readers = (0 until 4).map {
                 Thread {
@@ -131,22 +133,18 @@ class LightEstimatorConcurrentDestroyTest {
                         // `Thread.sleep` to land mid-loop on even a turbo
                         // device — pre-fix would have stayed in the reader
                         // body well past the latch on any realistic CPU,
-                        // so the post-destroy ordering check actually runs.
+                        // so the destroy actually races live readers.
                         repeat(1_000) {
                             // Mirrors the dangerous read path inside `update()`:
-                            // gate first, then access mutable cubemap state.
+                            // the gate is read FIRST, and the cubemap fields are
+                            // touched only while it still reads false. That is
+                            // the ordering the production code uses, so it is the
+                            // one worth stressing against a live engine.
                             if (estimator.isDestroyed) {
                                 readerObservedDestroyed.set(true)
-                                // After observing destroyed = true, both texture
-                                // fields must be observable as null (or already
-                                // were). Reading after observing the gate must
-                                // never see a non-null field that destroy() has
-                                // since freed.
-                                val tex = getPrivateField(estimator, "cubeMapTexture")
-                                val texSpec = getPrivateField(estimator, "cubeMapTextureSpecular")
-                                if (tex != null || texSpec != null) {
-                                    orderingViolation.set(true)
-                                }
+                            } else {
+                                getPrivateField(estimator, "cubeMapTexture")
+                                getPrivateField(estimator, "cubeMapTextureSpecular")
                             }
                             Thread.yield()
                         }
@@ -190,10 +188,17 @@ class LightEstimatorConcurrentDestroyTest {
                 "at least one reader must have observed the gate flip",
                 readerObservedDestroyed.get()
             )
-            assertEquals(
-                "no reader may see a non-null texture field after observing isDestroyed",
-                false, orderingViolation.get()
-            )
+            // NOT asserted: "once a reader observes isDestroyed = true, both
+            // texture fields read null". `destroy()` latches the gate BEFORE it
+            // frees the textures — deliberately, so a late `update()` bails out
+            // instead of racing `engine.destroyTexture` — which leaves a window
+            // by construction where the gate is true and the fields are still
+            // non-null. That window is benign: `update()` early-returns on the
+            // gate and never reads the fields afterwards; only this test's
+            // reflection could see it. Asserting the opposite made the test pass
+            // on timing, not on correctness, and it failed on a Pixel 4a
+            // (2026-08-14, first real-device run of this suite) where the slower
+            // CPU keeps a reader inside the window long enough to observe it.
             // Post-destroy contract: textures freed.
             assertNull(getPrivateField(estimator, "cubeMapTexture"))
             assertNull(getPrivateField(estimator, "cubeMapTextureSpecular"))

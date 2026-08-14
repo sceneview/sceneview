@@ -150,7 +150,8 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 // exposure realignment after #1067 + #1088.
                 //
                 // ARSession force-DISABLES light estimation for front-camera sessions
-                // (see ArSession.kt:77-81), so the new `ARDefaultCameraNode` defaults
+                // (see the front-camera guard in `ARSession.configure`), so the new
+                // `ARDefaultCameraNode` defaults
                 // (f/12, 1/200 s, ISO 200 ≈ EV 11.6) + 10k+3k lux main/fill lights
                 // give a correctly exposed selfie preview on Pixel 9 without any
                 // per-demo override. If the preview ever shows up over-bright again on

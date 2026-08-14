@@ -139,6 +139,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     val lastDetectMs = remember { longArrayOf(0L) }
     val kDetectIntervalMs = 160L
 
+    // The time throttle alone is not a concurrency guard: it only says "160 ms have passed",
+    // not "the previous detection released its image". ML Kit holds the CPU image until its
+    // listener fires, and on a mid-range device object detection takes longer than the
+    // interval — so the next window acquires a second image while the first is still in
+    // flight, and ARCore's 2–3 slot pool runs dry. Measured on a Pixel 4a (2026-08-14):
+    // 28 `ResourceExhaustedException` from `acquireCameraImage` in a 9-second run.
+    val detectInFlight = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+
     // Pre-rendered label bitmaps cached by category — ML Kit returns a stable category
     // name per detection, so we memo the bitmap per category instead of re-rasterising
     // per frame (saves ~2–4 ms of canvas work per detector pass).
@@ -199,73 +207,109 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // would dominate the main thread.
                     val now = System.currentTimeMillis()
                     if (now - lastDetectMs[0] < kDetectIntervalMs) return@ARSceneView
+
+                    // Never acquire a second CPU image while ML Kit still holds the previous
+                    // one (see `detectInFlight`). Released in both listeners, next to the
+                    // matching `cameraImage.close()`.
+                    if (!detectInFlight.compareAndSet(false, true)) return@ARSceneView
                     lastDetectMs[0] = now
 
                     // Pull the CPU camera image. `null` is normal during session warm-up.
-                    val cameraImage = frame.cameraImage()
+                    // Any failure from here on must clear the in-flight flag, or the demo
+                    // stops detecting for the rest of the session.
+                    val cameraImage = try {
+                        frame.cameraImage()
+                    } catch (e: Throwable) {
+                        detectInFlight.set(false)
+                        throw e
+                    }
                     if (cameraImage == null) {
+                        detectInFlight.set(false)
                         if (statusBannerRes != R.string.demo_ar_ml_status_warming) {
                             statusBannerRes = R.string.demo_ar_ml_status_warming
                         }
                         return@ARSceneView
                     }
 
-                    // `Context.display` was added in API 30; fall back to the
-                    // deprecated `WindowManager.defaultDisplay` on API 28–29.
-                    val displayRotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                        context.display.rotation
-                    } else {
-                        @Suppress("DEPRECATION")
-                        (context.getSystemService(android.content.Context.WINDOW_SERVICE)
-                                as android.view.WindowManager).defaultDisplay.rotation
-                    }
-                    val rotationDegrees = when (displayRotation) {
-                        // ARCore CPU image is delivered with the device's natural-orientation
-                        // axis. ML Kit needs degrees of rotation from upright. ARCore's
-                        // back-camera sensor orientation on Android phones is 90° → match.
-                        android.view.Surface.ROTATION_0 -> 90
-                        android.view.Surface.ROTATION_90 -> 0
-                        android.view.Surface.ROTATION_180 -> 270
-                        android.view.Surface.ROTATION_270 -> 180
-                        else -> 90
-                    }
+                    // Everything from here until the listeners are attached runs under one
+                    // guard. `detector.process` is the hand-off point: once it has returned a
+                    // Task with both listeners attached, ownership of the image and the flag
+                    // moves to whichever listener fires. Before that point they are still ours,
+                    // and any throw in between — `context.display` on a non-visual context, a
+                    // detector closed by a recomposition — would otherwise leak the image AND
+                    // strand the flag at true, which silently ends detection for the rest of
+                    // the session. That is worse than the exhaustion this guard was added to
+                    // prevent, because nothing in the UI would say so.
+                    var dispatched = false
+                    try {
+                        // `Context.display` was added in API 30; fall back to the
+                        // deprecated `WindowManager.defaultDisplay` on API 28–29.
+                        val displayRotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            context.display.rotation
+                        } else {
+                            @Suppress("DEPRECATION")
+                            (context.getSystemService(android.content.Context.WINDOW_SERVICE)
+                                    as android.view.WindowManager).defaultDisplay.rotation
+                        }
+                        val rotationDegrees = when (displayRotation) {
+                            // ARCore CPU image is delivered with the device's natural-orientation
+                            // axis. ML Kit needs degrees of rotation from upright. ARCore's
+                            // back-camera sensor orientation on Android phones is 90° → match.
+                            android.view.Surface.ROTATION_0 -> 90
+                            android.view.Surface.ROTATION_90 -> 0
+                            android.view.Surface.ROTATION_180 -> 270
+                            android.view.Surface.ROTATION_270 -> 180
+                            else -> 90
+                        }
 
-                    // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a
-                    // reference until the task completes, so we close `cameraImage` in
-                    // the success/failure listeners — never before. Closing earlier
-                    // would throw IllegalStateException from the YUV reader inside
-                    // ML Kit (caught in #1737 review pre-merge).
-                    val input = InputImage.fromMediaImage(cameraImage, rotationDegrees)
-                    val imageW = cameraImage.width
-                    val imageH = cameraImage.height
+                        // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a
+                        // reference until the task completes, so we close `cameraImage` in
+                        // the success/failure listeners — never before. Closing earlier
+                        // would throw IllegalStateException from the YUV reader inside
+                        // ML Kit (caught in #1737 review pre-merge).
+                        val input = InputImage.fromMediaImage(cameraImage, rotationDegrees)
+                        val imageW = cameraImage.width
+                        val imageH = cameraImage.height
 
-                    detector.process(input)
-                        .addOnSuccessListener { results ->
-                            try {
-                                updateAnchorsFromDetections(
-                                    frame = frame,
-                                    results = results,
-                                    imageW = imageW,
-                                    imageH = imageH,
-                                    detections = detections,
-                                    labelBitmaps = labelBitmaps,
-                                )
-                                // Once anything is anchored, the status text switches to the
-                                // live "N objects detected" count (see `statusText` above), so
-                                // the "Aim at a recognisable object" hint is dismissed as soon
-                                // as ≥1 label is placed (#2478). Until then, keep prompting.
-                                statusBannerRes = R.string.demo_ar_ml_status_aim
-                            } finally {
-                                cameraImage.close()
+                        detector.process(input)
+                            .addOnSuccessListener { results ->
+                                try {
+                                    updateAnchorsFromDetections(
+                                        frame = frame,
+                                        results = results,
+                                        imageW = imageW,
+                                        imageH = imageH,
+                                        detections = detections,
+                                        labelBitmaps = labelBitmaps,
+                                    )
+                                    // Once anything is anchored, the status text switches to
+                                    // the live "N objects detected" count (see `statusText`
+                                    // above), so the "Aim at a recognisable object" hint is
+                                    // dismissed as soon as ≥1 label is placed (#2478). Until
+                                    // then, keep prompting.
+                                    statusBannerRes = R.string.demo_ar_ml_status_aim
+                                } finally {
+                                    cameraImage.close()
+                                    detectInFlight.set(false)
+                                }
                             }
-                        }
-                        .addOnFailureListener {
-                            // Failure can be transient (e.g. session paused mid-process) —
-                            // drop and try again next throttle window. Always close the
-                            // image — leaking even a single CPU image is enough to stall
-                            // ARCore within a few frames.
+                            .addOnFailureListener {
+                                // Failure can be transient (e.g. session paused mid-process) —
+                                // drop and try again next throttle window. Always close the
+                                // image — leaking even a single CPU image is enough to stall
+                                // ARCore within a few frames.
+                                cameraImage.close()
+                                detectInFlight.set(false)
+                            }
+
+                        // Both listeners are attached: the image and the flag are theirs now.
+                        dispatched = true
+                    } finally {
+                        if (!dispatched) {
                             cameraImage.close()
+                            detectInFlight.set(false)
                         }
+                    }
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
             ) {

@@ -12,6 +12,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.FatalException
 import com.google.ar.core.exceptions.NotYetAvailableException
 import dev.romainguy.kotlin.math.Ray
 import io.github.sceneview.utils.fps
@@ -252,7 +253,9 @@ fun Frame.semanticConfidenceImage(): Image? = try {
  * without acquiring and walking the full [semanticImage] CPU-side.
  *
  * Returns `0f` when:
- *  - [Config.SemanticMode.ENABLED] is not set on the session,
+ *  - [Config.SemanticMode.ENABLED] is not set on the session — including when the device does
+ *    not support Scene Semantics at all and [ARSession.configure] fell the mode back to
+ *    [Config.SemanticMode.DISABLED],
  *  - the frame has not yet received a semantic update (typical for the first frame after
  *    resume), or
  *  - no pixel in the frame carries the [label] (which is the actual semantic meaning).
@@ -274,5 +277,16 @@ fun Frame.semanticConfidenceImage(): Image? = try {
 fun Frame.semanticLabelFraction(label: SemanticLabel): Float = try {
     getSemanticLabelFraction(label)
 } catch (_: NotYetAvailableException) {
+    0f
+} catch (_: FatalException) {
+    // ARCore reports "this session has no semantics" as AR_ERROR_FATAL, not as
+    // NotYetAvailable — so the `SemanticMode` case documented above only held on devices that
+    // support Scene Semantics in the first place. Everywhere else this threw once per frame.
+    // Measured on a Pixel 4a (2026-08-14): `ar-people-occlusion` logged 44 FatalException
+    // stack traces in 9 seconds, `ar-scene-semantics` 7 more. The session itself is healthy —
+    // `ARSession.configure` had already fallen `semanticMode` back to DISABLED because the
+    // device lacks the model, and every other frame API kept working for the whole run.
+    // Swallowing it here cannot hide a genuinely dead session: the next `session.update()`
+    // raises the same fatal through the normal error path.
     0f
 }

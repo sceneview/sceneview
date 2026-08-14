@@ -65,7 +65,13 @@ class ARSession(
         private set
 
     override fun configure(config: Config) {
-        super.configure(config)
+        // Every fallback below MUST run before `super.configure(config)` hands the config to
+        // ARCore. They exist to keep an unsupported combination from reaching `nativeConfigure`,
+        // and a fallback applied afterwards can only ever fix the *next* call — which never
+        // happens when the current one throws and takes session creation down with it.
+        // Measured on a Pixel 4a (2026-08-14): a front-camera Augmented Faces session died with
+        // `UnsupportedConfigurationException` from ARCore's `lighting_estimation_hdr.cc`, three
+        // lines above the front-camera light-estimation fallback meant to prevent exactly that.
 
         if (config.depthMode != Config.DepthMode.DISABLED &&
             !isDepthModeSupported(config.depthMode)
@@ -108,6 +114,8 @@ class ARSession(
         }
 
         hasAugmentedImageDatabase = (config.augmentedImageDatabase?.numImages ?: 0) > 0
+
+        super.configure(config)
 
         onConfigChanged(this, config)
     }
