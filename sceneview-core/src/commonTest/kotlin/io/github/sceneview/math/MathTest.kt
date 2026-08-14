@@ -2,6 +2,7 @@ package io.github.sceneview.math
 
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Mat4
+import dev.romainguy.kotlin.math.pow
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -126,6 +127,41 @@ class MathTest {
         val linear = floatArrayOf(0.5f).toLinearSpace()
         // 0.5^2.2 ≈ 0.2176
         assertClose(0.2176f, linear[0], 0.01f)
+    }
+
+    /**
+     * `toLinearSpace()` was rewritten to fill a `FloatArray` in place instead of mapping through
+     * a boxed `List<Float>` (#3157). It must still convert every element, in order, and leave the
+     * receiver untouched.
+     */
+    @Test
+    fun toLinearSpaceConvertsEveryElementAndDoesNotMutateReceiver() {
+        val source = floatArrayOf(0f, 0.25f, 0.5f, 1f)
+        val linear = source.toLinearSpace()
+        assertEquals(source.size, linear.size)
+        for (i in source.indices) {
+            assertClose(pow(source[i], 2.2f), linear[i])
+        }
+        // Distinct array, receiver unchanged.
+        assertTrue(linear !== source)
+        assertEquals(0.25f, source[1])
+        assertEquals(0, floatArrayOf().toLinearSpace().size)
+    }
+
+    /**
+     * `toColumnsDoubleArray()` was rewritten to fill a `DoubleArray` directly instead of going
+     * through `toColumnsFloatArray().map { }.toDoubleArray()` (#3157). It must stay the exact
+     * column-major widening of [toColumnsFloatArray].
+     */
+    @Test
+    fun toColumnsDoubleArrayMatchesFloatColumns() {
+        val matrix = Mat4.of(*FloatArray(16) { it + 1f })
+        val floats = matrix.toColumnsFloatArray()
+        val doubles = matrix.toColumnsDoubleArray()
+        assertEquals(16, doubles.size)
+        for (i in floats.indices) {
+            assertEquals(floats[i].toDouble(), doubles[i])
+        }
     }
 
     // ── slerp TRS-tuple overload (#2265) ──────────────────────────────────────

@@ -565,6 +565,10 @@ open class ARCameraStream(
     }
 
     fun update(session: Session, frame: Frame) {
+        // Audit AR13: this JNI read is the floor for this surface, not an oversight.
+        // `session.setCameraTextureNames(cameraTextureIds)` hands ARCore all 6 ids and ARCore
+        // rotates through them so the previous frame's texture stays readable while the next one
+        // is written. Caching the name would pin one texture and tear. Read it every frame.
         cameraTextures[frame.cameraTextureName]?.let {
             cameraTexture = it
         }

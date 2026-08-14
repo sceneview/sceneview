@@ -123,8 +123,18 @@ fun Mat3.copyColumnsInto(out: FloatArray, offset: Int = 0): FloatArray {
     return out
 }
 
-fun Mat4.toColumnsDoubleArray(): DoubleArray =
-    toColumnsFloatArray().map { it.toDouble() }.toDoubleArray()
+/**
+ * Returns this [Mat4]'s 16 components as a column-major [DoubleArray].
+ *
+ * Fills the result directly rather than going through [toColumnsFloatArray] and a boxed
+ * `List<Double>` — one allocation instead of three for the same conversion.
+ */
+fun Mat4.toColumnsDoubleArray() = doubleArrayOf(
+    x.x.toDouble(), x.y.toDouble(), x.z.toDouble(), x.w.toDouble(),
+    y.x.toDouble(), y.y.toDouble(), y.z.toDouble(), y.w.toDouble(),
+    z.x.toDouble(), z.y.toDouble(), z.z.toDouble(), z.w.toDouble(),
+    w.x.toDouble(), w.y.toDouble(), w.z.toDouble(), w.w.toDouble()
+)
 
 /** Extracts the rotation component of this transform as a [Quaternion]. */
 val Mat4.quaternion: Quaternion
@@ -287,8 +297,11 @@ fun slerp(
 
 /**
  * If rendering in linear space, first convert the values to linear space by rising to the power 2.2
+ *
+ * Builds the result array in place rather than through a boxed `List<Float>` intermediate — one
+ * allocation instead of two.
  */
-fun FloatArray.toLinearSpace() = map { pow(it, 2.2f) }.toFloatArray()
+fun FloatArray.toLinearSpace() = FloatArray(size) { pow(this[it], 2.2f) }
 
 /**
  * Creates a view matrix looking from [eye] toward [target] with Y-up.

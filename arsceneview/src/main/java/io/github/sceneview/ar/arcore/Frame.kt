@@ -38,10 +38,18 @@ fun Frame.hitTest(ray: Ray): List<HitResult> {
 }
 
 /**
- * Returns the collection of updated trackables of the same type as [trackable] for this frame.
+ * Returns whether [trackable] is among the [T] trackables updated by this frame.
+ *
+ * Use it to skip work for a trackable ARCore did not touch this frame:
+ * ```kotlin
+ * if (frame.hasUpdatedTrackable(plane)) node.update(plane)
+ * ```
+ *
+ * For the collection itself, use [getUpdatedTrackables] or one of its typed shortcuts
+ * ([getUpdatedPlanes], [getUpdatedAugmentedImages], …).
  */
-inline fun <reified T : Trackable> Frame.hasUpdatedTrackable(trackable: T) =
-    getUpdatedTrackables(T::class.java)
+inline fun <reified T : Trackable> Frame.hasUpdatedTrackable(trackable: T): Boolean =
+    getUpdatedTrackables(T::class.java).contains(trackable)
 
 /**
  * Returns all updated [Trackable]s of any type for this frame.
