@@ -46,7 +46,7 @@ SceneView { root in
 .cameraControls(.orbit)            // .orbit (default) | .pan | .firstPerson (v4.3.0+; firstPerson is true in-place look-around v4.4.0+) | native Apple modes (iOS 18+, macOS 15+, visionOS excluded): .none | .tilt | .dolly | .gimbal (v4.15.1+ #1049)
 .recentersTargetOnOrbit(true)      // v4.4.0+ — re-pivot on content centroid when returning to orbit (default false)
 .onEntityTapped { entity in }      // tap handler
-.autoRotate(speed: 0.3)            // turntable auto-rotation
+.autoRotate(speed: spinning ? 0.2 : 0)  // turntable auto-rotation; REACTIVE since v4.31.0 — a spin toggle changes this value and nothing else (0 = freeze)
 .autoCenterContent(true)           // v4.3.0+ — library translates content centroid to orbit pivot (default true; pass false to keep explicit placements)
 .framingMargin(0.95)               // v4.26.0+ — padding on the auto-fit distance (default 1.15; 1.0 = bounding sphere tangent; < 1 fills the frame)
 .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // v4.26.0+ — seeds the INITIAL orbit pose in radians; elevation is positive ABOVE the target (defaults: 0, 30°)
@@ -70,6 +70,12 @@ SceneView { root in
     re-created `RealityView` intermittently renders nothing at all — no model,
     and no skybox either — permanently
     ([#3008](https://github.com/sceneview/sceneview/issues/3008)).
+
+    The same applies to a **spin toggle**: `.autoRotate(speed:)` is reactive
+    since v4.31.0, so pass `0` to freeze and a non-zero speed to spin. Re-keying
+    to force it is what left the demo's Multi-Model scene blank when "Spin
+    scene" was turned off
+    ([#2935](https://github.com/sceneview/sceneview/issues/2935)).
 
     The id has to change **every time the closure would build something
     different**, including "still loading" → "loaded". An `Optional` covers
