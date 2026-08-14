@@ -301,8 +301,19 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                 cameraImage.close()
                                 detectInFlight.set(false)
                             }
+                            .addOnCanceledListener {
+                                // Unreachable in practice — `process(InputImage)` takes no
+                                // CancellationToken and ML Kit surfaces teardown as a failure,
+                                // not a cancel. Attached anyway because it is the third and
+                                // last terminal state a Task has: without it, "released on
+                                // every exit path" would be a claim resting on an ML Kit
+                                // implementation detail rather than on the Task contract.
+                                cameraImage.close()
+                                detectInFlight.set(false)
+                            }
 
-                        // Both listeners are attached: the image and the flag are theirs now.
+                        // All three terminal listeners are attached: the image and the flag
+                        // are theirs now.
                         dispatched = true
                     } finally {
                         if (!dispatched) {
