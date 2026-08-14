@@ -126,7 +126,10 @@ class LightEstimatorRobustnessTest {
 
         fun destroy() {
             isDestroyed.set(true)
-            // Mirror of the setter: `field?.let { destroy }; field = null`
+            // Mirror of the setter's *single-threaded* effect: free the old texture, clear
+            // the field. Production does this as one atomic `getAndSet` — see
+            // `LightEstimatorTextureSwapTest` for why that distinction is load-bearing.
+            // This suite is single-threaded, so the shapes are equivalent here.
             textureAlive?.let {
                 freedTextures.incrementAndGet()
                 textureAlive = null
