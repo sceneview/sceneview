@@ -46,8 +46,75 @@
 #   gradle_run <logfile> <gradle args...>
 gradle_run() {
     local log="$1"
+    local code=0
     shift
-    ./gradlew "$@" --console=plain > "$log" 2>&1
+    ./gradlew "$@" --console=plain > "$log" 2>&1 || code=$?
+
+    # A log that describes another checkout cannot be graded — in EITHER
+    # direction, which is why the exit code is not consulted here:
+    #   exit 0 → the pass is unearned;
+    #   exit ≠0 → the errors quoted back may be the other build's, so a specific
+    #             diagnosis ("public-API surface drifted") would name this tree
+    #             for a foreign failure.
+    # Report the distinguished code so a caller that has never heard of the
+    # problem still takes its failure branch and lands in COULD NOT RUN — which
+    # exits non-zero, so downgrading a genuine failure to it never opens a push.
+    if [ -n "$(gradle_foreign_tree_paths "$log")" ]; then
+        return "$GRADLE_RUN_FOREIGN_TREE"
+    fi
+    return "$code"
+}
+
+# Exit code meaning "Gradle exited 0, but its log is about a different tree".
+# 199 is outside Gradle's own range and outside 128+signal.
+GRADLE_RUN_FOREIGN_TREE=199
+
+# Echo the source paths in <log> that belong to a checkout OTHER than this one,
+# nothing when the log is clean. Always returns 0 (assignment-safe under `set -e`).
+#
+#   gradle_foreign_tree_paths <logfile> [project-dir]
+#
+# Why (#3159, measured 2026-08-14): with several clones building at once, the
+# shared Gradle daemon interleaves another project's console output into this
+# invocation's log. A gate run in a worktree produced an api-check.log full of
+#
+#     w: file:///private/tmp/sv-3136/sceneview-core/src/commonMain/.../Earcut.kt:391:22
+#
+# — a different clone entirely. That run ended in the correct refusal, but only
+# because the competing build happened to fail; nothing in the gate compared the
+# log to the tree being pushed. Two consecutive runs on the same unchanged tree
+# also disagreed (`2 CHECK(S) FAILED`, then `0 failed, 1 could not run`), and a
+# verdict that depends on what else is running is not a verdict.
+#
+# ⛔ What this does and does not establish. It detects CONTAMINATION — evidence
+# that the log describes foreign code — and that is all. It does NOT prove the
+# verdict covered this tree; no log inspection can. So its only correct use is
+# to withhold a pass (COULD NOT RUN), never to grant one.
+#
+# The match is deliberately narrow: only absolute paths containing `/src/`, so
+# `~/.gradle/caches/...` jars, JDK and toolchain paths cannot trip it. Measured
+# on a clean run of the full gate: 0 hits across all 60 logs, `file://` and
+# absolute paths alike — Gradle prints module-relative paths for the local tree.
+gradle_foreign_tree_paths() {
+    local log="$1"
+    local proj="${2:-$PWD}"
+    [ -f "$log" ] || return 0
+
+    # -P resolves symlinks: the log carries real paths, and on macOS /tmp is a
+    # symlink to /private/tmp, so an unresolved comparison would call the
+    # project's own files foreign.
+    proj="$(cd "$proj" 2>/dev/null && pwd -P)" || return 0
+
+    grep -oE '(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
+    | sed 's|^file://||' \
+    | while IFS= read -r p; do
+        # Same /private normalisation for the candidate, which may name a
+        # directory that does not exist on this host and so cannot be resolved.
+        case "$p" in /private/*) p_norm="${p#/private}" ;; *) p_norm="$p" ;; esac
+        case "$proj" in /private/*) proj_norm="${proj#/private}" ;; *) proj_norm="$proj" ;; esac
+        case "$p_norm" in "$proj_norm"/*) ;; *) printf '%s\n' "$p" ;; esac
+    done | sort -u
+    return 0
 }
 
 # Echo a short human-readable reason when a failure is environmental — the
@@ -76,6 +143,7 @@ gradle_infra_reason() {
         130) echo "build interrupted (SIGINT)"; return 0 ;;
         137) echo "build process killed (SIGKILL — usually the OOM killer)"; return 0 ;;
         143) echo "build terminated (SIGTERM)"; return 0 ;;
+        199) echo "the build log describes a DIFFERENT checkout — a concurrent build in another clone bled into it, so this run cannot be graded (#3159); re-run when no other build is competing for the Gradle daemon"; return 0 ;;
     esac
 
     [ -f "$log" ] || { echo "no Gradle log was produced"; return 0; }
@@ -234,6 +302,26 @@ gradle_report_failure() {
     local label="$1" log="$2" code="$3" diag="$4" remedy="${5:-}" note="${6:-}" proof="${7:-}"
     local red="${RED:-$'\033[0;31m'}" yellow="${YELLOW:-$'\033[1;33m'}" nc="${NC:-$'\033[0m'}"
     local reason fix
+
+    # First, because a contaminated log makes every OTHER classifier below
+    # unreliable: the setup and infra tables would happily match the competing
+    # build's "SDK location not found" and print this host a fix it does not
+    # need. When we cannot trust the log, we say so and grade nothing (#3159).
+    local foreign
+    foreign="$(gradle_foreign_tree_paths "$log")"
+    if [ -n "$foreign" ]; then
+        echo -e "${yellow}  ⚠ $label did not run to a verdict — its log describes a DIFFERENT checkout${nc}"
+        echo -e "${yellow}      A concurrent build in another clone bled into this run's output, so nothing${nc}"
+        echo -e "${yellow}      in this log can be attributed to the tree you are pushing (#3159).${nc}"
+        printf '%s\n' "$foreign" | head -3 | while IFS= read -r p; do
+            printf '        %s\n' "$p"
+        done
+        echo -e "${yellow}      Re-run when no other build is competing for the Gradle daemon:${nc}"
+        echo -e "${yellow}        ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${nc}"
+        echo -e "      Full log: $log"
+        INCOMPLETE=$((${INCOMPLETE:-0} + 1))
+        return 0
+    fi
 
     reason="$(gradle_setup_reason "$log")"
     if [ -n "$reason" ]; then
