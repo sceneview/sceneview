@@ -58,6 +58,17 @@ COLD_LISTING='== Devices ==
 -- tvOS 18.0 --
     Apple TV (33333333-3333-3333-3333-333333333333) (Shutdown)'
 
+# The same devices with the runtime headers DESCENDING. simctl emits ascending
+# today, and relying on that made "newest wins" mean "last one seen" — correct by
+# accident. Here the correct answer is the FIRST iPhone, so an order-dependent
+# resolver picks iPhone 15 and this file notices.
+REORDERED_LISTING='== Devices ==
+-- iOS 26.2 --
+    iPhone 16 Pro (DB7A4F45-473E-4AFF-B207-43FBCE9682DE) (Shutdown)
+    iPad Pro 11-inch (22222222-2222-2222-2222-222222222222) (Shutdown)
+-- iOS 18.0 --
+    iPhone 15 (11111111-1111-1111-1111-111111111111) (Shutdown)'
+
 WANT_UDID='DB7A4F45-473E-4AFF-B207-43FBCE9682DE'
 
 # Runs one case in a subshell (each installs its own `xcrun` stub) and reports.
@@ -82,6 +93,13 @@ run_case() { # name expected_rc expected_stdout body...
 
 case_nominal() (
     xcrun() { printf '%s\n' "$WARM_LISTING"; }
+    # shellcheck source=lib/ios-simulator.sh
+    . "$LIB"
+    ios_simulator_udid
+)
+
+case_reordered() (
+    xcrun() { printf '%s\n' "$REORDERED_LISTING"; }
     # shellcheck source=lib/ios-simulator.sh
     . "$LIB"
     ios_simulator_udid
@@ -174,6 +192,8 @@ run_suite() { # lib_path -> echoes the failure count for that library
 
     run_case 'nominal → newest runtime, iPhone over iPad' \
         0 "$WANT_UDID" case_nominal
+    run_case 'newest runtime wins regardless of listing order' \
+        0 "$WANT_UDID" case_reordered
     run_case 'cold start → waits for CoreSimulator, then resolves' \
         0 "$WANT_UDID" case_cold_start "$cold_count"
     run_case 'transient simctl failure → retries, then resolves' \
@@ -204,6 +224,67 @@ run_suite() { # lib_path -> echoes the failure count for that library
 
 printf '=== lib/ios-simulator.sh ===\n'
 REAL_FAILURES="$(run_suite "$REPO_ROOT/.claude/scripts/lib/ios-simulator.sh" | tee /dev/stderr | tail -1)"
+
+# --- call sites --------------------------------------------------------------
+# The library's whole contract lives in its RETURN CODE, and a library self-test
+# is structurally blind to a caller that throws that code away. Both CI call
+# sites shipped `echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"`,
+# which under `set -e` exits 0 with an empty destination — every case above
+# passed while the fix was inert in CI. So: the call sites are part of the
+# contract, and they get checked here.
+CALL_SITE_FILES='.github/workflows/ios.yml .github/workflows/render-tests.yml'
+
+check_call_sites() { # root -> echoes failure count
+    local root="$1" failures=0 found=0 f line lineno
+    for f in $CALL_SITE_FILES; do
+        [ -f "$root/$f" ] || { printf '  ❌ %s missing\n' "$f"; failures=$((failures + 1)); continue; }
+        while IFS=: read -r lineno line; do
+            [ -n "$lineno" ] || continue
+            # Skip comments: both workflows quote the broken form verbatim to
+            # warn against it, and a checker that cannot tell a warning from the
+            # defect makes documenting the defect impossible.
+            case "$(printf '%s' "$line" | sed 's/^[[:space:]]*//')" in '#'*) continue ;; esac
+            found=$((found + 1))
+            # The only safe form: a bare assignment, so `set -e` sees the status.
+            case "$line" in
+                *[![:space:]]*'="$(ios_simulator_'*')"') ;;
+                *)
+                    printf '  ❌ %s:%s calls the resolver outside an assignment — the exit code is discarded:\n      %s\n' \
+                        "$f" "$lineno" "$(printf '%s' "$line" | sed 's/^[[:space:]]*//')"
+                    failures=$((failures + 1))
+                    ;;
+            esac
+        done <<EOF
+$(grep -n '\$(ios_simulator_[a-z_]*)' "$root/$f" || true)
+EOF
+    done
+    # A grep that matches nothing is not a passing gate. If the functions are
+    # renamed and the workflows stop calling them, say so instead of going green.
+    if [ "$found" -eq 0 ]; then
+        printf '  ❌ no resolver call site found in %s — this check went vacuous\n' "$CALL_SITE_FILES"
+        failures=$((failures + 1))
+    fi
+    printf '%s\n' "$failures"
+}
+
+printf '\n=== CI call sites (the exit code must survive) ===\n'
+CALL_SITE_FAILURES="$(check_call_sites "$REPO_ROOT" | tee /dev/stderr | tail -1)"
+[ "${CALL_SITE_FAILURES:-1}" -eq 0 ] && printf '  ✅ every call site assigns, so a resolver failure aborts its step\n'
+
+# Negative control for the check above, same discipline as the mutants below: a
+# copy of a workflow rewritten to the shipped-broken form must be caught.
+CS_MUTANT_ROOT="$(mktemp -d)"
+mkdir -p "$CS_MUTANT_ROOT/.github/workflows"
+for f in $CALL_SITE_FILES; do cp "$REPO_ROOT/$f" "$CS_MUTANT_ROOT/$f"; done
+sed -i.bak 's|^\([[:space:]]*\)IOS_DEST="\$(ios_simulator_destination)"|\1echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"|' \
+    "$CS_MUTANT_ROOT/.github/workflows/ios.yml"
+if [ "$(check_call_sites "$CS_MUTANT_ROOT" 2>/dev/null | tail -1)" -gt 0 ]; then
+    printf '  ✅ mutant "echo-wrapped call site" caught\n'
+else
+    printf '  ❌ mutant "echo-wrapped call site" SURVIVED — this check pins nothing\n'
+    CALL_SITE_FAILURES=$((CALL_SITE_FAILURES + 1))
+fi
+rm -rf "$CS_MUTANT_ROOT"
 
 # --- mutation test -----------------------------------------------------------
 # A suite that cannot go red pins nothing. Break each half of the contract in a
@@ -241,15 +322,21 @@ mutate 'no wait (ask once, give up)' \
 # B: degrade instead of failing — the false-green.
 mutate 'degrade to success on timeout' \
     's/^        return 1$/        return 0/'
-# C: take the first iOS device instead of the newest runtime.
-mutate 'prefer oldest runtime' \
-    's/if (name ~ \/\^iPhone\/)/if (name ~ \/^iPhone\/ \&\& !iphone)/'
+# C: keep the FIRST device seen instead of comparing runtime versions.
+mutate 'prefer first device seen' \
+    's/if (!iphone || cur > iphone_v)/if (!iphone)/'
+# D: keep the LAST device seen — i.e. back to inferring "newest" from the order
+# simctl happens to print. Correct on today's ascending output, wrong the day it
+# reorders; only the reordered case can tell C and D apart from the real thing.
+mutate 'infer newest from listing order' \
+    's/if (!iphone || cur > iphone_v)/if (1)/'
 
 printf '\n'
-if [ "${REAL_FAILURES:-1}" -eq 0 ] && [ "$MUTATION_FAILURES" -eq 0 ]; then
-    printf '✅ ios-simulator resolver: all cases pass, all mutants caught\n'
+if [ "${REAL_FAILURES:-1}" -eq 0 ] && [ "${CALL_SITE_FAILURES:-1}" -eq 0 ] \
+   && [ "$MUTATION_FAILURES" -eq 0 ]; then
+    printf '✅ ios-simulator resolver: all cases pass, call sites sound, all mutants caught\n'
     exit 0
 fi
-printf '❌ ios-simulator resolver: %s failing case(s), %s surviving mutant(s)\n' \
-    "${REAL_FAILURES:-?}" "$MUTATION_FAILURES" >&2
+printf '❌ ios-simulator resolver: %s failing case(s), %s bad call site(s), %s surviving mutant(s)\n' \
+    "${REAL_FAILURES:-?}" "${CALL_SITE_FAILURES:-?}" "$MUTATION_FAILURES" >&2
 exit 1

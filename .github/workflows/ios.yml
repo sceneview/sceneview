@@ -73,7 +73,16 @@ jobs:
         run: |
           set -euo pipefail
           . .claude/scripts/lib/ios-simulator.sh
-          echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"
+          # ⛔ The assignment is load-bearing — do NOT fold it back into
+          # `echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"`.
+          # Under `set -e` a command substitution that fails inside another
+          # command's ARGUMENTS does not abort the shell: echo's own status (0)
+          # governs, and there is no pipe for `pipefail` to see. That form wrote
+          # an empty IOS_DEST and exited 0 on a simulator-less runner — throwing
+          # away the fail-closed guarantee this whole file exists to provide.
+          # Only the assignment form propagates the resolver's exit code.
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
 
       - name: Cache Swift Package dependencies
         uses: actions/cache@v6

@@ -399,7 +399,16 @@ jobs:
         run: |
           set -euo pipefail
           . .claude/scripts/lib/ios-simulator.sh
-          echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"
+          # ⛔ The assignment is load-bearing — do NOT fold it back into
+          # `echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"`.
+          # Under `set -e` a command substitution failing inside another
+          # command's ARGUMENTS does not abort: echo's status (0) governs. That
+          # form wrote an empty IOS_DEST and exited 0, and here that is a true
+          # false green — every xcodebuild below is `|| true`, so an empty
+          # destination fails silently and this leg reports zero screenshots and
+          # goes green. #1515 / #2878 again, in the step written to prevent it.
+          IOS_DEST="$(ios_simulator_destination)"
+          printf 'IOS_DEST=%s\n' "$IOS_DEST" >> "$GITHUB_ENV"
 
       - name: Resolve SPM dependencies
         working-directory: samples/ios-demo
