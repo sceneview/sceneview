@@ -77,8 +77,8 @@ internal object WebPTextureTranscoder {
      * with a few KB. Far above any real model (a texture-heavy glTF uses a few dozen images), and
      * anything past it is reported through `onUnsupported` rather than dropped in silence.
      *
-     * Web-only hardening: the Android twin runs on a payload the app itself packaged or fetched,
-     * whereas a browser tab is a shared, user-visible resource. Mirroring it on Android is #3136.
+     * The Android twin carries the same cap, under the same name and with the same overflow
+     * accounting, since #3136 — the two must not drift.
      */
     private const val MAX_TRANSCODED_IMAGES = 256
 

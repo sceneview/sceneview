@@ -67,6 +67,19 @@ internal object WebPTextureTranscoder {
      */
     private const val MAX_TEXTURE_EDGE = 8192
 
+    /**
+     * Most WebP images this will decode for one payload. Bounds a hostile asset's *count* the way
+     * [MAX_TEXTURE_EDGE] bounds its size — the two together cap the work a crafted file can buy
+     * with a few KB. Far above any real model (a texture-heavy glTF uses a few dozen images), and
+     * anything past it is reported through [onUnsupported] rather than dropped in silence.
+     *
+     * Twin of `sceneview-web`'s `MAX_TRANSCODED_IMAGES` (#3136). It matters at least as much here:
+     * the decodes run one after another on the **calling** thread, which for the `@MainThread`
+     * `createModel` entry points is the main one — so an unbounded count is an ANR, not just a
+     * busy worker.
+     */
+    private const val MAX_TRANSCODED_IMAGES = 256
+
     /** Backed by [BitmapFactory]; PNG is lossless so no quality is lost beyond the source WebP. */
     val platformTranscoder = ImageTranscoder { webP ->
         runCatching {
@@ -291,7 +304,15 @@ internal object WebPTextureTranscoder {
 
         var untranscodable = 0
         val converted = mutableSetOf<Int>()
-        collectWebPImages(images, textures).forEach { index ->
+        val webPImages = collectWebPImages(images, textures)
+        // Everything past the budget is reported, not decoded. Per-image cost is already bounded
+        // by MAX_TEXTURE_EDGE, but the image COUNT comes from the file: a few KB of crafted JSON
+        // can declare thousands of images all pointing at one tiny WebP that inflates to 8192²,
+        // and the decodes run sequentially on the calling thread. Same contract as an oversized
+        // image — untranscoded, and named in the logcat error rather than silent.
+        val budgeted = webPImages.take(MAX_TRANSCODED_IMAGES)
+        untranscodable += webPImages.size - budgeted.size
+        budgeted.forEach { index ->
             val image = images.optJSONObject(index)
             val png = image?.let { readImageBytes(it) }?.let { transcoder.webPToPng(it) }
             if (png == null) {
