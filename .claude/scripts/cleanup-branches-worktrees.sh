@@ -119,8 +119,14 @@ MERGED_PR_BRANCHES=""
 pr_state() {
     local branch="$1"
     [ "$GH_AVAILABLE" = "true" ] || { echo ""; return 0; }
-    if printf '%s\n' "$OPEN_PR_BRANCHES"   | grep -Fxq -- "$branch"; then echo "OPEN";   return 0; fi
-    if printf '%s\n' "$MERGED_PR_BRANCHES" | grep -Fxq -- "$branch"; then echo "MERGED"; return 0; fi
+    # Herestrings, NOT `printf … | grep -Fxq`. `grep -q` exits on its first
+    # match and closes the pipe; printf then takes EPIPE, and under `pipefail`
+    # the pipeline reports failure *because the match succeeded* (#3180). Here
+    # that lands on the destructive side: a branch that DOES have an open PR
+    # would not be classified OPEN, and this function is what stands between a
+    # branch and `git branch -D`. The odds grow with the branch list.
+    if grep -Fxq -- "$branch" <<< "$OPEN_PR_BRANCHES";   then echo "OPEN";   return 0; fi
+    if grep -Fxq -- "$branch" <<< "$MERGED_PR_BRANCHES"; then echo "MERGED"; return 0; fi
     echo ""
 }
 
