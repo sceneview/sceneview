@@ -386,13 +386,28 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
+      # Same reason as ios.yml (#3174): wait for CoreSimulator to enumerate its
+      # devices, then resolve by UDID rather than pinning a model name. The wait
+      # is the part that matters — the failure it prevents is a cold-start race,
+      # not a missing device. This leg pinned an even older `iPhone 16`, so it
+      # had more room to rot than ios.yml did.
+      #
+      # Deliberately NOT `|| true`, even though the screenshot legs below are
+      # non-blocking: "no iOS simulator ever appeared" must be visible, not
+      # absorbed into a leg that reports zero screenshots and shrugs.
+      - name: Resolve an iOS Simulator destination
+        run: |
+          set -euo pipefail
+          . .claude/scripts/lib/ios-simulator.sh
+          echo "IOS_DEST=$(ios_simulator_destination)" >> "$GITHUB_ENV"
+
       - name: Resolve SPM dependencies
         working-directory: samples/ios-demo
         run: |
           xcodebuild -resolvePackageDependencies \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemoUITests \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "$IOS_DEST" \
             CODE_SIGNING_ALLOWED=NO || true
 
       - name: Run UI screenshot tests
@@ -407,7 +422,7 @@ jobs:
           xcodebuild test \
             -project SceneViewDemo.xcodeproj \
             -scheme SceneViewDemoUITests \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "$IOS_DEST" \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tail -300 || true

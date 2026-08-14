@@ -33,8 +33,10 @@
 #                        catalog, e.g. `--flow lighting` ->
 #                        .maestro/ios/lighting.yaml. Defaults to `catalog`.
 #   --simulator <name>   Simulator device name to boot / target. Defaults to
-#                        "iPhone 16 Pro" (the name used by `.github/workflows/
-#                        ios.yml`).
+#                        whatever iOS device this host actually has — the newest
+#                        runtime's iPhone, resolved by `lib/ios-simulator.sh`,
+#                        the same resolver `.github/workflows/ios.yml` uses.
+#                        Pass a name only to pin a specific model on purpose.
 #   --sketchfab-key <k>  Explicit Sketchfab API key for a KEYED build (#2356),
 #                        overriding the env / local.properties resolution. With
 #                        a key present (here, the SKETCHFAB_API_KEY env var, or
@@ -69,6 +71,10 @@ source "$SCRIPT_DIR/lib/maestro.sh"
 # user-defined build setting → Info.plist `SketchfabAPIKey = $(SKETCHFAB_API_KEY)`
 # → SketchfabConfig.apiKey, mirroring the Android assembleDebug buildConfigField.
 source "$SCRIPT_DIR/lib/qa-keys.sh"
+# shellcheck source=lib/ios-simulator.sh
+# Waits for CoreSimulator, then resolves a simulator by UDID at run time rather
+# than pinning a model name (#3174).
+source "$SCRIPT_DIR/lib/ios-simulator.sh"
 
 BUNDLE_ID="io.github.sceneview.demo"
 # The demo app's CFBundleExecutable — what `log stream` sees as the process
@@ -81,7 +87,11 @@ XCODE_SCHEME="SceneViewDemo"
 
 INSTALL=false
 FLOW="catalog"
-SIMULATOR="iPhone 16 Pro"
+# Empty means "resolve one at run time" (see lib/ios-simulator.sh), which also
+# waits out the CoreSimulator cold window that #3174 turned out to be. Passing
+# --simulator <name> opts back into a fixed model, and back into rotting the day
+# Xcode replaces the device set.
+SIMULATOR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -127,15 +137,23 @@ print(next((d["udid"] for v in ds.values() for d in v if d.get("state")=="Booted
   2>/dev/null || true)"
 
 if [[ -z "$BOOTED_UDID" ]]; then
-  echo "[ios-qa] no booted simulator — booting \"$SIMULATOR\"..."
-  TARGET_UDID="$(xcrun simctl list devices available -j \
-    | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; \
+  if [[ -z "$SIMULATOR" ]]; then
+    # No `--simulator` given: take whatever iOS device this host actually has.
+    echo "[ios-qa] no booted simulator — resolving one..."
+    if ! TARGET_UDID="$(ios_simulator_udid)"; then
+      exit 1
+    fi
+  else
+    echo "[ios-qa] no booted simulator — booting \"$SIMULATOR\"..."
+    TARGET_UDID="$(xcrun simctl list devices available -j \
+      | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; \
 print(next((d['udid'] for v in ds.values() for d in v if d.get('name')=='$SIMULATOR'), ''))" \
-    2>/dev/null || true)"
-  if [[ -z "$TARGET_UDID" ]]; then
-    echo "[ios-qa] ERROR: no available simulator named \"$SIMULATOR\"." >&2
-    echo "[ios-qa] list devices with: xcrun simctl list devices available" >&2
-    exit 1
+      2>/dev/null || true)"
+    if [[ -z "$TARGET_UDID" ]]; then
+      echo "[ios-qa] ERROR: no available simulator named \"$SIMULATOR\"." >&2
+      echo "[ios-qa] list devices with: xcrun simctl list devices available" >&2
+      exit 1
+    fi
   fi
   xcrun simctl boot "$TARGET_UDID"
   BOOTED_UDID="$TARGET_UDID"
