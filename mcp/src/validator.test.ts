@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { validateCode, formatValidationReport } from "./validator.js";
+import { describe, expect, it } from "vitest";
+import { formatValidationReport, validateCode } from "./validator.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -818,9 +818,7 @@ fun ModelViewer() {
     }
 }
 `;
-    const symbolIssues = validateCode(code).filter((i) =>
-      i.rule.startsWith("symbols/"),
-    );
+    const symbolIssues = validateCode(code).filter((i) => i.rule.startsWith("symbols/"));
     expect(symbolIssues).toEqual([]);
   });
 
@@ -839,9 +837,7 @@ fun WallDemo() {
     )
 }
 `;
-    const symbolIssues = validateCode(code).filter((i) =>
-      i.rule.startsWith("symbols/"),
-    );
+    const symbolIssues = validateCode(code).filter((i) => i.rule.startsWith("symbols/"));
     expect(symbolIssues).toEqual([]);
   });
 
@@ -875,9 +871,7 @@ fun App() {
     FurnitureShowcaseScene(modelPath = "models/shelf.glb")
 }
 `;
-    const symbolIssues = validateCode(code).filter((i) =>
-      i.rule.startsWith("symbols/"),
-    );
+    const symbolIssues = validateCode(code).filter((i) => i.rule.startsWith("symbols/"));
     expect(symbolIssues).toEqual([]);
   });
 
@@ -897,7 +891,7 @@ fun Viewer() {
 }
 `;
     const helperIssues = validateCode(code).filter(
-      (i) => i.rule === "symbols/unknown-remember-helper",
+      (i) => i.rule === "symbols/unknown-remember-helper"
     );
     expect(helperIssues).toEqual([]);
   });

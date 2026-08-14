@@ -8,9 +8,9 @@
  * what it was before the refactor.
  */
 
-import { SAMPLE_IDS, SAMPLES } from "../samples.js";
-import { PLATFORM_IDS } from "../platform-setup.js";
 import { DEBUG_CATEGORIES } from "../debug-issue.js";
+import { PLATFORM_IDS } from "../platform-setup.js";
+import { SAMPLE_IDS, SAMPLES } from "../samples.js";
 import type { ToolDefinition } from "./types.js";
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -45,7 +45,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         tag: {
           type: "string",
           description:
-            "Optional tag to filter by (e.g. \"ar\", \"3d\", \"ios\", \"swift\", \"anchor\", \"geometry\", \"animation\", \"video\", \"lighting\"). Omit to list all samples.",
+            'Optional tag to filter by (e.g. "ar", "3d", "ios", "swift", "anchor", "geometry", "animation", "video", "lighting"). Omit to list all samples.',
         },
       },
       required: [],
@@ -86,7 +86,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         code: {
           type: "string",
-          description: "The Kotlin or Swift source code to validate (composable function, SwiftUI view, class, or file). Language is auto-detected.",
+          description:
+            "The Kotlin or Swift source code to validate (composable function, SwiftUI view, class, or file). Language is auto-detected.",
         },
       },
       required: ["code"],
@@ -210,7 +211,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         type: {
           type: "string",
           enum: ["3d", "ar"],
-          description: '"3d" for 3D-only scenes. "ar" for augmented reality (requires iOS, not macOS/visionOS via this path).',
+          description:
+            '"3d" for 3D-only scenes. "ar" for augmented reality (requires iOS, not macOS/visionOS via this path).',
         },
       },
       required: ["type"],
@@ -244,11 +246,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         modelUrl: {
           type: "string",
-          description: "Public URL to a .glb or .gltf model file. Must be HTTPS and CORS-enabled. If omitted, a default model is used.",
+          description:
+            "Public URL to a .glb or .gltf model file. Must be HTTPS and CORS-enabled. If omitted, a default model is used.",
         },
         codeSnippet: {
           type: "string",
-          description: "SceneView code snippet (Kotlin or Swift) to display alongside the 3D preview in a companion panel. Useful when showing generated code together with a live preview.",
+          description:
+            "SceneView code snippet (Kotlin or Swift) to display alongside the 3D preview in a companion panel. Useful when showing generated code together with a live preview.",
         },
         autoRotate: {
           type: "boolean",
@@ -300,7 +304,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             properties: {
               label: { type: "string", description: "Data point label (e.g. 'Q1 2025')" },
               value: { type: "number", description: "Numeric value" },
-              color: { type: "string", description: "Optional hex color (e.g. '#4285F4'). Auto-assigned if omitted." },
+              color: {
+                type: "string",
+                description: "Optional hex color (e.g. '#4285F4'). Auto-assigned if omitted.",
+              },
             },
             required: ["label", "value"],
           },
@@ -312,8 +319,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           properties: {
             autoRotate: { type: "boolean", description: "Auto-rotate the model (default: true)" },
             ar: { type: "boolean", description: "Enable AR on mobile devices (default: true)" },
-            backgroundColor: { type: "string", description: "Background color as hex (default: '#1a1a2e')" },
-            cameraOrbit: { type: "string", description: "Camera orbit string (default: '0deg 75deg 105%')" },
+            backgroundColor: {
+              type: "string",
+              description: "Background color as hex (default: '#1a1a2e')",
+            },
+            cameraOrbit: {
+              type: "string",
+              description: "Camera orbit string (default: '0deg 75deg 105%')",
+            },
           },
           description: "Visual options for the 3D artifact.",
         },
@@ -329,7 +342,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             },
             required: ["position", "normal", "label"],
           },
-          description: "Annotation hotspots for product-360 type. Each has position, normal, label, and optional description.",
+          description:
+            "Annotation hotspots for product-360 type. Each has position, normal, label, and optional description.",
         },
         shapes: {
           type: "array",
@@ -339,7 +353,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
               type: {
                 type: "string",
                 enum: ["cube", "sphere", "cylinder", "plane", "line"],
-                description: 'Shape type: "cube", "sphere", "cylinder", "plane" (flat surface), or "line" (thin cylinder connecting points).',
+                description:
+                  'Shape type: "cube", "sphere", "cylinder", "plane" (flat surface), or "line" (thin cylinder connecting points).',
               },
               position: {
                 type: "array",
@@ -349,12 +364,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
               scale: {
                 type: "array",
                 items: { type: "number" },
-                description: "Scale [x, y, z]. For cube: edge sizes. For sphere: diameters. For line: [length, thickness, thickness]. Default: [1, 1, 1].",
+                description:
+                  "Scale [x, y, z]. For cube: edge sizes. For sphere: diameters. For line: [length, thickness, thickness]. Default: [1, 1, 1].",
               },
               color: {
                 type: "array",
                 items: { type: "number" },
-                description: "Color [r, g, b] in 0-1 range. E.g. [1, 0, 0] for red, [0.2, 0.5, 1] for sky blue. Default: [0.8, 0.8, 0.8].",
+                description:
+                  "Color [r, g, b] in 0-1 range. E.g. [1, 0, 0] for red, [0.2, 0.5, 1] for sky blue. Default: [0.8, 0.8, 0.8].",
               },
               metallic: {
                 type: "number",
@@ -362,7 +379,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
               },
               roughness: {
                 type: "number",
-                description: "Roughness factor 0-1. 0 = mirror/glossy, 1 = rough/matte. Default: 0.5.",
+                description:
+                  "Roughness factor 0-1. 0 = mirror/glossy, 1 = rough/matte. Default: 0.5.",
               },
             },
             required: ["type"],
@@ -394,7 +412,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         type: {
           type: "string",
           enum: ["3d", "ar"],
-          description: '"3d" for 3D-only scenes. "ar" for augmented reality. Some platforms only support 3D.',
+          description:
+            '"3d" for 3D-only scenes. "ar" for augmented reality. Some platforms only support 3D.',
         },
       },
       required: ["platform", "type"],
@@ -414,7 +433,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         code: {
           type: "string",
-          description: "The SceneView 2.x Kotlin code to migrate. Can be a snippet, a function, or a full file.",
+          description:
+            "The SceneView 2.x Kotlin code to migrate. Can be a snippet, a function, or a full file.",
         },
       },
       required: ["code"],
@@ -439,7 +459,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         description: {
           type: "string",
-          description: 'Free-text description of the issue (e.g., "my model is not showing", "app crashes on destroy"). Used for auto-detection when category is omitted.',
+          description:
+            'Free-text description of the issue (e.g., "my model is not showing", "app crashes on destroy"). Used for auto-detection when category is omitted.',
         },
       },
       required: [],
@@ -459,7 +480,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         description: {
           type: "string",
-          description: 'Natural language description of the desired 3D scene. Examples: "a room with a table and two chairs", "AR scene with a robot on the floor", "outdoor scene with three trees and a car", "dark room with a sphere and a cube", "a dog and a cat in a garden", "house with a fence and flowers".',
+          description:
+            'Natural language description of the desired 3D scene. Examples: "a room with a table and two chairs", "AR scene with a robot on the floor", "outdoor scene with three trees and a car", "dark room with a sphere and a cube", "a dog and a cat in a garden", "house with a fence and flowers".',
         },
       },
       required: ["description"],
@@ -593,21 +615,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_models",
     description:
-      "Searches Sketchfab for free 3D models matching a natural-language query and returns a shortlist with names, authors, licenses, thumbnails, triangle counts, and viewer/embed URLs. Use this BEFORE generating SceneView code when the user asks for a specific asset (\"a red sports car\", \"a low-poly tree\", \"a sci-fi robot\") — pick the best result, then load it with `rememberModelInstance(modelLoader, \"models/your-file.glb\")` or embed its viewer URL. Requires a free `SKETCHFAB_API_KEY` environment variable (BYOK — nothing is charged by SceneView). If the key is missing, the tool returns instructions for getting one at sketchfab.com/register.",
+      'Searches Sketchfab for free 3D models matching a natural-language query and returns a shortlist with names, authors, licenses, thumbnails, triangle counts, and viewer/embed URLs. Use this BEFORE generating SceneView code when the user asks for a specific asset ("a red sports car", "a low-poly tree", "a sci-fi robot") — pick the best result, then load it with `rememberModelInstance(modelLoader, "models/your-file.glb")` or embed its viewer URL. Requires a free `SKETCHFAB_API_KEY` environment variable (BYOK — nothing is charged by SceneView). If the key is missing, the tool returns instructions for getting one at sketchfab.com/register.',
     inputSchema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Free-text search query, e.g. \"red sports car\", \"low-poly pine tree\", \"sci-fi robot\".",
+          description:
+            'Free-text search query, e.g. "red sports car", "low-poly pine tree", "sci-fi robot".',
         },
         category: {
           type: "string",
-          description: "Optional Sketchfab category slug to narrow results (e.g. \"cars-vehicles\", \"animals-pets\", \"architecture\", \"furniture-home\", \"weapons-military\").",
+          description:
+            'Optional Sketchfab category slug to narrow results (e.g. "cars-vehicles", "animals-pets", "architecture", "furniture-home", "weapons-military").',
         },
         downloadable: {
           type: "boolean",
-          description: "Restrict to downloadable models so you can actually load the asset. Default: true. Set to false to include view-only models.",
+          description:
+            "Restrict to downloadable models so you can actually load the asset. Default: true. Set to false to include view-only models.",
         },
         maxResults: {
           type: "number",
@@ -625,14 +650,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "generate_3d_model",
     description:
-      "Generates a brand-new 3D model (GLB) from a text prompt OR a source image using the Tripo AI API — use this when `search_models` finds no suitable existing asset and the user needs a custom one (\"a low-poly cactus in a striped pot\"). Returns a direct GLB download URL (expires ~5 minutes — download it immediately and self-host it) plus license/attribution metadata, ready for `rememberModelInstance(modelLoader, ...)` and AR placement. Quality tiers: \"fast\" (default, Tripo P1 low-poly — AR-ready, ~25-30 s) or \"hd\" (Tripo H3.1 quad topology with detailed geometry/textures — up to ~100 s, pricier). Requires a `TRIPO_API_KEY` environment variable (BYOK — generations are billed to the USER'S Tripo account, roughly $0.10-0.25 per fast generation and ~$0.41 per hd generation as of July 2026; nothing is charged by SceneView). If the key is missing, the tool returns setup instructions for platform.tripo3d.ai/api-keys.",
+      'Generates a brand-new 3D model (GLB) from a text prompt OR a source image using the Tripo AI API — use this when `search_models` finds no suitable existing asset and the user needs a custom one ("a low-poly cactus in a striped pot"). Returns a direct GLB download URL (expires ~5 minutes — download it immediately and self-host it) plus license/attribution metadata, ready for `rememberModelInstance(modelLoader, ...)` and AR placement. Quality tiers: "fast" (default, Tripo P1 low-poly — AR-ready, ~25-30 s) or "hd" (Tripo H3.1 quad topology with detailed geometry/textures — up to ~100 s, pricier). Requires a `TRIPO_API_KEY` environment variable (BYOK — generations are billed to the USER\'S Tripo account, roughly $0.10-0.25 per fast generation and ~$0.41 per hd generation as of July 2026; nothing is charged by SceneView). If the key is missing, the tool returns setup instructions for platform.tripo3d.ai/api-keys.',
     inputSchema: {
       type: "object",
       properties: {
         prompt: {
           type: "string",
           description:
-            "Text description of the model to generate (text→3D), e.g. \"a low-poly cactus in a striped pot\". Max 1024 characters. Provide exactly one of `prompt` or `imageUrl`.",
+            'Text description of the model to generate (text→3D), e.g. "a low-poly cactus in a striped pot". Max 1024 characters. Provide exactly one of `prompt` or `imageUrl`.',
         },
         imageUrl: {
           type: "string",
@@ -678,13 +703,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_android_docs",
     description:
-      "Searches Google's stock Android documentation knowledge base (~4 800 entries: Jetpack Compose, Camera2, ARCore SDK, Kotlin APIs, platform guides) and returns matching entries with their `kb://...` URIs. Use this to cross-reference stock Android APIs with SceneView code — e.g. \"how does LazyColumn paging work\", \"Camera2 capture session\", \"ARCore Config options\". Then call `fetch_android_doc` with a returned URI to read the full entry. Requires Google's `android` CLI on the MCP host's PATH (an optional runtime dependency — sceneview-mcp works without it); if the CLI is absent the tool returns clear install instructions instead of crashing.",
+      'Searches Google\'s stock Android documentation knowledge base (~4 800 entries: Jetpack Compose, Camera2, ARCore SDK, Kotlin APIs, platform guides) and returns matching entries with their `kb://...` URIs. Use this to cross-reference stock Android APIs with SceneView code — e.g. "how does LazyColumn paging work", "Camera2 capture session", "ARCore Config options". Then call `fetch_android_doc` with a returned URI to read the full entry. Requires Google\'s `android` CLI on the MCP host\'s PATH (an optional runtime dependency — sceneview-mcp works without it); if the CLI is absent the tool returns clear install instructions instead of crashing.',
     inputSchema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Free-text search query, e.g. \"LazyColumn paging\", \"Camera2 capture session\", \"ARCore anchors\".",
+          description:
+            'Free-text search query, e.g. "LazyColumn paging", "Camera2 capture session", "ARCore anchors".',
         },
       },
       required: ["query"],
@@ -704,7 +730,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         uri: {
           type: "string",
-          description: "The knowledge-base URI to fetch, e.g. \"kb://compose/lists/lazy-column\". A bare path with no scheme is tolerated and normalised to kb://.",
+          description:
+            'The knowledge-base URI to fetch, e.g. "kb://compose/lists/lazy-column". A bare path with no scheme is tolerated and normalised to kb://.',
         },
       },
       required: ["uri"],

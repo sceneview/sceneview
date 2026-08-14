@@ -1,9 +1,5 @@
-import { describe, it, expect } from "vitest";
-import {
-  buildPreviewUrl,
-  validatePreviewInput,
-  formatPreviewResponse,
-} from "./preview.js";
+import { describe, expect, it } from "vitest";
+import { buildPreviewUrl, formatPreviewResponse, validatePreviewInput } from "./preview.js";
 
 // ─── buildPreviewUrl ──────────────────────────────────────────────────────────
 
@@ -21,7 +17,7 @@ describe("buildPreviewUrl", () => {
 
   it("uses default model when only code snippet is provided", () => {
     const result = buildPreviewUrl({
-      codeSnippet: 'SceneView(engine = engine) { ModelNode(...) }',
+      codeSnippet: "SceneView(engine = engine) { ModelNode(...) }",
     });
     expect(result.previewUrl).toContain("model=");
     expect(result.previewUrl).toContain("DamagedHelmet.glb");
@@ -33,7 +29,7 @@ describe("buildPreviewUrl", () => {
   it("includes both model and code when both are provided", () => {
     const result = buildPreviewUrl({
       modelUrl: "https://example.com/car.glb",
-      codeSnippet: 'SceneView(engine = engine) { }',
+      codeSnippet: "SceneView(engine = engine) { }",
     });
     expect(result.previewUrl).toContain("model=https%3A%2F%2Fexample.com%2Fcar.glb");
     expect(result.previewUrl).toContain("code=");
@@ -127,9 +123,7 @@ describe("validatePreviewInput", () => {
   });
 
   it("accepts URLs with query parameters after .glb", () => {
-    expect(
-      validatePreviewInput("https://example.com/model.glb?token=abc")
-    ).toBeNull();
+    expect(validatePreviewInput("https://example.com/model.glb?token=abc")).toBeNull();
   });
 });
 

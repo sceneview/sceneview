@@ -22,9 +22,7 @@ interface Rule {
 }
 
 function findLines(lines: string[], pattern: RegExp): number[] {
-  return lines
-    .map((l, i) => (pattern.test(l) ? i + 1 : -1))
-    .filter((n) => n !== -1);
+  return lines.map((l, i) => (pattern.test(l) ? i + 1 : -1)).filter((n) => n !== -1);
 }
 
 // Symbols the snippet declares itself (`fun MyShowcaseScene(…)`, `class ShelfNode(…) :
@@ -33,9 +31,7 @@ function findLines(lines: string[], pattern: RegExp): number[] {
 // suffixes natural. The optional `<…>` skips a generic parameter list before the name.
 function locallyDeclaredNames(code: string): Set<string> {
   const names = new Set<string>();
-  for (const m of code.matchAll(
-    /\b(?:fun|class|interface|object)\s+(?:<[^>]*>\s+)?(\w+)/g,
-  )) {
+  for (const m of code.matchAll(/\b(?:fun|class|interface|object)\s+(?:<[^>]*>\s+)?(\w+)/g)) {
     names.add(m[1]);
   }
   return names;
@@ -58,14 +54,14 @@ const RULES: Rule[] = [
       ];
       for (const [pat, name] of filamentCallPatterns) {
         if (pat.test(code)) {
-          findLines(lines, pat).forEach((line) =>
+          findLines(lines, pat).forEach((line) => {
             issues.push({
               severity: "error",
               rule: "threading/filament-off-main-thread",
               message: `\`${name}\` detected alongside a background dispatcher. Filament JNI calls must run on the **main thread**. Use \`rememberModelInstance\` in composables, or wrap imperative code in \`withContext(Dispatchers.Main)\`.`,
               line,
-            })
-          );
+            });
+          });
         }
       }
       return issues;
@@ -80,15 +76,15 @@ const RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       if (!code.includes("ARScene") && !code.includes("AnchorNode")) return issues;
       if (/\.worldPosition\s*=/.test(code)) {
-        findLines(lines, /\.worldPosition\s*=/).forEach((line) =>
+        findLines(lines, /\.worldPosition\s*=/).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "ar/node-not-anchor",
             message:
               "Manually setting `worldPosition` inside an AR scene causes drift — ARCore remaps coordinates during tracking and plain nodes don't compensate. Use `AnchorNode(anchor = hitResult.createAnchor())` instead.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -106,14 +102,14 @@ const RULES: Rule[] = [
       // Flag ModelNode uses where the variable is passed without null-guard (no ?. !! or ?: )
       const unsafeUse = new RegExp(`ModelNode\\s*\\([^)]*modelInstance\\s*=\\s*${varName}(?![?!])`);
       if (unsafeUse.test(code)) {
-        findLines(lines, new RegExp(`modelInstance\\s*=\\s*${varName}(?![?!])`)).forEach((line) =>
+        findLines(lines, new RegExp(`modelInstance\\s*=\\s*${varName}(?![?!])`)).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "composable/model-instance-null-check",
             message: `\`${varName}\` from \`rememberModelInstance\` is \`null\` while the asset loads. Guard it: \`${varName}?.let { ModelNode(modelInstance = it, ...) }\`.`,
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -127,15 +123,15 @@ const RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       // Matches: LightNode(...) { — trailing lambda, not apply = { inside parens
       if (/LightNode\s*\([^)]*\)\s*\{/.test(code)) {
-        findLines(lines, /LightNode\s*\([^)]*\)\s*\{/).forEach((line) =>
+        findLines(lines, /LightNode\s*\([^)]*\)\s*\{/).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "api/light-node-trailing-lambda",
             message:
               "`LightNode`'s configuration block is a **named parameter** `apply`, not a trailing lambda. Write `LightNode(engine = engine, type = ..., apply = { intensity(100_000f) })`. Without `apply =` the block is silently ignored and your light has default (zero) settings.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -147,15 +143,15 @@ const RULES: Rule[] = [
     severity: "error",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      findLines(lines, /Engine\.create\(/).forEach((line) =>
+      findLines(lines, /Engine\.create\(/).forEach((line) => {
         issues.push({
           severity: "error",
           rule: "lifecycle/manual-engine-create",
           message:
             "`Engine.create()` called directly. In composables use `rememberEngine()` — it ties the Engine to the composition lifecycle and destroys it automatically on disposal, preventing leaks and double-destroy SIGABRTs.",
           line,
-        })
-      );
+        });
+      });
       return issues;
     },
   },
@@ -167,15 +163,15 @@ const RULES: Rule[] = [
     check(code, lines) {
       const issues: ValidationIssue[] = [];
       if (!code.includes("rememberEngine")) return issues;
-      findLines(lines, /engine\.(safeD|d)estroy\(\)/).forEach((line) =>
+      findLines(lines, /engine\.(safeD|d)estroy\(\)/).forEach((line) => {
         issues.push({
           severity: "warning",
           rule: "lifecycle/manual-engine-destroy",
           message:
             "`engine.destroy()` called manually alongside `rememberEngine()`. The engine is already destroyed on composition disposal — calling it again triggers a SIGABRT. Remove the manual call.",
           line,
-        })
-      );
+        });
+      });
       return issues;
     },
   },
@@ -189,15 +185,15 @@ const RULES: Rule[] = [
       const texIdx = code.indexOf("safeDestroyTexture");
       const matIdx = code.indexOf("destroyMaterialInstance");
       if (texIdx !== -1 && matIdx !== -1 && texIdx < matIdx) {
-        findLines(lines, /safeDestroyTexture|engine\.destroyTexture/).forEach((line) =>
+        findLines(lines, /safeDestroyTexture|engine\.destroyTexture/).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "lifecycle/texture-destroy-order",
             message:
-              "Texture destroyed **before** the MaterialInstance that references it → SIGABRT (\"Invalid texture still bound to MaterialInstance\"). Destroy the MaterialInstance first: `materialLoader.destroyMaterialInstance(instance)`, then `engine.safeDestroyTexture(texture)`.",
+              'Texture destroyed **before** the MaterialInstance that references it → SIGABRT ("Invalid texture still bound to MaterialInstance"). Destroy the MaterialInstance first: `materialLoader.destroyMaterialInstance(instance)`, then `engine.safeDestroyTexture(texture)`.',
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -209,15 +205,15 @@ const RULES: Rule[] = [
     severity: "warning",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      findLines(lines, /modelLoader\.createModelInstance\(/).forEach((line) =>
+      findLines(lines, /modelLoader\.createModelInstance\(/).forEach((line) => {
         issues.push({
           severity: "warning",
           rule: "composable/prefer-remember-model-instance",
           message:
             "`modelLoader.createModelInstance()` blocks the main thread. In composables, use `rememberModelInstance(modelLoader, path)` — it loads asynchronously, returns `null` while loading, and recomposes when ready.",
           line,
-        })
-      );
+        });
+      });
       return issues;
     },
   },
@@ -228,15 +224,15 @@ const RULES: Rule[] = [
     severity: "error",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      findLines(lines, /AnchorNode\s*\(\s*\)/).forEach((line) =>
+      findLines(lines, /AnchorNode\s*\(\s*\)/).forEach((line) => {
         issues.push({
           severity: "error",
           rule: "ar/anchor-node-missing-anchor",
           message:
             "`AnchorNode()` requires an `anchor` from a hit result. Use `AnchorNode(anchor = hitResult.createAnchor())` inside `onTouchEvent` or `onSessionUpdated`.",
           line,
-        })
-      );
+        });
+      });
       return issues;
     },
   },
@@ -258,17 +254,32 @@ const RULES: Rule[] = [
         [/\bScene\s*\{/, "`Scene { }` → renamed to `SceneView { }` in 4.0"],
         [/\bARScene\s*\{/, "`ARScene { }` → renamed to `ARSceneView { }` in 4.0"],
         [/\bArSceneView\s*\(/, "`ArSceneView(…)` → renamed to `ARSceneView(…)` in 3.0"],
-        [/\bPlacementNode\b/, "`PlacementNode` removed → use `AnchorNode` + `HitResultNode` in 3.0"],
-        [/\bTransformableNode\b/, "`TransformableNode` removed → set `isEditable = true` on `ModelNode` in 3.0"],
-        [/\bViewRenderable\b/, "`ViewRenderable` removed → use `ViewNode` with a `@Composable` content lambda in 3.0"],
-        [/\bmodelLoader\.loadModelAsync\b/, "`loadModelAsync` removed → use `rememberModelInstance` in composables (3.0)"],
-        [/\bmodelLoader\.loadModel\b(?!Instance)/, "`loadModel` → use `rememberModelInstance` or `loadModelInstanceAsync` (3.0)"],
+        [
+          /\bPlacementNode\b/,
+          "`PlacementNode` removed → use `AnchorNode` + `HitResultNode` in 3.0",
+        ],
+        [
+          /\bTransformableNode\b/,
+          "`TransformableNode` removed → set `isEditable = true` on `ModelNode` in 3.0",
+        ],
+        [
+          /\bViewRenderable\b/,
+          "`ViewRenderable` removed → use `ViewNode` with a `@Composable` content lambda in 3.0",
+        ],
+        [
+          /\bmodelLoader\.loadModelAsync\b/,
+          "`loadModelAsync` removed → use `rememberModelInstance` in composables (3.0)",
+        ],
+        [
+          /\bmodelLoader\.loadModel\b(?!Instance)/,
+          "`loadModel` → use `rememberModelInstance` or `loadModelInstanceAsync` (3.0)",
+        ],
       ];
       for (const [pat, msg] of renames) {
         if (pat.test(code)) {
-          findLines(lines, pat).forEach((line) =>
-            issues.push({ severity: "error", rule: "migration/old-api", message: msg, line })
-          );
+          findLines(lines, pat).forEach((line) => {
+            issues.push({ severity: "error", rule: "migration/old-api", message: msg, line });
+          });
         }
       }
       return issues;
@@ -356,15 +367,15 @@ const RULES: Rule[] = [
       if (!code.includes("DynamicSkyNode")) return issues;
       // If DynamicSkyNode appears but SceneView { } doesn't, it's likely wrong
       if (!code.includes("SceneView(") && !code.includes("SceneView {")) {
-        findLines(lines, /DynamicSkyNode\s*\(/).forEach((line) =>
+        findLines(lines, /DynamicSkyNode\s*\(/).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "api/dynamic-sky-outside-scene",
             message:
               "`DynamicSkyNode` is a `SceneScope` extension composable — it must be declared inside a `SceneView { }` content block, not at the top level.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -376,15 +387,15 @@ const RULES: Rule[] = [
     severity: "error",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      findLines(lines, /import\s+com\.google\.ar\.sceneform/).forEach((line) =>
+      findLines(lines, /import\s+com\.google\.ar\.sceneform/).forEach((line) => {
         issues.push({
           severity: "error",
           rule: "migration/sceneform-import",
           message:
             "Sceneform imports detected (`com.google.ar.sceneform.*`). Sceneform was deprecated by Google in 2021. Use `io.github.sceneview.*` imports instead — SceneView is the official successor.",
           line,
-        })
-      );
+        });
+      });
       return issues;
     },
   },
@@ -420,15 +431,15 @@ const RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       const engineCreations = findLines(lines, /rememberEngine\(\)|Engine\.create\(/);
       if (engineCreations.length > 1) {
-        engineCreations.slice(1).forEach((line) =>
+        engineCreations.slice(1).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "performance/multiple-engines",
             message:
               "Multiple Engine instances detected. Each Engine allocates significant GPU memory. Use a single `rememberEngine()` at the top level and pass it to all Scene composables.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -442,15 +453,15 @@ const RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       // Detect modelLoader calls inside LaunchedEffect — should use rememberModelInstance instead
       if (/LaunchedEffect/.test(code) && /modelLoader\.(createModel|loadModel)/.test(code)) {
-        findLines(lines, /modelLoader\.(createModel|loadModel)/).forEach((line) =>
+        findLines(lines, /modelLoader\.(createModel|loadModel)/).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "threading/model-in-launched-effect",
             message:
               "Model loading inside `LaunchedEffect` is risky — if the coroutine runs on a background dispatcher, Filament will crash. Use `rememberModelInstance(modelLoader, path)` instead, which handles threading and lifecycle automatically.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -462,16 +473,20 @@ const RULES: Rule[] = [
     severity: "error",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      if (code.includes("rememberModelInstance") && !code.includes("modelLoader") && !code.includes("rememberModelLoader")) {
-        findLines(lines, /rememberModelInstance\(/).forEach((line) =>
+      if (
+        code.includes("rememberModelInstance") &&
+        !code.includes("modelLoader") &&
+        !code.includes("rememberModelLoader")
+      ) {
+        findLines(lines, /rememberModelInstance\(/).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "api/remember-model-missing-loader",
             message:
               "`rememberModelInstance` requires a `ModelLoader`. Add `val modelLoader = rememberModelLoader(engine)` and pass it as the first parameter.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -490,15 +505,15 @@ const RULES: Rule[] = [
         /createHDREnvironment\s*\(\s*"\/[^"]+"/,
       ];
       for (const pat of patterns) {
-        findLines(lines, pat).forEach((line) =>
+        findLines(lines, pat).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "api/asset-path-leading-slash",
             message:
-              "Asset path starts with `/`. Android asset paths are relative to `src/main/assets/` — use `\"models/file.glb\"` without a leading slash.",
+              'Asset path starts with `/`. Android asset paths are relative to `src/main/assets/` — use `"models/file.glb"` without a leading slash.',
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -513,7 +528,12 @@ const RULES: Rule[] = [
       const sceneLines = findLines(lines, /\b(AR)?SceneView\s*\(/);
       sceneLines.forEach((line) => {
         const block = lines.slice(line - 1, line + 5).join("\n");
-        if (!block.includes("fillMaxSize") && !block.includes("size") && !block.includes("height") && !block.includes("width")) {
+        if (
+          !block.includes("fillMaxSize") &&
+          !block.includes("size") &&
+          !block.includes("height") &&
+          !block.includes("width")
+        ) {
           issues.push({
             severity: "info",
             rule: "api/scene-zero-size",
@@ -617,14 +637,14 @@ const RULES: Rule[] = [
         if (localNames.has(name)) continue;
         if (isKnownTypeName(name)) continue;
         const suggestion = didYouMean(name, knownTypeNames());
-        findLines(lines, new RegExp(`\\b${name}\\s*[({]`)).forEach((line) =>
+        findLines(lines, new RegExp(`\\b${name}\\s*[({]`)).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "symbols/unknown-type",
             message: `\`${name}\` does not exist in the SceneView public API.${suggestion} Node types and declarative factories are listed in \`llms.txt\`.`,
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -690,15 +710,14 @@ const RULES: Rule[] = [
         const members = membersOfClass(receivers[receiver]);
         if (!members || members.has(member)) continue;
         const suggestion = didYouMean(member, members);
-        findLines(lines, new RegExp(`\\b${receiver}\\.${member}\\s*\\(`)).forEach(
-          (line) =>
-            issues.push({
-              severity: "error",
-              rule: "symbols/unknown-member",
-              message: `\`${receivers[receiver]}.${member}()\` does not exist.${suggestion} The full member list is in \`llms.txt\`.`,
-              line,
-            })
-        );
+        findLines(lines, new RegExp(`\\b${receiver}\\.${member}\\s*\\(`)).forEach((line) => {
+          issues.push({
+            severity: "error",
+            rule: "symbols/unknown-member",
+            message: `\`${receivers[receiver]}.${member}()\` does not exist.${suggestion} The full member list is in \`llms.txt\`.`,
+            line,
+          });
+        });
       }
       return issues;
     },
@@ -726,14 +745,14 @@ const RULES: Rule[] = [
         if (localNames.has(fullName)) continue;
         if (isKnownTopLevelFunction(fullName)) continue;
         const suggestion = didYouMean(fullName, rememberHelperNames());
-        findLines(lines, new RegExp(`\\b${fullName}\\s*\\(`)).forEach((line) =>
+        findLines(lines, new RegExp(`\\b${fullName}\\s*\\(`)).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "symbols/unknown-remember-helper",
             message: `\`${fullName}\` is not a SceneView composable helper.${suggestion} If it comes from another library, add its import; otherwise check \`llms.txt\`.`,
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -752,15 +771,15 @@ const SWIFT_RULES: Rule[] = [
       // If there's an async function that loads models but no @MainActor annotation
       if (/func\s+\w+.*async/.test(code) && /ModelNode\.load\(/.test(code)) {
         if (!code.includes("@MainActor")) {
-          findLines(lines, /func\s+\w+.*async/).forEach((line) =>
+          findLines(lines, /func\s+\w+.*async/).forEach((line) => {
             issues.push({
               severity: "warning",
               rule: "swift/missing-main-actor",
               message:
                 "Async function that loads RealityKit models should be annotated with `@MainActor` or called from a `@MainActor` context. RealityKit entity operations are main-thread-bound. Using `.task { }` in SwiftUI is already `@MainActor`-isolated, but standalone functions should be annotated.",
               line,
-            })
-          );
+            });
+          });
         }
       }
       return issues;
@@ -782,7 +801,7 @@ const SWIFT_RULES: Rule[] = [
               severity: "error",
               rule: "swift/model-load-not-async",
               message:
-                "`ModelNode.load()` is `async throws` — you must call it with `try await ModelNode.load(\"model.usdz\")` inside a `.task { }` block or async function.",
+                '`ModelNode.load()` is `async throws` — you must call it with `try await ModelNode.load("model.usdz")` inside a `.task { }` block or async function.',
               line,
             });
           }
@@ -799,7 +818,27 @@ const SWIFT_RULES: Rule[] = [
     check(code, lines) {
       const issues: ValidationIssue[] = [];
       // Check if SceneViewSwift types are used but not imported
-      const svTypes = ["SceneView", "ARSceneView", "ModelNode", "GeometryNode", "LightNode", "TextNode", "VideoNode", "PhysicsNode", "BillboardNode", "AnchorNode", "AugmentedImageNode", "ImageNode", "CameraNode", "PathNode", "LineNode", "MeshNode", "FogNode", "DynamicSkyNode", "ReflectionProbeNode"];
+      const svTypes = [
+        "SceneView",
+        "ARSceneView",
+        "ModelNode",
+        "GeometryNode",
+        "LightNode",
+        "TextNode",
+        "VideoNode",
+        "PhysicsNode",
+        "BillboardNode",
+        "AnchorNode",
+        "AugmentedImageNode",
+        "ImageNode",
+        "CameraNode",
+        "PathNode",
+        "LineNode",
+        "MeshNode",
+        "FogNode",
+        "DynamicSkyNode",
+        "ReflectionProbeNode",
+      ];
       const usesSceneView = svTypes.some((t) => code.includes(t));
       if (usesSceneView && !code.includes("import SceneViewSwift")) {
         issues.push({
@@ -811,7 +850,14 @@ const SWIFT_RULES: Rule[] = [
         });
       }
       // Check for RealityKit types without import
-      const rkTypes = ["Entity", "ModelEntity", "AnchorEntity", "RealityView", "MeshResource", "SimpleMaterial"];
+      const rkTypes = [
+        "Entity",
+        "ModelEntity",
+        "AnchorEntity",
+        "RealityView",
+        "MeshResource",
+        "SimpleMaterial",
+      ];
       const usesRK = rkTypes.some((t) => new RegExp(`\\b${t}\\b`).test(code));
       if (usesRK && !code.includes("import RealityKit")) {
         issues.push({
@@ -842,16 +888,20 @@ const SWIFT_RULES: Rule[] = [
       ];
       for (const [pat, name] of patterns) {
         // Only flag if the variable is likely a SceneViewSwift node wrapper, not a raw Entity
-        if (pat.test(code) && new RegExp(`(ModelNode|GeometryNode|LightNode|TextNode|VideoNode|BillboardNode).*\\b${name}\\b`).test(code)) {
-          findLines(lines, pat).forEach((line) =>
+        if (
+          pat.test(code) &&
+          new RegExp(
+            `(ModelNode|GeometryNode|LightNode|TextNode|VideoNode|BillboardNode).*\\b${name}\\b`
+          ).test(code)
+        ) {
+          findLines(lines, pat).forEach((line) => {
             issues.push({
               severity: "error",
               rule: "swift/add-child-wrong-type",
-              message:
-                `\`addChild(${name})\` — SceneViewSwift node wrappers are not \`Entity\` subclasses. Use \`addChild(${name}.entity)\` to add the underlying RealityKit entity.`,
+              message: `\`addChild(${name})\` — SceneViewSwift node wrappers are not \`Entity\` subclasses. Use \`addChild(${name}.entity)\` to add the underlying RealityKit entity.`,
               line,
-            })
-          );
+            });
+          });
         }
       }
       return issues;
@@ -866,15 +916,15 @@ const SWIFT_RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       if (code.includes("ARSceneView")) {
         if (code.includes("macOS") || code.includes("visionOS")) {
-          findLines(lines, /ARSceneView/).forEach((line) =>
+          findLines(lines, /ARSceneView/).forEach((line) => {
             issues.push({
               severity: "info",
               rule: "swift/ar-platform-check",
               message:
                 "`ARSceneView` uses `ARView` which is only available on iOS. For macOS use `SceneView` (3D only). For visionOS, use RealityKit's `RealityView` with `ARKitSession` directly.",
               line,
-            })
-          );
+            });
+          });
         }
       }
       return issues;
@@ -889,15 +939,15 @@ const SWIFT_RULES: Rule[] = [
       const issues: ValidationIssue[] = [];
       // Using try? silently swallows errors — warning but not error
       if (/try\?\s+await\s+ModelNode\.load/.test(code)) {
-        findLines(lines, /try\?\s+await\s+ModelNode\.load/).forEach((line) =>
+        findLines(lines, /try\?\s+await\s+ModelNode\.load/).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "swift/unhandled-model-load-error",
             message:
               "`try?` on `ModelNode.load()` silently swallows load failures. Consider using `do { try await ... } catch { print(error) }` to at least log failures, or show a loading indicator.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -936,15 +986,21 @@ const WEB_RULES: Rule[] = [
     severity: "warning",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      if (code.includes("getElementById") && !code.includes("as?") && !code.includes("?: ") && !code.includes("== null")) {
-        findLines(lines, /getElementById/).forEach((line) =>
+      if (
+        code.includes("getElementById") &&
+        !code.includes("as?") &&
+        !code.includes("?: ") &&
+        !code.includes("== null")
+      ) {
+        findLines(lines, /getElementById/).forEach((line) => {
           issues.push({
             severity: "warning",
             rule: "web/missing-canvas-null-check",
-            message: "Canvas element lookup should include a null check. Use `as? HTMLCanvasElement` with a null guard.",
+            message:
+              "Canvas element lookup should include a null check. Use `as? HTMLCanvasElement` with a null guard.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -954,11 +1010,16 @@ const WEB_RULES: Rule[] = [
     severity: "info",
     check(code, lines) {
       const issues: ValidationIssue[] = [];
-      if (code.includes("SceneView.create(") && !code.includes("clientWidth") && !code.includes("resize")) {
+      if (
+        code.includes("SceneView.create(") &&
+        !code.includes("clientWidth") &&
+        !code.includes("resize")
+      ) {
         issues.push({
           severity: "info",
           rule: "web/missing-canvas-resize",
-          message: "Canvas should be sized before creating SceneView. Set `canvas.width = canvas.clientWidth` and `canvas.height = canvas.clientHeight` before `SceneView.create()`. Or enable `autoResize` (on by default).",
+          message:
+            "Canvas should be sized before creating SceneView. Set `canvas.width = canvas.clientWidth` and `canvas.height = canvas.clientHeight` before `SceneView.create()`. Or enable `autoResize` (on by default).",
         });
       }
       return issues;
@@ -970,14 +1031,15 @@ const WEB_RULES: Rule[] = [
     check(code, lines) {
       const issues: ValidationIssue[] = [];
       if (code.includes("ARScene") || code.includes("ARSceneView")) {
-        findLines(lines, /ARScene|ARSceneView/).forEach((line) =>
+        findLines(lines, /ARScene|ARSceneView/).forEach((line) => {
           issues.push({
             severity: "error",
             rule: "web/ar-not-supported",
-            message: "AR is not supported on the web platform. SceneView Web only supports 3D scenes (no camera/sensor access in browsers). Use `SceneView.create()` for 3D-only web rendering.",
+            message:
+              "AR is not supported on the web platform. SceneView Web only supports 3D scenes (no camera/sensor access in browsers). Use `SceneView.create()` for 3D-only web rendering.",
             line,
-          })
-        );
+          });
+        });
       }
       return issues;
     },
@@ -991,7 +1053,8 @@ const WEB_RULES: Rule[] = [
         issues.push({
           severity: "warning",
           rule: "web/missing-start-rendering",
-          message: "Don't forget to call `sceneView.startRendering()` in the `onReady` callback to start the render loop.",
+          message:
+            "Don't forget to call `sceneView.startRendering()` in the `onReady` callback to start the render loop.",
         });
       }
       return issues;

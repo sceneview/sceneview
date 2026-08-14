@@ -42,7 +42,8 @@ export interface PreviewResult {
 export function buildPreviewUrl(options: PreviewOptions): PreviewResult {
   const model = options.modelUrl || DEFAULT_MODEL_URL;
   const hasCode = Boolean(options.codeSnippet?.trim());
-  const title = options.title || (hasCode && !options.modelUrl ? "SceneView Code Preview" : "3D Model Preview");
+  const title =
+    options.title || (hasCode && !options.modelUrl ? "SceneView Code Preview" : "3D Model Preview");
 
   const params = new URLSearchParams();
   params.set("model", model);
@@ -60,10 +61,7 @@ export function buildPreviewUrl(options: PreviewOptions): PreviewResult {
 /**
  * Validate preview input — at least one of modelUrl or codeSnippet must be provided.
  */
-export function validatePreviewInput(
-  modelUrl?: string,
-  codeSnippet?: string
-): string | null {
+export function validatePreviewInput(modelUrl?: string, codeSnippet?: string): string | null {
   if (!modelUrl && !codeSnippet) {
     return "At least one of `modelUrl` or `codeSnippet` is required.";
   }

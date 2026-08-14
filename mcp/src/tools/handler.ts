@@ -20,64 +20,51 @@
  * canonical `llms.txt` at the repo root.
  */
 
-import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
-import { validateCode, formatValidationReport } from "../validator.js";
-import { MIGRATION_GUIDE } from "../migration.js";
-import { parseNodeSections, findNodeSection, listNodeTypes } from "../node-reference.js";
+import { ANIMATION_GUIDE, GESTURE_GUIDE, PERFORMANCE_TIPS } from "../advanced-guides.js";
+import { analyzeProject, formatAnalysisReport } from "../analyze-project.js";
 import {
-  PLATFORM_ROADMAP,
-  BEST_PRACTICES,
-  AR_SETUP_GUIDE,
-  TROUBLESHOOTING_GUIDE,
-} from "../guides.js";
+  fetchAndroidDoc,
+  formatAndroidDocsFetch,
+  formatAndroidDocsSearch,
+  searchAndroidDocs,
+} from "../android-docs.js";
 import {
-  buildPreviewUrl,
-  validatePreviewInput,
-  formatPreviewResponse,
-} from "../preview.js";
-import {
-  validateArtifactInput,
-  generateArtifact,
-  formatArtifactResponse,
   type ArtifactType,
+  formatArtifactResponse,
+  generateArtifact,
+  validateArtifactInput,
 } from "../artifact.js";
 import {
-  getPlatformSetup,
-  type Platform,
-  type SetupType,
-} from "../platform-setup.js";
-import { migrateCode, formatMigrationResult } from "../migrate-code.js";
-import {
-  getDebugGuide,
   autoDetectIssue,
   DEBUG_CATEGORIES,
   type DebugCategory,
+  getDebugGuide,
 } from "../debug-issue.js";
-import { generateScene, formatGeneratedScene } from "../generate-scene.js";
 import {
-  ANIMATION_GUIDE,
-  GESTURE_GUIDE,
-  PERFORMANCE_TIPS,
-} from "../advanced-guides.js";
-import {
-  MATERIAL_GUIDE,
   COLLISION_GUIDE,
+  MATERIAL_GUIDE,
   MODEL_OPTIMIZATION_GUIDE,
   WEB_RENDERING_GUIDE,
 } from "../extra-guides.js";
-import { searchModels, formatSearchResults } from "../search-models.js";
-import { generateModel, formatGenerateResult, type GenerateQuality } from "../generate-model.js";
-import { analyzeProject, formatAnalysisReport } from "../analyze-project.js";
-import {
-  searchAndroidDocs,
-  fetchAndroidDoc,
-  formatAndroidDocsSearch,
-  formatAndroidDocsFetch,
-} from "../android-docs.js";
+import { formatGenerateResult, type GenerateQuality, generateModel } from "../generate-model.js";
+import { formatGeneratedScene, generateScene } from "../generate-scene.js";
 import { LLMS_TXT } from "../generated/llms-txt.js";
-
-import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 import { LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
+import {
+  AR_SETUP_GUIDE,
+  BEST_PRACTICES,
+  PLATFORM_ROADMAP,
+  TROUBLESHOOTING_GUIDE,
+} from "../guides.js";
+import { formatMigrationResult, migrateCode } from "../migrate-code.js";
+import { MIGRATION_GUIDE } from "../migration.js";
+import { findNodeSection, listNodeTypes, parseNodeSections } from "../node-reference.js";
+import { getPlatformSetup, type Platform, type SetupType } from "../platform-setup.js";
+import { buildPreviewUrl, formatPreviewResponse, validatePreviewInput } from "../preview.js";
+import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
+import { formatSearchResults, searchModels } from "../search-models.js";
+import { formatValidationReport, validateCode } from "../validator.js";
+import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 
 // ─── Legal disclaimer (identical to index.ts 4.0.0) ─────────────────────
 
@@ -113,10 +100,7 @@ function withDisclaimer<T extends ToolTextContent>(content: T[]): T[] {
   if (content.length === 0) return content;
   const last = content[content.length - 1];
   const suffix = DISCLAIMER + (shouldShowSponsorCta() ? SPONSOR_CTA : "");
-  return [
-    ...content.slice(0, -1),
-    { ...last, text: last.text + suffix },
-  ];
+  return [...content.slice(0, -1), { ...last, text: last.text + suffix }];
 }
 
 // ─── llms.txt-derived state ──────────────────────────────────────────────────
@@ -149,7 +133,7 @@ const NODE_SECTIONS = parseNodeSections(API_DOCS);
 export async function dispatchTool(
   toolName: string,
   args: Record<string, unknown> | undefined,
-  _ctx: DispatchContext = {},
+  _ctx: DispatchContext = {}
 ): Promise<ToolResult> {
   switch (toolName) {
     // ── get_sample ────────────────────────────────────────────────────────────
@@ -231,12 +215,10 @@ export async function dispatchTool(
         : `## All SceneView samples (${entries.length})\n`;
 
       const rows = entries
-        .map(
-          (s) => {
-            const depLabel = s.language === "swift" ? "*SPM:*" : "*Dependency:*";
-            return `### \`${s.id}\`\n**${s.title}**${s.language === "swift" ? " (Swift/iOS)" : ""}\n${s.description}\n*Tags:* ${s.tags.join(", ")}\n${depLabel} \`${s.dependency}\`\n\nCall \`get_sample("${s.id}")\` for the full code.`;
-          }
-        )
+        .map((s) => {
+          const depLabel = s.language === "swift" ? "*SPM:*" : "*Dependency:*";
+          return `### \`${s.id}\`\n**${s.title}**${s.language === "swift" ? " (Swift/iOS)" : ""}\n${s.description}\n*Tags:* ${s.tags.join(", ")}\n${depLabel} \`${s.dependency}\`\n\nCall \`get_sample("${s.id}")\` for the full code.`;
+        })
         .join("\n\n---\n\n");
 
       return { content: withDisclaimer([{ type: "text", text: header + rows }]) };
@@ -352,11 +334,7 @@ export async function dispatchTool(
         content: withDisclaimer([
           {
             type: "text",
-            text: [
-              `## \`${section.name}\` — API Reference`,
-              ``,
-              section.content,
-            ].join("\n"),
+            text: [`## \`${section.name}\` — API Reference`, ``, section.content].join("\n"),
           },
         ]),
       };
@@ -746,18 +724,21 @@ export async function dispatchTool(
       }
       if (!category) {
         return {
-          content: [{
-            type: "text",
-            text: `Please provide a \`category\` or \`description\`.\n\nAvailable categories: ${DEBUG_CATEGORIES.join(", ")}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Please provide a \`category\` or \`description\`.\n\nAvailable categories: ${DEBUG_CATEGORIES.join(", ")}`,
+            },
+          ],
           isError: true,
         };
       }
 
       const debugGuide = getDebugGuide(category);
-      const prefix = desc && autoDetectIssue(desc) === category
-        ? `> Auto-detected category: **${category}** from your description.\n\n`
-        : "";
+      const prefix =
+        desc && autoDetectIssue(desc) === category
+          ? `> Auto-detected category: **${category}** from your description.\n\n`
+          : "";
       return { content: withDisclaimer([{ type: "text", text: prefix + debugGuide }]) };
     }
 
@@ -784,32 +765,115 @@ export async function dispatchTool(
       // users following list_platforms output saw the unresolved template
       // text. Backticks throughout = real interpolation. See #941 follow-up.
       const platforms = [
-        { platform: "Android", renderer: "Filament", framework: "Jetpack Compose", status: "Stable", version: LATEST_SCENEVIEW_RELEASE, dependency: `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`, features: ["3D", "AR (ARCore)", "Model loading (GLB/glTF)", "Geometry nodes", "Physics", "Gestures"] },
-        { platform: "Android TV", renderer: "Filament", framework: "Compose TV", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`, features: ["3D", "D-pad controls", "Auto-rotation", "Model loading"] },
-        { platform: "Android XR", renderer: "Jetpack XR SceneCore", framework: "Compose XR", status: "Planned", version: "-", dependency: "-", features: ["Spatial computing", "Hand tracking", "Passthrough"] },
-        { platform: "iOS", renderer: "RealityKit", framework: "SwiftUI", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "SceneViewSwift (SPM)", features: ["3D", "AR (ARKit)", "16 node types", "USDZ models"] },
-        { platform: "macOS", renderer: "RealityKit", framework: "SwiftUI", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "SceneViewSwift (SPM)", features: ["3D", "Orbit camera", "USDZ models"] },
-        { platform: "visionOS", renderer: "RealityKit", framework: "SwiftUI", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "SceneViewSwift (SPM)", features: ["3D", "Immersive spaces", "Hand tracking (planned)"] },
-        { platform: "Web", renderer: "Filament.js (WASM)", framework: "Kotlin/JS", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "sceneview-web (npm)", features: ["3D", "WebXR AR/VR", "GLB models", "WebGL2"] },
-        { platform: "Desktop", renderer: "Software / Filament JNI", framework: "Compose Desktop", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "sceneview-desktop (local)", features: ["3D", "Software renderer", "Wireframe"] },
-        { platform: "Flutter", renderer: "Filament / RealityKit", framework: "PlatformView", status: "Alpha", version: LATEST_SCENEVIEW_RELEASE, dependency: "flutter pub: flutter_sceneview (git ref until first publish, #2735)", features: ["3D", "AR", "Android + iOS bridge"] },
+        {
+          platform: "Android",
+          renderer: "Filament",
+          framework: "Jetpack Compose",
+          status: "Stable",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`,
+          features: [
+            "3D",
+            "AR (ARCore)",
+            "Model loading (GLB/glTF)",
+            "Geometry nodes",
+            "Physics",
+            "Gestures",
+          ],
+        },
+        {
+          platform: "Android TV",
+          renderer: "Filament",
+          framework: "Compose TV",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`,
+          features: ["3D", "D-pad controls", "Auto-rotation", "Model loading"],
+        },
+        {
+          platform: "Android XR",
+          renderer: "Jetpack XR SceneCore",
+          framework: "Compose XR",
+          status: "Planned",
+          version: "-",
+          dependency: "-",
+          features: ["Spatial computing", "Hand tracking", "Passthrough"],
+        },
+        {
+          platform: "iOS",
+          renderer: "RealityKit",
+          framework: "SwiftUI",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "SceneViewSwift (SPM)",
+          features: ["3D", "AR (ARKit)", "16 node types", "USDZ models"],
+        },
+        {
+          platform: "macOS",
+          renderer: "RealityKit",
+          framework: "SwiftUI",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "SceneViewSwift (SPM)",
+          features: ["3D", "Orbit camera", "USDZ models"],
+        },
+        {
+          platform: "visionOS",
+          renderer: "RealityKit",
+          framework: "SwiftUI",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "SceneViewSwift (SPM)",
+          features: ["3D", "Immersive spaces", "Hand tracking (planned)"],
+        },
+        {
+          platform: "Web",
+          renderer: "Filament.js (WASM)",
+          framework: "Kotlin/JS",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "sceneview-web (npm)",
+          features: ["3D", "WebXR AR/VR", "GLB models", "WebGL2"],
+        },
+        {
+          platform: "Desktop",
+          renderer: "Software / Filament JNI",
+          framework: "Compose Desktop",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "sceneview-desktop (local)",
+          features: ["3D", "Software renderer", "Wireframe"],
+        },
+        {
+          platform: "Flutter",
+          renderer: "Filament / RealityKit",
+          framework: "PlatformView",
+          status: "Alpha",
+          version: LATEST_SCENEVIEW_RELEASE,
+          dependency: "flutter pub: flutter_sceneview (git ref until first publish, #2735)",
+          features: ["3D", "AR", "Android + iOS bridge"],
+        },
       ];
 
       const lines = [
         "## SceneView Supported Platforms\n",
         "| Platform | Renderer | Framework | Status | Version |",
         "|----------|----------|-----------|--------|---------|",
-        ...platforms.map(p => `| ${p.platform} | ${p.renderer} | ${p.framework} | ${p.status} | ${p.version} |`),
+        ...platforms.map(
+          (p) => `| ${p.platform} | ${p.renderer} | ${p.framework} | ${p.status} | ${p.version} |`
+        ),
         "",
         "### Platform Details\n",
-        ...platforms.map(p => [
-          `**${p.platform}** (${p.status})`,
-          `- Renderer: ${p.renderer}`,
-          `- Framework: ${p.framework}`,
-          `- Dependency: \`${p.dependency}\``,
-          `- Features: ${p.features.join(", ")}`,
-          "",
-        ].join("\n")),
+        ...platforms.map((p) =>
+          [
+            `**${p.platform}** (${p.status})`,
+            `- Renderer: ${p.renderer}`,
+            `- Framework: ${p.framework}`,
+            `- Dependency: \`${p.dependency}\``,
+            `- Features: ${p.features.join(", ")}`,
+            "",
+          ].join("\n")
+        ),
         "### Architecture",
         "",
         "SceneView uses **native renderers per platform**: Filament on Android/Web/Desktop, RealityKit on Apple (iOS/macOS/visionOS).",
@@ -859,7 +923,12 @@ export async function dispatchTool(
       const query = args?.query as string | undefined;
       if (!query || typeof query !== "string" || query.trim().length === 0) {
         return {
-          content: [{ type: "text", text: "Missing required parameter: `query` must be a non-empty string." }],
+          content: [
+            {
+              type: "text",
+              text: "Missing required parameter: `query` must be a non-empty string.",
+            },
+          ],
           isError: true,
         };
       }
@@ -916,7 +985,12 @@ export async function dispatchTool(
       const query = args?.query as string | undefined;
       if (!query || typeof query !== "string" || query.trim().length === 0) {
         return {
-          content: [{ type: "text", text: "Missing required parameter: `query` must be a non-empty string." }],
+          content: [
+            {
+              type: "text",
+              text: "Missing required parameter: `query` must be a non-empty string.",
+            },
+          ],
           isError: true,
         };
       }
@@ -933,7 +1007,12 @@ export async function dispatchTool(
       const uri = args?.uri as string | undefined;
       if (!uri || typeof uri !== "string" || uri.trim().length === 0) {
         return {
-          content: [{ type: "text", text: "Missing required parameter: `uri` must be a non-empty `kb://...` string." }],
+          content: [
+            {
+              type: "text",
+              text: "Missing required parameter: `uri` must be a non-empty `kb://...` string.",
+            },
+          ],
           isError: true,
         };
       }

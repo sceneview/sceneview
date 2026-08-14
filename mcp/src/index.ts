@@ -23,24 +23,13 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { fetchKnownIssues } from "./issues.js";
-import {
-  DEMO_WITH_SETTINGS_EXAMPLE,
-  SKETCHFAB_STREAMING_EXAMPLE,
-} from "./examples.js";
-import { recordClientInit, recordToolCall } from "./telemetry.js";
-import { isProTool, getToolTier } from "./tiers.js";
-import {
-  dispatchProxyToolCall,
-  isProxyConfigured,
-  DEFAULT_PRICING_URL,
-} from "./proxy.js";
-import {
-  API_DOCS,
-  TOOL_DEFINITIONS,
-  dispatchTool,
-} from "./tools/index.js";
+import { DEMO_WITH_SETTINGS_EXAMPLE, SKETCHFAB_STREAMING_EXAMPLE } from "./examples.js";
 import { LATEST_SCENEVIEW_RELEASE, PACKAGE_VERSION } from "./generated/version.js";
+import { fetchKnownIssues } from "./issues.js";
+import { DEFAULT_PRICING_URL, dispatchProxyToolCall, isProxyConfigured } from "./proxy.js";
+import { recordClientInit, recordToolCall } from "./telemetry.js";
+import { getToolTier, isProTool } from "./tiers.js";
+import { API_DOCS, dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 
 // ─── v4 lite-mode startup banner ─────────────────────────────────────────────
 //
@@ -84,8 +73,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
     {
       uri: "sceneview://api",
       name: "SceneView API Reference",
-      description:
-        `Complete SceneView ${LATEST_SCENEVIEW_RELEASE} API — SceneView, ARSceneView, SceneScope DSL, ARSceneScope DSL, node types, resource loading, camera, gestures, math types, threading rules, and common patterns. Read this before writing any SceneView code.`,
+      description: `Complete SceneView ${LATEST_SCENEVIEW_RELEASE} API — SceneView, ARSceneView, SceneScope DSL, ARSceneScope DSL, node types, resource loading, camera, gestures, math types, threading rules, and common patterns. Read this before writing any SceneView code.`,
       mimeType: "text/markdown",
     },
     {
@@ -128,20 +116,24 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
     case "examples://demo-with-settings":
       return {
-        contents: [{
-          uri: "examples://demo-with-settings",
-          mimeType: "text/markdown",
-          text: DEMO_WITH_SETTINGS_EXAMPLE,
-        }],
+        contents: [
+          {
+            uri: "examples://demo-with-settings",
+            mimeType: "text/markdown",
+            text: DEMO_WITH_SETTINGS_EXAMPLE,
+          },
+        ],
       };
 
     case "examples://sketchfab-streaming":
       return {
-        contents: [{
-          uri: "examples://sketchfab-streaming",
-          mimeType: "text/markdown",
-          text: SKETCHFAB_STREAMING_EXAMPLE,
-        }],
+        contents: [
+          {
+            uri: "examples://sketchfab-streaming",
+            mimeType: "text/markdown",
+            text: SKETCHFAB_STREAMING_EXAMPLE,
+          },
+        ],
       };
 
     default:

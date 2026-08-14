@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  recordClientInit,
-  recordToolCall,
-  flushTelemetry,
-  __resetClientContext,
   __computeBotLikelihoodForTest,
   __getInstallIdForTest,
+  __resetClientContext,
+  flushTelemetry,
+  recordClientInit,
+  recordToolCall,
   type TelemetryPayload,
 } from "./telemetry.js";
 
@@ -26,7 +26,7 @@ type FetchMock = ReturnType<typeof vi.fn>;
 
 function installFetchMock(impl?: (...args: unknown[]) => Promise<Response>): FetchMock {
   const mock = vi.fn<(...args: unknown[]) => Promise<Response>>(
-    impl ?? (async () => new Response("ok", { status: 200 })),
+    impl ?? (async () => new Response("ok", { status: 200 }))
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as unknown as { fetch: typeof fetch }).fetch = mock as unknown as typeof fetch;
@@ -302,10 +302,9 @@ describe("telemetry payload shape", () => {
       const [url, init] = call as [string, RequestInit];
       const raw = JSON.parse(init.body as string) as Record<string, unknown>;
       // Both /v1/events (single body) and /v1/batch (bare array) shapes.
-      const payloads: TelemetryPayload[] =
-        url.endsWith("/batch")
-          ? (raw as unknown as TelemetryPayload[])
-          : [raw as unknown as TelemetryPayload];
+      const payloads: TelemetryPayload[] = url.endsWith("/batch")
+        ? (raw as unknown as TelemetryPayload[])
+        : [raw as unknown as TelemetryPayload];
       for (const body of payloads) {
         for (const forbidden of ["ip", "hostname", "user", "args", "result", "prompt", "apiKey"]) {
           expect((body as unknown as Record<string, unknown>)[forbidden]).toBeUndefined();
@@ -506,9 +505,7 @@ describe("telemetry batching", () => {
 describe("telemetry installId fingerprint", () => {
   function firstPayload(mock: FetchMock): TelemetryPayload {
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
-    const raw = JSON.parse((init.body as string) ?? "{}") as
-      | TelemetryPayload
-      | TelemetryPayload[];
+    const raw = JSON.parse((init.body as string) ?? "{}") as TelemetryPayload | TelemetryPayload[];
     return Array.isArray(raw) ? raw[0]! : raw;
   }
 
@@ -524,7 +521,7 @@ describe("telemetry installId fingerprint", () => {
     expect(typeof payload.installId).toBe("string");
     // UUID v4 is 36 chars: 8-4-4-4-12 hex with hyphens.
     expect(payload.installId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     );
   });
 
@@ -537,7 +534,7 @@ describe("telemetry installId fingerprint", () => {
     await flushMicrotasks();
 
     const batch = JSON.parse(
-      (mock.mock.calls[0]![1] as RequestInit).body as string,
+      (mock.mock.calls[0]![1] as RequestInit).body as string
     ) as TelemetryPayload[];
     expect(batch).toHaveLength(2);
     expect(batch[0]!.installId).toBeDefined();
@@ -594,9 +591,7 @@ describe("telemetry installId fingerprint", () => {
 describe("telemetry botLikelihood heuristic", () => {
   function firstPayload(mock: FetchMock): TelemetryPayload {
     const [url, init] = mock.mock.calls[0] as [string, RequestInit];
-    const raw = JSON.parse((init.body as string) ?? "{}") as
-      | TelemetryPayload
-      | TelemetryPayload[];
+    const raw = JSON.parse((init.body as string) ?? "{}") as TelemetryPayload | TelemetryPayload[];
     return Array.isArray(raw) ? raw[0]! : raw;
   }
 

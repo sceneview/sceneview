@@ -19,12 +19,10 @@
  */
 
 /** Default URL of the hosted gateway (post-Stripe-first, Apr 2026). */
-export const DEFAULT_GATEWAY_URL =
-  "https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp";
+export const DEFAULT_GATEWAY_URL = "https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp";
 
 /** Public pricing/signup page shown in stubs when no API key is set. */
-export const DEFAULT_PRICING_URL =
-  "https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing";
+export const DEFAULT_PRICING_URL = "https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing";
 
 /** Response shape returned by `dispatchProxyToolCall`. */
 export interface ProxyToolResult {
@@ -60,7 +58,7 @@ let nextRpcId = 1;
 export async function dispatchProxyToolCall(
   toolName: string,
   args: Record<string, unknown> | undefined,
-  options: ProxyOptions = {},
+  options: ProxyOptions = {}
 ): Promise<ProxyToolResult> {
   const apiKey = options.apiKey ?? process.env.SCENEVIEW_API_KEY;
   if (!apiKey) {
@@ -82,10 +80,7 @@ export async function dispatchProxyToolCall(
     };
   }
 
-  const gatewayUrl =
-    options.gatewayUrl ??
-    process.env.SCENEVIEW_MCP_URL ??
-    DEFAULT_GATEWAY_URL;
+  const gatewayUrl = options.gatewayUrl ?? process.env.SCENEVIEW_MCP_URL ?? DEFAULT_GATEWAY_URL;
   const fetchImpl = options.fetchImpl ?? fetch;
 
   const requestBody = {
@@ -199,9 +194,7 @@ export async function dispatchProxyToolCall(
       content: [
         {
           type: "text",
-          text:
-            parsed.error.message ??
-            `Gateway error while calling ${toolName}.`,
+          text: parsed.error.message ?? `Gateway error while calling ${toolName}.`,
         },
       ],
       isError: true,

@@ -43,21 +43,25 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-loadModelAsync",
     pattern: /modelLoader\.loadModelAsync\s*\(\s*"([^"]+)"\s*\)/g,
     replacement: 'rememberModelInstance(modelLoader, "$1")',
-    explanation: "`loadModelAsync` removed. Use `rememberModelInstance(modelLoader, path)` which returns null while loading.",
+    explanation:
+      "`loadModelAsync` removed. Use `rememberModelInstance(modelLoader, path)` which returns null while loading.",
   },
   {
     id: "replace-loadModel",
     pattern: /modelLoader\.loadModel\s*\(\s*"([^"]+)"\s*\)(?!Instance)/g,
     replacement: 'rememberModelInstance(modelLoader, "$1")',
-    explanation: "`loadModel` replaced by `rememberModelInstance` in composables or `loadModelInstanceAsync` for imperative code.",
+    explanation:
+      "`loadModel` replaced by `rememberModelInstance` in composables or `loadModelInstanceAsync` for imperative code.",
   },
 
   // ── Removed nodes ──────────────────────────────────────────────────────
   {
     id: "replace-transformable-node",
     pattern: /\bTransformableNode\s*\([^)]*\)\s*\.apply\s*\{[^}]*setParent\([^)]*\)[^}]*\}/g,
-    replacement: "// TransformableNode removed in 3.0 — use `isEditable = true` on ModelNode instead",
-    explanation: "`TransformableNode` removed. Set `isEditable = true` on `ModelNode` for pinch-to-scale + drag-to-rotate.",
+    replacement:
+      "// TransformableNode removed in 3.0 — use `isEditable = true` on ModelNode instead",
+    explanation:
+      "`TransformableNode` removed. Set `isEditable = true` on `ModelNode` for pinch-to-scale + drag-to-rotate.",
   },
   {
     id: "replace-transformable-node-simple",
@@ -69,13 +73,15 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-placement-node",
     pattern: /\bPlacementNode\b/g,
     replacement: "/* PlacementNode removed — use AnchorNode + HitResultNode */",
-    explanation: "`PlacementNode` removed. Use `AnchorNode(anchor = hitResult.createAnchor())` + `HitResultNode`.",
+    explanation:
+      "`PlacementNode` removed. Use `AnchorNode(anchor = hitResult.createAnchor())` + `HitResultNode`.",
   },
   {
     id: "replace-view-renderable",
     pattern: /ViewRenderable\.builder\(\)/g,
     replacement: "/* ViewRenderable removed — use ViewNode with @Composable lambda */",
-    explanation: "`ViewRenderable` removed. Use `ViewNode(windowManager = rememberViewNodeManager()) { /* Compose content */ }`.",
+    explanation:
+      "`ViewRenderable` removed. Use `ViewNode(windowManager = rememberViewNodeManager()) { /* Compose content */ }`.",
   },
 
   // ── LightNode trailing lambda fix ──────────────────────────────────────
@@ -83,7 +89,8 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "fix-lightnode-trailing-lambda",
     pattern: /LightNode\s*\(([^)]*)\)\s*\{/g,
     replacement: "LightNode($1, apply = {",
-    explanation: "`LightNode`'s configuration is `apply = { }` (named param), not a trailing lambda. Without `apply =` the block is silently ignored.",
+    explanation:
+      "`LightNode`'s configuration is `apply = { }` (named param), not a trailing lambda. Without `apply =` the block is silently ignored.",
   },
 
   // ── Engine lifecycle ──────────────────────────────────────────────────
@@ -91,13 +98,15 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-engine-create",
     pattern: /val\s+(\w+)\s*=\s*Engine\.create\(\)/g,
     replacement: "val $1 = rememberEngine()",
-    explanation: "`Engine.create()` replaced by `rememberEngine()` which ties lifecycle to composition.",
+    explanation:
+      "`Engine.create()` replaced by `rememberEngine()` which ties lifecycle to composition.",
   },
   {
     id: "remove-engine-destroy",
     pattern: /\bengine\.(safeD|d)estroy\(\)/g,
     replacement: "// engine.destroy() removed — rememberEngine() handles cleanup automatically",
-    explanation: "Manual `engine.destroy()` removed. `rememberEngine()` destroys on composition disposal.",
+    explanation:
+      "Manual `engine.destroy()` removed. `rememberEngine()` destroys on composition disposal.",
   },
 
   // ── Environment loading ────────────────────────────────────────────────
@@ -113,31 +122,38 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-sceneform-import",
     pattern: /import\s+com\.google\.ar\.sceneform\./g,
     replacement: "import io.github.sceneview.",
-    explanation: "Sceneform imports (`com.google.ar.sceneform.*`) replaced by `io.github.sceneview.*`. SceneView is the official Sceneform successor.",
+    explanation:
+      "Sceneform imports (`com.google.ar.sceneform.*`) replaced by `io.github.sceneview.*`. SceneView is the official Sceneform successor.",
   },
 
   // ── addChildNode → composable DSL ──────────────────────────────────────
   {
     id: "replace-addChildNode",
     pattern: /(\w+)\.addChildNode\((\w+)\)/g,
-    replacement: "// $1.addChildNode($2) — in 3.0, declare nodes as composables inside SceneView { } instead of adding imperatively",
-    explanation: "Imperative `addChildNode` replaced by declarative composable DSL. Declare nodes inside `SceneView { }` content block.",
+    replacement:
+      "// $1.addChildNode($2) — in 3.0, declare nodes as composables inside SceneView { } instead of adding imperatively",
+    explanation:
+      "Imperative `addChildNode` replaced by declarative composable DSL. Declare nodes inside `SceneView { }` content block.",
   },
 
   // ── AR worldPosition → AnchorNode ──────────────────────────────────────
   {
     id: "replace-worldPosition-ar",
     pattern: /(\w+)\.worldPosition\s*=\s*(.+)/g,
-    replacement: "// $1.worldPosition = $2  ← replaced by AnchorNode(anchor = hitResult.createAnchor()) in 3.0",
-    explanation: "Manual `worldPosition` in AR causes drift. Use `AnchorNode(anchor = hitResult.createAnchor())` instead.",
+    replacement:
+      "// $1.worldPosition = $2  ← replaced by AnchorNode(anchor = hitResult.createAnchor()) in 3.0",
+    explanation:
+      "Manual `worldPosition` in AR causes drift. Use `AnchorNode(anchor = hitResult.createAnchor())` instead.",
   },
 
   // ── Camera manipulator ─────────────────────────────────────────────────
   {
     id: "replace-camera-manipulator",
     pattern: /setCameraManipulator\(([^)]*)\)/g,
-    replacement: "// setCameraManipulator removed — use cameraManipulator = rememberCameraManipulator() on SceneView",
-    explanation: "`setCameraManipulator` replaced by `cameraManipulator = rememberCameraManipulator()` parameter on `SceneView`.",
+    replacement:
+      "// setCameraManipulator removed — use cameraManipulator = rememberCameraManipulator() on SceneView",
+    explanation:
+      "`setCameraManipulator` replaced by `cameraManipulator = rememberCameraManipulator()` parameter on `SceneView`.",
   },
 
   // ── Material loading ──────────────────────────────────────────────────
@@ -152,16 +168,20 @@ const MIGRATION_RULES: MigrationRule[] = [
   {
     id: "replace-setBackground",
     pattern: /\bsetBackground\s*\(\s*([^)]+)\s*\)/g,
-    replacement: "// setBackground($1) removed — use SceneView(environment = ...) for background or skybox",
-    explanation: "`setBackground` removed. Use the `environment` parameter on `SceneView` for backgrounds and skyboxes.",
+    replacement:
+      "// setBackground($1) removed — use SceneView(environment = ...) for background or skybox",
+    explanation:
+      "`setBackground` removed. Use the `environment` parameter on `SceneView` for backgrounds and skyboxes.",
   },
 
   // ── Node.setRenderable → ModelNode ──────────────────────────────────
   {
     id: "replace-setRenderable",
     pattern: /(\w+)\.setRenderable\(([^)]*)\)/g,
-    replacement: "// $1.setRenderable($2) → in 3.0, pass modelInstance directly to ModelNode() constructor",
-    explanation: "`setRenderable()` removed. In 3.0, pass the model directly: `ModelNode(modelInstance = instance)`.",
+    replacement:
+      "// $1.setRenderable($2) → in 3.0, pass modelInstance directly to ModelNode() constructor",
+    explanation:
+      "`setRenderable()` removed. In 3.0, pass the model directly: `ModelNode(modelInstance = instance)`.",
   },
 
   // ── onUpdate → onFrame ──────────────────────────────────────────────
@@ -169,15 +189,18 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-onUpdate",
     pattern: /\.onUpdate\s*=\s*\{/g,
     replacement: "// .onUpdate removed — use SceneView(onFrame = {",
-    explanation: "`.onUpdate` removed. Use the `onFrame` callback parameter on `SceneView(onFrame = { ... })`.",
+    explanation:
+      "`.onUpdate` removed. Use the `onFrame` callback parameter on `SceneView(onFrame = { ... })`.",
   },
 
   // ── Node.setParent → composable DSL ──────────────────────────────────
   {
     id: "replace-setParent",
     pattern: /(\w+)\.setParent\((\w+)\)/g,
-    replacement: "// $1.setParent($2) — in 3.0, nest nodes as composables inside parent's content block",
-    explanation: "`setParent()` removed. In 3.0, declare child nodes as composables inside the parent's trailing content block.",
+    replacement:
+      "// $1.setParent($2) — in 3.0, nest nodes as composables inside parent's content block",
+    explanation:
+      "`setParent()` removed. In 3.0, declare child nodes as composables inside the parent's trailing content block.",
   },
 
   // ── ArFragment → ARScene composable ─────────────────────────────────
@@ -185,15 +208,18 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-arfragment",
     pattern: /\bArFragment\b/g,
     replacement: "/* ArFragment removed — use ARSceneView composable in Jetpack Compose */",
-    explanation: "`ArFragment` (Android View-based) removed. Use `ARSceneView(...)` composable in Jetpack Compose.",
+    explanation:
+      "`ArFragment` (Android View-based) removed. Use `ARSceneView(...)` composable in Jetpack Compose.",
   },
 
   // ── onTapArPlane → onTouchEvent ─────────────────────────────────────
   {
     id: "replace-onTapArPlane",
     pattern: /\.onTapArPlane\s*\{/g,
-    replacement: "// .onTapArPlane removed — use ARSceneView(onTouchEvent = { hitResult, motionEvent ->",
-    explanation: "`.onTapArPlane` removed. Use `ARSceneView(onTouchEvent = { hitResult, motionEvent -> ... })` and call `hitResult.createAnchor()` yourself.",
+    replacement:
+      "// .onTapArPlane removed — use ARSceneView(onTouchEvent = { hitResult, motionEvent ->",
+    explanation:
+      "`.onTapArPlane` removed. Use `ARSceneView(onTouchEvent = { hitResult, motionEvent -> ... })` and call `hitResult.createAnchor()` yourself.",
   },
 ];
 
@@ -205,28 +231,30 @@ export function migrateCode(code: string): MigrationResult {
   // Apply each rule
   for (const rule of MIGRATION_RULES) {
     const pattern = new RegExp(rule.pattern.source, rule.pattern.flags);
-    let match: RegExpExecArray | null;
     const localMatches: { index: number; match: string }[] = [];
 
     // Collect matches first
-    while ((match = pattern.exec(result)) !== null) {
+    let match = pattern.exec(result);
+    while (match !== null) {
       localMatches.push({ index: match.index, match: match[0] });
       if (rule.once) break;
+      match = pattern.exec(result);
     }
 
     if (localMatches.length > 0) {
       // Compute line numbers from original positions
       for (const m of localMatches) {
         const lineNum = result.substring(0, m.index).split("\n").length;
-        const replaced = typeof rule.replacement === "string"
-          ? m.match.replace(
-              new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", "")),
-              rule.replacement
-            )
-          : m.match.replace(
-              new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", "")),
-              rule.replacement as (substring: string, ...args: string[]) => string
-            );
+        const replaced =
+          typeof rule.replacement === "string"
+            ? m.match.replace(
+                new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", "")),
+                rule.replacement
+              )
+            : m.match.replace(
+                new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", "")),
+                rule.replacement as (substring: string, ...args: string[]) => string
+              );
         changes.push({
           line: lineNum,
           before: m.match.trim(),
@@ -253,31 +281,50 @@ export function migrateCode(code: string): MigrationResult {
 
   // Add warnings for things that need manual attention
   if (code.includes("ModelRenderable.builder")) {
-    warnings.push("`ModelRenderable.builder()` is completely removed in 3.0 — it has no direct equivalent. Use GLB/glTF assets with `rememberModelInstance(modelLoader, path)` instead.");
+    warnings.push(
+      "`ModelRenderable.builder()` is completely removed in 3.0 — it has no direct equivalent. Use GLB/glTF assets with `rememberModelInstance(modelLoader, path)` instead."
+    );
   }
   if (code.includes("rememberEngine") && !result.includes("rememberEngine")) {
     // Already using 3.0 style
   }
   if (code.includes("SceneView(") && !code.includes("engine")) {
-    warnings.push("`SceneView(...)` requires an explicit `engine` parameter in 3.0. Add `val engine = rememberEngine()` and pass it.");
+    warnings.push(
+      "`SceneView(...)` requires an explicit `engine` parameter in 3.0. Add `val engine = rememberEngine()` and pass it."
+    );
   }
   if (/node\w*\.destroy\(\)/.test(code) && /SceneView\s*[({]/.test(code)) {
-    warnings.push("Manual `node.destroy()` calls inside composable Scenes should be removed — Compose manages node lifecycle automatically.");
+    warnings.push(
+      "Manual `node.destroy()` calls inside composable Scenes should be removed — Compose manages node lifecycle automatically."
+    );
   }
   if (code.includes("ArFragment")) {
-    warnings.push("`ArFragment` is the old Android View-based AR component. In 3.0, use the `ARSceneView` composable in Jetpack Compose instead.");
+    warnings.push(
+      "`ArFragment` is the old Android View-based AR component. In 3.0, use the `ARSceneView` composable in Jetpack Compose instead."
+    );
   }
-  if (code.includes("Dispatchers.IO") && (code.includes("modelLoader") || code.includes("materialLoader"))) {
-    warnings.push("**CRITICAL**: Filament calls (modelLoader, materialLoader) on `Dispatchers.IO` will cause SIGABRT. Use `Dispatchers.Main` or `rememberModelInstance` in composables.");
+  if (
+    code.includes("Dispatchers.IO") &&
+    (code.includes("modelLoader") || code.includes("materialLoader"))
+  ) {
+    warnings.push(
+      "**CRITICAL**: Filament calls (modelLoader, materialLoader) on `Dispatchers.IO` will cause SIGABRT. Use `Dispatchers.Main` or `rememberModelInstance` in composables."
+    );
   }
   if (code.includes("setRenderable")) {
-    warnings.push("`setRenderable()` removed in 3.0. Pass model instances directly to `ModelNode(modelInstance = instance)` constructor.");
+    warnings.push(
+      "`setRenderable()` removed in 3.0. Pass model instances directly to `ModelNode(modelInstance = instance)` constructor."
+    );
   }
   if (code.includes(".setParent(")) {
-    warnings.push("`.setParent()` removed in 3.0. Declare child nodes as composables inside the parent's content block instead.");
+    warnings.push(
+      "`.setParent()` removed in 3.0. Declare child nodes as composables inside the parent's content block instead."
+    );
   }
   if (code.includes("onTapArPlane")) {
-    warnings.push("`onTapArPlane` callback removed. In 3.0, use `onTouchEvent` on `ARScene` and call `hitResult.createAnchor()` yourself.");
+    warnings.push(
+      "`onTapArPlane` callback removed. In 3.0, use `onTouchEvent` on `ARScene` and call `hitResult.createAnchor()` yourself."
+    );
   }
 
   return {

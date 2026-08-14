@@ -52,12 +52,8 @@ describe("isProxyConfigured", () => {
 
 describe("dispatchProxyToolCall", () => {
   it("points at the Cloudflare workers.dev gateway by default", () => {
-    expect(DEFAULT_GATEWAY_URL).toBe(
-      "https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp",
-    );
-    expect(DEFAULT_PRICING_URL).toBe(
-      "https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing",
-    );
+    expect(DEFAULT_GATEWAY_URL).toBe("https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp");
+    expect(DEFAULT_PRICING_URL).toBe("https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing");
   });
 
   it("returns a helpful stub when no API key is configured", async () => {
@@ -73,18 +69,19 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("forwards to the default gateway URL with a Bearer header", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          result: {
-            content: [{ type: "text", text: "remote ok" }],
-            isError: false,
-          },
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: {
+              content: [{ type: "text", text: "remote ok" }],
+              isError: false,
+            },
+          }),
+          { status: 200 }
+        )
     );
     const result = await dispatchProxyToolCall(
       "generate_scene",
@@ -92,7 +89,7 @@ describe("dispatchProxyToolCall", () => {
       {
         apiKey: "sv_live_abcdef",
         fetchImpl: fetchMock as unknown as typeof fetch,
-      },
+      }
     );
     expect(result.isError).toBe(false);
     expect(result.content[0].text).toBe("remote ok");
@@ -116,15 +113,16 @@ describe("dispatchProxyToolCall", () => {
 
   it("falls back to the env var when no explicit key is passed", async () => {
     process.env.SCENEVIEW_API_KEY = "sv_live_from_env";
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          result: { content: [{ type: "text", text: "ok" }] },
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: { content: [{ type: "text", text: "ok" }] },
+          }),
+          { status: 200 }
+        )
     );
     await dispatchProxyToolCall("get_ios_setup", undefined, {
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -137,11 +135,11 @@ describe("dispatchProxyToolCall", () => {
   it("respects SCENEVIEW_MCP_URL override", async () => {
     process.env.SCENEVIEW_API_KEY = "sv_live_env";
     process.env.SCENEVIEW_MCP_URL = "https://staging.example.com/mcp";
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [] } }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [] } }), {
+          status: 200,
+        })
     );
     await dispatchProxyToolCall("get_ios_setup", undefined, {
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -164,9 +162,7 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("shows an API-key-specific stub on HTTP 401", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("invalid key", { status: 401 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("invalid key", { status: 401 }));
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_bad",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -177,9 +173,7 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("shows an API-key-specific stub on HTTP 403", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("", { status: 403 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("", { status: 403 }));
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_bad",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -189,9 +183,7 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("shows a rate-limit stub on HTTP 429", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("slow down", { status: 429 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("slow down", { status: 429 }));
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_abc",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -202,9 +194,7 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("converts a 5xx response into a user-visible isError", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("internal", { status: 500 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("internal", { status: 500 }));
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_abc",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -215,9 +205,7 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("returns a clear stub when the gateway returns non-JSON", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("<html>oops</html>", { status: 200 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("<html>oops</html>", { status: 200 }));
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_abc",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -227,15 +215,16 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("surfaces a JSON-RPC error message when the gateway returns one", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          error: { code: -32002, message: "Access denied" },
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            error: { code: -32002, message: "Access denied" },
+          }),
+          { status: 200 }
+        )
     );
     const result = await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_abc",
@@ -246,40 +235,45 @@ describe("dispatchProxyToolCall", () => {
   });
 
   it("propagates isError from a successful gateway response", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          result: {
-            content: [{ type: "text", text: "bad input" }],
-            isError: true,
-          },
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: {
+              content: [{ type: "text", text: "bad input" }],
+              isError: true,
+            },
+          }),
+          { status: 200 }
+        )
     );
-    const result = await dispatchProxyToolCall("generate_scene", {}, {
-      apiKey: "sv_live_abc",
-      fetchImpl: fetchMock as unknown as typeof fetch,
-    });
+    const result = await dispatchProxyToolCall(
+      "generate_scene",
+      {},
+      {
+        apiKey: "sv_live_abc",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }
+    );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe("bad input");
   });
 
   it("defaults args to {} when undefined", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      new Response(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [] } }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [] } }), {
+          status: 200,
+        })
     );
     await dispatchProxyToolCall("get_ios_setup", undefined, {
       apiKey: "sv_live_abc",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
     const body = JSON.parse(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
     ) as { params: { arguments: Record<string, unknown> } };
     expect(body.params.arguments).toEqual({});
   });

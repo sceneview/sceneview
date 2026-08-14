@@ -1,16 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  searchModels,
   formatSearchResults,
-  type SearchModelsSuccess,
   type SearchModelsError,
+  type SearchModelsSuccess,
+  searchModels,
 } from "./search-models.js";
 
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
 const API_KEY_ENV = "SKETCHFAB_API_KEY";
 
-function mockSketchfabResponse(body: unknown, init: Partial<{ status: number; statusText: string; ok: boolean }> = {}) {
+function mockSketchfabResponse(
+  body: unknown,
+  init: Partial<{ status: number; statusText: string; ok: boolean }> = {}
+) {
   return {
     ok: init.ok ?? true,
     status: init.status ?? 200,
@@ -205,9 +208,11 @@ describe("searchModels — API error responses", () => {
     process.env[API_KEY_ENV] = "bad-key";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        mockSketchfabResponse({}, { ok: false, status: 401, statusText: "Unauthorized" }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          mockSketchfabResponse({}, { ok: false, status: 401, statusText: "Unauthorized" })
+        )
     );
 
     const result = await searchModels({ query: "robot" });
@@ -222,9 +227,11 @@ describe("searchModels — API error responses", () => {
     process.env[API_KEY_ENV] = "scoped-key";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        mockSketchfabResponse({}, { ok: false, status: 403, statusText: "Forbidden" }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          mockSketchfabResponse({}, { ok: false, status: 403, statusText: "Forbidden" })
+        )
     );
 
     const result = await searchModels({ query: "robot" });
@@ -235,9 +242,11 @@ describe("searchModels — API error responses", () => {
     process.env[API_KEY_ENV] = "fake-key";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        mockSketchfabResponse({}, { ok: false, status: 429, statusText: "Too Many Requests" }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          mockSketchfabResponse({}, { ok: false, status: 429, statusText: "Too Many Requests" })
+        )
     );
 
     const result = await searchModels({ query: "robot" });
@@ -251,9 +260,11 @@ describe("searchModels — API error responses", () => {
     process.env[API_KEY_ENV] = "fake-key";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        mockSketchfabResponse({}, { ok: false, status: 500, statusText: "Server Error" }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          mockSketchfabResponse({}, { ok: false, status: 500, statusText: "Server Error" })
+        )
     );
 
     const result = await searchModels({ query: "robot" });
@@ -283,7 +294,7 @@ describe("searchModels — API error responses", () => {
         json: async () => {
           throw new Error("Unexpected token");
         },
-      } as unknown as Response),
+      } as unknown as Response)
     );
 
     const result = await searchModels({ query: "robot" });
@@ -297,10 +308,7 @@ describe("searchModels — API error responses", () => {
 describe("searchModels — empty results", () => {
   it("returns an ok result with zero items when Sketchfab returns no matches", async () => {
     process.env[API_KEY_ENV] = "fake-key";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(mockSketchfabResponse({ results: [] })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockSketchfabResponse({ results: [] })));
 
     const result = await searchModels({ query: "nonexistentxyz" });
     expect(result.ok).toBe(true);
@@ -310,10 +318,7 @@ describe("searchModels — empty results", () => {
 
   it("tolerates a missing `results` field in the response", async () => {
     process.env[API_KEY_ENV] = "fake-key";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(mockSketchfabResponse({})),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockSketchfabResponse({})));
 
     const result = await searchModels({ query: "anything" });
     expect(result.ok).toBe(true);

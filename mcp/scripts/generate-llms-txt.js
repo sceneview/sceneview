@@ -23,7 +23,7 @@
  * generated fresh by these lifecycle scripts before anything imports it.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,8 +46,7 @@ for (const candidate of candidates) {
 
 if (!sourcePath) {
   console.error(
-    "[generate-llms-txt] could not locate llms.txt. Tried:\n  " +
-      candidates.join("\n  "),
+    "[generate-llms-txt] could not locate llms.txt. Tried:\n  " + candidates.join("\n  ")
   );
   process.exit(1);
 }
@@ -81,6 +80,4 @@ writeFileSync(outFile, `${header}\n${body}`);
 // interleaves with that JSON and intermittently truncates it, surfacing
 // as an `EOF` parse error in `package-files.test.ts` (see #1113). The
 // sibling generate-version.js already logs to stderr for the same reason.
-console.error(
-  `[generate-llms-txt] wrote ${outFile} (${content.length} chars from ${sourcePath})`,
-);
+console.error(`[generate-llms-txt] wrote ${outFile} (${content.length} chars from ${sourcePath})`);

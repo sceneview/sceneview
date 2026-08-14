@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { getDebugGuide, autoDetectIssue, DEBUG_CATEGORIES, type DebugCategory } from "./debug-issue.js";
+import { describe, expect, it } from "vitest";
+import {
+  autoDetectIssue,
+  DEBUG_CATEGORIES,
+  type DebugCategory,
+  getDebugGuide,
+} from "./debug-issue.js";
 
 describe("DEBUG_CATEGORIES", () => {
   it("has 11 categories", () => {
@@ -131,16 +136,12 @@ describe("autoDetectIssue", () => {
     expect(autoDetectIssue("ARSceneView black")).toBe("ar-not-working");
     // Augmented Reality phrasing alongside "black" — covers the spelt-out
     // variant a non-engineer reaches for.
-    expect(autoDetectIssue("Augmented Reality is dark on my phone")).toBe(
-      "ar-not-working",
-    );
+    expect(autoDetectIssue("Augmented Reality is dark on my phone")).toBe("ar-not-working");
   });
 
   it("detects ar-not-working from 'dark' synonym (#940 follow-up)", () => {
     expect(autoDetectIssue("AR mode is dark")).toBe("ar-not-working");
-    expect(autoDetectIssue("AR feed dimmed even after granting camera")).toBe(
-      "ar-not-working",
-    );
+    expect(autoDetectIssue("AR feed dimmed even after granting camera")).toBe("ar-not-working");
   });
 
   it("does NOT route pure-3D 'camera black' to AR (#940 follow-up)", () => {
@@ -148,11 +149,9 @@ describe("autoDetectIssue", () => {
     // bare /\bcamera\b.*\bblack\b/ regex over-matched here and shunted 3D
     // users to ARCore troubleshooting.
     expect(autoDetectIssue("the orbit camera in my 3D scene renders a black background")).not.toBe(
-      "ar-not-working",
+      "ar-not-working"
     );
-    expect(autoDetectIssue("3D scene camera shows black, no model")).not.toBe(
-      "ar-not-working",
-    );
+    expect(autoDetectIssue("3D scene camera shows black, no model")).not.toBe("ar-not-working");
   });
 
   it("detects model-not-showing from natural phrasings (#940)", () => {

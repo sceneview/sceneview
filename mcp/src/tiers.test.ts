@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  isProTool,
-  getToolTier,
-  getProToolNames,
   getFreeToolNames,
+  getProToolNames,
+  getToolTier,
+  isProTool,
   PRO_UPGRADE_MESSAGE,
   TOOL_TIERS,
 } from "./tiers.js";
@@ -44,12 +44,9 @@ const EXPECTED_FREE_TOOLS = [
 // ─── isProTool ──────────────────────────────────────────────────────────────
 
 describe("isProTool", () => {
-  it.each(EXPECTED_FREE_TOOLS)(
-    "returns false for free tool: %s",
-    (toolName) => {
-      expect(isProTool(toolName)).toBe(false);
-    },
-  );
+  it.each(EXPECTED_FREE_TOOLS)("returns false for free tool: %s", (toolName) => {
+    expect(isProTool(toolName)).toBe(false);
+  });
 
   it("returns true for pro tool: render_3d_preview", () => {
     expect(isProTool("render_3d_preview")).toBe(true);
@@ -202,7 +199,9 @@ describe("tier list integrity", () => {
 
 describe("PRO_UPGRADE_MESSAGE", () => {
   it("contains the upgrade URL", () => {
-    expect(PRO_UPGRADE_MESSAGE).toContain("https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing");
+    expect(PRO_UPGRADE_MESSAGE).toContain(
+      "https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing"
+    );
   });
 
   it("mentions Pro", () => {

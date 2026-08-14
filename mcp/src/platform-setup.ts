@@ -10,7 +10,15 @@ import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generate
 export type Platform = "android" | "ios" | "web" | "flutter" | "react-native" | "desktop" | "tv";
 export type SetupType = "3d" | "ar";
 
-export const PLATFORM_IDS: Platform[] = ["android", "ios", "web", "flutter", "react-native", "desktop", "tv"];
+export const PLATFORM_IDS: Platform[] = [
+  "android",
+  "ios",
+  "web",
+  "flutter",
+  "react-native",
+  "desktop",
+  "tv",
+];
 
 interface PlatformSetup {
   name: string;
@@ -505,7 +513,7 @@ class My3DScreen extends StatelessWidget {
       // Android only today — the iOS path is wired but no entity resolves, so
       // this never fires (#3045). Not the shared RealityKit hit test: React
       // Native reaches the same hook and fires on iOS (#3086).
-      onTap: (nodeName) => print('tapped: \$nodeName'),
+      onTap: (nodeName) => print('tapped: $nodeName'),
     );
   }
 }
@@ -582,10 +590,10 @@ class MyARScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ARSceneView(
       planeDetection: true,
-      onPlaneDetected: (planeType) => print('plane: \$planeType'),
+      onPlaneDetected: (planeType) => print('plane: $planeType'),
       // Android only: SceneViewSwift's ARSceneView exposes no entity
       // hit-test hook, so on iOS this never fires (#2051).
-      onTap: (nodeName) => print('tapped: \$nodeName'),
+      onTap: (nodeName) => print('tapped: $nodeName'),
     );
   }
 }
@@ -855,14 +863,14 @@ const SETUPS: Record<Platform, PlatformSetup> = {
   android: {
     name: "Android (Jetpack Compose)",
     renderer: "Filament (OpenGL ES / Vulkan)",
-    status: "Stable (v${LATEST_SCENEVIEW_RELEASE})",
+    status: `Stable (v${LATEST_SCENEVIEW_RELEASE})`,
     guide3d: ANDROID_3D,
     guideAr: ANDROID_AR,
   },
   ios: {
     name: "iOS / macOS / visionOS (SwiftUI)",
     renderer: "RealityKit (Metal)",
-    status: "Alpha (v${LATEST_SCENEVIEW_RELEASE})",
+    status: `Alpha (v${LATEST_SCENEVIEW_RELEASE})`,
     guide3d: IOS_3D,
     guideAr: IOS_AR,
   },
@@ -923,5 +931,9 @@ export function listPlatforms(): string {
     const s = SETUPS[id];
     return `| ${s.name} | ${s.renderer} | ${s.status} | Yes | ${s.guideAr ? "Yes" : "No"} |`;
   }).join("\n");
-  return header + rows + "\n\nUse `get_platform_setup` with a specific platform for full setup instructions.";
+  return (
+    header +
+    rows +
+    "\n\nUse `get_platform_setup` with a specific platform for full setup instructions."
+  );
 }

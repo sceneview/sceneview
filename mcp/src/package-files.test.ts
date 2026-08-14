@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -52,8 +52,7 @@ function collectLocalImports(entry: string): Set<string> {
 
     // Match both `import ... from "./foo.js"` and `import("./foo.js")`.
     const importRegex = /(?:import\s+[^'"]*?from\s+|import\()\s*['"](\.\.?\/[^'"]+)['"]/g;
-    let match: RegExpExecArray | null;
-    while ((match = importRegex.exec(source)) !== null) {
+    for (const match of source.matchAll(importRegex)) {
       const specifier = match[1];
       // We only care about `.js` specifiers (ES modules rewrite .ts→.js at build)
       if (!specifier.endsWith(".js")) continue;
@@ -101,15 +100,15 @@ function toDistPaths(srcPaths: Set<string>): string[] {
  * is a no-op-ish fast path by the time pack walks the tree.
  */
 function getTarballFiles(): string[] {
-  const stdout = execFileSync(
-    "npm",
-    ["pack", "--dry-run", "--json", "--ignore-scripts"],
-    { cwd: MCP_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
-  );
+  const stdout = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    cwd: MCP_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
   const trimmed = stdout.trim();
   if (!trimmed.startsWith("[")) {
     throw new Error(
-      `npm pack --json did not return a JSON array on stdout:\n${trimmed.slice(0, 400)}`,
+      `npm pack --json did not return a JSON array on stdout:\n${trimmed.slice(0, 400)}`
     );
   }
   let parsed: Array<{ files: Array<{ path: string }> }>;
@@ -118,7 +117,7 @@ function getTarballFiles(): string[] {
   } catch (err) {
     throw new Error(
       `Failed to parse npm pack --json stdout (len=${trimmed.length}): ${(err as Error).message}\n` +
-        `First 400 chars:\n${trimmed.slice(0, 400)}`,
+        `First 400 chars:\n${trimmed.slice(0, 400)}`
     );
   }
   if (!Array.isArray(parsed) || parsed.length === 0) {
@@ -149,7 +148,7 @@ describe("npm tarball includes every runtime module imported by src/index.ts", (
     const missing = requiredDistPaths.filter((p) => !tarballSet.has(p));
     expect(
       missing,
-      `${missing.length} dist files are imported by src/index.ts (directly or indirectly) but missing from the npm tarball. Update the "files" array in package.json. Missing:\n${missing.join("\n")}`,
+      `${missing.length} dist files are imported by src/index.ts (directly or indirectly) but missing from the npm tarball. Update the "files" array in package.json. Missing:\n${missing.join("\n")}`
     ).toEqual([]);
   });
 

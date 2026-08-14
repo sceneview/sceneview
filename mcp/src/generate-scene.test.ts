@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { generateScene, formatGeneratedScene } from "./generate-scene.js";
+import { describe, expect, it } from "vitest";
+import { formatGeneratedScene, generateScene } from "./generate-scene.js";
+import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 describe("generateScene", () => {
   it("generates a scene with a table and two chairs", () => {
@@ -99,5 +100,24 @@ describe("formatGeneratedScene", () => {
     const result = generateScene("a table");
     const formatted = formatGeneratedScene(result);
     expect(formatted).toContain("3D (SceneView)");
+  });
+});
+
+// #3054 — see samples.test.ts. The dependency line handed to the caller was a
+// double-quoted `"io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}"`,
+// i.e. an un-resolvable Gradle coordinate in every generated scene.
+describe("version interpolation (#3054)", () => {
+  it("emits a real Maven coordinate for 3D and for AR", () => {
+    const scene = generateScene("a table");
+    expect(scene.dependencies).toContain(
+      `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`
+    );
+    expect(formatGeneratedScene(scene)).not.toContain("LATEST_SCENEVIEW_RELEASE");
+
+    const arScene = generateScene("AR scene with a chair placed in real world");
+    expect(arScene.dependencies).toContain(
+      `io.github.sceneview:arsceneview:${LATEST_SCENEVIEW_RELEASE}`
+    );
+    expect(formatGeneratedScene(arScene)).not.toContain("LATEST_SCENEVIEW_RELEASE");
   });
 });

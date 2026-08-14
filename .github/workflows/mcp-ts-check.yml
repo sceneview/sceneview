@@ -1,0 +1,154 @@
+name: MCP TypeScript check
+
+# Lints and type-checks the `sceneview-mcp` server's TypeScript.
+#
+# WHY THIS EXISTS
+# ---------------
+# `mcp/package.json` carried `biome` / `biome:fix` scripts that NO workflow
+# ever invoked — verified by grep over `.github/workflows/`: `rn-ts-check.yml`
+# was the only file in there that mentioned Biome at all. The linter therefore
+# ran only when a human remembered to type the command. That was an honest
+# deferral at adoption time (CHANGELOG: "Not wired to CI for now — baseline
+# reveals 216 errors / 236 warnings to clean up first"), not an oversight, but
+# it left `mcp/` as the last package in the repo advertising a gate that had
+# never once run. #3052 closed exactly this case for the React Native bridge.
+#
+# The deferral was not free. Re-measured on Biome 2.5.7 the baseline was down
+# to 108 errors / 154 warnings, and among them sat a real user-facing defect:
+# 32 double-quoted strings in `samples.ts`, `generate-scene.ts` and
+# `platform-setup.ts` contained `${LATEST_SCENEVIEW_RELEASE}` — a template
+# placeholder inside a string literal that never interpolates, so the MCP
+# handed its callers `io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}`
+# verbatim as the Gradle coordinate to use. `noTemplateCurlyInString` had been
+# reporting it the whole time, to nobody. #3054 cleared the error baseline and
+# wired this job so the next one is caught.
+#
+# tsc IS PART OF THE GAP, NOT A BONUS
+# -----------------------------------
+# `npm test` (run by ci.yml's `Quality gate (full)` job) is vitest, which does
+# not type-check, and `npm run build` only ran inside `mcp-publish.yml` /
+# `release.yml` — i.e. at publish time, on a tag. A type error in `mcp/src`
+# could reach npm having been compiled only on a contributor's laptop, the
+# same shape `rn-ts-check.yml` closed for the RN bridge.
+#
+# NOT SILENTLY SKIPPABLE
+# ----------------------
+# Two ways this gate could quietly stop guarding anything, and what stops each:
+#   1. A path filter that misses the module — the repo's "skipped -> green for
+#      life" trap. The `paths:` list covers the TypeScript surface, the
+#      generator scripts, the manifest and lockfile, `tsconfig.json`, the
+#      workflow itself, and `biome.json` (whose `files.includes` decides what
+#      Biome even looks at).
+#   2. A vacuous pass — see the assert step. Biome's exit code is NOT
+#      sufficient: it exits 1 only when NOTHING matched at all, so dropping a
+#      directory from `biome.json`'s `includes` leaves it at 0 while silently
+#      checking less. The assert compares the number of lintable files on disk
+#      against the count Biome reports.
+#
+# WHAT THIS JOB DOES NOT COVER
+# ----------------------------
+# `website-static/js/sceneview.js` is in `biome.json`'s `files.includes` and is
+# now reached by no npm script and no CI job. It was only ever checked because
+# `mcp`'s script took no path argument and swept the whole config — which is
+# the very bug #3054 fixed (it also meant `mcp/` linted the RN sources with its
+# own Biome binary). That file has its own ~120-error baseline; wiring it is a
+# separate piece of work, deliberately not smuggled in here.
+#
+# NOT IN `ci-gate.yml`'s `REQUIRED_CHECKS`
+# ----------------------------------------
+# Same rule as `rn-ts-check.yml` and `snippets-check.yml`: this is a positively
+# path-filtered workflow. When it runs, its check run is picked up by the
+# head-SHA poll and gates the merge; when the filter skips it, no check run
+# registers and the aggregator does not wait. Adding its name to
+# `REQUIRED_CHECKS` would make every non-MCP PR block on a check that never
+# fires.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mcp/src/**'
+      - 'mcp/scripts/**'
+      - 'mcp/package.json'
+      - 'mcp/package-lock.json'
+      - 'mcp/tsconfig.json'
+      - 'biome.json'
+      - '.github/workflows/mcp-ts-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/src/**'
+      - 'mcp/scripts/**'
+      - 'mcp/package.json'
+      - 'mcp/package-lock.json'
+      - 'mcp/tsconfig.json'
+      - 'biome.json'
+      - '.github/workflows/mcp-ts-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-ts-check-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ts-check:
+    name: MCP TypeScript lint + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Full checkout, not sparse: `npm run build`'s prebuild step generates
+      # `mcp/src/generated/*` from `llms.txt`, the `.api` dumps and
+      # `flutter/sceneview_flutter/README.md`, all outside `mcp/`.
+      - uses: actions/checkout@v7
+
+      # Node 20 + npm cache + `npm ci` in mcp/ — the same composite every other
+      # MCP job uses, so the Node version stays defined in one place.
+      - uses: ./.github/actions/setup-mcp
+
+      # `npm run lint` cd's to the repo root and runs the package-local Biome
+      # binary against `mcp/src` and `mcp/scripts`, so the root `biome.json`
+      # (formatter + linter + assists) is the single rule source. The explicit
+      # paths are load-bearing: without them Biome sweeps every entry in
+      # `files.includes`, including another package's sources.
+      - name: Lint (Biome)
+        working-directory: mcp
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee "$RUNNER_TEMP/biome.log"
+
+      # A green Biome exit does NOT prove Biome looked at this package. Count
+      # the lintable files on disk and require Biome to have checked exactly
+      # that many. The exclusions mirror `biome.json`: generated sources and
+      # test fixtures are not linted.
+      - name: Assert Biome checked every MCP source file
+        run: |
+          set -euo pipefail
+          TS="$(find mcp/src -name '*.ts' -not -path '*/generated/*' -not -path '*/__fixtures__/*' | wc -l | tr -d ' ')"
+          JS="$(find mcp/scripts -name '*.js' | wc -l | tr -d ' ')"
+          EXPECTED=$((TS + JS))
+          CHECKED="$(grep -oE 'Checked [0-9]+ files?' "$RUNNER_TEMP/biome.log" | head -1 | grep -oE '[0-9]+' || true)"
+          echo "Lintable files on disk: $EXPECTED — Biome checked: ${CHECKED:-<none reported>}"
+          if [ "$EXPECTED" -lt 1 ]; then
+            echo "::error::No lintable source found under mcp/src or mcp/scripts — the package layout moved and this gate is guarding nothing."
+            exit 1
+          fi
+          if [ -z "$CHECKED" ]; then
+            echo "::error::Biome printed no 'Checked N files' line — its output format changed and this assertion can no longer verify coverage."
+            exit 1
+          fi
+          if [ "$CHECKED" -ne "$EXPECTED" ]; then
+            echo "::error::Biome checked $CHECKED of $EXPECTED files. A path is missing from biome.json's files.includes, or mcp/package.json's lint paths — this job would otherwise have passed while leaving code unlinted."
+            exit 1
+          fi
+
+      # `npm run build` = prebuild generators + `tsc`. Emitting to `dist/` (as
+      # opposed to `tsc --noEmit`) is deliberate: it is byte-for-byte what
+      # `mcp-publish.yml` runs before publishing, so what is checked here is
+      # what ships.
+      - name: Type-check (tsc)
+        working-directory: mcp
+        run: npm run build

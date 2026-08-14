@@ -15,7 +15,7 @@
  * into the generated file.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,14 +61,16 @@ const sdkVersion = sdkMatch[1].trim();
 // that fails to build.
 const flutterReadme = readFileSync(
   resolve(mcpRoot, "..", "flutter", "sceneview_flutter", "README.md"),
-  "utf8",
+  "utf8"
 );
-const pubMatch = flutterReadme.match(/^\s*flutter_sceneview:\s*\^([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)/m);
+const pubMatch = flutterReadme.match(
+  /^\s*flutter_sceneview:\s*\^([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)/m
+);
 if (!pubMatch) {
   console.error(
     "[generate-version] FATAL: no `flutter_sceneview: ^X.Y.Z` line in " +
       "flutter/sceneview_flutter/README.md — that line is the published " +
-      "pub.dev coordinate and must not be inferred from VERSION_NAME",
+      "pub.dev coordinate and must not be inferred from VERSION_NAME"
   );
   process.exit(1);
 }
@@ -97,7 +99,7 @@ writeFileSync(outPath, content, "utf8");
 // pipes stdout through, and the package-files test parses that JSON).
 console.error(
   `[generate-version] wrote ${outPath} ` +
-    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion})`,
+    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion})`
 );
 
 // Keep the `android-ok` test fixture's SceneView pin in sync with the SDK
@@ -124,24 +126,17 @@ console.error(
 // would flip those tests to false-positive.
 const fixturePath = resolve(
   mcpRoot,
-  "src/__fixtures__/analyze-project/android-ok/build.gradle.kts",
+  "src/__fixtures__/analyze-project/android-ok/build.gradle.kts"
 );
 try {
   const current = readFileSync(fixturePath, "utf8");
-  const updated = current.replace(
-    /(io\.github\.sceneview:sceneview:)[^"'\s)]+/,
-    `$1${sdkVersion}`,
-  );
+  const updated = current.replace(/(io\.github\.sceneview:sceneview:)[^"'\s)]+/, `$1${sdkVersion}`);
   if (updated !== current) {
     writeFileSync(fixturePath, updated, "utf8");
-    console.error(
-      `[generate-version] synced fixture ${fixturePath} -> sceneview:${sdkVersion}`,
-    );
+    console.error(`[generate-version] synced fixture ${fixturePath} -> sceneview:${sdkVersion}`);
   }
 } catch (err) {
   // Non-fatal — the fixture is a test artefact, not a runtime dependency.
   // Log loudly so a CI failure can still surface what happened.
-  console.error(
-    `[generate-version] WARNING: could not sync fixture (${err.message})`,
-  );
+  console.error(`[generate-version] WARNING: could not sync fixture (${err.message})`);
 }

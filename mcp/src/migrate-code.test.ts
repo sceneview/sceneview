@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { migrateCode, formatMigrationResult } from "./migrate-code.js";
+import { describe, expect, it } from "vitest";
+import { formatMigrationResult, migrateCode } from "./migrate-code.js";
 
 describe("migrateCode", () => {
   it("does not change SceneView() (already correct 3.0 name)", () => {
@@ -32,7 +32,9 @@ describe("migrateCode", () => {
   });
 
   it("fixes LightNode trailing lambda to apply = {", () => {
-    const result = migrateCode(`LightNode(engine = engine, type = LightManager.Type.DIRECTIONAL) {`);
+    const result = migrateCode(
+      `LightNode(engine = engine, type = LightManager.Type.DIRECTIONAL) {`
+    );
     expect(result.migratedCode).toContain("apply = {");
   });
 
@@ -98,7 +100,9 @@ launch(Dispatchers.IO) {
     modelLoader.loadModelAsync("models/chair.glb")
 }`;
     const result = migrateCode(code);
-    expect(result.warnings.some((w) => w.includes("SIGABRT") || w.includes("Dispatchers.IO"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("SIGABRT") || w.includes("Dispatchers.IO"))).toBe(
+      true
+    );
   });
 
   it("returns no changes for 3.x code", () => {

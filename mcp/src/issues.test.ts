@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COMMON_ISSUES, getCommonIssuesSummary, searchCommonIssues } from "./issues.js";
 
 // We test the private formatIssues logic by calling fetchKnownIssues with a

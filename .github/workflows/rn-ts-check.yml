@@ -26,7 +26,7 @@ name: React Native TypeScript check
 # WHY BIOME, NOT ESLINT
 # ---------------------
 # The repo already has exactly one JS/TS linter: Biome v2, configured by the
-# repo-root `biome.json` and consumed by `mcp/` via `npm run biome`. Adding
+# repo-root `biome.json` and consumed by `mcp/` via `npm run lint`. Adding
 # ESLint to satisfy a stale script would have meant a second linter, a second
 # config and a second rule set inside one repo. Instead the RN sources were
 # added to `biome.json`'s `files.includes` and the package's `lint` script

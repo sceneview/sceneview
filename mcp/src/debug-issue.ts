@@ -42,7 +42,7 @@ const DEBUG_GUIDES: Record<DebugCategory, { title: string; guide: string }> = {
 
 1. **Is \`rememberModelInstance\` returning null?**
    - It returns \`null\` while loading AND if the file fails to load.
-   - Add a log: \`Log.d("SV", "model: \$modelInstance")\`
+   - Add a log: \`Log.d("SV", "model: $modelInstance")\`
    - Show a loading indicator while null.
 
 2. **Is the asset path correct?**
@@ -168,7 +168,7 @@ fun DebugModelViewer() {
 
 5. **Objects not appearing on tap?**
    - Is \`onTouchEvent\` wired up?
-   - Is \`hitResult\` null? Log it: \`Log.d("AR", "hitResult: \$hitResult")\`
+   - Is \`hitResult\` null? Log it: \`Log.d("AR", "hitResult: $hitResult")\`
    - Are you creating an anchor? \`hitResult.createAnchor()\` must be called.
    - Is the model loaded? Check \`rememberModelInstance\` is not null.
 
@@ -633,7 +633,7 @@ SceneView(
        instance.animator?.let { animator ->
            Log.d("SV", "Animation count: \${animator.animationCount}")
            for (i in 0 until animator.animationCount) {
-               Log.d("SV", "Animation \$i: \${animator.getAnimationName(i)}")
+               Log.d("SV", "Animation $i: \${animator.getAnimationName(i)}")
            }
        }
    }
@@ -698,11 +698,26 @@ export function autoDetectIssue(description: string): DebugCategory | null {
   const lower = description.toLowerCase();
 
   // Threading issues → crash category (very common, check early)
-  if (lower.includes("wrong thread") || lower.includes("off main thread") || lower.includes("dispatchers.io") || lower.includes("background thread")) {
+  if (
+    lower.includes("wrong thread") ||
+    lower.includes("off main thread") ||
+    lower.includes("dispatchers.io") ||
+    lower.includes("background thread")
+  ) {
     return "crash";
   }
 
-  if (lower.includes("not showing") || lower.includes("invisible") || lower.includes("can't see") || lower.includes("model doesn't appear") || lower.includes("model not visible") || lower.includes("nothing shows up") || lower.includes("model is null") || lower.includes("remembermodelinstance returns null") || lower.includes("no model")) {
+  if (
+    lower.includes("not showing") ||
+    lower.includes("invisible") ||
+    lower.includes("can't see") ||
+    lower.includes("model doesn't appear") ||
+    lower.includes("model not visible") ||
+    lower.includes("nothing shows up") ||
+    lower.includes("model is null") ||
+    lower.includes("remembermodelinstance returns null") ||
+    lower.includes("no model")
+  ) {
     return "model-not-showing";
   }
   // AR-not-working catches "the AR camera feed is dark" and the half-dozen
@@ -722,11 +737,12 @@ export function autoDetectIssue(description: string): DebugCategory | null {
   // false-positives on "the orbit camera in my 3D scene renders a black
   // background" (a 3D-only issue that should route to model-not-showing
   // or material). Caught by the #940 follow-up review.
-  const hasArContext = /\b(ar|arscene|arsceneview|arcore|arkit|arcore)\b/.test(lower)
-    || lower.includes("augmented reality");
+  const hasArContext =
+    /\b(ar|arscene|arsceneview|arcore|arkit|arcore)\b/.test(lower) ||
+    lower.includes("augmented reality");
   const arBlackHints =
-    (hasArContext && /\b(black|dark|dimmed)\b/.test(lower))
-    || /\b(ar|arscene|arsceneview|arcore)\b.*\b(black|dark|dimmed)\b/.test(lower);
+    (hasArContext && /\b(black|dark|dimmed)\b/.test(lower)) ||
+    /\b(ar|arscene|arsceneview|arcore)\b.*\b(black|dark|dimmed)\b/.test(lower);
   if (
     lower.includes("ar not") ||
     lower.includes("ar doesn't") ||
@@ -741,31 +757,120 @@ export function autoDetectIssue(description: string): DebugCategory | null {
   ) {
     return "ar-not-working";
   }
-  if (lower.includes("crash") || lower.includes("sigabrt") || lower.includes("native crash") || lower.includes("fatal") || lower.includes("exception") || lower.includes("destroy") || lower.includes("double free") || lower.includes("segfault") || (lower.includes("oom") && !lower.includes("zoom")) || lower.includes("out of memory") || lower.includes("nullpointerexception") || lower.includes("npe")) {
+  if (
+    lower.includes("crash") ||
+    lower.includes("sigabrt") ||
+    lower.includes("native crash") ||
+    lower.includes("fatal") ||
+    lower.includes("exception") ||
+    lower.includes("destroy") ||
+    lower.includes("double free") ||
+    lower.includes("segfault") ||
+    (lower.includes("oom") && !lower.includes("zoom")) ||
+    lower.includes("out of memory") ||
+    lower.includes("nullpointerexception") ||
+    lower.includes("npe")
+  ) {
     return "crash";
   }
-  if (lower.includes("slow") || lower.includes("fps") || lower.includes("lag") || lower.includes("jank") || lower.includes("performance") || lower.includes("memory") || lower.includes("stuttering") || lower.includes("frame drop") || lower.includes("choppy") || lower.includes("battery drain")) {
+  if (
+    lower.includes("slow") ||
+    lower.includes("fps") ||
+    lower.includes("lag") ||
+    lower.includes("jank") ||
+    lower.includes("performance") ||
+    lower.includes("memory") ||
+    lower.includes("stuttering") ||
+    lower.includes("frame drop") ||
+    lower.includes("choppy") ||
+    lower.includes("battery drain")
+  ) {
     return "performance";
   }
-  if (lower.includes("build") || lower.includes("gradle") || lower.includes("compile") || lower.includes("dependency") || lower.includes("cannot resolve") || lower.includes("duplicate class") || lower.includes("java version") || lower.includes("agp") || lower.includes("version mismatch") || lower.includes("unresolved reference")) {
+  if (
+    lower.includes("build") ||
+    lower.includes("gradle") ||
+    lower.includes("compile") ||
+    lower.includes("dependency") ||
+    lower.includes("cannot resolve") ||
+    lower.includes("duplicate class") ||
+    lower.includes("java version") ||
+    lower.includes("agp") ||
+    lower.includes("version mismatch") ||
+    lower.includes("unresolved reference")
+  ) {
     return "build-error";
   }
-  if (lower.includes("black screen") || lower.includes("blank") || lower.includes("nothing renders") || lower.includes("no rendering") || lower.includes("screen is black") || lower.includes("empty screen")) {
+  if (
+    lower.includes("black screen") ||
+    lower.includes("blank") ||
+    lower.includes("nothing renders") ||
+    lower.includes("no rendering") ||
+    lower.includes("screen is black") ||
+    lower.includes("empty screen")
+  ) {
     return "black-screen";
   }
-  if (lower.includes("material") || lower.includes("texture") || lower.includes("white model") || lower.includes("untextured") || lower.includes("pink model") || lower.includes("filamat") || lower.includes("transparent") || lower.includes("alpha")) {
+  if (
+    lower.includes("material") ||
+    lower.includes("texture") ||
+    lower.includes("white model") ||
+    lower.includes("untextured") ||
+    lower.includes("pink model") ||
+    lower.includes("filamat") ||
+    lower.includes("transparent") ||
+    lower.includes("alpha")
+  ) {
     return "material";
   }
-  if (lower.includes("animation") || lower.includes("animate") || lower.includes("morph") || lower.includes("bone") || lower.includes("skeleton") || lower.includes("keyframe") || lower.includes("animator")) {
+  if (
+    lower.includes("animation") ||
+    lower.includes("animate") ||
+    lower.includes("morph") ||
+    lower.includes("bone") ||
+    lower.includes("skeleton") ||
+    lower.includes("keyframe") ||
+    lower.includes("animator")
+  ) {
     return "animation";
   }
-  if (lower.includes("dark") || lower.includes("bright") || lower.includes("light") || lower.includes("shadow") || lower.includes("overexposed") || lower.includes("hdr") || lower.includes("environment") || lower.includes("ibl")) {
+  if (
+    lower.includes("dark") ||
+    lower.includes("bright") ||
+    lower.includes("light") ||
+    lower.includes("shadow") ||
+    lower.includes("overexposed") ||
+    lower.includes("hdr") ||
+    lower.includes("environment") ||
+    lower.includes("ibl")
+  ) {
     return "lighting";
   }
-  if (lower.includes("touch") || lower.includes("gesture") || lower.includes("tap") || lower.includes("drag") || lower.includes("rotate") || lower.includes("interact") || lower.includes("click") || lower.includes("select") || lower.includes("pinch") || lower.includes("zoom")) {
+  if (
+    lower.includes("touch") ||
+    lower.includes("gesture") ||
+    lower.includes("tap") ||
+    lower.includes("drag") ||
+    lower.includes("rotate") ||
+    lower.includes("interact") ||
+    lower.includes("click") ||
+    lower.includes("select") ||
+    lower.includes("pinch") ||
+    lower.includes("zoom")
+  ) {
     return "gestures";
   }
-  if (lower.includes("ios") || lower.includes("swift") || lower.includes("xcode") || lower.includes("spm") || lower.includes("realitykit") || lower.includes("usdz") || lower.includes("visionos") || lower.includes("macos") || lower.includes("apple")) {
+  if (
+    lower.includes("ios") ||
+    lower.includes("swift") ||
+    lower.includes("xcode") ||
+    lower.includes("spm") ||
+    lower.includes("realitykit") ||
+    lower.includes("usdz") ||
+    lower.includes("visionos") ||
+    lower.includes("macos") ||
+    lower.includes("apple")
+  ) {
     return "ios";
   }
 

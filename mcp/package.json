@@ -65,8 +65,8 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "node scripts/generate-llms-txt.js && node scripts/generate-version.js && node scripts/generate-symbols.js && vitest run",
-    "biome": "cd .. && mcp/node_modules/.bin/biome check",
-    "biome:fix": "cd .. && mcp/node_modules/.bin/biome check --write"
+    "lint": "cd .. && mcp/node_modules/.bin/biome check mcp/src mcp/scripts",
+    "lint:fix": "cd .. && mcp/node_modules/.bin/biome check --write mcp/src mcp/scripts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
