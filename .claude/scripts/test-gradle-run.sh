@@ -529,6 +529,134 @@ else
     done
 fi
 
+# ── Foreign-tree contamination (#3159) ──────────────────────────────────────
+# Both directions matter as much as they do for the pattern table above: miss
+# the contamination and a verdict is issued about code that is not being pushed;
+# fire on a clean log and every gate run on this repo turns into COULD NOT RUN.
+echo ""
+echo "foreign-tree detection (#3159):"
+
+FT_PROJ="$TMP/proj/sceneview"
+mkdir -p "$FT_PROJ"
+
+# Verbatim from the api-check.log measured on 2026-08-14: this worktree's gate
+# run, carrying another clone's compiler diagnostics.
+cat > "$TMP/foreign.log" <<'LOG'
+> Task :sceneview-core:compileKotlinJs
+w: file:///private/tmp/sv-3136/sceneview-core/src/commonMain/kotlin/io/github/sceneview/triangulation/Earcut.kt:391:22 warning: variable is never used
+BUILD SUCCESSFUL in 2m 4s
+LOG
+
+# The local tree's OWN diagnostics, same shape, same `/src/` — must NOT trip.
+{
+    printf '> Task :sceneview:compileReleaseKotlin\n'
+    printf 'w: file://%s/sceneview/src/main/kotlin/io/github/sceneview/Scene.kt:12:5 warning: unused\n' "$FT_PROJ"
+    printf 'BUILD SUCCESSFUL in 31s\n'
+} > "$TMP/local.log"
+
+# A dependency cache path — absolute, foreign, and utterly normal. The pattern
+# must be narrow enough to ignore it, or the gate never passes on any host.
+cat > "$TMP/cachepaths.log" <<'LOG'
+> Task :sceneview:compileReleaseKotlin
+Resolving /Users/someone/.gradle/caches/modules-2/files-2.1/androidx.core/core/1.13.0/abc/core-1.13.0.aar
+BUILD SUCCESSFUL in 12s
+LOG
+
+ft() { gradle_foreign_tree_paths "$1" "$FT_PROJ"; }
+
+if [ -n "$(ft "$TMP/foreign.log")" ]; then
+    ok "another clone's source path is detected"
+else
+    bad "another clone's source path went UNDETECTED — a verdict could be issued about the wrong tree"
+fi
+for f in local cachepaths; do
+    if [ -z "$(ft "$TMP/$f.log")" ]; then
+        ok "$f.log is not flagged"
+    else
+        bad "$f.log was flagged as foreign — every gate run on this host would become COULD NOT RUN"
+    fi
+done
+
+# The measured clean-run baseline: 0 hits across every log the gate writes. If
+# this repo's real logs ever trip the check, the gate is unusable, so assert it
+# against the actual artefacts when a previous run left them behind.
+REAL_LOGS="$(ls -td "${TMPDIR:-/tmp}"/sceneview-pre-push/*/ 2>/dev/null | head -1)"
+if [ -n "$REAL_LOGS" ] && [ -d "$REAL_LOGS" ]; then
+    ft_hits=0
+    for f in "$REAL_LOGS"*.log; do
+        [ -f "$f" ] || continue
+        [ -z "$(gradle_foreign_tree_paths "$f" "$SCRIPT_DIR/../..")" ] || ft_hits=$((ft_hits + 1))
+    done
+    if [ "$ft_hits" -eq 0 ]; then
+        ok "no real gate log in $REAL_LOGS trips the check"
+    else
+        bad "$ft_hits real gate log(s) trip the check — it would block this repo's own clean runs"
+    fi
+fi
+
+# `gradle_report_failure` must route contamination to INCOMPLETE, never to
+# ERRORS — including when a proof cue for a REAL finding is present in the
+# (untrustworthy) log. That combination is the whole point: the cue may be the
+# other build's.
+printf 'API check failed for project sceneview\n' >> "$TMP/foreign.log"
+# gradle_report_failure resolves "this tree" from $PWD, and it mutates the
+# caller's counters — so it has to run in THIS shell, not a subshell.
+ERRORS=0; INCOMPLETE=0; SETUP_FIX=""
+cd "$FT_PROJ" || exit 1
+gradle_report_failure "apiCheck" "$TMP/foreign.log" 0 \
+    "apiCheck failed — public-API surface drifted:" "" "" \
+    "(API check failed for project|Expected file with API declarations)" > "$TMP/report.out" 2>&1
+cd "$SCRIPT_DIR" || exit 1
+if [ "$ERRORS" -eq 0 ] && [ "$INCOMPLETE" -eq 1 ]; then
+    ok "a contaminated log is graded COULD NOT RUN, not a public-API finding"
+else
+    bad "contaminated log gave ERRORS=$ERRORS INCOMPLETE=$INCOMPLETE — expected 0/1"
+fi
+if grep -q 'DIFFERENT checkout' "$TMP/report.out"; then
+    ok "the report names the real cause"
+else
+    bad "the report does not name the contamination"
+fi
+
+if [ -n "$(gradle_foreign_tree_paths /dev/null "$FT_PROJ")" ]; then
+    bad "an empty log reported foreign paths"
+else
+    ok "an empty log reports nothing"
+fi
+
+# Negative control, same discipline as the pattern-table mutation above: break
+# each half of the detector in a copy of the library and require the cases to
+# notice. Without this, the three assertions above would still pass against a
+# detector that had quietly stopped detecting.
+#
+#   A — drop the `/src/` narrowing: the dependency-cache path gets flagged, and
+#       the gate stops passing on any host.
+#   B — drop the project-dir exclusion: nothing is ever foreign, and the bug
+#       #3159 describes is back with the tests still green.
+ft_mutant() { # name sed-expr fixture expectation(detect|silent)
+    local name="$1" expr="$2" fixture="$3" want="$4"
+    local m="$TMP/mutant-gradle-run.sh"
+    sed "$expr" "$LIB" > "$m"
+    if cmp -s "$m" "$LIB"; then
+        bad "mutant \"$name\" changed nothing — it no longer applies to the lib"
+        return
+    fi
+    local got
+    got="$(bash -c 'source "$1" >/dev/null 2>&1; gradle_foreign_tree_paths "$2" "$3"' _ "$m" "$TMP/$fixture.log" "$FT_PROJ")"
+    case "$want" in
+        detect) [ -n "$got" ] && ok "mutant \"$name\" caught ($fixture now flagged)" \
+                              || bad "mutant \"$name\" SURVIVED — $fixture stayed clean" ;;
+        silent) [ -z "$got" ] && ok "mutant \"$name\" caught ($fixture no longer detected)" \
+                              || bad "mutant \"$name\" SURVIVED — $fixture still detected" ;;
+    esac
+}
+
+ft_mutant 'match any absolute path, not just /src/' \
+    's|/src/\[\^ :"|/[^ :"|' cachepaths detect
+ft_mutant 'never exclude the project dir' \
+    's|case "\$p_norm" in "\$proj_norm"/\*) ;; \*) printf|case "$p_norm" in "$proj_norm"/*) ;; "") printf|' \
+    foreign silent
+
 echo ""
 echo "test-gradle-run: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
