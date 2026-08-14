@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`android-demo`: the Materials section now derives `autoAnimate` from QA mode ([#2958](https://github.com/sceneview/sceneview/issues/2958)).** Both subject nodes were mounted without `autoAnimate`, inheriting `ModelNode`'s `true` default, while QA mode only freezes the orbit yaw — so an animated subject would have made the section's golden screenshots drift. They now pass `autoAnimate = !DemoSettings.qaMode` like `ModelViewerDemo`, guarded by a unit test since every subject shipping today is static.
