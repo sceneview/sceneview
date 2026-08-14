@@ -48,6 +48,18 @@ Every file below MUST be updated when bumping the version. Use `/version-bump` o
 > `package.json`) bump to the release version. `sync-versions.sh` reports these
 > consumed-dep coordinates WARN-only and never auto-bumps them (issue #1494).
 
+> ⚠️ **Do NOT bump the Flutter README's pub.dev install snippet.**
+> `flutter_sceneview: ^X.Y.Z` in `flutter/sceneview_flutter/README.md` is a caret
+> range against a version that must already be **live on pub.dev**, which lags
+> `VERSION_NAME` whenever the `pub-publish` job has not shipped the newest release
+> (measured 2026-08-14: pub.dev `4.24.0` vs `VERSION_NAME` `4.30.0` — #3142). A
+> range against an unpublished version resolves to **nothing** and fails
+> `flutter pub get`. `sync-versions.sh` reports it WARN-only and has no `--fix`
+> handler for it *on purpose*: a `WARN` row here is the designed steady state, not
+> a task. Raise it only once pub.dev actually serves that version.
+> The RN README's SwiftPM `- Version: X.Y.Z` is the opposite case and **is** swept
+> — SPM resolves against a git tag this repo's own release creates. (issue #3149)
+
 > ⚠️ **`mcp/package.json` and `mcp/src/index.ts` follow an INDEPENDENT version
 > track — do NOT sync them to `VERSION_NAME`.**
 > `sceneview-mcp` (npm) has its own release cadence (e.g. `4.0.12` while the

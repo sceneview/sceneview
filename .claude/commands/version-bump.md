@@ -11,6 +11,10 @@ Bump the SceneView version across ALL locations in a single, atomic operation.
 > releasing the MCP, never to the SDK `VERSION_NAME` (#1705). The flutter/RN **consumed**
 > `io.github.sceneview:*` dependency lines lag to the **last published** release, never the
 > in-flight one — `sync-versions.sh` reports them WARN-only and never auto-bumps (#1494).
+> The Flutter README's `flutter_sceneview: ^X.Y.Z` pub.dev snippet is the same class: a
+> caret range against a version that must already be **live on pub.dev** (which lags
+> `VERSION_NAME`), so `^<unpublished>` resolves to nothing and fails `flutter pub get`.
+> Its `WARN` row is the designed steady state — do not "fix" it (#3149).
 
 **Usage:** `/version-bump 3.6.0` or just `/version-bump` (will ask for version)
 
