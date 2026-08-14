@@ -163,6 +163,12 @@ this on its own — two sessions measuring free RAM at the same instant both
 pass it. Before a rig run: check `adb devices` for other emulators, and treat
 falling qemu RSS as the signal to stop and retry on a quiet host.
 
+⚠️ **`adb reboot` does not revive a wedged qemu camera HAL.** The guest reboots,
+the camera stays dead, and the QA run is spent twice. Kill qemu and cold-boot
+instead (`adb -s <serial> emu kill`, then `setup-ar-emulator.sh`). If adb itself
+reports `offline` first, `adb kill-server` before anything else — a stale server
+makes a healthy guest look wedged.
+
 **Visible (windowed) emulator — opt-in (#1660).** The emulator boots **headless
 by default** (`-no-window`), which is marginally lighter on the host (skips the
 skin-window draw + window-server compositing). To watch it locally, opt in:
