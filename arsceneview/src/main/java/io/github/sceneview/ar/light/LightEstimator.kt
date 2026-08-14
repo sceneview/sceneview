@@ -15,6 +15,7 @@ import io.github.sceneview.math.Direction
 import io.github.sceneview.math.toLinearSpace
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Per frame AR light estimation
@@ -260,15 +261,39 @@ class LightEstimator(
     private val irradianceBuffer = FloatArray(SPHERICAL_HARMONICS_COMPONENT_COUNT)
 
     private var cubeMapBuffer: ByteBuffer? = null
-    private var cubeMapTexture: Texture? = null
+    /**
+     * Backing refs for the two cubemap textures. `AtomicReference`, not a plain
+     * `@Volatile` field, because the setters must hand the *old* texture to exactly
+     * one caller.
+     *
+     * The previous shape — `runCatching { field?.let { engine.destroyTexture(it) } }`
+     * then `field = value` — is a read-modify-write with no atomicity. Null-safety is
+     * not idempotency: two threads assigning concurrently both read the same non-null
+     * [Texture] and both call `engine.destroyTexture` on it, which is a native double
+     * free. Measured on a Pixel 4a (2026-08-14): `SIGABRT` in
+     * `scudo::reportHeaderRace` under `Java_com_google_android_filament_Engine_nDestroyTexture`,
+     * reached through `LightEstimator.destroy` → `setCubeMapTexture`. It never fired on
+     * the emulator, whose thread interleaving is far coarser.
+     *
+     * `getAndSet` closes it: the swap is a single atomic operation, so the losing
+     * thread gets `null` back and destroys nothing. It also publishes the new value
+     * *before* the old one is freed, removing the window in which the field still
+     * pointed at an already-destroyed texture.
+     */
+    private val cubeMapTextureRef = AtomicReference<Texture?>(null)
+    private val cubeMapTextureSpecularRef = AtomicReference<Texture?>(null)
+
+    private var cubeMapTexture: Texture?
+        get() = cubeMapTextureRef.get()
         set(value) {
-            runCatching { field?.let { engine.destroyTexture(it) } }
-            field = value
+            val previous = cubeMapTextureRef.getAndSet(value)
+            runCatching { previous?.let { engine.destroyTexture(it) } }
         }
-    private var cubeMapTextureSpecular: Texture? = null
+    private var cubeMapTextureSpecular: Texture?
+        get() = cubeMapTextureSpecularRef.get()
         set(value) {
-            runCatching { field?.let { engine.destroyTexture(it) } }
-            field = value
+            val previous = cubeMapTextureSpecularRef.getAndSet(value)
+            runCatching { previous?.let { engine.destroyTexture(it) } }
         }
 
     /**
@@ -405,8 +430,9 @@ class LightEstimator(
         // reassigned on the second `false` transition, so the setter's
         // built-in destroy-on-reassign never fired.
         //
-        // The setters are null-safe (`field?.let { destroy }`) and idempotent,
-        // so repeated null-assignments after teardown cost nothing. Free the
+        // The setters swap atomically (`AtomicReference.getAndSet`), so repeated
+        // null-assignments after teardown cost nothing and cannot double-free even
+        // if another thread is tearing down at the same instant. Free the
         // direct ByteBuffer too — DirectByteBuffer relies on a cleaner that
         // may not run for a long time under low GC pressure.
         if (!enabled || mode != LightEstimationMode.ENVIRONMENTAL_HDR ||
@@ -719,9 +745,12 @@ class LightEstimator(
      * so any in-flight [update] call from the render thread early-returns
      * instead of touching freed natives.
      *
-     * Safe to call multiple times — the [Texture] setters are null-safe
-     * (`field?.let { destroy }`) and idempotent; the volatile flag write
-     * provides the happens-before to a concurrent reader.
+     * Safe to call multiple times, and safe to call *concurrently* — the [Texture]
+     * setters swap through an `AtomicReference.getAndSet`, so only one caller ever
+     * receives a given texture to free. Null-safety alone would not be enough: it
+     * makes a repeated sequential call cheap, but two threads reading the same
+     * non-null field before either writes it would both free it. The volatile flag
+     * write provides the happens-before to a concurrent reader.
      *
      * Idempotency is required by [ARSceneView.kt:373]'s `DisposableEffect`
      * semantics: the lambda can re-run if the keys change before the
@@ -740,9 +769,10 @@ class LightEstimator(
         // future caller resurrects the estimator or copies the pattern into
         // a sibling.
         uploadInFlight = false
-        // Routed through the setters so the `field?.let { engine.destroyTexture }`
-        // teardown runs and `field` is nulled afterwards — keeping the two in
-        // sync and tolerating repeated `destroy()` calls.
+        // Routed through the setters so the `getAndSet(null)` teardown runs and the
+        // reference is cleared in the same atomic step — keeping the two in sync,
+        // tolerating repeated `destroy()` calls, and, unlike the read-then-write
+        // shape this replaced, tolerating *concurrent* ones.
         //
         // Filament defers actual GPU teardown until the command-buffer drains,
         // so calling `engine.destroyTexture(t)` while `t` is still being

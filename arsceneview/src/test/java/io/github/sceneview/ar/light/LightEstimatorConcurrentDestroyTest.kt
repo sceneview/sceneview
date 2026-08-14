@@ -489,9 +489,18 @@ class LightEstimatorConcurrentDestroyTest {
             // Latch FIRST. The JMM happens-before guarantee from AtomicBoolean
             // mirrors @Volatile in production.
             isDestroyedFlag.set(true)
-            // Then free. Setter is idempotent + null-safe so repeated calls
-            // free nothing extra (matching the production `field?.let { destroy }`
-            // pattern).
+            // Then free, via getAndSet so exactly one caller receives the texture.
+            //
+            // ⚠️ Read this before "simplifying" the mirror or the production setter.
+            // Until 2026-08-14 this line already used `getAndSet` while production
+            // used `field?.let { destroy }` then `field = value` — a read-modify-write
+            // with no atomicity. The mirror therefore modelled a *more correct*
+            // implementation than the code it claimed to pin, and a mirror that is
+            // safer than production cannot fail on production's bug: this suite stayed
+            // green for months while two concurrent `destroy()` calls double-freed the
+            // same Filament texture. It took a Pixel 4a (`SIGABRT` in
+            // `scudo::reportHeaderRace`) to surface it. The two are now the same
+            // algorithm, which is the only condition under which this file is a pin.
             val prior = currentTextureId.getAndSet(null)
             if (prior != null) {
                 alive.decrementAndGet()
