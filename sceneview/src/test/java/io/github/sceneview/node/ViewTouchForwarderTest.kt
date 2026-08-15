@@ -158,7 +158,10 @@ class ViewTouchForwarderTest {
 
         forwarder.onHit(event(MotionEvent.ACTION_DOWN), 10.0f, 20.0f)
         forwarder.onExit(event(MotionEvent.ACTION_MOVE))
-        assertTrue("the gesture still belongs to the view", forwarder.onHit(event(MotionEvent.ACTION_MOVE), 10.0f, 20.0f))
+        assertTrue(
+            "the gesture still belongs to the view",
+            forwarder.onHit(event(MotionEvent.ACTION_MOVE), 10.0f, 20.0f)
+        )
         forwarder.onHit(event(MotionEvent.ACTION_UP), 10.0f, 20.0f)
 
         assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL), view.actions)
