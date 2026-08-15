@@ -63,9 +63,11 @@ data class PlanesDiff(
  *
  * Split out from [rememberDetectedPlanes] so the add / update / remove classification — the part
  * apps actually depend on for `ARPlaneManager.planesChanged` parity — is covered by pure-JVM
- * unit tests without an ARCore [Session] handle. `Plane` identity is by reference: ARCore returns
- * the same `Plane` instance for a given trackable across frames, so set membership is the correct
- * comparison.
+ * unit tests without an ARCore [Session] handle. Set membership is the correct comparison, but not
+ * for the reason one would assume: ARCore returns a **fresh** `Plane` wrapper on every frame, so
+ * reference identity would always be false. `TrackableBase` overrides `equals`/`hashCode` on its
+ * native handle, and `Plane` inherits both unchanged — that value equality is what makes a `Set`
+ * of planes stable across frames.
  *
  * Delegates to the generic [diffTrackedSet] so the set-membership logic — the only part with any
  * branching — is exercised by pure-JVM tests against plain objects (ARCore's `Plane` is JNI-only

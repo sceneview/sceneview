@@ -2586,6 +2586,29 @@ ARSceneView(onSessionCreated = { arSession = it }) {
 
 `PlaneNode` exposes `type` (`Plane.Type`), `extentX`, `extentZ`. Demo: `samples/android-demo/.../ARPlaneNodeDemo.kt`.
 
+### `Frame.hasUpdatedTrackable` — did ARCore refine *this* trackable this frame?
+
+```kotlin
+inline fun <reified T : Trackable> Frame.hasUpdatedTrackable(trackable: T): Boolean
+```
+
+Membership works because `TrackableBase` overrides `equals`/`hashCode` on the native handle — ARCore
+hands out a **fresh** wrapper per frame, so reference identity would always be false.
+
+**One trackable per frame, not a loop.** Every call re-acquires the whole updated set from ARCore and
+builds a fresh Java wrapper per trackable, each of which overrides `finalize()` to release its native
+reference. Calling it once per plane inside `onSessionUpdated` turns 8 planes at 60 fps into ~3 800
+finalizable objects a second. Hoist the collection instead:
+
+```kotlin
+// ✅ one acquisition per frame
+val updated = frame.getUpdatedPlanes()
+planes.forEach { if (it in updated) node.update(it) }
+
+// ❌ one acquisition per plane per frame
+planes.forEach { if (frame.hasUpdatedTrackable(it)) node.update(it) }
+```
+
 ### Geospatial accessors — `rememberCameraGeospatialPose`, `rememberEarthState`, `awaitVpsAvailability`
 
 Composable State + suspend helpers around ARCore's Geospatial API (#1769). Lets apps read the live device lat/lng/altitude, observe the `Earth.EarthState`, and gate Terrain anchor placement on actual VPS coverage — all from regular Compose code.
