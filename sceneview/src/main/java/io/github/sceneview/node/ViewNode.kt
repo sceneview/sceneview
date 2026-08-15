@@ -239,9 +239,15 @@ class ViewNode(
      * Falls back to the regular [Node] behaviour when forwarding is disabled, when the quad or the
      * view is not measured yet, or when the embedded view simply does not want the gesture — so a
      * non-interactive [ViewNode] keeps behaving as a plain pickable node.
+     *
+     * Also gated on [isVisible]: hiding a node only drops its render layer, it does not detach its
+     * collider, and this module's [io.github.sceneview.collision.CollisionSystem.hitTest] filters on
+     * `isHittable` alone (unlike the KMP `SceneGraph.hitTest`, which also tests `isVisible`). Without
+     * this guard a tap on apparently empty space would drive a real click on a control the user
+     * cannot see.
      */
     override fun onTouchEvent(e: MotionEvent, hitResult: HitResult): Boolean {
-        if (isTouchForwardingEnabled) {
+        if (isTouchForwardingEnabled && isVisible) {
             val point = viewTouchPixels(
                 localPosition = worldToLocalPosition(hitResult.getWorldPosition(), worldToLocal),
                 center = geometry.center,
