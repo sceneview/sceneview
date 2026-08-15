@@ -93,7 +93,7 @@ class ViewNode(
     private val materialLoader: MaterialLoader,
     view: View,
     unlit: Boolean = false,
-    invertFrontFaceWinding: Boolean = false,
+    private val invertFrontFaceWinding: Boolean = false,
 ) : PlaneNode(engine = engine) {
 
     // Updated when the view is added to the view manager
@@ -219,6 +219,15 @@ class ViewNode(
 
     fun updateGeometrySize() {
         updateGeometry(size = viewSize / pxPerUnits)
+        // The collider does NOT follow the geometry: `updateGeometry` refreshes Filament's AABB,
+        // but `collisionShape` keeps whatever box the node was built with — `Plane.DEFAULT_SIZE`'s
+        // 1 × 1 × 0. Left stale, `CollisionSystem.hitTest` only ever reports a hit on the central
+        // 1 × 1 unit square of the quad, so anything outside it is dead: a 410 × 420 px card at the
+        // default 250 `pxPerUnits` spans 1.64 × 1.68 units and loses its outer ~30% margin —
+        // usually where the buttons are. Harmless while a ViewNode was only pickable; not once it
+        // forwards touches (#2845). Both setters run from `Layout.onSizeChanged`, i.e. the main
+        // thread, so the extra JNI read is safe here.
+        updateCollisionShape()
     }
 
     override fun onAddedToScene(scene: Scene) {
@@ -245,6 +254,17 @@ class ViewNode(
      * `isHittable` alone (unlike the KMP `SceneGraph.hitTest`, which also tests `isVisible`). Without
      * this guard a tap on apparently empty space would drive a real click on a control the user
      * cannot see.
+     *
+     * Either gate flipping to `false` mid-gesture closes a stream that is already open, here rather
+     * than in [onCapturedTouchEvent] — the captured path in `SceneView`'s touch dispatcher only
+     * runs for events whose ray *misses* the node, so a gate flipped while the finger is still on
+     * the quad would otherwise leave the embedded view pressed forever and leak the rest of the
+     * gesture, mid-stream, to detectors that never saw its `DOWN`.
+     *
+     * **Known limitation:** the material is double-sided and un-mirrors its UVs on the back face,
+     * so a quad orbited from behind reads correctly on screen while this mapping stays front-face.
+     * Touches picked on the back face therefore land on the horizontally mirrored pixel. Detecting
+     * the facing needs the camera, which this callback does not receive.
      */
     override fun onTouchEvent(e: MotionEvent, hitResult: HitResult): Boolean {
         if (isTouchForwardingEnabled && isVisible) {
@@ -253,11 +273,14 @@ class ViewNode(
                 center = geometry.center,
                 size = geometry.size,
                 widthPx = layout.width,
-                heightPx = layout.height
+                heightPx = layout.height,
+                mirrorX = invertFrontFaceWinding
             )
             if (point != null && touchForwarder.onHit(e, point.x, point.y)) {
                 return true
             }
+        } else if (touchForwarder.onExit(e)) {
+            return true
         }
         return super.onTouchEvent(e, hitResult)
     }

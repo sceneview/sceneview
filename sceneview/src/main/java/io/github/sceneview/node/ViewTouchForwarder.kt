@@ -19,6 +19,11 @@ import io.github.sceneview.math.Size
  * `0..widthPx` / `0..heightPx`, which is exactly what Android expects — a view un-presses itself
  * when the pointer moves out of its bounds.
  *
+ * @param mirrorX Whether the rendered content is mirrored horizontally, i.e. the node was built
+ * with `invertFrontFaceWinding = true`. That flag sets the material's `uvOffset.x` to `1`, and both
+ * `view_texture_*.mat` then shade `uv.x = uv.x + uvOffset.x * (1 - 2 * uv.x)` — plain `1 - uv.x`.
+ * Pixels move on screen but the quad does not, so the mapping has to mirror with them: without
+ * this, in a `Row { Button("Cancel"); Button("OK") }`, tapping the visible "Cancel" fires "OK".
  * @return the view pixel coordinate, or `null` when the quad or the view has no usable size (a
  * [ViewNode] whose content has not been measured yet).
  */
@@ -27,14 +32,15 @@ internal fun viewTouchPixels(
     center: Position,
     size: Size,
     widthPx: Int,
-    heightPx: Int
+    heightPx: Int,
+    mirrorX: Boolean = false
 ): Float2? {
     if (widthPx <= 0 || heightPx <= 0) return null
     if (size.x <= 0.0f || size.y <= 0.0f) return null
 
     val u = (localPosition.x - center.x) / size.x + 0.5f
     val v = 0.5f - (localPosition.y - center.y) / size.y
-    return Float2(u * widthPx, v * heightPx)
+    return Float2(if (mirrorX) (1.0f - u) * widthPx else u * widthPx, v * heightPx)
 }
 
 /**

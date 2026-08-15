@@ -79,6 +79,26 @@ class ViewTouchForwarderTest {
     }
 
     @Test
+    fun `a mirrored quad maps X to the mirrored pixel, because that is where it is drawn`() {
+        // invertFrontFaceWinding sets uvOffset.x = 1, and the material shades 1 - uv.x. The pixel
+        // column drawn at the quad's left edge is the view's LAST one, so the touch must follow.
+        val left = viewTouchPixels(
+            localPosition = Position(x = -1.0f, y = 0.5f, z = 0.0f),
+            center = center, size = size, widthPx = 400, heightPx = 200, mirrorX = true
+        )!!
+        assertEquals(400.0f, left.x, 1e-4f)
+        assertEquals(0.0f, left.y, 1e-4f)
+
+        // Y is untouched: uvOffset.y stays 0, so the vertical mapping is the unmirrored one.
+        val quarter = viewTouchPixels(
+            localPosition = Position(x = -0.5f, y = 0.0f, z = 0.0f),
+            center = center, size = size, widthPx = 400, heightPx = 200, mirrorX = true
+        )!!
+        assertEquals(300.0f, quarter.x, 1e-4f)
+        assertEquals(100.0f, quarter.y, 1e-4f)
+    }
+
+    @Test
     fun `an unmeasured view or quad maps to nothing rather than to NaN`() {
         assertNull(viewTouchPixels(Position(0.0f), center, size, 0, 200))
         assertNull(viewTouchPixels(Position(0.0f), center, size, 400, 0))
