@@ -232,7 +232,7 @@ class ViewNode(
         // Scoped to ViewNode on purpose: none of the eleven `updateGeometry` call sites refresh
         // the collider, so a resized CubeNode still mis-picks the same way. Hoisting the call into
         // `GeometryNode.updateGeometry` would also clobber a `collisionShape` an app set by hand,
-        // so that is a deliberate change of its own — see the follow-up issue.
+        // so that is a deliberate change of its own, tracked by #3194.
         updateCollisionShape()
     }
 
