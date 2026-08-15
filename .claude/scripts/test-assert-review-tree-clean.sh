@@ -389,30 +389,49 @@ MUTANT="$TMP/mutant.sh"
 # `matching_base_ref`, and a mutation keyed to the old spelling silently stopped
 # applying. It reported that honestly (this suite has a guard for exactly that),
 # but a mutation that cannot apply proves nothing about the assertion.
-sed 's|^  if is_sensitive "\$path" \&\& .*$|  if is_sensitive "$path"; then|' "$ASSERT" > "$MUTANT"
-if ! grep -q 'if is_sensitive "\$path"; then$' "$MUTANT"; then
+#
+# ⛔ The replacement KEEPS an assignment to `ref`. Dropping the whole right-hand
+# side left `ref` declared-but-unset, and the `RESTORED+=("… [= $ref]")` two
+# lines down then dies on the script's own `set -u` — the mutant exits 1 on
+# EVERY case, and this test reads "exit 1" as "the mutant still blocks", i.e.
+# reports a failure of the assertion. It was green on macOS's bash 3.2, where a
+# bare `local ref` yields the empty string, and red on CI's bash 5, where it is
+# genuinely unbound: 5/5 "still blocked" on run 31885410240. A mutant that dies
+# of its own wound measures the shell version, not the assertion.
+sed 's|^  if is_sensitive "\$path" \&\& .*$|  if is_sensitive "$path" \&\& ref="path-exclusion mutant"; then|' "$ASSERT" > "$MUTANT"
+if ! grep -q 'if is_sensitive "\$path" && ref="path-exclusion mutant"; then$' "$MUTANT"; then
   echo "  ✗ mutation could not be applied — the classification line moved; update this test"
   FAIL=$((FAIL + 1))
 else
-  # `rename` is deliberately NOT here. Its source path (`src/app.kt`) is not
-  # sensitive, so a path EXCLUSION does not weaken it — that hole is orthogonal
-  # and gets its own mutation below. Listing it would have made this gate
-  # unsatisfiable, which is how a suite ends up loosened to `-gt 0`.
-  MUT_CASES=(dirty-claude planted chmod deleted glob)
-  MUT_CAUGHT=0
-  for case_dir in "${MUT_CASES[@]}"; do
-    (cd "$TMP/$case_dir" && bash "$MUTANT" --base base >/dev/null 2>&1)
-    [ $? -ne 1 ] && MUT_CAUGHT=$((MUT_CAUGHT + 1))
-  done
-  # ⛔ ALL of them, not "at least one". `-gt 0` would let five of the six stop
-  # discriminating while the suite still printed a ✓ — the same "counting
-  # measures effort, not coverage" trap the wiring check above exists for.
-  if [ "$MUT_CAUGHT" -eq "${#MUT_CASES[@]}" ]; then
-    echo "  ✓ weakening the assertion to a path exclusion breaks all ${#MUT_CASES[@]} contamination cases"
-    PASS=$((PASS + 1))
-  else
-    echo "  ✗ the mutant still blocked $(( ${#MUT_CASES[@]} - MUT_CAUGHT )) of ${#MUT_CASES[@]} contamination cases — this suite does not pin the assertion"
+  # …and a mutant that cannot clear the BENIGN case is broken rather than
+  # revealing. Without this control the bash-5 breakage above was indistinguish-
+  # able from the real finding it masqueraded as.
+  (cd "$TMP/mod" && bash "$MUTANT" --base base >/dev/null 2>&1)
+  MUT_RC=$?
+  if [ "$MUT_RC" -ne 0 ]; then
+    echo "  ✗ the mutant fails the benign case too (rc=$MUT_RC) — it is broken, so its verdicts below mean nothing"
     FAIL=$((FAIL + 1))
+  else
+    # `rename` is deliberately NOT here. Its source path (`src/app.kt`) is not
+    # sensitive, so a path EXCLUSION does not weaken it — that hole is orthogonal
+    # and gets its own mutation below. Listing it would have made this gate
+    # unsatisfiable, which is how a suite ends up loosened to `-gt 0`.
+    MUT_CASES=(dirty-claude planted chmod deleted glob)
+    MUT_CAUGHT=0
+    for case_dir in "${MUT_CASES[@]}"; do
+      (cd "$TMP/$case_dir" && bash "$MUTANT" --base base >/dev/null 2>&1)
+      [ $? -ne 1 ] && MUT_CAUGHT=$((MUT_CAUGHT + 1))
+    done
+    # ⛔ ALL of them, not "at least one". `-gt 0` would let five of the six stop
+    # discriminating while the suite still printed a ✓ — the same "counting
+    # measures effort, not coverage" trap the wiring check above exists for.
+    if [ "$MUT_CAUGHT" -eq "${#MUT_CASES[@]}" ]; then
+      echo "  ✓ weakening the assertion to a path exclusion breaks all ${#MUT_CASES[@]} contamination cases"
+      PASS=$((PASS + 1))
+    else
+      echo "  ✗ the mutant still blocked $(( ${#MUT_CASES[@]} - MUT_CAUGHT )) of ${#MUT_CASES[@]} contamination cases — this suite does not pin the assertion"
+      FAIL=$((FAIL + 1))
+    fi
   fi
 fi
 

@@ -1088,6 +1088,22 @@ jobs:
           # PR controls. Dropping the pin instead would only move the race, since
           # the tip can move again between the restore and this step.
           BASE_TIP="origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}"
+          # On the `always()` fallback path BASE_SHA is unset, so BASE already IS
+          # the tip and the two refs are the same string. Passing it twice makes
+          # the verdict header read "Restored from origin/main or origin/main" —
+          # harmless, since the first ref still matches, but a header that reads
+          # like a bug is a header nobody trusts. Empty means "no second ref";
+          # the script tests `-n` before resolving, so this warns about nothing.
+          #
+          # An `if`, not `[ … ] && BASE_TIP=""`. Errexit does not fire on the
+          # left of an `&&` (verified), so the short form is safe HERE — but it
+          # returns 1 on the common path where the refs differ, and it only has
+          # to drift to the end of a step for that to become the step's exit
+          # status. This step runs under `bash -e`; nothing about it should
+          # depend on where a line sits.
+          if [ "$BASE_TIP" = "$BASE" ]; then
+            BASE_TIP=""
+          fi
           # ⛔ Same pin as the grader, for the same reason: the judge must not
           # come from the code being judged. Reading the script out of the
           # checkout would let a PR supply the assertion that clears it — and by
