@@ -318,6 +318,23 @@ case "$OUT" in
   *) echo "  ✗ an unresolvable --also-base is silent — the next reader gets the #3016 diagnosis again"; FAIL=$((FAIL + 1)) ;;
 esac
 
+# 4b. An EMPTY second ref means "there is no second ref" — accepted, silent, and
+#     strict. This is a production invocation, not a hypothetical: `pr-review.yml`
+#     blanks BASE_TIP whenever it equals BASE, which is every `always()` fallback
+#     path where BASE_SHA was never pinned. Two ways it could regress without any
+#     other case here noticing — the arg parser starting to reject an empty value,
+#     or the `[ -n "$ALSO_BASE_REF" ]` guard being dropped so the empty string
+#     reaches `rev-parse` and warns about a race that is not happening.
+OUT="$(cd "$TMP/moved" && bash "$ASSERT" --base pinned --also-base "" 2>&1)"; RC=$?
+check "an EMPTY --also-base is 'no second ref', still strict" 1
+case "$OUT" in
+  *"::warning"*) echo "  ✗ an empty --also-base warns — the fallback path would cry race on every run"; FAIL=$((FAIL + 1)) ;;
+  *) echo "  ✓ …and says nothing about it, because nothing is wrong"; PASS=$((PASS + 1)) ;;
+esac
+
+OUT="$(cd "$TMP/mod" && bash "$ASSERT" --base base --also-base "" 2>&1)"; RC=$?
+check "…and a clean tree still passes with an empty second ref" 0
+
 # 5. Mutation: drop the second ref from the lookup and case 2 must go red again.
 #    Without this, `--also-base` could be accepted and quietly ignored.
 MUTANT3="$TMP/mutant3.sh"
