@@ -1566,23 +1566,37 @@ a Compose `Slider` for `alpha` to blend camera ↔ depth from 0 to 1.
 onSessionUpdated = { _, frame ->
     val depthImage = runCatching { frame.acquireDepthImage16Bits() }.getOrNull() ?: return@onSessionUpdated
     val plane = depthImage.planes[0]
+    // ARCore hands the depth image out in the landscape CAMERA SENSOR frame, which does
+    // not follow the display: blitting it straight to a portrait overlay puts it 90° off
+    // the camera feed (#3184). Turn it by the display rotation while colorizing.
+    val rotation = displayRotationToDegrees(display.rotation) // ROTATION_0 -> 90
     val pixels = depthBufferToArgb(
         depthBytes = plane.buffer,
         width = depthImage.width,
         height = depthImage.height,
         rowStrideBytes = plane.rowStride,
+        rotationDegrees = rotation,
     )
+    // The bitmap must be allocated at the ROTATED size — the source dimensions are
+    // swapped on a quarter turn.
     // Upload pixels into a recycled Bitmap; close the depth image when done.
     depthImage.close()
 }
 ```
 
 Rules of thumb: the depth image is typically ~240×180 — far smaller than the camera feed,
-so `ContentScale.Crop` upscaling is correct. Pixels with depth `0` should render fully
+so `ContentScale.Crop` upscaling is correct. It arrives in sensor orientation, so rotate it
+to the display before drawing it over the camera feed, and size the bitmap to the rotated
+dimensions. Pixels with depth `0` should render fully
 transparent (no datum) instead of mapping to the near color. Always show a "warming up"
 banner until the first depth frame lands and an explicit "depth not supported" banner when
 `Session.isDepthModeSupported(...)` returns `false` — never leave the user staring at a
 black screen.
+
+The same sensor-frame caveat applies to any CPU-image consumer that draws in 2D (an ML
+bounding box, a custom overlay). It does **not** apply when you unproject depth into 3D
+with `camera.imageIntrinsics` — `DepthMeshNode` and the raw-depth point cloud are
+orientation-independent for that reason.
 
 ### Raw depth point cloud — accumulated depth visualization
 
