@@ -107,6 +107,27 @@ const stdioCount = perSourceCount.get("mcp/src/tools/definitions.ts");
 const gatewayTotal = registry.size;
 const legitCounts = new Set([stdioCount, gatewayTotal, ...perSourceCount.values()]);
 
+// Sample scenarios drift exactly like tool counts do: "33 compilable samples"
+// stood in SEVEN places against a real 38 — including two files written during
+// the #3189 cleanup itself, by copying the number from a README instead of
+// deriving it. Same treatment, same reason.
+const SAMPLES_SOURCE = "mcp/src/samples.ts";
+let sampleCount = 0;
+try {
+  const text = readFileSync(join(repoRoot, SAMPLES_SOURCE), "utf8");
+  // Keys are QUOTED and two-space indented: `  "model-viewer": {`. Requiring
+  // the quotes is what keeps the `Sample` interface's own fields (`id:`,
+  // `title:`, … at the same indent, unquoted) out of the count.
+  sampleCount = new Set([...text.matchAll(/^ {2}"([a-z0-9-]+)":\s*\{/gm)].map((m) => m[1])).size;
+} catch {
+  sampleCount = 0;
+}
+if (sampleCount === 0) {
+  console.error(`check-mcp-tool-claims: ${SAMPLES_SOURCE} yielded 0 samples.`);
+  console.error("  A count that failed to derive is not a count of zero. Refusing.");
+  process.exit(2);
+}
+
 // ── Surfaces to scan ────────────────────────────────────────────────────────
 // Public, human-facing prose only. `.claude/`, `changelog.d/` and `CHANGELOG.md`
 // are EXCLUDED on purpose: they document removed and fabricated tool names as
@@ -163,6 +184,8 @@ const NOT_A_TOOL = new Map([
 NOT_A_TOOL.delete("add_model"); // never actually allowed — the note above is the point
 
 const COUNT_RE = /\b(\d{1,3})\+?\s+(?:MCP\s+|AI\s+)?tools?\b/gi;
+const SAMPLE_COUNT_RE =
+  /\b(\d{1,3})\+?\s+(?:compilable\s+|code\s+|working,?\s+tested\s+)?(?:samples|scenarios)\b|\bany of (\d{1,3}) scenarios\b/gi;
 const INLINE_CODE_RE = /`([^`\n]+)`/g;
 
 function stripFencedBlocks(text) {
@@ -200,6 +223,16 @@ for (const file of files) {
         detail: `\`${token}\` is not an MCP tool in any registry`,
       });
     }
+    for (const m of line.matchAll(SAMPLE_COUNT_RE)) {
+      const n = Number(m[1] ?? m[2]);
+      if (n === sampleCount) continue;
+      findings.push({
+        file,
+        line: i + 1,
+        kind: "wrong-sample-count",
+        detail: `claims "${m[0].trim()}" — ${SAMPLES_SOURCE} defines ${sampleCount}`,
+      });
+    }
     for (const m of line.matchAll(COUNT_RE)) {
       const n = Number(m[1]);
       if (legitCounts.has(n)) continue;
@@ -218,7 +251,7 @@ if (process.argv.includes("--json")) {
 } else if (findings.length === 0) {
   console.log(
     `check-mcp-tool-claims: OK — ${files.length} prose file(s) scanned, ` +
-      `${registry.size} known tools, counts ${[...legitCounts].sort((a, b) => a - b).join("/")}.`,
+      `${registry.size} known tools, ${sampleCount} samples, counts ${[...legitCounts].sort((a, b) => a - b).join("/")}.`,
   );
 } else {
   console.error("::error::Prose surfaces claim MCP tools or counts that do not exist.");

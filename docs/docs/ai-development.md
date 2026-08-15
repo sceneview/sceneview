@@ -140,7 +140,7 @@ resources. The most used ones:
 
 | Tool | What it does |
 |---|---|
-| `get_sample` / `list_samples` | A complete, compilable sample for any of 33 scenarios (Kotlin or Swift) |
+| `get_sample` / `list_samples` | A complete, compilable sample for any of 38 scenarios (Kotlin or Swift) |
 | `get_node_reference` | Exact signature, parameters and defaults for any node type |
 | `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API |
 | `get_setup` / `get_ios_setup` / `get_web_setup` / `get_ar_setup` | Per-platform dependency, manifest and permission setup |

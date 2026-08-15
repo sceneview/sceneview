@@ -387,7 +387,7 @@ to it. They used to be three hand-maintained copies, and they drifted.
 
 ### MCP Server (Claude, Codex, Gemini, Cursor, Copilot)
 
-The official [MCP server](./mcp/) provides **31 tools**, **33 compilable samples**, a full API reference, and a code validator:
+The official [MCP server](./mcp/) provides **31 tools**, **38 compilable samples**, a full API reference, and a code validator:
 
 ```bash
 # Claude Code

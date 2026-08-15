@@ -139,7 +139,7 @@ ShadowReceiverPlaneNode, StreetscapeGeometryNode, TerrainAnchorNode, TrackableNo
 
 ## Get the full API instead of guessing
 
-The MCP server exposes the real API surface — 31 tools, 33 compilable samples, and a
+The MCP server exposes the real API surface — 31 tools, 38 compilable samples, and a
 validator that checks generated code against the actual public symbols before you show
 it to the user. Prefer it over recalling signatures.
 

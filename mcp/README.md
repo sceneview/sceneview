@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/sceneview-mcp?color=6c35aa)](https://www.npmjs.com/package/sceneview-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/sceneview-mcp?color=blue)](https://www.npmjs.com/package/sceneview-mcp)
-[![Tests](https://img.shields.io/badge/tests-1898%20passing-brightgreen)](#quality)
+[![Tests](https://img.shields.io/badge/tests-1965%20passing-brightgreen)](#quality)
 [![MCP](https://img.shields.io/badge/MCP-v1.12-blue)](https://modelcontextprotocol.io/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-listed-blueviolet)](https://registry.modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
@@ -129,7 +129,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 
 | Tool | What it does |
 |---|---|
-| `get_sample` | Returns a complete, compilable code sample for any of 33 scenarios (Kotlin or Swift) |
+| `get_sample` | Returns a complete, compilable code sample for any of 38 scenarios (Kotlin or Swift) |
 | `list_samples` | Browse all samples, filter by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, ...) |
 | `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API, with did-you-mean suggestions — before presenting it to the user |
 | `migrate_code` | Automatically migrates SceneView 2.x / 3.x code with detailed changelog |
@@ -271,7 +271,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
 - Know about all 46+ node types and their exact parameters
 - Validate code against 30+ rules before presenting it
-- Provide working, tested sample code for 33 scenarios
+- Provide working, tested sample code for 38 scenarios
 
 ---
 
@@ -280,7 +280,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 The MCP server is tested with **1,965 unit tests** across 83 test suites covering:
 
 - Every tool response (correct output, error handling, edge cases)
-- All 33 code samples (compilable structure, correct imports, no deprecated APIs)
+- All 38 code samples (compilable structure, correct imports, no deprecated APIs)
 - Code validator rules (true positives and false-positive resistance)
 - Node reference parsing (all node types extracted correctly from `llms.txt`)
 - Resource responses (API reference, GitHub issues integration)
@@ -399,7 +399,7 @@ mcp/
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new tools or rules
-4. Run `npm test` — all 1898+ tests must pass
+4. Run `npm test` — all 1965 tests must pass
 5. Submit a pull request
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.
