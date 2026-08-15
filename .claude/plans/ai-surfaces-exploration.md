@@ -272,10 +272,19 @@ genuine differentiator, so it is worth a 30-minute probe before deciding.
    ⚠️ **A monetization constraint that belongs in the architecture, not in
    submission cleanup.** The guidelines let a user reach an account they already
    pay for, but prohibit selling or promoting subscriptions inside the plugin —
-   direct checkout links included. Measured on the live gateway: `/pricing` is
-   200 with no transactional link and `/billing/checkout` is 404, so it is
-   compliant **as it stands**. That is a property to keep deliberately, not a
-   coincidence to discover breaking later.
+   direct checkout links included.
+
+   **The "already compliant" reading was wrong, and the error is instructive.**
+   It rested on `/billing/checkout` returning 404 and `/pricing` carrying no
+   transactional link. Both were probe artifacts: `mcp-gateway/src/routes/billing.ts:22`
+   is `app.post("/billing/checkout", …)` — the 404 came from a **GET probe against
+   a POST-only route** — and `pricing.tsx:40,62` render
+   `<form method="post" action="/billing/checkout">` with Subscribe buttons, which
+   a grep for `href="…"` cannot see. So the live pricing page **does** ship a
+   transactional element. Under the quoted rule that is a problem to design around,
+   not a property to preserve. Two probes, two false negatives, same root cause as
+   the `command -v` family: a check that cannot see the shape it is looking for
+   reports absence.
 
 **Tier B — the AR bridge (weeks, the actual new product)**
 5. Measure mode in the demo apps, built on the existing depth/anchor primitives.

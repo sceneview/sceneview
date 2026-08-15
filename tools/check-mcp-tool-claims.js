@@ -153,6 +153,20 @@ if (freeTierCount > 0) {
 }
 if (proTierCount > 0) legitCounts.add(proTierCount);
 
+// The five vertical packages COMBINED is an aggregate the Pro copy advertises —
+// `tiers.ts`'s own PRO_UPGRADE_MESSAGE says "5 vertical packages … 35
+// specialized tools" — and it is the sum of five per-package counts, so it is
+// derivable from none of them individually. Without it the gate rejects a true
+// claim, which is the failure mode that nearly cost mcpize.yaml its correct 28.
+const verticalTotal = [...perSourceCount.entries()]
+  .filter(([src]) => src.startsWith("mcp/packages/"))
+  .reduce((n, [, count]) => n + count, 0);
+if (verticalTotal > 0) {
+  legitCounts.add(verticalTotal);
+  // The package COUNT itself is advertised alongside it ("5 vertical packages").
+  legitCounts.add([...perSourceCount.keys()].filter((k) => k.startsWith("mcp/packages/")).length);
+}
+
 // Sample scenarios drift exactly like tool counts do: "33 compilable samples"
 // stood in SEVEN places against a real 38 — including two files written during
 // the #3189 cleanup itself, by copying the number from a README instead of
@@ -179,9 +193,24 @@ if (sampleCount === 0) {
 // are EXCLUDED on purpose: they document removed and fabricated tool names as
 // history, and a gate that cannot tell "we shipped this" from "we removed this"
 // would force the record to be falsified to stay green.
-const SCAN_DIRS = ["docs/docs", "website-static", "gpt", "agents", "pro"];
+// `mcp-gateway/src/dashboard` is the COMMERCIAL front end — the pricing page a
+// subscriber reads and the docs page the gateway serves. It sat outside every
+// pathspec here, exactly the way `.cursorrules` sat outside the mirror gate, and
+// exactly the same thing happened: `pricing.tsx` advertised "27 free tools",
+// "4 vertical packages … 24 specialised tools" and "(27 tools…)" against a real
+// 29 / 5 / 35 / 31, and contradicted `tiers.ts`'s own PRO_UPGRADE_MESSAGE on the
+// same funnel. A gate that skips the checkout page is not covering the surface
+// that costs money to get wrong.
+const SCAN_DIRS = [
+  "docs/docs",
+  "website-static",
+  "gpt",
+  "agents",
+  "pro",
+  "mcp-gateway/src/dashboard",
+];
 const SCAN_FILES = ["README.md", "AGENTS.md", "mcp/README.md", "llms.txt"];
-const SCAN_EXT = new Set([".md", ".html", ".txt"]);
+const SCAN_EXT = new Set([".md", ".html", ".txt", ".tsx"]);
 // Same reason as CHANGELOG.md: this is the docs-site mirror of it, and a release
 // note naming `list_node_types` — a tool that existed when it was written — is
 // history, not a false claim.
@@ -229,7 +258,13 @@ const NOT_A_TOOL = new Map([
 ]);
 NOT_A_TOOL.delete("add_model"); // never actually allowed — the note above is the point
 
-const COUNT_RE = /\b(\d{1,3})\+?\s+(?:MCP\s+|AI\s+)?tools?\b/gi;
+// A QUALIFIER may sit between the number and "tools" — "27 free tools",
+// "24 specialised tools", "38 Pro tools". The first version of this pattern
+// allowed only "MCP"/"AI", so two of the three false counts on the live
+// pricing page walked straight past it while the third was caught. A gate
+// that catches one of three instances of the same claim reads as coverage.
+const COUNT_QUALIFIER = "(?:MCP|AI|free|Pro|specialised|specialized|developer|total|compilable)\\s+";
+const COUNT_RE = new RegExp(`\\b(\\d{1,3})\\+?\\s+(?:${COUNT_QUALIFIER})?tools?\\b`, "gi");
 const SAMPLE_COUNT_RE =
   /\b(\d{1,3})\+?\s+(?:compilable\s+|code\s+|working,?\s+tested\s+)?(?:samples|scenarios)\b|\bany of (\d{1,3}) scenarios\b/gi;
 const INLINE_CODE_RE = /`([^`\n]+)`/g;

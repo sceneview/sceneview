@@ -94,7 +94,7 @@ export const Pricing: FC = () => (
         period="forever"
         description="Every developer tool — setup, samples, validator, migration, docs."
         features={[
-          "27 free tools",
+          "29 free tools",
           "Setup guides for every platform (Android, iOS, Web, Flutter, RN, Desktop, TV)",
           "Code samples + validator + migration tooling",
           "Full SceneView API reference + known issues",
@@ -112,7 +112,7 @@ export const Pricing: FC = () => (
         description="For developers building specialised vertical apps."
         features={[
           "Everything in Free",
-          "4 vertical packages (Automotive, Gaming, Healthcare, Interior — 24 specialised tools)",
+          "5 vertical packages (Automotive, Gaming, Healthcare, Interior, Rerun — 35 specialised tools)",
           "3 generation helpers (3D preview, artifact, scene generation)",
           "Hosted HTTP endpoint, 50k calls / month",
           "Email support",
@@ -161,7 +161,7 @@ export const Pricing: FC = () => (
       <h3>Can I self-host?</h3>
       <p>
         Yes. The free tier runs fully local with{" "}
-        <code>npx -y sceneview-mcp</code> (27 tools, no signup, no
+        <code>npx -y sceneview-mcp</code> (31 tools, no signup, no
         network round-trip). After subscribing, set{" "}
         <code>SCENEVIEW_API_KEY</code> in your MCP client config — Pro
         tool calls (vertical packages, generation helpers) then route

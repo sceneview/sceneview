@@ -14,7 +14,7 @@ export const Docs: FC = () => (
     <h1>Docs</h1>
     <p>
       Point any MCP-capable agent at the hosted gateway. The 27 free
-      tools work without authentication; the 27 Pro tools (vertical
+      tools work without authentication; the 38 Pro tools (vertical
       packages + generation helpers) require an API key you receive
       on the <a href="/pricing">pricing</a> checkout success page.
     </p>
@@ -62,7 +62,7 @@ export const Docs: FC = () => (
 }`}</code></pre>
     <p>
       Leave <code>env</code> empty (<code>{`{}`}</code>) if you only
-      want the 27 free tools — no signup needed. Restart Claude Desktop
+      want the 29 free tools — no signup needed. Restart Claude Desktop
       after editing.
     </p>
 
@@ -107,13 +107,13 @@ export const Docs: FC = () => (
 
     <h2>Local stdio (free mode, zero signup)</h2>
     <p>
-      If you only want the 27 free tools and no network round-trip at
+      If you only want the 28 free tools of the npm package and no network round-trip at
       all, install the latest stable package (4.0.x):
     </p>
     <pre><code>{`npx -y sceneview-mcp`}</code></pre>
     <p>
       This runs every developer tool locally — setup, samples, validator,
-      migration, full API reference. To unlock the 27 Pro tools later
+      migration, full API reference. To unlock the 38 Pro tools later
       (vertical packages + generation helpers), set{" "}
       <code>SCENEVIEW_API_KEY</code> — see the Claude Desktop snippet
       above.
