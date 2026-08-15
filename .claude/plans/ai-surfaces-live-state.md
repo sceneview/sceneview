@@ -10,10 +10,21 @@
 > Everything below is a measurement or a quoted command result. Where a probe was
 > impossible, there is an explicit **could not verify** line. No commercial figures
 > (prices, customer counts, revenue) are recorded here — this repository is public.
+>
+> **Revision 2 (same day).** Two of revision 1's own "could not verify" items were wrong,
+> not unverifiable, and are corrected in place rather than quietly dropped: `wrangler` and
+> Node *were* installed (off `PATH` — §2.3), and the live `hub-mcp` commit *is* pinnable
+> (§2.1). Struck-through entries in §5 mark what moved. Where revision 1 stated something
+> that turned out to be false, the false statement is quoted before the correction — a
+> retraction that hides what it retracts cannot be audited.
 
 **Headline: the exploration plan's single BLOCKING finding (§3.1, "the widget declares a
 mimeType nobody implements") is WRONG.** The mimeType is correct and matches both current
 specs. Two *different*, real defects were found in its place. See §4.
+
+**Second headline, from revision 2: the live `hub-mcp` Worker is `e9d04f4adf` (2026-04-12),
+six commits behind the deleted tree — including both dependency-security commits — and its
+deprecated-but-installable npm client `hub-mcp@0.3.0` still points at it.** See §2.1.
 
 ---
 
@@ -155,21 +166,129 @@ directly comparable, and they disagree:
 `c1a5c99f4e^`; `automotive-3d` and `healthcare-3d` are thin re-exports of
 `mcp/packages/{automotive,healthcare}/src/tools.ts`, counted there — 9 and 7.)
 
-78 corroborates independently: `ee441e4785 feat(hub-mcp): v0.3.0 — 78 tools with
-bridge-API upgrades`.
-
 So the live Worker was deployed from an **earlier** tree than the one that was deleted.
 Redeploying `c1a5c99f4e^` verbatim would *change live behaviour* (52 → 78 tools) — which
 means "restore from git history" is a real change, not a no-op, and needs a diff review
 rather than a `wrangler deploy`.
 
-**Could not verify:** which exact commit the live build corresponds to. Attempts to count
-the registry at each intermediate commit (`678db5d1db`, `d02eec313d`, `9a6e210eba`,
-`f375960b60`, `9452e15a78`, `a88f7f8c58`) returned 0 for every non-vendored library, i.e.
-the count harness did not reproduce inside the loop even though the standalone
-`git show c1a5c99f4e^:…` count worked. Treated as a measurement failure on my side, not
-as evidence about those commits. Not pursued further — the two numbers that matter (52
-live, 78 last-committed) are each directly measured.
+#### The live build is `e9d04f4adf` — pinned, triple-corroborated
+
+The first version of this section listed the commit as *could not verify*. `wrangler` was
+then found and run (§2.2), which pins it. Mind the timezone — this is the whole crux:
+the live deploy is `2026-04-12T17:37:30.770Z` = **`19:37:30+02:00`**, and hub-gateway
+commit dates in this repo are `+02:00`.
+
+| Evidence | Value |
+|---|---|
+| Last `hub-mcp` deployment (`wrangler deployments list`) | `2026-04-12T17:37:30.770Z` |
+| `e9d04f4adf` commit date | `2026-04-12T19:37:09+02:00` = `17:37:09Z` — **21 s earlier** |
+| Registry count at `e9d04f4adf` | **52**, matching `/health` library-by-library |
+| `hub-mcp@0.1.0` on npm, published `17:46:34Z` (9 min later) | description: "**52** AI tools across 11 libraries" |
+
+`e9d04f4adf fix(hub-gateway): fix test assertions to match actual registry state` is
+therefore the tree that is live. The per-library counts at that commit are identical to
+the deployed table above, not merely equal in total:
+
+```
+e9d04f4adf TOTAL=52 | architecture=10 automotive-3d=9 ecommerce-3d=3 education=3
+                      finance=3 french-admin=4 health-fitness=3 healthcare-3d=7
+                      legal-docs=3 realestate=4 social-media=3
+```
+
+Two corrections to the first version of this section:
+
+- **The earlier count loop returning 0 was my bug, and it is fixed.** It iterated over a
+  hardcoded path list instead of `git ls-tree`, and had no fallback for the two thin
+  re-exports. With `git ls-tree` + the fallback, every commit counts cleanly. So §2.1 no
+  longer rests on an unexplained measurement failure.
+- **`ee441e4785` does not corroborate the 78.** It touches `hub-mcp/` — the *separate*
+  stdio client package (see below) — not `hub-gateway/`. The hub-gateway registry actually
+  reached 78 in **`9452e15a78 chore: bump version 4.0.0 → 4.0.1`**, a commit whose message
+  mentions no tools at all. Measured: `aae0fd5a56` → 52, `9452e15a78` → 78. A +26-tool
+  registry upgrade rode in under a version-bump subject line; worth knowing before anyone
+  reads that history as documentation.
+
+#### Six commits landed after the live build
+
+Everything in `hub-gateway/` after `2026-04-12T19:37:30+02:00`, i.e. **not** in the running
+Worker:
+
+| Commit | Date | Subject |
+|---|---|---|
+| `aae0fd5a56` | 2026-04-13 | `fix(hub-gateway): update FREE_TOOLS count 14→23 …` |
+| `9452e15a78` | 2026-04-13 | `chore: bump version 4.0.0 → 4.0.1` (**this is the 52→78**) |
+| `6637a58c72` | 2026-05-05 | `chore(security): bump hono → 4.12.17 and postcss → 8.5.14 (13 Dependabot alerts)` |
+| `a155966bab` | 2026-05-06 | `chore(deps): npm audit fix — clear 8 ip-address moderate vulns` |
+| `a88f7f8c58` | 2026-05-07 | `chore(security+plugins): CDI-safety scrub + multi-agent review fixes` |
+| `c1a5c99f4e` | 2026-05-07 | `chore(security): remove off-topic personal-portfolio code from public repo` |
+
+The consequence is stated plainly because it is the one operational finding here: **the
+live money-handling Worker predates both dependency-security commits.** It is running the
+pre-bump `hono`/`postcss`, i.e. the tree that the 13 Dependabot alerts and the 8
+`ip-address` advisories were filed against. Whether any of those are reachable in a Worker
+runtime is *not* assessed here — that needs the advisory list against the actual call
+paths, and this pass was read-only verification. Recorded as a finding, not as a severity.
+
+Also missing from the live build by 42 seconds: `2a191f2c04 fix(gateway): hub-mcp KV
+handoff + docs stdio + landing tool count (#816)`, committed `17:38:12+02:00`.
+
+#### There was a second component, and it is published on npm
+
+`c1a5c99f4e` deleted **two** directories, and the first version of this document named only
+one:
+
+- `hub-gateway/` — the Worker source, deployed as `hub-mcp` (all of §2 above).
+- `hub-mcp/` — a stdio MCP client that *proxies to that Worker*. `src/proxy.ts:18,22`
+  hardcode `https://hub-mcp.mcp-tools-lab.workers.dev/mcp` and `…/pricing`;
+  `src/telemetry.ts:23,25` hardcode the telemetry Worker's `/v1/events` and `/v1/batch`.
+
+That client is **still on the public npm registry** and still installable:
+
+```
+$ curl -s https://registry.npmjs.org/hub-mcp | …
+name: hub-mcp   dist-tags: {latest: 0.3.0, beta: 0.3.0}
+versions: 0.1.0 (2026-04-12T17:46:34Z), 0.2.0, 0.2.1, 0.3.0 (2026-04-13T07:30:34Z)
+maintainers: [thomasgorisse]
+tarball https://registry.npmjs.org/hub-mcp/-/hub-mcp-0.3.0.tgz -> HTTP 200, 14290 bytes
+```
+
+**All four versions are deprecated**, which is the mitigating fact and the reason this is
+not an incident:
+
+```
+deprecated: "Project discontinued — the MCPs it aggregated are unrelated and have been
+             split. Install each MCP individually instead."
+```
+
+The wind-down was deliberate and coherent: registry `modified` is
+`2026-05-07T22:04:44.876Z`, i.e. the deprecation was applied ~13 minutes *after* the
+deletion commit (`21:51:46Z`).
+
+The published tarball was then unpacked and read directly, so the following is measured on
+the **artifact**, not inferred from the deleted source:
+
+```
+$ curl -sO https://registry.npmjs.org/hub-mcp/-/hub-mcp-0.3.0.tgz && tar xzf hub-mcp-0.3.0.tgz
+$ grep -rhoE 'https://[a-z0-9.-]*\.workers\.dev[^"'\'' )]*' package/ | sort -u
+https://hub-mcp.mcp-tools-lab.workers.dev/mcp
+https://hub-mcp.mcp-tools-lab.workers.dev/pricing
+https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/batch
+https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/events
+$ grep -coE '"?name"?: ?"' package/dist/tools.js
+78
+```
+
+So, concretely, an `npm i hub-mcp` today still yields a working client that (a) points at
+the live billable Worker's `/mcp` and `/pricing`, and (b) posts to the live telemetry
+Worker. npm deprecation prints a warning; it does not block install.
+
+And the 52-vs-78 gap is not only in the description — **the shipped client's own tool table
+has 78 entries while the Worker it forwards to serves 52.** Per the package's own model
+("free tier runs locally; Pro tools forward to the hosted gateway"), the local tools are
+unaffected, but any forwarded call for one of the 26 tools that exist only in the client
+reaches a gateway that never had them. That is a real functional mismatch with both ends
+measured, and it is the reason this subsection exists rather than being a footnote: it is
+the one place where the incomplete wind-down is user-visible.
 
 ### 2.2 Where the source is NOT
 
@@ -191,20 +310,67 @@ Checked so the next session does not re-check:
   - Grep for `hub-mcp|hub-gateway|hub_mcp` across `*.ts *.js *.json *.toml *.md` in all
     three local clones: **zero hits**.
 
-**Could not verify — `wrangler`:** not installed on this machine, and neither is Node.
+### 2.3 `wrangler` DID run — correcting this document's own first version
+
+The first version of this section reported `wrangler` and Node as absent, on the strength of
+`command -v wrangler npx node pnpm yarn bun` returning nothing. **That conclusion was
+wrong, and the method is the lesson:** `command -v` only sees what is on `PATH`, and this
+machine keeps Node under `nvm` and `wrangler` as a project-local devDependency — neither is
+on a non-interactive shell's `PATH`. Both were present the whole time:
 
 ```
-$ command -v wrangler npx node pnpm yarn bun
-(no output)
-$ node -v
-zsh: command not found: node
+node     ~/.nvm/versions/node/v22.14.0/bin/node          (v22.14.0)
+wrangler ~/Projects/sceneview/mcp-gateway/node_modules/.bin/wrangler   (4.95.0)
+state    ~/Library/Preferences/.wrangler/   (126 logs, most recent today)
 ```
 
-So `wrangler whoami` / `wrangler deployments list` **did not run**. The deployment date of
-the live `hub-mcp` build, and the Cloudflare account it sits under, remain unverified.
-That is the one open question left on the hub, and it is the question that would pin
-§2.1's gap to a commit. (Node absence is itself worth noting: the repo's JS/TS gates
-cannot run on this machine as currently provisioned.)
+So the corollary drawn from the absence — "the repo's JS/TS gates cannot run on this
+machine" — was also wrong, and is withdrawn.
+
+Read-only commands only; no `deploy`, no `secret`, no `d1`. Authenticated:
+
+```
+$ wrangler whoami
+Account Name: Thomas Gorisse's Account
+Token type:   OAuth Token
+… scopes include workers (write), d1 (write)
+```
+
+(Email `thomas.gorisse@gmail.com`. The account ID is deliberately filtered out of this
+document — public repo.)
+
+`wrangler deployments list --name <worker>`, latest deployment per Worker:
+
+| Worker | Last deployment | In the plans? |
+|---|---|---|
+| `hub-mcp` | `2026-04-12T17:37:30.770Z` | yes — pins §2.1 |
+| `sceneview-mcp` | `2026-07-17T11:01:31.285Z` | yes |
+| `sceneview-telemetry` | `2026-04-16T21:55:18.551Z` | yes |
+| **`arcamera-api`** | `2026-08-14T12:27:58.776Z` | **no — in neither plan** |
+
+Three things to take from that table:
+
+1. **`sceneview-mcp` is deployed == committed.** Zero commits touch `mcp-gateway/` after
+   `2026-07-17T11:01:31Z` (`git log --since` → 0). This matters more than it looks: it
+   means §1.1's live `2025-03-26` and the two defects in §4.2/§4.3 — both read out of
+   source — are genuinely what is running, not a source-vs-deployed guess. For Gateway #1,
+   "deployed ≠ committed" is currently a distinction without a difference.
+2. **`arcamera-api` is a fourth Worker under the same account**, absent from both plans,
+   and the only one deployed recently (yesterday). It belongs to the `ar-model-viewer`
+   project, not to sceneview. Flagged for inventory completeness; not investigated, since
+   it is outside this task's scope.
+3. **`wrangler deployments list` returns at most 10 entries.** Each Worker above showed
+   exactly 10, so these are the *latest* 10 and the true first-deploy dates are truncated
+   and unknown. Only the **last** deployment per Worker is a measured fact — which is the
+   one that matters, and is what the table reports. (An earlier note in this session read
+   the oldest of the 10 as "earliest deployment ever" and reasoned from it toward a
+   different commit; that inference was unsound and is dropped.)
+
+**Still not verified on the hub:** whether the Cloudflare secrets (Stripe keys, D1/KV
+bindings) currently set on the live `hub-mcp` still match what `wrangler.toml` at
+`e9d04f4adf` expects. Reading them requires `wrangler secret list`, and the sanctioned
+mandate here was read-only against billable state; a secret is exactly the case CLAUDE.md
+says to stop on. Left for Thomas.
 
 ---
 
@@ -444,19 +610,39 @@ rather than inferred.
 
 ## 5. Could not verify — the honest list
 
-1. **`wrangler` anything.** Not installed; no Node/npm on this machine (§2.2). Deployment
-   dates, the Cloudflare account, and the commit behind the live `hub-mcp` build are all
-   still unknown.
+Items 1 and 3 of this list were **resolved later in the same session** and are kept here,
+struck, rather than silently deleted — a "could not verify" that quietly disappears is
+indistinguishable from one that was never asked.
+
+1. ~~**`wrangler` anything.**~~ **RESOLVED — §2.3.** `wrangler` 4.95.0 and Node v22.14.0
+   were both present, off `PATH`; `whoami` and `deployments list` ran read-only. What
+   remains unverified on the hub is narrower: the **live Cloudflare secrets** (`wrangler
+   secret list` not run — secrets are a stop condition, not a read).
 2. **The OpenAI-side adversarial review.** `codex` is not installed here; the leg SKIPped
-   (§3.1). Nothing in this document substitutes for it.
-3. **The exact commit the live `hub-mcp` build was deployed from** (§2.1) — measurement
-   harness failed, not pursued.
-4. **Every `agy` claim in §3.2.** None was checked. Three are cheap and worth doing first
-   because they would move the plan: (a) Gemini Enterprise needing OpenAPI 3.0 + OAuth2
-   for Vertex AI Agent Builder, which contradicts the exploration plan outright;
-   (b) `@AppFunction` being buildable and locally testable *without* trusted-tester
-   approval, which would remove Tier C's "apply and wait" dependency; (c) Scene Viewer's
-   `intent://arvr.google.com/scene-viewer/1.0?…` covering §4.2 with no app install.
+   (§3.1). Nothing in this document substitutes for it. **Still open** — this is the
+   largest single gap in the whole pass, and no other finding covers it.
+3. ~~**The exact commit the live `hub-mcp` build was deployed from.**~~ **RESOLVED —
+   §2.1.** It is `e9d04f4adf`, pinned by a 21-second deploy/commit gap, an exact
+   per-library count match, and the npm description of the build published 9 minutes later.
+4. **`agy`'s claims in §3.2** — one checked, two still open:
+   - (b) **CONFIRMED.** `developer.android.com/ai/appfunctions` states AppFunctions "is in
+     an experimental preview" and that Gemini integration is "in a private preview with
+     trusted testers", but answers the operative question directly in its own FAQ: *"I'm an
+     app developer. Can I implement AppFunctions today?"* → *"Yes, it's possible to
+     implement and test AppFunctions within your app."* So `agy` is right that Tier C's
+     "apply and wait" dependency can be dropped: the code and its tests are unblocked
+     today; only the *Gemini-facing* activation waits on the trusted-tester program. Those
+     are two separate gates, and the plan currently conflates them into one.
+   - (a) **Still unverified — and not for lack of trying.** Gemini Enterprise needing
+     OpenAPI 3.0 + OAuth2 (which contradicts the exploration plan outright).
+     `cloud.google.com/gemini-enterprise/docs/mcp` redirects, and the redirect target
+     returns 404. Google's own docs URL for the claim does not currently resolve, so the
+     contradiction stands unadjudicated. **Do not re-plan §6 item 10 on either version of
+     this until someone reads a page that loads.**
+   - (c) **Still unverified.** Scene Viewer's
+     `intent://arvr.google.com/scene-viewer/1.0?…` covering §4.2 with no app install. Cheap
+     to settle, but it needs a device or emulator, not a fetch — so it belongs to a
+     `device-qa` pass, not to this one.
 5. **Whether the widget actually renders** once §4.2 and §4.3 are fixed. No probe was run
    in a real ChatGPT or Claude client — that is still Tier A item 3.
 6. **Stripe.** Read-only mandate respected; no Stripe API call was made from this
@@ -474,10 +660,26 @@ rather than inferred.
   (§4.2, §4.3). This is the actual "widget renders nowhere" fix.
 - **`ai-surfaces-cleanup.md` §1.2 / Wave 3 item 10** — the hub source is **not** lost
   (§2). The decision (fold in / own repo / retire) can be made on real code. But restoring
-  it is a live behaviour change, 52 → 78 tools (§2.1), not a restore.
+  it is a live behaviour change, 52 → 78 tools (§2.1), not a restore. The live tree is
+  `e9d04f4adf`; diff against that, not against `c1a5c99f4e^`.
+- **The hub has a second component, and the cleanup plan tracks only one** — `hub-mcp` the
+  npm stdio client, deprecated but still installable and still pointing at the live billable
+  Worker (§2.1). Any retire/fold decision has to cover both, or the client outlives the
+  Worker it proxies to.
+- **The live hub predates both dependency-security commits** (§2.1). Not triaged here;
+  belongs in whatever decision is made about the hub, and is a reason not to leave it
+  running untouched by default.
+- **`arcamera-api`** — a fourth Worker in neither plan (§2.3). The Cloudflare inventory both
+  plans work from is incomplete.
 - **§0 of both plans** — the Workers are live and confirmed (§1); that assumption can be
-  retired.
+  retired. For Gateway #1, "deployed ≠ committed" is also settled: they are equal (§2.3).
+- **`ai-surfaces-exploration.md` Tier C (AppFunctions)** — the "apply and wait" dependency
+  can be dropped. Implementation and local testing are unblocked today; only Gemini-facing
+  activation waits on trusted-tester (§5 item 4b).
 - **`multi-llm-delegation.md` §1** — stale: `codex` is no longer installed on this Mac.
+  Worth adding the `PATH` lesson from §2.3 to that plan's own probing advice: `command -v`
+  is not a tool-availability check on this machine, where Node lives under `nvm` and CLIs
+  live in project-local `node_modules/.bin`.
 
 ## 6b. Off-topic but measured here: a false RED in the #3159 foreign-tree detector
 
@@ -508,6 +710,82 @@ Likely fix: anchor the match so only a genuine absolute path qualifies (require 
 to start at a line start or after a non-path character), and add the relative-fragment
 case to the self-test. Needs its own PR — it is gate internals, not this branch's subject.
 
+**Re-verified in revision 2, with a caveat that matters.** On a later run of the same gate
+the self-test **passed** — not because the bug was fixed, but because that run produced no
+`roborazzi.log` containing the triggering line. The bug itself is unchanged:
+
+```
+$ source .claude/scripts/lib/gradle-run.sh
+$ printf 'OK: samples/android-demo/src/main/java/X.kt in sync\n' > /tmp/rel.log
+$ gradle_foreign_tree_paths /tmp/rel.log "$PWD"
+/android-demo/src/main/java/X.kt          ← still wrong
+```
+
+So this defect is **intermittent at the gate level and deterministic at the function
+level**. A green self-test here is evidence about which logs happened to exist, not about
+the detector. Anyone who "cannot reproduce" it should run the three lines above rather than
+re-run the gate.
+
+## 6c. A second false RED, same root cause as §2.3: `node` off `PATH`
+
+Also measured while gating this change, and worth recording because it is the same `PATH`
+mistake as §2.3 — this time made by the gate rather than by me.
+
+Run with a bare non-interactive `PATH`, `pre-push-check.sh` reported:
+
+```
+✗ 3 CHECK(S) FAILED — DO NOT PUSH
+[18/22] ⚠ MCP tool-claim gate NOT checked — the checker could not be executed (exit 127)
+        .claude/scripts/pre-push-check.sh: line 591: node: command not found
+[20/22] ✗ 1 of 42 gate self-test(s) failed
+        → 11 of 12 test-check-mcp-tool-claims.sh cases failed, every one rc=127
+```
+
+Re-run with `PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH"` and the same tree, same
+commit, goes to **0 failures**:
+
+```
+[18/22] ✓ check-mcp-tool-claims: OK — 109 prose file(s) scanned, 67 known tools, 38 samples
+[20/22] ✓ 42 gate self-test(s) pass
+```
+
+Two things follow:
+
+- **A missing interpreter is being graded as a failed check.** `exit 127` is
+  "cannot execute", which is the gate's own "could not run" category — it has one, it uses
+  it correctly at `[18/22]` ("NOT checked"), and then the self-test leg at `[20/22]` counts
+  the same 127s as substantive failures and turns the verdict RED. `DO NOT PUSH` on a
+  machine that simply keeps Node under `nvm` is a false RED, and it is the kind that
+  teaches people to push anyway.
+- **Incidental confirmation of §1.2**: the tool-claim gate independently reports
+  **67 known tools**, matching the live `tools/list` count measured against the deployed
+  Worker. Two unrelated methods, same number.
+
+Suggested fix, in the same spirit as §6b and likewise its own PR: resolve `node` through
+`nvm`'s default (or fail the *self-test* as "could not run" rather than "failed") so a
+127 never colours the verdict.
+
+## 6d. `apiCheck` could not be verified locally — and CI says it is fine
+
+Stated plainly rather than buried, because it is the one leg this change did not get a
+local verdict on.
+
+`apiCheck` fails in this worktree with ~200 `Unresolved reference 'compose'` errors in
+`sceneview-compose/src/commonMain/.../CameraState.kt`. It is **not** this change and not
+this branch:
+
+- The branch touches no Kotlin and no Gradle config — `git diff --name-only
+  origin/main...HEAD -- sceneview-compose/ gradle/ '*.gradle.kts' gradle.properties` is
+  empty. This commit changes exactly one Markdown file.
+- `apiCheck` is a **blocking** job in `ci.yml:558` (`./gradlew apiCheck --stacktrace`), and
+  the `CI` run on `main` at `2026-08-15T12:43:31Z` is `success`.
+- It is not the evicted-cache class either: it survives `--refresh-dependencies` and a
+  `rm -rf sceneview-compose/build .kotlin`, failing in ~500 ms.
+
+So: local host state in this worktree, gated green by CI, cause not diagnosed — chasing it
+further is off-task for a verification pass. The gate's own final verdict on this change is
+`0 checks failed, 1 could not run`, and that one is this.
+
 ## 7. Commands, for reproduction
 
 ```bash
@@ -528,6 +806,41 @@ curl -s -X POST https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public \
 git log --all --diff-filter=D --name-only -- 'hub-gateway/*' 'hub-mcp/*'
 git ls-tree -r --name-only c1a5c99f4e^ -- hub-gateway hub-mcp
 git show c1a5c99f4e^:hub-gateway/wrangler.toml
+
+# §2.1 — pin the live build. Counts every library, incl. the two thin re-exports.
+# NOTE: the earlier version of this loop hardcoded paths and silently returned 0.
+for c in e9d04f4adf aae0fd5a56 9452e15a78 c1a5c99f4e^; do
+  tot=0
+  for f in $(git ls-tree --name-only "$c" hub-gateway/src/libraries/ | grep -v index.ts); do
+    lib=$(basename "$f" .ts); n=$(git show "$c:$f" | grep -cE '^    name: "')
+    case "$lib" in
+      automotive-3d) [ "$n" -eq 0 ] && n=$(git show "$c:mcp/packages/automotive/src/tools.ts" | grep -cE '^    name: "');;
+      healthcare-3d) [ "$n" -eq 0 ] && n=$(git show "$c:mcp/packages/healthcare/src/tools.ts" | grep -cE '^    name: "');;
+    esac
+    tot=$((tot+n))
+  done
+  echo "$c TOTAL=$tot"
+done   # -> e9d04f4adf 52, aae0fd5a56 52, 9452e15a78 78, c1a5c99f4e^ 78
+
+# §2.1 — commits after the live deploy. Deploy is UTC, commits are +02:00.
+git log --date=iso-strict --format='%h %ad %s' --all \
+  --since='2026-04-12T17:37:30Z' -- hub-gateway/
+
+# §2.1 — the npm client that survives the deletion
+curl -s https://registry.npmjs.org/hub-mcp | python3 -c \
+  'import json,sys; d=json.load(sys.stdin); print(d["dist-tags"], d["time"]["modified"]); \
+   [print(v, repr(m.get("deprecated","NO"))) for v,m in d["versions"].items()]'
+
+# §2.3 — wrangler. READ-ONLY: no deploy, no secret, no d1.
+export PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH"
+cd ~/Projects/sceneview/mcp-gateway
+./node_modules/.bin/wrangler whoami
+for w in hub-mcp sceneview-mcp sceneview-telemetry arcamera-api; do
+  ./node_modules/.bin/wrangler deployments list --name "$w" | grep '^Created:' | tail -1
+done   # NB: lists at most 10 deployments — only the LAST one is a fact
+
+# §2.3 — Gateway #1 deployed == committed
+git log --oneline --all --since='2026-07-17T11:01:31Z' -- mcp-gateway/ | wc -l   # -> 0
 
 # §4 — the specs
 gh search code --limit 20 'profile=mcp-app repo:modelcontextprotocol/modelcontextprotocol'
@@ -550,4 +863,8 @@ gh api repos/modelcontextprotocol/modelcontextprotocol/contents/docs/extensions/
 - Live probes of `*.mcp-tools-lab.workers.dev` (§7 reproduces them)
 - `git` history of this repository at `c1a5c99f4e`
 - `agy` (Antigravity CLI) via `.claude/scripts/llm-delegate.sh gemini` — **advisory,
-  unverified**
+  unverified** except the AppFunctions claim (§5 item 4b)
+- [`developer.android.com/ai/appfunctions`](https://developer.android.com/ai/appfunctions)
+  — preview status and the "can I implement today?" FAQ answer
+- npm registry API, `registry.npmjs.org/hub-mcp` — versions, timestamps, deprecation
+- `wrangler` 4.95.0 (`whoami`, `deployments list`) — read-only, §2.3
