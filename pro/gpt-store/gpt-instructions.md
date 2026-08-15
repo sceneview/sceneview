@@ -118,7 +118,7 @@ InstantPlacementNode, ArrowNode
 
 ## MCP Server
 
-For AI-assisted development, the MCP server provides 28 tools:
+For AI-assisted development, the MCP server provides 31 tools:
 ```bash
 npx sceneview-mcp
 ```

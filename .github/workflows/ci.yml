@@ -1583,6 +1583,28 @@ jobs:
         shell: bash
         run: bash .claude/scripts/check-android-run-not-taught.sh
 
+      # Self-test first, same discipline as the pairs above: a claim gate that
+      # silently stops finding anything is worse than none, and this one builds
+      # its registry by parsing source — the failure mode is an empty registry
+      # that rubber-stamps every claim. The suite pins BOTH directions and the
+      # exit-2 refusal.
+      - name: Self-test check-mcp-tool-claims.js
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-check-mcp-tool-claims.sh
+
+      # Prose surfaces may not invent MCP tools or mis-state their count. Every
+      # falsehood in #3189 was that shape: `docs/docs/ai-development.md`
+      # documented three tools that never existed, `website-static/playground.html`
+      # shipped a copy-to-clipboard prompt naming five more, and "28 MCP tools"
+      # stood against a real 31 in seven places. mcp/src/tool-count-claims.test.ts
+      # guards the numbers INSIDE mcp/; nothing guarded the README, the docs site
+      # or the website, which is where the drift lived.
+      - name: MCP tool claims match the real registry
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: node tools/check-mcp-tool-claims.js
+
       # Changelog collation (collate-changelog.sh). It runs ONCE per release and
       # DELETES the fragments it consumed, so a bullet filed under the wrong
       # heading is found after the release notes are public, with the source
