@@ -79,38 +79,60 @@ build — and one that showcases the SDK far better than a docs connector would.
 
 ## 3. Three findings that gate everything else
 
-### 3.1 The widget speaks a protocol nobody implements — BLOCKING, cheap to fix
+### 3.1 ~~The widget speaks a protocol nobody implements~~ — **THIS WAS WRONG**
 
-`mcp-gateway/src/mcp/widgets.ts:26` declares:
+**Corrected 2026-08-15 against the primary source. Do not implement what this
+section originally said; it would have broken working code.**
 
-```ts
-export const APPS_SDK_MIME_TYPE = "text/html;profile=mcp-app";
-```
+The original claim was that `mcp-gateway/src/mcp/widgets.ts:26` declares a
+homegrown `text/html;profile=mcp-app` matching no real host, and that the fix was
+to emit `text/html+skybridge` + `openai/outputTemplate` instead. That is
+backwards. The official
+[`ext-apps` migration table](https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/migrate_from_openai_apps.md)
+reads:
 
-and `transport.ts:405` attaches `_meta.ui.resourceUri`. Neither matches a real host:
-
-| Host | mimeType | tool `_meta` key |
+| | OLD (OpenAI Apps SDK) | NEW (MCP Apps) |
 |---|---|---|
-| OpenAI Apps SDK | `text/html+skybridge` | `openai/outputTemplate` |
-| MCP Apps (SEP-1865, official) | `text/html+mcp` | `ui://…` URI referenced from tool `_meta` |
-| **ours today** | `text/html;profile=mcp-app` | `_meta.ui.resourceUri` |
+| Resource MIME type | `text/html+skybridge` | **`text/html;profile=mcp-app`** |
+| Resource metadata | `_meta["openai/widgetCSP"]` etc. | **`_meta.ui.*`** |
 
-So the 3D-viewer widget — which is *already written*, Filament.js and all — renders in
-**zero** clients today. Emitting both contracts (they can coexist on one resource: two
-`resources/list` entries, or one resource plus both `_meta` keys) turns existing work
-into a shipping feature on ChatGPT *and* Claude, including Claude mobile, in what looks
-like a day of work plus tests.
+So `text/html;profile=mcp-app` and `_meta.ui.*` are the **destination** of the
+migration, not a private invention — the gateway already ships the current
+contract. `text/html+mcp` survives only in a superseded 2025-11-21 blog post.
 
-⚠️ Verify against the primary specs from a machine with egress before writing code —
-the table above is assembled from secondary sources (§9), and getting a mimeType wrong
-is exactly the failure mode being fixed.
+**How this got written wrong is the point.** The container had no egress to
+`modelcontextprotocol.io`, `developers.openai.com` or `mcpui.dev`, so the table
+was assembled from dated *secondary* sources and a `+skybridge` string that was
+real but historical. §0 and the section itself both said "verify against the
+primary specs before writing code" — that safeguard is the only reason this was
+caught before anyone implemented it. Keep writing it.
 
-### 3.2 The gateway advertises MCP 2025-03-26
+### 3.1b The two defects that ARE real (measured live, 2026-08-15)
+
+Both verified against `/mcp/public` on the deployed Worker and against source:
+
+1. **`initialize` declares no `extensions` capability.** MCP Apps is opt-in
+   through `io.modelcontextprotocol/ui`, and the versioned extensions framework
+   arrived with spec revision **2026-07-28**. `transport.ts:318` advertises only
+   `tools` / `resources` / `prompts`. This makes §3.2 not parallel hygiene but
+   the **prerequisite**: the widget cannot be offered until the server speaks a
+   revision that has extensions at all.
+2. **`_meta.ui.resourceUri` rides on tool RESULTS, not tool DECLARATIONS.**
+   `transport.ts:405` attaches it to the JSON-RPC result; `widget-tools.ts`
+   declares no `_meta` at all, and `tools/list` returns 67 tools with zero
+   `resourceUri` occurrences. The spec puts the pointer on the declaration so a
+   host can preload the UI — a host deciding from `tools/list` never learns the
+   widget exists.
+
+Neither is the rewrite §3.1 originally prescribed. Both are smaller, and both
+have to land before asking whether the widget renders.
+
+### 3.2 The gateway advertises MCP 2025-03-26 — four revisions behind, and it gates §3.1b
 
 `transport.ts:116` pins `PROTOCOL_VERSION = "2025-03-26"`. The current revision is
 **2026-07-28** (stateless request/response, explicitly aimed at serverless/edge — which
 is exactly what a Cloudflare Worker is) and it is the one that ships MCP Apps and Tasks
-under a versioned extensions framework. Being three revisions behind is a plausible
+under a versioned extensions framework. Being four revisions behind is a plausible
 silent reason for feature-detection failures in newer clients, and the stateless model
 should *simplify* the Worker rather than complicate it.
 
@@ -214,8 +236,11 @@ genuine differentiator, so it is worth a 30-minute probe before deciding.
 ## 6. Ranked plan
 
 **Tier A — fix what is already built (days, unblocks two directories)**
-1. Dual-emit the widget contract (`text/html+skybridge` + `text/html+mcp`), verified
-   against the primary specs. §3.1
+1. ~~Dual-emit the widget contract.~~ **WITHDRAWN — the premise was wrong (§3.1).**
+   The shipped mimeType is already the current one. Do this instead, in order:
+   bump the protocol revision so `extensions` exists at all (§3.2), declare
+   `io.modelcontextprotocol/ui`, then move the widget pointer from the tool
+   result onto the tool declaration. §3.1b
 2. Bump the gateway to MCP 2026-07-28 (stateless suits a Worker). §3.2
 3. Probe-test the widget in ChatGPT *and* Claude before any submission.
 4. Submit to the ChatGPT App Directory and the Claude connectors directory

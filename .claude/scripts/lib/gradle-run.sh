@@ -105,8 +105,15 @@ gradle_foreign_tree_paths() {
     # project's own files foreign.
     proj="$(cd "$proj" 2>/dev/null && pwd -P)" || return 0
 
-    grep -oE '(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
-    | sed 's|^file://||' \
+    # The path must START a token. Without the leading-delimiter class, grep
+    # matched from the first `/` INSIDE a relative path, so a perfectly ordinary
+    # Gradle line naming `samples/android-demo/src/main/java/X.kt` yielded the
+    # fragment `/android-demo/src/main/java/X.kt` — absolute-looking, under no
+    # project root, and therefore graded as ANOTHER CHECKOUT. A healthy leg came
+    # back "describes a DIFFERENT checkout" (#3189). Gradle prints relative paths
+    # constantly, so this was a live false-red waiting on the right log line.
+    grep -oE '(^|[[:space:]"'"'"'(\[])(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
+    | sed -E 's|^[[:space:]"'"'"'(\[]||; s|^file://||' \
     | while IFS= read -r p; do
         # Same /private normalisation for the candidate, which may name a
         # directory that does not exist on this host and so cannot be resolved.

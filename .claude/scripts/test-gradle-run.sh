@@ -695,8 +695,25 @@ fi
 echo ""
 echo "foreign-tree detection (#3159):"
 
+
 FT_PROJ="$TMP/proj/sceneview"
 mkdir -p "$FT_PROJ"
+
+# A RELATIVE source path is not another checkout. Gradle prints them constantly
+# ("samples/android-demo/src/main/java/X.kt"), and the detector used to match
+# from the first `/` INSIDE such a path, yielding `/android-demo/src/...` — an
+# absolute-looking fragment under no project root, graded as ANOTHER CHECKOUT.
+# A healthy leg came back "describes a DIFFERENT checkout" (#3189). The clean-run
+# baseline below only catches this when a log on disk happens to carry the
+# shape, so it is asserted deterministically here.
+FT_REL="$TMP/relative.log"
+printf 'OK: samples/android-demo/src/main/java/X.kt\n' > "$FT_REL"
+if [ -z "$(gradle_foreign_tree_paths "$FT_REL" "$FT_PROJ")" ]; then
+    ok "a relative src/ path is not a foreign checkout"
+else
+    bad "a relative src/ path was flagged foreign — every gate run naming one would be COULD NOT RUN"
+fi
+
 
 # Verbatim from the api-check.log measured on 2026-08-14: this worktree's gate
 # run, carrying another clone's compiler diagnostics.
