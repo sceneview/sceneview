@@ -106,7 +106,12 @@ else
   for dir in "$SKILLS"/*/; do
     [ -d "$dir" ] || continue
     name=$(basename "$dir")
-    printf '%s\n' "$indexed" | grep -qx -e "$name" || {
+    # Herestring, NOT `printf … | grep -qx`. `grep -q` exits on its first match
+    # and closes the pipe; printf then takes EPIPE and, under `pipefail`, fails
+    # the pipeline *because the match succeeded* (#3180) — which here would
+    # report an indexed skill as an orphan. Same defect measured in
+    # validate-demo-assets.sh.
+    grep -qx -e "$name" <<< "$indexed" || {
       bad "skill '$name' exists on disk but is absent from CLAUDE.md's index table"
       echo "    An unindexed skill is one no session will think to open."
       orphans=$((orphans + 1))
