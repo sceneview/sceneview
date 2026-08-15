@@ -926,6 +926,10 @@ Two consequences to keep in mind:
   `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
 - **Opt out with `apply = { isTouchForwardingEnabled = false }`** for a purely decorative overlay
   whose quad must never steal a gesture.
+- **The quad is double-sided, the touch mapping is not.** The material un-mirrors its UVs on the
+  back face, so a `ViewNode` orbited from behind still reads correctly on screen while a touch
+  picked there lands on the horizontally mirrored pixel. Detecting the facing needs the camera,
+  which the touch callback does not receive. Do not rely on back-face interaction.
 
 ### LineNode — single line segment
 ```kotlin

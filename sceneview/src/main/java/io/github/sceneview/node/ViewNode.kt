@@ -290,8 +290,10 @@ class ViewNode(
      * the quad: the view gets a single `ACTION_CANCEL` (no stuck press, no phantom click) and the
      * rest of the gesture is swallowed.
      *
-     * Not gated on [isTouchForwardingEnabled] on purpose — disabling forwarding mid-gesture must
-     * still close a stream that is already open.
+     * Reached only for events whose ray **misses** this node — that is the condition under which
+     * `SceneView`'s dispatcher routes to the captured node. A gate flipped while the finger is
+     * still *on* the quad is therefore not this method's job; [onTouchEvent] closes that stream
+     * itself.
      */
     override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 

@@ -414,6 +414,11 @@ Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world l
     `apply = { isTouchForwardingEnabled = false }` for a decorative overlay that must never
     steal a gesture.
 
+    One limitation: the quad is double-sided and the material un-mirrors its UVs on the back
+    face, so a `ViewNode` orbited from behind reads correctly on screen while a touch picked
+    there lands on the horizontally mirrored pixel. Detecting the facing needs the camera,
+    which the touch callback does not receive — do not rely on back-face interaction.
+
 ### Signature
 
 ```kotlin
