@@ -71,8 +71,8 @@ export async function dispatchProxyToolCall(
             `\`${toolName}\` is a SceneView MCP Pro tool. ` +
             `Set \`SCENEVIEW_API_KEY\` to an API key from ` +
             `${DEFAULT_PRICING_URL} to unlock it.\n\n` +
-            `Pro unlocks 27 specialized tools: 3D preview / artifact / scene ` +
-            `generation, plus the Automotive / Gaming / Healthcare / Interior ` +
+            `Pro unlocks 38 specialized tools: 3D preview / artifact / scene ` +
+            `generation, plus the Automotive / Gaming / Healthcare / Interior / Rerun ` +
             `packages. All setup, migration, and reference guides are free.`,
         },
       ],

@@ -100,8 +100,8 @@ ModelNode, CubeNode, SphereNode, CylinderNode, PlaneNode, MeshNode,
 ImageNode, VideoNode, ViewNode, LightNode, DynamicSkyNode, FogNode,
 ReflectionProbeNode, LineNode, PathNode, BillboardNode, TextNode,
 PhysicsNode, AnchorNode, HitResultNode, AugmentedImageNode,
-AugmentedFaceNode, CloudAnchorNode, GeospatialNode, DepthNode,
-InstantPlacementNode, ArrowNode
+AugmentedFaceNode, CloudAnchorNode, DepthMeshNode, DepthHitResultNode,
+TerrainAnchorNode, RooftopAnchorNode
 
 ## Comparison with Alternatives
 

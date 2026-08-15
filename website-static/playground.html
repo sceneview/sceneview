@@ -2109,7 +2109,7 @@
         },
         claude: {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — Model Viewer\n\n## Prompt to Claude:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## Claude will generate:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `create_scene` — scaffold a new 3D scene\n- `add_model` — add a GLB/USDZ model node\n- `configure_camera` — set orbit/freeflight\n- `set_environment` — load HDR lighting'
+          code: '# MCP / Claude — Model Viewer\n\n## Prompt to Claude:\n\n> Build me a 3D model viewer Android app\n> using SceneView. Load a GLB model with\n> environment lighting and orbit camera.\n\n## Claude will generate:\n\n```kotlin\nSceneView(\n    modifier = Modifier.fillMaxSize(),\n    engine = engine,\n    environment = rememberEnvironment(\n        envLoader, \"envs/sky.hdr\"\n    ),\n    cameraManipulator = rememberCameraManipulator()\n) {\n    rememberModelInstance(\n        modelLoader, \"models/helmet.glb\"\n    )?.let { ModelNode(modelInstance = it) }\n}\n```\n\n## SceneView MCP Tools:\n- `get_sample` — a compilable sample per scenario\n- `get_node_reference` — exact node signatures\n- `get_setup` — Gradle + manifest setup\n- `validate_code` — check code against the real API'
         }
       },
       'environment-setup': {
