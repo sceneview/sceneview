@@ -107,16 +107,25 @@ real but historical. §0 and the section itself both said "verify against the
 primary specs before writing code" — that safeguard is the only reason this was
 caught before anyone implemented it. Keep writing it.
 
-### 3.1b The two defects that ARE real (measured live, 2026-08-15)
+### 3.1b The defects that ARE real (measured live, 2026-08-15)
+
+A third, smaller one: **`outputSchema` is absent on all 67 live tools.** The
+`readOnlyHint` / `openWorldHint` / `destructiveHint` annotations are already
+present on all of them — an earlier reading treated those as outstanding work
+and was wrong; only `outputSchema` is missing.
 
 Both verified against `/mcp/public` on the deployed Worker and against source:
 
-1. **`initialize` declares no `extensions` capability.** MCP Apps is opt-in
-   through `io.modelcontextprotocol/ui`, and the versioned extensions framework
-   arrived with spec revision **2026-07-28**. `transport.ts:318` advertises only
-   `tools` / `resources` / `prompts`. This makes §3.2 not parallel hygiene but
-   the **prerequisite**: the widget cannot be offered until the server speaks a
-   revision that has extensions at all.
+1. **`initialize` declares no `extensions` capability.** `transport.ts:318`
+   advertises only `tools` / `resources` / `prompts`.
+
+   ⚠️ **Corrected 2026-08-15 (rev 3): this is NOT a prerequisite for the widget.**
+   An earlier revision said the widget could not be offered until the server spoke
+   `2026-07-28`. Nothing in OpenAI's UI documentation requires the server to
+   advertise a UI extension in `initialize`, or any particular protocol version.
+   The declaration fix (item 2) and the protocol bump (§3.2) are **two independent
+   changes**; bundling them turns one reviewable fix into one unreviewable
+   hypothesis. Do them separately, smallest first.
 2. **`_meta.ui.resourceUri` rides on tool RESULTS, not tool DECLARATIONS.**
    `transport.ts:405` attaches it to the JSON-RPC result; `widget-tools.ts`
    declares no `_meta` at all, and `tools/list` returns 67 tools with zero
@@ -127,7 +136,7 @@ Both verified against `/mcp/public` on the deployed Worker and against source:
 Neither is the rewrite §3.1 originally prescribed. Both are smaller, and both
 have to land before asking whether the widget renders.
 
-### 3.2 The gateway advertises MCP 2025-03-26 — four revisions behind, and it gates §3.1b
+### 3.2 The gateway advertises MCP 2025-03-26 — four revisions behind (independent of §3.1b)
 
 `transport.ts:116` pins `PROTOCOL_VERSION = "2025-03-26"`. The current revision is
 **2026-07-28** (stateless request/response, explicitly aimed at serverless/edge — which
@@ -243,14 +252,30 @@ genuine differentiator, so it is worth a 30-minute probe before deciding.
 
 **Tier A — fix what is already built (days, unblocks two directories)**
 1. ~~Dual-emit the widget contract.~~ **WITHDRAWN — the premise was wrong (§3.1).**
-   The shipped mimeType is already the current one. Do this instead, in order:
-   bump the protocol revision so `extensions` exists at all (§3.2), declare
-   `io.modelcontextprotocol/ui`, then move the widget pointer from the tool
-   result onto the tool declaration. §3.1b
+   The shipped mimeType is already the current one. The remaining work is
+   **smaller than two revisions of this note claimed**: move the widget pointer
+   from the tool result onto the tool declaration. That is it — the protocol bump
+   is a separate, independent item, not a gate on this one. §3.1b
 2. Bump the gateway to MCP 2026-07-28 (stateless suits a Worker). §3.2
 3. Probe-test the widget in ChatGPT *and* Claude before any submission.
-4. Submit to the ChatGPT App Directory and the Claude connectors directory
-   (check the Team/Enterprise prerequisite first — §3.3).
+4. Submit to the Claude connectors directory (check the Team/Enterprise
+   prerequisite first — §3.3), and on the OpenAI side submit a **plugin**, not an
+   "Apps SDK app".
+
+   **Corrected 2026-08-15 (rev 3).** OpenAI's unit of distribution is a *plugin* —
+   skills + MCP server + optional UI — listed in a directory **shared by ChatGPT
+   and Codex**, with a documented migration path from the Claude Code plugin
+   SceneView already ships. One submission reaches both surfaces, and the starting
+   point already exists. Aiming at a ChatGPT-only app directory was the wrong
+   target and the more expensive one.
+
+   ⚠️ **A monetization constraint that belongs in the architecture, not in
+   submission cleanup.** The guidelines let a user reach an account they already
+   pay for, but prohibit selling or promoting subscriptions inside the plugin —
+   direct checkout links included. Measured on the live gateway: `/pricing` is
+   200 with no transactional link and `/billing/checkout` is 404, so it is
+   compliant **as it stands**. That is a property to keep deliberately, not a
+   coincidence to discover breaking later.
 
 **Tier B — the AR bridge (weeks, the actual new product)**
 5. Measure mode in the demo apps, built on the existing depth/anchor primitives.

@@ -4,16 +4,17 @@
 > Claude Code as the **single orchestrator**.
 > Single entry point: [`llm-delegate.sh`](../scripts/llm-delegate.sh).
 >
-> ⚠️ **STATUS BELOW IS FROM 2026-07-23 AND HAS DECAYED. Re-probe before relying on it.**
-> Measured on the Mac 2026-08-15 (#3189): **`codex` is NOT installed** — the delegate
-> script SKIPs it honestly (exit 3), so the OpenAI-side leg of that session's
-> cross-vendor pass did not run at all. The line below claiming "`agy` + `codex`
-> authenticated" is what made two sessions expect a review they never got. `agy` ran.
+> ⚠️ **The status below is from 2026-07-23. Re-probe before relying on it — but note
+> HOW to probe.** On 2026-08-15 (#3189) three separate "tool not installed" conclusions
+> were drawn on this Mac — for `codex`, `node` and `wrangler` — and **all three were
+> wrong**. Every one of them came from `command -v`, which sees only a non-interactive
+> shell's `PATH`; nvm-managed and project-local binaries are invisible to it. `codex` was
+> installed and authenticated the whole time, and its adversarial-review leg did run.
 >
-> Restoring the Codex leg needs **two** steps, and the second cannot be automated:
-> `npm i -g @openai/codex`, then an interactive `codex login` (ChatGPT Plus/Pro OAuth,
-> needs a TTY and a human). A spawned session can do the first and will still SKIP on
-> the second.
+> `llm-delegate.sh:110` probes with `command -v`, so its SKIP contract fires **honestly on
+> a false premise** — the exit code is right and the conclusion is not. Before recording
+> "X is not installed", try invoking X, or source the interactive profile. A SKIP from
+> this script means "not on this shell's PATH", never "absent from the machine".
 
 ## 1. Current state (measured on this machine, 2026-07-23 — see the decay warning above)
 

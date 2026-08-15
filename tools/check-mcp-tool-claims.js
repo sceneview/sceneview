@@ -107,6 +107,52 @@ const stdioCount = perSourceCount.get("mcp/src/tools/definitions.ts");
 const gatewayTotal = registry.size;
 const legitCounts = new Set([stdioCount, gatewayTotal, ...perSourceCount.values()]);
 
+// The TIER split is legitimate to advertise too, and it is NOT derivable from
+// the counts above — which is how a correct number nearly got "corrected".
+// Measured: the stdio package defines 31 tools, three of which are Pro
+// (`render_3d_preview`, `create_3d_artifact`, `generate_scene`), so its FREE
+// surface is 28. Add the gateway-only-but-free `view_3d_model` and the overall
+// free surface is 29, against 38 Pro, totalling the 67 mounted. `mcp/mcpize.yaml`
+// advertises "28 free tools" and is RIGHT — a gate that rejected it would push a
+// reader to break a true claim, which is worse than missing a false one.
+const tierText = (() => {
+  try {
+    return readFileSync(join(repoRoot, "mcp/src/tiers.ts"), "utf8");
+  } catch {
+    return "";
+  }
+})();
+function tierArraySize(name) {
+  // The arrays close with `] as const;`, not `];` — an earlier pattern assumed
+  // the latter, silently matched nothing, and the tier counts stayed absent
+  // from legitCounts without any error. Accept both terminators.
+  const m = tierText.match(
+    new RegExp(`const ${name}: readonly string\\[\\] = \\[([\\s\\S]*?)\\n\\](?: as const)?;`),
+  );
+  return m ? (m[1].match(/^\s*"[a-z0-9_]+",/gm) || []).length : 0;
+}
+const freeTierCount = tierArraySize("FREE_TOOLS");
+const proTierCount = tierArraySize("PRO_TOOLS");
+// Same contract as the registry and the sample count: a tier split that failed
+// to PARSE is not a tier split of zero. This bit on the first attempt — the
+// pattern assumed the arrays closed with `];` when they close with `] as const;`,
+// matched nothing, and the counts silently stayed out of legitCounts with no
+// error. A gate that quietly narrows its own allowlist is the shape this file
+// exists to catch, so it refuses instead.
+if (tierText && (freeTierCount === 0 || proTierCount === 0)) {
+  console.error("check-mcp-tool-claims: mcp/src/tiers.ts parsed to 0 free or 0 pro tools.");
+  console.error(`  free=${freeTierCount} pro=${proTierCount} — the array shape changed.`);
+  console.error("  Refusing rather than silently dropping the tier counts.");
+  process.exit(2);
+}
+if (freeTierCount > 0) {
+  legitCounts.add(freeTierCount);
+  // …and the free surface MINUS the gateway-only entries, which is the scope
+  // `mcpize.yaml` counts.
+  legitCounts.add(freeTierCount - 1);
+}
+if (proTierCount > 0) legitCounts.add(proTierCount);
+
 // Sample scenarios drift exactly like tool counts do: "33 compilable samples"
 // stood in SEVEN places against a real 38 — including two files written during
 // the #3189 cleanup itself, by copying the number from a README instead of

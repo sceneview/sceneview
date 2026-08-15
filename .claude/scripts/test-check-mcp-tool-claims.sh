@@ -44,6 +44,10 @@ fixture() {
     # fixture carries one to prove they are not counted.
     printf 'interface Sample {\n  id: SampleId;\n}\nexport const SAMPLES = {\n  "model-viewer": {\n  },\n  "ar-place": {\n  },\n  "physics": {\n  },\n};\n' \
         > "$dir/mcp/src/samples.ts"
+    # A tier map in the real shape: two `readonly string[]` arrays closing with
+    # `] as const;`. 2 free + 1 pro, so the legit counts gain 2, 1 and 1.
+    printf 'const FREE_TOOLS: readonly string[] = [\n  "get_sample",\n  "validate_code",\n] as const;\n\nconst PRO_TOOLS: readonly string[] = [\n  "view_3d_model",\n  "get_gaming_thing",\n  "get_rerun_thing",\n] as const;\n' \
+        > "$dir/mcp/src/tiers.ts"
     printf '%s\n' "$2" > "$dir/README.md"
     printf '%s' "$dir"
 }
@@ -153,6 +157,29 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
 { [[ $RC -eq 2 ]]; } \
   && ok "an unparseable samples.ts → exit 2, not a silent pass" \
   || bad "an unparseable samples.ts must exit 2 (rc=$RC): $OUT"
+
+# 13. A tier split that fails to PARSE must refuse, not silently narrow the
+#     allowlist. This is not hypothetical: the first implementation assumed the
+#     arrays closed with `];` when they close with `] as const;`, matched
+#     nothing, and dropped the tier counts with no error at all.
+D="$(fixture tiersbroken 'Ships 2 tools.')"
+printf 'const FREE_TOOLS: readonly string[] = { "get_sample" };\n' > "$D/mcp/src/tiers.ts"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 2 ]] && grep -q 'tiers.ts' <<<"$OUT"; } \
+  && ok "an unparseable tier map → exit 2, not a quietly narrowed allowlist" \
+  || bad "an unparseable tiers.ts must refuse (rc=$RC): $OUT"
+
+# 14. …and a PARSEABLE one widens the allowlist by the tier numbers. The fixture
+#     has 2 free + 3 pro. "3" is reachable ONLY through the pro count — not the
+#     stdio count (2), not the mounted total (8), not free-minus-gateway (1) — so
+#     this case isolates that one line. With 1 pro it went through
+#     free-minus-gateway instead and stayed green under a mutation that deleted
+#     the pro count entirely.
+D="$(fixture tiersok 'Ships 3 tools.')"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a tier-split count → allowed once tiers.ts parses" \
+  || bad "the tier counts must widen the allowlist (rc=$RC): $OUT"
 
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]
