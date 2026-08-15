@@ -89,7 +89,8 @@ the CI rules. Three practical consequences:
   an error naming #3016 — the wrong cause).
   `Assert the reviewers left the tree clean` now calls
   `assert-review-tree-clean.sh`, which is **not** a path exclusion: a sensitive
-  path passes only when its bytes and mode equal `origin/<base>` exactly, so a
+  path passes only when its bytes and mode equal one of the two trusted refs —
+  the SHA pinned before the fan-out, or the base branch tip — exactly, so a
   reviewer editing `.claude/` still fails. Two consequences when reviewing a PR
   that touches those paths: the files **on disk are the base versions**, so read
   the PR's content from `pr.diff`, `git show HEAD:<path>` or `.claude-pr/`; and

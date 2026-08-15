@@ -65,8 +65,32 @@
 #   ever widens it, this script does not follow, and the new path reports as
 #   contamination — red, not green. Drift fails closed.
 #
+#   TWO TRUSTED BASES, BECAUSE THE ACTION AND THE CALLER DISAGREE (#3182).
+#   `pr-review.yml` passes the base SHA pinned BEFORE the fan-out, deliberately,
+#   so the comparison cannot follow a branch that moves during the review. But
+#   `restoreConfigFromBase()` does not use that SHA — it resolves the base
+#   BRANCH at its own runtime. When the branch moves in between, the action
+#   restores one commit's bytes and this script demands another's, and every
+#   sensitive path that differs between the two reads as contamination.
+#
+#   Measured on run 31820409662 (PR #3181, a shell-script-only diff): the base
+#   was pinned at 16:40:43, #3179 merged to `main` at 16:40:46, the action
+#   restored from the tip one second later, and the job died on ` M CLAUDE.md`
+#   — a file that PR does not touch in any commit. The four paths it DOES touch
+#   were forgiven correctly, which is what pointed at the moving branch rather
+#   than at the reviewers.
+#
+#   So `--also-base` accepts the branch tip as a SECOND trusted reference. This
+#   does not widen what a reviewer can hide: both refs are commits on a
+#   protected branch that no PR controls, and a reviewer would have to make its
+#   edit byte-identical to one of them — already true of the pinned base alone.
+#   Re-resolving the branch INSTEAD of pinning would not fix it either; it would
+#   just move the race to the other side, since the tip can move again between
+#   the action's restore and this assertion.
+#
 # USAGE
-#   assert-review-tree-clean.sh --base <ref>     # e.g. --base origin/main
+#   assert-review-tree-clean.sh --base <ref> [--also-base <ref>]
+#     e.g. --base "$PINNED_SHA" --also-base origin/main
 #
 # EXIT   0 = the tree is HEAD everywhere except the action's own restore
 #        1 = contaminated, or the check could not be performed
@@ -75,6 +99,7 @@
 set -uo pipefail
 
 BASE_REF=""
+ALSO_BASE_REF=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -83,6 +108,8 @@ while [ $# -gt 0 ]; do
     # A usage error must be an exit, not a hang.
     --base)    [ $# -ge 2 ] || { echo "assert-review-tree-clean.sh: --base needs a value" >&2; exit 2; }
                BASE_REF="$2"; shift; shift ;;
+    --also-base) [ $# -ge 2 ] || { echo "assert-review-tree-clean.sh: --also-base needs a value" >&2; exit 2; }
+               ALSO_BASE_REF="$2"; shift; shift ;;
     -h|--help) sed -n '2,60p' "$0"; exit 0 ;;
     *)         echo "assert-review-tree-clean.sh: unexpected argument $1" >&2; exit 2 ;;
   esac
@@ -121,7 +148,22 @@ is_sensitive() {
 # blob — the one way this script could have failed open on a path it was
 # actually looking at.
 base_entry() {
-  git ls-tree "$BASE_REF" -- ":(literal)$1" 2>/dev/null | awk 'NR==1 {print $1" "$3}'
+  git ls-tree "$1" -- ":(literal)$2" 2>/dev/null | awk 'NR==1 {print $1" "$3}'
+}
+
+# Which trusted ref, if any, the worktree copy of <path> matches. Echoes the ref
+# on a match and nothing otherwise, so an unresolvable `--also-base` simply
+# stops contributing matches — strictly stricter, never fail-open.
+matching_base_ref() {
+  local path="$1" here
+  here="$(worktree_entry "$path")"
+  if [ "$here" = "$(base_entry "$BASE_REF" "$path")" ]; then
+    printf '%s' "$BASE_REF"; return 0
+  fi
+  if [ -n "$ALSO_BASE_REF" ] && [ "$here" = "$(base_entry "$ALSO_BASE_REF" "$path")" ]; then
+    printf '%s' "$ALSO_BASE_REF"; return 0
+  fi
+  return 1
 }
 
 # `<mode> <sha>` for a path in the WORKING TREE, computed from the file itself
@@ -176,13 +218,22 @@ if ! git rev-parse --verify --quiet "$BASE_REF^{commit}" >/dev/null 2>&1; then
   exit 1
 fi
 
+# An unresolvable `--also-base` is a WARNING, not a failure. Dropping it makes
+# the assertion stricter, never looser, so the run can still pass on its own
+# merits — it is only the #3182 race that stops being absorbed. Failing the job
+# outright here would turn one flaky fetch into a red review.
+if [ -n "$ALSO_BASE_REF" ] && ! git rev-parse --verify --quiet "$ALSO_BASE_REF^{commit}" >/dev/null 2>&1; then
+  echo "::warning title=Second trusted base unavailable::Could not resolve ${ALSO_BASE_REF}, so only ${BASE_REF} is being compared against. That is stricter, not looser — but if this run reports a sensitive path the PR never touched, the base branch moving mid-run (#3182) is the first thing to check."
+  ALSO_BASE_REF=""
+fi
+
 RESTORED=()
 CONTAMINATED=()
 
 classify() {
-  local xy="$1" path="$2" label="${3:-}"
-  if is_sensitive "$path" && [ "$(worktree_entry "$path")" = "$(base_entry "$path")" ]; then
-    RESTORED+=("$xy $path$label")
+  local xy="$1" path="$2" label="${3:-}" ref
+  if is_sensitive "$path" && ref="$(matching_base_ref "$path")"; then
+    RESTORED+=("$xy $path$label  [= $ref]")
   else
     CONTAMINATED+=("$xy $path$label")
   fi
@@ -223,9 +274,15 @@ if [ "${#RESTORED[@]}" -gt 0 ]; then
   # the other path: `claude-code-action` on `pull_request`, and `pr-review.yml`'s
   # own "Restore config paths from base" step on `workflow_dispatch`, where the
   # action does no restore at all (no PR context — see that step).
-  echo "Restored from ${BASE_REF} by the PR-head config hardening (NOT reviewer contamination):"
+  # The header names every ref a match was allowed to come from, and each line
+  # names the one it actually matched. Naming the accepted set only per-line was
+  # not enough: `test-dispatch-config-restore.sh` asserts on this header, and a
+  # reader who is handed a verdict without the refs it trusted cannot audit it.
+  trusted="$BASE_REF"
+  [ -n "$ALSO_BASE_REF" ] && trusted="$trusted or $ALSO_BASE_REF"
+  echo "Restored from ${trusted} by the PR-head config hardening (NOT reviewer contamination):"
   printf '  %s\n' "${RESTORED[@]}"
-  echo "Each of those matches ${BASE_REF} byte-for-byte, which is the action's own contract."
+  echo "Each of those matches the trusted ref named beside it byte-for-byte, which is the action's own contract."
   # `.claude-pr/` never appears above: the action appends `/.claude-pr/` to
   # `.git/info/exclude` (`ensureClaudePrExcludedFromGit`), so `git status` does
   # not list it even under `-uall`.
