@@ -66,10 +66,22 @@ set -e
   || bad "no creds should SKIP honestly, exit 0 (rc=$RC)"
 
 # 3. openssl ES256 JWT builder round-trips.
-set +e; OUT="$(bash "$SCRIPT" --selftest-jwt 2>&1)"; RC=$?; set -e
-{ [ "$RC" -eq 0 ] && grep -q "selftest-jwt: OK" <<<"$OUT"; } \
-  && ok "openssl ES256 JWT signer verifies" \
-  || bad "JWT self-test should pass (rc=$RC): $OUT"
+#
+# `xxd` is a DECLARED dependency of store-preflight.sh (it checks for it up
+# front, alongside openssl/curl/jq) and it ships on ubuntu-latest, so CI always
+# exercises this. It is NOT installed on every dev host, though, and a missing
+# TOOL is not a broken SIGNER: this used to hard-FAIL the whole suite with
+# `xxd: command not found`, which reads as "the ES256 builder regressed" and
+# trained the reader to skim past a red line in pre-push-check. Skip honestly
+# instead — the same shape as the shellcheck assertion above.
+if command -v xxd >/dev/null 2>&1; then
+  set +e; OUT="$(bash "$SCRIPT" --selftest-jwt 2>&1)"; RC=$?; set -e
+  { [ "$RC" -eq 0 ] && grep -q "selftest-jwt: OK" <<<"$OUT"; } \
+    && ok "openssl ES256 JWT signer verifies" \
+    || bad "JWT self-test should pass (rc=$RC): $OUT"
+else
+  echo "  · xxd not installed — ES256 round-trip NOT verified here (CI covers it)"
+fi
 
 # 4. All-healthy fake → verdict=pass, exit 0.
 run_fake '{"agreements":"ok","reviewState":"READY_FOR_SALE","reviewVersion":"4.21.2","certDays":200,"profileDays":150}'

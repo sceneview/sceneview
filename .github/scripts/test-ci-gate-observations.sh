@@ -85,10 +85,17 @@ summarise() { jq -r '"\(.name)=\(.status)/\(.conclusion // "null")"' | sort; }
 # `ADVISORY_CHECKS` is extracted too, for the same reason as the selector and
 # `REQUIRED_CHECKS`: a hardcoded copy keeps passing after the workflow's list
 # changes, which is the drift this suite exists to prevent.
+# NOTE ON THE REGEX: no `{10,}` interval. Ubuntu's /usr/bin/awk is **mawk**,
+# which does not implement POSIX bracket intervals and offers no flag to turn
+# them on (`-W re-interval` is a vacuous option there). Under mawk the interval
+# form matched NOTHING, so the extractor exited on its first value line and
+# yielded an empty list — and this suite then hard-failed with "could not
+# extract ADVISORY_CHECKS" on every mawk host. Ten literal spaces express the
+# same block-scalar indent and are portable across mawk, gawk and BSD awk.
 ADVISORY_FROM_YML=$(awk '
   /^ *ADVISORY_CHECKS: \|/ { grab = 1; next }
   grab {
-    if ($0 !~ /^[[:space:]]{10,}[^[:space:]#]/) exit
+    if ($0 !~ /^          [[:space:]]*[^[:space:]#]/) exit
     sub(/^[[:space:]]*/, "")
     print
   }
