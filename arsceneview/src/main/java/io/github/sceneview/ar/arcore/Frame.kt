@@ -45,6 +45,16 @@ fun Frame.hitTest(ray: Ray): List<HitResult> {
  * if (frame.hasUpdatedTrackable(plane)) node.update(plane)
  * ```
  *
+ * **One trackable per frame, not a loop.** Every call re-acquires the whole updated set from
+ * ARCore and builds a fresh Java wrapper per trackable, each of which overrides `finalize()` to
+ * release its native reference. Calling this once per plane inside `onSessionUpdated` turns 8
+ * planes at 60 fps into ~3 800 finalizable objects a second. Hoist the collection instead:
+ *
+ * ```kotlin
+ * val updated = frame.getUpdatedPlanes()
+ * planes.forEach { if (it in updated) node.update(it) }
+ * ```
+ *
  * For the collection itself, use [getUpdatedTrackables] or one of its typed shortcuts
  * ([getUpdatedPlanes], [getUpdatedAugmentedImages], …).
  */

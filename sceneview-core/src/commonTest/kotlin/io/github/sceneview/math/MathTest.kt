@@ -150,18 +150,31 @@ class MathTest {
 
     /**
      * `toColumnsDoubleArray()` was rewritten to fill a `DoubleArray` directly instead of going
-     * through `toColumnsFloatArray().map { }.toDoubleArray()` (#3157). It must stay the exact
-     * column-major widening of [toColumnsFloatArray].
+     * through `toColumnsFloatArray().map { }.toDoubleArray()` (#3157). Since it now enumerates
+     * `x.x, x.y, … w.w` by hand, the failure mode it can regress into is a wrong or transposed
+     * order, and that is what this pins: sixteen distinct, non-float-exact values, compared
+     * position by position against [toColumnsFloatArray].
+     *
+     * What it deliberately does **not** pin is precision. Both matrices here are built from a
+     * `FloatArray`, whose storage already rounds to 32 bits on every target — including
+     * Kotlin/JS, where `Float` is a plain `Number` but `FloatArray` is a `Float32Array`. So the
+     * two paths are bit-identical by construction and no fixture routed through a `FloatArray`
+     * could tell them apart. A `Mat4` whose components came from JS arithmetic could; there is no
+     * JS caller of `toColumnsDoubleArray()` today (the only consumer is Android's
+     * `Camera.setCustomProjection`, where `Float` is genuinely 32-bit), so that gap is unreachable
+     * rather than untested.
      */
     @Test
     fun toColumnsDoubleArrayMatchesFloatColumns() {
-        val matrix = Mat4.of(*FloatArray(16) { it + 1f })
+        val matrix = Mat4.of(*FloatArray(16) { (it + 1) * 0.1f })
         val floats = matrix.toColumnsFloatArray()
         val doubles = matrix.toColumnsDoubleArray()
         assertEquals(16, doubles.size)
         for (i in floats.indices) {
             assertEquals(floats[i].toDouble(), doubles[i])
         }
+        // Distinct values, so a transposed or shifted enumeration cannot pass by coincidence.
+        assertEquals(16, doubles.toSet().size)
     }
 
     // ── slerp TRS-tuple overload (#2265) ──────────────────────────────────────
