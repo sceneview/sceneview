@@ -203,5 +203,23 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "a plan note PINNING the retired mirror → fail, line named" \
   || bad "a wholesale-allowlisted plan note must not ship a pin (rc=$RC)"
 
+# 16. AGENTS.md is the file agents read FIRST, and it names the retired mirror
+#     deliberately — an agent carrying the archived URL in its training data is
+#     exactly who that sentence is for. Same asymmetry as the changelog
+#     surfaces: naming it is allowed…
+D="$(fixture agents_prose AGENTS.md "$MIRROR_PROSE")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "AGENTS.md naming the retired mirror → allowed" \
+  || bad "AGENTS.md must be free to warn agents off the retired mirror (rc=$RC)"
+
+# 17. …and pinning it is not. This one matters more than the others: a pin here
+#     is copied into user code by every agent that reads the file.
+D="$(fixture agents_pin AGENTS.md "$MIRROR_PIN")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'AGENTS.md:1' <<<"$OUT"; } \
+  && ok "AGENTS.md PINNING the retired mirror → fail, line named" \
+  || bad "a pin in the canonical rules file must fail (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

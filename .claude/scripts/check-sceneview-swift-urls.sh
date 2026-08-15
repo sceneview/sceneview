@@ -72,7 +72,7 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/plans/[^/]+\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/pre-push-check\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/plans/[^/]+\.md|AGENTS\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/pre-push-check\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
 
 # Surfaces where the mirror may be NAMED but never PINNED. The two changelog
 # entries are the only ones allowlisted WHOLESALE (any fragment, current or
@@ -93,6 +93,7 @@ PROSE_ONLY=(
     'changelog.d/*.md'
     '.claude/skills/automation-map/SKILL.md'
     '.claude/plans/*.md'
+    'AGENTS.md'
 )
 
 # A live install snippet: the mirror URL with a version constraint next to it.
