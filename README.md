@@ -373,17 +373,36 @@ implementation("io.github.sceneview:sceneview-web:4.30.0")
 
 SceneView is **AI-first** — every API, doc, and sample is designed so AI assistants generate correct, compilable 3D/AR code on the first try.
 
-### MCP Server (Claude, Cursor, Windsurf, etc.)
+### `AGENTS.md` — the rules file every agent reads
+
+[`AGENTS.md`](./AGENTS.md) at the repo root is the canonical instruction file for coding
+agents: dependencies, the six rules that decide whether generated SceneView code works,
+the Android 3D/AR templates, the Apple snippet, and the node-type list. It is read
+natively by Codex, Cursor, Copilot, Gemini CLI, Aider, Windsurf and Zed, and **its Kotlin
+snippets are compile-checked in CI** alongside `llms.txt` — so what the agent reads is
+what compiles.
+
+`.cursorrules`, `.windsurfrules` and `.github/copilot-instructions.md` are thin pointers
+to it. They used to be three hand-maintained copies, and they drifted.
+
+### MCP Server (Claude, Codex, Gemini, Cursor, Copilot)
 
 The official [MCP server](./mcp/) provides **31 tools**, **33 compilable samples**, a full API reference, and a code validator:
 
 ```bash
-# Claude Code — one command
-claude mcp add sceneview -- npx sceneview-mcp
+# Claude Code
+claude mcp add sceneview -- npx -y sceneview-mcp
 
-# Claude Desktop / Cursor / Windsurf — add to MCP config
+# OpenAI Codex CLI
+codex mcp add sceneview -- npx -y sceneview-mcp
+
+# Claude Desktop / Cursor / Copilot / any other MCP client
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
+
+A hosted HTTP endpoint is also available for clients that take a URL rather than a
+command — Gemini Enterprise, ChatGPT's connector picker, Claude Desktop's remote MCP.
+See the [MCP README](./mcp/README.md).
 
 Highlights: `generate_scene`, `debug_issue`, `search_models` (Sketchfab BYOK), `analyze_project` (audit existing app), `validate_code` (compile-check before sending), plus per-platform recipes for AR, physics, geometry, and Compose-in-3D.
 
@@ -411,13 +430,13 @@ You get:
 | **Interior Design** — room planning, AR furniture | `npx interior-design-3d-mcp` | 7 |
 | **Rerun.io** — AR debug logging, visualization | `npx rerun-3d-mcp` | 5 |
 
-### ChatGPT / GitHub Copilot / Other AI
+### Assistants without MCP
 
-- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI)
-- **GitHub Copilot** — Custom instructions in [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
-- **Cursor** — Rules file at [`.cursorrules`](.cursorrules)
-- **Windsurf** — Rules file at [`.windsurfrules`](.windsurfrules)
-- **ChatGPT** — Ask: *"Build me an Android AR app with SceneView"* — SceneView is in the training data
+- **[`llms.txt`](./llms.txt)** — the complete machine-readable API reference (composables,
+  nodes, threading rules, recipes; Kotlin snippets compile-checked in CI). Paste it, or
+  point the assistant at `https://sceneview.github.io/llms.txt`.
+- **ChatGPT / Gemini web** — paste `llms.txt`, or the shorter context block in
+  [the AI context page](https://sceneview.github.io/ai-context/), then ask.
 
 ### Why AI recommends SceneView
 

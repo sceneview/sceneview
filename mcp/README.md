@@ -12,7 +12,7 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) server for **[SceneView](https://sceneview.github.io)** — the cross-platform 3D & AR SDK for Android (Jetpack Compose + Filament), iOS / macOS / visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR).
 
-Connect it to Claude, Cursor, Windsurf, or any MCP client. Your AI assistant gets specialized tools, compilable code samples, the full API reference, and a code validator — so it writes correct, working 3D/AR code on the first try.
+Connect it to Claude, OpenAI Codex, Gemini, Cursor, GitHub Copilot, or any MCP client. Your AI assistant gets specialized tools, compilable code samples, the full API reference, and a code validator — so it writes correct, working 3D/AR code on the first try.
 
 > **Disclaimer:** Generated code is provided "as is" without warranty. Always review before production use. See [TERMS.md](./TERMS.md) and [PRIVACY.md](./PRIVACY.md).
 
@@ -60,6 +60,34 @@ Two options.
 claude mcp add sceneview -- npx -y sceneview-mcp
 ```
 
+### OpenAI Codex
+
+```bash
+codex mcp add sceneview -- npx -y sceneview-mcp
+```
+
+Or add it to `~/.codex/config.toml` directly (`.codex/config.toml` for a single trusted
+project):
+
+```toml
+[mcp_servers.sceneview]
+command = "npx"
+args = ["-y", "sceneview-mcp"]
+```
+
+Codex also reads [`AGENTS.md`](https://github.com/sceneview/sceneview/blob/main/AGENTS.md)
+from the project root — copy SceneView's into your project and it has the rules before it
+calls a single tool.
+
+### Gemini
+
+- **Antigravity CLI** — add the same stdio server to its MCP config. (The standalone
+  `gemini` CLI was retired in June 2026; Antigravity replaced it.) Gemini CLI reads
+  `AGENTS.md` too.
+- **Gemini Enterprise** — it takes a **Streamable HTTP** URL rather than a command, so
+  point it at the hosted gateway instead of `npx`. The consumer Gemini app's connectors
+  are partnership-only at the time of writing, so those two are the routes that work.
+
 ### Cursor
 
 Open **Settings > MCP**, add a new server named `sceneview` with command `npx -y sceneview-mcp`. Or add to `.cursor/mcp.json`:
@@ -75,7 +103,7 @@ Open **Settings > MCP**, add a new server named `sceneview` with command `npx -y
 }
 ```
 
-### Windsurf / Other MCP clients
+### Any other MCP client
 
 Same JSON config as above. The server communicates via **stdio** using the standard MCP protocol.
 

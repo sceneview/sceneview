@@ -187,23 +187,45 @@ belong in a private note.
 
 ## 5. Cleanup plan
 
-**Wave 1 — falsehoods (mechanical, no decision needed)**
-1. Fix the three phantom tool names in `ai-development.md`; regenerate the tool list from
-   `definitions.ts` rather than retyping it.
-2. `4.0.0` → `4.30.0` in the three rules files.
-3. Remove the archived SPM mirror from `.cursorrules:77`, and widen
-   `check-sceneview-swift-urls.sh` to cover extensionless files.
-4. Align every tool count on the derived number (website JSON-LD, website stat, README).
-5. Rename or swap the `llms.txt` / `llms-full.txt` pair to match the convention, with a
-   redirect for the old path.
+**Wave 1 — falsehoods. DONE (2026-08-15).**
+1. ✅ The three phantom tool names in `ai-development.md`, replaced with the real surface.
+2. ✅ `4.0.0` → `4.30.0` in the three rules files.
+3. ✅ Archived SPM mirror out of `.cursorrules:77`; `check-sceneview-swift-urls.sh` now
+   scans extensionless files.
+4. ✅ Tool counts aligned on the derived 31 — and the sweep found **five** stale sites,
+   not the three this plan predicted: homepage JSON-LD, homepage stat tile, homepage
+   feature card, the homepage comparison table, `docs.html`, `claude-3d.html`, plus the
+   README. `playground.html` was worse than stale — its copy-to-clipboard prompt listed
+   five tool names (`create_scene`, `add_model`, `configure_camera`, `set_environment`,
+   `add_ar_plane_detection`) that have never existed, handed straight to the user's
+   assistant.
+5. ⏸ **Held** — the `llms.txt` / `llms-full.txt` rename changes public URLs that external
+   consumers fetch. Needs a redirect plan, not a rename.
 
-**Wave 2 — scope (needs §3 signed off)**
-6. Write `AGENTS.md`, generated, as the single rules file; reduce `.cursorrules` /
-   `.windsurfrules` to pointers or delete them.
-7. Re-cut the assistant list in README, `ai-context.md`, `ai-development.md` and the
-   website install tabs to the tier table. Add Codex and Antigravity install paths.
-8. One page: "SceneView MCP from Gemini Enterprise" (the Streamable HTTP URL exists).
-9. Update the Stripe product copy — derived tool count, tier-1 client names.
+**Wave 2 — scope. DONE (2026-08-15).**
+6. ✅ [`AGENTS.md`](../../AGENTS.md) written as the canonical rules file, and **wired into
+   the snippet compile harness** (`tools/extract-doc-snippets.js` + `snippets-check.yml`)
+   so its Kotlin is verified in CI alongside `llms.txt`. `.cursorrules`, `.windsurfrules`
+   and `.github/copilot-instructions.md` are now pointers. Writing it caught two more
+   falsehoods the audit had missed: `copilot-instructions.md` named four node types that
+   do not exist (`GeospatialNode`, `DepthNode`, `InstantPlacementNode`, `ArrowNode`), and
+   the `.cursorrules` Swift snippet used a `SceneView(environment:)` initializer and a
+   `ModelNode(named:)` that are both absent from `SceneViewSwift` — the real API is the
+   `.environment()` modifier and `try await ModelNode.load(_:)`.
+7. ✅ Assistant list re-cut across README, `ai-context.md`, `ai-development.md`,
+   `mcp/README.md` and the homepage: Codex install path added everywhere, Gemini
+   documented (Antigravity + Enterprise), Windsurf dropped from promoted copy.
+   ⏸ **Partial** — the homepage's logo chips for Codex and Gemini are missing, because
+   `assets/ai-tools/` has no OpenAI or Google brand SVG and inventing a trademark on the
+   front page is worse than an absent one. The Windsurf chip was removed rather than
+   replaced. Needs the real assets from the vendors' brand pages.
+   ⏸ **Held** — `playground.html` still ships a functional "Open Windsurf" deep-link
+   button. That is a feature, not copy; removing it is a product call.
+8. ✅ Folded into `ai-development.md` and `mcp/README.md` rather than a new page — no
+   mkdocs nav churn, and the setup lands next to the other clients.
+9. ⏸ **Held** — the Stripe product copy is customer-visible and lives outside the repo.
+   Fixing "51+ tools" and the "Zed" reference is a live write to the payment provider;
+   flagged for explicit go-ahead.
 
 **Wave 3 — structure (needs decisions, §7)**
 10. Locate or reconstruct the `hub-mcp` source, then decide: fold the Hub into this repo,

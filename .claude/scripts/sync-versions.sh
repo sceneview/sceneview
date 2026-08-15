@@ -685,7 +685,7 @@ echo -e "${CYAN}--- AI Rules Files (Maven coordinates) ---${NC}"
 # VERSION_NAME was 4.30.0 — 30 minors of drift handed to Cursor, Windsurf and
 # Copilot as the dependency to write. 115 checks passed while the SDK's own
 # AI-first surfaces were the stale ones (#3189).
-for AI_RULES in .cursorrules .windsurfrules .github/copilot-instructions.md; do
+for AI_RULES in AGENTS.md .cursorrules .windsurfrules .github/copilot-instructions.md; do
     AI_F="$REPO_ROOT/$AI_RULES"
     [ -f "$AI_F" ] || continue
     grep -q 'io\.github\.sceneview:sceneview:' "$AI_F" || continue
@@ -699,6 +699,7 @@ SPM_FILES=(
     llms.txt
     README.md
     CLAUDE.md
+    AGENTS.md
     .cursorrules
     Package.swift
     SceneViewSwift/README.md

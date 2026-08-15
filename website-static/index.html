@@ -161,7 +161,7 @@
         "name": "Is there an MCP server for 3D and AR development?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 31 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude, Cursor, and other MCP-compatible AI tools."
+          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 31 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude, OpenAI Codex, Gemini, Cursor, GitHub Copilot, and any other MCP-compatible AI tool."
         }
       },
       {
@@ -447,13 +447,13 @@
 
                 <div class="mcp-tool-card">
                   <div class="mcp-tool-card__header">
-                    <img src="assets/brand/windsurf.svg" alt="" width="18" height="18" class="mcp-tool-card__logo">
-                    <span class="mcp-tool-card__name">Windsurf</span>
+                    <span class="mcp-tool-card__name">OpenAI Codex</span>
+                    <span class="mcp-tool-card__badge">CLI</span>
                   </div>
-                  <div class="mcp-tool-card__file">~/.codeium/windsurf/mcp_config.json</div>
-                  <pre class="code-block mcp-tool-card__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
+                  <div class="mcp-tool-card__file">~/.codex/config.toml</div>
+                  <pre class="code-block mcp-tool-card__code"><code>[<span class="syn-green-light">mcp_servers.sceneview</span>]
+<span class="syn-blue">command</span> = <span class="syn-green-light">"npx"</span>
+<span class="syn-blue">args</span> = [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]</code></pre>
                 </div>
 
               </div>
@@ -536,13 +536,6 @@
               <div class="ai-tool-chip__body">
                 <div class="ai-tool-chip__name">Cursor</div>
                 <div class="ai-tool-chip__tagline">AI code editor</div>
-              </div>
-            </div>
-            <div class="ai-tool-chip">
-              <img src="assets/ai-tools/windsurf.svg" alt="" class="ai-tool-chip__logo" width="40" height="40">
-              <div class="ai-tool-chip__body">
-                <div class="ai-tool-chip__name">Windsurf</div>
-                <div class="ai-tool-chip__tagline">Agentic IDE</div>
               </div>
             </div>
           </div>
@@ -899,11 +892,11 @@
         <div class="feature-card reveal">
           <span class="feature-card__icon material-symbols-outlined">smart_toy</span>
           <h3 class="feature-card__title">AI-First MCP Server</h3>
-          <p class="feature-card__text">28 MCP tools incl. <code>generate_scene</code>, <code>debug_issue</code>, <code>search_models</code> (Sketchfab), <code>analyze_project</code>, and <code>validate_code</code>. 33 compilable samples + full <code>llms.txt</code> reference.</p>
+          <p class="feature-card__text">31 MCP tools incl. <code>generate_scene</code>, <code>debug_issue</code>, <code>search_models</code> (Sketchfab), <code>analyze_project</code>, and <code>validate_code</code>. 33 compilable samples + full <code>llms.txt</code> reference.</p>
           <div class="feature-card__chips">
             <span class="feature-card__chip">Claude</span>
+            <span class="feature-card__chip">Codex</span>
             <span class="feature-card__chip">Cursor</span>
-            <span class="feature-card__chip">Windsurf</span>
           </div>
         </div>
       </div>
@@ -976,7 +969,7 @@
             </tr>
             <tr>
               <td class="comparison__label">AI code gen</td>
-              <td class="comparison__highlight"><strong>28 MCP tools</strong></td>
+              <td class="comparison__highlight"><strong>31 MCP tools</strong></td>
               <td>No MCP</td>
               <td>No MCP</td>
               <td>No MCP</td>

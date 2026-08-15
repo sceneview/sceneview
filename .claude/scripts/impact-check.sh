@@ -154,7 +154,7 @@ else
              marketing/articles/article-1-compose-native-3d.md marketing/awesome-lists/submissions.md \
              marketing/stackoverflow/qa-drafts.md \
              docs/docs/cheatsheet.md docs/docs/manifest.json docs/docs/platforms.md \
-             docs/docs/try.md .cursorrules .windsurfrules mcp/src/guides.ts \
+             docs/docs/try.md AGENTS.md .cursorrules .windsurfrules mcp/src/guides.ts \
              docs/docs/structured-data.json docs/docs/index.md; do
         trace "node count claim in $f"
         if [[ -f "$f" ]]; then

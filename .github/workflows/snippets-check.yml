@@ -43,6 +43,7 @@ on:
     branches: [main]
     paths:
       - 'llms*.txt'
+      - 'AGENTS.md'
       - 'agents/sceneview/references/**'
       - 'tools/extract-doc-snippets.js'
       - 'tools/snippets-check/**'
@@ -52,6 +53,7 @@ on:
     branches: [main]
     paths:
       - 'llms*.txt'
+      - 'AGENTS.md'
       - 'agents/sceneview/references/**'
       - 'tools/extract-doc-snippets.js'
       - 'tools/snippets-check/**'

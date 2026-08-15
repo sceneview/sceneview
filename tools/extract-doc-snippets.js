@@ -75,6 +75,11 @@ const repoRoot = resolve(toolsDir, "..");
 // slug → repo-relative path. The slug becomes part of the generated package.
 const SOURCES = [
   { slug: "llms", path: "llms.txt" },
+  // AGENTS.md is the canonical rules file every agent reads first (Codex,
+  // Cursor, Copilot, Gemini CLI, Aider, …). It teaches Kotlin, so its Kotlin
+  // has to compile — the hand-written rules files it replaced taught a
+  // dependency 30 minors stale and a Swift init that does not exist (#3189).
+  { slug: "agents", path: "AGENTS.md" },
   { slug: "cheatsheet", path: "agents/sceneview/references/cheatsheet.md" },
   { slug: "migration", path: "agents/sceneview/references/migration.md" },
   { slug: "recipes", path: "agents/sceneview/references/recipes.md" },

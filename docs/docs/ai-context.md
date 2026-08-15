@@ -19,16 +19,26 @@ I'm building with SceneView — the Compose-native 3D & AR SDK for Android.
 - Full API reference: https://sceneview.github.io/llms.txt
 ```
 
-## MCP Server (recommended for Claude)
+## MCP Server (recommended)
 
-For the best experience with Claude, install the SceneView MCP server:
+The MCP server gives the assistant direct access to 31 tools: code generation,
+validation, samples, model search (Sketchfab), and the complete API reference — the
+real symbols instead of recall.
 
 ```bash
-npx sceneview-mcp
+claude mcp add sceneview -- npx -y sceneview-mcp   # Claude Code
+codex mcp add sceneview -- npx -y sceneview-mcp    # OpenAI Codex CLI
 ```
 
-This gives Claude direct access to 31 tools: code generation, validation,
-samples, model search (Sketchfab), and the complete API reference.
+Any other MCP client takes the same stdio server:
+
+```json
+{ "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+Clients that want a URL rather than a command — Gemini Enterprise, ChatGPT's connector
+picker, Claude Desktop's remote MCP — can point at the hosted HTTP endpoint instead; see
+the [MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme).
 
 ## Industry-specific MCPs
 
@@ -39,15 +49,17 @@ samples, model search (Sketchfab), and the complete API reference.
 | Gaming | `npx gaming-3d-mcp` | Game scenes, characters, terrain |
 | Interior Design | `npx interior-design-3d-mcp` | Room planners, furniture, lighting |
 
-## IDE Integration
+## Agent rules file
 
-### GitHub Copilot
-SceneView includes `.github/copilot-instructions.md` — Copilot automatically
-uses it when working in any SceneView project.
+SceneView ships [`AGENTS.md`](https://github.com/sceneview/sceneview/blob/main/AGENTS.md)
+at the repo root — the cross-vendor standard read natively by Codex, Cursor, Copilot,
+Gemini CLI, Aider, Windsurf and Zed. Working inside a SceneView project, the agent picks
+it up on its own; copy it into your own project to get the same rules there.
 
-### Cursor / Windsurf
-SceneView includes `.cursorrules` and `.windsurfrules` with patterns for
-correct 3D/AR code generation.
+Its Kotlin snippets are compile-checked in CI, so the templates it hands the assistant
+are the ones that build. `.cursorrules`, `.windsurfrules` and
+`.github/copilot-instructions.md` remain as thin pointers for older builds that only look
+for those paths.
 
 ## Full API Reference
 

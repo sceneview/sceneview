@@ -11,8 +11,9 @@ When you ask an AI to help you build a 3D scene, it needs to know the exact API 
 SceneView solves this with three layers:
 
 1. **`llms.txt`** — a machine-readable API reference at the repo root
-2. **`sceneview-mcp`** — an MCP server that gives AI tools full API context
-3. **Claude Code skills** — guided workflows for contributing, reviewing, and documenting
+2. **`AGENTS.md`** — the cross-vendor agent rules file, with compile-checked snippets
+3. **`sceneview-mcp`** — an MCP server that gives AI tools full API context
+4. **Claude Code skills** — guided workflows for contributing, reviewing, and documenting
 
 ---
 
@@ -46,12 +47,40 @@ Now Claude has the full SceneView API. Ask it to:
 
 The AI will generate correct SceneView code — no hallucinated methods, no outdated patterns.
 
-### Use with Codex, Cursor, Copilot and other agents
+### Use with OpenAI Codex
 
-Add the MCP server to the agent's MCP config — the same JSON block as above works for
-every MCP-compatible client. For agents that read a project rules file, copy `llms.txt`
-into your project root; `AGENTS.md` (the cross-vendor standard, read by Codex, Cursor,
-Copilot, Gemini CLI and others) is the file most of them look for first.
+```bash
+codex mcp add sceneview -- npx -y sceneview-mcp
+```
+
+Codex reads `AGENTS.md` from the project root on its own, so copying
+[SceneView's `AGENTS.md`](https://github.com/sceneview/sceneview/blob/main/AGENTS.md)
+into your project gives it the rules even before the MCP server answers.
+
+### Use with Gemini
+
+Two paths, depending on which Gemini surface you are on:
+
+- **Antigravity CLI** — add the same stdio server to its MCP config. (The standalone
+  `gemini` CLI was retired in June 2026; Antigravity is its replacement.)
+- **Gemini Enterprise** — point it at the hosted **Streamable HTTP** endpoint instead of
+  a command; see the [MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme)
+  for the URL. The consumer Gemini app's connectors are partnership-only today, so the
+  hosted endpoint and `AGENTS.md` are the two routes that work there.
+
+Gemini CLI also reads `AGENTS.md`.
+
+### Use with Cursor, GitHub Copilot and other MCP clients
+
+Add the MCP server to the client's MCP config — the same JSON block as above works
+everywhere:
+
+```json
+{ "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+Both read `AGENTS.md` natively. `.cursorrules`, `.windsurfrules` and
+`.github/copilot-instructions.md` are kept as thin pointers to it for older builds.
 
 ### Use with ChatGPT / Claude web
 
@@ -146,7 +175,7 @@ Works with Claude Code, Claude Desktop, Codex, Cursor, GitHub Copilot, and any M
 
 | Library | AI support |
 |---|---|
-| **SceneView** | `llms.txt` + MCP server + Claude Code skills |
+| **SceneView** | `llms.txt` + `AGENTS.md` (compile-checked) + MCP server + Claude Code skills |
 | Unity | Generic docs, frequent hallucinations on API |
 | Sceneform | Archived, AI trained on outdated code |
 | Raw ARCore | Low-level API, AI struggles with GL/Vulkan boilerplate |
