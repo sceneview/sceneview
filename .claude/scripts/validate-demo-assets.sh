@@ -455,12 +455,27 @@ run_catalog_check() {
     while IFS= read -r asset; do
         [ -z "$asset" ] && continue
         # Skip engine/runtime/UI assets that are not catalog content.
-        if printf '%s' "$asset" | grep -qE "$catalog_allowlist_regex"; then
+        # Herestring for the same reason as below (#3180). The producer here is
+        # one short path, so EPIPE is unlikely — but the shape is identical and
+        # the failure direction is the damaging one: a lost race means the skip
+        # does NOT happen, and an engine asset gets compared against the
+        # catalogue and reported UNDECL.
+        if grep -qE "$catalog_allowlist_regex" <<< "$asset"; then
             continue
         fi
         local base
         base="$(basename "$asset")"
-        if ! printf '%s\n' "$declared" | grep -qxF "$base"; then
+        # Herestring, NOT `printf … | grep -qxF`. `grep -q` exits on its FIRST
+        # match and closes the pipe; if printf has not finished writing it takes
+        # EPIPE and returns non-zero, and `set -o pipefail` (line 25) then fails
+        # the pipeline *because the match succeeded*. `!` inverts that and a
+        # correctly-declared asset is reported UNDECL. Measured 2026-08-14
+        # (#3180): `cyberpunk_car.usdz` — declared in catalog.json with its
+        # CC-BY-4.0 licence — was flagged on one run, with
+        # `printf: write error: Broken pipe` printed on this very line; five
+        # re-runs were clean. A herestring keeps the shell out of the pipeline,
+        # so only grep's own status governs.
+        if ! grep -qxF "$base" <<< "$declared"; then
             catalog_undeclared=$((catalog_undeclared + 1))
             catalog_undeclared_list="${catalog_undeclared_list}  ${RED}UNDECL${NC} ${asset}  ${GRAY}(not declared in ${CATALOG})${NC}"$'\n'
             if [ "$strict" = true ]; then

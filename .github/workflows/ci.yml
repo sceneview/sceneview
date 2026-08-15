@@ -1337,6 +1337,21 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-quality-gate-pipefail.sh
 
+      # Third member of the same family, and the only one whose wrong answer is
+      # INTERMITTENT: `grep -q` exits on its first match and closes the pipe, the
+      # producer takes EPIPE, and `pipefail` fails the pipeline *because the match
+      # succeeded*. Measured 2026-08-14 (#3180) — validate-demo-assets.sh reported
+      # a catalogued CC-BY asset as undeclared on one run of pre-push-check.sh and
+      # was clean on the next five. The same shape sits in front of a branch
+      # deletion in cleanup-branches-worktrees.sh, where the lost race means a
+      # branch WITH an open PR is not classified OPEN. Pins the call-site form
+      # (deterministic, mutation-tested); the race itself is measured and printed
+      # as evidence, never asserted. Pure string work, no network.
+      - name: Self-test pipefail membership tests
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-pipefail-membership.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
