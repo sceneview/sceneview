@@ -84,9 +84,10 @@ calls a single tool.
 - **Antigravity CLI** — add the same stdio server to its MCP config. (The standalone
   `gemini` CLI was retired in June 2026; Antigravity replaced it.) Gemini CLI reads
   `AGENTS.md` too.
-- **Gemini Enterprise** — it takes a **Streamable HTTP** URL rather than a command, so
-  point it at the hosted gateway instead of `npx`. The consumer Gemini app's connectors
-  are partnership-only at the time of writing, so those two are the routes that work.
+- **Gemini Enterprise** — reported to take a **Streamable HTTP** URL rather than a
+  command, which would mean pointing it at the hosted gateway instead of `npx`. Not
+  verified against Google's own docs, so treat it as untested. The consumer Gemini app's
+  connectors are partnership-only at the time of writing.
 
 ### Cursor
 

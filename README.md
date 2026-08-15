@@ -401,7 +401,9 @@ codex mcp add sceneview -- npx -y sceneview-mcp
 ```
 
 A hosted HTTP endpoint is also available for clients that take a URL rather than a
-command — Gemini Enterprise, ChatGPT's connector picker, Claude Desktop's remote MCP.
+command — ChatGPT's connector picker and Claude Desktop's remote MCP both do. Gemini
+Enterprise is *reported* to accept a Streamable HTTP MCP URL, but we have not verified it
+against Google's own documentation, so treat that one as untested.
 See the [MCP README](./mcp/README.md).
 
 Highlights: `generate_scene`, `debug_issue`, `search_models` (Sketchfab BYOK), `analyze_project` (audit existing app), `validate_code` (compile-check before sending), plus per-platform recipes for AR, physics, geometry, and Compose-in-3D.

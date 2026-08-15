@@ -55,6 +55,20 @@ been pushed since 2026-06-05** except the three private August ones.
 
 Two structural problems fall straight out of this map:
 
+> **Measured 2026-08-15 from the bridge — this bullet's premise was half wrong, and the
+> real shape is worse.** The source is *not* lost: it is in this repo's history at
+> `c1a5c99f4e^`, and the live build is pinned to `e9d04f4adf` (52 tools deployed against
+> 78 committed, so restoring it is a behaviour change, not a redeploy). But
+> `c1a5c99f4e` deleted **two** components. `hub-mcp`, the stdio client, is **still
+> published on npm** — deprecated on all four versions, still installable, and its `dist`
+> hardcodes the live `/mcp`, `/pricing` and telemetry endpoints while advertising **78**
+> tools against a Worker that serves **52**. Any retire-or-fold decision has to cover both.
+> Two more findings from the same pass: the live money-handling Worker **predates both
+> dependency-security commits** (`hono`/`postcss`, `ip-address`) — recorded, reachability
+> not assessed — and a **fourth Worker, `arcamera-api`**, exists under the same account and
+> appears in neither plan. `sceneview-mcp` by contrast is **deployed == committed**, so the
+> `2025-03-26` protocol version and both §3.1b defects are confirmed *running*, not inferred.
+
 - **`hub-mcp` is live and billable, and its source is in none of these repos.** A live
   Stripe webhook points at `hub-mcp.mcp-tools-lab.workers.dev/stripe/webhook`, and the
   hub code was deleted from this repo in the "remove off-topic portfolio code" cleanup

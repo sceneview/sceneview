@@ -586,7 +586,15 @@ fi
 # seven places. The gate parses the real registry from source, so it cannot
 # drift with the prose it checks.
 echo -e "\n${YELLOW}[18/22] Checking MCP tool claims against the real registry...${NC}"
-if [ -f tools/check-mcp-tool-claims.js ]; then
+if ! command -v node >/dev/null 2>&1; then
+    # A missing INTERPRETER is not a failing check. Without this the step exits
+    # 127 and the run reports a check that never executed — the same shape as
+    # the `xxd` case in test-store-preflight.sh, and the shape that teaches a
+    # reader to push through red. `node` is present in CI, which gates this for
+    # real; here it is honestly NOT COVERED.
+    echo -e "${YELLOW}  ⚠ node not installed — MCP tool claims NOT checked here (CI still gates it)${NC}"
+    NOT_COVERED=$((NOT_COVERED + 1))
+elif [ -f tools/check-mcp-tool-claims.js ]; then
     MCP_CLAIMS_LOG="$LOG_DIR/mcp-tool-claims.log"
     if node tools/check-mcp-tool-claims.js > "$MCP_CLAIMS_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ $(tail -1 "$MCP_CLAIMS_LOG")${NC}"

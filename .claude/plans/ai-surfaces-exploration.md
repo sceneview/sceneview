@@ -217,9 +217,12 @@ out to be impossible.
 
 Expose the demo app's capabilities as annotated Kotlin suspend functions
 (`measureObject()`, `placeModel()`, `scanRoom()`) so Gemini can invoke them on-device —
-no screen scraping, no tap simulation. It is Android 16+ and in **private preview with
-trusted testers**, with Uber/DoorDash/OpenTable already integrated, so the action item is
-**apply for the preview now** and treat the code as a follow-up. Strategically this is the
+no screen scraping, no tap simulation. The note first read this as one gate — "apply for
+the preview, code later". It is **two**, and conflating them cost the cheaper half:
+Android's own FAQ answers *"Can I implement AppFunctions today?"* with **"Yes"**, so the
+app-side work can start now; only the **Gemini-facing activation** waits on trusted-tester
+(Android 16+, with Uber/DoorDash/OpenTable already integrated). So: build the functions,
+apply in parallel — not apply, then build. Strategically this is the
 most interesting position on the board: it makes SceneView the AR layer of agentic
 Android, which is a claim no docs connector can make.
 
@@ -254,10 +257,13 @@ genuine differentiator, so it is worth a 30-minute probe before deciding.
    real consent/TTL story (§4.1).
 
 **Tier C — cheap parallel bets**
-8. Apply to the AppFunctions preview. §4.3
+8. AppFunctions: the app-side functions can be written **today** — only Gemini-facing
+   activation waits on the preview. Apply in parallel rather than before. §4.3
 9. Antigravity CLI extension mirroring the Claude Code plugin.
-10. One docs page: "use SceneView MCP from Gemini Enterprise" — the Streamable HTTP URL
-    already exists.
+10. ~~One docs page for Gemini Enterprise.~~ **Hold** — the premise is unverified. The
+    Google doc URL 404s after redirect, so "Gemini Enterprise takes a Streamable HTTP MCP
+    URL" is a secondary-source claim. Verify before writing a page that asserts it; the
+    public surfaces now say "reported, untested" rather than stating it as fact.
 11. Generate every surface's manifest from `llms.txt` the way `gpt/knowledge-*.md` is
     generated — we now maintain six divergent descriptions of the same tool set, and
     that is a drift class waiting to happen.

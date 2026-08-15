@@ -36,9 +36,10 @@ Any other MCP client takes the same stdio server:
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
 
-Clients that want a URL rather than a command — Gemini Enterprise, ChatGPT's connector
-picker, Claude Desktop's remote MCP — can point at the hosted HTTP endpoint instead; see
-the [MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme).
+Clients that want a URL rather than a command — ChatGPT's connector picker, Claude
+Desktop's remote MCP — can point at the hosted HTTP endpoint instead; see the
+[MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme). Gemini
+Enterprise is reported to accept one too; that is untested on our side.
 
 ## Industry-specific MCPs
 

@@ -63,10 +63,11 @@ Two paths, depending on which Gemini surface you are on:
 
 - **Antigravity CLI** — add the same stdio server to its MCP config. (The standalone
   `gemini` CLI was retired in June 2026; Antigravity is its replacement.)
-- **Gemini Enterprise** — point it at the hosted **Streamable HTTP** endpoint instead of
-  a command; see the [MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme)
-  for the URL. The consumer Gemini app's connectors are partnership-only today, so the
-  hosted endpoint and `AGENTS.md` are the two routes that work there.
+- **Gemini Enterprise** — reported to take a **Streamable HTTP** URL rather than a
+  command. We have not verified this against Google's own docs (the page we were pointed
+  at 404s after redirect), so treat it as untested rather than supported. The consumer
+  Gemini app's connectors are partnership-only today, so `AGENTS.md` is the route that
+  works there for certain.
 
 Gemini CLI also reads `AGENTS.md`.
 
