@@ -17,6 +17,14 @@
 > (§2.1). Struck-through entries in §5 mark what moved. Where revision 1 stated something
 > that turned out to be false, the false statement is quoted before the correction — a
 > retraction that hides what it retracts cannot be audited.
+>
+> **Revision 3 (same day).** The third `PATH` casualty: `codex` was installed and
+> authenticated all along, so revision 1's "the OpenAI-side adversarial review did not
+> happen" — which §5 called the largest gap in the pass — was also false. **The leg ran**
+> (§3.1), and its claims were checked against OpenAI's primary docs (§4.5). It found a real
+> error in **my own** §4.2, now corrected. Every "could not verify" in §5 items 1–3 turned
+> out to be the same mistake wearing three hats: `command -v` is not a tool-availability
+> check on this machine.
 
 **Headline: the exploration plan's single BLOCKING finding (§3.1, "the widget declares a
 mimeType nobody implements") is WRONG.** The mimeType is correct and matches both current
@@ -25,6 +33,14 @@ specs. Two *different*, real defects were found in its place. See §4.
 **Second headline, from revision 2: the live `hub-mcp` Worker is `e9d04f4adf` (2026-04-12),
 six commits behind the deleted tree — including both dependency-security commits — and its
 deprecated-but-installable npm client `hub-mcp@0.3.0` still points at it.** See §2.1.
+
+**Third headline, from revision 3: Tier A item 4 aims at a surface that is not the one that
+exists.** OpenAI's target is a *plugin* — skills + MCP + optional UI — in a directory
+**shared by ChatGPT and Codex**, with a documented migration path from the Claude Code
+plugin SceneView already ships, and a rule against selling subscriptions or linking to
+checkout inside it. See §4.5. Also from revision 3: the widget fix is **smaller** than
+revision 2 claimed — move `resourceUri` to the tool declaration and probe; the protocol
+bump is a separate change, not a prerequisite (§4.2).
 
 ---
 
@@ -374,25 +390,85 @@ says to stop on. Left for Thomas.
 
 ---
 
-## 3. Cross-vendor pass: one leg ran, one leg SKIPped honestly
+## 3. Cross-vendor pass: BOTH legs ran
 
-### 3.1 `codex` — SKIP, and the delegation plan is now stale
+### 3.1 `codex` — the SKIP was my third `PATH` mistake. The leg ran.
+
+Revision 1 recorded this:
 
 ```
-$ bash .claude/scripts/llm-delegate.sh codex --context .claude/plans/ai-surfaces-exploration.md \
-    "Adversarial review: which of these bets is wrong, and what did we miss on the OpenAI side …"
 SKIP: codex CLI not installed (npm i -g @openai/codex)
 ```
 
-`ai-surfaces-exploration.md` §0 says `codex` and `agy` "are installed and authenticated on
-the Mac only". **Half of that is no longer true.** `codex` is absent from this machine —
-consistent with there being no `npm` at all here (§2.2). `multi-llm-delegation.md` §1,
-which records `codex` 0.145.0 authenticated on 2026-07-23, is stale on this point and its
-routing matrix ("Codex ≫ Gemini for this job") currently has no runnable Codex leg.
+and concluded that `ai-surfaces-exploration.md` §0 was half-wrong, that
+`multi-llm-delegation.md` §1 was stale, and that **"the OpenAI-side adversarial review did
+not happen."** All three of those statements were wrong.
 
-The wrapper behaved correctly: exit 0 with an honest `SKIP:` line, per the #2343 rule.
-**The OpenAI-side adversarial review did not happen.** Do not read anything below as
-covering it.
+`codex` was installed the whole time, at
+`~/.nvm/versions/node/v22.14.0/bin/codex` (global `@openai` package), and `agy` at
+`~/.local/bin/agy`. This is the **same `PATH` mistake as §2.3, for the third time in one
+session** — and here the cause is mechanical and in the repo:
+`llm-delegate.sh:110` gates on `command -v codex`. Under a non-interactive `PATH` that
+check fails on a machine where the CLI exists, and the wrapper's honest-SKIP contract
+(#2343) then faithfully reports an absence that isn't real. **The wrapper is not lying; its
+probe is.** A SKIP from this script means "not on `PATH`", not "not installed" — and those
+were treated as the same thing in revision 1.
+
+With `PATH` fixed, the exact command from the brief ran to completion:
+
+```
+$ export PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$HOME/.local/bin:$PATH"
+$ codex --version   → codex-cli 0.145.0
+$ codex login status → Logged in using ChatGPT
+$ bash .claude/scripts/llm-delegate.sh codex \
+    --context .claude/plans/ai-surfaces-exploration.md "Adversarial review: …"
+EXIT=0   model: gpt-5.6-sol   sandbox: read-only   → 166 lines
+```
+
+`multi-llm-delegation.md` §1 is therefore **accurate**, not stale: `codex` 0.145.0,
+authenticated. The retraction is mine, not the plan's.
+
+Unlike §3.2, this leg's load-bearing claims were then **checked against OpenAI's primary
+docs** (§4.5) rather than left advisory — so what follows is separated into confirmed and
+unconfirmed.
+
+**Its headline, and it contradicts the plan's whole framing of Tier A item 4:** the target
+is not an "Apps SDK app" submitted to a ChatGPT App Directory, but a **plugin** — skills +
+MCP server + optional UI — published to a directory **shared by ChatGPT and Codex**.
+Confirmed verbatim in §4.5. Codex argues this makes the developer audience reachable
+through the same listing, which for an SDK is a stronger surface than the consumer
+directory, and makes the existing Claude Code plugin a migration input rather than a
+channel to mirror by hand.
+
+**Where it corrects my own §4.2 — and it is right:** it flags my causal claim ("the widget
+cannot be offered until the server speaks `2026-07-28` and declares the UI extension") as
+too strong, and recommends probing ChatGPT with the declaration fix alone before coupling
+it to a protocol migration. Verified and conceded in §4.2.
+
+**Its other four challenges to the plan** (advisory, not verified here):
+
+1. **The deep-link/QR experiment does not validate capture demand.** Placement
+   (assistant→phone, "show me this object") and capture (phone→assistant, "reason over
+   measured reality") are different jobs; the success of the first says little about the
+   second. It proposes a measurements-only first experiment — no room photo, short-lived
+   pairing code, one narrow "will this fit?" intent, explicit uncertainty — which tests the
+   differentiated value without adopting the most sensitive storage design first. Note this
+   *converges with* `agy`'s independent verdict on §4.1 from a completely different angle.
+2. **"One MCP surface lands everywhere" is overstated** — protocol portability is not
+   product portability; hosts differ in UI support, OAuth and approval flows, link/iframe
+   policy, mobile availability, review and discovery. Treat the gateway as shared
+   infrastructure, not one identical product surface.
+3. **Tool architecture over tool count** — 67 published tools is a discovery and review
+   liability, and UI should not hang off every retrieval call: keep data/search tools
+   returning structured content and give a *narrow* render tool the `resourceUri`.
+4. **Submission prerequisites are larger than the plan lists** — identity, domain
+   challenge, legal URLs, reviewer demo credentials, CSP, annotations, output schemas, test
+   cases. Confirmed in §4.5; belongs in Tier A as a checklist, not discovered afterwards.
+
+One claim I could **not** confirm: codex dates the change to "July 9, 2026" and says the
+App Directory "is no longer the primary distribution surface". The concepts page carries no
+dates and no statement about superseding anything (§4.5). The *structure* is confirmed; the
+date and the supersession framing are not. Do not repeat them as fact.
 
 ### 3.2 `agy` (Antigravity / Gemini) — ran
 
@@ -561,11 +637,38 @@ The extension identifier is `io.modelcontextprotocol/ui`, and the declaration lo
 
 Our live `initialize` response (§1.1) has no `extensions` key, and
 `transport.ts:317-330` has no code path that would emit one. The `extensions` framework
-arrived with **2026-07-28** (SEP-2133) — so §3.2's version bump is not a hygiene item
-running in parallel with §3.1: **it is the prerequisite.** A server pinned to
-`2025-03-26` has no protocol slot in which to declare the UI extension.
+arrived with **2026-07-28** (SEP-2133): a server pinned to `2025-03-26` has no protocol slot
+in which to declare the UI extension.
 
-This re-orders Tier A: the version bump comes first and item 1 dissolves into it.
+#### Revision 3 correction: this is real, but it does NOT gate ChatGPT
+
+Revision 2 went further than the evidence and wrote:
+
+> "so §3.2's version bump is not a hygiene item running in parallel with §3.1: **it is the
+> prerequisite.** … This re-orders Tier A: the version bump comes first and item 1
+> dissolves into it."
+
+**Too strong, and the `codex` leg (§3.1) caught it.** My evidence is entirely from the MCP
+specification, so it supports a claim about **spec-conformant MCP Apps clients** — it says
+nothing about what ChatGPT actually requires, and ChatGPT is the host in Tier A item 3.
+Checked directly against OpenAI's own UI page (`plugins/build/chatgpt-ui`, §4.5): it
+specifies the mimeType and the declaration-level `_meta.ui.resourceUri`, and **contains no
+mention of an `extensions` capability in `initialize`, nor any required MCP protocol
+version at all.**
+
+So the corrected reading:
+
+| Claim | Status |
+|---|---|
+| `_meta.ui.resourceUri` must move to the declaration (§4.3) | **Confirmed by both** the MCP spec and OpenAI. This is the fix. |
+| Declaring `io.modelcontextprotocol/ui` + bumping to `2026-07-28` | **Correct as spec conformance**, needed for generic MCP Apps clients |
+| …and is a **prerequisite for ChatGPT rendering** | **Withdrawn** — unsupported by OpenAI's docs |
+
+Practical consequence, and it is a real de-risking: **do not bundle the two.** Ship the
+declaration-level `resourceUri` fix, probe ChatGPT against the current production transport,
+and treat the protocol bump as a separate, independently regression-tested change. Revision
+2's ordering would have blocked a one-line-ish fix behind a four-revision protocol
+migration, and fused two changes into a single hypothesis no reviewer could isolate.
 
 ### 4.3 Real defect #2: `_meta.ui.resourceUri` is on the tool *result*, not the tool *description*
 
@@ -606,21 +709,105 @@ rather than inferred.
   `io.modelcontextprotocol/clientCapabilities` block in each request's `_meta`. Worth
   reading before implementing §4.2 so the work is not immediately stale.
 
+### 4.5 Revision 3: OpenAI's `plugins/*` docs, fetched to check the `codex` leg
+
+Every load-bearing claim from §3.1 was checked against `developers.openai.com` rather than
+taken on trust. All quotes below are from those pages.
+
+**Confirmed — one directory, and a plugin is not an "app":**
+
+> "ChatGPT and Codex share one universal plugin directory. When you publish a public
+> plugin, people can discover the same listing from supported surfaces in either product."
+
+A plugin contains "Skills that give the model instructions and resources for repeatable
+workflows" and "An MCP server that exposes tools and connects to external systems"
+(`plugins/concepts/plugins`). **Not confirmed:** any date, or any statement that this
+supersedes the Apps SDK / App Directory. The structure is real; codex's "July 9, 2026" and
+"no longer the primary surface" are its own framing.
+
+**Confirmed — the Claude Code plugin is a documented migration input**, which is the single
+cheapest item here given that plugin already exists:
+
+> "If you're migrating an existing Claude Code plugin or connector, first review
+> [Submit your Claude Code plugin to OpenAI](https://developers.openai.com/plugins/guides/submit-claude-plugin)"
+
+**Confirmed — monetization, and this one is an architectural constraint, not paperwork:**
+
+> "Selling digital products or services—including subscriptions, digital content, tokens,
+> or credits—is not allowed, whether offered directly or indirectly (for example, through
+> freemium upsells)."
+
+> Plugins "may not link directly to a checkout or other transactional page" or "link to a
+> page that explicitly initiates the process to upgrade, subscribe, or complete a purchase."
+
+What *is* allowed: users may "sign in to an existing paid account and access features
+already included in their subscription", and a plugin may "link to an informational page
+describing available plans or entitlement options" (`plugins/app-guidelines`).
+
+I then measured Gateway #1 against that rule rather than assuming either way:
+
+```
+$ curl -o /dev/null -w '%{http_code}' …/sceneview-mcp…/pricing           → 200
+$ curl -o /dev/null -w '%{http_code}' …/sceneview-mcp…/billing/checkout  → 404
+$ grep -oiE 'href="[^"]*"' pricing.html | sort -u
+/  ·  /docs  ·  /docs#claude-desktop  ·  /pricing
+https://github.com/sceneview/sceneview  ·  mailto:hello@sceneview.dev
+```
+
+**Gateway #1 looks compliant as it stands.** `/pricing` is an informational plans page —
+tiers and monthly figures, no transactional link anywhere, and no `/billing/checkout` on
+this Worker at all (that route lives on the hub, §2). Figures deliberately not reproduced
+here. The constraint still needs writing into the plan, because it forbids a design the
+plan gestures at: no Pro upgrade funnel inside the plugin experience.
+
+**Confirmed — submission prerequisites**, which the plan does not currently list
+(`plugins/deploy/submission`): a "verified developer or business identity in the OpenAI
+Platform"; domain verification serving the token at
+`https://<host>/.well-known/openai-apps-challenge`, which "must return only that plugin's
+verification token"; public privacy-policy, terms and support URLs "that match the
+publisher"; "at least five positive test cases and three negative test cases", each
+positive one with a prompt, expected behavior, result shape and test account.
+
+Required tool annotations, quoted:
+
+> `readOnlyHint`: "Set to `true` only when the tool fetches, looks up, lists, retrieves,
+> previews, or computes information" · `openWorldHint`: "For write tools, set to `true` if
+> the tool can change publicly visible internet state" · `destructiveHint`: "For write
+> tools, set to `true` if the tool can delete, overwrite, revoke access, send
+> messages…that can't be undone"
+
+**And here the measurement corrects `codex`.** It treated annotations as outstanding work.
+They are already shipped — measured on the live public endpoint:
+
+```
+$ tools/list on /mcp/public  →  67 tools
+   readOnlyHint 67   openWorldHint 67   destructiveHint 67   annotations 69
+   outputSchema 0    resourceUri 0
+```
+
+All three annotations on all 67 tools. Two genuine gaps remain, both measured: **no
+`outputSchema` on any tool** (named in the submission requirements), and `resourceUri` 0,
+which independently re-confirms §4.3 against the deployed Worker.
+
 ---
 
 ## 5. Could not verify — the honest list
 
-Items 1 and 3 of this list were **resolved later in the same session** and are kept here,
-struck, rather than silently deleted — a "could not verify" that quietly disappears is
-indistinguishable from one that was never asked.
+Items 1, 2 and 3 were **resolved later in the same session** and are kept here, struck,
+rather than silently deleted — a "could not verify" that quietly disappears is
+indistinguishable from one that was never asked. All three failed for the same reason,
+which is the most useful thing this list now records: **`PATH`, three times.**
 
 1. ~~**`wrangler` anything.**~~ **RESOLVED — §2.3.** `wrangler` 4.95.0 and Node v22.14.0
    were both present, off `PATH`; `whoami` and `deployments list` ran read-only. What
    remains unverified on the hub is narrower: the **live Cloudflare secrets** (`wrangler
    secret list` not run — secrets are a stop condition, not a read).
-2. **The OpenAI-side adversarial review.** `codex` is not installed here; the leg SKIPped
-   (§3.1). Nothing in this document substitutes for it. **Still open** — this is the
-   largest single gap in the whole pass, and no other finding covers it.
+2. ~~**The OpenAI-side adversarial review** — "the largest single gap in the whole pass".~~
+   **RESOLVED — §3.1.** `codex` 0.145.0 was installed and authenticated all along, off
+   `PATH`; `llm-delegate.sh:110` gates on `command -v codex`, so the wrapper's honest SKIP
+   reported an absence that was not real. The leg ran read-only, and its load-bearing claims
+   were then checked against OpenAI's primary docs (§4.5). It also **corrected my §4.2**,
+   which no other finding in this document would have caught.
 3. ~~**The exact commit the live `hub-mcp` build was deployed from.**~~ **RESOLVED —
    §2.1.** It is `e9d04f4adf`, pinned by a 21-second deploy/commit gap, an exact
    per-library count match, and the npm description of the build published 9 minutes later.
@@ -653,11 +840,29 @@ indistinguishable from one that was never asked.
 
 - **`ai-surfaces-exploration.md` §3.1** — wrong, and actively harmful as written. Replace
   with §4.1's table. **Tier A item 1 must not be implemented.**
-- **§3.2** — upgraded from hygiene to **prerequisite**, and it is four revisions behind,
-  not three (§4.2).
-- **New Tier A item** — put `_meta.ui.resourceUri` on tool *descriptions* in
-  `tools/list`, and declare `io.modelcontextprotocol/ui` in `initialize` capabilities
-  (§4.2, §4.3). This is the actual "widget renders nowhere" fix.
+- **New Tier A item, and it is small** — put `_meta.ui.resourceUri` on tool *descriptions*
+  in `tools/list` (§4.3). Confirmed required by both the MCP spec and OpenAI. Ship it
+  alone and probe ChatGPT against the current transport.
+- **§3.2 (protocol bump)** — it is four revisions behind, not three, and declaring
+  `io.modelcontextprotocol/ui` needs it (§4.2). But **do not couple it to the item above**:
+  revision 3 withdrew the claim that it gates ChatGPT rendering. Separate change, separately
+  regression-tested.
+- **Tier A item 4 is aimed at the wrong target** — not an "Apps SDK app" to a ChatGPT App
+  Directory, but a **plugin** (skills + MCP + optional UI) to a directory shared by ChatGPT
+  and Codex (§4.5). Codex is reachable through the same listing, which for a developer SDK
+  may matter more than the consumer surface. The existing Claude Code plugin is a
+  documented migration input, not a channel to mirror by hand.
+- **A monetization constraint the plan does not have** — a published plugin may not sell
+  subscriptions, run freemium upsells, or link to checkout (§4.5). Gateway #1 measures as
+  compliant today; the rule still has to be written down, because it forbids the Pro
+  upgrade funnel the plan implies.
+- **Add the submission checklist to Tier A** — verified identity, the
+  `/.well-known/openai-apps-challenge` domain challenge, public privacy/terms/support URLs,
+  reviewer demo credentials, 5 positive + 3 negative test cases (§4.5). Discovering these
+  after implementation is the expensive order.
+- **`outputSchema` is missing on all 67 tools** (§4.5), and is named in the submission
+  requirements. The three required annotations, by contrast, are already shipped 67/67 — so
+  this is a smaller gap than a reading of codex alone would suggest.
 - **`ai-surfaces-cleanup.md` §1.2 / Wave 3 item 10** — the hub source is **not** lost
   (§2). The decision (fold in / own repo / retire) can be made on real code. But restoring
   it is a live behaviour change, 52 → 78 tools (§2.1), not a restore. The live tree is
@@ -765,6 +970,17 @@ Suggested fix, in the same spirit as §6b and likewise its own PR: resolve `node
 `nvm`'s default (or fail the *self-test* as "could not run" rather than "failed") so a
 127 never colours the verdict.
 
+**Revision 3: half of this is already fixed on the branch, and the half that is fixed
+inherits the flaw it fixes.** `9f3025fd7a` guards step 18 so a missing interpreter counts as
+`NOT_COVERED` instead of exiting 127 — the correct grading, and it removes the RED. But the
+guard is `command -v node >/dev/null 2>&1`, which is the exact probe this section is about:
+on this machine it answers "absent" for an installed Node. So the false RED becomes a false
+`⚠ node not installed — MCP tool claims NOT checked here`, which is a strictly better
+verdict and still a false one. The suggestion above stands and is unchanged by that commit:
+the grading was one bug, the probe is the other. The `[20/22]` self-test leg, which is what
+actually turned the verdict RED, is untouched — that commit's own message scopes it out
+("a gate-internals audit and belongs in its own PR").
+
 ## 6d. `apiCheck` could not be verified locally — and CI says it is fine
 
 Stated plainly rather than buried, because it is the one leg this change did not get a
@@ -785,6 +1001,31 @@ this branch:
 So: local host state in this worktree, gated green by CI, cause not diagnosed — chasing it
 further is off-task for a verification pass. The gate's own final verdict on this change is
 `0 checks failed, 1 could not run`, and that one is this.
+
+**Revision 3: the same leg, a different failure.** The gate run for revision 3 also ended
+`⚠ 1 CHECK(S) COULD NOT RUN`, and it is still `apiCheck` — but the symptom is not the one
+above. The `Unresolved reference 'compose'` errors are gone; what fails now is the ABI
+worker itself, on both Android modules:
+
+```
+* What went wrong:
+Execution failed for task ':arsceneview:apiBuild'.
+> A failure occurred while executing kotlinx.validation.AbiBuildWorker
+   > kotlin/metadata/jvm/JvmMetadataUtil
+* What went wrong:
+Execution failed for task ':sceneview:apiBuild'.
+> A failure occurred while executing kotlinx.validation.AbiBuildWorker
+   > kotlin/metadata/jvm/JvmMetadataUtil
+```
+
+A bare class name under `A failure occurred while executing …Worker` is the shape of a
+`NoClassDefFoundError` inside the binary-compatibility-validator worker — a classpath
+problem in the tool, not a source problem in the modules. The gate's own hint agrees that
+this class is host state (`Re-run when no other build is competing for the Gradle daemon`).
+Two different local failures on the same leg in one day, both with `apiCheck` green as a
+blocking CI job on `main`: enough to say the leg is unverified **on this host**, not enough
+to say anything about the public API. It is still one Markdown file that is being pushed.
+Not diagnosed further, for the same reason as above.
 
 ## 7. Commands, for reproduction
 
@@ -846,6 +1087,24 @@ git log --oneline --all --since='2026-07-17T11:01:31Z' -- mcp-gateway/ | wc -l  
 gh search code --limit 20 'profile=mcp-app repo:modelcontextprotocol/modelcontextprotocol'
 gh api repos/modelcontextprotocol/modelcontextprotocol/contents/docs/extensions/apps/build.mdx \
   --jq .content | base64 -d
+
+# §3.1 — the codex leg. The PATH export is the whole reason revision 1 said SKIP.
+export PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$HOME/.local/bin:$PATH"
+codex --version && codex login status
+bash .claude/scripts/llm-delegate.sh codex \
+  --context .claude/plans/ai-surfaces-exploration.md "Adversarial review: …"
+
+# §4.5 — annotations, output schemas and the widget pointer, on the LIVE endpoint
+curl -s -X POST https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' -o /tmp/tl.json
+for k in readOnlyHint openWorldHint destructiveHint outputSchema resourceUri; do
+  echo "$k: $(grep -o "$k" /tmp/tl.json | wc -l)"
+done   # -> 67 67 67 0 0
+
+# §4.5 — is the public pricing page transactional? (guidelines allow informational only)
+curl -s https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing \
+  | grep -oiE 'href="[^"]*"' | sort -u
 ```
 
 ## 8. Sources (primary, fetched 2026-08-15)
