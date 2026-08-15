@@ -225,8 +225,14 @@ class ViewNode(
         // 1 × 1 unit square of the quad, so anything outside it is dead: a 410 × 420 px card at the
         // default 250 `pxPerUnits` spans 1.64 × 1.68 units and loses its outer ~30% margin —
         // usually where the buttons are. Harmless while a ViewNode was only pickable; not once it
-        // forwards touches (#2845). Both setters run from `Layout.onSizeChanged`, i.e. the main
-        // thread, so the extra JNI read is safe here.
+        // forwards touches (#2845). The read-back is safe for the same reason `updateGeometry`
+        // itself is: this whole path is main-thread-only Filament JNI, and the AABB it reads is
+        // manager-side state `setGeometry` has already written, not a queued driver command.
+        //
+        // Scoped to ViewNode on purpose: none of the eleven `updateGeometry` call sites refresh
+        // the collider, so a resized CubeNode still mis-picks the same way. Hoisting the call into
+        // `GeometryNode.updateGeometry` would also clobber a `collisionShape` an app set by hand,
+        // so that is a deliberate change of its own — see the follow-up issue.
         updateCollisionShape()
     }
 
@@ -279,7 +285,13 @@ class ViewNode(
             if (point != null && touchForwarder.onHit(e, point.x, point.y)) {
                 return true
             }
-        } else if (touchForwarder.onExit(e)) {
+        } else if (touchForwarder.onExit(e) && e.actionMasked != MotionEvent.ACTION_DOWN) {
+            // Take the close, drop the verdict on a DOWN. `onExit` treats `ACTION_DOWN` as
+            // terminal and returns true for it, but a fresh gesture belongs to whatever it hits —
+            // consuming it here would hide the DOWN from the gesture detectors and the camera
+            // manipulator while its MOVE/UP still reach them, which is the very stream-without-a-
+            // DOWN this branch exists to prevent. `SceneView`'s captured path drops the same
+            // return value for the same reason.
             return true
         }
         return super.onTouchEvent(e, hitResult)
