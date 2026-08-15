@@ -236,6 +236,9 @@ viewer inline (definitely works), "View in AR" as an **escape hatch** to a full-
 viewer / Scene Viewer intent / AR Quick Look (§4.2). If in-chat AR ever does work it is a
 genuine differentiator, so it is worth a 30-minute probe before deciding.
 
+> The Tier A items below are tracked as workstream 4 of
+> [#3192](https://github.com/sceneview/sceneview/issues/3192).
+
 ## 6. Ranked plan
 
 **Tier A — fix what is already built (days, unblocks two directories)**

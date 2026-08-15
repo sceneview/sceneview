@@ -263,6 +263,11 @@ the docs install tables. Then one gate fails the build when a surface disagrees.
 Stripe copy cannot be generated, but it *can* be asserted: a read-only check comparing
 live product descriptions against the manifest would have caught "51+ tools" and "Zed".
 
+> **Follow-ups are tracked in [#3192](https://github.com/sceneview/sceneview/issues/3192)** —
+> the Karma/ChromeHeadless crash on the blocking web leg, the `exit 127` gate-classification
+> audit, the Hub's two components (Worker + the still-installable npm client), and the MCP
+> protocol bump that gates everything MCP-Apps. Each needs its own PR; none belong in #3189.
+
 ## 7. Decisions needed
 
 1. **Sign off the tier table (§3)** — in particular dropping Windsurf and Zed from copy.
