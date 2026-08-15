@@ -677,6 +677,23 @@ fi
 # manual sweep that bumped 11 of these for v4.1.0 (#989) showed the cost
 # of keeping these out of band; this section closes the gap so future
 # bumps catch them via `--fix`.
+echo -e "${CYAN}--- AI Rules Files (Maven coordinates) ---${NC}"
+
+# The three agent rules files carry a Gradle coordinate that no section swept:
+# `.cursorrules` and `.github/copilot-instructions.md` were listed for their SPM
+# snippet only, `.windsurfrules` was listed nowhere. All three sat at 4.0.0 while
+# VERSION_NAME was 4.30.0 — 30 minors of drift handed to Cursor, Windsurf and
+# Copilot as the dependency to write. 115 checks passed while the SDK's own
+# AI-first surfaces were the stale ones (#3189).
+for AI_RULES in .cursorrules .windsurfrules .github/copilot-instructions.md; do
+    AI_F="$REPO_ROOT/$AI_RULES"
+    [ -f "$AI_F" ] || continue
+    grep -q 'io\.github\.sceneview:sceneview:' "$AI_F" || continue
+    V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$AI_F" \
+          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
+    add_check "$AI_RULES (Maven coordinate)" "$V"
+done
+
 echo -e "${CYAN}--- SwiftPM Install Snippets ---${NC}"
 SPM_FILES=(
     llms.txt

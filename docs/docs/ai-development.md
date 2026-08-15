@@ -46,9 +46,12 @@ Now Claude has the full SceneView API. Ask it to:
 
 The AI will generate correct SceneView code — no hallucinated methods, no outdated patterns.
 
-### Use with Cursor / Windsurf / other editors
+### Use with Codex, Cursor, Copilot and other agents
 
-Copy `llms.txt` from the SceneView repo into your project root, or add the MCP server to your editor's MCP config. The AI tools will pick it up automatically.
+Add the MCP server to the agent's MCP config — the same JSON block as above works for
+every MCP-compatible client. For agents that read a project rules file, copy `llms.txt`
+into your project root; `AGENTS.md` (the cross-vendor standard, read by Codex, Cursor,
+Copilot, Gemini CLI and others) is the file most of them look for first.
 
 ### Use with ChatGPT / Claude web
 
@@ -87,7 +90,7 @@ claude
 
 ## What's in `llms.txt`
 
-A 500-line, machine-readable API reference covering:
+A machine-readable API reference (7,600+ lines) covering:
 
 - All composable signatures with parameter types and defaults
 - Code examples for every node type
@@ -103,12 +106,24 @@ The file is maintained alongside the source code and updated with every release.
 
 ## What's in the MCP server
 
-The `sceneview-mcp` package provides tools that AI assistants can call:
+The `sceneview-mcp` package provides **31 tools** that AI assistants can call, plus two
+resources. The most used ones:
 
-- **`get_api_reference`** — returns the full `llms.txt` content
-- **`get_node_reference`** — look up a specific node type's API
-- **`get_sample_code`** — get working example code for a use case
-- **`get_threading_rules`** — threading and lifecycle rules
+| Tool | What it does |
+|---|---|
+| `get_sample` / `list_samples` | A complete, compilable sample for any of 33 scenarios (Kotlin or Swift) |
+| `get_node_reference` | Exact signature, parameters and defaults for any node type |
+| `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API |
+| `get_setup` / `get_ios_setup` / `get_web_setup` / `get_ar_setup` | Per-platform dependency, manifest and permission setup |
+| `get_best_practices` | Threading, lifecycle and Compose rules — including the main-thread Filament constraint |
+| `migrate_code` / `get_migration_guide` | Automatic 2.x / 3.x migration with a changelog |
+| `search_models` / `generate_3d_model` | Find a real asset on Sketchfab, or generate a new GLB (both BYOK) |
+| `analyze_project` | Scans a local project for outdated deps and known anti-patterns |
+
+Resources: `sceneview://api` (the full API reference) and `sceneview://known-issues`
+(live GitHub issues).
+
+The full list of 31 is in the [MCP README](https://github.com/sceneview/sceneview/tree/main/mcp#readme).
 
 ### Setup
 
@@ -123,7 +138,7 @@ The `sceneview-mcp` package provides tools that AI assistants can call:
 }
 ```
 
-Works with Claude Code, Claude Desktop, Cursor, Windsurf, and any MCP-compatible tool.
+Works with Claude Code, Claude Desktop, Codex, Cursor, GitHub Copilot, and any MCP-compatible tool.
 
 ---
 

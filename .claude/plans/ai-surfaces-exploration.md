@@ -7,6 +7,11 @@
 > was verified in this repo or from a dated public source (§9); everything else is
 > marked as an assumption to test.
 
+> **Companion note:** [`ai-surfaces-cleanup.md`](./ai-surfaces-cleanup.md) is the
+> état des lieux — what already exists across the portfolio, what of it is factually
+> wrong today, and which assistants we should keep carrying. Read that one first if the
+> question is *what do we clean up?* rather than *what do we build?*
+
 ## 0. What could NOT be done in this session
 
 The request was to brainstorm *with* Gemini and ChatGPT. That was not possible here and

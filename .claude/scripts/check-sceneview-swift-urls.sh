@@ -72,7 +72,7 @@ cd "$ROOT"
 
 # Files where a historical `sceneview-swift` reference is allowed. Anchored
 # repo-root-relative paths, alternation joined with '|'.
-ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/pre-push-check\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
+ALLOW='^(Package\.swift|\.github/workflows/release\.yml|\.github/workflows/ci\.yml|CLAUDE\.md|SceneViewSwift/Sources/SceneViewSwift/SceneView\.swift|CHANGELOG\.md|changelog\.d/[^/]+\.md|docs/docs/migration\.md|\.claude/plans/[^/]+\.md|\.claude/scripts/check-sceneview-swift-urls\.sh|\.claude/scripts/test-check-sceneview-swift-urls\.sh|\.claude/scripts/impact-check\.sh|\.claude/scripts/test-impact-check\.sh|\.claude/scripts/quality-gate\.sh|\.claude/scripts/pre-push-check\.sh|\.claude/scripts/sync-versions\.sh|\.claude/skills/automation-map/SKILL\.md)$'
 
 # Surfaces where the mirror may be NAMED but never PINNED. The two changelog
 # entries are the only ones allowlisted WHOLESALE (any fragment, current or
@@ -92,6 +92,7 @@ PROSE_ONLY=(
     'CHANGELOG.md'
     'changelog.d/*.md'
     '.claude/skills/automation-map/SKILL.md'
+    '.claude/plans/*.md'
 )
 
 # A live install snippet: the mirror URL with a version constraint next to it.
@@ -140,9 +141,18 @@ RANGE='sceneview-swift(\.git)?['"'"'"`]?[,)]?[[:space:]]*['"'"'"`]?[0-9][0-9.]*[
 # protection that did not exist. Four more gate scripts join them now, each for
 # the same reason as the detector itself — they mention the string BECAUSE
 # their own logic is about it.
-HITS=$(git grep -l 'sceneview-swift' -- \
-         '*.md' '*.txt' '*.yml' '*.yaml' '*.swift' '*.kt' \
-         '*.json' '*.html' '*.js' '*.ts' '*.sh' \
+#
+# Extension globs cannot see an EXTENSIONLESS file, and the agent rules files
+# have no extension. `.cursorrules` shipped a live SPM pin to the archived
+# mirror while this gate reported OK — a gate that is blind to a surface is not
+# a gate that passes it. They are named explicitly below; `git grep` treats a
+# literal path as a pathspec like any other.
+SCAN_PATHS=(
+    '*.md' '*.txt' '*.yml' '*.yaml' '*.swift' '*.kt'
+    '*.json' '*.html' '*.js' '*.ts' '*.sh'
+    '.cursorrules' '.windsurfrules'
+)
+HITS=$(git grep -l 'sceneview-swift' -- "${SCAN_PATHS[@]}" \
          2>/dev/null | grep -vE "$ALLOW" || true)
 
 if [ -n "$HITS" ]; then

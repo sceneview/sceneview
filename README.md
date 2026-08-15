@@ -375,7 +375,7 @@ SceneView is **AI-first** — every API, doc, and sample is designed so AI assis
 
 ### MCP Server (Claude, Cursor, Windsurf, etc.)
 
-The official [MCP server](./mcp/) provides **28 tools**, **33 compilable samples**, a full API reference, and a code validator:
+The official [MCP server](./mcp/) provides **31 tools**, **33 compilable samples**, a full API reference, and a code validator:
 
 ```bash
 # Claude Code — one command
@@ -425,7 +425,7 @@ You get:
 - **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
 - **46+ node types** as declarative composables
-- **MCP server** with 28+ tools — no other 3D SDK has this
+- **MCP server** with 31 tools — no other 3D SDK has this
 
 Listed on the [MCP Registry](https://registry.modelcontextprotocol.io). See the [MCP README](./mcp/README.md) for full setup and tool reference.
 

@@ -175,5 +175,33 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "a constraint keyword used as an English word → not a pin" \
   || bad "the keyword must carry pin SYNTAX to count as one (rc=$RC)"
 
+# 13. Pass 1 must see EXTENSIONLESS files. Every pathspec entry used to be an
+#     extension glob, so `.cursorrules` — an agent rules file read by Cursor and
+#     others — was scanned by neither pass. It shipped a live SPM pin to the
+#     archived mirror while the gate reported OK. A rules file is the worst
+#     place for a dead URL: the assistant copies it into generated code.
+D="$(fixture extensionless_rules .cursorrules "$MIRROR_PIN")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q '.cursorrules' <<<"$OUT"; } \
+  && ok "mirror pin in an extensionless rules file → fail, file named" \
+  || bad "an extensionless agent rules file must be scanned (rc=$RC)"
+
+# 14. Pass 1, negative, for the plan notes: an exploration note documenting that
+#     the mirror is archived must be free to NAME it, exactly like a release note.
+D="$(fixture plan_prose .claude/plans/note.md "$MIRROR_PROSE")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a plan note naming the retired mirror → allowed" \
+  || bad "plan notes must be free to name the retired mirror (rc=$RC)"
+
+# 15. …and pass 2 must still refuse a resolvable pin there — the same asymmetry
+#     the changelog surfaces get. Naming it is history; pinning it is a broken
+#     copy-paste.
+D="$(fixture plan_pin .claude/plans/note.md "$MIRROR_PIN")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q '.claude/plans/note.md:1' <<<"$OUT"; } \
+  && ok "a plan note PINNING the retired mirror → fail, line named" \
+  || bad "a wholesale-allowlisted plan note must not ship a pin (rc=$RC)"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

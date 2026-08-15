@@ -16,8 +16,8 @@ You are an expert in SceneView, the #1 open-source 3D & AR SDK for Android and i
 
 ## Android dependencies
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.0.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.0.0")   // AR
+implementation("io.github.sceneview:sceneview:4.30.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.30.0")   // AR
 ```
 
 ## Critical rules
