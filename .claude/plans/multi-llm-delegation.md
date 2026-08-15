@@ -1,11 +1,21 @@
 # Multi-LLM delegation — Codex · Gemini/Antigravity · Kimi (exploration 2026-07-23)
 
 > Exploration session: how to delegate SceneView tasks to non-Claude LLMs, with
-> Claude Code as the **single orchestrator**. Status: CLIs installed and probed on
-> the Mac; **`agy` + `codex` authenticated**, `kimi` auth pending (§Auth).
+> Claude Code as the **single orchestrator**.
 > Single entry point: [`llm-delegate.sh`](../scripts/llm-delegate.sh).
+>
+> ⚠️ **STATUS BELOW IS FROM 2026-07-23 AND HAS DECAYED. Re-probe before relying on it.**
+> Measured on the Mac 2026-08-15 (#3189): **`codex` is NOT installed** — the delegate
+> script SKIPs it honestly (exit 3), so the OpenAI-side leg of that session's
+> cross-vendor pass did not run at all. The line below claiming "`agy` + `codex`
+> authenticated" is what made two sessions expect a review they never got. `agy` ran.
+>
+> Restoring the Codex leg needs **two** steps, and the second cannot be automated:
+> `npm i -g @openai/codex`, then an interactive `codex login` (ChatGPT Plus/Pro OAuth,
+> needs a TTY and a human). A spawned session can do the first and will still SKIP on
+> the second.
 
-## 1. Current state (measured on this machine, 2026-07-23)
+## 1. Current state (measured on this machine, 2026-07-23 — see the decay warning above)
 
 | Provider | CLI | Version | Headless | Sandbox | Auth | Measured trap |
 |---|---|---|---|---|---|---|
@@ -17,7 +27,7 @@
 accounts), replaced by Antigravity CLI (`agy`, Go binary, official curl installer). The
 personal Google free tier goes through Antigravity.
 
-### Smoke-test results (2026-07-23, `agy` + `codex` authenticated)
+### Smoke-test results (2026-07-23, `agy` + `codex` authenticated — `codex` since uninstalled)
 
 - **codex** ✅ clean. `codex exec --sandbox read-only` reads workspace files natively
   (no permission prompt) — read `llms.txt`, answered, `codex exec review` returns a
