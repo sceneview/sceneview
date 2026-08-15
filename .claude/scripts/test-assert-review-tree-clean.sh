@@ -214,6 +214,128 @@ else
   echo "  – skipped: --base with no value (needs coreutils \`timeout\`)"
 fi
 
+# --- the moving-base race (#3182) -------------------------------------------
+#
+# The measured shape, reproduced exactly: `pr-review.yml` pins the base SHA
+# before the fan-out, then the base branch MOVES, and only afterwards does the
+# action restore — from the branch, which is what it actually resolves. On run
+# 31820409662 those two commits were 3 seconds apart and the job died on
+# ` M CLAUDE.md`, a file the PR never touched.
+#
+# Note which file moves here: CLAUDE.md is edited on BASE and left alone by the
+# PR. That is the whole point — the failure lands on a path outside the diff, so
+# no amount of reading the PR explains it.
+echo
+echo "the moving-base race (#3182)"
+make_repo_moving_base() {
+  local dir="$1"
+  rm -rf "$dir"; mkdir -p "$dir"
+  (
+    cd "$dir" || exit 1
+    git init --quiet -b base .
+    git config user.email t@example.com
+    git config user.name Test
+    mkdir -p "$dir/.nohooks"
+    git config core.hooksPath "$dir/.nohooks"
+    git config commit.gpgsign false
+    mkdir -p .claude/scripts src
+    printf 'base\n' > .claude/scripts/sync-assets.sh
+    chmod +x .claude/scripts/sync-assets.sh
+    printf 'base guide\n' > CLAUDE.md
+    printf 'base code\n' > src/app.kt
+    git add -A && git commit --quiet -m base
+    git tag pinned                      # what `Materialise the diff` captured
+
+    git switch --quiet -c pr
+    printf 'pr\n' > .claude/scripts/sync-assets.sh   # the PR's own change
+    git add -A && git commit --quiet -m pr
+
+    # …and now the base branch moves, touching a DIFFERENT sensitive path.
+    git switch --quiet base
+    printf 'guide, revised\n' > CLAUDE.md
+    git add -A && git commit --quiet -m "base moves"
+    git switch --quiet pr
+
+    # The action restores from the BRANCH, not from the pinned tag.
+    for p in .claude .mcp.json .claude.json .gitmodules .ripgreprc \
+             CLAUDE.md CLAUDE.local.md .husky; do
+      rm -rf "$p"
+    done
+    for p in .claude .mcp.json .claude.json .gitmodules .ripgreprc \
+             CLAUDE.md CLAUDE.local.md .husky; do
+      git checkout base -- "$p" 2>/dev/null || true
+    done
+    git reset --quiet -- .claude .mcp.json .claude.json .gitmodules \
+                         .ripgreprc CLAUDE.md CLAUDE.local.md .husky 2>/dev/null || true
+    exit 0
+  )
+}
+
+make_repo_moving_base "$TMP/moved"
+
+# 1. The bug, pinned. Without --also-base this MUST still be red: if it were
+#    green here the fix below would be proving nothing.
+OUT="$(cd "$TMP/moved" && bash "$ASSERT" --base pinned 2>&1)"; RC=$?
+check "pinned base only — the moved branch reads as contamination (the #3182 bug)" 1
+case "$OUT" in
+  *"CLAUDE.md"*) echo "  ✓ …and it names CLAUDE.md, a file the PR never touched"; PASS=$((PASS + 1)) ;;
+  *) echo "  ✗ the reproduction does not name CLAUDE.md — it is not the measured shape"; FAIL=$((FAIL + 1)) ;;
+esac
+
+# 2. The fix.
+OUT="$(cd "$TMP/moved" && bash "$ASSERT" --base pinned --also-base base 2>&1)"; RC=$?
+check "accepting the branch tip as a second trusted ref absorbs the race" 0
+
+# 2b. The verdict has to name the refs it trusted, and BOTH of them once there
+#     are two. This is not cosmetic and it is not the sibling suite's job: the
+#     first draft of #3182 moved the ref out of the header onto each line, which
+#     read fine and silently broke `test-dispatch-config-restore.sh`, whose whole
+#     assertion is that a restore is named rather than merely tolerated. Pinning
+#     it here means the file that owns the output owns the contract too.
+case "$OUT" in
+  *"Restored from pinned or base by "*)
+    echo "  ✓ the verdict header names both trusted refs"; PASS=$((PASS + 1)) ;;
+  *)
+    echo "  ✗ the verdict header does not name both trusted refs"; FAIL=$((FAIL + 1))
+    printf '%s\n' "$OUT" | grep -n 'Restored' | sed -n '1,3p' ;;
+esac
+
+# 3. …and it must absorb ONLY that. A reviewer's edit matches neither ref, and
+#    adding a second trusted base must not become a way in. This is the case
+#    that would break first if `--also-base` were ever loosened to a path skip.
+make_repo_moving_base "$TMP/moved-dirty"
+printf 'reviewer was here\n' > "$TMP/moved-dirty/.claude/scripts/sync-assets.sh"
+OUT="$(cd "$TMP/moved-dirty" && bash "$ASSERT" --base pinned --also-base base 2>&1)"; RC=$?
+check "a reviewer edit matching NEITHER ref is still contamination" 1
+
+# 4. An unresolvable second ref is a warning, not a crash and not a pass. The
+#    fetch that produces it is best-effort in the workflow (`|| true`), so this
+#    path is reachable, and it must degrade to the strict old behaviour.
+OUT="$(cd "$TMP/moved" && bash "$ASSERT" --base pinned --also-base origin/nope 2>&1)"; RC=$?
+check "an unresolvable --also-base degrades to strict, it does not fail open" 1
+case "$OUT" in
+  *"::warning"*"#3182"*) echo "  ✓ …and says so, pointing at the race rather than at the reviewers"; PASS=$((PASS + 1)) ;;
+  *) echo "  ✗ an unresolvable --also-base is silent — the next reader gets the #3016 diagnosis again"; FAIL=$((FAIL + 1)) ;;
+esac
+
+# 5. Mutation: drop the second ref from the lookup and case 2 must go red again.
+#    Without this, `--also-base` could be accepted and quietly ignored.
+MUTANT3="$TMP/mutant3.sh"
+sed 's|^  if \[ -n "\$ALSO_BASE_REF" \] .*$|  if false; then|' "$ASSERT" > "$MUTANT3"
+if ! grep -q '^  if false; then$' "$MUTANT3"; then
+  echo "  ✗ mutation could not be applied — the second-ref lookup moved; update this test"
+  FAIL=$((FAIL + 1))
+else
+  (cd "$TMP/moved" && bash "$MUTANT3" --base pinned --also-base base >/dev/null 2>&1)
+  if [ $? -eq 1 ]; then
+    echo "  ✓ ignoring --also-base brings the race back, so case 2 proves the fix"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ the race case passes even with --also-base ignored — something else makes it green"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
 # --- the suite must pin its own WIRING --------------------------------------
 #
 # Counting cases measures effort, not coverage: green assertions say nothing if
@@ -262,7 +384,12 @@ fi
 echo
 echo "mutation test (a path EXCLUSION instead of a content assertion)"
 MUTANT="$TMP/mutant.sh"
-sed 's|^  if is_sensitive "\$path" \&\& \[ .*$|  if is_sensitive "$path"; then|' "$ASSERT" > "$MUTANT"
+# Anchored on `is_sensitive` and the `&&`, NOT on what follows it: the content
+# half of that condition was a `[ … ]` test until #3182 made it a call to
+# `matching_base_ref`, and a mutation keyed to the old spelling silently stopped
+# applying. It reported that honestly (this suite has a guard for exactly that),
+# but a mutation that cannot apply proves nothing about the assertion.
+sed 's|^  if is_sensitive "\$path" \&\& .*$|  if is_sensitive "$path"; then|' "$ASSERT" > "$MUTANT"
 if ! grep -q 'if is_sensitive "\$path"; then$' "$MUTANT"; then
   echo "  ✗ mutation could not be applied — the classification line moved; update this test"
   FAIL=$((FAIL + 1))

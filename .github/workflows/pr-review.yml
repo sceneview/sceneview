@@ -1078,6 +1078,16 @@ jobs:
           # branch name is only the fallback for the `always()` paths where that
           # step never ran.
           BASE="${BASE_SHA:-origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}}"
+          # …and the branch TIP as a second trusted reference, because the
+          # action does not honour the pin: `restoreConfigFromBase()` resolves
+          # the base BRANCH at its own runtime. Measured on run 31820409662
+          # (#3182): the pin was taken at 16:40:43, #3179 merged at 16:40:46,
+          # the action restored from the tip a second later, and this step died
+          # on ` M CLAUDE.md` — a file that PR does not touch. Accepting either
+          # ref hides nothing: both are commits on a protected branch that no
+          # PR controls. Dropping the pin instead would only move the race, since
+          # the tip can move again between the restore and this step.
+          BASE_TIP="origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}"
           # ⛔ Same pin as the grader, for the same reason: the judge must not
           # come from the code being judged. Reading the script out of the
           # checkout would let a PR supply the assertion that clears it — and by
@@ -1103,7 +1113,7 @@ jobs:
           # `test-assert-review-tree-clean.sh`'s wiring check greps for, and a
           # check that can be satisfied by a mention in a COMMENT is #3047 all
           # over again. Keep the script name here.
-          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE"
+          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE" --also-base "$BASE_TIP"
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
