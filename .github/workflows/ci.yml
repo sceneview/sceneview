@@ -1603,6 +1603,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-node-resolve.sh
 
+      # CI ↔ gate task parity. pre-push-check.sh opens with "if a CI check
+      # appears in NEITHER [the legs nor the not-covered list], nobody has
+      # audited it — that is a gap, not a decision", and nothing enforced it:
+      # three of the `unit-test` job's seven gradle tasks ran in CI and nowhere
+      # locally, unnamed on both lists. One of them arrived the day before via
+      # #3193 — a fix for a suite no workflow invoked, which wired CI and left
+      # the local gate behind. This suite is what makes that sentence hold: any
+      # task added to `unit-test` must be run by the gate, covered by a module's
+      # aggregate `:m:test`, or excused by a written CI-PARITY-EXCLUDE line.
+      - name: Self-test CI/gate gradle-task parity
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-ci-parity-gradle-tasks.sh
+
       # The reviewers' diff. Same failure shape one layer up: on run
       # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
       # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and

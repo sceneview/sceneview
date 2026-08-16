@@ -121,12 +121,27 @@ else
         "sceneview tests FAILED" "no sceneview test ever ran"
 fi
 
-echo -e "${YELLOW}[4/21] Running arsceneview unit tests...${NC}"
-if gradle_run "$LOG_DIR/test-arsceneview.log" :arsceneview:testDebugUnitTest; then
-    echo -e "${GREEN}  ✓ arsceneview tests pass${NC}"
+# The other four tasks of ci.yml's `unit-test` job, in one Gradle invocation.
+#
+# Three of them ran in CI and nowhere here until 2026-08-16, and were named in
+# neither the legs below nor the deliberately-not-covered list — a gap by the
+# rule this file opens with, not a decision. `:samples:android-tv-demo:` had
+# been wired into CI the day before by #3193, whose entire subject was a test
+# suite no workflow invoked; the fix wired CI and left this gate one storey
+# behind. `test-ci-parity-gradle-tasks.sh` (leg 19) now fails on any task CI
+# runs that is neither run nor excluded here in writing, so the next task added
+# to that job cannot repeat it silently.
+echo -e "${YELLOW}[4/21] Running the remaining CI unit-test tasks...${NC}"
+if gradle_run "$LOG_DIR/test-arsceneview.log" \
+        :arsceneview:testDebugUnitTest \
+        :sceneview-core:androidTest \
+        :samples:common:testDebugUnitTest \
+        :samples:android-tv-demo:testDebugUnitTest; then
+    echo -e "${GREEN}  ✓ arsceneview, sceneview-core, samples:common and TV demo tests pass${NC}"
 else
-    gate_gradle_failure "arsceneview unit tests" "$LOG_DIR/test-arsceneview.log" $? \
-        "arsceneview tests FAILED" "no arsceneview test ever ran"
+    gate_gradle_failure "arsceneview / sceneview-core / samples unit tests" \
+        "$LOG_DIR/test-arsceneview.log" $? \
+        "unit tests FAILED" "no unit test ever ran in this leg"
 fi
 
 # 3. Screenshot tests (Roborazzi — Android, JVM, no emulator)
