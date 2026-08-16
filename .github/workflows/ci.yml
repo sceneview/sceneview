@@ -1591,6 +1591,18 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
 
+      # Node resolution (#3202). The gate ran `which node` from a non-interactive
+      # shell, which never sources nvm.sh, so an nvm-only host reported "node not
+      # found" and downgraded two legs to NOT COVERED — including the one that
+      # guards the generated gpt/knowledge-*.md against drift. Both legs were
+      # runnable throughout; measured four times in a day. Fixtures are fake nvm
+      # trees, never this host's, so the suite pins the same thing on a runner
+      # that has no nvm at all.
+      - name: Self-test node resolution
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-node-resolve.sh
+
       # The reviewers' diff. Same failure shape one layer up: on run
       # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
       # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and
