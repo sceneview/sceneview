@@ -218,22 +218,22 @@ class ViewNode(
     )
 
     fun updateGeometrySize() {
-        updateGeometry(size = viewSize / pxPerUnits)
-        // The collider does NOT follow the geometry: `updateGeometry` refreshes Filament's AABB,
-        // but `collisionShape` keeps whatever box the node was built with — `Plane.DEFAULT_SIZE`'s
-        // 1 × 1 × 0. Left stale, `CollisionSystem.hitTest` only ever reports a hit on the central
-        // 1 × 1 unit square of the quad, so anything outside it is dead: a 410 × 420 px card at the
-        // default 250 `pxPerUnits` spans 1.64 × 1.68 units and loses its outer ~30% margin —
-        // usually where the buttons are. Harmless while a ViewNode was only pickable; not once it
-        // forwards touches (#2845). The read-back is safe for the same reason `updateGeometry`
-        // itself is: this whole path is main-thread-only Filament JNI, and the AABB it reads is
-        // manager-side state `setGeometry` has already written, not a queued driver command.
+        // The collider follows the geometry on its own: `updateGeometry` reaches
+        // `RenderableNode.setGeometry`, which re-derives `collisionShape` from the new AABB
+        // (#3194). ViewNode needed an explicit `updateCollisionShape()` here while that refresh
+        // was scoped to this one call site (#2845); it is now redundant, and removing it also
+        // removes a second AABB read per resize.
         //
-        // Scoped to ViewNode on purpose: none of the eleven `updateGeometry` call sites refresh
-        // the collider, so a resized CubeNode still mis-picks the same way. Hoisting the call into
-        // `GeometryNode.updateGeometry` would also clobber a `collisionShape` an app set by hand,
-        // so that is a deliberate change of its own, tracked by #3194.
-        updateCollisionShape()
+        // Why this mattered most for ViewNode: the quad is sized from the measured view, so a
+        // stale `collisionShape` stayed at `Plane.DEFAULT_SIZE`'s 1 × 1 × 0 forever and
+        // `CollisionSystem.hitTest` only ever reported a hit on the central 1 × 1 unit square. A
+        // 410 × 420 px card at the default 250 `pxPerUnits` spans 1.64 × 1.68 units and lost its
+        // outer ~30% margin — usually where the buttons are. Harmless while a ViewNode was only
+        // pickable; not once it forwards touches.
+        //
+        // An app that assigns `collisionShape` by hand still opts out of the automatic refresh,
+        // which the unconditional call here did not respect.
+        updateGeometry(size = viewSize / pxPerUnits)
     }
 
     override fun onAddedToScene(scene: Scene) {
