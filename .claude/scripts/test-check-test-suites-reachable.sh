@@ -450,6 +450,100 @@ else
     bad "the inline trigger form was unread — a PR-gated suite reported advisory (rc=$RC)"
 fi
 
+# ── 19. a quoted `on` key is still the trigger block ─────────────────────────
+# YAML's Norway problem: `on` is a boolean-ish scalar, so authors quote the key.
+# Reading only the bare form left the trigger block unentered, no paths were
+# collected, and the empty list meant "fires on everything" — fail-open again,
+# by a quoting style the spec explicitly encourages.
+R="$(mkrepo quotedon)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+'on':
+  pull_request:
+    paths:
+      - 'docs/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'never triggers'; then
+    ok "a single-quoted 'on': key is read as the trigger block"
+else
+    bad "a quoted on: key hid the path filter — the suite read as always triggered (rc=$RC)"
+fi
+
+# ── 20. paths-ignore excluding the suite means NOT triggered ─────────────────
+# `paths-ignore` entries were dropped outright. A trigger carrying only
+# paths-ignore then produced an empty list, and empty means "no filter" — so a
+# workflow that explicitly excludes the suite's path read as firing on it.
+R="$(mkrepo pathsignore)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths-ignore:
+      - 'app/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'never triggers'; then
+    ok "a paths-ignore excluding the suite is not read as no filter"
+else
+    bad "paths-ignore was dropped — an excluded suite read as triggered (rc=$RC)"
+fi
+
+# ── 20b. paths-ignore NOT covering the suite still fires ─────────────────────
+# The inverse half, because a rule that only ever answers "no" is not a rule.
+R="$(mkrepo pathsignoreok)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "a paths-ignore naming an unrelated path leaves the suite triggered"
+else
+    bad "paths-ignore was inverted too eagerly — a covered suite read as excluded (rc=$RC)"
+fi
+
+# ── 21. shell text is not a YAML key ─────────────────────────────────────────
+# `continue-on-error:` was matched anywhere on the line, so a `run:` block that
+# merely PRINTS the string marked the step advisory. Only ever OK -> ADVISORY,
+# so it could not hide a MISSING — fixed because a spurious ADVISORY is a
+# verdict readers learn to discount.
+R="$(mkrepo ceecho)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: |
+          echo "continue-on-error: true"
+          npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "an echoed 'continue-on-error: true' inside run: does not make a step advisory"
+else
+    bad "shell text was read as a YAML key — a blocking step reported advisory (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -528,12 +622,29 @@ mutant 'ignore || true' \
 mutant 'stop parsing flow-style paths: filters' \
     'if ($0 ~ /^ *paths(-ignore)?: *\[/) {' \
     'if ($0 ~ /^ZZZ_NEVER_MATCHES_FLOW/) {' flowpaths 'never triggers'
+mutant 'read only the bare `on:` key, not a quoted one' \
+    '/^[^ #]/ { on = ($0 ~ /^["\x27]?on["\x27]?:/); lvl = 0; trig = 0; inp = 0; next }' \
+    '/^[^ #]/ { on = ($0 ~ /^on:/); lvl = 0; trig = 0; inp = 0; next }' \
+    quotedon 'never triggers'
+# The block-style branch specifically: the flow-style one carries the same
+# expression with a different variable name, and `neg = …` is a substring of
+# `pneg = …`, so the short literal is AMBIGUOUS. The fixture below is block
+# style, so this is also the branch it actually exercises.
+mutant 'drop the paths-ignore inversion in the block-style branch' \
+    'pneg = ($0 ~ /paths-ignore/) ? "!" : ""' \
+    'pneg = ""' pathsignore 'never triggers'
+mutant 'match continue-on-error anywhere on the line' \
+    'if (line ~ /^-?[[:space:]]*continue-on-error:[[:space:]]*true/) ce = 1' \
+    'if (line ~ /continue-on-error:[[:space:]]*true/) ce = 1' ceecho '✓ app'
 mutant 'match the runner as a bare substring again' \
     'line ~ /(^|[^[:alnum:]._\/-])(vitest|jest)([[:space:]]|$)/ ||' \
     'line ~ /(vitest|jest)/ ||' substr 'no workflow step runs its tests'
+# Anchored on the character class rather than on the whole line: the line is a
+# grep -E pattern carrying both quote styles, and quoting it whole from bash is
+# how this mutant went stale the first time.
 mutant 'read only the block-mapping pull_request: form' \
-    "grep -qE '^\"?on\"?:[[:space:]]*\\[[^]]*pull_request' \"\$1\"" \
-    'return 1' inlineon '✓ app'
+    '[^]]*pull_request' \
+    'ZZZ_NEVER_MATCHES' inlineon '✓ app'
 mutant 'read paths: from every trigger, not just pull_request' \
     'trig = ($0 ~ /^ *pull_request(_target)?:/) ? 1 : 0' \
     'trig = 1' prpaths 'never triggers'

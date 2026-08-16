@@ -179,7 +179,12 @@ scan_invocations() {
                     sub(/[[:space:]]+$/, "", v)
                     wd = v
                 }
-                if (line ~ /continue-on-error:[[:space:]]*true/) ce = 1
+                # Anchored to the start of the (indent-stripped) line so that shell
+                # text inside a `run: |` block — `echo "continue-on-error: true"`
+                # — is not read as the key. That direction only ever pushes
+                # OK -> ADVISORY, so it could not hide a MISSING; anchoring is
+                # one character and removes the noise anyway.
+                if (line ~ /^-?[[:space:]]*continue-on-error:[[:space:]]*true/) ce = 1
                 # The runner has to be a COMMAND WORD, not a substring. `vitest`
                 # and `jest` occur inside ordinary filenames — `vitest.config.ts`,
                 # `jest.setup.js` — so a bare substring match turns
@@ -221,7 +226,7 @@ trigger_prefixes() {
 
         # A column-0 key ends the `on:` mapping — including `jobs:`, whose
         # `- name:` step lines would otherwise be read as path entries.
-        /^[^ #]/ { on = ($0 ~ /^"?on"?:/); lvl = 0; trig = 0; inp = 0; next }
+        /^[^ #]/ { on = ($0 ~ /^["\x27]?on["\x27]?:/); lvl = 0; trig = 0; inp = 0; next }
         !on { next }
         /^ *#/ { next }
         /^ *$/ { next }
@@ -238,12 +243,20 @@ trigger_prefixes() {
             }
             if (!trig) next
 
-            # Flow style — `paths: ["mcp/**", "x/**"]`. Handled because NOT
-            # handling it fails open the same way: the block-sequence rule below
-            # never matches, the list comes back empty, and empty means "no
-            # filter, fires on everything".
+            # `paths-ignore:` entries are emitted with a leading `!` and the
+            # caller inverts them. Dropping them was fail-open: a trigger
+            # carrying ONLY `paths-ignore` produced an empty list, and empty
+            # means "no filter, fires on everything" — so a workflow that
+            # explicitly excludes the suite path read as firing on it. The two
+            # keys are mutually exclusive within one trigger (GitHub rejects
+            # both), so the caller never has to merge a positive and a negative
+            # list; it prefers the positive one if both somehow appear.
+            #
+            # Flow style — `paths: ["mcp/**", "x/**"]`. Handled for the same
+            # reason: the block-sequence rule below never matches it, and the
+            # empty list that results reads as no filter at all.
             if ($0 ~ /^ *paths(-ignore)?: *\[/) {
-                if ($0 ~ /paths-ignore/) next
+                neg = ($0 ~ /paths-ignore/) ? "!" : ""
                 v = $0
                 sub(/^[^[]*\[/, "", v)
                 sub(/\].*$/, "", v)
@@ -251,20 +264,24 @@ trigger_prefixes() {
                 for (k = 1; k <= n; k++) {
                     gsub(/["\x27]/, "", a[k])
                     gsub(/^ +| +$/, "", a[k])
-                    if (a[k] != "") print a[k]
+                    if (a[k] != "") print neg a[k]
                 }
                 next
             }
-            if ($0 ~ /^ *paths(-ignore)?: *$/) { inp = ($0 ~ /paths-ignore/) ? 0 : 1; next }
+            if ($0 ~ /^ *paths(-ignore)?: *$/) {
+                inp = 1
+                pneg = ($0 ~ /paths-ignore/) ? "!" : ""
+                next
+            }
             if (inp && $0 ~ /^ *- /) {
                 v = $0
                 sub(/^ *- */, "", v)
                 gsub(/["\x27]/, "", v)
                 sub(/ +.*$/, "", v)
-                print v
+                print pneg v
                 next
             }
-            if (inp && $0 !~ /^ *-/) inp = 0
+            if (inp && $0 !~ /^ *-/) { inp = 0; pneg = "" }
         }
     ' "$wf"
 }
@@ -284,7 +301,7 @@ fires_on_pr() {
     # direction is safe; it is handled anyway because an ADVISORY nobody can
     # act on ("it DOES run on pull requests") teaches readers to discount the
     # verdict, and a verdict people learn to discount stops being a gate.
-    grep -qE '^"?on"?:[[:space:]]*\[[^]]*pull_request' "$1"
+    grep -qE '^["'"'"']?on["'"'"']?:[[:space:]]*\[[^]]*pull_request' "$1"
 }
 
 # Does `glob` cover `suite`? Prefix in EITHER direction:
@@ -346,15 +363,35 @@ for suite in "${SUITES[@]:-}"; do
         [ "$hit" -eq 1 ] || continue
 
         # Invoked. Now: does this workflow fire when the suite changes?
+        # `paths:` entries arrive plain, `paths-ignore:` entries prefixed `!`.
+        # GitHub rejects both keys on one trigger, so they never have to be
+        # combined; if a file somehow carries both, the positive list wins,
+        # which is the reading that can only UNDER-state triggering.
         globs="$(trigger_prefixes "$WF_DIR/$wf")"
-        if [ -z "$globs" ]; then
-            triggered=1
-        else
+        pos=""; neg=""
+        while IFS= read -r g; do
+            [ -n "$g" ] || continue
+            case "$g" in "!"*) neg="$neg"$'\n'"${g#!}" ;; *) pos="$pos"$'\n'"$g" ;; esac
+        done <<< "$globs"
+        pos="${pos#$'\n'}"; neg="${neg#$'\n'}"
+        if [ -n "$pos" ]; then
             triggered=0
             while IFS= read -r g; do
                 [ -n "$g" ] || continue
                 if glob_covers "$g" "$suite"; then triggered=1; break; fi
-            done <<< "$globs"
+            done <<< "$pos"
+        elif [ -n "$neg" ]; then
+            # `paths-ignore` fires on everything EXCEPT what it names. Dropping
+            # these entries produced an empty list, and empty reads as "no
+            # filter at all" — so a trigger that explicitly excludes a suite's
+            # path made it read as firing on that suite. Fail-open.
+            triggered=1
+            while IFS= read -r g; do
+                [ -n "$g" ] || continue
+                if glob_covers "$g" "$suite"; then triggered=0; break; fi
+            done <<< "$neg"
+        else
+            triggered=1
         fi
         if [ "$triggered" -eq 0 ]; then
             if [ "$best_state" = "MISSING" ]; then
