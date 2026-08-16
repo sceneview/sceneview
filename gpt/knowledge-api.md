@@ -2588,7 +2588,7 @@ ARSceneView(onSessionCreated = { arSession = it }) {
 
 ### `Frame.hasUpdatedTrackable` — did ARCore refine *this* trackable this frame?
 
-```kotlin
+```kotlin notest function-signature reference notation, not statements — an `inline`/`reified` declaration cannot be emitted as a local function
 inline fun <reified T : Trackable> Frame.hasUpdatedTrackable(trackable: T): Boolean
 ```
 
@@ -2601,12 +2601,14 @@ reference. Calling it once per plane inside `onSessionUpdated` turns 8 planes at
 finalizable objects a second. Hoist the collection instead:
 
 ```kotlin
-// ✅ one acquisition per frame
-val updated = frame.getUpdatedPlanes()
-planes.forEach { if (it in updated) node.update(it) }
+val planes: List<Plane> = TODO()
 
-// ❌ one acquisition per plane per frame
-planes.forEach { if (frame.hasUpdatedTrackable(it)) node.update(it) }
+// ✅ one acquisition per frame, then a cheap set lookup per plane
+val updated = frame.getUpdatedPlanes()
+val refreshed = planes.filter { it in updated }
+
+// ❌ the same answer, but one full acquisition per plane per frame
+val refreshedSlowly = planes.filter { frame.hasUpdatedTrackable(it) }
 ```
 
 ### Geospatial accessors — `rememberCameraGeospatialPose`, `rememberEarthState`, `awaitVpsAvailability`
