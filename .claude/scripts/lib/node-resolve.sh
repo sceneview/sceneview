@@ -15,8 +15,8 @@
 #     ⚠ node or tools/generate-gpt-knowledge.js not found — NOT checked here
 #
 # The gate is honest about skipping, which is what saved it — but the skip was
-# never real. Both legs were runnable the whole time. Measured three times in a
-# single day (2026-08-15), each time read as "the host is not set up for JS".
+# never real. Both legs were runnable the whole time. Measured four times across
+# 2026-08-15 → 16, each time read as "the host is not set up for JS".
 #
 # Deliberately NOT a hardcoded version path. `~/.nvm/versions/node/v22.14.0/bin`
 # works today and becomes a dead pointer at the next `nvm install` — a dead
@@ -32,6 +32,10 @@
 #   source "$SCRIPT_DIR/lib/node-resolve.sh"
 #   NODE_CMD=$(resolve_node)
 #   [ -n "$NODE_CMD" ] || { echo "no node on this host"; }
+#
+# $NODE_RESOLVE_PREFIXES overrides step 3's absolute candidates (space-separated).
+# Set it to the empty string to disable step 3 entirely — the `-` form, not `:-`,
+# so an explicit empty value is honoured rather than falling back to the default.
 
 resolve_node() {
     # 1. An explicit override always wins, but it must be real — an exported
@@ -49,9 +53,14 @@ resolve_node() {
         return 0
     fi
 
-    # 3. Homebrew, whose prefix differs by architecture.
+    # 3. Homebrew, whose prefix differs by architecture. Overridable because these
+    #    are absolute paths: a host with node somewhere else (MacPorts, /usr/pkg)
+    #    can declare it, and a test can point the list at a fixture instead of
+    #    depending on whether the machine running it happens to have
+    #    /usr/local/bin/node — which is exactly how the first version of
+    #    test-node-resolve.sh passed on a Mac and failed on a CI runner.
     local brew_candidate
-    for brew_candidate in /opt/homebrew/bin/node /usr/local/bin/node; do
+    for brew_candidate in ${NODE_RESOLVE_PREFIXES-/opt/homebrew/bin/node /usr/local/bin/node}; do
         if [ -x "$brew_candidate" ]; then
             printf '%s\n' "$brew_candidate"
             return 0
