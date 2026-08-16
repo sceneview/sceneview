@@ -66,8 +66,8 @@ data class PlanesDiff(
  * unit tests without an ARCore [Session] handle. Set membership is the correct comparison, but not
  * for the reason one would assume: ARCore returns a **fresh** `Plane` wrapper on every frame, so
  * reference identity would always be false. `TrackableBase` overrides `equals`/`hashCode` on its
- * native handle, and `Plane` inherits both unchanged — that value equality is what makes a `Set`
- * of planes stable across frames.
+ * native handle; `Plane` redeclares both, but each is a plain super-call, so the behaviour is
+ * `TrackableBase`'s — that value equality is what makes a `Set` of planes stable across frames.
  *
  * Delegates to the generic [diffTrackedSet] so the set-membership logic — the only part with any
  * branching — is exercised by pure-JVM tests against plain objects (ARCore's `Plane` is JNI-only
