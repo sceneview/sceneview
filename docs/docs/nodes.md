@@ -465,7 +465,12 @@ SceneView(
 - **You MUST pass `viewNodeWindowManager = rememberViewNodeManager()` to `SceneView` / `ARSceneView`.** Without it, the off-screen window is never attached → `Layout.onLayout` never fires → surface stays at 0×0 → Filament renders a black rectangle. Fixed in v4.0.0 by wiring the manager into the lifecycle observer, but the parameter is still required.
 - **Use `unlit = true` for readable text.** Under PBR lighting, Compose UI gets shaded by scene lights and may look dim or color-shifted.
 - **ViewNode is relatively expensive.** Each instance allocates a `SurfaceTexture`, a `FrameLayout`, and a ComposeView. Reuse or pool them if you need many.
-- **Don't put touch-heavy widgets inside.** The off-screen window uses `FLAG_NOT_TOUCHABLE` — interactive content works, but standard gesture plumbing does not route through the 3D scene the way you'd expect.
+- **One contact point is forwarded, not several.** The off-screen window keeps
+  `FLAG_NOT_TOUCHABLE`, so Android never dispatches to it and the node forwards touches
+  itself — from the scene's picking hit, which is a single ray per event. Taps, presses and
+  one-finger scrolling are exact; a pinch or a two-finger drag inside the content is not,
+  and the intermediate samples of a batched fast scroll are relocated with the event rather
+  than re-picked one by one. Single-pointer widgets are the supported surface.
 
 ---
 

@@ -198,7 +198,7 @@ SceneView(
 | **Custom geometry** | `GeometryNode` · `MeshNode` | Direct Filament `IndexBuffer` / `VertexBuffer` |
 | **Surfaces** | `ImageNode` · `VideoNode` · `BillboardNode` | PNG/JPG plane, video plane (MediaPlayer), camera-facing sprite |
 | **3D text** | `TextNode` | World-space text label that always faces the camera |
-| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — labels, cards, lists, animations (rendered, not touch-interactive) |
+| **Compose-in-3D** | `ViewNode` | **Any Compose UI rendered as a 3D surface** — labels, cards, lists, animations, fully touch-interactive |
 | **Lighting** | `LightNode` · `ReflectionProbeNode` · `DynamicSkyNode` · `FogNode` | Sun/dir/point/spot lights, local IBL, time-of-day sky, atmospheric fog |
 | **Physics** | `PhysicsNode` | Simple rigid-body simulation (gravity, collisions) |
 | **Cameras** | `CameraNode` · `SecondaryCamera` | Main and picture-in-picture cameras |

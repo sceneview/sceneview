@@ -142,6 +142,14 @@ internal class ViewTouchForwarder(private val target: View) {
     /**
      * Dispatches a copy of [e] relocated to the view pixel ([x], [y]). The original event belongs
      * to the scene's dispatcher and is left untouched.
+     *
+     * **Single-pointer by construction.** The caller picks the scene once per event and hands one
+     * ([x], [y]) here, so `setLocation` moves the whole event to that pixel: extra pointers keep
+     * their screen-space offsets instead of being picked individually, and a batched MOVE's
+     * historical samples travel with the event rather than being re-projected one by one. Taps,
+     * presses and one-finger scrolling — the documented surface — are exact; a pinch or a
+     * two-finger drag inside the content is not. Per-pointer picking would need one ray-cast per
+     * pointer per sample, which is a different feature, not a tightening of this one.
      */
     private fun dispatch(e: MotionEvent, x: Float, y: Float): Boolean {
         val copy = MotionEvent.obtain(e)
