@@ -33,10 +33,12 @@ name: MCP TypeScript check
 #
 # The parenthetical above — `npm test` is run by ci.yml's `Quality gate (full)`
 # job — is TRUE, and #3201 briefly rewrote it to say the opposite before
-# measuring. It holds because that job runs `- uses: ./.github/actions/setup-mcp`
-# (ci.yml:1838), whose `npm ci` in `mcp/` (setup-mcp/action.yml:31-32) makes
-# `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard true before the gate
-# step (ci.yml:1847).
+# measuring. It holds because that job (`quality-gate:`) runs
+# `- uses: ./.github/actions/setup-mcp`, whose `Install MCP dependencies` step
+# is an `npm ci` under `working-directory: mcp`, which makes
+# `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard true before the job
+# reaches the gate step. By key, not by line number — `ci.yml:NNNN` citations
+# rot silently and then read as proof of the wrong job.
 #
 # What was wrong is that nothing said any of that. The coverage rested on a
 # step present for other reasons, in another job, with no declaration tying the

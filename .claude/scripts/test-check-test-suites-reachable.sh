@@ -593,6 +593,51 @@ else
     bad "a nested key was read as a trigger — a tag-only workflow read as blocking (rc=$RC)"
 fi
 
+# ── 23. a leading-wildcard filter is matched, not waved through ──────────────
+# `**/*.md` reduces to an EMPTY literal prefix, exactly like `**` does, and the
+# prefix comparison waved both through as "covers everything". `*` never
+# crosses `/`, so this filter fires on markdown only and never on the suite's
+# `.test.ts` — the workflow read as gating a suite it cannot run for. Fail-open.
+R="$(mkrepo mdglob)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths: ['**/*.md']
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'never triggers'; then
+    ok "a leading-wildcard filter matching no test file is not read as covering"
+else
+    bad "'**/*.md' read as covering a TypeScript suite — fail-open (rc=$RC)"
+fi
+
+# ── 23b. …and one that DOES match still counts ───────────────────────────────
+# The inverse half. `**/*.ts` has the same empty prefix and genuinely fires on
+# `app/src/a.test.ts`; answering "no" to it would trade a fail-open for a false
+# MISSING, and `**` itself must keep answering yes.
+R="$(mkrepo tsglob)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths: ['**/*.ts']
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "a leading-wildcard filter that does match the suite still counts as covering"
+else
+    bad "'**/*.ts' read as not covering a TypeScript suite — false MISSING (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -710,6 +755,12 @@ mutant 'let the command split glob against the filesystem' \
 mutant 'enumerate only .test./.spec., not __tests__/' \
     '(\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$|(^|/)__tests__/.+\.(ts|tsx|js|jsx|mjs|cjs)$)' \
     '\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$' jestdirs 'legacy'
+# Both halves of the empty-prefix branch, because a rule that only ever answers
+# "no" trades one fail direction for the other.
+mutant 'wave every leading-wildcard filter through again' \
+    're="^$(glob_to_ere "$glob")$"' 're="^.*$"' mdglob 'never triggers'
+mutant 'let no leading-wildcard filter ever match' \
+    '[[ "$f" =~ $re ]] && return 0' ':' tsglob '✓ app'
 
 echo ""
 echo "test-check-test-suites-reachable: $PASS passed, $FAIL failed"

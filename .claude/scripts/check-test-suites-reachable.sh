@@ -58,7 +58,10 @@
 #   whose reachability is a different question with a different answer; this
 #   gate says nothing about them and prints that it does not.
 # * FOUR path segments are excluded, not two: `node_modules/`, `dist/`,
-#   `build/` and `out/` (line 110). This repo versions compiled `dist/` output
+#   `build/` and `out/` — the `grep -vE` that builds `TEST_FILES`, named rather
+#   than cited by line, because a pinned line number rots the first time
+#   anything above it moves and then reads as authoritative. This repo
+#   versions compiled `dist/` output
 #   for three MCP packages, so their `*.test.js` copies would otherwise be
 #   counted as separate suites that nothing runs — true, and useless; the other
 #   three are the same case by convention. All four are named here because a
@@ -85,6 +88,13 @@
 #   is deliberate: refusing it would push authors to widen real filters for this
 #   gate's benefit. It is the one accepted over-approximation here, so it is
 #   named rather than buried.
+# * A filter with no literal prefix (`**/*.ts`, `*.md`) is decided by matching
+#   the pattern against the suite's own TEST files, not its sources. A filter
+#   listing only source extensions — `**/*.tsx` over a suite whose tests are
+#   `.ts` — is therefore reported as not covering it. That is fail-CLOSED, so
+#   the failure is a spurious MISSING and never a missed gap, but it is a real
+#   bound: the answer is "would a change to a test file fire this filter?", not
+#   the wider "could this workflow ever run for this package?".
 # * An invocation is seen only when the runner is named literally on a `run:`
 #   line. A suite launched through a wrapper — `bash .claude/scripts/foo.sh`,
 #   which runs vitest inside — is invisible, and the package would be reported
@@ -341,6 +351,29 @@ fires_on_pr() {
     ' "$1"
 }
 
+# Translate a GitHub path filter into an ERE. `*` never crosses `/` and `**`
+# does; `**/` also matches ZERO directories, so `**/*.md` covers a root-level
+# `a.md` — hence `(.*/)?` rather than `.*/`. Erring toward matching keeps the
+# caller's empty-prefix branch from turning a real filter into a false MISSING.
+glob_to_ere() {
+    local g="$1" out="" i=0 c
+    while [ "$i" -lt "${#g}" ]; do
+        c="${g:i:1}"
+        if [ "$c" = '*' ] && [ "${g:i+1:1}" = '*' ]; then
+            if [ "${g:i+2:1}" = '/' ]; then out+="(.*/)?"; i=$((i + 3)); continue; fi
+            out+=".*"; i=$((i + 2)); continue
+        fi
+        case "$c" in
+            '*') out+="[^/]*" ;;
+            '?') out+="[^/]" ;;
+            '.'|'+'|'('|')'|'['|']'|'{'|'}'|'^'|'$'|'|'|'\\') out+="\\$c" ;;
+            *) out+="$c" ;;
+        esac
+        i=$((i + 1))
+    done
+    printf '%s' "$out"
+}
+
 # Does `glob` cover `suite`? Prefix in EITHER direction:
 #   'mcp/**' covers 'mcp/packages/gaming'          (glob above the suite)
 #   'react-native/pkg/__tests__/**' covers 'react-native/pkg'  (glob inside it)
@@ -351,7 +384,28 @@ glob_covers() {
     local glob="$1" suite="$2" prefix
     prefix="${glob%%\**}"
     prefix="${prefix%/}"
-    [ -z "$prefix" ] && return 0
+    # An EMPTY literal prefix means the glob starts with a wildcard, and the
+    # prefix comparisons below have nothing to bite on. This used to return
+    # "covers" for all of them, which is right for `**` and fail-OPEN for
+    # `**/*.md`: `*` does not cross `/`, so a markdown-only filter never fires
+    # on a JS package's `.test.ts` change — yet the suite read as gated by it.
+    # Decide by matching the pattern against the suite's OWN test files: if a
+    # change to one of them would not fire the filter, the filter does not
+    # cover the suite. `**` still matches every one of them and still answers
+    # yes, so the correct half of the old shortcut is preserved by measurement
+    # rather than by assertion.
+    if [ -z "$prefix" ]; then
+        local re f
+        re="^$(glob_to_ere "$glob")$"
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if [ "$suite" != "." ]; then
+                case "$f" in "$suite"/*) ;; *) continue ;; esac
+            fi
+            [[ "$f" =~ $re ]] && return 0
+        done <<< "$TEST_FILES"
+        return 1
+    fi
     case "$suite/" in "$prefix"/*) return 0 ;; esac
     case "$prefix/" in "$suite"/*) return 0 ;; esac
     [ "$prefix" = "$suite" ] && return 0

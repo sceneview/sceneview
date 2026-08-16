@@ -14,10 +14,14 @@ name: MCP tests
 # `mcp/`'s own suite is in a subtler state, and the first version of this header
 # got it wrong — worth recording, since the error is the one this workflow is
 # about. It claimed the suite never ran in CI. It does run: `quality-gate.sh`
-# runs it behind `[ -d "mcp/node_modules" ]`, and in ci.yml's `Quality gate
-# (full)` job that directory EXISTS, because `- uses: ./.github/actions/setup-mcp`
-# (ci.yml:1838) runs `npm ci` in `mcp/` (setup-mcp/action.yml:31-32) before the
-# `bash .claude/scripts/quality-gate.sh` step (ci.yml:1847).
+# runs it behind `[ -d "mcp/node_modules" ]`, and in ci.yml's `quality-gate` job
+# (`name: Quality gate (full)`) that directory EXISTS, because
+# `- uses: ./.github/actions/setup-mcp` pulls in the composite's `Install MCP
+# dependencies` step — an `npm ci` under `working-directory: mcp` — before the
+# job reaches its `bash .claude/scripts/quality-gate.sh` step. Named by key and
+# not pinned by line number on purpose: `ci.yml:NNNN` rots the moment anything
+# above it moves, and a stale citation reads as evidence while pointing at
+# another job entirely.
 #
 # The real defect is that nothing says so. No declaration ties that leg to
 # `setup-mcp`, which sits in the job for the other MCP work; remove it, reorder
