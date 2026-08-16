@@ -738,6 +738,29 @@ jobs:
       - name: JS tests
         run: ./gradlew :sceneview-core:jsTest :sceneview-web:jsTest --stacktrace
 
+      # The evidence half of the #3192 workstream-1 fix. This leg went red five
+      # times on #3189 with `Test running process exited unexpectedly`, zero
+      # test results, and NOTHING in the job log to diagnose — the browser died
+      # and no one was writing down what it said. `karma.config.d/
+      # browser-hardening.js` now captures the browser console to a file under
+      # build/; without this upload that file dies with the runner and the next
+      # occurrence restarts the same investigation from zero.
+      #
+      # `if: failure()` on purpose: a green run has nothing to explain, and the
+      # XML reports are the durable record. `if-no-files-found: ignore` because
+      # a failure BEFORE Karma ever starts (compile error) legitimately produces
+      # no log — a warning there would train the reader to ignore this step.
+      - name: Upload Karma browser logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: karma-browser-logs
+          path: |
+            **/build/js/packages/*/karma-browser.log
+            **/build/reports/tests/**
+            **/build/test-results/**
+          if-no-files-found: ignore
+
       # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact
       # published to npm/CDN), against the real Filament WASM module. The
       # jsTest suite above stubs the Filament externals, so a real init-path
@@ -1619,6 +1642,30 @@ jobs:
         if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: node tools/check-mcp-tool-claims.js
+
+      # Self-test first, same discipline as the pair above. This gate's failure
+      # mode is a discovery loop that finds zero modules and reports success on
+      # a tree it never looked at, so the suite pins the exit-2 refusal as well
+      # as both directions.
+      - name: Self-test check-karma-hardening.sh
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-karma-hardening.sh
+
+      # Every Kotlin/JS browser module ships the same hardened Karma config.
+      # `Build web targets` went red five times on #3189 with the BROWSER dying
+      # rather than a test failing — `Test running process exited unexpectedly`,
+      # zero test results, and no Karma or Chrome output in a ~4500-line log,
+      # against `jsBrowserTest` inputs Gradle reported byte-identical to `main`.
+      # `sceneview-core` had no karma.config.d at all: no `--no-sandbox`, no
+      # `--disable-dev-shm-usage`, no activity timeout, and nothing capturing
+      # browser output. Both JS modules run behind the same blocking leg on the
+      # same runner, so this gate keeps their configs identical rather than
+      # letting one of them silently regress.
+      - name: Kotlin/JS modules carry identical Karma hardening
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/check-karma-hardening.sh
 
       # Changelog collation (collate-changelog.sh). It runs ONCE per release and
       # DELETES the fragments it consumed, so a bullet filed under the wrong

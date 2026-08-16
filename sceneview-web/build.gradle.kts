@@ -21,6 +21,17 @@ kotlin {
                 outputFileName = "sceneview-web.js"
             }
             testTask {
+                // See the twin comment in sceneview-core/build.gradle.kts for
+                // the measurement: the files under `karma.config.d/` are
+                // appended into the generated karma.conf.js and change what the
+                // run does, yet Gradle tracks neither of them as an input, so a
+                // local re-run silently reuses a stale config. This module
+                // carries two of them — the Filament stub (#1401) and the #3192
+                // hardening — so the skipped re-run hides the older and the
+                // newer bug at once.
+                inputs.dir(layout.projectDirectory.dir("karma.config.d"))
+                    .withPropertyName("karmaConfigD")
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
                 useKarma {
                     useChromeHeadless()
                 }
