@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# `mcp-gateway/` held 17 test files and 200 passing cases that NO workflow ever
+# `mcp-gateway/` held 17 test files and 187 passing cases that NO workflow ever
 # ran (#3201). One of them had silently inverted — it asserted a tool count the
 # dashboard had outgrown, so it was green while the page was wrong and only
 # turned red once the page was corrected. A test that never runs cannot report

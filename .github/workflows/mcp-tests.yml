@@ -6,7 +6,7 @@ name: MCP tests
 # WHY A NEW WORKFLOW AND NOT A STEP SOMEWHERE (#3201)
 # ---------------------------------------------------
 # None of these suites ran anywhere. `mcp-gateway/` — the paid Worker — held
-# 17 test files and 200 cases that no workflow touched; one of them had
+# 17 test files and 187 cases that no workflow touched; one of them had
 # inverted, asserting a tool count the dashboard had outgrown, so it was green
 # while the page was wrong and only went red once the page was fixed. Nothing
 # reported that for months.
@@ -152,7 +152,7 @@ jobs:
 
       # The gateway's suite imports `mcp/src` and `mcp/packages/*/src` as
       # TypeScript sources, which vitest transpiles itself — verified by running
-      # the 200 cases with `mcp/node_modules` moved aside: 200 passed. So this
+      # it with `mcp/node_modules` moved aside: 17 files, 187 passed. So this
       # job deliberately does NOT install `mcp/`'s dependencies; if that ever
       # stops being true, it fails here rather than silently skipping. That
       # check covered node_modules only, which is exactly how the generated-file
