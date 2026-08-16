@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/gradle-run.sh"
 # shellcheck source=lib/log-dir.sh
 source "$SCRIPT_DIR/lib/log-dir.sh"
+# shellcheck source=lib/node-resolve.sh
+source "$SCRIPT_DIR/lib/node-resolve.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -288,7 +290,7 @@ fi
 
 # 6. Website JS syntax
 echo -e "\n${YELLOW}[8/21] Validating website JS...${NC}"
-NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
+NODE_CMD=$(resolve_node || echo "")
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
         # "has syntax errors" would be a lie about a file that is not there.
@@ -351,9 +353,11 @@ fi
 # turned red on CI. That is exactly what happened to the PR that added this
 # leg. Sub-second (a node regenerate-and-compare, no write).
 echo -e "\n${YELLOW}[11/21] Checking GPT knowledge base drift...${NC}"
-if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(which node 2>/dev/null)}" ]; then
+if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(resolve_node || true)}" ]; then
     GPT_LOG="$LOG_DIR/gpt-knowledge-drift.log"
-    if "${NODE_CMD:-node}" tools/generate-gpt-knowledge.js --check > "$GPT_LOG" 2>&1; then
+    # Not `${NODE_CMD:-node}`: the bare word is exactly the lookup that fails on
+    # an nvm-only host, so the fallback would reintroduce the bug it guards.
+    if "${NODE_CMD:-$(resolve_node)}" tools/generate-gpt-knowledge.js --check > "$GPT_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ gpt/knowledge-*.md in sync with llms.txt${NC}"
     else
         # `DRIFT:` is printed per drifted file; the generator's OTHER exit-1

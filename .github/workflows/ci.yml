@@ -1535,6 +1535,21 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-selfmod-guard.sh
 
+      # claim.sh's open-PR collision report (#2998). `gh … --json` emits its
+      # whole array on ONE line, so the line-oriented grep that read it returned
+      # every open PR as soon as any one matched: the message that is supposed
+      # to name who holds an issue named the entire backlog. Detection was
+      # right, attribution was noise — and a guard nobody can act on is a guard
+      # every session learns to `--force`, which is the #2300 dup-implementation
+      # race it exists to stop. Nothing else exercises this: claim.sh only talks
+      # to `gh` on a real machine, so CI never runs the parsing until it matters.
+      # The suite extracts the shipped function out of claim.sh (never a copy)
+      # and keeps the pre-fix grep as a mutant.
+      - name: Self-test claim.sh collision report
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-claim-collision-report.sh
+
       # Agent-cost measurement (agent-cost-report.sh). It reads local session
       # transcripts, so CI can never exercise it on real data — but its one
       # silent failure mode is arithmetic: a transcript emits several records
@@ -1575,6 +1590,18 @@ jobs:
         if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-gradle-run.sh
+
+      # Node resolution (#3202). The gate ran `which node` from a non-interactive
+      # shell, which never sources nvm.sh, so an nvm-only host reported "node not
+      # found" and downgraded two legs to NOT COVERED — including the one that
+      # guards the generated gpt/knowledge-*.md against drift. Both legs were
+      # runnable throughout; measured four times in a day. Fixtures are fake nvm
+      # trees, never this host's, so the suite pins the same thing on a runner
+      # that has no nvm at all.
+      - name: Self-test node resolution
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-node-resolve.sh
 
       # The reviewers' diff. Same failure shape one layer up: on run
       # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the

@@ -117,9 +117,18 @@ gradle_foreign_tree_paths() {
     # clean run was graded foreign and the gate refused every push (#3195).
     # A path begins at start-of-line or after a delimiter — which is then
     # stripped back off, before `file://`, so the two sed passes cannot collide.
-    local bound='(^|[[:space:]:="'"'"'(])'
+    #
+    # `[` earns its place in that class the opposite way to the others. Missing
+    # `:`/`=` produced a false RED; missing `[` produces a false GREEN: Gradle
+    # and the JVM bracket paths routinely (`[/Users/other/clone/src/main/A.kt]`),
+    # and with no `[` delimiter the pattern could not start there at all, so a
+    # genuinely foreign tree announced in brackets went UNREPORTED. #3189 found
+    # this independently of #3195 — same function, complementary halves; this is
+    # the union, not either branch.
+    local bound='(^|[[:space:]:="'"'"'([])'
     grep -oE "${bound}(file://)?/[^ :\"']*/src/[^ :\"']*" "$log" 2>/dev/null \
-    | sed -E 's|^[[:space:]:="'"'"'(]||' \
+    | sed -E 's|^[[:space:]:="'"'"'([]||' \
+    | sed -E 's|\]$||' \
     | sed 's|^file://||' \
     | while IFS= read -r p; do
         # Same /private normalisation for the candidate, which may name a
