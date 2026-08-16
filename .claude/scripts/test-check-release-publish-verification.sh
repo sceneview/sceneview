@@ -323,7 +323,92 @@ if F="$(edit_steps publish-rn hoist)"; then
 fi
 
 echo
-echo "── 3. Cannot-measure is never a pass ─────────────────────────────────"
+echo "── 3. #3061 — nothing publishes without the guard ────────────────────"
+
+# THE case. Wiring the guard into release.yml without `--from-changelog` is
+# the fix that looks right and cannot fail: by tag time collate-changelog.sh
+# has deleted every `changelog.d/*.md`, so the default mode loops zero times
+# and prints a green tick over an unread release. The gate has to reject the
+# plausible wiring, not merely the absent one.
+if F="$(mutate guard-without-changelog-mode 's/ --from-changelog$//')"; then
+    run "$F"
+    expect "the guard wired WITHOUT --from-changelog is caught" 1 \
+        "without \`--from-changelog\`"
+fi
+
+# The pre-#3061 state: five irreversible publishers, no guard anywhere.
+if F="$(mutate guard-call-deleted '/check-breaking-change-bump.sh/d')"; then
+    run "$F"
+    expect "a release.yml that never calls the guard at all is caught" 1 \
+        "calls .claude/scripts/check-breaking-change-bump.sh"
+fi
+
+# A guard that reads gradle.properties on a tag push judges the version the
+# repo is preparing, not the one being published.
+if F="$(mutate guard-one-trigger-path \
+    '/name: Resolve the version this run would publish/,/Guarding v\$VERSION/ s/gradle.properties/VERSION_SOURCE/')"; then
+    run "$F"
+    expect "a guard that resolves only ONE trigger path is caught" 1 \
+        "does not resolve the release version from BOTH trigger paths"
+fi
+
+# The `needs:` edge is the entire enforcement — one deleted line publishes
+# unguarded, on the very job #3061 was filed about.
+if F="$(mutate publisher-without-needs \
+    '/^    # The job #3061 was filed about/,/^    needs: \[breaking-change-guard\]$/{/^    needs: \[breaking-change-guard\]$/d;}')"; then
+    run "$F"
+    expect "a publisher that drops its needs: on the guard is caught" 1 \
+        "publish-rn publishes but does not wait on the breaking-change guard"
+fi
+
+# `always()` runs a job whose dependencies were SKIPPED, and a failed guard
+# skips every publisher. Without this one line, create-release cut a public
+# GitHub Release for a version the guard had just refused.
+if F="$(mutate always-without-guard-result \
+    "/&& needs.breaking-change-guard.result == 'success'/d")"; then
+    run "$F"
+    expect "an always() job that never tests the guard's result is caught" 1 \
+        "carries \`always()\` and depends on breaking-change-guard"
+fi
+
+# The property a hardcoded publisher list cannot have: a SIXTH publisher,
+# added later by someone who never heard of the guard, is covered on the day
+# it lands. This is why contract G3 discovers publishers from their commands.
+SNEAKY="$TMPROOT/sneaky-publisher.yml"
+{
+    cat "$REAL"
+    printf '\n  publish-added-later:\n    name: A publisher nobody wired to the guard\n'
+    printf '    runs-on: ubuntu-latest\n    steps:\n      - run: npm publish --access public\n'
+} > "$SNEAKY"
+run "$SNEAKY"
+expect "a NEW publisher job added without needs: is caught by discovery" 1 \
+    "publish-added-later publishes but does not wait on the breaking-change guard"
+
+# …and the floor under that discovery (#3050): a pattern that has stopped
+# matching must be a MEASUREMENT FAILURE, never a clean bill of health. This
+# one mutates the GATE, not the workflow — it is the only way to break the
+# discovery without also removing the thing being discovered.
+BLIND_GATE="$TMPROOT/gate-blind-discovery.py"
+python3 - "$GATE" "$BLIND_GATE" <<'PY' || true
+import pathlib, sys
+src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+mut = src.replace(r'r"npm\s+publish\b"', r'r"npm\s+publishXX\b"')
+if mut == src:
+    sys.exit(3)
+pathlib.Path(sys.argv[2]).write_text(mut, encoding="utf-8")
+PY
+if [ -f "$BLIND_GATE" ]; then
+    OUT="$(python3 "$BLIND_GATE" "$REAL" 2>&1)"; RC=$?
+    expect "a discovery pattern that stops matching is a measurement failure" 2 \
+        "the publish-command discovery missed known publisher job(s)"
+else
+    printf '%s  ✗%s could not build the blind-discovery mutant — the gate no longer carries that pattern\n' \
+        "$RED" "$OFF" >&2
+    fail=$((fail + 1))
+fi
+
+echo
+echo "── 4. Cannot-measure is never a pass ─────────────────────────────────"
 
 # "Found nothing" must be its own outcome. A renamed publisher that quietly
 # drops out of the checked set is the failure mode this repo has paid for
@@ -350,7 +435,7 @@ echo
 # "every check ran". A `set -u` abort inside a helper skipped all six of
 # section 2 while this summary still printed a green 12/12 — the exact false
 # green the gate under test exists to prevent, reproduced in its own suite.
-EXPECTED_CHECKS=28
+EXPECTED_CHECKS=35
 TOTAL=$((pass + fail))
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     printf '%s✗ check-release-publish-verification.py: %d checks ran, expected %d — cases were skipped, not passed%s\n' \

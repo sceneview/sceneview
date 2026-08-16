@@ -37,11 +37,30 @@ and for the pub.dev job specifically:
   E. the publish log is not tee'd into the package directory — at v4.29.0
      `publish.log` appears in the archive listing pub was about to upload.
 
-Plus one contract with no job of its own:
+Plus contracts with no job of their own:
   F. release.yml does not repeat the false claim that flutter_sceneview's
      first version must still be published manually. It is on pub.dev at
      4.24.0 since 2026-07-20; a workflow that prints that sends the reader
      to fix something that is not broken.
+  G. #3061 — nothing publishes without the breaking-change/patch guard having
+     read real content first. Four parts, because three of them were live
+     holes and the fourth is the one a later edit reopens:
+       G1 the guard job invokes check-breaking-change-bump.sh with
+          `--from-changelog`. WITHOUT that flag the script iterates
+          `changelog.d/*.md`, which collate-changelog.sh emptied days before
+          the tag exists — zero fragments, zero breaking, a green `✓` over an
+          unread release. A job that cannot fail is not a gate, so a bare
+          invocation is a FAILURE here, not a pass;
+       G2 it resolves the version from BOTH trigger paths (tag and dispatch),
+          the way publish-rn does — guarding a different version from the one
+          being published is a green stamp on the wrong release;
+       G3 every publishing job reaches that guard through `needs:`. Publishers
+          are DISCOVERED from their commands, not read off a list, so a sixth
+          one added later is covered on the day it lands;
+       G4 a job that depends on the guard and carries `always()` must test the
+          guard's result explicitly. `always()` runs on a SKIPPED dependency,
+          and a failed guard skips every publisher — which is how create-release
+          could cut a public GitHub Release for a version the guard refused.
 
 Exit 0 = all contracts hold. Exit 1 = a contract is broken. Exit 2 = the gate
 could not measure (missing file, unparseable YAML, a job it cannot find) —
@@ -75,6 +94,68 @@ PUB_JOB = "pub-publish"
 FALSE_CLAIM = re.compile(
     r"first version must be published manually", re.IGNORECASE
 )
+
+# ── Contract G (#3061) ────────────────────────────────────────────────────
+GUARD = ".claude/scripts/check-breaking-change-bump.sh"
+
+# A COMMAND, not a mention — same rule as every other contract here. `commands()`
+# has already dropped shell comments; this also rules out an `echo` of the path.
+GUARD_CALL = re.compile(
+    r"^\s*(?:\w+=\S+\s+)*(?:bash|sh)\s+\S*check-breaking-change-bump\.sh\s",
+    re.MULTILINE,
+)
+
+# The flag that makes the call mean anything after collation. See G1.
+GUARD_CHANGELOG_MODE = re.compile(r"--from-changelog\b")
+
+# G2: the two trigger paths, exactly as publish-rn derives its own version.
+GUARD_TAG_PATH = re.compile(r"GITHUB_REF_NAME")
+GUARD_DISPATCH_PATH = re.compile(r"gradle\.properties")
+
+# G3's discovery. Commands and actions that make a release PUBLIC, most of them
+# irreversibly. Deliberately a small, high-signal set: a broad net that flags
+# innocent jobs is a gate someone deletes. The floor below turns a net that has
+# stopped matching into a MEASUREMENT FAILURE rather than a clean bill.
+PUBLISH_SHAPES = re.compile(
+    r"npm\s+publish\b"
+    r"|publishAndReleaseToMavenCentral"
+    r"|(?:dart|flutter)\s+pub\s+publish\b"
+    r"|softprops/action-gh-release"
+    r"|peaceiris/actions-gh-pages"
+    r"|gh\s+release\s+create\b"
+    r"|pod\s+trunk\s+push\b"
+    r"|twine\s+upload\b"
+    r"|cargo\s+publish\b"
+    r"|mvn\s+deploy\b"
+)
+
+# G4: `always()` re-enables a job whose dependencies were skipped.
+ALWAYS = re.compile(r"\balways\s*\(\s*\)")
+
+
+def needs_of(job):
+    """A job's `needs:`, in either of YAML's two spellings."""
+    if not isinstance(job, dict):
+        return []
+    needs = job.get("needs")
+    if isinstance(needs, str):
+        return [needs]
+    if isinstance(needs, list):
+        return [str(n) for n in needs]
+    return []
+
+
+def needs_closure(jobs, start):
+    """Every job `start` waits on, transitively. Cycle-safe."""
+    seen = set()
+    stack = list(needs_of(jobs.get(start)))
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        stack.extend(needs_of(jobs.get(name)))
+    return seen
 
 failures = []
 
@@ -255,6 +336,93 @@ def main():
             "is part of the bug (#3011)."
         )
 
+    # ── Contract G: nothing publishes without the guard (#3061) ────────────
+    # Every step's commands, per job, comments already stripped — the same
+    # `commands()` rule the rest of this gate runs on.
+    job_cmds = {}
+    for name, job in jobs.items():
+        steps = job.get("steps") if isinstance(job, dict) else None
+        steps = steps if isinstance(steps, list) else []
+        job_cmds[name] = "\n".join(commands(step_text(s)) for s in steps)
+
+    guard_jobs = [n for n, text in job_cmds.items() if GUARD_CALL.search(text)]
+    if not guard_jobs:
+        fail(
+            f"no job in {path} calls {GUARD}. Five irreversible publications "
+            "(Maven Central, three npm packages, pub.dev) run off a `v*` tag "
+            "with nothing checking that a source-breaking change is not "
+            "shipping as a semver PATCH (#3061)."
+        )
+    for name in sorted(guard_jobs):
+        text = job_cmds[name]
+        # ── G1 ────────────────────────────────────────────────────────────
+        if not GUARD_CHANGELOG_MODE.search(text):
+            fail(
+                f"{name} calls {GUARD} without `--from-changelog`. That mode "
+                "reads `changelog.d/*.md`, which collate-changelog.sh DELETED "
+                "before this tag existed — so the job would count zero "
+                "fragments, find zero breaking changes and print a green tick "
+                "having examined nothing. A job that cannot fail is not a gate "
+                "(#3061)."
+            )
+        # ── G2 ────────────────────────────────────────────────────────────
+        if not (GUARD_TAG_PATH.search(text) and GUARD_DISPATCH_PATH.search(text)):
+            fail(
+                f"{name} does not resolve the release version from BOTH "
+                "trigger paths ($GITHUB_REF_NAME on a tag push, "
+                "gradle.properties on a workflow_dispatch) the way publish-rn "
+                "does. A guard that judges a different version from the one "
+                "being published is a green stamp on the wrong release (#3061)."
+            )
+
+    # ── G3: discovery, with a floor ───────────────────────────────────────
+    publishing_jobs = {
+        n for n, text in job_cmds.items() if PUBLISH_SHAPES.search(text)
+    }
+    undiscovered = set(PUBLISHERS) - publishing_jobs
+    if undiscovered:
+        print(
+            "MEASUREMENT FAILED: the publish-command discovery missed known "
+            f"publisher job(s): {', '.join(sorted(undiscovered))}. The pattern "
+            "is broken, not the tree — a discovery that finds nothing must "
+            "never report a pass (#3050).",
+            file=sys.stderr,
+        )
+        return 2
+    if guard_jobs:
+        for name in sorted(publishing_jobs):
+            if name in guard_jobs:
+                continue
+            if not (needs_closure(jobs, name) & set(guard_jobs)):
+                fail(
+                    f"{name} publishes but does not wait on the "
+                    f"breaking-change guard ({', '.join(sorted(guard_jobs))}) "
+                    "through `needs:`. One `needs:` edge is the whole "
+                    "enforcement, so a publisher added without it ships "
+                    "unguarded (#3061)."
+                )
+
+    # ── G4: `always()` must not resurrect a job behind a failed guard ─────
+    for name, job in sorted(jobs.items()):
+        if name in guard_jobs or not isinstance(job, dict):
+            continue
+        cond = str(job.get("if", ""))
+        if not ALWAYS.search(cond):
+            continue
+        reached = needs_closure(jobs, name) & set(guard_jobs)
+        for guard in sorted(reached):
+            if not re.search(
+                r"needs\." + re.escape(guard) + r"\.result\s*==\s*'success'", cond
+            ):
+                fail(
+                    f"{name} carries `always()` and depends on {guard}, but its "
+                    f"`if:` never requires needs.{guard}.result == 'success'. A "
+                    "failed guard leaves every publisher `skipped`, which is "
+                    "neither 'failure' nor 'cancelled' — so this job would run "
+                    "for a version the guard just refused, with nothing "
+                    "published behind it (#3061)."
+                )
+
     for job_name, (label, publish_re) in sorted(PUBLISHERS.items()):
         job = jobs[job_name]
         steps = job.get("steps") if isinstance(job, dict) else None
@@ -403,7 +571,10 @@ def main():
     if failures:
         print(f"BROKEN: {len(failures)} release-publisher contract(s) violated")
         return 1
-    print("OK: every publisher verifies against its registry; pub.dev provisions OIDC")
+    print(
+        "OK: every publisher verifies against its registry; pub.dev provisions "
+        "OIDC; every publisher waits on the breaking-change guard"
+    )
     return 0
 
 

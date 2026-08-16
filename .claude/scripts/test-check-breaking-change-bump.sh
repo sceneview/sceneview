@@ -23,6 +23,14 @@
 # newest section is the previous release) and release-checklist.sh after
 # (CHANGELOG's newest section is the target itself).
 #
+# Since #3061 there is a second mode, `--from-changelog`, and one extra property
+# to hold: THE SAME TEXT MUST GIVE THE SAME VERDICT BEFORE AND AFTER COLLATION.
+# release.yml runs off a `v*` tag, by which time collate-changelog.sh has already
+# consumed and DELETED every `changelog.d/*.md` — so the default mode there loops
+# zero times and prints a green tick over an unread release. Sections 14-20 pin
+# the mode that reads the collated `## vX.Y.Z` section instead, its refusal to
+# treat "nothing to examine" as a pass, and the equality between the two modes.
+#
 # Hermetic: a fake repo root with a copy of the script and its lib. The script
 # derives REPO_ROOT from its own path, so the real tree is never read or
 # written. No network, no git.
@@ -41,13 +49,13 @@ FAIL=0
 ok()  { printf '  \xE2\x9C\x93 %s\n' "$1"; PASS=$((PASS + 1)); }
 bad() { printf '  \xE2\x9C\x97 %s\n' "$1"; FAIL=$((FAIL + 1)); }
 
-# Build a sandbox repo root. $1 = lib to install (defaults to the real one, so a
-# mutation can swap it). Sets $ROOT.
-setup_sandbox() { # [lib_path]
+# Build a sandbox repo root. $1 = lib to install, $2 = guard to install (both
+# default to the real ones, so a mutation can swap either). Sets $ROOT.
+setup_sandbox() { # [lib_path] [guard_path]
   ROOT="$TMP/repo"
   rm -rf "$ROOT"
   mkdir -p "$ROOT/.claude/scripts/lib" "$ROOT/changelog.d"
-  cp "$GUARD_SRC" "$ROOT/.claude/scripts/"
+  cp "${2:-$GUARD_SRC}" "$ROOT/.claude/scripts/check-breaking-change-bump.sh"
   cp "${1:-$LIB_SRC}" "$ROOT/.claude/scripts/lib/changelog-fragment.sh"
   # Newest shipped release = v4.26.0, so 4.26.1 is patch-level and 4.27.0 is not.
   printf '# Changelog\n\n## Unreleased\n\n## v4.26.0 — 2026-07-01\n\n### Fixed\n\n- PRIOR\n\n## v4.25.0 — 2026-06-01\n\n### Fixed\n\n- OLDER\n' \
@@ -56,6 +64,28 @@ setup_sandbox() { # [lib_path]
 
 frag() { # filename, content on stdin
   cat > "$ROOT/changelog.d/$1"
+}
+
+# The tree as release.yml sees it: the fragments are GONE and their text now
+# lives in a collated `## v$1` section. Body on stdin.
+changelog_collated() { # version, body on stdin
+  { printf '# Changelog\n\n## Unreleased\n\n## v%s — 2026-08-07\n\n' "$1"
+    cat
+    printf '\n## v4.26.0 — 2026-07-01\n\n### Fixed\n\n- PRIOR\n'
+  } > "$ROOT/CHANGELOG.md"
+  rm -f "$ROOT"/changelog.d/*.md
+}
+
+# A copy of the guard with ONE defect applied. Refuses a no-op sed: a mutation
+# that changes no bytes proves nothing, it means this suite has gone stale.
+mutant_guard() { # name sed-expr  → prints the path
+  local name="$1" expr="$2" out="$TMP/guard-$1.sh"
+  sed "$expr" "$GUARD_SRC" > "$out"
+  if cmp -s "$out" "$GUARD_SRC"; then
+    bad "mutation '$name' changed nothing — check-breaking-change-bump.sh no longer matches this sed"
+    return 1
+  fi
+  printf '%s' "$out"
 }
 
 # Run the guard, leaving its exit code in $GUARD_RC and its output in $OUT.
@@ -367,6 +397,172 @@ EOF
 expect_rc "--previous 4.26.0 makes 4.26.9 patch-level → refused" 1 4.26.9 --previous 4.26.0
 expect_rc "--previous 4.25.0 makes 4.26.9 a minor bump → allowed" 0 4.26.9 --previous 4.25.0
 
+# ── 14. #3061 — the tag-time tree, in both modes ─────────────────────────────
+# The exact state release.yml runs in: collation has happened, changelog.d/ is
+# empty, and the only copy of the text is the `## v4.26.1` section. The default
+# mode has nothing left to read; --from-changelog is the whole point.
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+### Changed
+
+- **`TapEvent.nodeName` is now typed `string | null`** (React Native). Under
+  `strictNullChecks` this is source-breaking for code assigning `nodeName` to a
+  `string | undefined` binding.
+EOF
+expect_rc "--from-changelog REFUSES breaking prose in the collated section" 1 4.26.1 --from-changelog
+grep -q 'CHANGELOG.md § v4\.26\.1' <<<"$OUT" \
+  && ok "…and names the section it read" \
+  || bad "…but does not say what it examined"
+
+# The false green this mode exists to close, asserted rather than described: the
+# same tree, the same guard, without the flag.
+expect_rc "…while the DEFAULT mode passes the identical tree (the #3061 hole)" 0 4.26.1
+grep -q '0 pending fragment(s)' <<<"$OUT" \
+  && ok "…and its green tick admits it examined 0 fragments" \
+  || bad "…without even reporting that it read nothing"
+
+# ── 15. Positive cue — the same section on a minor tag ───────────────────────
+setup_sandbox
+changelog_collated 4.27.0 <<'EOF'
+### Changed
+
+- This is source-breaking for code under `strictNullChecks`.
+EOF
+expect_rc "the same breaking section is allowed on a MINOR tag" 0 4.27.0 --from-changelog
+
+# ── 16. Markers still work on a collated section ─────────────────────────────
+# Collation strips them, so this is the hand-written case — and the opt-out has
+# to survive it, or the only escape hatch is deleting the sentence.
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+### Changed
+
+<!-- breaking -->
+- A public symbol changed shape.
+EOF
+expect_rc "an explicit marker inside the section refuses a patch tag" 1 4.26.1 --from-changelog
+
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+### Changed
+
+<!-- breaking: false -->
+- The wire format is source-breaking for nobody; this is a rewording.
+EOF
+expect_rc "'<!-- breaking: false -->' in the section still wins over the prose" 0 4.26.1 --from-changelog
+
+# ── 17. Nothing to examine is a FAILURE, never a silent pass ─────────────────
+# Requirement (b) of #3061: a gate that finds nothing must say so. Each of these
+# is a way the section can be absent, and each was a way to publish unread.
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+- Something.
+EOF
+expect_rc "a tag with no matching section is exit 2, not a pass" 2 4.26.2 --from-changelog
+grep -q "no '## v4\.26\.2' section" <<<"$OUT" \
+  && ok "…and names the section it could not find" \
+  || bad "…without saying what was missing"
+
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+
+EOF
+expect_rc "a section with an empty body is exit 2, not a pass" 2 4.26.1 --from-changelog
+
+setup_sandbox
+rm -f "$ROOT/CHANGELOG.md"
+expect_rc "no CHANGELOG.md at all is exit 2, not a pass" 2 4.26.1 --from-changelog
+
+# `## v4.26.10` must not answer for `4.26.1` — the header boundary is the only
+# thing between the guard and judging a different release's notes.
+setup_sandbox
+changelog_collated 4.26.10 <<'EOF'
+- This is source-breaking.
+EOF
+expect_rc "'## v4.26.10' does not satisfy a query for 4.26.1" 2 4.26.1 --from-changelog
+
+# ── 18. Section scoping — the neighbours are not on trial ────────────────────
+# The target section is clean; the PREVIOUS release's section is breaking. A
+# guard that read the whole file would refuse every patch after a breaking minor.
+setup_sandbox
+printf '# Changelog\n\n## Unreleased\n\n## v4.26.1 — 2026-08-07\n\n### Fixed\n\n- A crash on rotate is fixed.\n\n## v4.26.0 — 2026-07-01\n\n### Changed\n\n- This was source-breaking, which is why it shipped as a minor.\n' \
+  > "$ROOT/CHANGELOG.md"
+expect_rc "a breaking PREVIOUS section does not condemn a clean patch" 0 4.26.1 --from-changelog
+
+# ── 19. Un-collated fragments are still judged in changelog mode ─────────────
+# A half-collated release ships both. If this mode only read the section, the
+# fragment left behind would be the one place nothing looks.
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+### Fixed
+
+- A crash on rotate is fixed.
+EOF
+frag 0014-straggler.md <<'EOF'
+<!-- breaking -->
+- Missed by the collator.
+EOF
+expect_rc "a straggler fragment is judged alongside the section" 1 4.26.1 --from-changelog
+grep -qF 'of 2 source(s) examined' <<<"$OUT" \
+  && ok "…and the refusal counts BOTH sources it read" \
+  || bad "…but the refusal hides how many sources were examined"
+grep -qF '0014-straggler.md' <<<"$OUT" \
+  && ok "…and names the fragment, not just the section" \
+  || bad "…without naming the fragment that caused the refusal"
+
+# ── 20. THE INVARIANT — same text, same verdict, either side of collation ────
+# This is the property that makes the second mode safe to trust. Anything else
+# means a release is judged by where its text happens to live at the moment.
+invariant_case() { # label expected_rc, text on stdin
+  local label="$1" want="$2" text rc_frag rc_chg
+  text="$(cat)"
+  setup_sandbox
+  printf '%s\n' "$text" > "$ROOT/changelog.d/9000-invariant.md"
+  run_guard 4.26.1
+  rc_frag="$GUARD_RC"
+  setup_sandbox
+  changelog_collated 4.26.1 <<<"$text"
+  run_guard 4.26.1 --from-changelog
+  rc_chg="$GUARD_RC"
+  if [ "$rc_frag" = "$want" ] && [ "$rc_chg" = "$want" ]; then
+    ok "invariant: $label → exit $want as a fragment AND as a collated section"
+  else
+    bad "invariant BROKEN: $label — fragment mode exit $rc_frag, changelog mode exit $rc_chg, both should be $want"
+    printf '%s\n' "$OUT" | sed 's/^/        /'
+  fi
+}
+
+invariant_case "breaking prose" 1 <<'EOF'
+- Because the change is source-breaking, it ships in a minor release, never a patch.
+EOF
+
+invariant_case "a negated mention" 0 <<'EOF'
+- The modifier is opt-in and non-breaking — a scene without it builds as before.
+EOF
+
+invariant_case "'groundbreaking'" 0 <<'EOF'
+- A groundbreaking new renderer lands behind a flag.
+EOF
+
+invariant_case "the word inside a code span" 0 <<'EOF'
+- Document the `breaking` marker in the contributor guide.
+EOF
+
+invariant_case "an explicit marker" 1 <<'EOF'
+<!-- breaking -->
+- A public symbol changed shape.
+EOF
+
+invariant_case "the marker opt-out beating the prose" 0 <<'EOF'
+<!-- breaking: false -->
+- Reworded a paragraph that used to say source-breaking.
+EOF
+
+invariant_case "a malformed marker" 2 <<'EOF'
+<!-- breaking: maybe -->
+- Something changed.
+EOF
+
 # ── Mutation tests ───────────────────────────────────────────────────────────
 # Sections 4 and 5 pull in opposite directions: one demands that prose fires,
 # the other that a negated form does not. A heuristic can satisfy either alone
@@ -415,6 +611,57 @@ else
   bad "  is not what keeps 'non-breaking' fragments from blocking releases"
 fi
 
+# Mutation C: accept `--from-changelog` and ignore it — the naive #3061 fix,
+# and the only failure mode that looks green in every log. Section 14 must then
+# revert to the hole it documents: the mutant sees an empty changelog.d/ and
+# publishes a source-breaking patch with a tick.
+if MUT_C="$(mutant_guard no-changelog-mode \
+    's/--from-changelog) FROM_CHANGELOG=true;/--from-changelog) FROM_CHANGELOG=false;/')"; then
+  setup_sandbox "$LIB_SRC" "$MUT_C"
+  changelog_collated 4.26.1 <<'EOF'
+### Changed
+
+- Under `strictNullChecks` this is source-breaking for existing callers.
+EOF
+  run_guard 4.26.1 --from-changelog
+  if [ "$GUARD_RC" = "0" ]; then
+    ok "mutation killed — a --from-changelog that falls back to fragments passes #3061's own release"
+  else
+    bad "MUTATION SURVIVED — section 14 refuses even with the changelog mode disabled,"
+    bad "  so that refusal is not coming from reading the collated section"
+  fi
+fi
+
+# Mutation D: keep the mode, remove its discovery floor. An empty section then
+# reads as "examined 0 lines, nothing breaking" — a pass earned by measuring
+# nothing, which is the same bug in a different place (#3050).
+if MUT_D="$(mutant_guard no-empty-floor \
+    's/if \[ "\$SCAN_LINES" -eq 0 \]; then/if false; then/')"; then
+  setup_sandbox "$LIB_SRC" "$MUT_D"
+  changelog_collated 4.26.1 <<'EOF'
+
+EOF
+  run_guard 4.26.1 --from-changelog
+  if [ "$GUARD_RC" = "0" ]; then
+    ok "mutation killed — without the floor, an EMPTY section is reported as a pass"
+  else
+    bad "MUTATION SURVIVED — section 17 rejects an empty section with the floor removed,"
+    bad "  so the floor is not what makes 'nothing to examine' a failure"
+  fi
+fi
+
 echo
 echo "check-breaking-change-bump: $PASS passed, $FAIL failed"
+
+# A skipped case is not a passed case: every assertion above runs unconditionally
+# except the two mutant builds, which fail the suite rather than vanish. Raise
+# this when adding a case — a suite that silently shrinks is how #2988 happened.
+EXPECTED_ASSERTIONS=57
+TOTAL=$((PASS + FAIL))
+if [ "$TOTAL" -ne "$EXPECTED_ASSERTIONS" ]; then
+  printf '  \xE2\x9C\x97 %d assertions ran, expected %d — cases were skipped, not passed\n' \
+    "$TOTAL" "$EXPECTED_ASSERTIONS"
+  exit 1
+fi
+
 [ "$FAIL" -eq 0 ]
