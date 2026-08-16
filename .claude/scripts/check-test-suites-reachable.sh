@@ -57,9 +57,14 @@
 # * JS/TS only. Kotlin and Swift suites are driven by Gradle and Xcode legs,
 #   whose reachability is a different question with a different answer; this
 #   gate says nothing about them and prints that it does not.
-# * `dist/` and `build/` are excluded: this repo versions compiled `dist/`
-#   output for three MCP packages, so their `*.test.js` copies would otherwise
-#   be counted as separate suites that nothing runs — true, and useless.
+# * FOUR path segments are excluded, not two: `node_modules/`, `dist/`,
+#   `build/` and `out/` (line 110). This repo versions compiled `dist/` output
+#   for three MCP packages, so their `*.test.js` copies would otherwise be
+#   counted as separate suites that nothing runs — true, and useless; the other
+#   three are the same case by convention. All four are named here because a
+#   suite living under one of them leaves the report ENTIRELY — no MISSING, no
+#   line at all — which is the silent-drop this gate exists to prevent. An
+#   exclusion the footer does not name is indistinguishable from coverage.
 # * A job-level `continue-on-error: true` is NOT detected, only a step-level
 #   one; such a suite is reported OK when it is really advisory. Printed in the
 #   footer rather than left for a reader to discover. (The step-level case is

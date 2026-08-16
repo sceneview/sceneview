@@ -11,13 +11,25 @@ name: MCP tests
 # while the page was wrong and only went red once the page was fixed. Nothing
 # reported that for months.
 #
-# `mcp/`'s own suite was in a subtler state: `quality-gate.sh` runs it, but
-# behind `[ -d "mcp/node_modules" ]`, and ci.yml's `Quality gate (full)` job
-# contains no `npm` command at all — so the directory never exists there, the
-# guard is always false, and the leg skipped without printing a word.
-# `mcp-ts-check.yml` meanwhile carried a header stating that `npm test` "is run
-# by ci.yml's Quality gate (full) job". A comment asserting coverage that does
-# not exist is worse than no comment: it answers the reader who thinks to check.
+# `mcp/`'s own suite is in a subtler state, and the first version of this header
+# got it wrong — worth recording, since the error is the one this workflow is
+# about. It claimed the suite never ran in CI. It does run: `quality-gate.sh`
+# runs it behind `[ -d "mcp/node_modules" ]`, and in ci.yml's `Quality gate
+# (full)` job that directory EXISTS, because `- uses: ./.github/actions/setup-mcp`
+# (ci.yml:1838) runs `npm ci` in `mcp/` (setup-mcp/action.yml:31-32) before the
+# `bash .claude/scripts/quality-gate.sh` step (ci.yml:1847).
+#
+# The real defect is that nothing says so. No declaration ties that leg to
+# `setup-mcp`, which sits in the job for the other MCP work; remove it, reorder
+# the steps, or move the leg to a job without it and the suite stops running
+# while the report reads the same. Until this PR the guard's false branch
+# printed nothing at all, so "did not run" and "passed" were indistinguishable.
+# And because the invocation goes through a wrapper script, no reachability
+# audit can see it — a stated bound of `check-test-suites-reachable.sh`, and the
+# reason `mcp` read as covered there only through `release.yml`.
+#
+# Accidental coverage that no reader can verify is what this workflow replaces:
+# the same suite, invoked by name, on a declared trigger.
 #
 # `release.yml` and `mcp-publish.yml` do run `npm test`, but only on a `v*`
 # tag — by then the code is on `main`. Publish-time tests are not merge gates.
