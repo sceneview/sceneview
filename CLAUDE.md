@@ -66,8 +66,8 @@ never opens that skill never learns it. Gated by `test-context-budget.sh`.
   `am force-stop`, `pm grant`, `logcat`. → `android-tooling`
 - **Never drive an emulator holding another session's lease**, and never set
   `EMU_LEASE_TAKEOVER=1`. A blocking hook refuses it. → `android-tooling`
-- **Never hand-edit a generated file** — `gpt/knowledge-*.md`, `assets/CREDITS.md` are
-  regenerated and gated (CREDITS is licence compliance). → `doc-drift`
+- **Never hand-edit a generated file** — `gpt/knowledge-*.md` and every `CREDITS.md`
+  are regenerated and gated (CREDITS is licence compliance). → `doc-drift`
 - **A public API change reaches every platform and the docs**, or says why not.
   → `cross-platform`
 - **A full device-QA pass runs at every release checkpoint, before tagging**; no

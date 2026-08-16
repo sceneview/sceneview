@@ -1,6 +1,6 @@
 ---
 name: doc-drift
-description: The two-tier docs-versus-API drift policy — advisory per-PR heuristic plus the weekly agent-driven DRAFT PR — and the two deterministic BLOCKING generated-file gates (gpt/knowledge-*.md from llms.txt, assets/CREDITS.md from catalog.json, a licence-compliance gate). Use when a public API changes, when check-doc-drift or a CREDITS/knowledge drift check fails, or before hand-editing anything generated.
+description: The two-tier docs-versus-API drift policy — advisory per-PR heuristic plus the weekly agent-driven DRAFT PR — and the two deterministic BLOCKING generated-file gates (gpt/knowledge-*.md from llms.txt, and every shipped CREDITS.md from catalog.json plus the bundled assets, a licence-compliance gate). Use when a public API changes, when check-doc-drift or a CREDITS/knowledge drift check fails, before adding or removing a bundled demo asset, or before hand-editing anything generated.
 ---
 
 ## Documentation drift (docs ↔ API) — two-tier policy
@@ -35,17 +35,29 @@ gated hard because there is no false-positive risk — never hand-edit them:
   `tools/generate-gpt-knowledge.js`; CI fails when the committed files drift
   (`--check`). `sync-versions.sh --fix` regenerates them on every version
   bump (#2724).
-- `assets/CREDITS.md` is GENERATED from `assets/catalog.json` by
-  `.claude/scripts/generate-credits.py`; CI fails when it drifts (`--check`).
-  This one is a **licence-compliance** gate, not a docs gate: CREDITS.md is
-  what discharges the attribution clause (CC-BY 4.0 §3a) of every model that
-  ships in the sample apps, so a catalog entry that never reaches CREDITS.md
-  is an uncredited model in a published release. It went stale undetected
-  once — five catalog records (three distinct Khronos works: Toy Car, Sheen
-  Chair, Iridescence Dish With Olives) shipped uncredited before a manual
-  re-run caught it. Scope: the gate covers `assets/CREDITS.md` only.
-  `samples/android-demo/src/main/assets/CREDITS.md` is a separate,
-  hand-maintained file bundled into that APK — not generated, not gated.
+- **Every** `CREDITS.md` the project ships is GENERATED (or byte-mirrored) by
+  `.claude/scripts/generate-credits.py`; CI fails when any of them drifts
+  (`--check`). This one is a **licence-compliance** gate, not a docs gate:
+  CREDITS.md is what discharges the attribution clause (CC-BY 4.0 §3a) of
+  every asset that ships in the sample apps, so a catalog entry that never
+  reaches CREDITS.md is an uncredited model in a published release. It went
+  stale undetected twice — five catalog records (three distinct Khronos works:
+  Toy Car, Sheen Chair, Iridescence Dish With Olives) shipped uncredited before
+  a manual re-run caught it, and the copy inside the Play Store APK ran two
+  months and six bundled files behind because the gate covered one file while
+  the repository tracked five (#2941). The five, and their treatment:
+  | File | Treatment |
+  |---|---|
+  | `assets/CREDITS.md` | GENERATED — the whole catalogue |
+  | `samples/android-demo/src/main/assets/CREDITS.md` | GENERATED — only what the APK bundles |
+  | `assets/audio/CREDITS.md` | SOURCE — hand-written; `bell.wav` is ffmpeg-generated, not a catalogue asset |
+  | `samples/ios-demo/SceneViewDemo/Audio/CREDITS.md` | MIRROR — byte-identical to the source above |
+  | `samples/web-demo/site/audio/CREDITS.md` | MIRROR — byte-identical to the source above |
+
+  A bundled asset matching neither a catalogue entry nor an explicit
+  `NON_CATALOG_BUNDLED` declaration fails the gate rather than shipping
+  uncredited. Adding a sixth `CREDITS.md` without naming it in the generator
+  fails `test-generate-credits.sh`.
 
 Why not block per-PR or auto-fix per-PR? Blocking frustrates internal-only
 refactors that get mis-classified; per-PR auto-fix is costly on every PR and a

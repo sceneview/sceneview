@@ -11,7 +11,12 @@ import SwiftUI
 /// Mirrors the Android `CreditsSheet.kt` 1:1 (#1152 Stage 3).
 ///
 /// Bundled (non-streamed) assets are credited in the project-level
-/// `assets/CREDITS.md` and shipped in the build as resource metadata.
+/// `assets/CREDITS.md`, which is GENERATED from `assets/catalog.json` — never
+/// hand-edit it. That file is a repository artefact and is NOT copied into the
+/// .app: `project.pbxproj` carries `Audio/CREDITS.md` as a file reference only,
+/// not in the Resources build phase, so unlike the Android demo this target
+/// ships no bundled-asset credits of its own. Measured under #2941 and tracked
+/// separately; the gate there covers the repository copies.
 struct CreditsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
