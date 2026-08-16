@@ -375,6 +375,36 @@ else
     bad "filename expansion invented an invocation for an unrelated package (rc=$RC)"
 fi
 
+# ── 16. push.paths must not stand in for pull_request.paths ──────────────────
+# `paths:` is per-trigger, and reading every `paths:` in the file merged the two
+# into a union wider than either. Here the push filter covers the suite and the
+# pull_request filter does not: the workflow runs on `main` after the fact and
+# never on the pull request that would gate the merge — which is precisely the
+# "runs, but cannot block a merge" state cases 4 and 5 exist for, arriving by a
+# third route that the parser used to launder into a ✓.
+R="$(mkrepo prpaths)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'never triggers'; then
+    ok "a push-only path filter does not count as pull-request coverage"
+else
+    bad "push.paths was merged into pull_request.paths — the suite read as gated (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -451,8 +481,11 @@ mutant 'ignore || true' \
 # leaves the report entirely — it is not reported unreachable, it is not
 # reported at all, which is why this arm needs a mutant of its own.
 mutant 'stop parsing flow-style paths: filters' \
-    '/^[[:space:]]*paths(-ignore)?:[[:space:]]*\[/ {' \
-    '/^ZZZ_NEVER_MATCHES_FLOW/ {' flowpaths 'never triggers'
+    'if ($0 ~ /^ *paths(-ignore)?: *\[/) {' \
+    'if ($0 ~ /^ZZZ_NEVER_MATCHES_FLOW/) {' flowpaths 'never triggers'
+mutant 'read paths: from every trigger, not just pull_request' \
+    'trig = ($0 ~ /^ *pull_request(_target)?:/) ? 1 : 0' \
+    'trig = 1' prpaths 'never triggers'
 mutant 'grade continue-on-error at match time instead of step end' \
     '(ce == 1 || l ~ /\|\|[[:space:]]*true/) ? 1 : 0' \
     '(0 || l ~ /\|\|[[:space:]]*true/) ? 1 : 0' ceafter 'cannot fail the build'

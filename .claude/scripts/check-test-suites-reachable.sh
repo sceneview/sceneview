@@ -71,6 +71,13 @@
 #   is deliberate: refusing it would push authors to widen real filters for this
 #   gate's benefit. It is the one accepted over-approximation here, so it is
 #   named rather than buried.
+# * An invocation is seen only when the runner is named literally on a `run:`
+#   line. A suite launched through a wrapper — `bash .claude/scripts/foo.sh`,
+#   which runs vitest inside — is invisible, and the package would be reported
+#   MISSING. That error points the safe way: fail-CLOSED, loud, and fixed by
+#   naming the suite in an explicit step, which is what this gate wants anyway.
+#   Following wrappers would mean interpreting shell. No JS/TS suite in this
+#   repo is invoked through one today.
 #
 # Usage: check-test-suites-reachable.sh [repo-root]
 set -uo pipefail
@@ -182,43 +189,72 @@ scan_invocations() {
     done
 }
 
-# ── 3. Extract each workflow's trigger paths ─────────────────────────────────
-# A workflow with no `paths:` anywhere fires on every change: recorded as the
-# literal `<none>`, which every suite matches.
+# ── 3. Extract the workflow's PULL-REQUEST trigger paths ─────────────────────
+# A workflow whose `pull_request:` carries no `paths:` fires on every change:
+# the list comes back empty, which the caller reads as `<none>` and every suite
+# matches.
+#
+# ONLY the `pull_request:` trigger, and that scoping is the whole point.
+# `paths:` is a per-trigger key. Collecting every `paths:` in the file merges
+# `push.paths` into `pull_request.paths`, and a union is wider than either side:
+# a workflow whose push filter covers a suite but whose pull_request filter
+# excludes it would read as "triggered when this package changes" while never
+# running on the pull request that gates the merge. That is the same
+# runs-but-cannot-block failure the ADVISORY verdict exists to catch, one level
+# down, inside this gate's own parser. No workflow here has divergent filters
+# today — closed by reasoning and a fixture, not by a red run.
 trigger_prefixes() {
     local wf="$1"
     awk '
-        # Flow style — `paths: ["mcp/**", "x/**"]`. Handled because NOT handling
-        # it fails open: the block-sequence rule below never matches, the glob
-        # list comes back empty, and an empty list means "no filter, fires on
-        # everything" (see the caller). A genuinely path-scoped workflow would
-        # then read as unconditionally triggered, and a real coverage gap would
-        # pass green — the exact failure this gate exists to catch, in its own
-        # parser. No workflow here uses flow style today; that is why it had to
-        # be closed by reasoning rather than by a red run.
-        /^[[:space:]]*paths(-ignore)?:[[:space:]]*\[/ {
-            if ($0 ~ /paths-ignore/) next
-            v = $0
-            sub(/^[^[]*\[/, "", v)
-            sub(/\].*$/, "", v)
-            n = split(v, a, ",")
-            for (i = 1; i <= n; i++) {
-                gsub(/["\x27]/, "", a[i])
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", a[i])
-                if (a[i] != "") print a[i]
+        function ind(s) { match(s, /^ */); return RLENGTH }
+
+        # A column-0 key ends the `on:` mapping — including `jobs:`, whose
+        # `- name:` step lines would otherwise be read as path entries.
+        /^[^ #]/ { on = ($0 ~ /^"?on"?:/); lvl = 0; trig = 0; inp = 0; next }
+        !on { next }
+        /^ *#/ { next }
+        /^ *$/ { next }
+        {
+            # The first key under `on:` fixes the trigger indent level; only
+            # keys at that exact level are triggers. `paths:` sits deeper, so it
+            # can never be mistaken for one.
+            i = ind($0)
+            if (lvl == 0) lvl = i
+            if (i == lvl && $0 ~ /^ *[A-Za-z_]+:/) {
+                trig = ($0 ~ /^ *pull_request(_target)?:/) ? 1 : 0
+                inp = 0
+                next
             }
-            next
+            if (!trig) next
+
+            # Flow style — `paths: ["mcp/**", "x/**"]`. Handled because NOT
+            # handling it fails open the same way: the block-sequence rule below
+            # never matches, the list comes back empty, and empty means "no
+            # filter, fires on everything".
+            if ($0 ~ /^ *paths(-ignore)?: *\[/) {
+                if ($0 ~ /paths-ignore/) next
+                v = $0
+                sub(/^[^[]*\[/, "", v)
+                sub(/\].*$/, "", v)
+                n = split(v, a, ",")
+                for (k = 1; k <= n; k++) {
+                    gsub(/["\x27]/, "", a[k])
+                    gsub(/^ +| +$/, "", a[k])
+                    if (a[k] != "") print a[k]
+                }
+                next
+            }
+            if ($0 ~ /^ *paths(-ignore)?: *$/) { inp = ($0 ~ /paths-ignore/) ? 0 : 1; next }
+            if (inp && $0 ~ /^ *- /) {
+                v = $0
+                sub(/^ *- */, "", v)
+                gsub(/["\x27]/, "", v)
+                sub(/ +.*$/, "", v)
+                print v
+                next
+            }
+            if (inp && $0 !~ /^ *-/) inp = 0
         }
-        /^[[:space:]]*paths(-ignore)?:[[:space:]]*$/ { inp = ($0 ~ /paths-ignore/) ? 0 : 1; next }
-        inp && /^[[:space:]]*-[[:space:]]/ {
-            v = $0
-            sub(/^[[:space:]]*-[[:space:]]*/, "", v)
-            gsub(/["\x27]/, "", v)
-            sub(/[[:space:]]+.*$/, "", v)
-            print v
-            next
-        }
-        inp && !/^[[:space:]]*-/ { inp = 0 }
     ' "$wf"
 }
 
