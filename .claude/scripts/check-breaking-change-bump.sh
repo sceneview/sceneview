@@ -23,7 +23,7 @@
 # The declaration has to meet a version number, and that happens exactly once,
 # at collation.
 #
-# It is wired in three places on purpose (#2988 — a guard no job invokes is
+# It is wired in four places on purpose (#2988 — a guard no job invokes is
 # prose):
 #   1. `collate-changelog.sh` calls it before touching anything. This is the
 #      load-bearing one: collation is MANDATORY (release-checklist.sh FAILs
@@ -35,6 +35,37 @@
 #      gate and the bump commit.
 #   3. `release-checklist.sh` §6 calls it too, covering the manual path where
 #      someone runs the checklist before collating.
+#   4. `release.yml`'s `breaking-change-guard` job, with `--from-changelog`
+#      (#3061) — see below.
+#
+# THE `--from-changelog` MODE, AND WHY THE OBVIOUS WIRING WOULD HAVE BEEN A
+# FALSE GREEN (#3061)
+# -------------------------------------------------------------------------
+# `release.yml` publishes to Maven Central, npm ×3 and pub.dev on a `v*` tag,
+# and until #3061 none of those five jobs consulted this guard at all. The
+# tempting fix — call this script from `release.yml` — would have produced a
+# job that CANNOT fail: by tag time `collate-changelog.sh` has already consumed
+# and DELETED every fragment, so the loop over `changelog.d/*.md` iterates zero
+# times, `BREAKING_COUNT` is 0, and the guard prints `✓` having examined
+# nothing. A job that can only pass is not a gate.
+#
+# After collation the same text lives in `CHANGELOG.md`'s `## vX.Y.Z` section.
+# `--from-changelog` reads THAT, through the same scanner, so a declaration is
+# judged identically on both sides of collation. Two properties hold it honest:
+#
+#   * Every verdict quotes the number of lines it actually read. A green that
+#     measured nothing is not expressible.
+#   * "Nothing to examine" is exit 2, never exit 0 — a missing `## vX.Y.Z`
+#     section, or one with an empty body, means the release was tagged without
+#     collating and the guard has no content to judge.
+#
+# What collation does NOT preserve is the `<!-- breaking -->` MARKER: every
+# HTML comment is stripped from the public notes on purpose (#3037). The marker
+# is therefore caught at wiring point 1, which runs while the fragment still
+# exists; `--from-changelog` catches the PROSE path, which is the one #3037
+# actually exercised and the one #3061 names. Pending fragments are scanned too
+# when this mode runs — a tag pushed without collating ships them, and the
+# CHANGELOG section would not contain their bullets.
 #
 # HOW A FRAGMENT DECLARES A BREAKING CHANGE
 # -----------------------------------------
@@ -52,12 +83,14 @@
 # minor bumps. An escape hatch that exists gets used.
 #
 # Usage:
-#   ./check-breaking-change-bump.sh <target-version> [--previous X.Y.Z] [--quiet]
+#   ./check-breaking-change-bump.sh <target-version> \
+#       [--from-changelog] [--previous X.Y.Z] [--quiet]
 #
 # Exit codes:
-#   0  target is not patch-level, or no fragment declares a breaking change
-#   1  REFUSED — a breaking fragment meets a patch-level target
-#   2  malformed input (unparsable version, bad marker, unterminated comment)
+#   0  target is not patch-level, or nothing examined declares a breaking change
+#   1  REFUSED — a breaking declaration meets a patch-level target
+#   2  malformed input (unparsable version, bad marker, unterminated comment),
+#      or nothing to examine (--from-changelog with no usable section)
 
 set -euo pipefail
 
@@ -79,13 +112,14 @@ CHANGELOG="CHANGELOG.md"
 TARGET="${1:-}"
 if [ -z "$TARGET" ]; then
     echo -e "${RED}Error:${NC} target version argument required."
-    echo "Usage: $0 <target-version> [--previous X.Y.Z] [--quiet]"
+    echo "Usage: $0 <target-version> [--from-changelog] [--previous X.Y.Z] [--quiet]"
     exit 2
 fi
 shift
 
 PREVIOUS=""
 QUIET=false
+FROM_CHANGELOG=false
 while [ $# -gt 0 ]; do
     case "$1" in
         # `shift 2` with only one argument left aborts under `set -e`, and the
@@ -97,6 +131,7 @@ while [ $# -gt 0 ]; do
                 exit 2
             }
             PREVIOUS="$2"; shift 2 ;;
+        --from-changelog) FROM_CHANGELOG=true; shift ;;
         --quiet)    QUIET=true; shift ;;
         *) echo -e "${RED}Error:${NC} unknown argument '$1'"; exit 2 ;;
     esac
@@ -122,18 +157,30 @@ split_version "$TARGET" || {
 T_MAJ="$V_MAJ"; T_MIN="$V_MIN"; T_PAT="$V_PAT"
 TARGET_NORM="$T_MAJ.$T_MIN.$T_PAT"
 
-# ─── 1. Which fragments declare a breaking change? ───────────────────────────
-BREAKING_FILES=()
-BREAKING_WHY=()
-
-for f in "$FRAG_DIR"/*.md; do
-    [ -e "$f" ] || continue
-    [ "$(basename "$f")" = "README.md" ] && continue
-
-    marker=""          # "", "true" or "false" — the explicit declaration
-    body=""            # the fragment's PUBLIC text, comments removed
+# ─── 0. The shared scanner ───────────────────────────────────────────────────
+# Reads Markdown on STDIN and reports what it declares. BOTH modes go through
+# this one function and nothing else — that is what makes the #3061 invariant
+# hold by construction rather than by two implementations agreeing today: the
+# same text yields the same verdict whether it arrives as a `changelog.d/`
+# fragment (before collation) or as a `## vX.Y.Z` section body (after it).
+#
+# Sets, on return 0:
+#   SCAN_MARKER  ""|"true"|"false"  — the explicit declaration, if any
+#   SCAN_BODY    the PUBLIC text, HTML comments removed
+#   SCAN_LINES   how many non-blank lines were actually read
+# On return 2, SCAN_ERROR carries the reason (the caller names the source).
+SCAN_MARKER=""
+SCAN_BODY=""
+SCAN_LINES=0
+SCAN_ERROR=""
+scan_stream() {
+    SCAN_MARKER=""; SCAN_BODY=""; SCAN_LINES=0; SCAN_ERROR=""
+    local line rc
     frag_strip_reset
     while IFS= read -r line || [ -n "$line" ]; do
+        if [ -n "${line//[[:space:]]/}" ]; then
+            SCAN_LINES=$((SCAN_LINES + 1))
+        fi
         if [ "$FRAG_IN_COMMENT" = false ]; then
             rc=0
             # The marker is looked for on a code-span-stripped COPY: a fragment
@@ -143,12 +190,12 @@ for f in "$FRAG_DIR"/*.md; do
             frag_drop_code_spans "$line"
             frag_is_breaking_marker_line "$FRAG_NO_SPANS" || rc=$?
             if [ "$rc" -eq 0 ]; then
-                marker="$FRAG_BREAKING_MARKER"
+                SCAN_MARKER="$FRAG_BREAKING_MARKER"
             elif [ "$rc" -eq 2 ]; then
-                echo -e "${RED}Error:${NC} $f: unrecognised breaking marker value in:"
-                echo "    $line"
-                echo "  Use '<!-- breaking -->', '<!-- breaking: true -->' or '<!-- breaking: false -->'."
-                exit 2
+                SCAN_ERROR="unrecognised breaking marker value in:
+    $line
+  Use '<!-- breaking -->', '<!-- breaking: true -->' or '<!-- breaking: false -->'."
+                return 2
             fi
         fi
         # No `continue` above: the stripper removes the marker comment like any
@@ -157,24 +204,110 @@ for f in "$FRAG_DIR"/*.md; do
         # consulted when no marker was found, so keeping the text changes no
         # verdict today — it removes the dependency on that ordering.
         frag_strip_comments_line "$line"
-        body+="$FRAG_STRIPPED"$'\n'
-    done < "$f"
+        SCAN_BODY+="$FRAG_STRIPPED"$'\n'
+    done
 
     if [ "$FRAG_IN_COMMENT" = true ]; then
-        echo -e "${RED}Error:${NC} $f has an unterminated '<!--' — close it before releasing."
+        SCAN_ERROR="unterminated '<!--' — close it before releasing."
+        return 2
+    fi
+    return 0
+}
+
+# Fold one scanned unit into the verdict. $1 = how to name it in the refusal.
+BREAKING_FILES=()
+BREAKING_WHY=()
+EXAMINED_UNITS=0
+EXAMINED_LINES=0
+judge_scanned() { # source-label
+    EXAMINED_UNITS=$((EXAMINED_UNITS + 1))
+    EXAMINED_LINES=$((EXAMINED_LINES + SCAN_LINES))
+    if [ "$SCAN_MARKER" = "true" ]; then
+        BREAKING_FILES+=("$1")
+        BREAKING_WHY+=("explicit <!-- breaking --> marker")
+    elif [ "$SCAN_MARKER" = "false" ]; then
+        : # explicit opt-out — always wins over the prose heuristic
+    elif frag_prose_claims_breaking "$SCAN_BODY"; then
+        BREAKING_FILES+=("$1")
+        BREAKING_WHY+=("its public prose says so (add '<!-- breaking: false -->' if it does not)")
+    fi
+}
+
+# ─── 1. What is there to examine? ────────────────────────────────────────────
+FRAGMENTS_SEEN=0
+scan_pending_fragments() {
+    for f in "$FRAG_DIR"/*.md; do
+        [ -e "$f" ] || continue
+        [ "$(basename "$f")" = "README.md" ] && continue
+        if ! scan_stream < "$f"; then
+            echo -e "${RED}Error:${NC} $f: $SCAN_ERROR"
+            exit 2
+        fi
+        FRAGMENTS_SEEN=$((FRAGMENTS_SEEN + 1))
+        judge_scanned "$f"
+    done
+}
+
+SOURCE_DESC=""
+if [ "$FROM_CHANGELOG" = false ]; then
+    scan_pending_fragments
+    SOURCE_DESC="$FRAGMENTS_SEEN pending fragment(s), $EXAMINED_LINES line(s)"
+else
+    # Post-collation mode. The fragments are gone; the text lives in the
+    # `## vX.Y.Z` section. Everything that could make this read as a pass
+    # WITHOUT reading content is an explicit exit 2 below — that hole is the
+    # whole of #3061.
+    if [ ! -f "$CHANGELOG" ]; then
+        echo -e "${RED}Error:${NC} --from-changelog: $CHANGELOG does not exist."
+        echo "  There is nothing to examine, so this is NOT a pass (#3061)."
         exit 2
     fi
 
-    if [ "$marker" = "true" ]; then
-        BREAKING_FILES+=("$f")
-        BREAKING_WHY+=("explicit <!-- breaking --> marker")
-    elif [ "$marker" = "false" ]; then
-        : # explicit opt-out — always wins over the prose heuristic
-    elif frag_prose_claims_breaking "$body"; then
-        BREAKING_FILES+=("$f")
-        BREAKING_WHY+=("its public prose says so (add '<!-- breaking: false -->' if it does not)")
+    # `4.26.1` as a regex would match `4x26x1`; escape the dots once, and use
+    # the same anchored pattern to FIND the section and to detect it is absent.
+    # `([^0-9.]|$)` stops `## v4.2.6` matching a `## v4.2.60` header.
+    HDR_RE="^## v${TARGET_NORM//./\\.}([^0-9.]|\$)"
+    if ! grep -qE "$HDR_RE" "$CHANGELOG"; then
+        echo -e "${RED}Error:${NC} --from-changelog: no '## v$TARGET_NORM' section in $CHANGELOG."
+        echo "  The tag was pushed without collating the changelog, so this guard has"
+        echo "  no content to judge. Refusing rather than passing over an unread"
+        echo "  release (#3061)."
+        exit 2
     fi
-done
+
+    # The section body: everything after the `## vX.Y.Z …` header, up to the
+    # next `## ` header. The header line itself is excluded on purpose — it is
+    # the collator's generated `vX.Y.Z — DATE` plus an editorial title, and
+    # judging it would make the two modes read different populations, which is
+    # exactly the divergence this mode exists to rule out.
+    SECTION_BODY="$(awk -v hdr="$HDR_RE" '
+        found && /^## / { exit }
+        found           { print }
+        $0 ~ hdr        { found = 1 }
+    ' "$CHANGELOG")"
+
+    if ! scan_stream <<< "$SECTION_BODY"; then
+        echo -e "${RED}Error:${NC} $CHANGELOG § v$TARGET_NORM: $SCAN_ERROR"
+        exit 2
+    fi
+    if [ "$SCAN_LINES" -eq 0 ]; then
+        echo -e "${RED}Error:${NC} --from-changelog: '## v$TARGET_NORM' in $CHANGELOG has an empty body."
+        echo "  A gate that finds nothing to examine must not report a pass (#3061)."
+        exit 2
+    fi
+    judge_scanned "$CHANGELOG § v$TARGET_NORM"
+    CHANGELOG_LINES="$SCAN_LINES"
+
+    # Un-collated fragments still ship on this tag, and their bullets are NOT
+    # in the section above. Scanning them here is what stops a half-collated
+    # release from hiding a declaration in the one place this mode does not
+    # look.
+    scan_pending_fragments
+    SOURCE_DESC="$CHANGELOG_LINES line(s) of $CHANGELOG § v$TARGET_NORM"
+    if [ "$FRAGMENTS_SEEN" -gt 0 ]; then
+        SOURCE_DESC="$SOURCE_DESC + $FRAGMENTS_SEEN un-collated fragment(s)"
+    fi
+fi
 
 # ─── 2. Is the target a patch-level bump? ────────────────────────────────────
 # "Patch-level" means same major AND same minor as the last released version.
@@ -198,7 +331,7 @@ if [ -z "$PREVIOUS" ]; then
     # No prior release to compare against (a fresh CHANGELOG). Report honestly
     # instead of inventing a verdict — "not measured" is not "passed".
     say "${YELLOW}⚠${NC}  breaking-change/patch guard: no previous release found in $CHANGELOG — bump level not measured."
-    say "   ($BREAKING_COUNT fragment(s) declare a breaking change.)"
+    say "   (examined $SOURCE_DESC; $BREAKING_COUNT declare a breaking change.)"
     exit 0
 fi
 
@@ -215,17 +348,22 @@ if [ "$T_MAJ" = "$P_MAJ" ] && [ "$T_MIN" = "$P_MIN" ]; then
 fi
 
 # ─── 3. Verdict ──────────────────────────────────────────────────────────────
+# EVERY verdict line below quotes what was actually read. That is not decoration:
+# the #3061 hole was a guard reporting `✓` after iterating over an empty
+# `changelog.d/`, and a green with no measurement in it is indistinguishable
+# from a green that measured everything. With the count in the sentence, a
+# release log that says "examined 0 line(s)" reads as the defect it is.
 if [ "$IS_PATCH" = false ]; then
-    say "${GREEN}✓${NC} breaking-change/patch guard: v$TARGET_NORM is a minor/major bump over v$PREVIOUS — $BREAKING_COUNT breaking fragment(s) may ship."
+    say "${GREEN}✓${NC} breaking-change/patch guard: v$TARGET_NORM is a minor/major bump over v$PREVIOUS — examined $SOURCE_DESC, $BREAKING_COUNT breaking declaration(s) may ship."
     exit 0
 fi
 
 if [ "$BREAKING_COUNT" -eq 0 ]; then
-    say "${GREEN}✓${NC} breaking-change/patch guard: v$TARGET_NORM is patch-level over v$PREVIOUS, and no fragment declares a breaking change."
+    say "${GREEN}✓${NC} breaking-change/patch guard: v$TARGET_NORM is patch-level over v$PREVIOUS — examined $SOURCE_DESC, none declares a breaking change."
     exit 0
 fi
 
-echo -e "${RED}REFUSED:${NC} v$TARGET_NORM is a PATCH bump over v$PREVIOUS, but $BREAKING_COUNT fragment(s) declare a breaking change:"
+echo -e "${RED}REFUSED:${NC} v$TARGET_NORM is a PATCH bump over v$PREVIOUS, but $BREAKING_COUNT of $EXAMINED_UNITS source(s) examined declare a breaking change:"
 echo ""
 i=0
 while [ "$i" -lt "$BREAKING_COUNT" ]; do
@@ -240,5 +378,13 @@ echo "release.yml's publish-rn derives that version straight from the tag — wh
 echo "every consumer's caret range picks up without review."
 echo ""
 echo -e "Fix: tag ${GREEN}v$P_MAJ.$((P_MIN + 1)).0${NC} instead."
-echo "     If a fragment is not actually breaking, add '<!-- breaking: false -->' to it."
+if [ "$FROM_CHANGELOG" = true ]; then
+    echo "     This ran at RELEASE time, so nothing has been published yet — delete the"
+    echo "     tag, re-tag at the minor version, and the publishers run against it."
+    echo "     If the section does not actually describe a breaking change, reword the"
+    echo "     bullet: '<!-- breaking: false -->' opts a FRAGMENT out, and the fragments"
+    echo "     were consumed at collation."
+else
+    echo "     If a fragment is not actually breaking, add '<!-- breaking: false -->' to it."
+fi
 exit 1

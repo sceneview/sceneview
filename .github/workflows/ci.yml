@@ -1660,7 +1660,9 @@ jobs:
       # happen for months. That is the shape of gate that rots green (#2988), so
       # the self-test is what keeps it honest — both directions (real #3037 prose
       # must refuse; "non-breaking" and "groundbreaking", both taken from real
-      # fragments, must not) plus two mutation tests, one per direction.
+      # fragments, must not) plus four mutation tests. Since #3061 it also pins
+      # the `--from-changelog` mode release.yml runs in, and the invariant that
+      # the same text gets the same verdict before and after collation.
       - name: Self-test breaking-change/patch guard
         if: always() && steps.checkout.outcome == 'success'
         shell: bash

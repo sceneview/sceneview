@@ -15,11 +15,72 @@ permissions:
   contents: read
 
 jobs:
+  # ── 0. The gate every publisher below waits on (#3061) ─────────────────────
+  # Until this job existed, this workflow performed FIVE irreversible
+  # publications — Maven Central, three npm packages, pub.dev — and not one of
+  # them consulted the breaking-change/patch guard. The policy that a
+  # source-breaking change ships MINOR and never PATCH was enforced only at
+  # collation time, i.e. in a commit, days before the tag that actually
+  # publishes. #3061 named `publish-rn` (`VERSION=${GITHUB_REF_NAME#v}` straight
+  # onto npm, where a `^` range takes a patch without review); the gap was all
+  # five.
+  #
+  # ⚠️ The obvious fix would have been a FALSE GREEN, and that is why this job
+  # passes `--from-changelog`. `check-breaking-change-bump.sh`'s default mode
+  # iterates `changelog.d/*.md`, and `collate-changelog.sh` has DELETED every
+  # fragment by the time a tag exists. Called plainly here it would loop zero
+  # times, count zero breaking fragments and print `✓` having read nothing — a
+  # job that cannot fail, wired in to look like a gate. `--from-changelog`
+  # reads the collated `## vX.Y.Z` section instead, through the same scanner,
+  # and treats "no section / empty section" as exit 2 rather than as a pass.
+  #
+  # ONE job, and every publisher `needs:` it — including `create-release`,
+  # whose `if: always()` would otherwise cut a public GitHub Release out of a
+  # refused version while the publishers sat skipped. That single edge is also
+  # what `check-release-publish-verification.py` contract G pins, so a
+  # publisher added later without it fails CI instead of shipping unguarded.
+  breaking-change-guard:
+    name: Breaking-change / patch-bump guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # Both trigger paths, exactly as publish-rn derives its npm version: the
+      # tag on a `push`, `gradle.properties` on a dispatch. A guard that judged
+      # a different version from the one being published would be worse than
+      # none — it would be a green stamp on the wrong release.
+      - name: Resolve the version this run would publish
+        id: version
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          else
+            VERSION=${GITHUB_REF_NAME#v}
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not resolve the release version from $GITHUB_EVENT_NAME"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Guarding v$VERSION"
+
+      - name: Refuse a patch-level release that ships a breaking change
+        # Through `env:`, never `${{ }}` inside `run:` — an expression
+        # substituted into the script text is code before bash parses it.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash .claude/scripts/check-breaking-change-bump.sh "$VERSION" --from-changelog
+
   # ── 1. Publish Android library to Maven Central ────────────────────────────
   publish-library:
     name: Publish to Maven Central
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [breaking-change-guard]
     permissions:
       contents: read
     steps:
@@ -116,6 +177,10 @@ jobs:
     # The previous 15 would have killed the job mid-retry before the wrapper
     # could exhaust its 3 attempts.
     timeout-minutes: 45
+    # Also behind the guard: this job pushes a versioned API-doc tree to the
+    # public `sceneview.github.io` site, so a refused release must not leave
+    # documentation for it standing.
+    needs: [breaking-change-guard]
     permissions:
       contents: read
     # Cross-workflow serialisation (#1417). This job and docs.yml's `deploy`
@@ -288,6 +353,7 @@ jobs:
     name: Publish MCP to npm
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [breaking-change-guard]
     permissions:
       contents: read
     steps:
@@ -347,6 +413,7 @@ jobs:
     name: Publish sceneview-web to npm
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [breaking-change-guard]
     permissions:
       contents: read
     steps:
@@ -440,6 +507,10 @@ jobs:
     name: Publish @sceneview-sdk/react-native to npm
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The job #3061 was filed about: `VERSION=${GITHUB_REF_NAME#v}` below puts
+    # the tag straight onto npm, where every consumer's `^` range takes a patch
+    # without review.
+    needs: [breaking-change-guard]
     permissions:
       contents: read
     steps:
@@ -595,6 +666,7 @@ jobs:
     name: Publish flutter_sceneview to pub.dev
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [breaking-change-guard]
     permissions:
       contents: read
       id-token: write # OIDC token exchange for pub.dev automated publishing
@@ -754,7 +826,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [publish-library, publish-mcp, publish-web, publish-rn, pub-publish, validate-spm, publish-api-docs]
+    needs: [breaking-change-guard, publish-library, publish-mcp, publish-web, publish-rn, pub-publish, validate-spm, publish-api-docs]
     # User-visible artifacts (Maven Central + the 3 npm packages + SPM tag)
     # must NOT have failed before we cut the GitHub Release — those are what
     # users actually install. `publish-api-docs` (Dokka HTML) is secondary:
@@ -768,8 +840,18 @@ jobs:
     # only an outright failure blocks. Harmonised on the
     # `!= 'failure' && != 'cancelled'` pattern across all publishers.
     # Closes FU13 (#1003) and #1150.
+    #
+    # ⚠️ The guard is the ONE `needs:` entry tested for `== 'success'`, and it
+    # has to be (#3061). Everything else here is a `!= 'failure'` because a
+    # SKIPPED publisher (version already on the registry) is a legitimate
+    # re-run. But a failed guard also leaves every publisher `skipped` — so
+    # under the lenient pattern this job would have sailed through and cut a
+    # public GitHub Release for the very version the guard just refused, with
+    # nothing published behind it. `always()` is what makes that reachable;
+    # this line is what closes it.
     if: |
       always()
+      && needs.breaking-change-guard.result == 'success'
       && needs.publish-library.result != 'failure'
       && needs.publish-library.result != 'cancelled'
       && needs.publish-mcp.result != 'failure'
