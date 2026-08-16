@@ -220,7 +220,12 @@ scan_invocations() {
                 # `([[:space:]]|$)` is what does the work: a filename continues
                 # with `.`, a command does not.
                 if (line ~ /(^|[^[:alnum:]._\/-])(vitest|jest)([[:space:]]|$)/ ||
-                    line ~ /(^|[^[:alnum:]._\/-])npm[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$)/ ||
+                    # `npm run test:ci`, `test:coverage`, `test:unit` — the
+                    # colon-suffixed script name is the ordinary npm idiom, and
+                    # requiring a bare `test` read those packages as MISSING.
+                    # Only a `:` continues the word: `npm run testimonials` is
+                    # still not an invocation.
+                    line ~ /(^|[^[:alnum:]._\/-])npm[[:space:]]+(run[[:space:]]+)?test(:[[:alnum:]:_-]+)?([[:space:]]|$)/ ||
                     line ~ /(^|[^[:alnum:]._\/-])playwright[[:space:]]+test([[:space:]]|$)/) {
                     pend[++np] = line
                 }
@@ -329,11 +334,20 @@ fires_on_pr() {
     awk '
         function ind(s) { match(s, /^ */); return RLENGTH }
 
-        # A new top-level key ends the previous block. The inline-array form
-        # lives on this same line: `on: [push, pull_request]`.
+        # A new top-level key ends the previous block. TWO of the three trigger
+        # spellings live on this same line, not under it: the inline array
+        # `on: [push, pull_request]`, and the bare scalar `on: pull_request`.
+        # The scalar is the one this used to miss — a legal single-event form
+        # that fell through to the block-mapping walk below, found no
+        # `pull_request:` KEY, and answered "does not run on pull requests"
+        # about a workflow that runs on nothing else. Fail-closed, so it could
+        # only ever cost a false ADVISORY, and no workflow here writes it
+        # today — but it is one alternation, and a bound nobody can trip is
+        # cheaper removed than documented.
         /^[^ #]/ {
             on = ($0 ~ /^["\x27]?on["\x27]?:/)
             if (on && $0 ~ /:[[:space:]]*\[[^]]*pull_request/) found = 1
+            if (on && $0 ~ /:[[:space:]]*pull_request(_target)?[[:space:]]*$/) found = 1
             lvl = 0
             next
         }

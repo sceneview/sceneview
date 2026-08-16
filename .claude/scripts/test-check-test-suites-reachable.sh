@@ -638,6 +638,67 @@ else
     bad "'**/*.ts' read as not covering a TypeScript suite — false MISSING (rc=$RC)"
 fi
 
+# ── 24. the bare-scalar trigger form is recognised ───────────────────────────
+# `on: pull_request` is the third legal spelling, alongside the block mapping
+# and the inline array. It fell through the block walk — no `pull_request:` KEY
+# exists under it — so the gate answered "does not run on pull requests" about
+# a workflow that runs on nothing else. Fail-closed, hence a false ADVISORY
+# rather than a false OK, which is why it needed a case and not a red run.
+R="$(mkrepo scalaron)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on: pull_request
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "the bare-scalar 'on: pull_request' form counts as a PR trigger"
+else
+    bad "'on: pull_request' read as not PR-triggered — false ADVISORY (rc=$RC)"
+fi
+
+# ── 25. a colon-suffixed npm script is still an invocation ───────────────────
+# `npm run test:ci` / `test:coverage` is the ordinary npm idiom. Requiring a
+# bare `test` word made such a package read MISSING — fail-closed and loud, but
+# wrong, and the fix must not widen into `npm run testimonials`.
+R="$(mkrepo npmsuffix)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm run test:coverage
+YML
+stage "$R"; run_gate "$R"
+if [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "'npm run test:coverage' is read as an invocation"
+else
+    bad "a colon-suffixed npm test script read as no invocation (rc=$RC)"
+fi
+
+# ── 25b. …but an unrelated script starting with `test` is not ────────────────
+R="$(mkrepo npmword)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm run testimonials
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'no workflow step runs its tests'; then
+    ok "'npm run testimonials' is not read as running tests"
+else
+    bad "the colon suffix widened into any word starting with test — fail-open (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -761,6 +822,17 @@ mutant 'wave every leading-wildcard filter through again' \
     're="^$(glob_to_ere "$glob")$"' 're="^.*$"' mdglob 'never triggers'
 mutant 'let no leading-wildcard filter ever match' \
     '[[ "$f" =~ $re ]] && return 0' ':' tsglob '✓ app'
+mutant 'drop the bare-scalar trigger form' \
+    'if (on && $0 ~ /:[[:space:]]*pull_request(_target)?[[:space:]]*$/) found = 1' \
+    'if (0) found = 1' scalaron '✓ app'
+# Both directions of the colon suffix: dropping it loses `test:coverage`,
+# widening it to `[[:alnum:]]*` swallows `testimonials`.
+mutant 'require a bare `test` npm script again' \
+    'test(:[[:alnum:]:_-]+)?([[:space:]]|$)/ ||' \
+    'test([[:space:]]|$)/ ||' npmsuffix '✓ app'
+mutant 'let the npm script suffix start without a colon' \
+    'test(:[[:alnum:]:_-]+)?([[:space:]]|$)/ ||' \
+    'test([[:alnum:]:_-]+)?([[:space:]]|$)/ ||' npmword 'no workflow step runs its tests'
 
 echo ""
 echo "test-check-test-suites-reachable: $PASS passed, $FAIL failed"
