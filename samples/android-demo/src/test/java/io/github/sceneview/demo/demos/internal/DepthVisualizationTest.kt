@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -176,6 +177,164 @@ class DepthVisualizationTest {
     fun `depthBufferToArgb rejects rowStride smaller than width`() {
         val buf = ByteBuffer.allocate(10)
         DepthVisualization.depthBufferToArgb(buf, 5, 1, 5) // width*2 = 10, given 5
+    }
+
+    // ── rotation (#3184) ──────────────────────────────────────────────────
+
+    /**
+     * Every rotation assertion below uses this 3×2 grid, never a 1-pixel-tall strip.
+     * A strip is degenerate: with `height == 1` the no-rotation destination index and the
+     * 90° one collapse onto the same value, so the pre-fix behaviour — no rotation at all,
+     * which *is* #3184 — passes a strip-based test. The grid does not let it. Each cell
+     * carries its own depth so every sample is distinguishable by color.
+     *
+     * ```
+     *  a b c        depth 400 500 600
+     *  d e f              700 800 900
+     * ```
+     */
+    private val gridWidth = 3
+    private val gridHeight = 2
+    private val gridDepths = intArrayOf(400, 500, 600, 700, 800, 900)
+
+    private fun grid(): ByteBuffer =
+        ByteBuffer.allocate(gridWidth * gridHeight * 2).order(ByteOrder.LITTLE_ENDIAN).apply {
+            gridDepths.forEachIndexed { i, mm -> putShort(i * 2, mm.toShort()) }
+        }
+
+    /** The color the grid cell holding [depthMm] must end up as. */
+    private fun color(depthMm: Int): Int =
+        DepthVisualization.falseColorArgb(DepthVisualization.normalize(depthMm)!!)
+
+    /** Expected pixels, written in reading order of the *rotated* image. */
+    private fun expect(vararg depthsMm: Int): IntArray =
+        IntArray(depthsMm.size) { color(depthsMm[it]) }
+
+    private fun rotate(degrees: Int): IntArray = DepthVisualization.depthBufferToArgb(
+        depthBytes = grid(),
+        width = gridWidth,
+        height = gridHeight,
+        rowStrideBytes = gridWidth * 2,
+        rotationDegrees = degrees,
+    )
+
+    @Test
+    fun `depthBufferToArgb rotates 90 degrees clockwise`() {
+        // abc/def turned clockwise is da/eb/fc — the bottom-left sample leads the top row.
+        // This is the portrait case: without it the overlay lies 90° off the camera (#3184).
+        assertArrayEquals(
+            expect(
+                700, 400,
+                800, 500,
+                900, 600,
+            ),
+            rotate(90)
+        )
+    }
+
+    @Test
+    fun `depthBufferToArgb rotates 270 degrees the other way`() {
+        // The mirror of the 90° case: cf/be/ad. If these two ever agree, the rotation has
+        // collapsed to a transpose and reverse-portrait renders upside-down.
+        assertArrayEquals(
+            expect(
+                600, 900,
+                500, 800,
+                400, 700,
+            ),
+            rotate(270)
+        )
+    }
+
+    @Test
+    fun `depthBufferToArgb rotates 180 degrees through both axes`() {
+        // fed/cba — a row-only or column-only flip would leave one axis in place.
+        assertArrayEquals(
+            expect(
+                900, 800, 700,
+                600, 500, 400,
+            ),
+            rotate(180)
+        )
+    }
+
+    @Test
+    fun `depthBufferToArgb at 0 degrees is unchanged`() {
+        val rotated = rotate(0)
+        val plain = DepthVisualization.depthBufferToArgb(
+            depthBytes = grid(),
+            width = gridWidth,
+            height = gridHeight,
+            rowStrideBytes = gridWidth * 2,
+        )
+
+        // The default must stay a no-op — the rotation is opt-in per call site.
+        assertArrayEquals(plain, rotated)
+    }
+
+    @Test
+    fun `depthBufferToArgb rotation is a permutation, never a drop`() {
+        // Every source sample must land somewhere distinct: a wrong destination index
+        // silently overwrites one pixel and leaves another at 0, which reads on screen
+        // as noise rather than as a rotation bug.
+        val width = 3
+        val height = 4
+        val rowStride = width * 2
+        val buf = ByteBuffer.allocate(rowStride * height).order(ByteOrder.LITTLE_ENDIAN)
+        // Distinct in-range depths, one per pixel, so each maps to its own color.
+        (0 until width * height).forEach { i ->
+            buf.putShort(i * 2, (400 + i * 100).toShort())
+        }
+
+        listOf(0, 90, 180, 270).forEach { degrees ->
+            val pixels = DepthVisualization.depthBufferToArgb(
+                depthBytes = buf,
+                width = width,
+                height = height,
+                rowStrideBytes = rowStride,
+                rotationDegrees = degrees,
+            )
+            assertEquals("size at $degrees°", width * height, pixels.size)
+            assertEquals(
+                "every sample survives the $degrees° rotation",
+                width * height,
+                pixels.toSet().size
+            )
+        }
+    }
+
+    @Test
+    fun `rotated dimensions swap on a quarter turn only`() {
+        assertEquals(240, DepthVisualization.rotatedWidth(240, 180, 0))
+        assertEquals(180, DepthVisualization.rotatedHeight(240, 180, 0))
+        // Portrait: the 240×180 sensor image is displayed as 180×240.
+        assertEquals(180, DepthVisualization.rotatedWidth(240, 180, 90))
+        assertEquals(240, DepthVisualization.rotatedHeight(240, 180, 90))
+        assertEquals(240, DepthVisualization.rotatedWidth(240, 180, 180))
+        assertEquals(180, DepthVisualization.rotatedHeight(240, 180, 180))
+        assertEquals(180, DepthVisualization.rotatedWidth(240, 180, 270))
+        assertEquals(240, DepthVisualization.rotatedHeight(240, 180, 270))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `depthBufferToArgb rejects a rotation that is not a quarter turn`() {
+        rotate(45)
+    }
+
+    @Test
+    fun `displayRotationToDegrees turns the sensor image upright`() {
+        // Surface.ROTATION_* ordinals. Portrait needs the 90° turn — that is the case
+        // #3184 reported, and the one the emulator's landscape default never showed.
+        assertEquals(90, DepthVisualization.displayRotationToDegrees(0))
+        assertEquals(0, DepthVisualization.displayRotationToDegrees(1))
+        assertEquals(270, DepthVisualization.displayRotationToDegrees(2))
+        assertEquals(180, DepthVisualization.displayRotationToDegrees(3))
+    }
+
+    @Test
+    fun `displayRotationToDegrees falls back to portrait on an unknown rotation`() {
+        assertEquals(90, DepthVisualization.displayRotationToDegrees(-1))
+        assertEquals(90, DepthVisualization.displayRotationToDegrees(42))
     }
 
     // ── clampUnit ─────────────────────────────────────────────────────────

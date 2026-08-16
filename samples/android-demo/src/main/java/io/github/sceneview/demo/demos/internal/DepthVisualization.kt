@@ -42,6 +42,47 @@ internal object DepthVisualization {
     private const val ARGB_UNKNOWN: Int = 0x00000000 // fully transparent
 
     /**
+     * Clockwise rotation, in degrees, that makes an ARCore depth image upright on screen
+     * for a given `android.view.Surface.ROTATION_*` display rotation.
+     *
+     * ARCore hands the depth image out in the **camera sensor** frame, which is landscape
+     * and does not follow the display: in portrait the image arrives 90° off, which is
+     * [#3184](https://github.com/sceneview/sceneview/issues/3184). The back-camera sensor
+     * orientation is 90° on every Android phone this demo targets — the same assumption
+     * `ARMLObjectLabelDemo` makes when it hands a CPU image to ML Kit, and the same table.
+     *
+     * @param surfaceRotation One of the `Surface.ROTATION_*` **ordinals** (0, 1, 2, 3) — not
+     *                        degrees. An unknown value falls back to the portrait mapping.
+     */
+    fun displayRotationToDegrees(surfaceRotation: Int): Int = when (surfaceRotation) {
+        0 -> 90 // Surface.ROTATION_0   — portrait
+        1 -> 0 // Surface.ROTATION_90  — landscape, sensor already upright
+        2 -> 270 // Surface.ROTATION_180 — reverse portrait
+        3 -> 180 // Surface.ROTATION_270 — reverse landscape
+        else -> 90
+    }
+
+    /** Width of a `width` × `height` image after [rotationDegrees] of clockwise rotation. */
+    fun rotatedWidth(width: Int, height: Int, rotationDegrees: Int): Int =
+        if (normalizeRotation(rotationDegrees) % 180 == 0) width else height
+
+    /** Height of a `width` × `height` image after [rotationDegrees] of clockwise rotation. */
+    fun rotatedHeight(width: Int, height: Int, rotationDegrees: Int): Int =
+        if (normalizeRotation(rotationDegrees) % 180 == 0) height else width
+
+    /**
+     * Fold an arbitrary degree value into the `{0, 90, 180, 270}` quarter-turn set,
+     * rejecting anything that is not a multiple of 90 — this pipeline rotates by whole
+     * quarter turns only (it re-indexes pixels, it does not resample).
+     */
+    private fun normalizeRotation(rotationDegrees: Int): Int {
+        require(rotationDegrees % 90 == 0) {
+            "rotationDegrees ($rotationDegrees) must be a multiple of 90"
+        }
+        return ((rotationDegrees % 360) + 360) % 360
+    }
+
+    /**
      * Compute the normalized depth ratio in `[0, 1]` for a raw 16-bit depth
      * sample, given the visualization window `[nearMm, farMm]`. Out-of-range
      * samples clamp to the edge; the special value `0` (ARCore "no data")
@@ -110,6 +151,12 @@ internal object DepthVisualization {
      * a depth of 0 ("no data") become fully transparent so the camera feed shows
      * through them when the overlay is alpha-blended.
      *
+     * With a non-zero [rotationDegrees] the samples are written straight into their
+     * rotated destination index, so making the overlay upright costs no extra pass and
+     * no second buffer. The returned array is then
+     * [rotatedWidth] × [rotatedHeight] — for a quarter turn those are the *swapped*
+     * source dimensions, and the caller's bitmap must be allocated to match.
+     *
      * @param depthBytes     Direct buffer with ARCore depth data; not consumed (callers
      *                       can re-read it).
      * @param width          Pixel width of the depth image.
@@ -118,6 +165,9 @@ internal object DepthVisualization {
      *                       row-strided buffers, so this is `>= width * 2`.
      * @param nearMm         Near plane in millimetres for the false-color window.
      * @param farMm          Far plane in millimetres for the false-color window.
+     * @param rotationDegrees Clockwise rotation to apply while writing, a multiple of 90.
+     *                        Use [displayRotationToDegrees] to derive it from the current
+     *                        display rotation (#3184).
      */
     fun depthBufferToArgb(
         depthBytes: ByteBuffer,
@@ -126,11 +176,16 @@ internal object DepthVisualization {
         rowStrideBytes: Int,
         nearMm: Int = NEAR_MM_DEFAULT,
         farMm: Int = FAR_MM_DEFAULT,
+        rotationDegrees: Int = 0,
     ): IntArray {
         require(width > 0 && height > 0) { "depth image must be non-empty (got $width x $height)" }
         require(rowStrideBytes >= width * 2) {
             "rowStrideBytes ($rowStrideBytes) must be >= width*2 (${width * 2})"
         }
+        val rotation = normalizeRotation(rotationDegrees)
+        // Stride of the destination array — the rotated width, which is the source
+        // height on a quarter turn.
+        val outWidth = rotatedWidth(width, height, rotation)
         val out = IntArray(width * height)
         // Defensive: ARCore hands us the buffer in little-endian on every platform we ship to,
         // but pinning the order makes the contract explicit and lets the JVM test feed an
@@ -140,7 +195,6 @@ internal object DepthVisualization {
         try {
             for (y in 0 until height) {
                 val rowStart = y * rowStrideBytes
-                val outBase = y * width
                 for (x in 0 until width) {
                     val byteIndex = rowStart + x * 2
                     // Read as little-endian unsigned 16-bit millimetres.
@@ -148,11 +202,21 @@ internal object DepthVisualization {
                     val hi = depthBytes.get(byteIndex + 1).toInt() and 0xFF
                     val mm = (hi shl 8) or lo
                     val normalized = normalize(mm, nearMm, farMm)
-                    out[outBase + x] = if (normalized == null) {
+                    val argb = if (normalized == null) {
                         ARGB_UNKNOWN
                     } else {
                         falseColorArgb(normalized)
                     }
+                    // Where this sample lands once the image is turned clockwise. A
+                    // quarter turn maps source (x, y) across the swapped axes, so the
+                    // destination row is derived from x, not from y.
+                    val outIndex = when (rotation) {
+                        90 -> (x * outWidth) + (height - 1 - y)
+                        180 -> ((height - 1 - y) * outWidth) + (width - 1 - x)
+                        270 -> ((width - 1 - x) * outWidth) + y
+                        else -> (y * outWidth) + x
+                    }
+                    out[outIndex] = argb
                 }
             }
         } finally {

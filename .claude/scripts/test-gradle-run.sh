@@ -738,6 +738,29 @@ Resolving /Users/someone/.gradle/caches/modules-2/files-2.1/androidx.core/core/1
 BUILD SUCCESSFUL in 12s
 LOG
 
+# Verbatim from this repo's own roborazzi.log, line 148 (#3195). The path is
+# RELATIVE, and it is the reason the gate refused every push: the pattern used
+# to start at the slash after `samples` and yield `/android-demo/src/…`, which
+# is under no project root because it is under no root at all. A relative path
+# is the local tree by definition — it can never name another clone.
+cat > "$TMP/relative.log" <<'LOG'
+> Task :samples:android-demo:generateDemoFragments
+OK: samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/GeneratedDemos.kt already in sync with 54 fragment(s).
+BUILD SUCCESSFUL in 3s
+LOG
+
+# A foreign path Gradle printed inside brackets. `[` is in the leading-delimiter
+# class for this shape alone: without it the path does not begin at a recognised
+# boundary and the whole line is skipped, so a genuinely foreign tree goes
+# unreported — the silent direction of the same bug #3195 fixed loudly. The
+# delimiter came from the #3189 side when the two independent fixes were merged,
+# and this case is why it survived the merge.
+cat > "$TMP/bracketed.log" <<'LOG'
+> Task :sceneview:compileReleaseKotlin
+e: [/private/tmp/sv-3136/sceneview/src/main/kotlin/io/github/sceneview/Scene.kt:12:5] unresolved reference
+BUILD FAILED in 4s
+LOG
+
 ft() { gradle_foreign_tree_paths "$1" "$FT_PROJ"; }
 
 if [ -n "$(ft "$TMP/foreign.log")" ]; then
@@ -745,7 +768,12 @@ if [ -n "$(ft "$TMP/foreign.log")" ]; then
 else
     bad "another clone's source path went UNDETECTED — a verdict could be issued about the wrong tree"
 fi
-for f in local cachepaths; do
+if [ -n "$(ft "$TMP/bracketed.log")" ]; then
+    ok "a foreign path printed inside brackets is detected"
+else
+    bad "a bracketed foreign path went UNDETECTED — the delimiter class does not admit '['"
+fi
+for f in local cachepaths relative; do
     if [ -z "$(ft "$TMP/$f.log")" ]; then
         ok "$f.log is not flagged"
     else
@@ -756,18 +784,31 @@ done
 # The measured clean-run baseline: 0 hits across every log the gate writes. If
 # this repo's real logs ever trip the check, the gate is unusable, so assert it
 # against the actual artefacts when a previous run left them behind.
-REAL_LOGS="$(ls -td "${TMPDIR:-/tmp}"/sceneview-pre-push/*/ 2>/dev/null | head -1)"
-if [ -n "$REAL_LOGS" ] && [ -d "$REAL_LOGS" ]; then
+#
+# THIS WORKTREE's logs, resolved through the same lib the gate writes through
+# (#3074) — not `ls -td …/*/ | head -1`, which returned whichever worktree ran
+# last. That made the assertion non-deterministic across the ~10 worktrees this
+# repo runs in parallel: it passed here while reading a NEIGHBOUR's directory,
+# on the very run whose own roborazzi.log carried the #3195 defect. An assertion
+# that reads someone else's artefacts is the false green of #3159 turned inward.
+source "$SCRIPT_DIR/lib/log-dir.sh"
+REAL_LOGS="$(pre_push_log_dir "$(cd "$SCRIPT_DIR/../.." && pwd)")"
+if [ -d "$REAL_LOGS" ] && [ -n "$(find "$REAL_LOGS" -maxdepth 1 -name '*.log' -print -quit)" ]; then
     ft_hits=0
-    for f in "$REAL_LOGS"*.log; do
+    ft_seen=0
+    for f in "$REAL_LOGS"/*.log; do
         [ -f "$f" ] || continue
+        ft_seen=$((ft_seen + 1))
         [ -z "$(gradle_foreign_tree_paths "$f" "$SCRIPT_DIR/../..")" ] || ft_hits=$((ft_hits + 1))
     done
     if [ "$ft_hits" -eq 0 ]; then
-        ok "no real gate log in $REAL_LOGS trips the check"
+        ok "none of this worktree's $ft_seen real gate log(s) trip the check"
     else
-        bad "$ft_hits real gate log(s) trip the check — it would block this repo's own clean runs"
+        bad "$ft_hits of $ft_seen real gate log(s) trip the check — it would block this repo's own clean runs"
     fi
+else
+    # Say it. A silently skipped assertion reads exactly like a passing one.
+    echo "  ⚠ no gate log in $REAL_LOGS yet — real-artefact check NOT run (run pre-push-check.sh first)"
 fi
 
 # `gradle_report_failure` must route contamination to INCOMPLETE, never to
@@ -828,10 +869,15 @@ ft_mutant() { # name sed-expr fixture expectation(detect|silent)
 }
 
 ft_mutant 'match any absolute path, not just /src/' \
-    's|/src/\[\^ :"|/[^ :"|' cachepaths detect
+    's|\*/src/|*/|' cachepaths detect
 ft_mutant 'never exclude the project dir' \
     's|case "\$p_norm" in "\$proj_norm"/\*) ;; \*) printf|case "$p_norm" in "$proj_norm"/*) ;; "") printf|' \
     foreign silent
+# C — drop the start-of-path anchor: the pattern matches mid-token again, every
+#     relative path containing /src/ reads as another clone, and the gate blocks
+#     this repository's own clean runs (#3195).
+ft_mutant 'drop the start-of-path anchor' \
+    's|local bound=.*|local bound=""|' relative detect
 
 echo ""
 echo "test-gradle-run: $PASS passed, $FAIL failed"
