@@ -249,11 +249,11 @@ private fun ViewNodeSection(
         // previously every scene tap incremented, which defeated the whole point of a
         // picking demo.
         //
-        // The embedded Compose Button can not do this itself: a ViewNode renders its
-        // View through a FLAG_NOT_TOUCHABLE window (see ViewNode.tryAttachingView) and the SDK never
-        // dispatches MotionEvents into that view tree, so `Button.onClick` can not fire
-        // today — see #2845. Picking the card is therefore the honest tap source, and
-        // it is exactly what this demo is meant to show.
+        // Since #2845 the embedded Compose tree is the FIRST to see the tap: the card and
+        // its Button increment the counter themselves. The two paths can never both fire
+        // for one tap — a gesture the view consumes never reaches this listener — so the
+        // ray-cast branch below is the fallback for the taps Compose lets through (a
+        // ViewNode whose content has no Surface, forwarding turned off, …).
         onSingleTapUp = { _, node ->
             if (node is ViewNode) tapCount++
             onHeroGesture()
@@ -316,10 +316,9 @@ private fun ViewNodeSection(
                     scale = Float3(0.35f),
                     isVisible = isVisible
                 ) {
-                    // `onTap` can not fire today — nothing dispatches touch into a
-                    // ViewNode's view tree (#2845). It stays wired so the button works
-                    // the day it does; whoever lands #2845 must then drop the
-                    // ray-cast increment above, or a tap would count twice.
+                    // Real Compose interaction inside the 3D quad (#2845): the card and its
+                    // "Tap me" Button receive the forwarded MotionEvents, so `onTap` fires
+                    // from the embedded hierarchy — no scene-level workaround needed.
                     EmbeddedCard(tapCount = tapCount, onTap = { tapCount++ })
                 }
                 ViewNode(
@@ -339,7 +338,10 @@ private fun ViewNodeSection(
 
 @Composable
 private fun EmbeddedCard(tapCount: Int, onTap: () -> Unit) {
+    // Clickable card, not a static one: since #2845 a tap anywhere on the quad is a real
+    // Compose click, so the whole card counts — exactly as it would on screen.
     Card(
+        onClick = onTap,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         ),

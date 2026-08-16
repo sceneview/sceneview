@@ -854,14 +854,14 @@ class DemoInteractionTest {
         tap("View Node")
         screenshot("88_viewNode_visible_default")
 
-        // ViewNode's "Tap me" Button is rendered inside a Compose hierarchy attached to
-        // the 3D-textured quad. UiAutomator cannot see it — the 3D projection never
-        // routes input events back into the Compose tree. The demo works around this by
-        // hoisting the `tapCount` state and wiring a SceneView gesture listener
-        // (`onSingleTapUp = { tapCount++ }`) so any tap on the viewport surface also
-        // increments the counter. We click three distinct positions so three genuine
-        // up-events fire (tapping the same pixel back-to-back can coalesce into a
-        // double-tap sequence on some gesture stacks).
+        // ViewNode's card is rendered inside a Compose hierarchy attached to the 3D-textured
+        // quad, so UiAutomator still cannot *see* it — it has no node in the accessibility
+        // tree of the host window. It can be driven by raw coordinates though: since #2845
+        // SceneView converts the picking hit into a view pixel and dispatches the stream into
+        // that Compose tree, so a click on the quad is a real click on the card (which is
+        // `Card(onClick = …)`, with the "Tap me" Button inside it). We click three distinct
+        // positions so three genuine up-events fire (tapping the same pixel back-to-back can
+        // coalesce into a double-tap sequence on some gesture stacks); the counter must read 3.
         val cx = device.displayWidth / 2
         val cy = (device.displayHeight * 0.35).toInt()
         device.click(cx - 40, cy); Thread.sleep(500)

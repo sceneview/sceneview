@@ -1426,6 +1426,13 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * }
      * ```
      *
+     * **The content is interactive** (#2845): the scene's picking hit is converted to a view pixel
+     * and the whole touch stream is dispatched into it, so `Button.onClick`, press states, ripples
+     * and inner scrolling work. As on screen, a gesture the content consumes never reaches
+     * `onGestureListener` or the camera manipulator — a Material `Surface`/`Card` consumes touches
+     * even with nothing clickable inside. Pass `apply = { isTouchForwardingEnabled = false }` for a
+     * decorative overlay that must never steal a gesture.
+     *
      * Two consequences of [viewContent] living in its own off-screen window:
      * - **It inherits none of the caller's `CompositionLocal`s** — `MaterialTheme`,
      *   `LocalContentColor`, your own locals. A themed card therefore falls back to Material 3

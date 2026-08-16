@@ -34,6 +34,7 @@ import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.worldToLocalPosition
 import io.github.sceneview.node.ViewNode.WindowManager
 
 /**
@@ -53,14 +54,20 @@ import io.github.sceneview.node.ViewNode.WindowManager
  * Additionally, this manages the lifecycle of the window to help ensure that the window is
  * added/removed from the WindowManager at the appropriate times.
  *
- * ## The rendered view is NOT interactive (yet)
+ * ## The rendered view IS interactive
  *
- * A [ViewNode] renders its [View] into a texture; it does not put that view on screen. The hosting
- * window is attached with `FLAG_NOT_TOUCHABLE`, and nothing currently dispatches a
- * [MotionEvent] back into the view hierarchy, so **an embedded `Button.onClick`, ripple, press
- * state or inner scroll never fires**. Treat the content as a live-rendering, read-only surface.
+ * A [ViewNode] renders its [View] into a texture; it does not put that view on screen, so Android
+ * never dispatches touches to it (the hosting window is attached with `FLAG_NOT_TOUCHABLE`).
+ * Instead the node forwards the events the scene's picking ray lands on it: the world hit point is
+ * converted to a view pixel and the whole `DOWN → MOVE → UP` stream is dispatched into the
+ * embedded hierarchy, so `Button.onClick`, press states, ripples and inner scrolling all work
+ * (#2845).
  *
- * To react to a tap on a [ViewNode], pick it from the scene instead and handle the hit yourself:
+ * The stream follows Android's touch-target rule: once the embedded view consumes the `DOWN` it
+ * owns the gesture — the scene gesture detectors and the camera manipulator do not see it — and a
+ * pointer dragged off the quad gets an `ACTION_CANCEL` instead of a stuck press. An event the
+ * embedded view does **not** consume falls through to the scene untouched, so picking a
+ * non-interactive [ViewNode] still works:
  *
  * ```kotlin
  * SceneView(
@@ -71,8 +78,7 @@ import io.github.sceneview.node.ViewNode.WindowManager
  * )
  * ```
  *
- * Forwarding real touch events into the embedded view is tracked by
- * [#2845](https://github.com/sceneview/sceneview/issues/2845).
+ * Set [isTouchForwardingEnabled] to `false` to opt out and always get the scene-level behaviour.
  *
  * @param view The 2D Android [View] that is rendered by this [ViewNode]
  * @param unlit True to disable all lights influences on the rendered view
@@ -87,7 +93,7 @@ class ViewNode(
     private val materialLoader: MaterialLoader,
     view: View,
     unlit: Boolean = false,
-    invertFrontFaceWinding: Boolean = false,
+    private val invertFrontFaceWinding: Boolean = false,
 ) : PlaneNode(engine = engine) {
 
     // Updated when the view is added to the view manager
@@ -106,6 +112,22 @@ class ViewNode(
     val layout: Layout = Layout(view.context).apply {
         addView(view)
     }
+
+    /**
+     * Whether picked touch events are forwarded into the embedded [View] hierarchy (#2845).
+     *
+     * `true` (default) makes the rendered content behave like a real view: a `Button` inside it
+     * clicks, ripples and press states animate, an inner list scrolls — and any gesture the view
+     * consumes is **not** seen by the scene gesture detectors or the camera manipulator, exactly
+     * like a view on screen.
+     *
+     * Set it to `false` for a purely decorative overlay whose quad must never steal a gesture: the
+     * node then only reports hits through the usual picking path
+     * (`onGestureListener` / `Node.onTouch`) — the behaviour of every release before #2845.
+     */
+    var isTouchForwardingEnabled: Boolean = true
+
+    private val touchForwarder = ViewTouchForwarder(layout)
 
     private val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
     private val surface = Surface(surfaceTexture)
@@ -197,6 +219,21 @@ class ViewNode(
 
     fun updateGeometrySize() {
         updateGeometry(size = viewSize / pxPerUnits)
+        // The collider does NOT follow the geometry: `updateGeometry` refreshes Filament's AABB,
+        // but `collisionShape` keeps whatever box the node was built with — `Plane.DEFAULT_SIZE`'s
+        // 1 × 1 × 0. Left stale, `CollisionSystem.hitTest` only ever reports a hit on the central
+        // 1 × 1 unit square of the quad, so anything outside it is dead: a 410 × 420 px card at the
+        // default 250 `pxPerUnits` spans 1.64 × 1.68 units and loses its outer ~30% margin —
+        // usually where the buttons are. Harmless while a ViewNode was only pickable; not once it
+        // forwards touches (#2845). The read-back is safe for the same reason `updateGeometry`
+        // itself is: this whole path is main-thread-only Filament JNI, and the AABB it reads is
+        // manager-side state `setGeometry` has already written, not a queued driver command.
+        //
+        // Scoped to ViewNode on purpose: none of the eleven `updateGeometry` call sites refresh
+        // the collider, so a resized CubeNode still mis-picks the same way. Hoisting the call into
+        // `GeometryNode.updateGeometry` would also clobber a `collisionShape` an app set by hand,
+        // so that is a deliberate change of its own, tracked by #3194.
+        updateCollisionShape()
     }
 
     override fun onAddedToScene(scene: Scene) {
@@ -211,9 +248,66 @@ class ViewNode(
         windowManager.removeView(layout)
     }
 
+    /**
+     * Forwards the picked event into the embedded view hierarchy before the scene sees it (#2845).
+     *
+     * Falls back to the regular [Node] behaviour when forwarding is disabled, when the quad or the
+     * view is not measured yet, or when the embedded view simply does not want the gesture — so a
+     * non-interactive [ViewNode] keeps behaving as a plain pickable node.
+     *
+     * Also gated on [isVisible]: hiding a node only drops its render layer, it does not detach its
+     * collider, and this module's [io.github.sceneview.collision.CollisionSystem.hitTest] filters on
+     * `isHittable` alone (unlike the KMP `SceneGraph.hitTest`, which also tests `isVisible`). Without
+     * this guard a tap on apparently empty space would drive a real click on a control the user
+     * cannot see.
+     *
+     * Either gate flipping to `false` mid-gesture closes a stream that is already open, here rather
+     * than in [onCapturedTouchEvent] — the captured path in `SceneView`'s touch dispatcher only
+     * runs for events whose ray *misses* the node, so a gate flipped while the finger is still on
+     * the quad would otherwise leave the embedded view pressed forever and leak the rest of the
+     * gesture, mid-stream, to detectors that never saw its `DOWN`.
+     *
+     * **Known limitation:** the material is double-sided and un-mirrors its UVs on the back face,
+     * so a quad orbited from behind reads correctly on screen while this mapping stays front-face.
+     * Touches picked on the back face therefore land on the horizontally mirrored pixel. Detecting
+     * the facing needs the camera, which this callback does not receive.
+     */
     override fun onTouchEvent(e: MotionEvent, hitResult: HitResult): Boolean {
+        if (isTouchForwardingEnabled && isVisible) {
+            val point = viewTouchPixels(
+                localPosition = worldToLocalPosition(hitResult.getWorldPosition(), worldToLocal),
+                center = geometry.center,
+                size = geometry.size,
+                widthPx = layout.width,
+                heightPx = layout.height,
+                mirrorX = invertFrontFaceWinding
+            )
+            if (point != null && touchForwarder.onHit(e, point.x, point.y)) {
+                return true
+            }
+        } else if (touchForwarder.onExit(e) && e.actionMasked != MotionEvent.ACTION_DOWN) {
+            // Take the close, drop the verdict on a DOWN. `onExit` treats `ACTION_DOWN` as
+            // terminal and returns true for it, but a fresh gesture belongs to whatever it hits —
+            // consuming it here would hide the DOWN from the gesture detectors and the camera
+            // manipulator while its MOVE/UP still reach them, which is the very stream-without-a-
+            // DOWN this branch exists to prevent. `SceneView`'s captured path drops the same
+            // return value for the same reason.
+            return true
+        }
         return super.onTouchEvent(e, hitResult)
     }
+
+    /**
+     * Continues a stream the embedded view captured on `ACTION_DOWN` once the picking ray leaves
+     * the quad: the view gets a single `ACTION_CANCEL` (no stuck press, no phantom click) and the
+     * rest of the gesture is swallowed.
+     *
+     * Reached only for events whose ray **misses** this node — that is the condition under which
+     * `SceneView`'s dispatcher routes to the captured node. A gate flipped while the finger is
+     * still *on* the quad is therefore not this method's job; [onTouchEvent] closes that stream
+     * itself.
+     */
+    override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 
     override fun destroy() {
         windowManager.removeView(layout)

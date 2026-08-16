@@ -564,6 +564,10 @@ fun SceneView(
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
     val cameraGestureDetectorRef = remember { AtomicReference<CameraGestureDetector?>(null) }
 
+    // Node that consumed the current gesture's ACTION_DOWN, and therefore owns the whole stream
+    // until it ends (#2845). See `touchDispatcher` below.
+    val capturedTouchNodeRef = remember { AtomicReference<Node?>(null) }
+
     // Last surface size pushed to the manipulator, packed as (width.toLong() shl 32) or height.
     // `0L` means "not sized yet". A manipulator's pan math is only correct once it has the real
     // viewport (Filament's ORBIT pan divides screen pixels by the viewport: a stale 1×1 viewport
@@ -601,19 +605,40 @@ fun SceneView(
     // editing feel "leaky" and unresponsive.
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
-        if (onTouchEvent?.invoke(event, hitResult) != true &&
-            hitResult?.node?.onTouchEvent(event, hitResult) != true
-        ) {
-            gestureDetector.onTouchEvent(event, hitResult)
-            // Skip the camera detector when the touch is on an editable node — the node
-            // owns the gesture. We check the hit node's master `isEditable` (and not the
-            // per-axis flags) so a node that's "editable but with all axes locked" still
-            // absorbs the touch — locking an axis should freeze the node, not divert the
-            // gesture to the camera (that would surprise the user).
-            val absorbedByEditableNode = hitResult?.node?.isEditable == true
-            if (!absorbedByEditableNode) {
-                cameraGestureDetectorRef.get()?.onTouchEvent(event)
+        val hitNode = hitResult?.node
+        // Touch-target capture (#2845): the node that consumed the ACTION_DOWN keeps the rest of
+        // the stream, even the events whose ray misses it. Without this, a press dragged off an
+        // interactive ViewNode would never receive its UP and would stay stuck pressed. Delivery
+        // only — `Node.onCapturedTouchEvent` defaults to `false`, so a node that does not opt in
+        // falls through to the untouched path below.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // A new gesture supersedes a stream still held by an earlier one (it ended off-node,
+            // so no UP ever reached its owner). Let the old owner release its press, but never
+            // let it consume this DOWN: the new gesture belongs to whatever it hits now.
+            capturedTouchNodeRef.getAndSet(null)?.takeIf { it !== hitNode }?.onCapturedTouchEvent(event)
+        }
+        val capturedNode = capturedTouchNodeRef.get()?.takeIf { it !== hitNode }
+        var consumedByNode = false
+        // The raw callback keeps its absolute priority, capture or not.
+        if (onTouchEvent?.invoke(event, hitResult) != true) {
+            consumedByNode = capturedNode?.onCapturedTouchEvent(event) == true ||
+                    (hitResult != null && hitNode?.onTouchEvent(event, hitResult) == true)
+            if (!consumedByNode) {
+                gestureDetector.onTouchEvent(event, hitResult)
+                // Skip the camera detector when the touch is on an editable node — the node
+                // owns the gesture. We check the hit node's master `isEditable` (and not the
+                // per-axis flags) so a node that's "editable but with all axes locked" still
+                // absorbs the touch — locking an axis should freeze the node, not divert the
+                // gesture to the camera (that would surprise the user).
+                val absorbedByEditableNode = hitNode?.isEditable == true
+                if (!absorbedByEditableNode) {
+                    cameraGestureDetectorRef.get()?.onTouchEvent(event)
+                }
             }
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> capturedTouchNodeRef.set(hitNode.takeIf { consumedByNode })
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> capturedTouchNodeRef.set(null)
         }
     }
 

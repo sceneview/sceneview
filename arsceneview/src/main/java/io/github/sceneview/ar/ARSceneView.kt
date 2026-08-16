@@ -1376,15 +1376,39 @@ fun ARSceneView(
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
     val cameraGestureDetectorRef = remember { AtomicReference<CameraGestureDetector?>(null) }
 
+    // Node that consumed the current gesture's ACTION_DOWN, and therefore owns the whole stream
+    // until it ends (#2845). Mirrors `SceneView.touchDispatcher` — an AR scene renders the same
+    // interactive `ViewNode`s (the Point & Ask demo pins Compose answer panels in the room).
+    val capturedTouchNodeRef = remember { AtomicReference<Node?>(null) }
+
     SideEffect { gestureDetector.listener = onGestureListener }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
-        if (onTouchEvent?.invoke(event, hitResult) != true &&
-            hitResult?.node?.onTouchEvent(event, hitResult) != true
-        ) {
-            gestureDetector.onTouchEvent(event, hitResult)
-            cameraGestureDetectorRef.get()?.onTouchEvent(event)
+        val hitNode = hitResult?.node
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // A new gesture supersedes a stream still held by an earlier one (it ended off-node,
+            // so no UP ever reached its owner). Let the old owner release its press, but never
+            // let it consume this DOWN: the new gesture belongs to whatever it hits now.
+            capturedTouchNodeRef.getAndSet(null)?.takeIf { it !== hitNode }?.onCapturedTouchEvent(event)
+        }
+        // Touch-target capture (#2845): the node that consumed the ACTION_DOWN also gets the
+        // events whose ray misses it, so it can end its own gesture. `onCapturedTouchEvent`
+        // defaults to `false`, leaving every other node on the untouched path below.
+        val capturedNode = capturedTouchNodeRef.get()?.takeIf { it !== hitNode }
+        var consumedByNode = false
+        // The raw callback keeps its absolute priority, capture or not.
+        if (onTouchEvent?.invoke(event, hitResult) != true) {
+            consumedByNode = capturedNode?.onCapturedTouchEvent(event) == true ||
+                    (hitResult != null && hitNode?.onTouchEvent(event, hitResult) == true)
+            if (!consumedByNode) {
+                gestureDetector.onTouchEvent(event, hitResult)
+                cameraGestureDetectorRef.get()?.onTouchEvent(event)
+            }
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> capturedTouchNodeRef.set(hitNode.takeIf { consumedByNode })
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> capturedTouchNodeRef.set(null)
         }
     }
 

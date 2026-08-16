@@ -399,13 +399,25 @@ CameraNode(
 
 Renders a Jetpack Compose UI onto a flat plane in 3D space. Great for in-world labels, info cards, and HUDs.
 
-!!! warning "The rendered UI is not interactive"
+!!! tip "The rendered UI is interactive"
 
-    A `ViewNode` draws its Compose content into a texture, and the hosting window is
-    `FLAG_NOT_TOUCHABLE` — a `Button` placed inside renders, but its `onClick` never
-    fires (no ripple, no press state, no inner scrolling). To react to a tap, hit-test
-    the node instead: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
-    Real touch forwarding is tracked by [#2845](https://github.com/sceneview/sceneview/issues/2845).
+    A `ViewNode` draws its Compose content into a texture, so Android never dispatches
+    touches to it. The node forwards them itself: the scene's picking hit is converted to a
+    view pixel and the whole `DOWN → MOVE → UP` stream is dispatched into the embedded
+    hierarchy, so `Button.onClick`, press states, ripples and inner scrolling work
+    ([#2845](https://github.com/sceneview/sceneview/issues/2845)).
+
+    As on screen, a gesture the content **consumes** never reaches the scene gesture
+    listener or the camera manipulator — and a Material `Surface`/`Card` consumes touches
+    even with nothing clickable inside. Anything it does not consume still falls through to
+    picking: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`. Pass
+    `apply = { isTouchForwardingEnabled = false }` for a decorative overlay that must never
+    steal a gesture.
+
+    One limitation: the quad is double-sided and the material un-mirrors its UVs on the back
+    face, so a `ViewNode` orbited from behind reads correctly on screen while a touch picked
+    there lands on the horizontally mirrored pixel. Detecting the facing needs the camera,
+    which the touch callback does not receive — do not rely on back-face interaction.
 
 ### Signature
 
@@ -453,7 +465,12 @@ SceneView(
 - **You MUST pass `viewNodeWindowManager = rememberViewNodeManager()` to `SceneView` / `ARSceneView`.** Without it, the off-screen window is never attached → `Layout.onLayout` never fires → surface stays at 0×0 → Filament renders a black rectangle. Fixed in v4.0.0 by wiring the manager into the lifecycle observer, but the parameter is still required.
 - **Use `unlit = true` for readable text.** Under PBR lighting, Compose UI gets shaded by scene lights and may look dim or color-shifted.
 - **ViewNode is relatively expensive.** Each instance allocates a `SurfaceTexture`, a `FrameLayout`, and a ComposeView. Reuse or pool them if you need many.
-- **Don't put touch-heavy widgets inside.** The off-screen window uses `FLAG_NOT_TOUCHABLE` — interactive content works, but standard gesture plumbing does not route through the 3D scene the way you'd expect.
+- **One contact point is forwarded, not several.** The off-screen window keeps
+  `FLAG_NOT_TOUCHABLE`, so Android never dispatches to it and the node forwards touches
+  itself — from the scene's picking hit, which is a single ray per event. Taps, presses and
+  one-finger scrolling are exact; a pinch or a two-finger drag inside the content is not,
+  and the intermediate samples of a batched fast scroll are relocated with the event rather
+  than re-picked one by one. Single-pointer widgets are the supported surface.
 
 ---
 
