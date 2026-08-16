@@ -41,6 +41,7 @@ fi
 STATE="$MAIN_ROOT/.claude/STATE.md"
 
 have_gh() { command -v gh >/dev/null 2>&1; }
+have_jq() { command -v jq >/dev/null 2>&1; }
 
 # ── Genesis / self-heal ─────────────────────────────────────────────────────────
 # Guarantee STATE.md has the IN-FLIGHT ledger scaffold, so existing_row()/insert_row()
@@ -146,16 +147,50 @@ insert_row() {
 }
 
 # ── GitHub helpers ──────────────────────────────────────────────────────────────
-open_pr_collision() {  # echoes a description if an OPEN PR references the issue
+# `gh … --json` emits its whole array as ONE line. A line-oriented `grep` therefore
+# returns EVERY element as soon as any one of them matches — the detection stays
+# right, but the report names the entire open-PR backlog instead of the colliding
+# PR (#2998). A guard nobody can act on is a guard everyone learns to `--force`,
+# which is the #2300 dup-implementation race it exists to stop. So: filter where
+# the unit is a PR, not a line.
+#
+# Reads the `gh pr list --json number,title,headRefName` array on stdin; echoes one
+# `#<n> <branch> — <title>` row per colliding PR. Split out from the network call so
+# the self-test can drive it from fixtures (test-claim-collision-report.sh).
+filter_pr_collisions() {
+  local n="$1" pat
+  pat="(#${n}\\b|[-/]${n}[-/]|fix-${n}\\b)"
+  if have_jq; then
+    jq -r --arg pat "$pat" '
+      def refs($p): (. // "") | test($p; "i");
+      .[]
+      | select((.title | refs($pat)) or (.headRefName | refs($pat)))
+      | "#\(.number) \(.headRefName) — \(.title)"
+    ' 2>/dev/null || true
+  else
+    # Degraded: same detection, unattributed report. Say so rather than let a
+    # reader mistake the whole backlog for the colliding PR.
+    grep -Ei "$pat" \
+      | sed 's/^/(unattributed — jq missing, cannot name the PR) /' || true
+  fi
+}
+
+open_pr_collision() {  # echoes one row per OPEN PR referencing the issue
   have_gh || return 0
   [ -n "$ISSUE_NUM" ] || return 0
   gh pr list --repo "$REPO" --state open --json number,title,headRefName 2>/dev/null \
-    | grep -Ei "(#${ISSUE_NUM}\b|[-/]${ISSUE_NUM}[-/]|fix-${ISSUE_NUM}\b)" || true
+    | filter_pr_collisions "$ISSUE_NUM"
 }
 
 issue_has_label() {  # 0 if the issue already carries the in-progress label
   have_gh || return 1
   [ -n "$ISSUE_NUM" ] || return 1
+  # The other `gh --json | grep` in this repo, and the sweep #2998 asked for. It has
+  # the same single-line shape but is NOT exploitable: the pattern carries its own
+  # quotes, so `"in-progress"` matches neither `in-progress-blocked` nor
+  # `not-in-progress` (measured, both directions, in test-claim-collision-report.sh).
+  # Left alone deliberately — the anchoring is incidental rather than designed, but
+  # rewriting a working guard on a hypothesis is how a real bug gets introduced.
   gh issue view "$ISSUE_NUM" --repo "$REPO" --json labels 2>/dev/null | grep -q "\"$LABEL\""
 }
 

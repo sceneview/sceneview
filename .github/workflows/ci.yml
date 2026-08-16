@@ -1535,6 +1535,21 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-selfmod-guard.sh
 
+      # claim.sh's open-PR collision report (#2998). `gh … --json` emits its
+      # whole array on ONE line, so the line-oriented grep that read it returned
+      # every open PR as soon as any one matched: the message that is supposed
+      # to name who holds an issue named the entire backlog. Detection was
+      # right, attribution was noise — and a guard nobody can act on is a guard
+      # every session learns to `--force`, which is the #2300 dup-implementation
+      # race it exists to stop. Nothing else exercises this: claim.sh only talks
+      # to `gh` on a real machine, so CI never runs the parsing until it matters.
+      # The suite extracts the shipped function out of claim.sh (never a copy)
+      # and keeps the pre-fix grep as a mutant.
+      - name: Self-test claim.sh collision report
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-claim-collision-report.sh
+
       # Agent-cost measurement (agent-cost-report.sh). It reads local session
       # transcripts, so CI can never exercise it on real data — but its one
       # silent failure mode is arithmetic: a transcript emits several records
