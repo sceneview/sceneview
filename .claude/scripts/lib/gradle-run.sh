@@ -92,9 +92,13 @@ GRADLE_RUN_FOREIGN_TREE=199
 # to withhold a pass (COULD NOT RUN), never to grant one.
 #
 # The match is deliberately narrow: only absolute paths containing `/src/`, so
-# `~/.gradle/caches/...` jars, JDK and toolchain paths cannot trip it. Measured
-# on a clean run of the full gate: 0 hits across all 60 logs, `file://` and
-# absolute paths alike — Gradle prints module-relative paths for the local tree.
+# `~/.gradle/caches/...` jars, JDK and toolchain paths cannot trip it. Gradle
+# prints module-relative paths for the local tree, which is what makes the
+# narrowness safe — and also what made the missing anchor dangerous, since those
+# same relative paths are the ones that used to be misread as foreign (#3195).
+# The "0 hits across all 60 logs" this comment used to claim was measured before
+# the gate wrote `roborazzi.log`; it is asserted now instead of remembered, by
+# the clean-run case in `test-gradle-run.sh` that reads the real artefacts.
 gradle_foreign_tree_paths() {
     local log="$1"
     local proj="${2:-$PWD}"
@@ -105,7 +109,17 @@ gradle_foreign_tree_paths() {
     # project's own files foreign.
     proj="$(cd "$proj" 2>/dev/null && pwd -P)" || return 0
 
-    grep -oE '(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
+    # The leading `/` must actually BEGIN a path. Without that anchor the pattern
+    # also matches the tail of a RELATIVE one, and the gate's own `roborazzi.log`
+    # carries `samples/android-demo/src/main/.../GeneratedDemos.kt already in
+    # sync`: grep started at the slash after `samples` and yielded
+    # `/android-demo/src/…`, a tree that exists on no host. This repository's own
+    # clean run was graded foreign and the gate refused every push (#3195).
+    # A path begins at start-of-line or after a delimiter — which is then
+    # stripped back off, before `file://`, so the two sed passes cannot collide.
+    local bound='(^|[[:space:]:="'"'"'(])'
+    grep -oE "${bound}(file://)?/[^ :\"']*/src/[^ :\"']*" "$log" 2>/dev/null \
+    | sed -E 's|^[[:space:]:="'"'"'(]||' \
     | sed 's|^file://||' \
     | while IFS= read -r p; do
         # Same /private normalisation for the candidate, which may name a
