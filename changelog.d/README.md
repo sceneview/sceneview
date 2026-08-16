@@ -116,6 +116,15 @@ written before the marker existed, would have been caught. Negated forms
 a fragment trips the heuristic without being breaking, opt out explicitly with
 `<!-- breaking: false -->`, which always wins.
 
+**One limit on that opt-out, and the guard enforces it.** Comments are stripped
+at collation, so the marker does not exist any more when `release.yml` re-reads
+the collated section — a fragment whose opt-out is the *only* thing keeping its
+public prose from reading as breaking would pass here and be refused after the
+tag was pushed, freezing every publisher. So that shape is an error
+(`an opt-out that cannot survive collation`), raised while the fragment still
+exists. Fix the prose instead: put the word in a code span (`` `breaking` ``) or
+write `non-breaking` — both are already inert on either side of collation.
+
 Why it matters: `release.yml`'s `publish-rn` job derives the npm version straight
 from the git tag, so a patch tag publishes a source-breaking change to
 `@sceneview-sdk/react-native` as a semver patch — the one version class every

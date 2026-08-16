@@ -31,6 +31,12 @@
 # the mode that reads the collated `## vX.Y.Z` section instead, its refusal to
 # treat "nothing to examine" as a pass, and the equality between the two modes.
 #
+# "The same text" is load-bearing in that sentence: HTML comments are NOT text
+# that crosses collation, they are deleted by it. Section 21 pins each marker
+# shape's fate, and the fixtures go through `collate_body` so the suite can
+# never again assert the invariant against a section the pipeline cannot
+# produce — which is how the doomed-opt-out false refusal hid until review.
+#
 # Hermetic: a fake repo root with a copy of the script and its lib. The script
 # derives REPO_ROOT from its own path, so the real tree is never read or
 # written. No network, no git.
@@ -40,6 +46,13 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD_SRC="$SCRIPT_DIR/check-breaking-change-bump.sh"
 LIB_SRC="$SCRIPT_DIR/lib/changelog-fragment.sh"
+
+# Sourced for ONE purpose: `collate_body` below reproduces what collation does
+# to a fragment, using the same primitives collate-changelog.sh uses. A
+# hand-rolled approximation would drift from the collator and the fixtures
+# would stop being what the pipeline produces.
+# shellcheck source=lib/changelog-fragment.sh
+. "$LIB_SRC"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -66,14 +79,42 @@ frag() { # filename, content on stdin
   cat > "$ROOT/changelog.d/$1"
 }
 
-# The tree as release.yml sees it: the fragments are GONE and their text now
-# lives in a collated `## v$1` section. Body on stdin.
-changelog_collated() { # version, body on stdin
+# A section written the way a HUMAN could have (markers intact). Used only for
+# the hand-written cases; collation cannot produce this — see below.
+changelog_section_raw() { # version, body on stdin
   { printf '# Changelog\n\n## Unreleased\n\n## v%s — 2026-08-07\n\n' "$1"
     cat
     printf '\n## v4.26.0 — 2026-07-01\n\n### Fixed\n\n- PRIOR\n'
   } > "$ROOT/CHANGELOG.md"
   rm -f "$ROOT"/changelog.d/*.md
+}
+
+# The tree as release.yml actually sees it: the fragments are GONE and their
+# text lives in a collated `## v$1` section — **comment-stripped**, because
+# `collate-changelog.sh` runs `frag_strip_comments_line` over every line. A
+# helper that copied the body verbatim would leave `<!-- breaking: false -->`
+# standing in a section where it can never appear, and every invariant case
+# below would pass against a file the pipeline cannot produce. (Flagged in
+# review of #3209; the divergence it hid was real.)
+collate_body() { # stdin → stdout, mirroring collate-changelog.sh's line loop
+  local line was_in
+  frag_strip_reset
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$FRAG_IN_COMMENT" = false ] && frag_is_category_tag_line "$line"; then
+      continue
+    fi
+    was_in="$FRAG_IN_COMMENT"
+    frag_strip_comments_line "$line"
+    if [ -z "${FRAG_STRIPPED//[[:space:]]/}" ] &&
+       { [ "$was_in" = true ] || [ -n "${line//[[:space:]]/}" ]; }; then
+      continue
+    fi
+    printf '%s\n' "$FRAG_STRIPPED"
+  done
+}
+
+changelog_collated() { # version, body on stdin
+  changelog_section_raw "$1" < <(collate_body)
 }
 
 # A copy of the guard with ONE defect applied. Refuses a no-op sed: a mutation
@@ -273,16 +314,22 @@ EOF
 expect_rc "a marker trailing a bullet refuses a patch tag" 1 4.26.1
 
 # ── 5l. …including the opt-out form ──────────────────────────────────────────
-# Same placement, opposite meaning: the prose WOULD fire the heuristic, and the
-# trailing `false` must still win. Without 5l, 5k could pass by reading any
+# Same placement, opposite meaning. Without 5l, 5k could pass by reading any
 # trailing comment as "breaking: true".
+#
+# The exit code that proves the trailing `false` was READ is 2, not 0: since
+# #3209 an opt-out doing real work against its own prose is refused at fragment
+# time (section 21c — the marker cannot survive collation, so it would become a
+# false refusal after the tag). Had the trailing marker been missed entirely,
+# the prose path would have fired and this would be exit 1. The three outcomes
+# stay distinguishable, which is what this case is for.
 setup_sandbox
 frag 0004l-marker-trailing-false.md <<'EOF'
 <!-- category: Changed -->
 - Renamed an internal helper; this is not a source-breaking change for callers
   of the public API, whatever the word breaking above suggests. <!-- breaking: false -->
 EOF
-expect_rc "a trailing '<!-- breaking: false -->' opts out" 0 4.26.1
+expect_rc "a trailing '<!-- breaking: false -->' is read (exit 2, not the prose's 1)" 2 4.26.1
 
 # ── 5m. A malformed marker trailing a bullet still errors ────────────────────
 # The exit-2 path must not depend on the marker sitting alone on its line
@@ -315,13 +362,20 @@ EOF
 expect_rc "'groundbreaking' does not refuse a patch tag" 0 4.26.1
 
 # ── 7. The explicit opt-out beats the prose heuristic ────────────────────────
+# …and in a FRAGMENT that means exit 2, not exit 0 (section 21c): the marker
+# beats the prose here, and dies at collation, so a release-time re-read would
+# refuse a release this one waved through. Exit 1 would mean the marker was not
+# read at all.
 setup_sandbox
 frag 0006-optout.md <<'EOF'
 <!-- category: Changed -->
 <!-- breaking: false -->
 - Documents which call sites are breaking; the change itself is additive.
 EOF
-expect_rc "<!-- breaking: false --> overrides the prose heuristic" 0 4.26.1
+expect_rc "<!-- breaking: false --> overrides the prose heuristic (exit 2, not 1)" 2 4.26.1
+grep -qF '0006-optout.md' <<<"$OUT" \
+  && ok "…and the error names the fragment to reword" \
+  || bad "…without naming the file"
 
 # ── 8. Breaking-ness discussed ONLY in an internal note ──────────────────────
 # The guard judges the text a reader will see, because that is the text the
@@ -430,11 +484,12 @@ changelog_collated 4.27.0 <<'EOF'
 EOF
 expect_rc "the same breaking section is allowed on a MINOR tag" 0 4.27.0 --from-changelog
 
-# ── 16. Markers still work on a collated section ─────────────────────────────
-# Collation strips them, so this is the hand-written case — and the opt-out has
-# to survive it, or the only escape hatch is deleting the sentence.
+# ── 16. Markers in a section are read — but only a human can put them there ──
+# `changelog_section_raw`, deliberately: collation strips every comment, so
+# these two fixtures are the hand-written case. Section 21 covers what actually
+# happens to a marker that goes through the collator.
 setup_sandbox
-changelog_collated 4.26.1 <<'EOF'
+changelog_section_raw 4.26.1 <<'EOF'
 ### Changed
 
 <!-- breaking -->
@@ -443,7 +498,7 @@ EOF
 expect_rc "an explicit marker inside the section refuses a patch tag" 1 4.26.1 --from-changelog
 
 setup_sandbox
-changelog_collated 4.26.1 <<'EOF'
+changelog_section_raw 4.26.1 <<'EOF'
 ### Changed
 
 <!-- breaking: false -->
@@ -548,20 +603,85 @@ invariant_case "the word inside a code span" 0 <<'EOF'
 - Document the `breaking` marker in the contributor guide.
 EOF
 
-invariant_case "an explicit marker" 1 <<'EOF'
+invariant_case "an opt-out the prose does not need" 0 <<'EOF'
+<!-- breaking: false -->
+- A crash on rotate is fixed.
+EOF
+
+# ── 21. What collation consumes, and why that leaves no hole ─────────────────
+# The invariant above is stated over text that CROSSES collation. Markers do
+# not: `frag_strip_comments_line` deletes every comment. So for each marker
+# shape, the fragment verdict and the collated-section verdict can differ — and
+# the only thing that makes that safe is that collation itself never runs.
+# Reported in review of #3209, where the test helper hid it by leaving markers
+# standing in fixtures the pipeline cannot produce.
+
+# (a) `<!-- breaking -->` over neutral prose: refused while the marker exists,
+#     so collate-changelog.sh (which runs this guard first) never writes the
+#     section…
+setup_sandbox
+frag 0015-marker-only.md <<'EOF'
 <!-- breaking -->
 - A public symbol changed shape.
 EOF
+expect_rc "a marker-only fragment is refused BEFORE collation can consume it" 1 4.26.1
 
-invariant_case "the marker opt-out beating the prose" 0 <<'EOF'
+# (b) …which matters, because once collated the same text says nothing at all.
+#     This assertion is the divergence itself, pinned so it cannot widen.
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+<!-- breaking -->
+- A public symbol changed shape.
+EOF
+expect_rc "…and post-collation that marker is simply gone from the section" 0 4.26.1 --from-changelog
+grep -qF 'breaking' "$ROOT/CHANGELOG.md" \
+  && bad "the fixture still carries a marker — collate_body is not stripping" \
+  || ok "…the fixture proves it: no marker survives into the section"
+
+# (c) The mirror, and the one that bites a GOOD release: an opt-out doing real
+#     work against its own prose passes at collation and is refused at release
+#     time, after the tag, with all six publishers frozen. Verified end-to-end
+#     against the real collate-changelog.sh. It is now caught here instead,
+#     while the fragment still exists.
+setup_sandbox
+frag 0016-doomed-optout.md <<'EOF'
+<!-- category: Fixed -->
 <!-- breaking: false -->
-- Reworded a paragraph that used to say source-breaking.
+- **A wording change.** The docs used to call this breaking; it never was.
 EOF
+expect_rc "an opt-out that cannot survive collation is exit 2, at fragment time" 2 4.26.1
+grep -qF 'cannot survive collation' <<<"$OUT" \
+  && ok "…and says why, naming the fragment" \
+  || bad "…without explaining what the author has to change"
+grep -qF 'code span' <<<"$OUT" \
+  && ok "…and offers the reword that works on both sides" \
+  || bad "…without offering a way out"
 
-invariant_case "a malformed marker" 2 <<'EOF'
-<!-- breaking: maybe -->
-- Something changed.
+# …and the offered reword really does work, on both sides.
+setup_sandbox
+frag 0016-doomed-optout.md <<'EOF'
+<!-- category: Fixed -->
+<!-- breaking: false -->
+- **A wording change.** The docs used to call this `breaking`; it never was.
 EOF
+expect_rc "the suggested code-span reword passes as a fragment" 0 4.26.1
+setup_sandbox
+changelog_collated 4.26.1 <<'EOF'
+<!-- category: Fixed -->
+<!-- breaking: false -->
+- **A wording change.** The docs used to call this `breaking`; it never was.
+EOF
+expect_rc "…and still passes once collated, with the marker gone" 0 4.26.1 --from-changelog
+
+# (d) A minor bump is allowed to carry the marker, so this fragment DOES reach
+#     the collator — and the section it produces is judged on a minor tag,
+#     where the answer is the same either way.
+setup_sandbox
+changelog_collated 4.27.0 <<'EOF'
+<!-- breaking -->
+- A public symbol changed shape.
+EOF
+expect_rc "a collated breaking MINOR section passes, as it did as a fragment" 0 4.27.0 --from-changelog
 
 # ── Mutation tests ───────────────────────────────────────────────────────────
 # Sections 4 and 5 pull in opposite directions: one demands that prose fires,
@@ -650,13 +770,33 @@ EOF
   fi
 fi
 
+# Mutation E: drop the doomed-opt-out check. Section 21(c) must then revert to
+# the false refusal it documents — the fragment sails through collation and
+# only fails once the tag is pushed.
+if MUT_E="$(mutant_guard no-doomed-optout \
+    's/if \[ "\${2:-}" = "fragment" \] && frag_prose_claims_breaking "\$SCAN_BODY"; then/if false; then/')"; then
+  setup_sandbox "$LIB_SRC" "$MUT_E"
+  frag 0016-doomed-optout.md <<'EOF'
+<!-- category: Fixed -->
+<!-- breaking: false -->
+- **A wording change.** The docs used to call this breaking; it never was.
+EOF
+  run_guard 4.26.1
+  if [ "$GUARD_RC" = "0" ]; then
+    ok "mutation killed — without the check, a doomed opt-out passes collation and blocks the tag"
+  else
+    bad "MUTATION SURVIVED — section 21(c) still exits 2 with the check removed,"
+    bad "  so something else is producing that error"
+  fi
+fi
+
 echo
 echo "check-breaking-change-bump: $PASS passed, $FAIL failed"
 
 # A skipped case is not a passed case: every assertion above runs unconditionally
 # except the two mutant builds, which fail the suite rather than vanish. Raise
 # this when adding a case — a suite that silently shrinks is how #2988 happened.
-EXPECTED_ASSERTIONS=57
+EXPECTED_ASSERTIONS=66
 TOTAL=$((PASS + FAIL))
 if [ "$TOTAL" -ne "$EXPECTED_ASSERTIONS" ]; then
   printf '  \xE2\x9C\x97 %d assertions ran, expected %d — cases were skipped, not passed\n' \

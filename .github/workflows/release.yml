@@ -48,10 +48,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Both trigger paths, exactly as publish-rn derives its npm version: the
-      # tag on a `push`, `gradle.properties` on a dispatch. A guard that judged
-      # a different version from the one being published would be worse than
-      # none — it would be a green stamp on the wrong release.
+      # Both trigger paths. On a `push` this is the tag, byte for byte what
+      # publish-rn puts on npm. On a `workflow_dispatch` there is no tag, so it
+      # is VERSION_NAME — the Android/Maven version, which is the one the
+      # CHANGELOG sections are numbered by, and therefore the only version this
+      # guard could look up. The npm and pub.dev packages track their own
+      # versions on that path (package.json, pubspec.yaml — independent tracks,
+      # deliberately), so a dispatch run judges the release's own number, not
+      # each package's. A guard that judged a version nobody was publishing
+      # would be worse than none — it would be a green stamp on the wrong
+      # release.
       - name: Resolve the version this run would publish
         id: version
         run: |

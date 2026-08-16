@@ -67,12 +67,23 @@
 # when this mode runs — a tag pushed without collating ships them, and the
 # CHANGELOG section would not contain their bullets.
 #
+# That asymmetry has one sharp edge, and it cuts the OTHER way — against a good
+# release. A fragment whose `<!-- breaking: false -->` is the only thing keeping
+# its prose from reading as breaking passes at collation, loses the marker, and
+# is refused at RELEASE time by a mode that can only see the prose. Nothing has
+# published at that point, but every publisher is frozen behind a tag that has
+# to be deleted and re-cut. So that shape is refused HERE, at fragment time,
+# while a reword still costs one commit — see DOOMED_OPTOUTS below.
+#
 # HOW A FRAGMENT DECLARES A BREAKING CHANGE
 # -----------------------------------------
 #   * explicit:  a `<!-- breaking -->` / `<!-- breaking: true|false -->` line;
 #   * implicit:  its public prose says so (see frag_prose_claims_breaking).
 # The explicit marker always wins, in BOTH directions — `<!-- breaking: false -->`
-# is the documented opt-out for a fragment that merely discusses breakage.
+# is the documented opt-out for a fragment that merely discusses breakage. In a
+# FRAGMENT, "wins" means exit 2 rather than exit 0 when the opt-out is doing
+# real work against the prose: the marker was read, and the answer is "reword,
+# because this marker will not exist at release time".
 #
 # The check is deliberately category-independent. #3037's breaking fragment is
 # tagged `Changed`, but a `Removed` fragment (a deleted public symbol) is just
@@ -214,19 +225,30 @@ scan_stream() {
     return 0
 }
 
-# Fold one scanned unit into the verdict. $1 = how to name it in the refusal.
+# Fold one scanned unit into the verdict. $1 = how to name it in the refusal,
+# $2 = "fragment" when the unit is a `changelog.d/*.md` file (see DOOMED below).
 BREAKING_FILES=()
 BREAKING_WHY=()
+DOOMED_OPTOUTS=()
 EXAMINED_UNITS=0
 EXAMINED_LINES=0
-judge_scanned() { # source-label
+judge_scanned() { # source-label [fragment]
     EXAMINED_UNITS=$((EXAMINED_UNITS + 1))
     EXAMINED_LINES=$((EXAMINED_LINES + SCAN_LINES))
     if [ "$SCAN_MARKER" = "true" ]; then
         BREAKING_FILES+=("$1")
         BREAKING_WHY+=("explicit <!-- breaking --> marker")
     elif [ "$SCAN_MARKER" = "false" ]; then
-        : # explicit opt-out — always wins over the prose heuristic
+        # Explicit opt-out — always wins over the prose heuristic. But EVERY
+        # HTML comment is stripped at collation, so a fragment whose opt-out is
+        # doing real work against its own public prose passes here and is
+        # refused at RELEASE time, after the tag, when the marker no longer
+        # exists (verified end-to-end against collate-changelog.sh). That is a
+        # false refusal that freezes all six publishers, so it is caught here —
+        # while the fragment still exists and a reword costs one commit.
+        if [ "${2:-}" = "fragment" ] && frag_prose_claims_breaking "$SCAN_BODY"; then
+            DOOMED_OPTOUTS+=("$1")
+        fi
     elif frag_prose_claims_breaking "$SCAN_BODY"; then
         BREAKING_FILES+=("$1")
         BREAKING_WHY+=("its public prose says so (add '<!-- breaking: false -->' if it does not)")
@@ -244,8 +266,26 @@ scan_pending_fragments() {
             exit 2
         fi
         FRAGMENTS_SEEN=$((FRAGMENTS_SEEN + 1))
-        judge_scanned "$f"
+        judge_scanned "$f" fragment
     done
+    if [ "${#DOOMED_OPTOUTS[@]}" -gt 0 ]; then
+        echo -e "${RED}Error:${NC} an opt-out that cannot survive collation:"
+        echo ""
+        for f in "${DOOMED_OPTOUTS[@]}"; do
+            echo -e "  ${CYAN}$f${NC}"
+            echo    "      '<!-- breaking: false -->' is the only thing keeping this fragment"
+            echo    "      from reading as breaking — and collate-changelog.sh strips every"
+            echo    "      HTML comment, so the marker will not exist when release.yml"
+            echo    "      re-checks the collated section. The release would fail AFTER the"
+            echo    "      tag is pushed, with every publisher frozen."
+        done
+        echo ""
+        echo "Fix the prose instead, so the bullet reads the same to a human and to this"
+        echo "guard on both sides of collation: put the word in a code span (\`breaking\`),"
+        echo "or write 'non-breaking' / 'not breaking' — both are already inert. The"
+        echo "marker stays valid for a fragment whose prose does not claim breaking."
+        exit 2
+    fi
 }
 
 SOURCE_DESC=""
