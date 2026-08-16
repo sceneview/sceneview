@@ -9,9 +9,11 @@ import com.google.android.filament.Scene
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingState
+import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.TransformProvider
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.math.normalToTangent
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import java.nio.ByteBuffer
@@ -46,6 +48,27 @@ class PlaneVisualizer(
         private const val INT_BYTES = 4
         // POSITION: 3 floats per vertex
         private const val POSITION_STRIDE = 3 * FLOAT_BYTES
+        // TANGENTS: an xyzw quaternion encoding the tangent/bitangent/normal frame — Filament's
+        // per-vertex normal input (there is no separate NORMAL slot in the VertexAttribute enum).
+        private const val TANGENT_STRIDE = 4 * FLOAT_BYTES
+
+        // POSITION and TANGENTS live in two backing buffers, matching PlaneVisualizerV2 and
+        // `sceneview/.../geometries/Geometry.kt`.
+        private const val BUFFER_INDEX_POSITION = 0
+        private const val BUFFER_INDEX_TANGENT = 1
+        private const val BUFFER_COUNT = 2
+
+        /**
+         * The plane-local surface normal every vertex of a V1 plane mesh carries.
+         *
+         * V1's mesh is the plane polygon expressed in the ARCore plane's own frame, where +Y is
+         * the plane normal by construction: [updateGeometry] writes `y = 0` for the outer boundary
+         * ring and `y = 1` for the feathered inner ring (the Y channel is the edge-fade ramp, not
+         * a height — both shaders overwrite it, `plane_renderer.mat` with `0.0` and
+         * `plane_renderer_shadow.mat` with `0.005`). So the geometric normal is plane-local up for
+         * every vertex, exactly as [PlaneVisualizerV2] pre-fills for its flat fallback.
+         */
+        private val PLANE_LOCAL_UP = Float3(0.0f, 1.0f, 0.0f)
     }
 
     private val planeMatrix = Matrix()
@@ -71,16 +94,39 @@ class PlaneVisualizer(
      */
     private var transformInstance: Int = 0
 
+    /**
+     * POSITION + TANGENTS.
+     *
+     * TANGENTS is **not** decoration: `plane_renderer_shadow.filamat` is a
+     * `shadowMultiplier : true` material, and Filament unconditionally adds `TANGENTS` to a
+     * shadow-multiplier material's required attributes (its `MAT_REQA` chunk is `0x3` =
+     * POSITION|TANGENTS, against `plane_renderer.filamat`'s `0x1`). A POSITION-only buffer
+     * therefore failed the requirement for the shadow submesh of EVERY detected plane —
+     * `RenderableManager` warned `missing required attributes (0x3), declared=0x1` on every
+     * rebuild and on every per-frame `setMaterialInstanceAt`, and the shadow catcher shaded
+     * against OpenGL's generic-attribute fallback (the identity quaternion → a `(0, 0, 1)`
+     * normal, i.e. sideways in the plane's own frame) instead of the real surface normal
+     * (#3186, #3188).
+     */
     private val vertexBuffer: VertexBuffer = VertexBuffer.Builder()
         .vertexCount(MAX_VERTS)
-        .bufferCount(1)
+        .bufferCount(BUFFER_COUNT)
         .attribute(
             VertexBuffer.VertexAttribute.POSITION,
-            0,
+            BUFFER_INDEX_POSITION,
             VertexBuffer.AttributeType.FLOAT3,
             0,
             POSITION_STRIDE
         )
+        .attribute(
+            VertexBuffer.VertexAttribute.TANGENTS,
+            BUFFER_INDEX_TANGENT,
+            VertexBuffer.AttributeType.FLOAT4,
+            0,
+            TANGENT_STRIDE
+        )
+        // No `.normalized(TANGENTS)`: that flag is for integer formats, and these are FLOAT4.
+        // Matches PlaneVisualizerV2.
         .build(engine)
 
     private val indexBuffer: IndexBuffer = IndexBuffer.Builder()
@@ -93,6 +139,37 @@ class PlaneVisualizer(
         ByteBuffer.allocateDirect(MAX_VERTS * POSITION_STRIDE).order(ByteOrder.nativeOrder())
     private val indexData: ByteBuffer =
         ByteBuffer.allocateDirect(MAX_INDICES * INT_BYTES).order(ByteOrder.nativeOrder())
+
+    init {
+        // The tangent frame is the SAME for every vertex and never changes: V1's mesh is flat in
+        // the plane's own frame (see PLANE_LOCAL_UP), and the entity's transform — not the mesh —
+        // carries the plane pose. So this uploads once, for the whole MAX_VERTS capacity, and the
+        // per-frame path stays exactly as cheap as it was: one POSITION upload, one index upload.
+        //
+        // The full capacity is filled deliberately: the renderable is built over the whole
+        // MAX_INDICES index buffer, whose unwritten tail indexes vertex slots past the live
+        // boundary count (degenerate triangles at the origin), so every slot must carry a valid
+        // quaternion.
+        val tangent = normalToTangent(PLANE_LOCAL_UP)
+        val tangentData = ByteBuffer
+            .allocateDirect(MAX_VERTS * TANGENT_STRIDE)
+            .order(ByteOrder.nativeOrder())
+        val floats = tangentData.asFloatBuffer()
+        repeat(MAX_VERTS) {
+            floats.put(tangent.x)
+            floats.put(tangent.y)
+            floats.put(tangent.z)
+            floats.put(tangent.w)
+        }
+        tangentData.rewind()
+        vertexBuffer.setBufferAt(
+            engine,
+            BUFFER_INDEX_TANGENT,
+            tangentData,
+            0,
+            MAX_VERTS * TANGENT_STRIDE
+        )
+    }
 
     // Track the last primitive counts so we only rebuild the renderable when they change
     private var builtPrimitiveCount = 0
@@ -198,7 +275,13 @@ class PlaneVisualizer(
         }
 
         vertexData.rewind()
-        vertexBuffer.setBufferAt(engine, 0, vertexData, 0, numVerts * POSITION_STRIDE)
+        vertexBuffer.setBufferAt(
+            engine,
+            BUFFER_INDEX_POSITION,
+            vertexData,
+            0,
+            numVerts * POSITION_STRIDE
+        )
 
         indexData.clear()
         val ints = indexData.asIntBuffer()
