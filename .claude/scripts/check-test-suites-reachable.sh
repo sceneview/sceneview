@@ -180,7 +180,18 @@ scan_invocations() {
                     wd = v
                 }
                 if (line ~ /continue-on-error:[[:space:]]*true/) ce = 1
-                if (line ~ /(npm[[:space:]]+(run[[:space:]]+)?test|vitest|jest|playwright[[:space:]]+test)/) {
+                # The runner has to be a COMMAND WORD, not a substring. `vitest`
+                # and `jest` occur inside ordinary filenames — `vitest.config.ts`,
+                # `jest.setup.js` — so a bare substring match turns
+                # `cat vitest.config.ts` or `rm -f jest.config.js` into an
+                # invocation, and the package it happens to sit in reads as
+                # covered by a step that runs no test at all. Fail-open, and the
+                # cheapest kind to introduce by accident. The trailing
+                # `([[:space:]]|$)` is what does the work: a filename continues
+                # with `.`, a command does not.
+                if (line ~ /(^|[^[:alnum:]._\/-])(vitest|jest)([[:space:]]|$)/ ||
+                    line ~ /(^|[^[:alnum:]._\/-])npm[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$)/ ||
+                    line ~ /(^|[^[:alnum:]._\/-])playwright[[:space:]]+test([[:space:]]|$)/) {
                     pend[++np] = line
                 }
             }
@@ -267,7 +278,13 @@ trigger_prefixes() {
 # That verdict was the gate's own false green, found by disbelieving its first
 # clean line rather than by a failure.
 fires_on_pr() {
-    grep -qE '^[[:space:]]{1,4}pull_request(_target)?:' "$1"
+    grep -qE '^[[:space:]]{1,4}pull_request(_target)?:' "$1" && return 0
+    # Inline-array form — `on: [push, pull_request]`. Missing it degrades a
+    # genuinely PR-gated suite to ADVISORY rather than passing a gap, so the
+    # direction is safe; it is handled anyway because an ADVISORY nobody can
+    # act on ("it DOES run on pull requests") teaches readers to discount the
+    # verdict, and a verdict people learn to discount stops being a gate.
+    grep -qE '^"?on"?:[[:space:]]*\[[^]]*pull_request' "$1"
 }
 
 # Does `glob` cover `suite`? Prefix in EITHER direction:

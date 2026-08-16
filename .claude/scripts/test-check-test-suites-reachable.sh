@@ -405,6 +405,51 @@ else
     bad "push.paths was merged into pull_request.paths — the suite read as gated (rc=$RC)"
 fi
 
+# ── 17. a runner named inside a filename is not an invocation ────────────────
+# `vitest` and `jest` live inside ordinary filenames. Matched as substrings,
+# `cat vitest.config.ts` counts as running the suite, and the package it sits in
+# reads as covered by a step that runs no test — the same "a label is not an
+# invocation" shape as cases 6 and 7, arriving through a filename instead.
+R="$(mkrepo substr)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: cat vitest.config.ts
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'no workflow step runs its tests'; then
+    ok "a filename containing 'vitest' is not counted as running vitest"
+else
+    bad "a substring match turned a filename into an invocation (rc=$RC)"
+fi
+
+# ── 18. the inline-array trigger form is recognised ──────────────────────────
+# `on: [push, pull_request]` is legal and equivalent to the block form. Reading
+# only the block form reported a genuinely PR-gated suite as advisory — safe in
+# direction, but an ADVISORY whose stated reason is false ("does not run on pull
+# requests", when it does) is a verdict readers learn to discount.
+R="$(mkrepo inlineon)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on: [push, pull_request]
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q '✓ app'; then
+    ok "an inline-array 'on: [pull_request]' counts as firing on pull requests"
+else
+    bad "the inline trigger form was unread — a PR-gated suite reported advisory (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -483,6 +528,12 @@ mutant 'ignore || true' \
 mutant 'stop parsing flow-style paths: filters' \
     'if ($0 ~ /^ *paths(-ignore)?: *\[/) {' \
     'if ($0 ~ /^ZZZ_NEVER_MATCHES_FLOW/) {' flowpaths 'never triggers'
+mutant 'match the runner as a bare substring again' \
+    'line ~ /(^|[^[:alnum:]._\/-])(vitest|jest)([[:space:]]|$)/ ||' \
+    'line ~ /(vitest|jest)/ ||' substr 'no workflow step runs its tests'
+mutant 'read only the block-mapping pull_request: form' \
+    "grep -qE '^\"?on\"?:[[:space:]]*\\[[^]]*pull_request' \"\$1\"" \
+    'return 1' inlineon '✓ app'
 mutant 'read paths: from every trigger, not just pull_request' \
     'trig = ($0 ~ /^ *pull_request(_target)?:/) ? 1 : 0' \
     'trig = 1' prpaths 'never triggers'
