@@ -371,6 +371,59 @@ if not version_id:
         }
     }
     r = requests.post(f"{BASE}/appStoreVersions", headers=headers, json=payload)
+    if r.status_code == 409:
+        # App Store Connect allows exactly ONE non-live version at a time, and
+        # the GET above cannot see the one holding the slot: its filter admits
+        # only PREPARE_FOR_SUBMISSION and READY_FOR_REVIEW, so a predecessor
+        # sitting in IN_REVIEW / WAITING_FOR_REVIEW is invisible. We reach this
+        # POST believing nothing exists, and Apple 409s (#3143). Measured:
+        # 4.30.0's release run died here at 16:48 on 2026-08-12 while 4.29.0
+        # was still in review — it went live at 20:39 the same day.
+        #
+        # STOP HERE. Do not route around it. Step 5a below cancels every open
+        # reviewSubmission, and its OPEN_STATES includes IN_REVIEW: carrying on
+        # would pull the PREVIOUS release out of App Review to make room for
+        # this one. Deferring costs a re-run; continuing costs a release.
+        #
+        # Not every state can hold the slot, so name the one that does rather
+        # than guess. A probe failure degrades to "could not determine" — the
+        # 409 is the finding, the identification is the courtesy.
+        OCCUPYING_STATES = ",".join([
+            "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_APPLE_RELEASE",
+            "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE",
+            "WAITING_FOR_EXPORT_COMPLIANCE", "REJECTED", "METADATA_REJECTED",
+            "DEVELOPER_REJECTED", "INVALID_BINARY", "PENDING_CONTRACT",
+        ])
+        holder = ""
+        try:
+            probe = requests.get(
+                f"{BASE}/apps/{app_id}/appStoreVersions"
+                f"?filter[appStoreState]={OCCUPYING_STATES}&filter[platform]=IOS&limit=5",
+                headers=headers,
+            )
+            if probe.status_code == 200:
+                for v in (probe.json() or {}).get("data", []):
+                    a = v.get("attributes", {})
+                    holder = f"{a.get('versionString', '?')} is {a.get('appStoreState', '?')}"
+                    break
+        except Exception as e:  # noqa: BLE001 — diagnosis must never mask the 409
+            print(f"::warning::Could not identify the blocking version: {e}")
+        if not holder:
+            holder = "another version is in a non-live state (could not identify which)"
+        print(
+            f"::error::iOS submission for {version_string} DEFERRED, not failed: {holder}. "
+            "App Store Connect allows one non-live version at a time, so its version record "
+            "cannot be created yet. Re-run app-store.yml once that version is live (or reject "
+            "it in App Store Connect). Nothing was cancelled and no review was touched; "
+            "Maven Central and npm publish earlier in the release and are unaffected."
+        )
+        print(f"POST /v1/appStoreVersions → 409: {r.text[:400]}")
+        # Exit 2, not 1: this run is deferred by Apple's state machine, not
+        # broken. A distinct code lets app-store.yml grade it without parsing
+        # prose. It is still non-zero — nothing was submitted, and a green
+        # badge over an unsubmitted release is the false green this repo pays
+        # for most.
+        raise SystemExit(2)
     r.raise_for_status()
     version_id = r.json()["data"]["id"]
     print(f"Created new version record: {version_id} ({version_string})")

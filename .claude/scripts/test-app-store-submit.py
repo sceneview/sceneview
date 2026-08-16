@@ -132,9 +132,19 @@ class FakeASC(types.ModuleType):
             self.build_polls += 1
             return s["builds"](self.build_polls)
         if "appStoreVersions?filter" in url:
-            return Response(200, {"data": [{"id": "VER1", "attributes": {
-                "versionString": "4.26.0",
-                "appStoreState": "PREPARE_FOR_SUBMISSION"}}]})
+            # Two different questions land on this path. The get-or-create asks
+            # for the EDITABLE states; the #3143 diagnosis probe asks for the
+            # OCCUPYING ones after a 409. Split on a state only the latter
+            # names, so each stays separately scriptable.
+            if "IN_REVIEW" in url:
+                return s.get("occupying", lambda: Response(200, {"data": []}))()
+            return s.get("versions", lambda: Response(200, {"data": [
+                {"id": "VER1", "attributes": {
+                    "versionString": "4.26.0",
+                    "appStoreState": "PREPARE_FOR_SUBMISSION"}}]}))()
+        if url.endswith("/appStoreVersions") and method == "POST":
+            return s.get("version_create",
+                         lambda: Response(201, {"data": {"id": "VER1"}}))()
         if "/relationships/build" in url:
             return Response(204)
         if "appStoreVersionLocalizations" in url:
@@ -634,6 +644,67 @@ def main():
           "Target App Store versionString: 4.26.0" in out, out[-400:])
     check("the dispatch path does not crash resolving the workspace",
           not str(code).startswith("EXC NameError"), f"code={code}")
+
+    # ── the appStoreVersions 409 while a predecessor is in review (#3143) ──
+    #
+    # The get-or-create GET filters on PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW.
+    # A version in IN_REVIEW matches neither, so the program falls through to
+    # POST /v1/appStoreVersions believing nothing exists — and Apple, which
+    # allows one non-live version at a time, 409s. Before the fix that was a
+    # bare `raise_for_status()`: a raw traceback, and 4.30.0 was never
+    # submitted (run 31619452239, 2026-08-12).
+    #
+    # The second assertion is the load-bearing one. Step 5a cancels every open
+    # reviewSubmission and its OPEN_STATES includes IN_REVIEW, so a fix that
+    # "handles" the 409 by continuing would withdraw the PREVIOUS release from
+    # App Review. The program must stop above 5a, having touched nothing.
+    print("\nappStoreVersions 409 while a predecessor is in review (#3143)")
+    blocked = {
+        "builds": lambda n: builds_page([1300]),
+        "versions": lambda: Response(200, {"data": []}),
+        "version_create": lambda: Response(
+            409, {"errors": [{"code": "ENTITY_ERROR", "detail":
+                              "The version number has been previously used."}]}),
+        "occupying": lambda: Response(200, {"data": [{"id": "VPREV", "attributes": {
+            "versionString": "4.25.0", "appStoreState": "IN_REVIEW"}}]}),
+        # The predecessor's review submission is OPEN — that is what "in review"
+        # means, and it is what step 5a would cancel. Without this the "never
+        # cancels" assertion below is vacuous: there would be nothing to cancel
+        # and it would pass on a fix that cancels everything.
+        "stale_list": lambda: Response(200, {"data": [
+            {"id": "RSPREV", "attributes": {"state": "IN_REVIEW"}}]}),
+    }
+    out, code, api = run_step(blocked, {"ASC_EXPECTED_BUILD": "1300"})
+    check("a 409 names the version holding the slot and its state",
+          "4.25.0 is IN_REVIEW" in out, out[-600:])
+    check("a 409 is reported as DEFERRED, not as a crash",
+          "DEFERRED" in out and not str(code).startswith("EXC"), f"code={code}")
+    check("a 409 exits 2 — distinct from a broken run, still non-zero",
+          code == 2, f"code={code}")
+    check("a 409 never cancels a reviewSubmission (the previous release stays in review)",
+          cancellations(api) == [],
+          f"cancelled: {cancellations(api)}")
+    check("a 409 never reaches the reviewSubmissions CREATE at all",
+          not any(c[0] == "POST" and c[1].endswith("/reviewSubmissions")
+                  for c in api.calls),
+          f"calls: {[c[1] for c in api.calls]}")
+
+    # An unidentifiable holder must still defer — the 409 is the finding, the
+    # identification only the courtesy. A probe that 403s must not resurrect
+    # the traceback it replaced.
+    out, code, api = run_step({**blocked, "occupying": lambda: Response(403, {})},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("an unidentifiable holder still defers cleanly",
+          "could not identify which" in out and code == 2, f"code={code}\n{out[-400:]}")
+
+    # And the negative case: a 201 must still create the record and carry on,
+    # or the guard above would be indistinguishable from "never create".
+    out, code, api = run_step({**blocked, "version_create":
+                               lambda: Response(201, {"data": {"id": "VNEW"}})},
+                              {"ASC_EXPECTED_BUILD": "1300"})
+    check("a 201 still creates the version record and proceeds",
+          "Created new version record: VNEW" in out and "DEFERRED" not in out,
+          out[-400:])
 
     print()
     if FAILURES:
