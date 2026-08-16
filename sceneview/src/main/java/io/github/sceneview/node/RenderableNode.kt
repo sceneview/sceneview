@@ -9,6 +9,7 @@ import io.github.sceneview.FilamentEntity
 import io.github.sceneview.NULL_ENTITY
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
+import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.math.toVector3Box
 import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyMaterialInstance
@@ -129,8 +130,51 @@ open class RenderableNode(
         setLayerVisible(isVisible)
     }
 
+    /**
+     * Changes the geometry and re-derives the collision shape from the new bounding box.
+     *
+     * This is the single choke point every geometry mutation goes through: all eleven
+     * `updateGeometry` overloads ([GeometryNode], [PlaneNode], [CubeNode], [SphereNode],
+     * [CylinderNode], [ConeNode], [TorusNode], [CapsuleNode], [LineNode], [PathNode],
+     * [ShapeNode]) end in a `setGeometry(...)` call, as does [ViewNode]'s
+     * `updateGeometrySize()`. Refreshing here rather than in `GeometryNode.updateGeometry`
+     * is what makes the fix complete: the shape-specific overloads call `setGeometry`
+     * directly and never route through `GeometryNode.updateGeometry`, so hoisting it there
+     * would have left `CubeNode` — the issue's own repro — still mis-picking.
+     *
+     * `setGeometry` pushes the new AABB to Filament, which is what culling and rendering use;
+     * [collisionShape] is separate state that used to keep whatever box the node was built
+     * with. A node resized after construction therefore rendered at its new size and picked at
+     * its old one (#3194) — most visibly on [ViewNode], whose quad is sized from the measured
+     * view and so kept `Plane.DEFAULT_SIZE`'s 1 × 1 × 0 collider forever.
+     *
+     * A node whose [collisionShape] was assigned by the app keeps it — see
+     * [hasCustomCollisionShape].
+     *
+     * Runs on the caller's thread, which is the same thread that already had to call
+     * `setGeometry`: both this and [axisAlignedBoundingBox] are Filament JNI, so this must
+     * stay on the main thread. It adds one AABB read to a call that already re-uploads the
+     * whole vertex buffer.
+     */
+    override fun setGeometry(geometry: Geometry) {
+        super.setGeometry(geometry)
+        if (!hasCustomCollisionShape) {
+            updateCollisionShape()
+        }
+    }
+
+    /**
+     * Re-derives [collisionShape] from the renderable's current Filament AABB.
+     *
+     * Also clears [hasCustomCollisionShape]: calling this is an explicit request for the
+     * derived shape, so the node opts back in to the automatic refresh on geometry change.
+     */
     fun updateCollisionShape() {
         collisionShape = axisAlignedBoundingBox.toVector3Box()
+        // The assignment above went through Node's public setter, which latches every write as
+        // app-owned. This one is derived, not app-owned — unlatch it so future geometry changes
+        // keep refreshing the collider.
+        hasCustomCollisionShape = false
     }
 
     override fun destroy() {

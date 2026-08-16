@@ -631,6 +631,23 @@ open class Node protected constructor(
         }
 
     /**
+     * `true` once [collisionShape] has been assigned from outside the geometry-derived path.
+     *
+     * A renderable node re-derives its collider from the Filament AABB whenever its geometry
+     * changes (`RenderableNode.setGeometry`, reached by every `updateGeometry` overload), so a
+     * resized node picks at the size it renders at (#3194). That auto-refresh must not silently
+     * overwrite a collider the app chose itself — assigning [collisionShape] is a documented
+     * capability, and `null` is a meaningful choice too ("this node has no collider"), which a
+     * blind refresh would resurrect.
+     *
+     * So the public [collisionShape] setter latches this flag and the auto-refresh backs off.
+     * `RenderableNode.updateCollisionShape()` clears it again: calling it is an explicit request
+     * to go back to the derived shape, and it is also how the two construction paths seed the
+     * collider without latching.
+     */
+    internal var hasCustomCollisionShape = false
+
+    /**
      * The shape to used to detect collisions for this [Node].
      *
      * If the shape is not set and renderable is set, then [Collider.setShape] is used to detect
@@ -638,10 +655,15 @@ open class Node protected constructor(
      *
      * [CollisionShape] represents a geometric shape, i.e. sphere, box, convex hull.
      * If null, this node's current collision shape will be removed.
+     *
+     * Assigning this **opts the node out** of the automatic collider refresh a renderable node
+     * performs on every geometry change (#3194): the value set here survives any later
+     * `updateGeometry`. Call `RenderableNode.updateCollisionShape()` to opt back in.
      */
     var collisionShape: CollisionShape? = null
         get() = collider?.getShape()
         set(value) {
+            hasCustomCollisionShape = true
             field = value
             if (value != null) {
                 val collider = collider ?: Collider(
