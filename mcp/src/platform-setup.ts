@@ -272,7 +272,9 @@ struct ContentView: View {
 
 ### 5. Available Node Types
 
-SceneViewSwift provides 16 node types:
+SceneViewSwift provides 19 node types — every public \`*Node\` type declared under
+\`SceneViewSwift/Sources/SceneViewSwift/Nodes/\` (20 files, one of which is the
+\`ShapePresets\` enum rather than a node):
 
 | Node | Purpose |
 |------|---------|
@@ -291,7 +293,13 @@ SceneViewSwift provides 16 node types:
 | \`FogNode\` | Atmospheric fog effects |
 | \`ReflectionProbeNode\` | Local environment reflection captures |
 | \`CameraNode\` | Programmatic camera control |
-| \`AugmentedImageNode\` | AR image detection and tracking (iOS only) |`;
+| \`AugmentedImageNode\` | AR image detection and tracking (iOS only) |
+| \`ShapeNode\` | 2D polygon shapes extruded into 3D |
+| \`ViewNode\` | A SwiftUI view rendered onto a 3D plane |
+| \`SceneReconstructionNode\` | LiDAR scene mesh — static-only namespace, not instantiable |
+
+Two more \`*Node\` types live outside that folder and are not counted above:
+\`AnchorNode\` (\`ARSceneView.swift\`) and \`SpatialAudioNode\` (\`Audio/\`).`;
 
 const IOS_AR = `## SceneViewSwift — iOS AR Setup
 

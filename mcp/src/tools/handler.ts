@@ -806,7 +806,7 @@ export async function dispatchTool(
           status: "Alpha",
           version: LATEST_SCENEVIEW_RELEASE,
           dependency: "SceneViewSwift (SPM)",
-          features: ["3D", "AR (ARKit)", "16 node types", "USDZ models"],
+          features: ["3D", "AR (ARKit)", "19 node types", "USDZ models"],
         },
         {
           platform: "macOS",

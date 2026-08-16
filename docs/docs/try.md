@@ -27,7 +27,7 @@ That's it. The script builds the demo app and installs it on your connected Andr
 ### Try a specific platform demo
 
 ```bash
-./tools/try-demo.sh --sample android-demo       # Full showcase (53 demos: 19 non-AR + 34 AR)
+./tools/try-demo.sh --sample android-demo       # Full showcase (54 demos: 19 non-AR + 35 AR)
 ./tools/try-demo.sh --sample android-tv-demo    # D-pad controlled TV viewer
 ```
 
@@ -41,7 +41,7 @@ Run `./tools/try-demo.sh --help` for the full list.
 
 <div class="try-download-card">
 <h3>Android Demo</h3>
-<p>Full showcase: 4 tabs, 47 interactive demos, 46+ node types, animations, physics, post-processing.</p>
+<p>Full showcase: 4 tabs, 54 interactive demos, 46+ node types, animations, physics, post-processing.</p>
 <a href="https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk" class="md-button md-button--primary">
 Download APK
 </a>

@@ -181,5 +181,78 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
   && ok "a tier-split count → allowed once tiers.ts parses" \
   || bad "the tier counts must widen the allowlist (rc=$RC): $OUT"
 
+# ── The three structural blind spots closed in #3192 ────────────────────────
+# Each of these was a way for the gate to report OK on a tree it had not
+# looked at. They are pinned separately because they fail for three different
+# reasons: an extension, a directory, and a regex knocked out of phase.
+
+# 15. A `.json` file inside an ALREADY-SCANNED directory is scanned.
+#     `docs/docs/structured-data.json` sat inside `docs/docs` the whole time and
+#     was skipped purely on extension, while advertising `list_node_types` —
+#     a tool the gate's own SKIP_FILE comment described as removed. The
+#     directory was never the gap; SCAN_EXT was.
+D="$(fixture jsonext 'Nothing to see here.')"
+mkdir -p "$D/docs/docs"
+printf '{ "text": "It provides tools like get_sample() and list_node_types." }\n' \
+    > "$D/docs/docs/structured-data.json"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'list_node_types' <<<"$OUT"; } \
+  && ok "a .json file in a scanned dir → scanned, fabricated tool named" \
+  || bad "a .json file must be scanned (rc=$RC): $OUT"
+
+# 16. `mcp/src/` is scanned. It returns whole Markdown documents to the model —
+#     `platform-setup.ts` shipped a node-type table wrong for three releases,
+#     `proxy.ts` a tool count contradicting `tiers.ts` in the same package. A
+#     gate that reads the docs but not the strings the SERVER ANSWERS WITH is
+#     checking the smaller half. The fixture puts the claim in a `.ts` file so
+#     this case dies if either `mcp/src` leaves SCAN_DIRS or `.ts` leaves
+#     SCAN_EXT.
+D="$(fixture mcpsrc 'Nothing to see here.')"
+printf 'export const GUIDE = `Call create_scene to scaffold a project.`;\n' \
+    > "$D/mcp/src/platform-setup.ts"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'create_scene' <<<"$OUT"; } \
+  && ok "a claim inside mcp/src/*.ts → scanned, fabricated tool named" \
+  || bad "mcp/src must be scanned (rc=$RC): $OUT"
+
+# 17. THE REGRESSION. One JS template literal, on ONE line, containing a ```
+#     fence — the exact shape of the copy-to-clipboard prompt in
+#     website-static/playground.html. Under the old inline-code pairing the
+#     backticks on that line paired off shifted by one and every fabricated name
+#     landed in a GAP between pairs, so the scan never saw them. Two occurrences
+#     shipped; one was fixed by hand and reported as the fix, the second
+#     survived because the gate could not structurally see it.
+#
+#     This case is the reason names are matched as BARE tokens now. Restore the
+#     `/`([^`\n]+)`/g` pairing and this case goes red on its own.
+D="$(fixture backtickdesync 'Nothing to see here.')"
+mkdir -p "$D/website-static"
+#     The fixture is deliberately ONE line — the scan is per-line, so a fence
+#     split across lines would not desynchronise anything and the case would
+#     assert nothing. (This very case first shipped with a `\n` in the fixture
+#     AND its own label written in double quotes, where the three backticks
+#     opened a command substitution and killed the suite at parse time. The
+#     failure mode being tested claimed its own test twice.)
+printf '<script>const P = `Use the MCP server. ```kotlin val x = 1``` Then call `create_scene` and `set_environment`.`;</script>\n' \
+    > "$D/website-static/playground.html"
+[[ $(wc -l < "$D/website-static/playground.html") -eq 1 ]] \
+  || bad "fixture must be exactly one line, or this case desynchronises nothing"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'create_scene' <<<"$OUT" && grep -q 'set_environment' <<<"$OUT"; } \
+  && ok 'a ``` fence inside a one-line JS literal → both names still caught' \
+  || bad "backtick desync must not hide a name (rc=$RC): $OUT"
+
+# 18. …and the narrowing that widening required is pinned too, or someone
+#     "fixes" it back and the suite proving this gate works becomes a pile of
+#     violations of it. Test files deliberately construct fabricated names to
+#     assert the production code rejects them.
+D="$(fixture testfile 'Nothing to see here.')"
+printf 'it("rejects an unknown tool", () => expect(call("get_nonexistent_guide")).toThrow());\n' \
+    > "$D/mcp/src/handler.test.ts"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a fabricated name inside a *.test.ts → deliberately not scanned" \
+  || bad "test files must be skipped (rc=$RC): $OUT"
+
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

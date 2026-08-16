@@ -16,7 +16,7 @@ harness (umbrella [#1560](https://github.com/sceneview/sceneview/issues/1560)).
 ```
 .maestro/
   android/
-    catalog.yaml      master flow — all 52 demos
+    catalog.yaml      master flow — 68 legs over 47 of the 54 demos
     3d-basics.yaml    per-category subsets (run a fast slice)
     lighting.yaml
     content.yaml
@@ -52,7 +52,7 @@ bash .claude/scripts/setup-ar-emulator.sh
 ./gradlew :samples:android-demo:assembleDebug
 adb install -r samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk
 
-# Full catalog (52 demos) …
+# Full catalog (68 legs, 47 of 54 demos) …
 maestro test .maestro/android/catalog.yaml
 # … or a fast subset.
 maestro test .maestro/android/lighting.yaml

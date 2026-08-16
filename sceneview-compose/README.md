@@ -15,7 +15,7 @@ This module is **one composable**, `SceneViewer`, covering the model-viewer case
 model, orbit it, light it, tap it. That is the whole contract, and it is not a phase on
 the way to something larger.
 
-The reason is measurable. Android exposes 27 node types, the Swift API 20, the web one
+The reason is measurable. Android exposes 27 node types, the Swift API 19, the web one
 ~10; the honest intersection of all three is **five** — Camera, Geometry, Light, Model,
 SpatialAudio — of which this module covers **four**. SpatialAudio is left out on purpose:
 it is not the viewer case, and each platform's audio session has its own lifecycle.

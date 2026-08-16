@@ -208,13 +208,34 @@ const SCAN_DIRS = [
   "agents",
   "pro",
   "mcp-gateway/src/dashboard",
+  // Added in #3192. Both were outside every glob, and both carry prose that an
+  // assistant reads verbatim: `marketing/` is copy destined for public
+  // surfaces, and `mcp/src/` returns whole Markdown documents to the model
+  // (`platform-setup.ts` shipped a node-type table that had been wrong for
+  // three releases, `proxy.ts` a tool count contradicting `tiers.ts` inside the
+  // same package). A gate that scans the docs but not the strings the server
+  // ANSWERS with is checking the smaller half.
+  "marketing",
+  "mcp/src",
 ];
 const SCAN_FILES = ["README.md", "AGENTS.md", "mcp/README.md", "llms.txt"];
-const SCAN_EXT = new Set([".md", ".html", ".txt", ".tsx"]);
+// `.json` added in #3192: `docs/docs/structured-data.json` sat INSIDE
+// `docs/docs` the whole time and was skipped purely on extension, while
+// advertising `list_node_types` — a tool this file's own SKIP_FILE comment
+// already described as removed. `.ts` added with `mcp/src` above.
+const SCAN_EXT = new Set([".md", ".html", ".txt", ".tsx", ".json", ".ts"]);
 // Same reason as CHANGELOG.md: this is the docs-site mirror of it, and a release
 // note naming `list_node_types` — a tool that existed when it was written — is
 // history, not a false claim.
 const SKIP_FILE = new Set(["docs/docs/changelog.md"]);
+// Test files are excluded, and this is a narrowing that has to justify itself.
+// They deliberately construct names like `get_nonexistent_guide` and fixture
+// counts like "15 free tools" in order to assert the PRODUCTION code rejects
+// them. Scanning them makes this gate structurally unable to coexist with its
+// own test suite — it would report the tests proving it works as violations of
+// it. What is given up is a false claim buried in a test's prose, which is not
+// a surface any assistant or user reads.
+const isTestFile = (rel) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
 const SKIP_DIR = new Set(["node_modules", "assets", "models", "environments", "js", "fonts"]);
 
 function walk(dir, out = []) {
@@ -229,7 +250,7 @@ function walk(dir, out = []) {
     const rel = join(dir, e);
     const st = statSync(join(repoRoot, rel));
     if (st.isDirectory()) walk(rel, out);
-    else if (SCAN_EXT.has(extname(e)) && !SKIP_FILE.has(rel)) out.push(rel);
+    else if (SCAN_EXT.has(extname(e)) && !SKIP_FILE.has(rel) && !isTestFile(rel)) out.push(rel);
   }
   return out;
 }
@@ -255,6 +276,9 @@ const NOT_A_TOOL = new Map([
   ["add_model", "SEE BELOW — deliberately absent so the playground regression stays caught"],
   ["set_state", "generic API prose"],
   ["create_react_app", "third-party tooling"],
+  // Surfaced by the #3192 widening, both verified as not-a-tool at their sites:
+  ["view_in_ar", "Google Material Symbols ligature — the AR icon's NAME, in 7 <span class=\"material-symbols\"> elements"],
+  ["search_term_string", "schema.org SearchAction `query-input: required name=search_term_string` — a spec-mandated literal"],
 ]);
 NOT_A_TOOL.delete("add_model"); // never actually allowed — the note above is the point
 
@@ -267,7 +291,23 @@ const COUNT_QUALIFIER = "(?:MCP|AI|free|Pro|specialised|specialized|developer|to
 const COUNT_RE = new RegExp(`\\b(\\d{1,3})\\+?\\s+(?:${COUNT_QUALIFIER})?tools?\\b`, "gi");
 const SAMPLE_COUNT_RE =
   /\b(\d{1,3})\+?\s+(?:compilable\s+|code\s+|working,?\s+tested\s+)?(?:samples|scenarios)\b|\bany of (\d{1,3}) scenarios\b/gi;
-const INLINE_CODE_RE = /`([^`\n]+)`/g;
+// Tool names are matched as BARE tokens, not as inline-code spans.
+//
+// This used to be /`([^`\n]+)`/g — pair the backticks on a line, scan what is
+// between them. That requirement never bought correctness, and it cost a real
+// miss (#3192): `website-static/playground.html` held a copy-to-clipboard
+// prompt as ONE JS template literal containing a ``` fence, so on that single
+// line the backticks numbered ten and paired off shifted by one. Every
+// fabricated name sat in a GAP between pairs and the scan never saw it. The
+// first of the two occurrences was fixed by hand and reported as the fix; the
+// second survived, because the gate that was supposed to catch it structurally
+// could not. Anything a fence, an apostrophe or a stray backtick can knock out
+// of phase is not a gate.
+//
+// Bare tokens are safe here because TOOL_SHAPE is a closed verb list joined to
+// snake_case, and every legitimate hit is in the registry by construction.
+// NOT_A_TOOL carries the residue, each entry with its reason.
+const TOOL_TOKEN_RE = /\b[a-z][a-z0-9_]*\b/g;
 
 function stripFencedBlocks(text) {
   // Replace fenced blocks with blank lines so line numbers survive.
@@ -292,11 +332,14 @@ for (const file of files) {
   const lines = prose.split("\n");
 
   lines.forEach((line, i) => {
-    for (const m of line.matchAll(INLINE_CODE_RE)) {
-      const token = m[1].trim();
+    const seenOnLine = new Set();
+    for (const m of line.matchAll(TOOL_TOKEN_RE)) {
+      const token = m[0];
       if (!TOOL_SHAPE.test(token)) continue;
       if (registry.has(token)) continue;
       if (NOT_A_TOOL.has(token)) continue;
+      if (seenOnLine.has(token)) continue;
+      seenOnLine.add(token);
       findings.push({
         file,
         line: i + 1,

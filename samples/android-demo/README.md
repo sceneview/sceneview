@@ -5,7 +5,7 @@ Play Store-ready showcase app demonstrating SceneView's full feature set.
 ## Features
 
 - **4-tab Material 3 Expressive UI** (3D, AR, Samples, About)
-- **43 interactive demos** covering all node types
+- **54 interactive demos** (19 non-AR + 35 AR) covering all node types
 - 3D model viewer with orbit camera and HDR environments
 - AR tap-to-place with plane detection
 - Geometry nodes, animations, physics, dynamic sky

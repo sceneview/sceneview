@@ -44,7 +44,9 @@ the current tree:
 
 - Android exposes **27 node types** (31 files in
   `sceneview/src/main/java/io/github/sceneview/node/`, four of which are the `Node` base
-  and its delegates/state rather than node types), Swift 20, web ~10. The intersection of
+  and its delegates/state rather than node types), Swift 19 (20 files under
+  `SceneViewSwift/Sources/SceneViewSwift/Nodes/`, one of which is the
+  `ShapePresets` enum rather than a node type), web ~10. The intersection of
   all three is **5**: Camera, Geometry, Light, Model, SpatialAudio.
 - **77 of the 178 Kotlin files** in `arsceneview/` import `com.google.ar.core` directly
   (58 under `src/main`, 19 under `src/test`); 100 reference the package at all. On Apple
