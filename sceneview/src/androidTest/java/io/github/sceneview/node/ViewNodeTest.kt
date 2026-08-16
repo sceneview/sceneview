@@ -6,6 +6,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Filament
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.Utils
+import io.github.sceneview.collision.Box
+import io.github.sceneview.collision.Vector3
 import io.github.sceneview.createEglContext
 import io.github.sceneview.createEngine
 import io.github.sceneview.loaders.MaterialLoader
@@ -14,6 +16,7 @@ import io.github.sceneview.safeDestroy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -143,6 +146,71 @@ class ViewNodeTest {
             // geometry.size = viewSize / pxPerUnits = (500/250, 500/250) = (2.0, 2.0)
             assertEquals("geometry width should be 2.0", 2.0f, node.geometry.size.x, 0.01f)
             assertEquals("geometry height should be 2.0", 2.0f, node.geometry.size.y, 0.01f)
+
+            node.destroy()
+        }
+    }
+
+    // ── Collider follows the resize (#3194) ───────────────────────────────────
+
+    @Test
+    fun viewNode_resize_movesItsCollider() {
+        // The collider used to be refreshed by an explicit updateCollisionShape() call at the end
+        // of updateGeometrySize() (#2845). That call is gone: RenderableNode.setGeometry now
+        // re-derives it for every node type (#3194). This pins that ViewNode still gets the
+        // refresh through the shared path — the whole point of removing the special case.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = makeViewNode()
+
+            node.pxPerUnits = 250.0f
+            node.viewSize = Size(500.0f, 500.0f)
+
+            val collider = node.collisionShape as Box
+            assertEquals(
+                "the collider must follow the quad to 2.0 units wide, not stay at " +
+                    "Plane.DEFAULT_SIZE's 1.0 — a stale collider is what made a card's outer " +
+                    "margin unclickable",
+                2.0f, collider.getSize().x, 0.01f
+            )
+
+            node.destroy()
+        }
+    }
+
+    @Test
+    fun viewNode_appAssignedCollisionShape_survivesAResize() {
+        // The removed call was unconditional, so it overwrote an app-assigned collider on every
+        // resize. Routing through setGeometry respects the opt-out instead.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = makeViewNode()
+
+            node.collisionShape = Box(Vector3(10.0f, 10.0f, 10.0f), Vector3.zero())
+            node.viewSize = Size(500.0f, 500.0f)
+
+            val collider = node.collisionShape as Box
+            assertEquals(
+                "an app-assigned collider must survive a resize — the app owns it",
+                10.0f, collider.getSize().x, 0.01f
+            )
+
+            node.destroy()
+        }
+    }
+
+    @Test
+    fun viewNode_clearedCollisionShape_isNotResurrectedByAResize() {
+        // `collisionShape = null` means "this node must not be pickable". A blind refresh would
+        // hand it a fresh collider and silently make it pickable again.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = makeViewNode()
+
+            node.collisionShape = null
+            node.viewSize = Size(500.0f, 500.0f)
+
+            assertNull(
+                "a deliberately cleared collider must stay cleared across a resize",
+                node.collisionShape
+            )
 
             node.destroy()
         }
