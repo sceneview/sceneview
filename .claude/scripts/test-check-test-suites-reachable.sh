@@ -10,7 +10,9 @@
 # Every case below is MUTATION-VERIFIED at the bottom: the gate is copied,
 # one guarantee is broken by an exact-literal substitution, and the case that
 # owns it must go red. A substitution that does not apply is reported as an
-# INVALID MUTANT rather than counted as a pass — a mutant that never bit looks
+# INVALID MUTANT rather than counted as a pass, and one that could apply in more
+# than one place is refused as AMBIGUOUS rather than resolved by taking the first
+# hit — a mutant that never bit, and a mutant that bit a comment, both look
 # exactly like a mutant that was caught.
 set -uo pipefail
 
@@ -299,6 +301,80 @@ else
     bad "a __tests__/ suite was invisible to the enumeration — it would vanish, not fail (rc=$RC)"
 fi
 
+# ── 13. a flow-style paths: filter is parsed, not ignored ────────────────────
+# `paths: ['other/**']` is legal YAML and matched none of the block-sequence
+# parsing. An unparsed filter yields an empty glob list, and an empty list means
+# "no filter — fires on everything", so a genuinely scoped workflow read as
+# unconditionally triggered. Fail-open, in the gate whose subject is fail-open.
+R="$(mkrepo flowpaths)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths: ['other/**', 'docs/**']
+jobs:
+  t:
+    steps:
+      - name: Test
+        working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'never triggers'; then
+    ok "a flow-style paths: filter that excludes the suite is not read as no filter"
+else
+    bad "a flow-style paths: filter was ignored — the suite read as triggered by everything (rc=$RC)"
+fi
+
+# ── 14. continue-on-error after the run: line it governs ─────────────────────
+# YAML mapping keys are unordered. Grading at the moment the runner line matched
+# meant this step was classified blocking, which overstates coverage.
+R="$(mkrepo ceafter)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+        continue-on-error: true
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'cannot fail the build'; then
+    ok "continue-on-error written after its own run: still makes the step advisory"
+else
+    bad "an advisory step was graded blocking because the key came after run: (rc=$RC)"
+fi
+
+# ── 15. a glob in a run: line is not filename-expanded ───────────────────────
+# `$cmd` is split unquoted; without `set -f` a bare `**` expands against the
+# repo root and injects every top-level directory as a target — so `other`,
+# which nothing runs, would be reported covered by a step confined to `app`.
+R="$(mkrepo globtok)"; addpkg "$R" app; addpkg "$R" other
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npx vitest run **
+YML
+stage "$R"; run_gate "$R"
+# The assertion is on the REASON, not on the ✗. Expansion does not flip `other`
+# to covered — the workflow's own `app/**` filter still fails to trigger on it —
+# it flips the reason from "nothing runs it" to "runs but never triggers", which
+# is a fabricated invocation. Asserting the ✗ alone let the mutant survive.
+if printf '%s' "$OUT" | grep -q 'no workflow step runs its tests'; then
+    ok "a glob token in a run: line does not expand into spurious targets"
+else
+    bad "filename expansion invented an invocation for an unrelated package (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -328,12 +404,22 @@ import os, sys
 src, dst = sys.argv[1], sys.argv[2]
 old, new = os.environ["OLD"], os.environ["NEW"]
 text = open(src).read()
-if old not in text:
+n = text.count(old)
+if n == 0:
     sys.exit(3)
+# An AMBIGUOUS literal is refused, not resolved by taking the first hit. The
+# `set -f` mutant was written while a comment two lines above quoted `set -f`
+# in prose: replace(..., 1) rewrote the COMMENT, the code ran unchanged, and
+# the mutant reported SURVIVED — indistinguishable from a real gap in the
+# gate. A harness that silently mutates the wrong occurrence is the same
+# defect it exists to catch.
+if n > 1:
+    sys.exit(4)
 open(dst, "w").write(text.replace(old, new, 1))
 PY
     case $? in
         3) bad "INVALID MUTANT \"$label\" — the literal is absent; the case below proves nothing"; return ;;
+        4) bad "AMBIGUOUS MUTANT \"$label\" — the literal occurs more than once; it would mutate an arbitrary one"; return ;;
         0) ;;
         *) bad "mutant \"$label\" could not be built"; return ;;
     esac
@@ -351,7 +437,8 @@ mutant 'count comment lines as invocations' \
 mutant 'count step titles as invocations' \
     'if (line ~ /^-?[[:space:]]*name:[[:space:]]/) next' 'if (0) next' stepname '✗ app'
 mutant 'let working-directory leak past a step boundary' \
-    '/^[[:space:]]*-[[:space:]]/ { wd=""; ce=0 }' '/^ZZZ_NEVER_MATCHES/ { wd=""; ce=0 }' leak '✗ app'
+    '/^[[:space:]]*-[[:space:]]/ { flush(); wd=""; ce=0 }' \
+    '/^ZZZ_NEVER_MATCHES/ { flush(); wd=""; ce=0 }' leak '✗ app'
 mutant 'treat any workflow as PR-triggered' \
     "grep -qE '^[[:space:]]{1,4}pull_request(_target)?:' \"\$1\"" 'return 0' nopr 'does not run on pull requests'
 mutant 'ignore the path filter' \
@@ -359,10 +446,20 @@ mutant 'ignore the path filter' \
 mutant 'stop excluding dist/ copies' \
     "| grep -vE '(^|/)(node_modules|dist|build|out)/' || true" '|| true' distonly '0 suite'
 mutant 'ignore || true' \
-    'line ~ /\|\|[[:space:]]*true/' '0' advtrue 'cannot fail the build'
+    'l ~ /\|\|[[:space:]]*true/' '0' advtrue 'cannot fail the build'
 # Narrow the enumeration back to the two infixes. The `legacy` package then
 # leaves the report entirely — it is not reported unreachable, it is not
 # reported at all, which is why this arm needs a mutant of its own.
+mutant 'stop parsing flow-style paths: filters' \
+    '/^[[:space:]]*paths(-ignore)?:[[:space:]]*\[/ {' \
+    '/^ZZZ_NEVER_MATCHES_FLOW/ {' flowpaths 'never triggers'
+mutant 'grade continue-on-error at match time instead of step end' \
+    '(ce == 1 || l ~ /\|\|[[:space:]]*true/) ? 1 : 0' \
+    '(0 || l ~ /\|\|[[:space:]]*true/) ? 1 : 0' ceafter 'cannot fail the build'
+mutant 'let the command split glob against the filesystem' \
+    'set -f
+        for tok in $cmd; do' 'set +f
+        for tok in $cmd; do' globtok 'no workflow step runs its tests'
 mutant 'enumerate only .test./.spec., not __tests__/' \
     '(\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$|(^|/)__tests__/.+\.(ts|tsx|js|jsx|mjs|cjs)$)' \
     '\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$' jestdirs 'legacy'

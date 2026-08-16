@@ -62,7 +62,15 @@
 #   be counted as separate suites that nothing runs — true, and useless.
 # * A job-level `continue-on-error: true` is NOT detected, only a step-level
 #   one; such a suite is reported OK when it is really advisory. Printed in the
-#   footer rather than left for a reader to discover.
+#   footer rather than left for a reader to discover. (The step-level case is
+#   order-independent: matches are buffered and graded at the end of the step,
+#   so `continue-on-error:` written after its own `run:` still counts.)
+# * A `paths:` filter naming only a SUBDIRECTORY of a package is accepted as
+#   covering the package. That over-approximates triggering — a change to
+#   `pkg/src/` would not fire a workflow filtered on `pkg/__tests__/**` — and it
+#   is deliberate: refusing it would push authors to widen real filters for this
+#   gate's benefit. It is the one accepted over-approximation here, so it is
+#   named rather than buried.
 #
 # Usage: check-test-suites-reachable.sh [repo-root]
 set -uo pipefail
@@ -130,9 +138,25 @@ scan_invocations() {
     for wf in "$WF_DIR"/*.yml "$WF_DIR"/*.yaml; do
         [ -f "$wf" ] || continue
         awk -v wf="$(basename "$wf")" '
+            # Matches are BUFFERED and emitted at the end of the step, not at
+            # the line that matched. YAML mapping keys are unordered, so
+            # `continue-on-error: true` and `working-directory:` are both legal
+            # AFTER the `run:` that they govern. Deciding at match time read
+            # those steps with whatever was known so far — an advisory step
+            # reported as blocking, which is the direction that overstates
+            # coverage. Buffering is what makes the verdict independent of key
+            # order.
+            function flush(   i, l) {
+                for (i = 1; i <= np; i++) {
+                    l = pend[i]
+                    printf "%s\t%s\t%s\t%d\n", wf, wd, l,
+                        (ce == 1 || l ~ /\|\|[[:space:]]*true/) ? 1 : 0
+                }
+                np = 0
+            }
             # A new list item ends the previous step, so its working-directory
             # must not leak forward onto the next one.
-            /^[[:space:]]*-[[:space:]]/ { wd=""; ce=0 }
+            /^[[:space:]]*-[[:space:]]/ { flush(); wd=""; ce=0 }
             {
                 line = $0
                 sub(/^[[:space:]]+/, "", line)
@@ -150,10 +174,10 @@ scan_invocations() {
                 }
                 if (line ~ /continue-on-error:[[:space:]]*true/) ce = 1
                 if (line ~ /(npm[[:space:]]+(run[[:space:]]+)?test|vitest|jest|playwright[[:space:]]+test)/) {
-                    adv = (ce == 1 || line ~ /\|\|[[:space:]]*true/) ? 1 : 0
-                    printf "%s\t%s\t%s\t%d\n", wf, wd, line, adv
+                    pend[++np] = line
                 }
             }
+            END { flush() }
         ' "$wf"
     done
 }
@@ -164,6 +188,27 @@ scan_invocations() {
 trigger_prefixes() {
     local wf="$1"
     awk '
+        # Flow style — `paths: ["mcp/**", "x/**"]`. Handled because NOT handling
+        # it fails open: the block-sequence rule below never matches, the glob
+        # list comes back empty, and an empty list means "no filter, fires on
+        # everything" (see the caller). A genuinely path-scoped workflow would
+        # then read as unconditionally triggered, and a real coverage gap would
+        # pass green — the exact failure this gate exists to catch, in its own
+        # parser. No workflow here uses flow style today; that is why it had to
+        # be closed by reasoning rather than by a red run.
+        /^[[:space:]]*paths(-ignore)?:[[:space:]]*\[/ {
+            if ($0 ~ /paths-ignore/) next
+            v = $0
+            sub(/^[^[]*\[/, "", v)
+            sub(/\].*$/, "", v)
+            n = split(v, a, ",")
+            for (i = 1; i <= n; i++) {
+                gsub(/["\x27]/, "", a[i])
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", a[i])
+                if (a[i] != "") print a[i]
+            }
+            next
+        }
         /^[[:space:]]*paths(-ignore)?:[[:space:]]*$/ { inp = ($0 ~ /paths-ignore/) ? 0 : 1; next }
         inp && /^[[:space:]]*-[[:space:]]/ {
             v = $0
@@ -223,6 +268,12 @@ for suite in "${SUITES[@]:-}"; do
         # the command that names a real directory (`vitest --root mcp/pkg/x`,
         # `cd mcp-gateway && ...`). Relative tokens resolve against wd.
         targets="$wd"
+        # `set -f` for the split: `$cmd` is unquoted for word-splitting, but
+        # globbing is still on without it, so a `run:` line holding `*.test.ts`
+        # or a bare `**` would be filename-expanded against the repo root and
+        # inject directories nobody named. No workflow command contains such a
+        # token today.
+        set -f
         for tok in $cmd; do
             tok="${tok%\"}"; tok="${tok#\"}"; tok="${tok%\'}"; tok="${tok#\'}"
             case "$tok" in
@@ -232,6 +283,7 @@ for suite in "${SUITES[@]:-}"; do
             elif [ -n "$wd" ] && [ -d "$wd/$tok" ]; then targets="$targets"$'\n'"$wd/$tok"
             fi
         done
+        set +f
         hit=0
         while IFS= read -r t; do
             t="${t#./}"; t="${t%/}"
