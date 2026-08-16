@@ -246,8 +246,18 @@ Full cross-platform guidance:
 
 Pair this skill with Xcode's command-line tools:
 
-- `xcrun simctl boot "iPhone 16"` + `xcodebuild -scheme … -destination …` —
-  build and run on the simulator.
+- Build and run on the simulator — resolve the destination, never hardcode
+  `name=iPhone <model>`. A model name is a promise about a machine you do not
+  own, and the resolver also waits out the CoreSimulator cold window that made
+  iOS CI look flaky ([#3174](https://github.com/sceneview/sceneview/issues/3174)):
+
+  ```bash
+  . .claude/scripts/lib/ios-simulator.sh
+  # Assign — the resolver reports failure through its EXIT CODE, and `set -e`
+  # cannot see a `$(...)` that fails inside another command's arguments.
+  DEST="$(ios_simulator_destination)"
+  xcodebuild -scheme SceneViewSwift -destination "$DEST"
+  ```
 - `xcrun simctl io booted screenshot ui.png` — capture the rendered scene.
 - `swift build` / `swift test` from `SceneViewSwift/` — build/test the package
   in isolation.

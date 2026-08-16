@@ -1,6 +1,10 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
+import android.view.Surface
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -63,7 +68,9 @@ import kotlin.math.max
  *    ([Frame.acquireDepthImage16Bits]), copy the 16-bit unsigned millimetre buffer
  *    into an `IntArray` of ARGB-coloured pixels via
  *    [DepthVisualization.depthBufferToArgb], then upload it into a recycled
- *    Compose [Bitmap].
+ *    Compose [Bitmap]. ARCore delivers depth in the landscape **camera sensor** frame,
+ *    so the colorize pass also turns it to match the display rotation — without that,
+ *    the overlay sits 90° off the camera feed in portrait (#3184).
  * 3. Render the bitmap as an [Image] overlay sized to fill the [ARSceneView],
  *    with `alpha = slider`. At `0.0` the overlay is invisible and the live
  *    camera feed shows through; at `1.0` the overlay covers everything.
@@ -80,6 +87,21 @@ import kotlin.math.max
  */
 @Composable
 fun ARDepthVisualizationDemo(onBack: () -> Unit) {
+    val context = LocalContext.current
+    // Resolved once: the Display *object* is stable for the lifetime of this context, while
+    // `rotation` on it is live — so the per-frame read below stays cheap and never has to
+    // touch a `Context` that may not be a visual one. `Context.display` was added in API 30;
+    // fall back to the deprecated accessor on API 28–29, same as ARMLObjectLabelDemo.
+    val display = remember(context) {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+            }
+        }.getOrNull()
+    }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -202,19 +224,35 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                                 val w = depthImage.width
                                 val h = depthImage.height
                                 val rowStride = plane.rowStride
+                                // Read the rotation per frame, not once at composition: the
+                                // display can turn between two depth frames and the overlay
+                                // has to follow it in the same frame the camera feed does.
+                                val rotation = DepthVisualization.displayRotationToDegrees(
+                                    display?.rotation ?: Surface.ROTATION_0
+                                )
                                 val pixels = DepthVisualization.depthBufferToArgb(
                                     depthBytes = plane.buffer,
                                     width = w,
                                     height = h,
                                     rowStrideBytes = rowStride,
+                                    rotationDegrees = rotation,
                                 )
-                                // Reallocate the bitmap if the depth resolution changed.
-                                if (depthBitmap == null || w != bitmapWidth || h != bitmapHeight) {
-                                    depthBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                                    bitmapWidth = w
-                                    bitmapHeight = h
+                                // Post-rotation dimensions — swapped on a quarter turn, which
+                                // is the portrait case (#3184).
+                                val outW = DepthVisualization.rotatedWidth(w, h, rotation)
+                                val outH = DepthVisualization.rotatedHeight(w, h, rotation)
+                                // Reallocate the bitmap if the depth resolution — or the
+                                // orientation it is displayed at — changed.
+                                if (depthBitmap == null ||
+                                    outW != bitmapWidth ||
+                                    outH != bitmapHeight
+                                ) {
+                                    depthBitmap =
+                                        Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                                    bitmapWidth = outW
+                                    bitmapHeight = outH
                                 }
-                                depthBitmap?.setPixels(pixels, 0, w, 0, 0, w, h)
+                                depthBitmap?.setPixels(pixels, 0, outW, 0, 0, outW, outH)
                                 depthFrameVersion++
                                 depthEverReceived = true
                             } finally {

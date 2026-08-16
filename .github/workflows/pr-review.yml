@@ -893,6 +893,109 @@ jobs:
             Your final message: one short paragraph stating what you found. The
             file is the deliverable.
 
+      # ⛔ THE ACTION CAN REFUSE TO START AND SAY SO ONLY IN ITS OWN LOG (#3140).
+      #   `claude-code-action` requires the workflow file it is RUNNING to be
+      #   byte-identical to the copy on the repository's default branch. When it
+      #   is not, the action logs `Workflow validation failed`, exits the step
+      #   with `outcome=success`, and does nothing: no
+      #   `claude-execution-output.json`, no `review-verdict.json`. The grader
+      #   then fails closed with REVIEW_INCOMPLETE — correct as a gate, and the
+      #   error it prints says "see the review comment on the PR" while the
+      #   comment sitting there is the PREVIOUS run's verdict, which on #3134
+      #   read "the gate is green". Red check, green explanation, and nothing on
+      #   the PR saying no reviewer read this head.
+      #
+      #   THE GUARD ABOVE DOES NOT COVER THIS, and #3140 is where that was
+      #   measured. `Detect self-modification of this workflow` asks "does this
+      #   PR change pr-review.yml?" — it inspects the PR's own diff. The action
+      #   asks a different question: "does the file I am running differ from the
+      #   default branch RIGHT NOW?". #3134 changed nothing here, and still hit
+      #   it. The timeline on run 31612615435 settles it, and refutes BOTH
+      #   candidate causes #3140 was filed with:
+      #     15:29:53  run created; the workflow ref (and its copy of this file)
+      #               is pinned at that instant
+      #     15:29:58  the job then waits 27 minutes for a runner
+      #     15:54:40  #3138 merges to `main`, editing THIS FILE
+      #     15:57:01  the action starts, compares against a default branch that
+      #               moved underneath it, and refuses
+      #   #3135 reviewed fine at 15:43:52 for the same reason in reverse: it ran
+      #   before #3138 landed. So it is not "the branch's copy lagged main's"
+      #   (the `pull_request` checkout is the MERGE ref, which carries main's
+      #   copy) and not the head ref being deleted at 15:47 (a coincidence). It
+      #   is a race between the run's pinned workflow ref and the default branch.
+      #
+      #   RECOGNISE THE OUTCOME, NEVER THE WORDING. Grepping the action's
+      #   `Exiting due to workflow validation skip` line would go silent the day
+      #   that string changes — and a `uses:` step's stdout is not readable from
+      #   the workflow anyway. This step asks the action's OWN documented
+      #   predicate, on blob hashes, and only when the review produced nothing.
+      #   That ordering is the whole safety argument: it can only ever refine a
+      #   run that was already heading for REVIEW_INCOMPLETE, and can never
+      #   relabel a healthy review — `main` may legitimately move a second after
+      #   a good one. Falsifiable and mutation-tested in
+      #   `.claude/scripts/test-selfmod-guard.sh`.
+      # `!cancelled()` and not `always()`, unlike its neighbours. `concurrency`
+      # above cancels the in-flight review on every new push, and a cancelled
+      # run also has no verdict file — so under `always()` a cancellation that
+      # happened to straddle an edit of this file on `main` would annotate the
+      # run with "the action refused to start". That is a smaller copy of the
+      # very defect being fixed. Failures still reach this step; only
+      # cancellation does not.
+      - name: Detect a workflow-validation skip
+        id: wfval
+        if: ${{ !cancelled() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -uo pipefail
+          SELF='.github/workflows/pr-review.yml'
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          no_skip() { echo "validation_skip=false" >> "$GITHUB_OUTPUT"; }
+          # A dispatch runs the workflow file from the ref it was dispatched
+          # with — normally the default branch, i.e. the very copy the action
+          # validates against — while the checkout is `refs/pull/N/head`.
+          # Comparing the checkout there would claim a skip on every PR branched
+          # before this file last changed: the same false positive #3038 fixed
+          # in the guard above, and it would land on the fork-rescue path.
+          if [ "${EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            echo "Dispatch — the running workflow comes from the dispatched ref, not the checkout; nothing to compare."
+            no_skip; exit 0
+          fi
+          # ⛔ ORDER MATTERS: verdict file FIRST. A mismatch on its own proves
+          # nothing — the default branch is allowed to move at any moment,
+          # including right after a perfectly good review. Absent verdict AND
+          # mismatch is the measured shape.
+          if [ -s "${RUNNER_TEMP:-.}/review-verdict.json" ]; then
+            echo "review-verdict.json exists, so the action ran. Not a validation skip."
+            no_skip; exit 0
+          fi
+          # ⛔ NO `--depth` ON ANY FETCH IN THIS JOB — see the self-modification
+          # guard above for the shallow-graft failure this reproduces.
+          git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null || true
+          RUNNING=""
+          if [ -n "${WORKFLOW_SHA:-}" ]; then
+            RUNNING="$(git rev-parse --verify --quiet "$WORKFLOW_SHA:$SELF" 2>/dev/null || true)"
+          fi
+          # On a `pull_request` the checkout IS the merge commit the workflow
+          # file was read from, so `HEAD` carries the same blob. It is the
+          # fallback for the case where that ref is no longer fetchable — a
+          # merged PR's head branch is deleted, and `refs/pull/N/merge` goes
+          # with it (verified 404 on #3134 while writing this).
+          [ -n "$RUNNING" ] || RUNNING="$(git rev-parse --verify --quiet "HEAD:$SELF" 2>/dev/null || true)"
+          CURRENT="$(git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH:$SELF" 2>/dev/null || true)"
+          if [ -z "$RUNNING" ] || [ -z "$CURRENT" ]; then
+            echo "::warning title=Workflow-validation check inconclusive::Could not read $SELF from ${WORKFLOW_SHA:-HEAD} and/or origin/${DEFAULT_BRANCH}, so this step cannot tell a validation skip from a genuinely empty review. Falling back to the generic diagnosis below."
+            no_skip; exit 0
+          fi
+          if [ "$RUNNING" = "$CURRENT" ]; then
+            echo "The running $SELF matches origin/${DEFAULT_BRANCH}; the action was allowed to start, so the empty review has another cause."
+            no_skip; exit 0
+          fi
+          echo "validation_skip=true" >> "$GITHUB_OUTPUT"
+          echo "::error title=NOT EVALUATED — claude-code-action refused to start::The $SELF this run executes (blob ${RUNNING}) differs from the copy on origin/${DEFAULT_BRANCH} (blob ${CURRENT}), so the action skipped itself on its workflow-validation guard and NO reviewer read this PR. This is a CI configuration outcome, not a finding about this PR."
+
       # ⛔ The reviewers must not have touched the tree. This is the backstop for
       # #3016, and it is deliberately an ASSERTION rather than a repair: silently
       # restoring the files would hide a reviewer that mutates the checkout, and
@@ -975,6 +1078,32 @@ jobs:
           # branch name is only the fallback for the `always()` paths where that
           # step never ran.
           BASE="${BASE_SHA:-origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}}"
+          # …and the branch TIP as a second trusted reference, because the
+          # action does not honour the pin: `restoreConfigFromBase()` resolves
+          # the base BRANCH at its own runtime. Measured on run 31820409662
+          # (#3182): the pin was taken at 16:40:43, #3179 merged at 16:40:46,
+          # the action restored from the tip a second later, and this step died
+          # on ` M CLAUDE.md` — a file that PR does not touch. Accepting either
+          # ref hides nothing: both are commits on a protected branch that no
+          # PR controls. Dropping the pin instead would only move the race, since
+          # the tip can move again between the restore and this step.
+          BASE_TIP="origin/${GITHUB_BASE_REF:-$DEFAULT_BRANCH}"
+          # On the `always()` fallback path BASE_SHA is unset, so BASE already IS
+          # the tip and the two refs are the same string. Passing it twice makes
+          # the verdict header read "Restored from origin/main or origin/main" —
+          # harmless, since the first ref still matches, but a header that reads
+          # like a bug is a header nobody trusts. Empty means "no second ref";
+          # the script tests `-n` before resolving, so this warns about nothing.
+          #
+          # An `if`, not `[ … ] && BASE_TIP=""`. Errexit does not fire on the
+          # left of an `&&` (verified), so the short form is safe HERE — but it
+          # returns 1 on the common path where the refs differ, and it only has
+          # to drift to the end of a step for that to become the step's exit
+          # status. This step runs under `bash -e`; nothing about it should
+          # depend on where a line sits.
+          if [ "$BASE_TIP" = "$BASE" ]; then
+            BASE_TIP=""
+          fi
           # ⛔ Same pin as the grader, for the same reason: the judge must not
           # come from the code being judged. Reading the script out of the
           # checkout would let a PR supply the assertion that clears it — and by
@@ -1000,7 +1129,7 @@ jobs:
           # `test-assert-review-tree-clean.sh`'s wiring check greps for, and a
           # check that can be satisfied by a mention in a COMMENT is #3047 all
           # over again. Keep the script name here.
-          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE"
+          bash "$RUNNER_TEMP/assert-review-tree-clean.sh" --base "$BASE" --also-base "$BASE_TIP"
 
       # A blocking verdict must name its own cause. On run 30719225423 the PR
       # got a red check reading "REVIEW_INCOMPLETE" and nothing else — correct,
@@ -1012,9 +1141,21 @@ jobs:
       - name: Diagnose a missing verdict file
         id: diag
         if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false'
+        env:
+          VALIDATION_SKIP: ${{ steps.wfval.outputs.validation_skip }}
         run: |
           set -uo pipefail
           VERDICT_FILE="${RUNNER_TEMP}/review-verdict.json"
+          # The cause is already known and named (#3140). Everything below asks
+          # what the REVIEWERS did, and on a validation skip they never started —
+          # "the action did not get far enough (bad model id, expired token,
+          # action version)" would be a confident wrong answer, which is the
+          # defect this whole step exists to prevent.
+          if [ "${VALIDATION_SKIP:-false}" = "true" ]; then
+            echo "verdict_present=false" >> "$GITHUB_OUTPUT"
+            echo "No verdict file, and the step above already named the cause: claude-code-action refused to start on its workflow-validation guard. Not diagnosing the reviewers — they did not run."
+            exit 0
+          fi
           # An output rather than `hashFiles()` downstream: the verdict lives
           # outside the workspace now, and `hashFiles()` only ever globs inside
           # it — it would have returned "absent" for every run, uploading the run
@@ -1127,8 +1268,12 @@ jobs:
       # Uploaded ONLY when no verdict file was produced — a healthy review has
       # nothing to explain, and the record carries the whole reviewer
       # conversation, so it is not something to publish by default.
+      #
+      # Not on a validation skip: the action never started, so there is no run
+      # record to upload and `if-no-files-found: warn` would add a warning that
+      # invites the reader to look for a file that cannot exist (#3140).
       - name: Upload the run record when the review produced nothing
-        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && steps.diag.outputs.verdict_present == 'false'
+        if: always() && steps.budget.outputs.within_budget == 'true' && steps.creds.outputs.has_token == 'true' && steps.selfmod.outputs.self_modified == 'false' && steps.diag.outputs.verdict_present == 'false' && steps.wfval.outputs.validation_skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: claude-run-record-pr${{ steps.pr.outputs.number }}-${{ github.run_id }}
@@ -1142,6 +1287,7 @@ jobs:
         env:
           PR_NUM: ${{ steps.pr.outputs.number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VALIDATION_SKIP: ${{ steps.wfval.outputs.validation_skip }}
         run: |
           # `set +e` is REQUIRED and not redundant: GitHub invokes run: steps as
           # `/usr/bin/bash -e {0}`, so errexit is on before the first line and a
@@ -1153,6 +1299,52 @@ jobs:
           # and only then fail on (in the `Enforce the verdict` step).
           set +e
           set -uo pipefail
+          DEFAULT_BRANCH_FOR_MSG="${DEFAULT_BRANCH:-main}"
+          # #3140. No reviewer ran and we know exactly why, so say THAT instead
+          # of REVIEW_INCOMPLETE — a verdict about a review that never happened,
+          # pointing at a comment that is the previous run's green one. Writing
+          # `review-comment.md` here is what replaces that stale comment: the
+          # marker is the same, so `Post or update the review comment` PATCHes it
+          # in place. Still blocking, exactly like the self-modification guard
+          # and the `Grader unavailable` branch below: a check that goes green
+          # because nothing was evaluated is the faked-coverage failure mode this
+          # workflow is built against. `Agent review` is advisory in
+          # `ci-gate.yml`, so red here does not hold the merge button — it stops
+          # the run from READING as reviewed.
+          if [ "${VALIDATION_SKIP:-false}" = "true" ]; then
+            echo "gate_rc=1" >> "$GITHUB_OUTPUT"
+            echo "verdict=NOT_EVALUATED" >> "$GITHUB_OUTPUT"
+            echo "blocking=true" >> "$GITHUB_OUTPUT"
+            # shellcheck disable=SC2016  # backticks here are Markdown code spans in the comment body, not command substitution.
+            {
+              echo '<!-- sceneview-agent-review -->'
+              echo '## ⛔ NOT EVALUATED — the review action refused to start'
+              echo
+              echo '`claude-code-action` requires the workflow file it runs to be byte-identical'
+              echo "to the copy of \`.github/workflows/pr-review.yml\` on \`$DEFAULT_BRANCH_FOR_MSG\`."
+              echo 'This run'"'"'s copy is not, so the action skipped itself and **no reviewer read'
+              echo 'this PR**. Any earlier verdict on this comment has been replaced — it was for'
+              echo 'a previous run, not for this head.'
+              echo
+              echo '**This is a CI configuration problem, not a finding about this PR.** It happens'
+              echo "when \`$DEFAULT_BRANCH_FOR_MSG\`'s copy of the review workflow changes between the moment this"
+              echo 'run was queued and the moment it reached a runner — a race, not a defect in this'
+              echo 'diff.'
+              echo
+              echo 'Get a real review — a dispatch runs the workflow from the default branch, so it'
+              echo 'is not subject to this:'
+              echo
+              echo '```bash'
+              echo "gh workflow run pr-review.yml -f pr=${PR_NUM:-<N>}"
+              echo '```'
+            } > review-comment.md
+            {
+              echo '## Agent review verdict'
+              echo
+              cat review-comment.md
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           # ⛔ THE JUDGE MUST NOT COME FROM THE CODE BEING JUDGED.
           #   `$GRADER` is fetched from the default branch, never read out of the
           #   checkout. Two distinct reasons, and the second is the serious one:
@@ -1248,6 +1440,13 @@ jobs:
             echo "::error title=Breaking public-API change::The impact reviewer's finding survived adversarial verification. This is the maintainer gate — convert to draft and stop."
           fi
           if [ "${BLOCKING:-true}" != "false" ]; then
+            # "blocked this PR" would be a lie for a run where nothing was
+            # evaluated, and "see the review comment" was the sentence that on
+            # #3134 pointed a reader at the previous run's green verdict (#3140).
+            if [ "${VERDICT:-}" = "NOT_EVALUATED" ]; then
+              echo "::error title=NOT EVALUATED — no reviewer ran::claude-code-action refused to start because this run's copy of pr-review.yml differs from the default branch's. Nothing was reviewed and nothing is implied about this PR — the comment on it now says so. Re-review with: gh workflow run pr-review.yml -f pr=<N>"
+              exit 1
+            fi
             echo "::error title=Agent review blocked this PR::${VERDICT:-REVIEW_INCOMPLETE} — see the review comment on the PR."
             exit 1
           fi

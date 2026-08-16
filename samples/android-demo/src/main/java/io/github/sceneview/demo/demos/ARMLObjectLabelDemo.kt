@@ -209,8 +209,10 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     if (now - lastDetectMs[0] < kDetectIntervalMs) return@ARSceneView
 
                     // Never acquire a second CPU image while ML Kit still holds the previous
-                    // one (see `detectInFlight`). Released in both listeners, next to the
-                    // matching `cameraImage.close()`.
+                    // one (see `detectInFlight`). Released in all three terminal listeners —
+                    // success, failure, cancel — next to the matching `cameraImage.close()`,
+                    // and in the `finally` below for the paths that throw before any listener
+                    // is attached.
                     if (!detectInFlight.compareAndSet(false, true)) return@ARSceneView
                     lastDetectMs[0] = now
 
@@ -301,8 +303,19 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                 cameraImage.close()
                                 detectInFlight.set(false)
                             }
+                            .addOnCanceledListener {
+                                // Unreachable in practice — `process(InputImage)` takes no
+                                // CancellationToken and ML Kit surfaces teardown as a failure,
+                                // not a cancel. Attached anyway because it is the third and
+                                // last terminal state a Task has: without it, "released on
+                                // every exit path" would be a claim resting on an ML Kit
+                                // implementation detail rather than on the Task contract.
+                                cameraImage.close()
+                                detectInFlight.set(false)
+                            }
 
-                        // Both listeners are attached: the image and the flag are theirs now.
+                        // All three terminal listeners are attached: the image and the flag
+                        // are theirs now.
                         dispatched = true
                     } finally {
                         if (!dispatched) {

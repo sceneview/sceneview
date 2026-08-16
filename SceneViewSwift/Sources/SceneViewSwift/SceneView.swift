@@ -315,6 +315,17 @@ public struct SceneView: View {
     /// deterministic frame (screenshot capture, UI tests). Negative values
     /// rotate the other way.
     ///
+    /// **The speed is reactive** (v4.31.0+): passing a new value starts, stops
+    /// or re-speeds the turntable in place. Drive a spin toggle from the value
+    /// alone — never re-key the view with SwiftUI's `.id(_:)` to make the
+    /// change land, because that rebuilds the whole `RealityView` and on the
+    /// iOS 26 Simulator can leave the scene permanently blank (#3008 / #2935).
+    ///
+    /// ```swift
+    /// SceneView { root in root.addChild(model) }
+    ///     .autoRotate(speed: spinning ? 0.2 : 0)   // ← toggling this is enough
+    /// ```
+    ///
     /// - Parameter speed: Rotation speed in radians per second. Default 0.3.
     public func autoRotate(speed: Float = 0.3) -> SceneView {
         var copy = self
@@ -990,6 +1001,17 @@ private struct SceneViewRepresentation: View {
     /// Ported from Eliott Radcliffe's sceneview-swift PR #1.
     @State private var loadedSkyboxResource: EnvironmentResource? = nil
 
+    /// Identity of the turntable `.task(id:)`, so a caller changing
+    /// ``SceneView/autoRotate(speed:)`` starts / stops / re-speeds the loop in
+    /// place instead of having to re-key the whole view. Closes #2935.
+    private var autoRotatePolicy: AutoRotatePolicy {
+        AutoRotatePolicy(
+            isEnabled: enableAutoRotate,
+            speed: autoRotateSpeed,
+            mode: cameraControlMode
+        )
+    }
+
     #if os(visionOS)
     /// visionOS-only: the equirectangular HDR texture loaded for the
     /// immersive-space skybox. `RealityViewContent.environment` is
@@ -1023,18 +1045,32 @@ private struct SceneViewRepresentation: View {
             .simultaneousGesture(entityMagnifyGesture)
             .simultaneousGesture(entityRotateGesture)
             .simultaneousGesture(entityLongPressGesture)
-            .task {
+            .task(id: autoRotatePolicy) {
                 // Auto-rotation loop — custom modes only (#1049).
                 // For native-mode cameras (none/tilt/dolly/gimbal) Apple owns
                 // the camera transform, so our azimuth mutation would fight it.
+                //
+                // KEYED on the policy (#2935). As a plain `.task` this loop read
+                // `autoRotateSpeed` exactly once, at view appear, so a host that
+                // toggled its spin control changed nothing — the only way to make
+                // such a toggle work was to re-key the whole `SceneView` with
+                // SwiftUI's `.id(_:)`, the renderer-teardown anti-pattern #3008
+                // documented against (it leaves an iOS 26 Simulator scene
+                // permanently blank). With the policy as the task's identity,
+                // SwiftUI cancels this loop and starts the matching one whenever
+                // the caller's `.autoRotate(speed:)` changes.
                 //
                 // A zero speed exits here rather than spinning a 60 Hz timer
                 // that advances the azimuth by 0 rad every frame: callers freeze
                 // a scene by passing `autoRotate(speed: 0)` (the QA-capture
                 // path does exactly that), and that read as "enabled" (#2896).
-                guard enableAutoRotate, autoRotateSpeed != 0, cameraControlMode.isCustom else { return }
-                camera.isAutoRotating = true
-                camera.autoRotateSpeed = autoRotateSpeed
+                // `isAutoRotating` is written on BOTH paths so a policy that
+                // just went inactive does not leave the flag latched on from the
+                // loop this one replaced.
+                let policy = autoRotatePolicy
+                camera.isAutoRotating = policy.isActive
+                guard policy.isActive else { return }
+                camera.autoRotateSpeed = policy.speed
                 var lastTime = CFAbsoluteTimeGetCurrent()
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 16_666_667) // ~60 fps

@@ -143,8 +143,8 @@ class LightEstimatorConcurrentDestroyTest {
                             if (estimator.isDestroyed) {
                                 readerObservedDestroyed.set(true)
                             } else {
-                                getPrivateField(estimator, "cubeMapTexture")
-                                getPrivateField(estimator, "cubeMapTextureSpecular")
+                                getCubeMapTexture(estimator, "cubeMapTexture")
+                                getCubeMapTexture(estimator, "cubeMapTextureSpecular")
                             }
                             Thread.yield()
                         }
@@ -200,8 +200,8 @@ class LightEstimatorConcurrentDestroyTest {
             // (2026-08-14, first real-device run of this suite) where the slower
             // CPU keeps a reader inside the window long enough to observe it.
             // Post-destroy contract: textures freed.
-            assertNull(getPrivateField(estimator, "cubeMapTexture"))
-            assertNull(getPrivateField(estimator, "cubeMapTextureSpecular"))
+            assertNull(getCubeMapTexture(estimator, "cubeMapTexture"))
+            assertNull(getCubeMapTexture(estimator, "cubeMapTextureSpecular"))
 
             // Idempotency — a second destroy() must no-op without exception.
             estimator.destroy()
@@ -210,10 +210,19 @@ class LightEstimatorConcurrentDestroyTest {
     }
 
     /**
-     * 8 threads race to call `destroy()` on the same estimator. The setter
-     * `field?.let { engine.destroyTexture(it) }` is null-safe and the gate
-     * latch is volatile, so we expect no thread to throw and the post-state
-     * to be deterministic: gate latched, both texture fields null.
+     * 8 threads race to call `destroy()` on the same estimator. The setters swap
+     * through `AtomicReference.getAndSet` and the gate latch is volatile, so we
+     * expect no thread to throw and the post-state to be deterministic: gate
+     * latched, both texture references null.
+     *
+     * **This is the test that caught the real one.** Until 2026-08-14 the setter was
+     * `field?.let { engine.destroyTexture(it) }` then `field = value` — null-safe,
+     * but a read-modify-write with no atomicity, so two of these eight threads read
+     * the same non-null [Texture] and both freed it. That is a native double free,
+     * and it does not surface as a Kotlin exception this test could catch: the run
+     * died with `SIGABRT` in `scudo::reportHeaderRace` and the whole instrumentation
+     * process went with it. Ten prior runs on the emulator had never reproduced it —
+     * its thread interleaving is too coarse. A Pixel 4a hit it on the first attempt.
      */
     @Test
     fun many_threads_calling_destroy_inParallel_isIdempotentAndCrashFree() {
@@ -238,8 +247,8 @@ class LightEstimatorConcurrentDestroyTest {
             errors.get()
         )
         assertTrue(estimator.isDestroyed)
-        assertNull(getPrivateField(estimator, "cubeMapTexture"))
-        assertNull(getPrivateField(estimator, "cubeMapTextureSpecular"))
+        assertNull(getCubeMapTexture(estimator, "cubeMapTexture"))
+        assertNull(getCubeMapTexture(estimator, "cubeMapTextureSpecular"))
     }
 
     /**
@@ -299,28 +308,35 @@ class LightEstimatorConcurrentDestroyTest {
             .format(Texture.InternalFormat.R11F_G11F_B10F)
             .usage(Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE)
             .build(engine)
-        setPrivateField(estimator, "cubeMapTexture", tex)
-        setPrivateField(estimator, "cubeMapTextureSpecular", texSpec)
+        setCubeMapTexture(estimator, "cubeMapTexture", tex)
+        setCubeMapTexture(estimator, "cubeMapTextureSpecular", texSpec)
     }
 
     /**
-     * Rename-safety note: `cubeMapTexture` / `cubeMapTextureSpecular` are
-     * private fields read here via reflection. If a future refactor
-     * renames them, this test will throw `NoSuchFieldException` at the
-     * first reflective access — fix by updating the string constants
-     * passed to [getPrivateField] / [setPrivateField] below to match.
-     * `isDestroyed` is `internal` so it's read via property access (no
-     * reflection) and benefits from compile-time rename detection.
+     * The two cubemap textures are held in private `<name>Ref` [AtomicReference]
+     * fields — the production setters swap through `getAndSet` so that two
+     * concurrent teardowns cannot both free the same texture. These helpers reach
+     * the *texture*, unwrapping the reference, so the assertions above stay written
+     * in terms of what they actually mean.
+     *
+     * Rename-safety note: the `<name>Ref` fields are private and reached here via
+     * reflection. If a future refactor renames them, this test throws
+     * `NoSuchFieldException` at the first reflective access — fix by updating the
+     * string constants passed to [getCubeMapTexture] / [setCubeMapTexture] below.
+     * `isDestroyed` is `internal` so it's read via property access (no reflection)
+     * and benefits from compile-time rename detection.
      */
-    private fun getPrivateField(target: Any, name: String): Any? {
-        val f = target.javaClass.getDeclaredField(name)
+    private fun cubeMapRef(target: Any, name: String): AtomicReference<Any?> {
+        val f = target.javaClass.getDeclaredField("${name}Ref")
         f.isAccessible = true
-        return f.get(target)
+        @Suppress("UNCHECKED_CAST")
+        return f.get(target) as AtomicReference<Any?>
     }
 
-    private fun setPrivateField(target: Any, name: String, value: Any?) {
-        val f = target.javaClass.getDeclaredField(name)
-        f.isAccessible = true
-        f.set(target, value)
+    private fun getCubeMapTexture(target: Any, name: String): Any? =
+        cubeMapRef(target, name).get()
+
+    private fun setCubeMapTexture(target: Any, name: String, value: Any?) {
+        cubeMapRef(target, name).set(value)
     }
 }

@@ -1572,23 +1572,37 @@ a Compose `Slider` for `alpha` to blend camera ↔ depth from 0 to 1.
 onSessionUpdated = { _, frame ->
     val depthImage = runCatching { frame.acquireDepthImage16Bits() }.getOrNull() ?: return@onSessionUpdated
     val plane = depthImage.planes[0]
+    // ARCore hands the depth image out in the landscape CAMERA SENSOR frame, which does
+    // not follow the display: blitting it straight to a portrait overlay puts it 90° off
+    // the camera feed (#3184). Turn it by the display rotation while colorizing.
+    val rotation = displayRotationToDegrees(display.rotation) // ROTATION_0 -> 90
     val pixels = depthBufferToArgb(
         depthBytes = plane.buffer,
         width = depthImage.width,
         height = depthImage.height,
         rowStrideBytes = plane.rowStride,
+        rotationDegrees = rotation,
     )
+    // The bitmap must be allocated at the ROTATED size — the source dimensions are
+    // swapped on a quarter turn.
     // Upload pixels into a recycled Bitmap; close the depth image when done.
     depthImage.close()
 }
 ```
 
 Rules of thumb: the depth image is typically ~240×180 — far smaller than the camera feed,
-so `ContentScale.Crop` upscaling is correct. Pixels with depth `0` should render fully
+so `ContentScale.Crop` upscaling is correct. It arrives in sensor orientation, so rotate it
+to the display before drawing it over the camera feed, and size the bitmap to the rotated
+dimensions. Pixels with depth `0` should render fully
 transparent (no datum) instead of mapping to the near color. Always show a "warming up"
 banner until the first depth frame lands and an explicit "depth not supported" banner when
 `Session.isDepthModeSupported(...)` returns `false` — never leave the user staring at a
 black screen.
+
+The same sensor-frame caveat applies to any CPU-image consumer that draws in 2D (an ML
+bounding box, a custom overlay). It does **not** apply when you unproject depth into 3D
+with `camera.imageIntrinsics` — `DepthMeshNode` and the raw-depth point cloud are
+orientation-independent for that reason.
 
 ### Raw depth point cloud — accumulated depth visualization
 
@@ -4500,7 +4514,7 @@ View modifiers (chainable):
 .cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson | iOS-only: .none, .tilt, .dolly, .gimbal
 .recentersTargetOnOrbit(_ enabled: Bool) -> SceneView       // v4.4.0+ — re-pivot on content centroid when (re-)entering orbit; default false
 .onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView   // real entity hit-test (v4.2.0+)
-.autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3; 0 starts no rotation loop at all (freeze on the authored pose)
+.autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3; 0 starts no rotation loop at all (freeze on the authored pose). REACTIVE since v4.31.0 — a spin toggle drives the speed alone, never a .id() re-key
 .mainLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — see LightSlot below
 .fillLight(_ slot: LightSlot) -> SceneView                  // v4.2.0+ — Android-parity 2-light setup
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
@@ -4583,6 +4597,24 @@ ZStack {
 > Compose composable whose DSL content is already re-read on recomposition, so
 > swapping a model is an ordinary state change. This modifier closes an iOS-only
 > gap; there is nothing to mirror.
+
+**Toggling auto-rotation is a plain value change (v4.31.0+).** `.autoRotate(speed:)`
+is reactive: pass `0` to freeze and a non-zero speed to spin, and the turntable
+starts / stops under the same `RealityView`. Do **not** re-key the view to make
+the change land — that is the same `.id(_:)` teardown described above, and it is
+how the iOS demo's "Spin scene" toggle used to blank its own scene (#2935).
+
+```swift
+@State private var spinning = true
+
+SceneView { root in root.addChild(model.entity) }
+    .autoRotate(speed: spinning ? 0.2 : 0)   // ← the whole toggle
+```
+
+> **Nothing to mirror on Android or Web.** Android spins by feeding a rotation
+> value to the nodes (`rememberHeroYaw`), an ordinary recomposed state; Web sets
+> `controller.autoRotate` imperatively. Both were already live-updating — this
+> closes an iOS-only reactivity gap.
 
 **Framing the subject (`framingMargin` / `cameraOrbit`, v4.26.0+).** The auto-fit
 pass dollies the camera until the content's *bounding sphere* fits the narrower

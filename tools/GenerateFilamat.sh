@@ -10,16 +10,22 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (28 mats → 28 filamats):
+# Inventory (28 mats → 28 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
 #   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
-#   website-static/materials/              (3) → website-static/materials/
-#   sceneview-web/materials/               (1) → sceneview-web/materials/  [filamentWeb toolchain]
+#   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
+#   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
-# The sceneview-web entry compiles with a SECOND pinned matc — `filamentWeb` in
-# gradle/libs.versions.toml, tracking the npm `filament` runtime the Kotlin/JS
-# bundle actually loads (MATERIAL_VERSION 52 track), not the Android runtime
-# (v72 track). Its blob is additionally emitted as a generated base64 Kotlin
+# Three toolchains because there are three runtimes, each with its own
+# MATERIAL_VERSION, and Filament refuses any package whose version is not an
+# exact match:
+#   `filament`        — Android (Filament AAR)            → v72
+#   `filamentWebsite` — the Filament.js vendored at
+#                       website-static/js/filament/       → v70   (#2783)
+#   `filamentWeb`     — the npm `filament` the Kotlin/JS
+#                       bundle loads                      → v52   (#2646 P2)
+#
+# The sceneview-web blob is additionally emitted as a generated base64 Kotlin
 # file (SplatMaterialBlob.kt) so the single-file npm bundle needs no runtime
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
@@ -100,6 +106,17 @@ if [ -z "$FILAMENT_WEB_VERSION" ]; then
 fi
 log "${CYAN}Filament version (pinned, web npm):${NC} $FILAMENT_WEB_VERSION"
 
+# The WEBSITE runtime toolchain — a third pinned matc tracking the Filament.js
+# build vendored under website-static/js/filament/ (see the `filamentWebsite`
+# comment in the toml). #2783: before this pin existed the 3 website blobs rode
+# the Android pin and were two material versions ahead of their own runtime.
+FILAMENT_WEBSITE_VERSION=$(grep -E '^filamentWebsite[[:space:]]*=' "$TOML" | head -1 | sed -E 's/^filamentWebsite[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+if [ -z "$FILAMENT_WEBSITE_VERSION" ]; then
+    err "Failed to parse 'filamentWebsite = ...' from $TOML"
+    exit 2
+fi
+log "${CYAN}Filament version (pinned, website):${NC} $FILAMENT_WEBSITE_VERSION"
+
 # ─── Inventory ──────────────────────────────────────────────────────────
 # Format: "<module>:<name>:<src-path>:<out-path>:<matc-flags>"
 # matc-flags is the full flag list (excluding -o and the source path).
@@ -156,6 +173,14 @@ MATS=(
     "arsceneview:plane_renderer_v2:arsceneview/src/main/materials/plane_renderer_v2.mat:arsceneview/src/main/assets/materials/plane_renderer_v2.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_shadow:arsceneview/src/main/materials/plane_renderer_shadow.mat:arsceneview/src/main/assets/materials/plane_renderer_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:shadow_receiver:arsceneview/src/main/materials/shadow_receiver.mat:arsceneview/src/main/assets/materials/shadow_receiver.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+)
+
+# ─── Website inventory (compiled with the filamentWebsite toolchain) ────
+#   Profile D — website-static (Filament.js / WebGL, 3 mats):
+#     "-p mobile -a opengl", matc pinned to `filamentWebsite` (MATERIAL_VERSION
+#     70 track — the vendored website-static/js/filament/ build), NOT the
+#     Android pin. See #2783.
+MATS_WEBSITE=(
     "website-static:lit_colored:website-static/materials/lit_colored.mat:website-static/materials/lit_colored.filamat:-p mobile -a opengl"
     "website-static:transparent_colored:website-static/materials/transparent_colored.mat:website-static/materials/transparent_colored.filamat:-p mobile -a opengl"
     "website-static:unlit_colored:website-static/materials/unlit_colored.mat:website-static/materials/unlit_colored.filamat:-p mobile -a opengl"
@@ -423,6 +448,18 @@ for entry in "${MATS[@]}"; do
     process_entry "$entry"
 done
 
+# ─── Website group (filamentWebsite toolchain) ──────────────────────────
+# Same processing, different pinned matc: these blobs must match the
+# Filament.js build vendored under website-static/js/filament/, not the
+# Android runtime (#2783).
+log ""
+log "${CYAN}Website materials (matc $FILAMENT_WEBSITE_VERSION):${NC}"
+select_toolchain "$FILAMENT_WEBSITE_VERSION"
+bootstrap_toolchain
+for entry in "${MATS_WEBSITE[@]}"; do
+    process_entry "$entry"
+done
+
 # ─── Web-runtime group (filamentWeb toolchain) ──────────────────────────
 # Same processing, different pinned matc: these blobs must match the npm
 # `filament` runtime the Kotlin/JS bundle loads, not the Android runtime.
@@ -507,7 +544,7 @@ log ""
 # ─── Final report ───────────────────────────────────────────────────────
 if [ "$MODE" = "check" ]; then
     if [ "$DRIFT" -eq 0 ]; then
-        log "${GREEN}All $COMPILED filamat blob(s) are in sync with their .mat sources (matc android=$FILAMENT_ANDROID_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
+        log "${GREEN}All $COMPILED filamat blob(s) are in sync with their .mat sources (matc android=$FILAMENT_ANDROID_VERSION, website=$FILAMENT_WEBSITE_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
         exit 0
     else
         err "${DRIFT} filamat blob(s) drifted from their .mat sources:"
@@ -533,7 +570,7 @@ else
     if [ -n "$ONLY_MAT" ]; then
         log "${GREEN}Regenerated $COMPILED filamat blob(s) (filter: --mat $ONLY_MAT).${NC}"
     else
-        log "${GREEN}Regenerated $COMPILED filamat blob(s) (matc android=$FILAMENT_ANDROID_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
+        log "${GREEN}Regenerated $COMPILED filamat blob(s) (matc android=$FILAMENT_ANDROID_VERSION, website=$FILAMENT_WEBSITE_VERSION, web=$FILAMENT_WEB_VERSION).${NC}"
     fi
     exit 0
 fi

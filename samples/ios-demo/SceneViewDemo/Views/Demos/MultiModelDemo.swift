@@ -153,12 +153,17 @@ struct MultiModelDemo: View {
                 Task { @MainActor in
                     self.sceneAnchor = anchor
                     self.syncVisibility()
-                    if self.spinScene {
-                        self.startSpin()
-                    }
                 }
             }
             .cameraControls(.orbit)
+            // Value-driven, with NO `.id(...)` re-key (#2935). `autoRotate`'s
+            // speed is reactive since v4.31.0, so flipping "Spin scene" starts
+            // and stops the turntable under the SAME `RealityView`. The demo
+            // used to re-key on `.id("multi-model-spin-\(spinScene)-\(qaMode)")`,
+            // which is the #3008 teardown anti-pattern the SDK docs forbid: a
+            // rebuilt `RealityView` on the iOS 26 Simulator intermittently
+            // renders nothing at all — no model, no skybox — and never
+            // recovers, so turning the toggle off blanked the viewport.
             .autoRotate(speed: (spinScene && !qaMode) ? 0.2 : 0.0)
             // The formation is built from curated PBR models; without an IBL
             // their metallic/rough response has nothing to reflect and the whole
@@ -179,7 +184,6 @@ struct MultiModelDemo: View {
             // half of a portrait frame on empty ground (#2896).
             .cameraOrbit(azimuth: 0, elevation: .pi / 10)
             .ignoresSafeArea()
-            .id("multi-model-spin-\(spinScene)-\(qaMode)")
 
             if loadedEntities.isEmpty && loadError == nil {
                 VStack(spacing: 12) {
@@ -333,15 +337,5 @@ struct MultiModelDemo: View {
                 anchor.removeChild(entity)
             }
         }
-    }
-
-    /// Spin handler — wired only so the toggle exists; the actual rotation is
-    /// driven by `SceneView.autoRotate` via the `.id(...)` re-key. The slot is
-    /// here in case we want to swap in a manual per-anchor rotation later.
-    @MainActor
-    private func startSpin() {
-        // Intentionally empty for now — `autoRotate(speed:)` on `SceneView` is
-        // the canonical iOS spin mechanism. Mirrors the slow 30-second sweep
-        // on Android (`rememberHeroYaw(...) durationMillis = 30_000`).
     }
 }

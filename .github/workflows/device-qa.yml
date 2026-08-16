@@ -206,8 +206,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-android-apk
     # 35 min: with the APK prebuilt the heavy work is emulator boot + the
-    # Maestro flow. The per-step `timeout` inside maestro.sh still aborts a
-    # genuine hang fast (Maestro 15 min) — see #1560.
+    # Maestro flow. The PER-FLOW `timeout` inside maestro.sh still aborts a
+    # genuine hang fast (Maestro 15 min) — see #1560/#3141. This job runs
+    # `--fast` (one category = one flow), so its wall clock is unchanged by the
+    # per-flow split; only the non-`--fast` catalog path gains a budget per
+    # category.
     timeout-minutes: 35
     continue-on-error: true
     steps:

@@ -89,7 +89,8 @@ the CI rules. Three practical consequences:
   an error naming #3016 — the wrong cause).
   `Assert the reviewers left the tree clean` now calls
   `assert-review-tree-clean.sh`, which is **not** a path exclusion: a sensitive
-  path passes only when its bytes and mode equal `origin/<base>` exactly, so a
+  path passes only when its bytes and mode equal one of the two trusted refs —
+  the SHA pinned before the fan-out, or the base branch tip — exactly, so a
   reviewer editing `.claude/` still fails. Two consequences when reviewing a PR
   that touches those paths: the files **on disk are the base versions**, so read
   the PR's content from `pr.diff`, `git show HEAD:<path>` or `.claude-pr/`; and
@@ -142,6 +143,22 @@ comment carrying the `<!-- sceneview-agent-review -->` marker, so a genuine
 verdict later replaces it in place. `test-selfmod-guard.sh` asserts the posted
 bytes, with a mutation that disarms the comment block — the exit code cannot
 prove this one, since the step is red either way.
+
+**There is a SECOND door, and the guard above does not cover it (#3140).** The
+self-modification guard asks *"does this PR change `pr-review.yml`?"* by reading
+the PR's own diff. `claude-code-action` asks a different question: *"does the
+file I am running differ from the default branch **right now**?"* A PR that
+touches nothing here still fails it when `main`'s copy changes between the
+moment the run pins its workflow ref and the moment it reaches a runner —
+measured on #3134 / run 31612615435, where the job queued for 27 minutes and
+#3138 landed in the gap. The action then ends its step `success` having done
+nothing, so the PR got a red `REVIEW_INCOMPLETE` whose *"see the review comment
+on the PR"* pointed at the **previous** run's `MERGE_AFTER_WARNINGS`. Red check,
+green explanation. `Detect a workflow-validation skip` (id `wfval`) now
+recognises it — by comparing blob hashes, never the action's log wording, and
+only when no `review-verdict.json` exists, so a healthy review can never be
+relabelled — and the verdict becomes an explained, still-blocking
+`NOT_EVALUATED` that replaces the stale comment. Same suite, two mutations.
 
 ## Agent cost instrumentation
 

@@ -480,6 +480,18 @@ jobs:
         # consumed by Android, iOS AND web) on the `jvm("android")` target:
         # plain sub-minute JVM tests, no emulator. Before #2733 this suite
         # gated nothing — only `jsTest` ran it, marked informational.
+        #
+        # `:samples:android-tv-demo:testDebugUnitTest` runs `TvModelListTest`,
+        # the JVM backstop asserting every entry in `TvModelViewerActivity.models`
+        # resolves to a file bundled in one of the TV demo's two asset source
+        # dirs. Its own KDoc names this task as the thing that "fails fast on any
+        # PR that adds a model entry without bundling the file" — but no workflow
+        # invoked it, so the suite had never run in CI (measured 2026-08-15 by
+        # enumerating every `gradlew` line in `.github/workflows/*.yml`: the TV
+        # module appeared only under `assembleDebug`). `samples/android-tv-demo/**`
+        # was already in the `android` path filter that gates this job, so the
+        # module was compiled on every relevant PR while its 5 tests were not.
+        # Local run before wiring: 5 tests, 0 failures, 7s.
         run: |
           # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
           # with verifyRoborazziDebug above it. The goldens under
@@ -496,6 +508,7 @@ jobs:
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
+            :samples:android-tv-demo:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
             :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
@@ -509,6 +522,7 @@ jobs:
             sceneview/build/reports/tests/
             arsceneview/build/reports/tests/
             samples/common/build/reports/tests/
+            samples/android-tv-demo/build/reports/tests/
             samples/android-demo/build/reports/tests/
           if-no-files-found: ignore
 
@@ -1337,6 +1351,21 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-quality-gate-pipefail.sh
 
+      # Third member of the same family, and the only one whose wrong answer is
+      # INTERMITTENT: `grep -q` exits on its first match and closes the pipe, the
+      # producer takes EPIPE, and `pipefail` fails the pipeline *because the match
+      # succeeded*. Measured 2026-08-14 (#3180) — validate-demo-assets.sh reported
+      # a catalogued CC-BY asset as undeclared on one run of pre-push-check.sh and
+      # was clean on the next five. The same shape sits in front of a branch
+      # deletion in cleanup-branches-worktrees.sh, where the lost race means a
+      # branch WITH an open PR is not classified OPEN. Pins the call-site form
+      # (deterministic, mutation-tested); the race itself is measured and printed
+      # as evidence, never asserted. Pure string work, no network.
+      - name: Self-test pipefail membership tests
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-pipefail-membership.sh
+
       # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
       # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
       # openssl ES256 JWT builder; needs no App Store Connect secret.
@@ -1419,6 +1448,30 @@ jobs:
         if: always() && steps.checkout.outcome == 'success'
         shell: bash
         run: bash .claude/scripts/test-emulator-lease.sh
+
+      # Maestro per-flow budget + the `timeout` verdict (#3141). No device runs
+      # in repo-hygiene, and the failure this pins is invisible everywhere else:
+      # the nightly device-qa runs `--fast` (one category), so only the
+      # release-checkpoint path — the non-`--fast` catalog — hit the wall, and
+      # it hit it as `failed`, indistinguishable from a demo crash. Hermetic
+      # (stub Maestro, no JDK/device), ~9 s.
+      - name: Self-test Maestro per-flow timeout verdict
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-maestro-flow-timeout.sh
+
+      # iOS Simulator destination resolver (#3174). The bug it guards is a
+      # CoreSimulator cold-start race: on run 31807717171 the same job failed on
+      # `iPhone 16 Pro` at 14:07:45 with no concrete simulator listed, then
+      # resolved that exact device at 14:08:01. So the resolver must WAIT, and
+      # must still fail closed when nothing ever appears — a version with no
+      # wait would turn a survivable one-step failure into a dead job, and one
+      # that degraded would hand back an empty `-destination`. Both halves are
+      # mutation-tested inside the suite. Hermetic (stub `xcrun`), runs on Linux.
+      - name: Self-test iOS Simulator resolver
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-ios-simulator.sh
 
       # Sibling of the check above, one layer out: the pool honours leases, but
       # raw `adb` typed by a session bypassed the pool entirely and wiped another
