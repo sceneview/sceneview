@@ -12,6 +12,14 @@ import {
   type JsonRpcResponse,
 } from "../src/mcp/transport.js";
 import { MockKv } from "./helpers/mock-kv.js";
+import { WIDGET_TOOL_RESOURCE } from "../src/mcp/widget-tools.js";
+import { getAllTools } from "../src/mcp/registry.js";
+
+/** A tool declaration as seen on the wire, where `_meta` is opaque extra. */
+type WidgetAwareTool = {
+  name: string;
+  _meta?: { ui?: { resourceUri?: string } };
+};
 
 function mcpRequest(body: unknown, headers: Record<string, string> = {}) {
   return new Request("https://example.com/mcp", {
@@ -86,6 +94,62 @@ describe("transport: tools/list", () => {
     const names = new Set(result.tools.map((t) => t.name));
     expect(names.has("list_samples")).toBe(true);
     expect(names.has("get_sample")).toBe(true);
+  });
+
+  it("declares the widget pointer on the tool that has one", async () => {
+    // The pointer used to travel on `tools/call` results only. A host that
+    // decides what UI to render by reading `tools/list` therefore never
+    // learned the widget existed — it could only discover it by calling the
+    // tool first, which defeats the point of a declaration: preloading.
+    const kv = new MockKv();
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 20, method: "tools/list" }),
+      { kv: kv.asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as { tools: WidgetAwareTool[] };
+    for (const [toolName, uri] of Object.entries(WIDGET_TOOL_RESOURCE)) {
+      const declared = result.tools.find((t) => t.name === toolName);
+      expect(declared, `${toolName} is not mounted at all`).toBeDefined();
+      expect(declared?._meta?.ui?.resourceUri).toBe(uri);
+    }
+  });
+
+  it("declares no widget pointer on tools that have none", async () => {
+    const kv = new MockKv();
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 21, method: "tools/list" }),
+      { kv: kv.asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as { tools: WidgetAwareTool[] };
+    const stray = result.tools.filter(
+      (t) => t._meta?.ui !== undefined && !(t.name in WIDGET_TOOL_RESOURCE),
+    );
+    expect(
+      stray.map((t) => t.name),
+      "These tools declare a widget pointer without an entry in " +
+        "WIDGET_TOOL_RESOURCE — a host would try to fetch a resource the " +
+        "gateway does not serve.",
+    ).toEqual([]);
+  });
+
+  it("does not stamp the shared registry objects", async () => {
+    // `getAllTools()` returns a fresh array but the SAME definition objects
+    // every call, so writing `_meta` onto them instead of onto a copy would
+    // mutate the registry for the Worker's whole lifetime — invisible here
+    // (the response would look right) and permanent in production. Reading
+    // the registry directly after a `tools/list` is what makes it visible.
+    const kv = new MockKv();
+    await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 22, method: "tools/list" }),
+      { kv: kv.asKv() },
+    );
+    const fromRegistry = getAllTools().find(
+      (t) => t.name === "view_3d_model",
+    ) as WidgetAwareTool | undefined;
+    expect(fromRegistry).toBeDefined();
+    expect(fromRegistry?._meta).toBeUndefined();
   });
 });
 

@@ -326,6 +326,22 @@ function handleInitialize(
       // Empty prompts capability — keeps clients that probe for it happy
       // without inventing prompt content.
       prompts: { listChanged: false },
+      // NOT DECLARED, deliberately: `extensions`, and specifically the
+      // `io.modelcontextprotocol/ui` opt-in. It is defined by protocol
+      // revision 2026-07-28, and PROTOCOL_VERSION above is 2025-03-26 — a
+      // server that negotiates one revision and then advertises another
+      // revision's extension is making a claim it cannot honour, which is
+      // the same defect class as the tool counts this branch is fixing.
+      //
+      // It is NOT a prerequisite for the widget: nothing in OpenAI's Apps
+      // documentation requires a UI extension in `initialize`, and the
+      // declaration-side `_meta.ui.resourceUri` (see `handleToolsList`) is
+      // what a host actually reads. An earlier revision of the exploration
+      // plan claimed otherwise and was withdrawn.
+      //
+      // So this lands WITH the protocol bump, not before it — one reviewable
+      // change instead of one unreviewable hypothesis.
+      // → `.claude/plans/ai-surfaces-exploration.md` §3.1b item 1 and §3.2.
     },
     serverInfo: SERVER_INFO,
   };
@@ -352,9 +368,44 @@ function handleResourcesRead(req: JsonRpcRequest): unknown {
   return { contents: [resource] };
 }
 
+/**
+ * Attaches the widget pointer to any object that describes `toolName`.
+ *
+ * ONE helper for both the declaration and the result, on purpose. They carry
+ * the same `_meta.ui.resourceUri` and used to be written twice — except only
+ * the result half was ever written, which is exactly the failure this shared
+ * helper makes impossible to repeat: a future widget shape can no longer be
+ * added to one side and forgotten on the other.
+ */
+function withWidgetPointer<T>(toolName: string, obj: T): T {
+  const widgetUri = widgetResourceFor(toolName);
+  if (!widgetUri) return obj;
+  // Narrow through `unknown` to avoid the strict-overlap check on ToolResult
+  // and ToolDefinition (neither declares `_meta`) — every consumer of the
+  // JSON-RPC response treats unknown keys as opaque.
+  const r = obj as unknown as {
+    _meta?: Record<string, unknown>;
+    [k: string]: unknown;
+  };
+  r._meta = { ...(r._meta ?? {}), ui: { resourceUri: widgetUri } };
+  return r as unknown as T;
+}
+
 /** Returns the full list of multiplexed tool definitions. */
 function handleToolsList(): unknown {
-  return { tools: getAllTools() };
+  // The widget pointer belongs on the DECLARATION, not only on the result.
+  // It used to ride on results alone, so `tools/list` returned every mounted
+  // tool with zero `resourceUri` occurrences and a host deciding what to render
+  // from the tool list never learned the widget existed — it could only find
+  // out by calling the tool first, which is the wrong way round: the point of
+  // the declaration pointer is that the host can PRELOAD the UI.
+  //
+  // Copies rather than mutating: `getAllTools()` hands back the registry's own
+  // definition objects, and stamping `_meta` onto them would mutate the shared
+  // registry on the first `tools/list` of the Worker's lifetime.
+  return {
+    tools: getAllTools().map((t) => withWidgetPointer(t.name, { ...t })),
+  };
 }
 
 /** Validates params and dispatches a `tools/call` to the registry. */
@@ -393,22 +444,8 @@ async function handleToolsCall(
   // Widget tools attach `_meta.ui.resourceUri` so OpenAI-Apps-aware clients
   // know to fetch the bundled HTML widget and render it inline. Other
   // clients ignore the unknown `_meta` keys and just see the text content.
-  const widgetUri = widgetResourceFor(toolName);
-  if (widgetUri) {
-    // Narrow through `unknown` to avoid the strict-overlap check on
-    // ToolResult (which has its own optional `_meta` field) — every
-    // consumer of the JSON-RPC response treats unknown keys as opaque.
-    const r = result as unknown as {
-      _meta?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
-    r._meta = {
-      ...(r._meta ?? {}),
-      ui: { resourceUri: widgetUri },
-    };
-    return r;
-  }
-  return result;
+  // Same helper as `tools/list` — see `withWidgetPointer`.
+  return withWidgetPointer(toolName, result);
 }
 
 // ── Helpers: request / response encoding ──────────────────────────────────

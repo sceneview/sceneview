@@ -14,6 +14,7 @@ import { authRoutes } from "../src/routes/auth.js";
 import type { Env } from "../src/env.js";
 import { createMockD1, type MockD1 } from "./helpers/mock-d1.js";
 import { MockKv } from "./helpers/mock-kv.js";
+import { HOSTED_FREE_TOOL_COUNT } from "../src/dashboard/counts.js";
 
 let mock: MockD1;
 let kv: MockKv;
@@ -92,9 +93,12 @@ describe("GET public pages", () => {
     const app = makeFullApp();
     const res = await app.request("/pricing", {}, env());
     const body = await res.text();
-    // Free tool count must match mcp/src/tiers.ts::FREE_TOOLS (27 since 4.0.5).
-    expect(body).toContain("27 free tools");
-    expect(body).not.toContain("17 free tools");
+    // The count is derived, never written down: this assertion used to read
+    // `toContain("27 free tools")` and it did not catch the page going stale —
+    // it PINNED the stale value, staying green while the registry moved to 29
+    // and only turning red once the page was corrected. Reading the same
+    // constant the page reads is what makes the drift detectable at all.
+    expect(body).toContain(`${HOSTED_FREE_TOOL_COUNT} free tools`);
     // VAT FAQ must reflect the real fiscal state: we are under
     // France's franchise en base de TVA, Stripe Tax is DISABLED,
     // no VAT is collected. The opposite claim is legally risky.

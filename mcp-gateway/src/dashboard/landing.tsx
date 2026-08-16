@@ -3,6 +3,11 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.js";
 import { renderToHtml } from "./render.js";
+import {
+  HOSTED_FREE_TOOL_COUNT,
+  PRO_TOOL_COUNT,
+  VERTICAL_PACKAGE_COUNT,
+} from "./counts.js";
 
 /** Public landing page at `/`. */
 export const Landing: FC = () => (
@@ -32,23 +37,23 @@ export const Landing: FC = () => (
     <section class="dash-grid">
       <div class="stat-card">
         <div class="label">Free tools</div>
-        <div class="value">27</div>
+        <div class="value">{HOSTED_FREE_TOOL_COUNT}</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
           Setup, samples, validator, migration, docs. No key required.
         </p>
       </div>
       <div class="stat-card">
         <div class="label">Pro tools</div>
-        <div class="value">27</div>
+        <div class="value">{PRO_TOOL_COUNT}</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
           Vertical packages + 3D preview / artifact / scene generation.
         </p>
       </div>
       <div class="stat-card">
         <div class="label">Specialized packages</div>
-        <div class="value">4</div>
+        <div class="value">{VERTICAL_PACKAGE_COUNT}</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
-          Automotive, Gaming, Healthcare, Interior.
+          Automotive, Gaming, Healthcare, Interior, Rerun.
         </p>
       </div>
     </section>

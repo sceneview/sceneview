@@ -4,6 +4,14 @@ import type { FC } from "hono/jsx";
 import { Layout } from "./layout.js";
 import { renderToHtml } from "./render.js";
 import type { PlanId } from "../billing/tiers.js";
+import {
+  GENERATION_TOOL_COUNT,
+  HOSTED_FREE_TOOL_COUNT,
+  STDIO_FREE_TOOL_COUNT,
+  STDIO_TOTAL_TOOL_COUNT,
+  VERTICAL_PACKAGE_COUNT,
+  VERTICAL_TOOL_COUNT,
+} from "./counts.js";
 
 /** Single tier card shown in the pricing grid. */
 interface TierCardProps {
@@ -94,7 +102,7 @@ export const Pricing: FC = () => (
         period="forever"
         description="Every developer tool — setup, samples, validator, migration, docs."
         features={[
-          "29 free tools",
+          `${HOSTED_FREE_TOOL_COUNT} free tools`,
           "Setup guides for every platform (Android, iOS, Web, Flutter, RN, Desktop, TV)",
           "Code samples + validator + migration tooling",
           "Full SceneView API reference + known issues",
@@ -112,8 +120,8 @@ export const Pricing: FC = () => (
         description="For developers building specialised vertical apps."
         features={[
           "Everything in Free",
-          "5 vertical packages (Automotive, Gaming, Healthcare, Interior, Rerun — 35 specialised tools)",
-          "3 generation helpers (3D preview, artifact, scene generation)",
+          `${VERTICAL_PACKAGE_COUNT} vertical packages (Automotive, Gaming, Healthcare, Interior, Rerun — ${VERTICAL_TOOL_COUNT} specialised tools)`,
+          `${GENERATION_TOOL_COUNT} generation helpers (3D preview, artifact, scene generation)`,
           "Hosted HTTP endpoint, 50k calls / month",
           "Email support",
         ]}
@@ -161,8 +169,11 @@ export const Pricing: FC = () => (
       <h3>Can I self-host?</h3>
       <p>
         Yes. The free tier runs fully local with{" "}
-        <code>npx -y sceneview-mcp</code> (31 tools, no signup, no
-        network round-trip). After subscribing, set{" "}
+        <code>npx -y sceneview-mcp</code> — {STDIO_FREE_TOOL_COUNT} free
+        tools, no signup, no network round-trip. (The package declares{" "}
+        {STDIO_TOTAL_TOOL_COUNT} tools in total; the remaining{" "}
+        {STDIO_TOTAL_TOOL_COUNT - STDIO_FREE_TOOL_COUNT} are the Pro
+        generation helpers and need a key.) After subscribing, set{" "}
         <code>SCENEVIEW_API_KEY</code> in your MCP client config — Pro
         tool calls (vertical packages, generation helpers) then route
         transparently through the hosted gateway.
