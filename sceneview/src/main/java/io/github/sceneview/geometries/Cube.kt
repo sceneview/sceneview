@@ -88,7 +88,13 @@ class Cube private constructor(
         center: Position = this.center,
         size: Size = this.size
     ) = apply {
-        update(engine = engine, vertices = getVertices(center, size))
+        // getVertices takes (size, center) — NOT (center, size). Both are `Float3` typealiases,
+        // so a transposition compiles cleanly and silently builds the wrong box: this call passed
+        // them the wrong way round, so `updateGeometry(size = Size(3f))` on a centred cube built
+        // a zero-sized box centred at (3, 3, 3) instead of a 3-unit cube at the origin. The
+        // builder above (`vertices(getVertices(size, center))`) always had it right, so only
+        // cubes resized *after* construction were affected (#3194).
+        update(engine = engine, vertices = getVertices(size, center))
 
         this.center = center
         this.size = size

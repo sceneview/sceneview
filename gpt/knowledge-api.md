@@ -3663,6 +3663,24 @@ val fromRay = collisionSystem.hitTest(                            // explicit ko
 val hitNode: Node? = fromTouch.firstOrNull()?.nodeOrNull
 ```
 
+A renderable node's collider tracks its geometry: every `updateGeometry(...)` overload
+re-derives `collisionShape` from the new bounding box, so a node resized after construction
+picks at the size it renders at (#3194) — no manual refresh needed.
+
+```kotlin
+import io.github.sceneview.collision.Box       // NOT geometries.Box — the collider type
+import io.github.sceneview.collision.Vector3
+
+val material = materialLoader.createColorInstance(Color.Gray)
+val cube = CubeNode(engine, size = Size(1.0f), materialInstance = material)
+cube.updateGeometry(size = Size(3.0f))   // collider follows: hit-tests at 3, not 1
+
+// Assigning your own collider opts the node out of that refresh — it is yours and
+// survives any later updateGeometry. `null` is a valid choice: the node stops picking.
+cube.collisionShape = Box(Vector3(10f, 10f, 10f), Vector3.zero())  // (size, center)
+cube.updateCollisionShape()              // opt back in: re-derive, and resume tracking
+```
+
 ### Triangulation
 
 | Class | Purpose |
