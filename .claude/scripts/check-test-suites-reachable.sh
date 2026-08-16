@@ -65,6 +65,15 @@
 #   footer rather than left for a reader to discover. (The step-level case is
 #   order-independent: matches are buffered and graded at the end of the step,
 #   so `continue-on-error:` written after its own `run:` still counts.)
+# * `|| true` is matched anywhere on a `run:` line and is NOT anchored, unlike
+#   `continue-on-error:`. It cannot be: `npm test || true` is the very shape the
+#   check exists to catch, so there is no line position to anchor to. A `run: |`
+#   block that merely PRINTS the string therefore marks its step advisory. The
+#   direction is the safe one — OK becomes ADVISORY, never the reverse, so it
+#   over-reports rather than passing a gap — and the cost is one spurious
+#   warning, fixed by not echoing the string. Anchoring `continue-on-error:` was
+#   worth it because that one IS a YAML key with a fixed position; this one is
+#   not, and pretending otherwise would trade a visible bound for a hidden one.
 # * A `paths:` filter naming only a SUBDIRECTORY of a package is accepted as
 #   covering the package. That over-approximates triggering — a change to
 #   `pkg/src/` would not fire a workflow filtered on `pkg/__tests__/**` — and it
