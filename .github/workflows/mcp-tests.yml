@@ -125,6 +125,27 @@ jobs:
         working-directory: mcp-gateway
         run: npm ci
 
+      # `mcp/src/generated/{llms-txt,symbols}.ts` are GITIGNORED — generated
+      # from `llms.txt` and the committed `.api` dumps, deliberately not
+      # committed (see .gitignore). The gateway follows `../mcp/src/symbols.ts`
+      # and `../mcp/src/tools/handler.ts` into them, so on a fresh checkout both
+      # steps below fail: `tsc` with TS2307 on two modules, and vitest with 8 of
+      # its 17 files unable to import. `mcp/`'s own lifecycle scripts
+      # (`prebuild`/`test`) run these three generators, which is why every other
+      # MCP job is unaffected and why this job was the one that broke.
+      #
+      # They import nothing but `node:` builtins, so they need no `npm ci` in
+      # `mcp/`. The version generator is included even though `version.ts` IS
+      # committed: running the lifecycle exactly as declared beats a hand-picked
+      # subset that drifts. Verified byte-identical — regenerating leaves the
+      # tree clean.
+      - name: Generate mcp/src/generated (gitignored, imported by the gateway)
+        working-directory: mcp
+        run: |
+          node scripts/generate-llms-txt.js
+          node scripts/generate-version.js
+          node scripts/generate-symbols.js
+
       - name: Typecheck
         working-directory: mcp-gateway
         run: npx tsc --noEmit
@@ -133,7 +154,9 @@ jobs:
       # TypeScript sources, which vitest transpiles itself — verified by running
       # the 200 cases with `mcp/node_modules` moved aside: 200 passed. So this
       # job deliberately does NOT install `mcp/`'s dependencies; if that ever
-      # stops being true, it fails here rather than silently skipping.
+      # stops being true, it fails here rather than silently skipping. That
+      # check covered node_modules only, which is exactly how the generated-file
+      # dependency above got past it.
       - name: Test
         working-directory: mcp-gateway
         run: npx vitest run

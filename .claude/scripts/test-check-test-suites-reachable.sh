@@ -281,6 +281,24 @@ else
     bad "an untracked test file was demanded of CI (rc=$RC)"
 fi
 
+# ── 12. a __tests__/ directory is a suite even with no .test. infix ──────────
+# jest's default include is `__tests__/**/*.js` as well as `*.test.*`, so a
+# package can hold a real suite that matches neither infix. This is the one
+# failure the rest of the gate cannot catch: a suite the enumeration misses
+# does not turn red, it disappears from the report, and "0 unreachable" then
+# means "0 found". Nothing in this repo matches today — the case exists so
+# that stays a measurement rather than an assumption.
+R="$(mkrepo jestdirs)"
+mkdir -p "$R/legacy/__tests__"
+echo '{"name":"legacy","scripts":{"test":"jest"}}' > "$R/legacy/package.json"
+echo 'test("x", () => {})' > "$R/legacy/__tests__/behaviour.js"
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'legacy'; then
+    ok "a __tests__/ suite with no .test. infix is enumerated"
+else
+    bad "a __tests__/ suite was invisible to the enumeration — it would vanish, not fail (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -342,6 +360,12 @@ mutant 'stop excluding dist/ copies' \
     "| grep -vE '(^|/)(node_modules|dist|build|out)/' || true" '|| true' distonly '0 suite'
 mutant 'ignore || true' \
     'line ~ /\|\|[[:space:]]*true/' '0' advtrue 'cannot fail the build'
+# Narrow the enumeration back to the two infixes. The `legacy` package then
+# leaves the report entirely — it is not reported unreachable, it is not
+# reported at all, which is why this arm needs a mutant of its own.
+mutant 'enumerate only .test./.spec., not __tests__/' \
+    '(\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$|(^|/)__tests__/.+\.(ts|tsx|js|jsx|mjs|cjs)$)' \
+    '\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$' jestdirs 'legacy'
 
 echo ""
 echo "test-check-test-suites-reachable: $PASS passed, $FAIL failed"

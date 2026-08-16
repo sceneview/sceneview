@@ -21,9 +21,15 @@
 # A whitelist of packages fails the same way the original gap did: a package
 # added tomorrow and forgotten in the list passes green without a word, which
 # is precisely the failure being fixed. So this gate enumerates every versioned
-# `*.test.*` / `*.spec.*` file, folds each to its owning package, and then has
-# to say something about each one. It can be wrong about a package, but it
-# cannot be silent about one.
+# `*.test.*` / `*.spec.*` file — plus anything under a `__tests__/` directory,
+# a jest default include that matches neither infix — folds each to its owning
+# package, and then has to say something about each one. It can be wrong about
+# a package, but it cannot be silent about one.
+#
+# The `__tests__/` arm matches nothing in this repo today. It is here because
+# the enumeration is the one place where a miss is indistinguishable from a
+# clean bill of health: a package whose tests stop matching the glob does not
+# turn red, it leaves the report, and the total quietly drops by one.
 #
 # WHAT "REACHABLE" MEANS HERE
 # ---------------------------
@@ -76,7 +82,7 @@ ALL_FILES="$(git ls-files 2>/dev/null)" || {
     echo "check-test-suites-reachable: not a git repository ($ROOT)" >&2; exit 2; }
 
 TEST_FILES="$(printf '%s\n' "$ALL_FILES" \
-    | grep -E '\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$' \
+    | grep -E '(\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$|(^|/)__tests__/.+\.(ts|tsx|js|jsx|mjs|cjs)$)' \
     | grep -vE '(^|/)(node_modules|dist|build|out)/' || true)"
 
 # Every versioned package root, computed once. Note the herestrings below
