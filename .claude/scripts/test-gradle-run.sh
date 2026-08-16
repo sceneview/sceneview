@@ -695,25 +695,8 @@ fi
 echo ""
 echo "foreign-tree detection (#3159):"
 
-
 FT_PROJ="$TMP/proj/sceneview"
 mkdir -p "$FT_PROJ"
-
-# A RELATIVE source path is not another checkout. Gradle prints them constantly
-# ("samples/android-demo/src/main/java/X.kt"), and the detector used to match
-# from the first `/` INSIDE such a path, yielding `/android-demo/src/...` — an
-# absolute-looking fragment under no project root, graded as ANOTHER CHECKOUT.
-# A healthy leg came back "describes a DIFFERENT checkout" (#3189). The clean-run
-# baseline below only catches this when a log on disk happens to carry the
-# shape, so it is asserted deterministically here.
-FT_REL="$TMP/relative.log"
-printf 'OK: samples/android-demo/src/main/java/X.kt\n' > "$FT_REL"
-if [ -z "$(gradle_foreign_tree_paths "$FT_REL" "$FT_PROJ")" ]; then
-    ok "a relative src/ path is not a foreign checkout"
-else
-    bad "a relative src/ path was flagged foreign — every gate run naming one would be COULD NOT RUN"
-fi
-
 
 # Verbatim from the api-check.log measured on 2026-08-14: this worktree's gate
 # run, carrying another clone's compiler diagnostics.
@@ -749,16 +732,20 @@ OK: samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/Genera
 BUILD SUCCESSFUL in 3s
 LOG
 
-# A foreign path Gradle printed inside brackets. `[` is in the leading-delimiter
-# class for this shape alone: without it the path does not begin at a recognised
-# boundary and the whole line is skipped, so a genuinely foreign tree goes
-# unreported — the silent direction of the same bug #3195 fixed loudly. The
-# delimiter came from the #3189 side when the two independent fixes were merged,
-# and this case is why it survived the merge.
+# Bracketed — the OTHER half of the same defect, found independently on #3189.
+# The `:`/`=` delimiters were missing in a way that produced a false RED; `[`
+# was missing in a way that produces a false GREEN, which is worse: with no `[`
+# in the delimiter class the pattern cannot start after one, so a genuinely
+# foreign tree announced in brackets is never reported at all.
+#
+# CONSTRUCTED, not measured — unlike relative.log above, which is verbatim from
+# this repo's roborazzi.log. Bracketing paths is ordinary JVM/Gradle output, but
+# no log in this repo has been shown to carry this exact line. The mutant below
+# is what makes the case load-bearing regardless.
 cat > "$TMP/bracketed.log" <<'LOG'
 > Task :sceneview:compileReleaseKotlin
-e: [/private/tmp/sv-3136/sceneview/src/main/kotlin/io/github/sceneview/Scene.kt:12:5] unresolved reference
-BUILD FAILED in 4s
+e: [/private/tmp/sv-3136/sceneview/src/main/kotlin/io/github/sceneview/Scene.kt] unresolved reference
+BUILD FAILED in 8s
 LOG
 
 ft() { gradle_foreign_tree_paths "$1" "$FT_PROJ"; }
@@ -768,11 +755,17 @@ if [ -n "$(ft "$TMP/foreign.log")" ]; then
 else
     bad "another clone's source path went UNDETECTED — a verdict could be issued about the wrong tree"
 fi
-if [ -n "$(ft "$TMP/bracketed.log")" ]; then
-    ok "a foreign path printed inside brackets is detected"
+
+ft_bracket="$(ft "$TMP/bracketed.log")"
+if [ -n "$ft_bracket" ]; then
+    ok "a bracketed foreign path is detected"
 else
-    bad "a bracketed foreign path went UNDETECTED — the delimiter class does not admit '['"
+    bad "a bracketed foreign path went UNDETECTED — a contaminated log grades clean (false GREEN)"
 fi
+case "$ft_bracket" in
+    *']') bad "the reported path keeps its trailing ']' — the gate names a file that does not exist" ;;
+    *)    ok "the reported path carries no trailing bracket" ;;
+esac
 for f in local cachepaths relative; do
     if [ -z "$(ft "$TMP/$f.log")" ]; then
         ok "$f.log is not flagged"
@@ -878,6 +871,12 @@ ft_mutant 'never exclude the project dir' \
 #     this repository's own clean runs (#3195).
 ft_mutant 'drop the start-of-path anchor' \
     's|local bound=.*|local bound=""|' relative detect
+# D — keep the anchor but drop `[` from the delimiter class, i.e. the state of
+#     `main` between #3195 and #3189. The relative/cache/local cases all still
+#     pass, which is precisely why this needs its own mutant: the regression is
+#     invisible to every other assertion in this file.
+ft_mutant 'drop the bracket delimiter' \
+    '/local bound=/s|(\[\])|(])|' bracketed silent
 
 echo ""
 echo "test-gradle-run: $PASS passed, $FAIL failed"
