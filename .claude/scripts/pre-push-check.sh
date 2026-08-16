@@ -872,6 +872,11 @@ elif [ "$ERRORS" -eq 0 ]; then
     else
         echo -e "${YELLOW}    Re-run when no other build is competing for the Gradle daemon:${NC}"
         echo -e "${YELLOW}      ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${NC}"
+        echo -e "${YELLOW}    --stop kills the daemon for EVERY clone on this machine — wait for the${NC}"
+        echo -e "${YELLOW}    other build to finish first. Killing a live one makes ITS gate print${NC}"
+        echo -e "${YELLOW}    'FAILED to compile' for code that compiles: 'Gradle build daemon has${NC}"
+        echo -e "${YELLOW}    been stopped: stop command received' in the log, two red modules on${NC}"
+        echo -e "${YELLOW}    screen, and nothing wrong with the tree (measured 2026-08-16).${NC}"
     fi
     not_covered_recap
     echo -e "${YELLOW}    Logs: $LOG_DIR${NC}"

@@ -354,6 +354,9 @@ gradle_report_failure() {
         done
         echo -e "${yellow}      Re-run when no other build is competing for the Gradle daemon:${nc}"
         echo -e "${yellow}        ./gradlew --stop && bash .claude/scripts/pre-push-check.sh${nc}"
+        echo -e "${yellow}      --stop kills the daemon for EVERY clone on this machine. Run it only once${nc}"
+        echo -e "${yellow}      the other build has finished: killing a live one makes ITS gate print${nc}"
+        echo -e "${yellow}      'FAILED to compile' for code that compiles (measured 2026-08-16).${nc}"
         echo -e "      Full log: $log"
         INCOMPLETE=$((${INCOMPLETE:-0} + 1))
         return 0
