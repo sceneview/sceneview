@@ -732,6 +732,22 @@ OK: samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/Genera
 BUILD SUCCESSFUL in 3s
 LOG
 
+# Bracketed — the OTHER half of the same defect, found independently on #3189.
+# The `:`/`=` delimiters were missing in a way that produced a false RED; `[`
+# was missing in a way that produces a false GREEN, which is worse: with no `[`
+# in the delimiter class the pattern cannot start after one, so a genuinely
+# foreign tree announced in brackets is never reported at all.
+#
+# CONSTRUCTED, not measured — unlike relative.log above, which is verbatim from
+# this repo's roborazzi.log. Bracketing paths is ordinary JVM/Gradle output, but
+# no log in this repo has been shown to carry this exact line. The mutant below
+# is what makes the case load-bearing regardless.
+cat > "$TMP/bracketed.log" <<'LOG'
+> Task :sceneview:compileReleaseKotlin
+e: [/private/tmp/sv-3136/sceneview/src/main/kotlin/io/github/sceneview/Scene.kt] unresolved reference
+BUILD FAILED in 8s
+LOG
+
 ft() { gradle_foreign_tree_paths "$1" "$FT_PROJ"; }
 
 if [ -n "$(ft "$TMP/foreign.log")" ]; then
@@ -739,6 +755,17 @@ if [ -n "$(ft "$TMP/foreign.log")" ]; then
 else
     bad "another clone's source path went UNDETECTED — a verdict could be issued about the wrong tree"
 fi
+
+ft_bracket="$(ft "$TMP/bracketed.log")"
+if [ -n "$ft_bracket" ]; then
+    ok "a bracketed foreign path is detected"
+else
+    bad "a bracketed foreign path went UNDETECTED — a contaminated log grades clean (false GREEN)"
+fi
+case "$ft_bracket" in
+    *']') bad "the reported path keeps its trailing ']' — the gate names a file that does not exist" ;;
+    *)    ok "the reported path carries no trailing bracket" ;;
+esac
 for f in local cachepaths relative; do
     if [ -z "$(ft "$TMP/$f.log")" ]; then
         ok "$f.log is not flagged"
@@ -844,6 +871,12 @@ ft_mutant 'never exclude the project dir' \
 #     this repository's own clean runs (#3195).
 ft_mutant 'drop the start-of-path anchor' \
     's|local bound=.*|local bound=""|' relative detect
+# D — keep the anchor but drop `[` from the delimiter class, i.e. the state of
+#     `main` between #3195 and #3189. The relative/cache/local cases all still
+#     pass, which is precisely why this needs its own mutant: the regression is
+#     invisible to every other assertion in this file.
+ft_mutant 'drop the bracket delimiter' \
+    '/local bound=/s|(\[\])|(])|' bracketed silent
 
 echo ""
 echo "test-gradle-run: $PASS passed, $FAIL failed"
