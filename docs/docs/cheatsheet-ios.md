@@ -43,7 +43,7 @@ SceneView { root in
     root.addChild(model.entity)
 }
 .environment(.studio)              // IBL lighting preset
-.cameraControls(.orbit)            // .orbit (default) | .pan | .firstPerson (v4.3.0+; firstPerson is true in-place look-around v4.4.0+) | native Apple modes (iOS 18+, macOS 15+, visionOS excluded): .none | .tilt | .dolly | .gimbal (v4.15.1+ #1049)
+.cameraControls(.orbit)            // .orbit (default) | .pan | .firstPerson (v4.3.0+; firstPerson is true in-place look-around v4.4.0+) | native Apple modes (iOS 18+, macOS 15+, visionOS excluded): .none | .tilt | .dolly (v4.15.1+ #1049; RealityKit has no .gimbal — #3082)
 .recentersTargetOnOrbit(true)      // v4.4.0+ — re-pivot on content centroid when returning to orbit (default false)
 .onEntityTapped { entity in }      // tap handler
 .autoRotate(speed: spinning ? 0.2 : 0)  // turntable auto-rotation; REACTIVE since v4.31.0 — a spin toggle changes this value and nothing else (0 = freeze)

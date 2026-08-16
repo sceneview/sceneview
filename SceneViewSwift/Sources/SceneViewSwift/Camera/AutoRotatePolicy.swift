@@ -29,7 +29,7 @@ struct AutoRotatePolicy: Hashable {
     let speed: Float
 
     /// Whether the camera mode is one SceneView drives itself. Native modes
-    /// (`.none` / `.tilt` / `.dolly` / `.gimbal`) hand the transform to Apple's
+    /// (`.none` / `.tilt` / `.dolly`) hand the transform to Apple's
     /// `realityViewCameraControls(_:)`, so an azimuth mutation would fight it.
     let modeIsCustom: Bool
 

@@ -548,7 +548,7 @@ public struct SceneView: View {
     /// instead of leaving your state and the screen disagreeing.
     ///
     /// Has no effect in the native camera modes (``CameraControlMode/none``, `.tilt`,
-    /// `.dolly`, `.gimbal`), where Apple's `realityViewCameraControls(_:)` owns the
+    /// `.dolly`), where Apple's `realityViewCameraControls(_:)` owns the
     /// camera transform outright.
     ///
     /// - Parameter pose: The pose to apply, angles in radians. `nil` (the default)
@@ -1047,7 +1047,7 @@ private struct SceneViewRepresentation: View {
             .simultaneousGesture(entityLongPressGesture)
             .task(id: autoRotatePolicy) {
                 // Auto-rotation loop — custom modes only (#1049).
-                // For native-mode cameras (none/tilt/dolly/gimbal) Apple owns
+                // For native-mode cameras (none/tilt/dolly) Apple owns
                 // the camera transform, so our azimuth mutation would fight it.
                 //
                 // KEYED on the policy (#2935). As a plain `.task` this loop read
@@ -1170,7 +1170,7 @@ private struct SceneViewRepresentation: View {
     ///   math gives orbit inertia, auto-rotate, and fit-to-bounds framing
     ///   that the Apple modifier does not support.
     ///
-    /// - **Native modes** (`.none`, `.tilt`, `.dolly`, `.gimbal`): applies
+    /// - **Native modes** (`.none`, `.tilt`, `.dolly`): applies
     ///   Apple's `realityViewCameraControls(_:)` modifier and skips the custom
     ///   drag / pinch gestures entirely. The Apple modifier drives the camera
     ///   directly — `applyCamera()` is a no-op for these modes (#1049 Phase 2).
@@ -1190,7 +1190,7 @@ private struct SceneViewRepresentation: View {
                 .gesture(dragGesture)
                 .gesture(pinchGesture)
         #if os(visionOS)
-        case .none, .tilt, .dolly, .gimbal:
+        case .none, .tilt, .dolly:
             // `realityViewCameraControls(_:)` is entirely unavailable on
             // visionOS — fall back to the hand-rolled orbit gesture path.
             realityViewContent
@@ -1203,12 +1203,6 @@ private struct SceneViewRepresentation: View {
             realityViewContent.realityViewCameraControls(.tilt)
         case .dolly:
             realityViewContent.realityViewCameraControls(.dolly)
-        case .gimbal:
-            // CameraControls.gimbal is iOS/iPadOS-only — RealityKit on macOS
-            // does not expose this mode. Fall back to the orbit gesture path.
-            realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
         #else
         case .none:
             realityViewContent.realityViewCameraControls(RealityKit.CameraControls.none)
@@ -1216,16 +1210,6 @@ private struct SceneViewRepresentation: View {
             realityViewContent.realityViewCameraControls(RealityKit.CameraControls.tilt)
         case .dolly:
             realityViewContent.realityViewCameraControls(RealityKit.CameraControls.dolly)
-        case .gimbal:
-            // CameraControls.gimbal requires iOS 18.2+ / macOS 15.2+ SDK.
-            // Older SDK versions (Xcode 16.0–16.1) do not expose this member,
-            // causing a compile error. Fall back to the orbit gesture path
-            // until the minimum deployment / CI SDK is confirmed to be ≥ 18.2.
-            // TODO(#1049 Phase 3): enable `realityViewCameraControls(.gimbal)`
-            // when all CI runners use Xcode 16.2+ (iOS 18.2 SDK).
-            realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
         #endif
         }
     }
@@ -1928,7 +1912,7 @@ private struct SceneViewRepresentation: View {
 
     @MainActor
     private func applyCamera() {
-        // Native modes (none/tilt/dolly/gimbal) delegate to Apple's
+        // Native modes (none/tilt/dolly) delegate to Apple's
         // `realityViewCameraControls` modifier — our custom camera math must
         // not run or it will fight Apple's gesture system. Early-out here;
         // the modifier applied in `cameraInteractionView` does the work.
@@ -2117,7 +2101,7 @@ private struct SceneViewRepresentation: View {
             entities.root.orientation = camera.sceneRotation()
             #endif
 
-        case .none, .tilt, .dolly, .gimbal:
+        case .none, .tilt, .dolly:
             // Native modes are guarded out above by `isCustom` — this branch
             // is unreachable at runtime. The exhaustive case keeps the Swift
             // compiler satisfied when the `isCustom` guard is inlined here.
@@ -2205,7 +2189,7 @@ private struct SceneViewRepresentation: View {
                             camera.maxFov
                         )
                     }
-                case .none, .tilt, .dolly, .gimbal:
+                case .none, .tilt, .dolly:
                     // This gesture is only applied for custom modes (see
                     // cameraInteractionView). Unreachable, but required for
                     // exhaustive switch.
