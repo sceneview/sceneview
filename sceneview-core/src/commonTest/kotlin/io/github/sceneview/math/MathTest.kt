@@ -2,6 +2,7 @@ package io.github.sceneview.math
 
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Mat4
+import dev.romainguy.kotlin.math.pow
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -126,6 +127,54 @@ class MathTest {
         val linear = floatArrayOf(0.5f).toLinearSpace()
         // 0.5^2.2 ≈ 0.2176
         assertClose(0.2176f, linear[0], 0.01f)
+    }
+
+    /**
+     * `toLinearSpace()` was rewritten to fill a `FloatArray` in place instead of mapping through
+     * a boxed `List<Float>` (#3157). It must still convert every element, in order, and leave the
+     * receiver untouched.
+     */
+    @Test
+    fun toLinearSpaceConvertsEveryElementAndDoesNotMutateReceiver() {
+        val source = floatArrayOf(0f, 0.25f, 0.5f, 1f)
+        val linear = source.toLinearSpace()
+        assertEquals(source.size, linear.size)
+        for (i in source.indices) {
+            assertClose(pow(source[i], 2.2f), linear[i])
+        }
+        // Distinct array, receiver unchanged.
+        assertTrue(linear !== source)
+        assertEquals(0.25f, source[1])
+        assertEquals(0, floatArrayOf().toLinearSpace().size)
+    }
+
+    /**
+     * `toColumnsDoubleArray()` was rewritten to fill a `DoubleArray` directly instead of going
+     * through `toColumnsFloatArray().map { }.toDoubleArray()` (#3157). Since it now enumerates
+     * `x.x, x.y, … w.w` by hand, the failure mode it can regress into is a wrong or transposed
+     * order, and that is what this pins: sixteen distinct, non-float-exact values, compared
+     * position by position against [toColumnsFloatArray].
+     *
+     * What it deliberately does **not** pin is precision. Both matrices here are built from a
+     * `FloatArray`, whose storage already rounds to 32 bits on every target — including
+     * Kotlin/JS, where `Float` is a plain `Number` but `FloatArray` is a `Float32Array`. So the
+     * two paths are bit-identical by construction and no fixture routed through a `FloatArray`
+     * could tell them apart. A `Mat4` whose components came from JS arithmetic could; there is no
+     * JS caller of `toColumnsDoubleArray()` today (the only consumer is Android's
+     * `Camera.setCustomProjection`, where `Float` is genuinely 32-bit), so that gap is unreachable
+     * rather than untested.
+     */
+    @Test
+    fun toColumnsDoubleArrayMatchesFloatColumns() {
+        val matrix = Mat4.of(*FloatArray(16) { (it + 1) * 0.1f })
+        val floats = matrix.toColumnsFloatArray()
+        val doubles = matrix.toColumnsDoubleArray()
+        assertEquals(16, doubles.size)
+        for (i in floats.indices) {
+            assertEquals(floats[i].toDouble(), doubles[i])
+        }
+        // Distinct values, so a transposed or shifted enumeration cannot pass by coincidence.
+        assertEquals(16, doubles.toSet().size)
     }
 
     // ── slerp TRS-tuple overload (#2265) ──────────────────────────────────────
