@@ -260,6 +260,7 @@ Key consequences:
   every node composable, a runtime transform a gesture or frame driver wrote is not clobbered by
   an unrelated recomposition (#2639, #2653).
 - **Changing geometry parameters (`size`, `radius`, `stacks`, …) triggers `updateGeometry()`** under the hood — a O(vertex count) rebuild. Cheap for small meshes, not free.
+- **The collision shape follows the geometry.** `updateGeometry()` re-derives `collisionShape` from the new bounding box, so a resized node picks at the size it renders at (#3194). If you assign `node.collisionShape` yourself, that collider is yours and is never overwritten — including a deliberate `null`, which keeps the node unpickable. Call `updateCollisionShape()` to hand it back to the automatic refresh.
 - **Changing the `modelInstance` reference rebuilds the node** — use the same instance when toggling props.
 - **Never call `node.destroy()` manually** — let the composable's `NodeLifecycle` do it.
 
