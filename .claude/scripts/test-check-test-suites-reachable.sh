@@ -544,6 +544,55 @@ else
     bad "shell text was read as a YAML key — a blocking step reported advisory (rc=$RC)"
 fi
 
+# ── 22. a job named `pull_request` is not a trigger ──────────────────────────
+# `fires_on_pr` grepped the WHOLE file for `pull_request:` at 1-4 spaces, which
+# a job KEY satisfies. A tag-only workflow then read as gating merges — the one
+# fail-OPEN direction left in the gate, in the function that decides whether a
+# suite counts as blocking at all.
+R="$(mkrepo prjob)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  push:
+    tags: ['v*']
+jobs:
+  pull_request:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'does not run on pull requests'; then
+    ok "a JOB named pull_request does not make a tag-only workflow PR-triggered"
+else
+    bad "a job key was read as a trigger — a tag-only workflow read as blocking (rc=$RC)"
+fi
+
+# ── 22b. a `pull_request` INPUT is not a trigger either ──────────────────────
+# The other half of the same scoping: `pull_request:` INSIDE the `on:` block but
+# nested below trigger level. `workflow_call.inputs.pull_request` is ordinary
+# YAML, and reading it as a trigger has the same fail-open consequence.
+R="$(mkrepo prinput)"; addpkg "$R" app
+cat > "$R/.github/workflows/ci.yml" <<'YML'
+on:
+  workflow_call:
+    inputs:
+      pull_request:
+        type: string
+  push:
+    tags: ['v*']
+jobs:
+  t:
+    steps:
+      - working-directory: app
+        run: npm test
+YML
+stage "$R"; run_gate "$R"
+if printf '%s' "$OUT" | grep -q 'does not run on pull requests'; then
+    ok "a workflow_call input named pull_request is not read as a trigger"
+else
+    bad "a nested key was read as a trigger — a tag-only workflow read as blocking (rc=$RC)"
+fi
+
 # ── mutation verification ────────────────────────────────────────────────────
 # mutant <label> <old-literal> <new-literal> <fixture> <marker>
 #
@@ -609,7 +658,13 @@ mutant 'let working-directory leak past a step boundary' \
     '/^[[:space:]]*-[[:space:]]/ { flush(); wd=""; ce=0 }' \
     '/^ZZZ_NEVER_MATCHES/ { flush(); wd=""; ce=0 }' leak '✗ app'
 mutant 'treat any workflow as PR-triggered' \
-    "grep -qE '^[[:space:]]{1,4}pull_request(_target)?:' \"\$1\"" 'return 0' nopr 'does not run on pull requests'
+    'END { exit(found ? 0 : 1) }' 'END { exit(0) }' nopr 'does not run on pull requests'
+mutant 'look for pull_request: anywhere, not only at the trigger level' \
+    'if (i == lvl && $0 ~ /^ *pull_request(_target)?:/) found = 1' \
+    'if ($0 ~ /^ *pull_request(_target)?:/) found = 1' prinput 'does not run on pull requests'
+mutant 'let a job key outside the on: block count as a trigger' \
+    '!on { next }   # anything outside the `on:` block, `jobs:` included' \
+    '' prjob 'does not run on pull requests'
 mutant 'ignore the path filter' \
     'if glob_covers "$g" "$suite"; then triggered=1; break; fi' 'triggered=1; break' nopath 'never triggers'
 mutant 'stop excluding dist/ copies' \
@@ -639,12 +694,9 @@ mutant 'match continue-on-error anywhere on the line' \
 mutant 'match the runner as a bare substring again' \
     'line ~ /(^|[^[:alnum:]._\/-])(vitest|jest)([[:space:]]|$)/ ||' \
     'line ~ /(vitest|jest)/ ||' substr 'no workflow step runs its tests'
-# Anchored on the character class rather than on the whole line: the line is a
-# grep -E pattern carrying both quote styles, and quoting it whole from bash is
-# how this mutant went stale the first time.
 mutant 'read only the block-mapping pull_request: form' \
-    '[^]]*pull_request' \
-    'ZZZ_NEVER_MATCHES' inlineon '✓ app'
+    'if (on && $0 ~ /:[[:space:]]*\[[^]]*pull_request/) found = 1' \
+    'if (0) found = 1' inlineon '✓ app'
 mutant 'read paths: from every trigger, not just pull_request' \
     'trig = ($0 ~ /^ *pull_request(_target)?:/) ? 1 : 0' \
     'trig = 1' prpaths 'never triggers'

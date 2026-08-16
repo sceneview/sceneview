@@ -149,12 +149,13 @@ SUITES=($(printf '%s\n' "${SUITES[@]:-}" | grep -v '^$' | sort -u))
 # ── 2. Extract every test invocation from every workflow ─────────────────────
 # Emitted as: workflow<TAB>working-directory<TAB>command<TAB>advisory(0|1)
 #
-# Comment lines are skipped, and that is load-bearing rather than tidy: a
-# comment CLAIMING a suite is covered is exactly what this repo had — a
-# `mcp-ts-check.yml` header stating that `npm test` "is run by ci.yml's Quality
-# gate job" when ci.yml contains no `npm` command at all. Counting that line as
-# an invocation would let the false claim satisfy the gate that exists to catch
-# it.
+# Comment lines are skipped, and that is load-bearing rather than tidy. This
+# repo has a header comment naming a runner — `mcp-ts-check.yml`'s "`npm test`
+# (run by ci.yml's `Quality gate (full)` job)". Counting it as an invocation
+# would let a SENTENCE satisfy the gate that exists to check whether the command
+# runs. Whether the sentence happens to be true is beside the point: that one
+# is (setup-mcp's `npm ci` makes the guard true), and it still must not count,
+# because a prose claim and a `run:` line are not the same kind of evidence.
 scan_invocations() {
     for wf in "$WF_DIR"/*.yml "$WF_DIR"/*.yaml; do
         [ -f "$wf" ] || continue
@@ -308,14 +309,36 @@ trigger_prefixes() {
 # time are not tests that gate a merge: by then the code is already on `main`.
 # That verdict was the gate's own false green, found by disbelieving its first
 # clean line rather than by a failure.
+# Scoped to the `on:` block, for the same reason `trigger_prefixes` is. This
+# used to grep the WHOLE file for a `pull_request:` line at 1-4 spaces of
+# indent, which a job KEY named `pull_request:` under `jobs:` satisfies — and
+# that reads a tag-only workflow as gating merges. Fail-OPEN, in the one
+# function whose answer decides whether a suite counts as blocking, so the
+# scoping is not tidiness. It matches nothing in this repo today.
 fires_on_pr() {
-    grep -qE '^[[:space:]]{1,4}pull_request(_target)?:' "$1" && return 0
-    # Inline-array form — `on: [push, pull_request]`. Missing it degrades a
-    # genuinely PR-gated suite to ADVISORY rather than passing a gap, so the
-    # direction is safe; it is handled anyway because an ADVISORY nobody can
-    # act on ("it DOES run on pull requests") teaches readers to discount the
-    # verdict, and a verdict people learn to discount stops being a gate.
-    grep -qE '^["'"'"']?on["'"'"']?:[[:space:]]*\[[^]]*pull_request' "$1"
+    awk '
+        function ind(s) { match(s, /^ */); return RLENGTH }
+
+        # A new top-level key ends the previous block. The inline-array form
+        # lives on this same line: `on: [push, pull_request]`.
+        /^[^ #]/ {
+            on = ($0 ~ /^["\x27]?on["\x27]?:/)
+            if (on && $0 ~ /:[[:space:]]*\[[^]]*pull_request/) found = 1
+            lvl = 0
+            next
+        }
+        !on { next }   # anything outside the `on:` block, `jobs:` included
+        /^ *#/ { next }
+        /^ *$/ { next }
+        {
+            i = ind($0)
+            if (lvl == 0) lvl = i
+            # Only at the trigger level: `pull_request:` nested deeper is a key
+            # belonging to some other trigger, not a trigger itself.
+            if (i == lvl && $0 ~ /^ *pull_request(_target)?:/) found = 1
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$1"
 }
 
 # Does `glob` cover `suite`? Prefix in EITHER direction:
@@ -443,8 +466,9 @@ done
 echo ""
 echo "  ${#SUITES[@]} suite(s): $N_OK blocking, $N_ADV advisory, $N_MISSING unreachable"
 echo "  Bounds: JS/TS only (Kotlin/Swift suites run under Gradle/Xcode and are"
-echo "  not assessed here); dist/ and build/ copies excluded; a job-level"
-echo "  continue-on-error is not detected, only a step-level one."
+echo "  not assessed here); node_modules/, dist/, build/ and out/ copies"
+echo "  excluded; a job-level continue-on-error is not detected, only a"
+echo "  step-level one. Full list in this script's BOUNDS footer."
 
 if [ "$FAIL" -ne 0 ]; then
     echo ""

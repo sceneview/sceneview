@@ -31,13 +31,19 @@ name: MCP TypeScript check
 # contributor's laptop, the same shape `rn-ts-check.yml` closed for the RN
 # bridge.
 #
-# This paragraph used to say `npm test` was "run by ci.yml's `Quality gate
-# (full)` job". It was not, and had not been: that job runs no `npm` command,
-# so `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard was always false and
-# the suite skipped in silence (#3201). The sentence is worth remembering as a
-# defect in its own right — it was the only thing a reader checking "are the
-# MCP tests covered?" would find, and it sent them away satisfied. `npm test`
-# now really does run on every PR, in `mcp-tests.yml`.
+# The parenthetical above — `npm test` is run by ci.yml's `Quality gate (full)`
+# job — is TRUE, and #3201 briefly rewrote it to say the opposite before
+# measuring. It holds because that job runs `- uses: ./.github/actions/setup-mcp`
+# (ci.yml:1838), whose `npm ci` in `mcp/` (setup-mcp/action.yml:31-32) makes
+# `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard true before the gate
+# step (ci.yml:1847).
+#
+# What was wrong is that nothing said any of that. The coverage rested on a
+# step present for other reasons, in another job, with no declaration tying the
+# two together — and a reader asking "are the MCP tests covered?" had only this
+# sentence to go on, with no way to check it from here. `npm test` now runs on
+# every PR in `mcp-tests.yml`, invoked by name on a declared trigger, which is
+# what makes the answer verifiable rather than merely correct.
 #
 # NOT SILENTLY SKIPPABLE
 # ----------------------
