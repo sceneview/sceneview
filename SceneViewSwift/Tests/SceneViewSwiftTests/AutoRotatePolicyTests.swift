@@ -43,7 +43,7 @@ final class AutoRotatePolicyTests: XCTestCase {
     /// Native camera modes hand the transform to Apple's
     /// `realityViewCameraControls(_:)`; our azimuth mutation would fight it (#1049).
     func testInactiveInNativeCameraModes() {
-        for mode: CameraControlMode in [.none, .tilt, .dolly, .gimbal] {
+        for mode: CameraControlMode in [.none, .tilt, .dolly] {
             XCTAssertFalse(
                 AutoRotatePolicy(isEnabled: true, speed: 0.3, mode: mode).isActive,
                 "\(mode) delegates the camera to RealityKit — SceneView must not drive it"
@@ -80,7 +80,7 @@ final class AutoRotatePolicyTests: XCTestCase {
     func testChangingCameraModeChangesIdentity() {
         XCTAssertNotEqual(
             AutoRotatePolicy(isEnabled: true, speed: 0.2, mode: .orbit),
-            AutoRotatePolicy(isEnabled: true, speed: 0.2, mode: .gimbal)
+            AutoRotatePolicy(isEnabled: true, speed: 0.2, mode: .dolly)
         )
     }
 

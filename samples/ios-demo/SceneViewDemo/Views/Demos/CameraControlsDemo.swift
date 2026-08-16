@@ -133,7 +133,6 @@ struct CameraControlsDemo: View {
         case .none:        return "hand.raised.slash.fill"
         case .tilt:        return "arrow.up.and.down"
         case .dolly:       return "arrow.forward.and.backward"
-        case .gimbal:      return "rotate.3d"
         }
     }
 
@@ -146,7 +145,6 @@ struct CameraControlsDemo: View {
         case .none:        return "Camera locked — no gestures"
         case .tilt:        return "Apple native tilt — pan up/down"
         case .dolly:       return "Apple native dolly — move forward/back"
-        case .gimbal:      return "Apple native gimbal — rotate camera on all axes"
         }
     }
 
@@ -155,7 +153,7 @@ struct CameraControlsDemo: View {
         case .orbit, .pan: return "Pinch — zoom in / out"
         case .firstPerson: return "Pinch — zoom field of view"
         // Native Apple modes — pinch handled by RealityKit internally.
-        case .none, .tilt, .dolly, .gimbal: return "Gestures handled by Apple RealityKit"
+        case .none, .tilt, .dolly: return "Gestures handled by Apple RealityKit"
         }
     }
 

@@ -4536,7 +4536,7 @@ public struct SceneView: View {
 View modifiers (chainable):
 ```swift
 .environment(_ environment: SceneEnvironment) -> SceneView  // IBL lighting
-.cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson | iOS-only: .none, .tilt, .dolly, .gimbal
+.cameraControls(_ mode: CameraControlMode) -> SceneView     // .orbit (default), .pan, .firstPerson | Apple-only: .none, .tilt, .dolly
 .recentersTargetOnOrbit(_ enabled: Bool) -> SceneView       // v4.4.0+ — re-pivot on content centroid when (re-)entering orbit; default false
 .onEntityTapped(_ handler: @escaping (Entity) -> Void) -> SceneView   // real entity hit-test (v4.2.0+)
 .autoRotate(speed: Float = 0.3) -> SceneView                // radians/s, default 0.3; 0 starts no rotation loop at all (freeze on the authored pose). REACTIVE since v4.31.0 — a spin toggle drives the speed alone, never a .id() re-key
@@ -5168,12 +5168,13 @@ public enum CameraControlMode: Sendable {
     case pan           // drag translates the target laterally, pinch dollies
     case firstPerson   // v4.4.0+ true look-around: drag yaws/pitches the camera IN PLACE (no orbit, no teleport on mode switch), pinch adjusts FOV
 
-    // iOS-only native modes — delegate to Apple's realityViewCameraControls(_:) modifier (#1049)
+    // Apple-only native modes — delegate to Apple's realityViewCameraControls(_:) modifier (#1049)
     // Custom gesture math (orbit inertia, auto-rotate, fit-to-bounds) is bypassed for these.
+    // RealityKit's CameraControls is a struct with exactly .none/.tilt/.pan/.orbit/.dolly —
+    // there is NO .gimbal on any SDK. SceneView implements .pan/.orbit itself for Android parity.
     case none          // disables all gesture interaction
     case tilt          // tilt camera up/down about horizontal axis
     case dolly         // zoom along look direction
-    case gimbal        // rotate about all three axes independently (no orbit pivot)
 }
 
 public struct CameraControls: Sendable {

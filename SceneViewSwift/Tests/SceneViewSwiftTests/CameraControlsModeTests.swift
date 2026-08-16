@@ -246,7 +246,37 @@ final class CameraControlsModeTests: XCTestCase {
         XCTAssertFalse(CameraControlMode.none.isCustom)
         XCTAssertFalse(CameraControlMode.tilt.isCustom)
         XCTAssertFalse(CameraControlMode.dolly.isCustom)
-        XCTAssertFalse(CameraControlMode.gimbal.isCustom)
+    }
+
+    /// Regression guard for #3082. `RealityFoundation.CameraControls` is a
+    /// struct exposing exactly `.none`, `.tilt`, `.pan`, `.orbit`, `.dolly` —
+    /// there is no `.gimbal`, on any SDK. SceneView used to carry a
+    /// `CameraControlMode.gimbal` that fell back to the orbit gesture path on
+    /// every platform, i.e. a public alias for `.orbit` named after an API
+    /// that does not exist. This pins the native set so it cannot grow a
+    /// fictional member again: the three native modes below are exactly the
+    /// Apple modes SceneView delegates, and every other case is custom.
+    func testNativeModesAreExactlyTheThreeDelegatedAppleModes() {
+        let native: [CameraControlMode] = [.none, .tilt, .dolly]
+        let custom: [CameraControlMode] = [.orbit, .pan, .firstPerson]
+
+        for mode in native {
+            XCTAssertFalse(mode.isCustom, "\(mode) must delegate to RealityKit")
+        }
+        for mode in custom {
+            XCTAssertTrue(mode.isCustom, "\(mode) must use SceneView gesture math")
+        }
+
+        // Exhaustive: switching over every case must be covered by the two
+        // lists above, so adding a case without classifying it fails to build.
+        for mode in native + custom {
+            switch mode {
+            case .orbit, .pan, .firstPerson:
+                XCTAssertTrue(custom.contains(mode))
+            case .none, .tilt, .dolly:
+                XCTAssertTrue(native.contains(mode))
+            }
+        }
     }
 
 }
