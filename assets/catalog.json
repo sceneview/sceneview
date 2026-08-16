@@ -1673,7 +1673,7 @@
       "name": "Fox",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
-      "author": "KhronosGroup",
+      "author": "PixelMannen (model), tomkranis (rigging & animation)",
       "license": "CC-BY-4.0",
       "formats": {
         "glb": {

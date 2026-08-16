@@ -557,23 +557,29 @@ else
     missing_gate_script "check-demo-id-parity.sh"
 fi
 
-# Asset credits (BLOCKING in ci.yml → repo-hygiene). assets/CREDITS.md is
-# GENERATED from assets/catalog.json and discharges the attribution clause of
-# every model's licence (CC-BY 4.0 §3a) — a drift here is a compliance gap in
-# a published release, not a tidiness one. Five Khronos models once shipped
-# uncredited. Deterministic regenerate-and-compare, no write, sub-second.
+# Asset credits (BLOCKING in ci.yml → repo-hygiene). EVERY CREDITS.md the
+# project ships is GENERATED (or byte-mirrored) from assets/catalog.json plus
+# the contents of each bundled assets folder, and they discharge the
+# attribution clause of every model's licence (CC-BY 4.0 §3a) — a drift here is
+# a compliance gap in a published release, not a tidiness one. Five Khronos
+# models once shipped uncredited; the copy inside the Play Store APK then ran
+# two months and six bundled files behind because nothing generated or checked
+# it (#2941). Deterministic regenerate-and-compare, no write, sub-second.
 echo -e "\n${YELLOW}[16/21] Checking asset credits...${NC}"
 if [ -f .claude/scripts/generate-credits.py ]; then
     CREDITS_LOG="$LOG_DIR/asset-credits.log"
     if python3 .claude/scripts/generate-credits.py --check > "$CREDITS_LOG" 2>&1; then
-        echo -e "${GREEN}  ✓ assets/CREDITS.md in sync with assets/catalog.json${NC}"
+        echo -e "${GREEN}  ✓ every shipped CREDITS.md in sync with assets/catalog.json${NC}"
     else
-        # `DRIFT:` is the comparison verdict; the generator's other exit-1
-        # paths print lowercase `error: …` (catalog missing / malformed) and
-        # are a tooling failure, not drift.
-        gate_script_failure "assets/CREDITS.md" "$CREDITS_LOG" $? \
-            "assets/CREDITS.md drifted from assets/catalog.json:" \
-            "^DRIFT: assets/CREDITS\.md" \
+        # Two verdict lines, both real failures, and the proof regex has to
+        # accept BOTH or the leg misreports a genuine red as "NOT checked":
+        #   DRIFT:      a generated copy or a mirror no longer matches
+        #   UNCREDITED: a bundled file no CREDITS.md describes at all
+        # The generator's other exit-1 paths print lowercase `error: …`
+        # (catalog missing / malformed) and are a tooling failure, not drift.
+        gate_script_failure "shipped CREDITS.md files" "$CREDITS_LOG" $? \
+            "a shipped CREDITS.md drifted, or a bundled asset is uncredited:" \
+            "^(DRIFT|UNCREDITED):" \
             "Fix: python3 .claude/scripts/generate-credits.py"
     fi
 else

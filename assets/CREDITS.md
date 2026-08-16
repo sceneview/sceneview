@@ -82,7 +82,7 @@ Total models: **75** (plus 16 pending metadata, 7 pending license review).
 - **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by KhronosGroup (theblueturtle_) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Diffuse Transmission Teacup](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DiffuseTransmissionTeacup)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Dragon (Attenuation)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DragonAttenuation)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescence Dish With Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceDishWithOlives)** by KhronosGroup — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)

@@ -1715,15 +1715,32 @@ jobs:
         shell: bash
         run: node tools/generate-gpt-knowledge.js --check
 
-      # Asset-credits drift (BLOCKING). `assets/CREDITS.md` is GENERATED from
-      # `assets/catalog.json` by `.claude/scripts/generate-credits.py`, and it
-      # is what discharges the attribution clause of every model's license
-      # (CC-BY 4.0 §3a). A model added to the catalog and shipped in the sample
-      # apps without regenerating CREDITS.md is an uncredited model in a
-      # published release — a licence-compliance gap, not a cosmetic one. Same
-      # deterministic regenerate-and-compare as the GPT gate above (no
-      # false-positive risk), so it blocks. This drift went unnoticed once: five
-      # Khronos models shipped uncredited until a manual re-run caught it.
+      # Asset-credits generator self-test — a compliance gate that silently
+      # PASSes is worse than none, and this one already did: it checked
+      # `assets/CREDITS.md` while four other CREDITS.md files shipped
+      # unchecked (#2941). Mutation-based, so a regression that stops the
+      # generator writing the bundled copies turns this red instead of leaving
+      # the gate below green on one file. Self-test first, same discipline as
+      # every pair in this job.
+      - name: Self-test generate-credits.py
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-generate-credits.sh
+
+      # Asset-credits drift (BLOCKING). Every CREDITS.md the project ships is
+      # GENERATED (or byte-mirrored) by `.claude/scripts/generate-credits.py`
+      # from `assets/catalog.json` plus the contents of each bundled assets
+      # folder, and they are what discharge the attribution clause of every
+      # model's license (CC-BY 4.0 §3a). A model added to the catalog and
+      # shipped in the sample apps without regenerating CREDITS.md is an
+      # uncredited model in a published release — a licence-compliance gap, not
+      # a cosmetic one. Same deterministic regenerate-and-compare as the GPT
+      # gate above (no false-positive risk), so it blocks. This drift went
+      # unnoticed twice: five Khronos models shipped uncredited until a manual
+      # re-run caught it, and the copy inside the Play Store APK ran two months
+      # and six bundled files behind because nothing generated or checked it
+      # (#2941). The check also fails on a bundled asset with no attribution
+      # anywhere — add it to catalog.json or declare it in the script.
       # Fix locally with `python3 .claude/scripts/generate-credits.py`.
       - name: Asset credits in sync with catalog.json
         if: always() && steps.checkout.outcome == 'success'
