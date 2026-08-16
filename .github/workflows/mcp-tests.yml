@@ -1,0 +1,139 @@
+name: MCP tests
+
+# Runs the vitest suites of the MCP surface: the `mcp/` npm package, the five
+# vertical packages under `mcp/packages/`, and the `mcp-gateway/` Worker.
+#
+# WHY A NEW WORKFLOW AND NOT A STEP SOMEWHERE (#3201)
+# ---------------------------------------------------
+# None of these suites ran anywhere. `mcp-gateway/` — the paid Worker — held
+# 17 test files and 200 cases that no workflow touched; one of them had
+# inverted, asserting a tool count the dashboard had outgrown, so it was green
+# while the page was wrong and only went red once the page was fixed. Nothing
+# reported that for months.
+#
+# `mcp/`'s own suite was in a subtler state: `quality-gate.sh` runs it, but
+# behind `[ -d "mcp/node_modules" ]`, and ci.yml's `Quality gate (full)` job
+# contains no `npm` command at all — so the directory never exists there, the
+# guard is always false, and the leg skipped without printing a word.
+# `mcp-ts-check.yml` meanwhile carried a header stating that `npm test` "is run
+# by ci.yml's Quality gate (full) job". A comment asserting coverage that does
+# not exist is worse than no comment: it answers the reader who thinks to check.
+#
+# `release.yml` and `mcp-publish.yml` do run `npm test`, but only on a `v*`
+# tag — by then the code is on `main`. Publish-time tests are not merge gates.
+#
+# PATHS INCLUDE `mcp/**` FOR THE GATEWAY JOB TOO
+# ----------------------------------------------
+# `mcp-gateway/` imports `mcp/src/tiers.ts`, `mcp/src/tools/index.ts` and every
+# `mcp/packages/*/src/tools.ts` directly, so a change confined to `mcp/` can
+# break the gateway's suite. Filtering the gateway on `mcp-gateway/**` alone
+# would reproduce the original gap one directory over: coverage has to follow
+# the dependency, not the directory name.
+
+on:
+  push:
+    # `branches: [main]` is required — `paths:` alone does NOT scope the push
+    # trigger to a branch, so without it this runs on every push to every
+    # `claude/*` worktree branch. PR coverage comes from the trigger below.
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - 'mcp-gateway/**'
+      - '.github/workflows/mcp-tests.yml'
+  pull_request:
+    paths:
+      - 'mcp/**'
+      - 'mcp-gateway/**'
+      - '.github/workflows/mcp-tests.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    name: MCP package + vertical packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Pinned to 20 to match every other Node-using workflow
+          # (ci.yml, release.yml, mcp-ts-check.yml, telemetry-ci.yml) — #1602.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mcp
+        run: npm ci
+
+      - name: Test
+        working-directory: mcp
+        run: npm test
+
+      # The five vertical packages are run EXPLICITLY, one step each, even
+      # though the `npm test` above already sweeps them: vitest with no config
+      # picks up everything under `mcp/`, which is coverage by default rather
+      # than by declaration. A `vitest.config.ts` added to `mcp/` tomorrow with
+      # a narrowed `include` would drop all five without a word — and it is the
+      # reachability gate, reading this YAML, that has to be able to see them.
+      # Two of them (automotive, healthcare) have no package.json of their own,
+      # so they borrow this job's toolchain; that is also how they are consumed.
+      - name: Test automotive package
+        working-directory: mcp
+        run: npx vitest run --root packages/automotive
+
+      - name: Test gaming package
+        working-directory: mcp
+        run: npx vitest run --root packages/gaming
+
+      - name: Test healthcare package
+        working-directory: mcp
+        run: npx vitest run --root packages/healthcare
+
+      - name: Test interior package
+        working-directory: mcp
+        run: npx vitest run --root packages/interior
+
+      - name: Test rerun package
+        working-directory: mcp
+        run: npx vitest run --root packages/rerun
+
+  mcp-gateway:
+    name: MCP gateway (Worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp-gateway/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mcp-gateway
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: mcp-gateway
+        run: npx tsc --noEmit
+
+      # The gateway's suite imports `mcp/src` and `mcp/packages/*/src` as
+      # TypeScript sources, which vitest transpiles itself — verified by running
+      # the 200 cases with `mcp/node_modules` moved aside: 200 passed. So this
+      # job deliberately does NOT install `mcp/`'s dependencies; if that ever
+      # stops being true, it fails here rather than silently skipping.
+      - name: Test
+        working-directory: mcp-gateway
+        run: npx vitest run

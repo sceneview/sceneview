@@ -25,11 +25,19 @@ name: MCP TypeScript check
 #
 # tsc IS PART OF THE GAP, NOT A BONUS
 # -----------------------------------
-# `npm test` (run by ci.yml's `Quality gate (full)` job) is vitest, which does
-# not type-check, and `npm run build` only ran inside `mcp-publish.yml` /
-# `release.yml` — i.e. at publish time, on a tag. A type error in `mcp/src`
-# could reach npm having been compiled only on a contributor's laptop, the
-# same shape `rn-ts-check.yml` closed for the RN bridge.
+# `npm test` is vitest, which does not type-check, and `npm run build` only ran
+# inside `mcp-publish.yml` / `release.yml` — i.e. at publish time, on a tag. A
+# type error in `mcp/src` could reach npm having been compiled only on a
+# contributor's laptop, the same shape `rn-ts-check.yml` closed for the RN
+# bridge.
+#
+# This paragraph used to say `npm test` was "run by ci.yml's `Quality gate
+# (full)` job". It was not, and had not been: that job runs no `npm` command,
+# so `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard was always false and
+# the suite skipped in silence (#3201). The sentence is worth remembering as a
+# defect in its own right — it was the only thing a reader checking "are the
+# MCP tests covered?" would find, and it sent them away satisfied. `npm test`
+# now really does run on every PR, in `mcp-tests.yml`.
 #
 # NOT SILENTLY SKIPPABLE
 # ----------------------
