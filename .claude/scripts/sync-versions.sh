@@ -685,7 +685,23 @@ echo -e "${CYAN}--- AI Rules Files (Maven coordinates) ---${NC}"
 # VERSION_NAME was 4.30.0 — 30 minors of drift handed to Cursor, Windsurf and
 # Copilot as the dependency to write. 115 checks passed while the SDK's own
 # AI-first surfaces were the stale ones (#3189).
-for AI_RULES in AGENTS.md .cursorrules .windsurfrules .github/copilot-instructions.md; do
+#
+# `pro/gpt-store/gpt-instructions.md` was the fourth, and it was missed by the
+# first pass of this very sweep: it was already in SPM_FILES below, so its SPM
+# snippet got fixed at 4.30.0 while the Maven coordinate three lines above it
+# stayed at 4.0.0. Being listed for one coordinate is not being covered for the
+# other — a review of #3189 caught it after the fix that was supposed to close
+# this class had already landed.
+#
+# `gpt/system-prompt.md` was the FIFTH, and the same review caught it one step
+# later: listed in SPM_FILES (line ~731) so its `from:` clause read 4.30.0 while
+# the three lines around it sat at 4.3.1. Adding one file to this loop while its
+# neighbour had the identical defect is what "being listed for one coordinate is
+# not being covered for the other" actually costs when applied only once. Its
+# two non-Maven version lines get their own block below — this loop only ever
+# sees a Gradle coordinate.
+for AI_RULES in AGENTS.md .cursorrules .windsurfrules .github/copilot-instructions.md \
+                pro/gpt-store/gpt-instructions.md gpt/system-prompt.md; do
     AI_F="$REPO_ROOT/$AI_RULES"
     [ -f "$AI_F" ] || continue
     grep -q 'io\.github\.sceneview:sceneview:' "$AI_F" || continue
@@ -693,6 +709,23 @@ for AI_RULES in AGENTS.md .cursorrules .windsurfrules .github/copilot-instructio
           | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "MISSING")
     add_check "$AI_RULES (Maven coordinate)" "$V"
 done
+
+# `gpt/system-prompt.md` carries two more version-bearing lines that no
+# coordinate sweep in this script can see: a bare `Current version: **X.Y.Z**`
+# prose line, and an `npm install sceneview-web@X.Y.Z` pin. Both read 4.3.1 while
+# the SPM clause between them read 4.30.0. The MCP line on that same file is
+# deliberately NOT checked here — `mcp/` is an independent track and must never be
+# synced to VERSION_NAME.
+GPT_SYSTEM_PROMPT="$REPO_ROOT/gpt/system-prompt.md"
+if [ -f "$GPT_SYSTEM_PROMPT" ]; then
+    V=$(grep -m1 -E '^- Current version: \*\*[0-9]+\.[0-9]+\.[0-9]+' "$GPT_SYSTEM_PROMPT" \
+          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    [ "$V" = "NOT FOUND" ] || add_check "gpt/system-prompt.md (current version prose)" "$V"
+    V=$(grep -m1 'sceneview-web@' "$GPT_SYSTEM_PROMPT" \
+          | grep -oE 'sceneview-web@[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' \
+          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    [ "$V" = "NOT FOUND" ] || add_check "gpt/system-prompt.md (sceneview-web@)" "$V"
+fi
 
 echo -e "${CYAN}--- SwiftPM Install Snippets ---${NC}"
 SPM_FILES=(

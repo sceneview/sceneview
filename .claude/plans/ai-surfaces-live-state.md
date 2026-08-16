@@ -151,11 +151,13 @@ c1a5c99f4e  2026-05-07 23:51:46 +0200
             → 65 files, 13 141 deletions
 ```
 
-The pre-deletion tree `c1a5c99f4e^` (= `4f8800b48a`) contains the whole Worker:
-`src/index.ts`, `src/routes/webhooks.ts` (the Stripe receiver), `src/billing/{checkout,
-key-provisioning,stripe-client,tiers}.ts`, `src/auth/{api-keys,middleware}.ts`,
-`src/db/{schema,usage}.ts`, `src/mcp/{registry,transport,access,types}.ts`,
-`src/rate-limit/*`, all 11 `src/libraries/*.ts`, plus `wrangler.toml` and `package.json`.
+The pre-deletion tree contains the whole Worker — MCP registry and transport, all 11
+library modules, the D1 schema, and the billing, auth and rate-limit modules — plus
+`wrangler.toml` and `package.json`. **The per-file inventory that was here has been
+removed**: this repository is public, the Worker it describes is live and takes money, and
+a reviewer was right that naming its billing and auth source files turns an audit note
+into a reading list. Anyone entitled to that detail can regenerate it in one command
+against the deletion commit; it is in §7.
 
 **Identity match — this is the deployed Worker, not a lookalike:**
 
@@ -233,17 +235,29 @@ Worker:
 |---|---|---|
 | `aae0fd5a56` | 2026-04-13 | `fix(hub-gateway): update FREE_TOOLS count 14→23 …` |
 | `9452e15a78` | 2026-04-13 | `chore: bump version 4.0.0 → 4.0.1` (**this is the 52→78**) |
-| `6637a58c72` | 2026-05-05 | `chore(security): bump hono → 4.12.17 and postcss → 8.5.14 (13 Dependabot alerts)` |
-| `a155966bab` | 2026-05-06 | `chore(deps): npm audit fix — clear 8 ip-address moderate vulns` |
+| *(redacted)* | 2026-05-05 | dependency-security bump — **see the private note, §2.4 below** |
+| *(redacted)* | 2026-05-06 | dependency-security audit fix — **see the private note, §2.4 below** |
 | `a88f7f8c58` | 2026-05-07 | `chore(security+plugins): CDI-safety scrub + multi-agent review fixes` |
 | `c1a5c99f4e` | 2026-05-07 | `chore(security): remove off-topic personal-portfolio code from public repo` |
 
-The consequence is stated plainly because it is the one operational finding here: **the
-live money-handling Worker predates both dependency-security commits.** It is running the
-pre-bump `hono`/`postcss`, i.e. the tree that the 13 Dependabot alerts and the 8
-`ip-address` advisories were filed against. Whether any of those are reachable in a Worker
-runtime is *not* assessed here — that needs the advisory list against the actual call
-paths, and this pass was read-only verification. Recorded as a finding, not as a severity.
+### 2.4 — The one operational finding, deliberately not detailed here
+
+**The live billable Worker predates both dependency-security commits in the table above.**
+That is the finding, and it is the reason this section exists.
+
+What is *not* written here: the two commit SHAs, the package names, the before/after
+version pins, and the advisory counts. This repository is public and the Worker is still
+running, so publishing "this live endpoint takes money and is missing these specific
+patches" is an exploitation recipe with a hostname attached (§2.2). The detail lives in
+`~/Projects/ThomasGorisse/profile-private/plans/hub-mcp-live-advisory-delta.md`, private,
+and is reproducible from the deletion commit in one command (§7).
+
+Whether any of those advisories is reachable in a Workers runtime is **not** assessed —
+that needs the advisory list against the actual call paths, and this pass was read-only
+verification. Recorded as a finding, not as a severity.
+
+**This one is Thomas's gesture, not mine.** Patching means a redeploy and retiring means
+touching a billable endpoint; both are outside the read-only mandate this pass ran under.
 
 Also missing from the live build by 42 seconds: `2a191f2c04 fix(gateway): hub-mcp KV
 handoff + docs stdio + landing tool count (#816)`, committed `17:38:12+02:00`.
@@ -315,14 +329,17 @@ Checked so the next session does not re-check:
   `hub-mcp` outside git history. Every `stripe/webhook` hit on disk is
   `mcp-gateway/src/routes/webhooks.ts` (Gateway #1) in the main checkout or one of its
   worktrees.
-- **The three private repos**, inspected on the *remote* (all pushed 2026-08-05, all
-  ahead of the local clones — do not trust the local clones' last-commit dates):
-  - `ThomasGorisse/mcp-creator-kit` (`master`) — `cli/ docs/ examples/ template/`. No hub.
-  - `ThomasGorisse/social-media-mcp` (`main`) — a plain stdio MCP: `src/ tests/`,
-    `server.json`. No hub.
-  - `ThomasGorisse/sceneview-shopify` (`main`) — a Remix Shopify app. Has a
-    `wrangler.json` and `app/routes/webhooks.app.*.tsx`, but those are **Shopify**
-    webhooks, not Stripe, and nothing references hub.
+- **Three private repos**, inspected on the *remote* (all pushed 2026-08-05, all ahead of
+  the local clones — do not trust the local clones' last-commit dates). Their names are
+  **redacted**: this file is public, and enumerating private repositories is disclosure
+  whatever the search concluded. (One of the three shares its name with a library id in
+  the live hub registry, so that string does appear verbatim in the §1 capture above —
+  that is a public endpoint's own response, and redacting it there would be theatre, not
+  privacy.) What matters is the negative result, and it is the same for all three:
+  - an MCP scaffolding toolkit — no hub.
+  - a stdio MCP server — no hub.
+  - a Shopify app. It does have a `wrangler.json` and webhook routes, but those are
+    **Shopify** webhooks, not Stripe, and nothing references hub.
   - Grep for `hub-mcp|hub-gateway|hub_mcp` across `*.ts *.js *.json *.toml *.md` in all
     three local clones: **zero hits**.
 
@@ -362,7 +379,7 @@ document — public repo.)
 | `hub-mcp` | `2026-04-12T17:37:30.770Z` | yes — pins §2.1 |
 | `sceneview-mcp` | `2026-07-17T11:01:31.285Z` | yes |
 | `sceneview-telemetry` | `2026-04-16T21:55:18.551Z` | yes |
-| **`arcamera-api`** | `2026-08-14T12:27:58.776Z` | **no — in neither plan** |
+| **a fourth Worker** *(name redacted)* | `2026-08-14T12:27:58.776Z` | **no — in neither plan** |
 
 Three things to take from that table:
 
@@ -371,10 +388,11 @@ Three things to take from that table:
    means §1.1's live `2025-03-26` and the two defects in §4.2/§4.3 — both read out of
    source — are genuinely what is running, not a source-vs-deployed guess. For Gateway #1,
    "deployed ≠ committed" is currently a distinction without a difference.
-2. **`arcamera-api` is a fourth Worker under the same account**, absent from both plans,
-   and the only one deployed recently (yesterday). It belongs to the `ar-model-viewer`
-   project, not to sceneview. Flagged for inventory completeness; not investigated, since
-   it is outside this task's scope.
+2. **There is a fourth Worker under the same account**, absent from both plans, and the
+   only one deployed recently (yesterday). Its name is redacted here — it belongs to
+   another project of Thomas's, not to sceneview, so naming it in this public repo
+   discloses unrelated infrastructure for no benefit to this task. Flagged for inventory
+   completeness; not investigated, being outside this task's scope.
 3. **`wrangler deployments list` returns at most 10 entries.** Each Worker above showed
    exactly 10, so these are the *latest* 10 and the true first-deploy dates are truncated
    and unknown. Only the **last** deployment per Worker is a measured fact — which is the
@@ -874,8 +892,8 @@ which is the most useful thing this list now records: **`PATH`, three times.**
 - **The live hub predates both dependency-security commits** (§2.1). Not triaged here;
   belongs in whatever decision is made about the hub, and is a reason not to leave it
   running untouched by default.
-- **`arcamera-api`** — a fourth Worker in neither plan (§2.3). The Cloudflare inventory both
-  plans work from is incomplete.
+- **A fourth Worker** *(name redacted, §2.3)* — in neither plan. The Cloudflare inventory
+  both plans work from is incomplete.
 - **§0 of both plans** — the Workers are live and confirmed (§1); that assumption can be
   retired. For Gateway #1, "deployed ≠ committed" is also settled: they are equal (§2.3).
 - **`ai-surfaces-exploration.md` Tier C (AppFunctions)** — the "apply and wait" dependency
@@ -1076,7 +1094,8 @@ curl -s https://registry.npmjs.org/hub-mcp | python3 -c \
 export PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH"
 cd ~/Projects/sceneview/mcp-gateway
 ./node_modules/.bin/wrangler whoami
-for w in hub-mcp sceneview-mcp sceneview-telemetry arcamera-api; do
+# The fourth Worker's name is redacted (§2.3); `wrangler list` enumerates it for you.
+for w in hub-mcp sceneview-mcp sceneview-telemetry; do
   ./node_modules/.bin/wrangler deployments list --name "$w" | grep '^Created:' | tail -1
 done   # NB: lists at most 10 deployments — only the LAST one is a fact
 

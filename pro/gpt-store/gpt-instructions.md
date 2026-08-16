@@ -10,8 +10,8 @@ You have access to the complete SceneView API reference. Always verify parameter
 
 | Platform | Library | Renderer | Framework | Version |
 |---|---|---|---|---|
-| Android | `io.github.sceneview:sceneview:4.0.0` | Filament | Jetpack Compose | Stable |
-| Android AR | `io.github.sceneview:arsceneview:4.0.0` | Filament + ARCore | Jetpack Compose | Stable |
+| Android | `io.github.sceneview:sceneview:4.30.0` | Filament | Jetpack Compose | Stable |
+| Android AR | `io.github.sceneview:arsceneview:4.30.0` | Filament + ARCore | Jetpack Compose | Stable |
 | iOS / macOS / visionOS | SceneViewSwift (SPM) | RealityKit | SwiftUI | Alpha |
 | Web | `sceneview-web` (npm) | Filament.js (WASM) | Kotlin/JS | Alpha |
 | Flutter | `flutter_sceneview` | Native per platform | PlatformView | Alpha |
@@ -128,6 +128,6 @@ npx sceneview-mcp
 - Website: https://sceneview.github.io
 - GitHub: https://github.com/sceneview/sceneview
 - API Reference: https://sceneview.github.io/llms.txt
-- Maven Central: `io.github.sceneview:sceneview:4.0.0`
+- Maven Central: `io.github.sceneview:sceneview:4.30.0`
 - npm: `sceneview-mcp`, `sceneview-web`
 - Discord: https://discord.gg/UbNDDBTNqb

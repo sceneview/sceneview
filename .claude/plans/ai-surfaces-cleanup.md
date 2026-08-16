@@ -17,9 +17,9 @@ Could **not** be verified from this container, all three needing the Mac or a pe
    `*.mcp-tools-lab.workers.dev` are all blocked by the egress proxy — no `/health`
    probe was possible. Their live state is an assumption in everything below.
    → run `/store-status` or `mcp-gateway-golive.sh` from the Mac.
-2. **The private repos.** `add_repo` on `ThomasGorisse/mcp-creator-kit` was refused by
-   the permission classifier, so the portfolio below is mapped from listing metadata
-   (name, visibility, last push) only — not from source.
+2. **The private repos.** `add_repo` on one of them was refused by the permission
+   classifier, so the portfolio below is mapped from listing metadata (visibility, last
+   push) only — not from source. Their **names are redacted**: this file is public.
 3. **The commercial detail.** Deliberately kept out of this file — see §4.
 
 ## 1. The map — everything that exists today
@@ -49,7 +49,7 @@ been pushed since 2026-06-05** except the three private August ones.
 | `mcp-tools-lab` | `telegram-ai-bot`, `prompt-store`, `ai-invoice` *(archived)* | 2026-04-11 |
 | `sceneview-tools` | `architecture-mcp`, `ecommerce-3d-mcp`, `realestate-mcp` | 2026-06-05 |
 | `sceneview-tools` | `3d-viewer-extension` | 2026-04-11 |
-| `ThomasGorisse` *(private)* | `mcp-creator-kit`, `social-media-mcp`, `sceneview-shopify` | 2026-08-05 |
+| `ThomasGorisse` *(private)* | 3 repos — **names redacted, public file** | 2026-08-05 |
 | `sceneview` | `claude-marketplace`, `sceneview.github.io` | active |
 | `sceneview` *(archived)* | `sceneview-swift`, `sceneform-android`, `sceneview-flutter`, `sceneform-reactnative` | — |
 
@@ -63,9 +63,10 @@ Two structural problems fall straight out of this map:
 > published on npm** — deprecated on all four versions, still installable, and its `dist`
 > hardcodes the live `/mcp`, `/pricing` and telemetry endpoints while advertising **78**
 > tools against a Worker that serves **52**. Any retire-or-fold decision has to cover both.
-> Two more findings from the same pass: the live money-handling Worker **predates both
-> dependency-security commits** (`hono`/`postcss`, `ip-address`) — recorded, reachability
-> not assessed — and a **fourth Worker, `arcamera-api`**, exists under the same account and
+> Two more findings from the same pass, both deliberately thin here because this file is
+> public: the live billable Worker **predates two dependency-security commits** — recorded,
+> reachability not assessed, detail in the private note named at `ai-surfaces-live-state.md`
+> §2.4 — and a **fourth Worker** *(name redacted)* exists under the same account and
 > appears in neither plan. `sceneview-mcp` by contrast is **deployed == committed**, so the
 > `2025-03-26` protocol version and both §3.1b defects are confirmed *running*, not inferred.
 

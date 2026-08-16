@@ -115,11 +115,22 @@ const legitCounts = new Set([stdioCount, gatewayTotal, ...perSourceCount.values(
 // free surface is 29, against 38 Pro, totalling the 67 mounted. `mcp/mcpize.yaml`
 // advertises "28 free tools" and is RIGHT — a gate that rejected it would push a
 // reader to break a true claim, which is worse than missing a false one.
+// `TOOL_SOURCES` exits 2 on ENOENT and `SAMPLES_SOURCE` exits 2 on a zero count,
+// but this one fell back to "" — the one source in the file that did not refuse.
+// Measured by moving `mcp/src/tiers.ts` aside: the allowlist silently narrowed
+// from 1/5/7/9/28/29/31/35/38/67 to 1/5/7/9/31/35/67 and the gate then reported
+// the TRUE claims as wrong (`docs.tsx:65 claims "29 free tools"`). A false red,
+// not a false green — but it contradicts the contract stated ten lines below
+// ("a tier split that failed to PARSE is not a tier split of zero"), and a gate
+// that reports correct prose as broken pushes a reader to break it.
 const tierText = (() => {
   try {
     return readFileSync(join(repoRoot, "mcp/src/tiers.ts"), "utf8");
-  } catch {
-    return "";
+  } catch (e) {
+    console.error(`check-mcp-tool-claims: cannot read mcp/src/tiers.ts — ${e.code || e.message}.`);
+    console.error("  The tier split is not derivable from the other sources, so continuing");
+    console.error("  would narrow the allowlist and report TRUE claims as wrong.");
+    process.exit(2);
   }
 })();
 function tierArraySize(name) {
@@ -139,7 +150,7 @@ const proTierCount = tierArraySize("PRO_TOOLS");
 // matched nothing, and the counts silently stayed out of legitCounts with no
 // error. A gate that quietly narrows its own allowlist is the shape this file
 // exists to catch, so it refuses instead.
-if (tierText && (freeTierCount === 0 || proTierCount === 0)) {
+if (freeTierCount === 0 || proTierCount === 0) {
   console.error("check-mcp-tool-claims: mcp/src/tiers.ts parsed to 0 free or 0 pro tools.");
   console.error(`  free=${freeTierCount} pro=${proTierCount} — the array shape changed.`);
   console.error("  Refusing rather than silently dropping the tier counts.");
@@ -227,14 +238,49 @@ function walk(dir, out = []) {
   for (const e of entries) {
     if (SKIP_DIR.has(e)) continue;
     const rel = join(dir, e);
-    const st = statSync(join(repoRoot, rel));
+    // A broken symlink under a scanned dir must not crash a blocking gate with
+    // an unhandled ENOENT — the filter below already tolerates it, this did not.
+    let st;
+    try {
+      st = statSync(join(repoRoot, rel));
+    } catch {
+      continue;
+    }
     if (st.isDirectory()) walk(rel, out);
     else if (SCAN_EXT.has(extname(e)) && !SKIP_FILE.has(rel)) out.push(rel);
   }
   return out;
 }
 
-const files = [...SCAN_FILES, ...SCAN_DIRS.flatMap((d) => walk(d))].filter((f) => {
+// A scan dir that contributes ZERO files, or a named scan file that is missing,
+// means the corpus moved — a Docusaurus restructure, a renamed static site — and
+// the gate then passes because it has nothing left to look at. The registry side
+// of this file already refuses on a source it cannot read (three `exit(2)`
+// guards); the corpus side did not. Measured on a mutated tree: renaming
+// `docs/docs` → `docs/content` printed `OK — 61 prose file(s) scanned`, and
+// moving all six dirs plus all four files away printed
+// `OK — 0 prose file(s) scanned` with rc=0. That is precisely the defect class
+// this file's own header names — "a gate that passes because it found nothing is
+// the worst defect class in this repo" — so the corpus gets the same contract.
+const perDirFiles = new Map(SCAN_DIRS.map((d) => [d, walk(d)]));
+const missingFiles = SCAN_FILES.filter((f) => {
+  try {
+    return !statSync(join(repoRoot, f)).isFile();
+  } catch {
+    return true;
+  }
+});
+const emptyDirs = [...perDirFiles].filter(([, found]) => found.length === 0).map(([d]) => d);
+if (emptyDirs.length || missingFiles.length) {
+  console.error("check-mcp-tool-claims: the prose corpus moved — refusing to report OK.");
+  for (const d of emptyDirs) console.error(`  SCAN_DIRS entry contributed 0 files: ${d}/`);
+  for (const f of missingFiles) console.error(`  SCAN_FILES entry is missing: ${f}`);
+  console.error("  Either the path moved (update SCAN_DIRS/SCAN_FILES) or the surface is");
+  console.error("  gone. Scanning nothing and printing OK is not an option.");
+  process.exit(2);
+}
+
+const files = [...SCAN_FILES, ...perDirFiles.values()].flat().filter((f) => {
   try {
     return statSync(join(repoRoot, f)).isFile();
   } catch {
@@ -252,11 +298,14 @@ const TOOL_SHAPE =
 // that grows without justification is how a gate stops meaning anything.
 const NOT_A_TOOL = new Map([
   ["get_started", "prose phrase, and a removed tool the docs still describe as a concept"],
-  ["add_model", "SEE BELOW — deliberately absent so the playground regression stays caught"],
   ["set_state", "generic API prose"],
   ["create_react_app", "third-party tooling"],
+  // NOT listed, deliberately: `add_model`. It reads like an allowlist candidate
+  // and is not one — the playground regression that named it must stay caught.
+  // It used to be inserted here and deleted on the next line as a way of saying
+  // so; insert-then-delete is dead code inside a blocking gate, so the note says
+  // it instead.
 ]);
-NOT_A_TOOL.delete("add_model"); // never actually allowed — the note above is the point
 
 // A QUALIFIER may sit between the number and "tools" — "27 free tools",
 // "24 specialised tools", "38 Pro tools". The first version of this pattern
@@ -322,6 +371,41 @@ for (const file of files) {
         line: i + 1,
         kind: "wrong-count",
         detail: `claims "${m[0].trim()}" — real counts are ${[...legitCounts].sort((a, b) => a - b).join(", ")}`,
+      });
+    }
+
+    // A line wrap can split the number from the noun, and a per-line scan is
+    // blind to it. Measured: `mcp-gateway/src/dashboard/docs.tsx:16` read
+    // "The 27 free" / "tools work without authentication" and passed this gate
+    // while every other count in the same file was correct — on a page a paying
+    // subscriber reads. Re-scan across one line boundary and keep only matches
+    // that actually straddle it, so a same-line claim is never reported twice.
+    const next = lines[i + 1];
+    if (next === undefined) return;
+    const joined = `${line} ${next}`;
+    const straddles = (m) => m.index < line.length && m.index + m[0].length > line.length + 1;
+    for (const m of joined.matchAll(COUNT_RE)) {
+      if (!straddles(m)) continue;
+      const n = Number(m[1]);
+      if (legitCounts.has(n)) continue;
+      findings.push({
+        file,
+        line: i + 1,
+        kind: "wrong-count",
+        detail:
+          `claims "${m[0].trim().replace(/\s+/g, " ")}" (wrapped onto line ${i + 2}) — ` +
+          `real counts are ${[...legitCounts].sort((a, b) => a - b).join(", ")}`,
+      });
+    }
+    for (const m of joined.matchAll(SAMPLE_COUNT_RE)) {
+      if (!straddles(m)) continue;
+      const n = Number(m[1] ?? m[2]);
+      if (n === sampleCount) continue;
+      findings.push({
+        file,
+        line: i + 1,
+        kind: "wrong-sample-count",
+        detail: `claims "${m[0].trim().replace(/\s+/g, " ")}" (wrapped onto line ${i + 2}) — ${SAMPLES_SOURCE} defines ${sampleCount}`,
       });
     }
   });

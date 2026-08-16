@@ -32,23 +32,23 @@ export const Landing: FC = () => (
     <section class="dash-grid">
       <div class="stat-card">
         <div class="label">Free tools</div>
-        <div class="value">27</div>
+        <div class="value">29</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
           Setup, samples, validator, migration, docs. No key required.
         </p>
       </div>
       <div class="stat-card">
         <div class="label">Pro tools</div>
-        <div class="value">27</div>
+        <div class="value">38</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
           Vertical packages + 3D preview / artifact / scene generation.
         </p>
       </div>
       <div class="stat-card">
         <div class="label">Specialized packages</div>
-        <div class="value">4</div>
+        <div class="value">5</div>
         <p style="margin:.5rem 0 0;font-size:.875rem;">
-          Automotive, Gaming, Healthcare, Interior.
+          Automotive, Gaming, Healthcare, Interior, Rerun.
         </p>
       </div>
     </section>

@@ -13,7 +13,7 @@ export const Docs: FC = () => (
   >
     <h1>Docs</h1>
     <p>
-      Point any MCP-capable agent at the hosted gateway. The 27 free
+      Point any MCP-capable agent at the hosted gateway. The 29 free
       tools work without authentication; the 38 Pro tools (vertical
       packages + generation helpers) require an API key you receive
       on the <a href="/pricing">pricing</a> checkout success page.

@@ -714,6 +714,23 @@ else
     bad "a relative src/ path was flagged foreign — every gate run naming one would be COULD NOT RUN"
 fi
 
+# …and the delimiter that opens a foreign path is not always whitespace or a
+# quote. The first fix for the relative-path false red listed the delimiters seen
+# so far (space, quote, paren), which silently dropped `=`, `:` and `,` — so a
+# foreign path printed as `--source=/Users/other/…` or after a colon stopped being
+# detected. Narrowing a contamination detector fails in the UNSAFE direction,
+# which is the opposite of the false red it was fixing (#3189 review).
+FT_DELIM="$TMP/delimiters.log"
+{
+    printf -- '--source=/Users/other/sceneview/src/main/kotlin/A.kt\n'
+    printf 'note:/Users/other/sceneview/src/main/kotlin/B.kt:1:1 warning\n'
+} > "$FT_DELIM"
+FT_DELIM_OUT="$(gradle_foreign_tree_paths "$FT_DELIM" "$FT_PROJ")"
+if [ "$(printf '%s\n' "$FT_DELIM_OUT" | grep -c '/Users/other/sceneview/src/')" -eq 2 ]; then
+    ok "a foreign path after '=' or ':' is detected, not just after whitespace"
+else
+    bad "foreign paths behind = and : must be detected (got: $FT_DELIM_OUT)"
+fi
 
 # Verbatim from the api-check.log measured on 2026-08-14: this worktree's gate
 # run, carrying another clone's compiler diagnostics.

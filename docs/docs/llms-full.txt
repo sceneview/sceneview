@@ -1,6 +1,6 @@
 # SceneView — Condensed API Reference for AI Systems
 
-> **This is the SHORT reference (~290 lines).** The complete API — every composable
+> **This is the SHORT reference (~300 lines).** The complete API — every composable
 > signature, all 46+ node types, threading rules and recipes — is `llms.txt`
 > (7,600+ lines), served at https://sceneview.github.io/llms.txt. Fetch that one if
 > your context window can hold it; this file is the summary for when it cannot.

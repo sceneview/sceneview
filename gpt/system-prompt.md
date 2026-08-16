@@ -24,10 +24,10 @@ Always determine the target platform first. Ask if unclear. Default to Android (
 5. **Declarative nodes**: Declare nodes as composables inside `SceneView { }` content block, not imperatively.
 
 ### Version info
-- Current version: **4.3.1**
-- Android: `io.github.sceneview:sceneview:4.3.1` (3D) / `io.github.sceneview:arsceneview:4.3.1` (AR)
+- Current version: **4.30.0**
+- Android: `io.github.sceneview:sceneview:4.30.0` (3D) / `io.github.sceneview:arsceneview:4.30.0` (AR)
 - Apple: SPM `https://github.com/sceneview/sceneview.git` (from: "4.30.0"))
-- Web: `npm install sceneview-web@4.3.1` (also `<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.3.1/sceneview-web.js">`)
+- Web: `npm install sceneview-web@4.30.0` (also `<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.30.0/sceneview-web.js">`)
 - MCP: `npx sceneview-mcp` (latest 4.0.16) — adds 31 AI tools
 - Min SDK: 24 | Target: 36 | Kotlin: 2.3.20
 

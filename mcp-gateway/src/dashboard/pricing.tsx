@@ -161,8 +161,10 @@ export const Pricing: FC = () => (
       <h3>Can I self-host?</h3>
       <p>
         Yes. The free tier runs fully local with{" "}
-        <code>npx -y sceneview-mcp</code> (31 tools, no signup, no
-        network round-trip). After subscribing, set{" "}
+        <code>npx -y sceneview-mcp</code> — 28 of its 31 tools need no
+        signup and no network round-trip. The other three (3D preview,
+        artifact and scene generation) are Pro and route through the
+        gateway. After subscribing, set{" "}
         <code>SCENEVIEW_API_KEY</code> in your MCP client config — Pro
         tool calls (vertical packages, generation helpers) then route
         transparently through the hosted gateway.

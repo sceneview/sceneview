@@ -48,6 +48,21 @@ fixture() {
     # `] as const;`. 2 free + 1 pro, so the legit counts gain 2, 1 and 1.
     printf 'const FREE_TOOLS: readonly string[] = [\n  "get_sample",\n  "validate_code",\n] as const;\n\nconst PRO_TOOLS: readonly string[] = [\n  "view_3d_model",\n  "get_gaming_thing",\n  "get_rerun_thing",\n] as const;\n' \
         > "$dir/mcp/src/tiers.ts"
+    # The gate refuses a corpus that moved (a SCAN_DIRS entry contributing zero
+    # files, a SCAN_FILES entry missing), so a fixture has to satisfy that
+    # contract to exercise anything else. This is deliberately NOT exempted in
+    # `--root` mode: a floor that only runs on the real tree is a floor no test
+    # covers, and mode-dependent gate behaviour is its own false-green shape.
+    # These placeholders are claim-free on purpose — every count assertion below
+    # must come from $2 alone.
+    for d in docs/docs website-static gpt agents pro mcp-gateway/src/dashboard; do
+        mkdir -p "$dir/$d"
+        printf 'placeholder, deliberately claim-free.\n' > "$dir/$d/placeholder.md"
+    done
+    mkdir -p "$dir/mcp"
+    for f in AGENTS.md mcp/README.md llms.txt; do
+        printf 'placeholder, deliberately claim-free.\n' > "$dir/$f"
+    done
     printf '%s\n' "$2" > "$dir/README.md"
     printf '%s' "$dir"
 }
@@ -180,6 +195,61 @@ set +e; OUT="$(run "$D")"; RC=$?; set -e
 { [[ $RC -eq 0 ]]; } \
   && ok "a tier-split count → allowed once tiers.ts parses" \
   || bad "the tier counts must widen the allowlist (rc=$RC): $OUT"
+
+# 15. A scan DIRECTORY that contributes nothing must refuse. Measured on the
+#     unguarded version: renaming `docs/docs` → `docs/content` printed
+#     "OK — 61 prose file(s) scanned" and moving every scan dir away printed
+#     "OK — 0 prose file(s) scanned", rc=0. A Docusaurus restructure would have
+#     un-gated the docs site behind a green tick. The registry side of the gate
+#     had three exit-2 guards for exactly this and the corpus side had none.
+D="$(fixture corpusmoved 'Ships 2 tools.')"
+mv "$D/docs/docs" "$D/docs/content"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 2 ]] && grep -q 'docs/docs' <<<"$OUT"; } \
+  && ok "a scan dir that moved → exit 2, not OK on a shrunken corpus" \
+  || bad "an empty scan dir must refuse and name itself (rc=$RC): $OUT"
+
+# 16. …and a scan FILE that is missing must refuse too — same contract, the other
+#     half of the corpus. Kept separate because the two are separate code paths.
+D="$(fixture corpusfilegone 'Ships 2 tools.')"
+rm "$D/llms.txt"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 2 ]] && grep -q 'llms.txt' <<<"$OUT"; } \
+  && ok "a missing scan file → exit 2, not a quietly smaller corpus" \
+  || bad "a missing scan file must refuse and name itself (rc=$RC): $OUT"
+
+# 17. A MISSING tiers.ts must refuse, not fall back to an empty tier split. Case
+#     13 covers unparseable; this covers absent, and they were different code
+#     paths — the `catch` returned "" and the refusal was gated on the text being
+#     non-empty, so moving the file aside narrowed the allowlist and turned TRUE
+#     claims red. False red, but a gate that calls correct prose broken pushes a
+#     reader to break it.
+D="$(fixture tiersgone 'Ships 2 tools.')"
+rm "$D/mcp/src/tiers.ts"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 2 ]] && grep -q 'tiers.ts' <<<"$OUT"; } \
+  && ok "a missing tiers.ts → exit 2, same contract as an unparseable one" \
+  || bad "a missing tiers.ts must refuse (rc=$RC): $OUT"
+
+# 18. A claim WRAPPED across a line break must still be caught. The gate scanned
+#     line by line, so `The 27 free\ntools work…` — the normal shape in JSX and
+#     hard-wrapped prose — was structurally invisible. The false "27 free tools"
+#     on the live commercial docs page survived the very PR that added this gate
+#     to cover that file (#3189). `impact-check.sh:180` already carried a
+#     pair-aware scan for the same class (#2987); this is the second time.
+D="$(fixture wrapped "$(printf 'Ships 9 free\ntools today.')")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -ne 0 ]] && grep -q 'wrong-count' <<<"$OUT"; } \
+  && ok "a count wrapped onto the next line → still caught" \
+  || bad "a wrapped count must not be invisible (rc=$RC): $OUT"
+
+# 19. …and a wrapped TRUE count is still allowed, or case 18 would pass by
+#     always saying no to anything near a line break.
+D="$(fixture wrappedok "$(printf 'Ships 2 free\ntools today.')")"
+set +e; OUT="$(run "$D")"; RC=$?; set -e
+{ [[ $RC -eq 0 ]]; } \
+  && ok "a wrapped but TRUE count → allowed" \
+  || bad "a wrapped true count must not be flagged (rc=$RC): $OUT"
 
 echo "  → $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

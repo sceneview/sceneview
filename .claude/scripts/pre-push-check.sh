@@ -288,7 +288,18 @@ fi
 
 # 6. Website JS syntax
 echo -e "\n${YELLOW}[8/22] Validating website JS...${NC}"
-NODE_CMD=$(which node 2>/dev/null || which /opt/homebrew/bin/node 2>/dev/null || which /usr/local/bin/node 2>/dev/null || echo "")
+# The two Homebrew fallbacks were not enough on the maintainer's Mac: node is
+# installed by nvm, so `which node` and both absolute Homebrew paths all fail
+# while `~/.nvm/versions/node/*/bin/node` runs fine. Every node leg in this
+# script reuses this one variable, so the nvm path belongs here rather than in
+# each leg. First executable candidate wins — this is a syntax/gate runner, not
+# a version-sensitive build.
+NODE_CMD=$(command -v node 2>/dev/null || true)
+if [ -z "$NODE_CMD" ]; then
+    for _node_cand in /opt/homebrew/bin/node /usr/local/bin/node "$HOME"/.nvm/versions/node/*/bin/node; do
+        if [ -x "$_node_cand" ]; then NODE_CMD="$_node_cand"; break; fi
+    done
+fi
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
         # "has syntax errors" would be a lie about a file that is not there.
@@ -586,22 +597,36 @@ fi
 # seven places. The gate parses the real registry from source, so it cannot
 # drift with the prose it checks.
 echo -e "\n${YELLOW}[18/22] Checking MCP tool claims against the real registry...${NC}"
-if ! command -v node >/dev/null 2>&1; then
+if [ -z "$NODE_CMD" ]; then
     # An unreachable INTERPRETER is not a failing check. Without this the step
     # exits 127 and the run reports a check that never executed — the same shape
     # as the `xxd` case in test-store-preflight.sh, and the shape that teaches a
     # reader to push through red. `node` is present in CI, which gates this for
     # real; here it is honestly NOT COVERED.
     #
-    # The message says "not on PATH", NOT "not installed" — `command -v` sees only
-    # this shell's PATH, and on the maintainer's Mac that probe was wrong three
-    # times in one day (node, wrangler, codex all present, all invisible to it).
-    # A probe that cannot tell absent from unreachable must not claim absence.
-    echo -e "${YELLOW}  ⚠ node not on PATH — MCP tool claims NOT checked here (CI still gates it)${NC}"
+    # This tests $NODE_CMD (step 8), not `command -v node`. The first version of
+    # this leg argued at length that a probe must not confuse absent with
+    # unreachable and then used the probe that does exactly that — so on the
+    # maintainer's nvm Mac it reported NOT_COVERED on a machine that runs the gate
+    # fine. `command -v` sees only this shell's PATH, and it was wrong three times
+    # in one day there (node, wrangler, codex: all present, all invisible to it).
+    echo -e "${YELLOW}  ⚠ no node interpreter found — MCP tool claims NOT checked here (CI still gates it)${NC}"
     NOT_COVERED=$((NOT_COVERED + 1))
 elif [ -f tools/check-mcp-tool-claims.js ]; then
     MCP_CLAIMS_LOG="$LOG_DIR/mcp-tool-claims.log"
-    if node tools/check-mcp-tool-claims.js > "$MCP_CLAIMS_LOG" 2>&1; then
+    # Self-test first, same discipline as the other paired gates in this script
+    # and the same order ci.yml uses: a gate whose own test is red proves nothing
+    # about the corpus it just declared clean.
+    if [ -f .claude/scripts/test-check-mcp-tool-claims.sh ]; then
+        if bash .claude/scripts/test-check-mcp-tool-claims.sh > "$LOG_DIR/mcp-tool-claims-selftest.log" 2>&1; then
+            echo -e "${GREEN}  ✓ $(tail -1 "$LOG_DIR/mcp-tool-claims-selftest.log")${NC}"
+        else
+            echo -e "${RED}  ✗ check-mcp-tool-claims self-test FAILED${NC}"
+            tail -20 "$LOG_DIR/mcp-tool-claims-selftest.log" | sed 's/^/    /'
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+    if "$NODE_CMD" tools/check-mcp-tool-claims.js > "$MCP_CLAIMS_LOG" 2>&1; then
         echo -e "${GREEN}  ✓ $(tail -1 "$MCP_CLAIMS_LOG")${NC}"
     else
         gate_script_failure "MCP tool-claim gate" "$MCP_CLAIMS_LOG" $? \

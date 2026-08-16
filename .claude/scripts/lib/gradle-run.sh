@@ -112,8 +112,16 @@ gradle_foreign_tree_paths() {
     # project root, and therefore graded as ANOTHER CHECKOUT. A healthy leg came
     # back "describes a DIFFERENT checkout" (#3189). Gradle prints relative paths
     # constantly, so this was a live false-red waiting on the right log line.
-    grep -oE '(^|[[:space:]"'"'"'(\[])(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
-    | sed -E 's|^[[:space:]"'"'"'(\[]||; s|^file://||' \
+    # The delimiter is expressed as "any character that cannot CONTINUE a path
+    # token" rather than as a list of the delimiters seen so far. The explicit
+    # list was `[[:space:]"'\''(\[]`, which had two problems: inside a bracket
+    # expression `\[` is a literal backslash plus `[`, so `\` joined the set
+    # unintentionally; and `:`, `=` and `,` were absent, so a foreign path printed
+    # as `--source=/Users/other/sceneview/src/…` or after a colon went unmatched.
+    # A narrowed detector on a foreign-checkout guard fails silently in the unsafe
+    # direction, which is the opposite of the false-red this block fixed.
+    grep -oE '(^|[^[:alnum:]_./-])(file://)?/[^ :"'"'"']*/src/[^ :"'"'"']*' "$log" 2>/dev/null \
+    | sed -E 's|^[^[:alnum:]_./-]||; s|^file://||' \
     | while IFS= read -r p; do
         # Same /private normalisation for the candidate, which may name a
         # directory that does not exist on this host and so cannot be resolved.
