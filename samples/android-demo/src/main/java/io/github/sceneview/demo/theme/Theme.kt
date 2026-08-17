@@ -22,8 +22,20 @@ import androidx.compose.ui.platform.LocalContext
  * Shapes: M3 Expressive with DESIGN.md radius tokens (8/12/16/28/32dp).
  * Motion: Expressive spring animations.
  *
- * On Android 12+, dynamic color (Material You) overrides the palette
- * while preserving SceneView brand colors as fallback.
+ * ## Dynamic colour is OFF by default, on purpose
+ *
+ * `dynamicColor` used to default to `true`. On any Android 12+ device that means
+ * [dynamicLightColorScheme] / [dynamicDarkColorScheme] win, the wallpaper palette
+ * paints the whole app, and the brand ramp below — every `md_theme_*` token,
+ * derived from the SceneView source colour `#005bc1` — never executes. In practice
+ * the Play Store app shipped in whatever lavender or peach the user's wallpaper
+ * happened to produce, which `DESIGN.md` explicitly rules out, and screenshots of
+ * it showed a different product on every device.
+ *
+ * This app is the showcase for an SDK. Showing the brand is part of the job, so
+ * the default is now `false` and the schemes below are what actually run. The
+ * parameter is kept so a host that *wants* Material You can opt in — that is a
+ * legitimate choice for a consumer app, just not for this one.
  */
 
 private val LightColors = lightColorScheme(
@@ -99,7 +111,7 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun SceneViewDemoTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

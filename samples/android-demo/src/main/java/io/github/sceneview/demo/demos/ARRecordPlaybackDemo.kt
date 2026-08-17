@@ -251,6 +251,24 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
         }
     }
 
+    // Elapsed recording time, read by the REC pill in the scaffold's `topOverlay` slot and
+    // driven by the recorder the scene owns — so, like the rest of [RecordPlaybackModeState],
+    // it has to live where both lambdas can see it. Keyed on `modeState` so a mode switch or
+    // a new playback selection zeroes it exactly as the re-keyed scene content did.
+    var elapsedSeconds by remember(modeState) { mutableStateOf(0L) }
+    LaunchedEffect(modeState, modeState.recorder.state) {
+        val recorder = modeState.recorder
+        if (recorder.state == ARRecorder.State.RECORDING) {
+            val start = System.currentTimeMillis()
+            while (recorder.state == ARRecorder.State.RECORDING) {
+                elapsedSeconds = (System.currentTimeMillis() - start) / 1000
+                delay(500)
+            }
+        } else {
+            elapsedSeconds = 0
+        }
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
@@ -443,6 +461,59 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // The two top-anchored tenants live here (#3231): the RECORD timer + tracking
+        // pill, and the "now replaying" banner. They are Column siblings, so a mode that
+        // ever showed both would stack them instead of drawing one over the other, and
+        // the top gutter + system-bar inset are the scaffold's, not each caller's.
+        topOverlay = {
+            if (currentMode == Mode.RECORD) {
+                val recorder = modeState.recorder
+                // ForcedTrackingFailure lets QA stage a tracking loss without a real one
+                // (#1881); honour it here so the tracking pill can be validated too.
+                val recordingReason =
+                    ForcedTrackingFailure.override ?: modeState.trackingFailureReason
+                val recordingTracking =
+                    modeState.isTracking && ForcedTrackingFailure.override == null
+                // Elapsed-time pill + live tracking-quality pill, only while recording.
+                AnimatedVisibility(
+                    visible = recorder.state == ARRecorder.State.RECORDING,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Surface(
+                            color = Color.Red.copy(alpha = 0.85f),
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                text = "REC  ${formatElapsed(elapsedSeconds)}",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(
+                                    horizontal = 16.dp,
+                                    vertical = 6.dp
+                                )
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        // Tracking-quality pill (#1650): green "AR tracking OK" while
+                        // ARCore is TRACKING, amber/red with the failure reason when it
+                        // isn't — so a capture going bad is visible during the recording,
+                        // not only after.
+                        TrackingQualityPill(
+                            isTracking = recordingTracking,
+                            reason = recordingReason
+                        )
+                    }
+                }
+            }
+
+            val replayingFile = currentPlaybackFile
+            if (currentMode.isPlayback && replayingFile != null) {
+                PlaybackBanner(replayingFile.name)
+            }
+        },
         // Every bottom-anchored tenant of this demo lives here (#2779): the ANALYSE
         // HUD, the tracking-guidance banner, the recorder error and the shutter. The
         // slot is a bottom-aligned Column, so they stack instead of sharing pixels —
@@ -604,13 +675,14 @@ private enum class Mode(val label: String) {
 
 /**
  * Wraps the per-mode [ARSceneView] + its **in-scene** overlays. Pulled out into its own
- * composable so that the outer `key(...)` block remounts everything (including the
- * recording timer and tap state) on every mode change — the simplest way to guarantee a
- * fresh ARCore Session for each transition.
+ * composable so that the outer `key(...)` block remounts everything (including the tap
+ * state) on every mode change — the simplest way to guarantee a fresh ARCore Session for
+ * each transition.
  *
- * Anything bottom-anchored — the shutter, the recorder error, the tracking banner, the
- * ANALYSE HUD — is **not** here: it lives in `DemoScaffold(bottomOverlay = …)` and reads
- * the same [RecordPlaybackModeState] this composable writes (#2779).
+ * Nothing edge-anchored is here. The shutter, the recorder error, the tracking banner and
+ * the ANALYSE HUD live in `DemoScaffold(bottomOverlay = …)` (#2779); the REC timer +
+ * tracking-quality pill and the "now replaying" banner live in `topOverlay` (#3231). All
+ * of them read the same [RecordPlaybackModeState] this composable writes.
  */
 @Composable
 private fun ModeContent(
@@ -635,20 +707,6 @@ private fun ModeContent(
     // ARSceneView surface is bare black, so we cover it with ARCameraInitScrim rather
     // than leave a viewport that reads as frozen/broken (#1473).
     var cameraReady by remember { mutableStateOf(false) }
-
-    // Elapsed-time tick — only runs while actively recording so we don't burn cycles.
-    var elapsedSeconds by remember { mutableStateOf(0L) }
-    LaunchedEffect(recorder.state) {
-        if (recorder.state == ARRecorder.State.RECORDING) {
-            val start = System.currentTimeMillis()
-            while (recorder.state == ARRecorder.State.RECORDING) {
-                elapsedSeconds = (System.currentTimeMillis() - start) / 1000
-                delay(500)
-            }
-        } else {
-            elapsedSeconds = 0
-        }
-    }
 
     // When the recorder transitions out of RECORDING (and back to IDLE), refresh the
     // recordings list so the new MP4 shows up in PLAYBACK mode.
@@ -773,21 +831,10 @@ private fun ModeContent(
             }
             trackingLostSeconds = 0L
         }
-        // ForcedTrackingFailure lets QA stage a tracking loss without a real one (#1881);
-        // honour it here too so the recording status pill / warning can be validated.
-        val recordingReason = ForcedTrackingFailure.override ?: state.trackingFailureReason
-        val recordingTracking = state.isTracking && ForcedTrackingFailure.override == null
         RecordOverlay(
             recorder = recorder,
-            elapsedSeconds = elapsedSeconds,
-            isTracking = recordingTracking,
-            trackingFailureReason = recordingReason,
             trackingLostSeconds = trackingLostSeconds,
         )
-    }
-
-    if (mode.isPlayback && playbackFile != null) {
-        PlaybackBanner(playbackFile.name)
     }
 
     // ── ANALYSE mode overlays (#2027) ──────────────────────────────────────
@@ -812,59 +859,20 @@ private fun ModeContent(
 }
 
 /**
- * In-scene RECORD-mode chrome: the top-center REC timer + tracking-quality pill, and the
- * centred "tracking lost" warning.
+ * In-scene RECORD-mode chrome: the centred "tracking lost" warning, which annotates the
+ * camera feed it is drawn over and therefore stays in the viewport.
  *
- * The shutter and the recorder error pill used to live here too, hand-anchored to the
- * bottom of this Box — which is exactly how the error pill (80 dp up) ended up drawn
- * *inside* the shutter ring (72 dp tall, 32 dp up). Both now sit in
- * `DemoScaffold(bottomOverlay = …)`, where a Column stacks them (#2779).
+ * Every edge-anchored piece of RECORD chrome lives in a scaffold slot instead: the REC
+ * timer + tracking-quality pill in `topOverlay` (#3231), the shutter and the recorder
+ * error pill in `bottomOverlay` (#2779) — which is what stopped the error pill (80 dp up)
+ * being drawn *inside* the shutter ring (72 dp tall, 32 dp up).
  */
 @Composable
 private fun RecordOverlay(
     recorder: ARRecorder,
-    elapsedSeconds: Long,
-    isTracking: Boolean,
-    trackingFailureReason: TrackingFailureReason?,
     trackingLostSeconds: Long,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Elapsed-time pill + live tracking-quality pill, top-center, only while
-        // recording. Inset below the system bars so they never overlap the status
-        // bar / notch / camera cutout.
-        AnimatedVisibility(
-            visible = recorder.state == ARRecorder.State.RECORDING,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(top = 8.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    color = Color.Red.copy(alpha = 0.85f),
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text(
-                        text = "REC  ${formatElapsed(elapsedSeconds)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                // Tracking-quality pill (#1650): green "AR tracking OK" while ARCore
-                // is TRACKING, amber/red with the failure reason when it isn't — so a
-                // capture going bad is visible during the recording, not only after.
-                TrackingQualityPill(
-                    isTracking = isTracking,
-                    reason = trackingFailureReason
-                )
-            }
-        }
-
         // Soft warning when tracking has been lost for more than a few seconds —
         // e.g. a capture shot from inside a moving vehicle never tracks (#1650).
         if (recorder.state == ARRecorder.State.RECORDING &&
@@ -995,23 +1003,19 @@ private fun TrackingQualityPill(
     }
 }
 
+/** "Now replaying" banner — rendered in the scaffold's `topOverlay` slot (#3231). */
 @Composable
 private fun PlaybackBanner(filename: String) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 8.dp),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Text(
-                text = "Now replaying: $filename",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-        }
+    Surface(
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(
+            text = "Now replaying: $filename",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
     }
 }
 

@@ -96,6 +96,45 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
         onBack = onBack,
+        topOverlay = {
+            // End-aligned V1 ↔ V2 live toggle. `ColumnScope.align` is horizontal only, so
+            // the card keeps its corner without leaving the shared top frame.
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(end = 8.dp),
+                color = Color.Black.copy(alpha = 0.72f),
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column {
+                        Text(
+                            text = if (v2Enabled) {
+                                "V2 (depth + PBR + HDR)"
+                            } else {
+                                "V1 (legacy grid)"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            text = "Tap to switch renderer",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                    Switch(
+                        checked = v2Enabled,
+                        onCheckedChange = { v2Enabled = it },
+                    )
+                }
+            }
+        },
         // Both bottom tenants live in the scaffold slot (#2779). They used to be
         // hand-anchored `BottomStart` (legend) and `BottomCenter` (scanning pill), and
         // both are visible the instant the demo opens — V2 is the default and no plane
@@ -223,44 +262,6 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     },
                 )
             }
-
-            // Top-end V1 ↔ V2 live toggle.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 8.dp, end = 8.dp),
-                color = Color.Black.copy(alpha = 0.72f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Column {
-                        Text(
-                            text = if (v2Enabled) {
-                                "V2 (depth + PBR + HDR)"
-                            } else {
-                                "V1 (legacy grid)"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            text = "Tap to switch renderer",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                    Switch(
-                        checked = v2Enabled,
-                        onCheckedChange = { v2Enabled = it },
-                    )
-                }
-            }
-
         }
     }
 }

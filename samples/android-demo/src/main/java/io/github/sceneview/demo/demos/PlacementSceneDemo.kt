@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,7 +10,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -77,53 +75,51 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
                 Text("Clear All")
             }
         },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            PlacementScene(
-                modifier = Modifier.fillMaxSize(),
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                playbackDataset = arPlaybackDataset,
-                // Modern consumer-AR placement UX: onboarding guide while searching, a ring
-                // reticle that flips to "ready" on a surface, and a contact shadow under each
-                // placed model. The plane grid fades after the first placement (default).
-                coaching = true,
-                groundShadows = true,
-                onPlaced = { anchor ->
-                    // Declare what rides each placed anchor. PlacementScene already created the
-                    // Anchor from the tapped hit — the caller just attaches content to it.
-                    AnchorNode(anchor = anchor) {
-                        val instance =
-                            rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
-                        instance?.let {
-                            ModelNode(
-                                modelInstance = it,
-                                scaleToUnits = 0.3f,
-                            )
-                        }
-                    }
-                },
-                content = { controller ->
-                    // Surface the controller so the parent's Clear All button can reach it.
-                    controllerHolder.value = controller
-                },
-            )
-
-            // Overlays — driven by the controller's Compose-observable placement count.
-            // The bottom onboarding hint is now handled by PlacementScene's built-in coaching
+        topOverlay = {
+            // Placed-count pill, driven by the controller's Compose-observable count.
+            // The bottom onboarding hint is handled by PlacementScene's built-in coaching
             // guide (`coaching = true`), so the demo only surfaces the placed-count.
-            val placedCount = controllerHolder.value?.count ?: 0
-            PlacedCountPill(placedCount, Modifier.align(Alignment.TopCenter))
-        }
+            PlacedCountPill(controllerHolder.value?.count ?: 0)
+        },
+    ) {
+        PlacementScene(
+            modifier = Modifier.fillMaxSize(),
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            playbackDataset = arPlaybackDataset,
+            // Modern consumer-AR placement UX: onboarding guide while searching, a ring
+            // reticle that flips to "ready" on a surface, and a contact shadow under each
+            // placed model. The plane grid fades after the first placement (default).
+            coaching = true,
+            groundShadows = true,
+            onPlaced = { anchor ->
+                // Declare what rides each placed anchor. PlacementScene already created the
+                // Anchor from the tapped hit — the caller just attaches content to it.
+                AnchorNode(anchor = anchor) {
+                    val instance =
+                        rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+                    instance?.let {
+                        ModelNode(
+                            modelInstance = it,
+                            scaleToUnits = 0.3f,
+                        )
+                    }
+                }
+            },
+            content = { controller ->
+                // Surface the controller so the parent's Clear All button can reach it.
+                controllerHolder.value = controller
+            },
+        )
     }
 }
 
-/** Top-centre "X models placed" pill. */
+/** "X models placed" pill, rendered in the scaffold's `topOverlay` slot. */
 @Composable
 private fun PlacedCountPill(count: Int, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.padding(top = 8.dp),
+        modifier = modifier,
         color = Color.Black.copy(alpha = 0.7f),
         contentColor = Color.White,
         tonalElevation = 4.dp,

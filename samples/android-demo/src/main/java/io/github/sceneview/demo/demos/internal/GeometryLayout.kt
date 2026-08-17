@@ -120,6 +120,27 @@ internal object GeometryLayout {
     const val PLANE_EDGE = 0.32f
 
     /**
+     * Permanent tilt of the plane about X, in degrees.
+     *
+     * The plane is the one primitive in the cluster with **zero thickness**
+     * (`size.z == 0`). Sharing the cluster's Y spin, its normal swept the whole
+     * circle, so twice per revolution it went exactly edge-on to the camera and
+     * the quad vanished — a demo whose job is to show a primitive spent half its
+     * time showing nothing. The plane therefore spins about **Z** (its own
+     * normal, which the rotation leaves pointing at the camera) and carries this
+     * fixed X tilt instead.
+     *
+     * The tilt is what keeps it from reading as a flat sticker: the normal ends
+     * up at `(±sin·sin s, −sin·cos s, cos)` for a tilt angle of this size, so the
+     * face is always within this many degrees of the camera — never edge-on, and
+     * never perfectly flat-on either, which is what gives the panel its shading.
+     * 20° is the smallest angle that still reads as depth at Play Store thumbnail
+     * size; past ~35° the quad starts to foreshorten enough to look narrower than
+     * the cube beside it. #3231
+     */
+    const val PLANE_TILT_DEGREES = 20f
+
+    /**
      * Camera-to-cluster distance, in metres, when no `camera_distance` override is supplied.
      *
      * Chosen so the cluster fills ~71 % of the frame width at [PHONE_PORTRAIT_ASPECT] — a

@@ -1177,12 +1177,20 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-demo-design-system.sh
 
-      # Demo bottom overlay. Three things compete for the strip of pixels above the system
-      # bars on every demo screen — the Settings FAB at bottom-end, `SceneActionBar` at
-      # bottom-start, and the demo's own status banner at bottom-center — and 25 demo
-      # files placed theirs by hand, each with its own clearance constant. Fifteen collided,
-      # most visible on first launch. `DemoScaffold(bottomOverlay = { … })` is a bottom-aligned
-      # Column that stacks them instead, so this refuses bottom anchoring anywhere else.
+      # Demo overlay anchors, BOTH edges. Several things compete for the strips of pixels
+      # at the top and bottom of every demo screen — the Settings FAB at bottom-end,
+      # `SceneActionBar` at bottom-start, the asset-source chip at top-end, and the demo's
+      # own status banners in the middle of both. `DemoScaffold` owns all four edges via
+      # `topOverlay` / `bottomOverlay`, aligned Columns that stack their children and apply
+      # `WindowInsets.safeDrawing` once, so this refuses edge anchoring anywhere else.
+      #
+      # This gate covered only the BOTTOM edge of `demos/` until #3231, and its docstring
+      # said so — "deliberately leaves alone: Alignment.Top*, and anything outside the demos
+      # directory". Behind that sentence, the top edge of those same files collected 35
+      # uncoordinated anchors across three incompatible inset conventions (`systemBars`, a
+      # magic `padding(top = 8.dp)`, nothing at all) inside the same Box; `safeDrawing`
+      # appeared zero times in the repository; and the app-wide update banner sat unchecked
+      # in `ui/`. A guard that polices one edge of one folder is how that happens.
       #
       # A doc cannot be the enforcement here: `SceneActionBar`'s KDoc used to promise those
       # pills "never collide with this bottom-start bar", which is precisely why the drift was
@@ -1190,19 +1198,22 @@ jobs:
       # constant a demo author picks survives a longer sentence in a future locale.
       #
       # Not path-gated, same reason as every gate above it (#2988).
-      - name: Check demo bottom overlays
+      - name: Check demo overlay anchors
         if: always() && steps.checkout.outcome == 'success'
         shell: bash
-        run: python3 .claude/scripts/check-demo-bottom-overlay.py
+        run: python3 .claude/scripts/check-demo-overlay-anchors.py
 
       # Drives the gate's FAILING path on synthetic trees. It hinges on a brace matcher, and
       # both directions are one line away from silent: a brace inside a Kotlin string template
       # closes the slot early and fails a correctly-migrated demo, while an unterminated
-      # construct swallows the file and reports clean for life.
-      - name: Self-test the demo bottom-overlay gate
+      # construct swallows the file and reports clean for life. It also pins the two
+      # judgement calls the gate has to make — a badge inside a card is not a screen-edge
+      # anchor, and a `BoxScope` extension shared by a scaffolded and an unscaffolded host
+      # is judged on its inset frame rather than on a slot it may not have.
+      - name: Self-test the demo overlay-anchor gate
         if: always() && steps.checkout.outcome == 'success'
         shell: bash
-        run: bash .claude/scripts/test-check-demo-bottom-overlay.sh
+        run: bash .claude/scripts/test-check-demo-overlay-anchors.sh
 
       # This job's own `if:` guards. Self-test first, same discipline as the
       # pair above — and here it is the whole point, because the gate's subject

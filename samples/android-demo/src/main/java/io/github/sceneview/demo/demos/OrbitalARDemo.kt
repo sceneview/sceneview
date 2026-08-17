@@ -17,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -432,14 +431,50 @@ fun OrbitalARDemo(onBack: () -> Unit) {
         )
     }
 
+    // Status pill text, mirroring the ARPlacement / ARInstantPlacement style. It carries
+    // the two transient setup states (tracking, anchor lock) and the "Turn around"
+    // onboarding nudge. Once tracking + anchor are established *and* the onboarding nudge
+    // has been dismissed (#2481), the pill is gone entirely — the orbit is
+    // self-explanatory at that point and a permanent banner only clutters the AR view.
+    val statusText = when {
+        !isTracking -> "Initializing AR — look around to start tracking"
+        userAnchor == null -> "Locking world anchor…"
+        !onboardingDismissed -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
+        else -> null
+    }
+
     // No Settings FAB: this demo has nothing to configure. The orbit runs
-    // automatically and the top-center status pill already tells the user what
-    // to do ("Turn around — N models orbiting"), so a settings sheet carrying a
+    // automatically and the status pill already tells the user what to do
+    // ("Turn around — N models orbiting"), so a settings sheet carrying a
     // lone paragraph of help text added only chrome (#1620 thread 1).
     DemoScaffold(
         title = stringResource(R.string.demo_ar_orbital_title),
         onBack = onBack,
         assetSource = assetSource,
+        topOverlay = {
+            if (statusText != null) {
+                Surface(
+                    // This demo is the one in its batch that shows an asset-source
+                    // chip, and the pill's longest string ("Turn around — N models
+                    // orbiting") is wide enough to reach the top-end corner the chip
+                    // occupies. Reserving the chip's measured width keeps the two
+                    // apart; the pill re-centres in what is left, which reads as
+                    // centred and, unlike a hardcoded gutter, cannot go stale when
+                    // the chip's label changes.
+                    modifier = Modifier.padding(end = assetSourceChipReservedSpace),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White,
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = statusText,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        },
     ) {
         Box(
             modifier = Modifier
@@ -575,8 +610,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
 
             // Off-screen target indicator (#1482) — an edge arrow that points toward
             // the chase target whenever it is outside the camera frustum, so the user
-            // knows which way to turn. Drawn below the status pill so the pill text
-            // always stays readable. Suppressed once the onboarding nudge is dismissed
+            // knows which way to turn. A full-screen Canvas, so it belongs to the
+            // viewport and stays here, under the scaffold's top slot and its status pill.
+            // Suppressed once the onboarding nudge is dismissed
             // (#2481): the arrow is a first-launch teach, not a permanent HUD, so it
             // stops re-appearing as the target orbits off-screen after the user has
             // already turned around and caught a model once.
@@ -586,36 +622,6 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                     angleRad = target.angleRad,
                     color = MaterialTheme.colorScheme.primary,
                 )
-            }
-
-            // Status pill — top-center, mirrors the ARPlacement / ARInstantPlacement
-            // style. It carries the two transient setup states (tracking, anchor lock)
-            // and the "Turn around" onboarding nudge. Once tracking + anchor are
-            // established *and* the onboarding nudge has been dismissed (#2481), the
-            // pill is gone entirely — the orbit is self-explanatory at that point and a
-            // permanent banner only clutters the AR view.
-            val statusText = when {
-                !isTracking -> "Initializing AR — look around to start tracking"
-                userAnchor == null -> "Locking world anchor…"
-                !onboardingDismissed -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
-                else -> null
-            }
-            if (statusText != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp),
-                    color = Color.Black.copy(alpha = 0.7f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = statusText,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
             }
         }
     }

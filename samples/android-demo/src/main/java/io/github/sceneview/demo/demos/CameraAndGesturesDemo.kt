@@ -532,6 +532,31 @@ private fun NodeGesturesSection(
             ) {
                 Text("Reset Position")
             }
+        },
+        topOverlay = {
+            gestureMode?.let { label ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(horizontal = 8.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    contentColor = Color.White,
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+
+            LiveTransformOverlay(
+                modelNodeRef = modelNodeRef,
+                resetKey = resetKey,
+                modifier = Modifier.align(Alignment.End)
+            )
         }
     ) {
         SceneView(
@@ -609,30 +634,6 @@ private fun NodeGesturesSection(
                 scaleGestureSensitivity = scaleSensitivity
             }
         }
-
-        gestureMode?.let { label ->
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-                color = Color.Black.copy(alpha = 0.7f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = label,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
-
-        LiveTransformOverlay(
-            modelNodeRef = modelNodeRef,
-            resetKey = resetKey,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
     }
 }
 
@@ -667,7 +668,7 @@ private fun LiveTransformOverlay(
     }
 
     Surface(
-        modifier = modifier.padding(8.dp),
+        modifier = modifier.padding(horizontal = 8.dp),
         color = Color.Black.copy(alpha = 0.7f),
         contentColor = Color.White,
         tonalElevation = 4.dp,

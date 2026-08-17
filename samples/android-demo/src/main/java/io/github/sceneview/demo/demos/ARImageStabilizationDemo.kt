@@ -224,6 +224,32 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // Status pill — reflects what ARCore *actually applied* (the result of the last
+        // reconfigure), so it never over-promises. Green when EIS is live, grey when the
+        // device can't do EIS, red when EIS is off but available. Big enough for a
+        // screenshot to read at a glance.
+        topOverlay = {
+            Surface(
+                color = when {
+                    eisApplied -> Color(0xFF1B5E20).copy(alpha = 0.85f)
+                    eisSupported == false -> Color(0xFF424242).copy(alpha = 0.85f)
+                    else -> Color(0xFFB71C1C).copy(alpha = 0.85f)
+                },
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = when {
+                        eisApplied -> "EIS ON"
+                        eisSupported == false -> "EIS UNSUPPORTED"
+                        else -> "EIS OFF"
+                    },
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        },
         bottomOverlay = {
             // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo and
             // ARDepthOcclusionDemo so all three AR demos share the same visual language.
@@ -358,34 +384,6 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                         }
                     }
                 }
-            }
-
-            // Top-center status pill — reflects what ARCore *actually applied* (the result
-            // of the last reconfigure), so it never over-promises. Green when EIS is live,
-            // grey when the device can't do EIS, red when EIS is off but available.
-            // Big enough for a screenshot to read at a glance.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = when {
-                    eisApplied -> Color(0xFF1B5E20).copy(alpha = 0.85f)
-                    eisSupported == false -> Color(0xFF424242).copy(alpha = 0.85f)
-                    else -> Color(0xFFB71C1C).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = when {
-                        eisApplied -> "EIS ON"
-                        eisSupported == false -> "EIS UNSUPPORTED"
-                        else -> "EIS OFF"
-                    },
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
             }
         }
     }

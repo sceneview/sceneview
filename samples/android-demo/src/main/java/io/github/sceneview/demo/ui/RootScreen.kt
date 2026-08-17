@@ -300,7 +300,7 @@ private fun AboutTabContent() {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.about_made_with) + " ",
+                    stringResource(R.string.about_made_with),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -308,7 +308,13 @@ private fun AboutTabContent() {
                     Icons.Filled.Favorite,
                     contentDescription = null,
                     tint = Color(0xFFE91E63),
-                    modifier = Modifier.size(14.dp),
+                    // The gap on BOTH sides of the heart lives here, not in the
+                    // strings: a leading space in a resource is stripped by aapt
+                    // unless quoted, which is why this read "…<heart>by Thomas
+                    // Gorisse" in the store build. #3231
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(14.dp),
                 )
                 Text(
                     stringResource(R.string.about_made_by),

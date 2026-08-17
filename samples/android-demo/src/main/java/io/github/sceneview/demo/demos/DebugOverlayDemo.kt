@@ -285,6 +285,17 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     )
                 }
             }
+        },
+        topOverlay = {
+            DebugOverlay(
+                stats = stats,
+                fpsHistory = fpsHistory,
+                fpsHistoryHead = fpsHead,
+                fpsHistorySize = historySize,
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(horizontal = 8.dp)
+            )
         }
     ) {
         // Drive the stress-test ramp from a coroutine so the UI stays responsive.
@@ -393,16 +404,6 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     }
                 }
             }
-
-            DebugOverlay(
-                stats = stats,
-                fpsHistory = fpsHistory,
-                fpsHistoryHead = fpsHead,
-                fpsHistorySize = historySize,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-            )
         }
     }
 }

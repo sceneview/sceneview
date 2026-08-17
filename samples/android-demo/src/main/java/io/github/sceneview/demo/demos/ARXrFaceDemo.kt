@@ -11,7 +11,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -93,6 +92,38 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_ar_xr_face_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        topOverlay = {
+            // Always-on banner — honest about the XR-device requirement and
+            // about the face mesh being a static reference, not a live face.
+            Surface(
+                color = Color.Black.copy(alpha = 0.45f),
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (xrAvailable) {
+                                R.string.demo_ar_xr_face_xr_available
+                            } else {
+                                R.string.demo_ar_xr_face_xr_required
+                            }
+                        ),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = stringResource(R.string.demo_ar_xr_face_reference_note),
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
@@ -128,39 +159,6 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
                             position = position,
                         )
                     }
-                }
-            }
-
-            // Always-on banner — honest about the XR-device requirement and
-            // about the face mesh being a static reference, not a live face.
-            Surface(
-                color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (xrAvailable) {
-                                R.string.demo_ar_xr_face_xr_available
-                            } else {
-                                R.string.demo_ar_xr_face_xr_required
-                            }
-                        ),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        text = stringResource(R.string.demo_ar_xr_face_reference_note),
-                        color = Color.White.copy(alpha = 0.85f),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                 }
             }
         }

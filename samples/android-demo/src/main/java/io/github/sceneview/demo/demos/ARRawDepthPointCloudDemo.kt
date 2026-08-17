@@ -215,6 +215,54 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // The two top-anchored surfaces live in the scaffold slot (#3231): the scaffold
+        // owns the top gutter and the system-bar inset, and stacks them as Column
+        // siblings.
+        topOverlay = {
+            // Waiting-for-depth state — first few hundred ms after session start.
+            AnimatedVisibility(
+                visible = depthSupported == true && !depthEverReceived,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Computing raw depth — move slowly across a textured scene",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            // Passive "still no points after >2 s" chip — small, non-blocking,
+            // end-aligned. Surfaces when the user has missed (or dismissed) the
+            // first-launch hint but raw depth still hasn't converged. Hides as soon
+            // as a non-zero frame arrives.
+            AnimatedVisibility(
+                visible = zeroPointsStuck,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(end = 8.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint_short),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        },
         // The two bottom-anchored banners live in the scaffold slot (#2779). They were
         // hand-lifted to 120 dp and 56 dp to miss each other and the Settings FAB — a
         // pair of constants that a longer sentence, a wrap or a larger font scale
@@ -368,52 +416,6 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                             center = Offset(px, py),
                         )
                     }
-                }
-            }
-
-            // Waiting-for-depth state — first few hundred ms after session start.
-            AnimatedVisibility(
-                visible = depthSupported == true && !depthEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.TopCenter)
-            ) {
-                Surface(
-                    modifier = Modifier.padding(top = 8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Computing raw depth — move slowly across a textured scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Passive "still no points after >2 s" chip — small, non-blocking,
-            // top-end corner. Surfaces when the user has missed (or dismissed) the
-            // first-launch hint but raw depth still hasn't converged. Hides as soon
-            // as a non-zero frame arrives.
-            AnimatedVisibility(
-                visible = zeroPointsStuck,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 8.dp, end = 8.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint_short),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
                 }
             }
         }

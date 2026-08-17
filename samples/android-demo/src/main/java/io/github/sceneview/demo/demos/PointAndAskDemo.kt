@@ -369,6 +369,40 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
+        // The status pill — one clear instruction, and it gets out of the way: hidden
+        // while thinking/answering, and hidden from the AI's captured frame. Hosted by
+        // the scaffold's `topOverlay` slot, which owns the top gutter and the inset
+        // (#3231).
+        topOverlay = {
+            AnimatedVisibility(
+                visible = !hideOverlaysForCapture &&
+                    askState == AskState.Idle &&
+                    !busy &&
+                    engineStatus != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                M3Surface(
+                    color = Color.Black.copy(alpha = 0.62f),
+                    contentColor = Color.White,
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Text(
+                        text = when {
+                            engineStatus == AskEngineStatus.Ready && !isTracking ->
+                                stringResource(R.string.ar_status_scanning)
+                            engineStatus == AskEngineStatus.Ready ->
+                                stringResource(R.string.demo_point_and_ask_status_ready)
+                            else ->
+                                stringResource(R.string.demo_point_and_ask_status_limited)
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        },
         // The answer card / banner / progress row. Hosted by the scaffold's
         // `bottomOverlay` slot so it is laid out against the Settings FAB instead of
         // under it: this card is `fillMaxWidth()`, so at plain `Alignment.BottomCenter`
@@ -658,39 +692,6 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             center = center,
                         )
                     }
-                }
-            }
-
-            // Top-center status pill — one clear instruction, and it gets out of the way:
-            // hidden while thinking/answering, and hidden from the AI's captured frame.
-            AnimatedVisibility(
-                visible = !hideOverlaysForCapture &&
-                    askState == AskState.Idle &&
-                    !busy &&
-                    engineStatus != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.TopCenter),
-            ) {
-                M3Surface(
-                    modifier = Modifier.padding(top = 8.dp),
-                    color = Color.Black.copy(alpha = 0.62f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text(
-                        text = when {
-                            engineStatus == AskEngineStatus.Ready && !isTracking ->
-                                stringResource(R.string.ar_status_scanning)
-                            engineStatus == AskEngineStatus.Ready ->
-                                stringResource(R.string.demo_point_and_ask_status_ready)
-                            else ->
-                                stringResource(R.string.demo_point_and_ask_status_limited)
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
                 }
             }
         }

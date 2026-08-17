@@ -243,6 +243,42 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 12.dp),
             )
         },
+        topOverlay = {
+            // Readout pill — the last segment, and the bounding box once there is one.
+            // Screen-anchored rather than world-anchored on purpose: the per-segment labels
+            // are already in the world, and a summary that can drift off-screen is a summary
+            // you cannot read (#2727).
+            if (worldPoints.size >= 2) {
+                Surface(
+                    color = Color(0xCC161B22),  // SceneView SurfaceDim
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        lastSegmentMeters?.let {
+                            Text(
+                                text = stringResource(
+                                    R.string.demo_ar_measure_last_segment,
+                                    formatCentimeters(it),
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        boundingBox?.let { box ->
+                            Text(
+                                text = stringResource(
+                                    R.string.demo_ar_measure_bounding_box,
+                                    formatCentimeters(box.widthMeters),
+                                    formatCentimeters(box.heightMeters),
+                                    formatCentimeters(box.depthMeters),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        },
         bottomOverlay = {
             // Per-tap feedback, including the hit source that produced the point.
             AnimatedVisibility(
@@ -400,42 +436,6 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                             materialInstance = lineMaterial,
                             cameraPositionProvider = { cameraNode.worldPosition },
                         )
-                    }
-                }
-            }
-
-            // Readout pill — the last segment, and the bounding box once there is one.
-            // Screen-anchored rather than world-anchored on purpose: the per-segment labels
-            // are already in the world, and a summary that can drift off-screen is a summary
-            // you cannot read (#2727).
-            if (worldPoints.size >= 2) {
-                Surface(
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                    color = Color(0xCC161B22),  // SceneView SurfaceDim
-                    contentColor = Color.White,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        lastSegmentMeters?.let {
-                            Text(
-                                text = stringResource(
-                                    R.string.demo_ar_measure_last_segment,
-                                    formatCentimeters(it),
-                                ),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
-                        boundingBox?.let { box ->
-                            Text(
-                                text = stringResource(
-                                    R.string.demo_ar_measure_bounding_box,
-                                    formatCentimeters(box.widthMeters),
-                                    formatCentimeters(box.heightMeters),
-                                    formatCentimeters(box.depthMeters),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
                     }
                 }
             }

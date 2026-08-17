@@ -134,9 +134,10 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
         }.value
     }
 
-    // Placement state shared between the scene and the bottom-overlay "Clear All"
-    // control. Keyed on `instantEnabled` so flipping the toggle drops every placed
-    // model, exactly as the `key(instantEnabled)` remount below already did.
+    // Placement and tracking state shared between the scene and the scaffold's overlay
+    // slots — the "Clear All" control at the bottom, the status pills at the top. Keyed
+    // on `instantEnabled` so flipping the toggle drops every placed model, exactly as the
+    // `key(instantEnabled)` remount below already did.
     val sceneState = remember(instantEnabled) { InstantPlacementSceneState() }
 
     DemoScaffold(
@@ -224,6 +225,119 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // Top band: the stats pill, the latest-model badge under it, then the scanning
+        // indicator. They are siblings in the scaffold's top Column (#3231), so they
+        // stack by layout instead of by the 8 / 44 / 56 dp arithmetic they used to carry
+        // — arithmetic that only held while every pill above stayed one line.
+        topOverlay = {
+            // Model count + per-state tally.
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                val count = sceneState.placedModels.size
+                val lost = sceneState.lostAnchors.values.count { it }
+                val approximating = sceneState.placedModels.count { placed ->
+                    sceneState.lostAnchors[placed.id] != true &&
+                        sceneState.trackingMethods[placed.id] ==
+                        InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE
+                }
+                val tracked = sceneState.placedModels.count { placed ->
+                    sceneState.lostAnchors[placed.id] != true &&
+                        sceneState.trackingMethods[placed.id] ==
+                        InstantPlacementPoint.TrackingMethod.FULL_TRACKING
+                }
+                val label = if (instantEnabled) {
+                    // Lost segment only surfaces when there's something to report — keeps
+                    // the pill compact when everything is tracking cleanly (#1184).
+                    val lostSegment = if (lost > 0) " • $lost lost" else ""
+                    "$count placed • $approximating approximating • $tracked tracked$lostSegment"
+                } else if (count == 1) {
+                    "1 model placed"
+                } else {
+                    "$count models placed"
+                }
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+
+            // Most-recent-model tracking badge, stacked under the count pill. The old
+            // per-model column (one chip per placed model, up to 4 stacked) overflowed the
+            // top third of the viewport and overlapped the placed models themselves
+            // (#1476). The aggregate "$count placed • $approximating approximating • …"
+            // pill above already reports the per-state tally, so a single badge for the
+            // latest placed model is enough to teach the approximate → full-tracking
+            // transition without the visual clutter.
+            //
+            // #1184: read from `placedModels` (the source of truth) so a model whose anchor
+            // went `STOPPED` before its first `InstantPlacementPoint.trackingMethod` ever
+            // fired still surfaces as `Lost`.
+            if (instantEnabled) {
+                val latest = sceneState.placedModels.lastOrNull()
+                if (latest != null) {
+                    val isLost = sceneState.lostAnchors[latest.id] == true
+                    val method = sceneState.trackingMethods[latest.id]
+                    val (label, color) = when {
+                        isLost -> "Lost — tap to re-place" to Color(0xFF8A0000)
+                        method == InstantPlacementPoint.TrackingMethod.FULL_TRACKING ->
+                            "Tracked" to Color(0xFF1B873B)
+                        method == InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE ->
+                            "Approximating" to Color(0xFFE07B00)
+                        else -> "Initializing" to Color(0xFF555555)
+                    }
+                    Surface(
+                        color = color.copy(alpha = 0.9f),
+                        contentColor = Color.White,
+                        tonalElevation = 4.dp,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "Latest — ${latest.displayName}: $label",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
+
+            // Scanning indicator pill — last in the top stack, and the first thing the
+            // user sees while ARCore is still initialising. It never competes with the
+            // bottom-anchored Clear All button (issue #1199), which lives in the mirror
+            // slot at the other edge.
+            //
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason =
+                ForcedTrackingFailure.override ?: sceneState.trackingFailureReason
+            AnimatedVisibility(
+                visible = !sceneState.isTracking || ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = trackingFailureMessage(effectiveReason)
+                            ?: if (instantEnabled) {
+                                "Initializing camera — you can already tap to place"
+                            } else {
+                                stringResource(R.string.ar_status_scanning)
+                            },
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
+                }
+            }
+        },
         // Clear-all control. Bottom-anchored, so it is a tenant of the shared bottom
         // band and belongs in the scaffold slot (#2779) rather than hand-aligned
         // `BottomStart` in the scene, where it could only share pixels with the
@@ -270,18 +384,25 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
 }
 
 /**
- * Placement state shared between [InstantPlacementScene] and the "Clear All" control
- * the scaffold hosts in its `bottomOverlay` slot.
+ * Placement and tracking state shared between [InstantPlacementScene] and the controls
+ * the scaffold hosts in its overlay slots — "Clear All" at the bottom, the count pill,
+ * the latest-model badge and the scanning indicator at the top.
  *
- * It is hoisted out of the scene composable only because the button that clears it
- * moved into that slot — the one container that lays a bottom-anchored control out
- * against the Settings FAB instead of on top of it (#2779). Lifetime is unchanged:
- * the caller creates it with `remember(instantEnabled)`, so it dies with the same
- * toggle flip that remounts the scene.
+ * It is hoisted out of the scene composable only because those controls moved into the
+ * slots — the containers that lay a bottom- or top-anchored control out against the
+ * Settings FAB and the asset-source chip instead of on top of them (#2779, #3231).
+ * Lifetime is unchanged: the caller creates it with `remember(instantEnabled)`, so it
+ * dies with the same toggle flip that remounts the scene.
  */
 @Stable
 private class InstantPlacementSceneState {
     val placedModels = mutableStateListOf<InstantPlacedModel>()
+
+    /** Whether the ARCore camera is tracking — drives the scanning indicator. */
+    var isTracking by mutableStateOf(false)
+
+    /** Latest ARCore-reported tracking failure, or `null` while tracking is healthy. */
+    var trackingFailureReason by mutableStateOf<TrackingFailureReason?>(null)
 
     // Live status of each placed Instant Placement point. Keyed by model id.
     // Using a `mutableStateMapOf` (vs. a list rebuilt every frame) means the per-
@@ -327,17 +448,15 @@ private fun InstantPlacementScene(
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
 
-    // Placement state lives in the caller (see [InstantPlacementSceneState]) so the
-    // "Clear All" control can sit in the scaffold's bottom slot; aliased here so the
-    // scene body reads exactly as it did.
+    // Placement and tracking state live in the caller (see [InstantPlacementSceneState])
+    // so the "Clear All" control and the status pills can sit in the scaffold's overlay
+    // slots; aliased here so the scene body reads exactly as it did.
     val placedModels = state.placedModels
     val trackingMethods = state.trackingMethods
     val lostAnchors = state.lostAnchors
 
     var nextId by remember { mutableStateOf(0) }
 
-    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var isTracking by remember { mutableStateOf(false) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -358,7 +477,7 @@ private fun InstantPlacementScene(
             },
             onSessionUpdated = { _, frame: Frame ->
                 latestFrame = frame
-                isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                state.isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 // Refresh tracking-method snapshots so the per-model badge updates as
                 // ARCore promotes points from approximate → full tracking. Write only
                 // when the value actually changes so we don't churn Compose state at
@@ -394,7 +513,7 @@ private fun InstantPlacementScene(
                 }
             },
             onTrackingFailureChanged = { reason ->
-                trackingFailureReason = reason
+                state.trackingFailureReason = reason
             },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event: MotionEvent, node ->
@@ -476,141 +595,8 @@ private fun InstantPlacementScene(
             }
         }
 
-        // Top-center pill: model count + per-state tally.
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 8.dp),
-            color = Color.Black.copy(alpha = 0.7f),
-            contentColor = Color.White,
-            tonalElevation = 4.dp,
-            shape = MaterialTheme.shapes.small
-        ) {
-            val count = placedModels.size
-            val lost = lostAnchors.values.count { it }
-            val approximating = placedModels.count { placed ->
-                lostAnchors[placed.id] != true &&
-                    trackingMethods[placed.id] ==
-                    InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE
-            }
-            val tracked = placedModels.count { placed ->
-                lostAnchors[placed.id] != true &&
-                    trackingMethods[placed.id] ==
-                    InstantPlacementPoint.TrackingMethod.FULL_TRACKING
-            }
-            val label = if (instantEnabled) {
-                // Lost segment only surfaces when there's something to report — keeps
-                // the pill compact when everything is tracking cleanly (#1184).
-                val lostSegment = if (lost > 0) " • $lost lost" else ""
-                "$count placed • $approximating approximating • $tracked tracked$lostSegment"
-            } else if (count == 1) {
-                "1 model placed"
-            } else {
-                "$count models placed"
-            }
-            Text(
-                text = label,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-
-        // Most-recent-model tracking badge, shown just below the count pill. The old
-        // per-model column (one chip per placed model, up to 4 stacked) overflowed the
-        // top third of the viewport and overlapped the placed models themselves
-        // (#1476). The aggregate "$count placed • $approximating approximating • …"
-        // pill above already reports the per-state tally, so a single badge for the
-        // latest placed model is enough to teach the approximate → full-tracking
-        // transition without the visual clutter.
-        //
-        // #1184: read from `placedModels` (the source of truth) so a model whose anchor
-        // went `STOPPED` before its first `InstantPlacementPoint.trackingMethod` ever
-        // fired still surfaces as `Lost`.
-        if (instantEnabled) {
-            val latest = placedModels.lastOrNull()
-            if (latest != null) {
-                val isLost = lostAnchors[latest.id] == true
-                val method = trackingMethods[latest.id]
-                val (label, color) = when {
-                    isLost -> "Lost — tap to re-place" to Color(0xFF8A0000)
-                    method == InstantPlacementPoint.TrackingMethod.FULL_TRACKING ->
-                        "Tracked" to Color(0xFF1B873B)
-                    method == InstantPlacementPoint.TrackingMethod.SCREENSPACE_WITH_APPROXIMATE_DISTANCE ->
-                        "Approximating" to Color(0xFFE07B00)
-                    else -> "Initializing" to Color(0xFF555555)
-                }
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 44.dp),
-                    color = color.copy(alpha = 0.9f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = "Latest — ${latest.displayName}: $label",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-        }
-
-        // The "Clear All" control is no longer here: it is bottom-anchored, so it lives
-        // in the scaffold's `bottomOverlay` slot, declared by ARInstantPlacementDemo.
-
-        // Scanning indicator pill. Anchored top-center just below the stats pill
-        // (issue #1199) so it never competes with the bottom-anchored Clear All
-        // button. The top-center placement also matches Material's standard
-        // "transient status" snackbar pattern and is the first thing the user
-        // sees while ARCore is still initialising.
-        //
-        // #1265: a `BoxScope.align(TopCenter)` set directly on `AnimatedVisibility`
-        // did not reliably position the animated content — the pill rendered
-        // bottom-left, overlapping Clear All. `AnimatedVisibility` introduces its
-        // own layout node for the enter/exit transition, and the `BoxScope.align`
-        // modifier on that wrapper is not always honoured by the animated child.
-        // The alignment is now carried by a static `Box` that is a direct child of
-        // the outer `Box`; `AnimatedVisibility` lives inside it and handles only
-        // the fade. This mirrors how the working stats pill above is structured.
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                // Top padding accounts for: the stats pill (8 dp + ~28 dp text
-                // height) + the per-model badge column when present
-                // (placedModels.take(4) * ~26 dp). 56 dp keeps the pill visible
-                // even with up to one badge below the stats; with the v4.3.5
-                // hide-when-empty rule the Clear All button is also gone at
-                // session start so there's no longer any visual collision.
-                .padding(top = 56.dp)
-        ) {
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = trackingFailureMessage(effectiveReason)
-                            ?: if (instantEnabled) {
-                                "Initializing camera — you can already tap to place"
-                            } else {
-                                stringResource(R.string.ar_status_scanning)
-                            },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
-        }
+        // The status pills and the "Clear All" control are no longer here: they are
+        // floating chrome, so they live in the scaffold's `topOverlay` / `bottomOverlay`
+        // slots, both declared by ARInstantPlacementDemo.
     }
 }

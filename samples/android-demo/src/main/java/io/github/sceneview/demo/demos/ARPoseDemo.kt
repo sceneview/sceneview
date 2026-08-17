@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -111,7 +110,30 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     valueRange = -0.5f..0.5f,
                 )
             }
-        }
+        },
+        // Live X/Y/Z coordinate readout (#1618) — rendered as a screen-anchored
+        // Compose overlay rather than a world-space TextNode floating above the
+        // lantern. The world-space label followed the lantern off the right screen
+        // edge as soon as the X slider offset the pose sideways, clipping the numbers
+        // (#2727). A screen-space pill keeps the readout fully on-screen and readable
+        // for any slider value, matching the sibling AR demos' status-pill idiom
+        // (e.g. ARDepthVisualizationDemo). Shown only once the pose is placed so the
+        // numbers appear alongside the lantern they describe.
+        topOverlay = {
+            if (isTracking && basePose != null) {
+                Surface(
+                    color = Color(0xCC161B22),  // SceneView SurfaceDim
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text(
+                        text = "X %.2f   Y %.2f   Z %.2f".format(Locale.US, x, y, z),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -181,31 +203,6 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             )
                         }
                     }
-                }
-            }
-
-            // Live X/Y/Z coordinate readout (#1618) — rendered as a screen-anchored
-            // Compose overlay rather than a world-space TextNode floating above the
-            // lantern. The world-space label followed the lantern off the right screen
-            // edge as soon as the X slider offset the pose sideways, clipping the numbers
-            // (#2727). A screen-space pill keeps the readout fully on-screen and readable
-            // for any slider value, matching the sibling AR demos' status-pill idiom
-            // (e.g. ARDepthVisualizationDemo). Shown only once the pose is placed so the
-            // numbers appear alongside the lantern they describe.
-            if (isTracking && basePose != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp),
-                    color = Color(0xCC161B22),  // SceneView SurfaceDim
-                    contentColor = Color.White,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        text = "X %.2f   Y %.2f   Z %.2f".format(Locale.US, x, y, z),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
                 }
             }
 

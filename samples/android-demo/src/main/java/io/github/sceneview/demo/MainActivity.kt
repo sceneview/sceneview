@@ -28,8 +28,10 @@ import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -288,15 +290,24 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // The update banner is a no-op when state is IDLE / CHECKING /
         // UP_TO_DATE — it renders the demo-native AVAILABLE / DOWNLOADING /
         // READY_TO_INSTALL chrome so the whole flexible-update flow stays inside
-        // the app's own UI (#890, #1941). The status-bar inset keeps it clear of
-        // the system bar so the banner is never clipped behind the status bar or
-        // a demo's top app bar (#1425).
+        // the app's own UI (#890, #1941).
+        //
+        // `safeDrawing`, not `statusBars` — this banner floats over the entire
+        // app, above every screen, so it meets a display cutout that `statusBars`
+        // does not describe: in landscape the notch is a *side* inset, and the
+        // banner ran straight under it. Top + Horizontal is the same frame
+        // DemoScaffold now applies to its own top overlays, which is the point —
+        // this used to be the third distinct inset spelling in the app (#3231).
         activity?.updateManager?.let { mgr ->
             UpdateBanner(
                 updateManager = mgr,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .windowInsetsPadding(WindowInsets.statusBars),
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                        )
+                    ),
             )
         }
 

@@ -9,10 +9,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -84,57 +90,80 @@ fun CreditsSheet(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        Column(
+        val byCategory = SampleAssets.all.groupBy { it.category }
+        // Render in a stable, human-meaningful order rather than hash order.
+        val orderedCategories = listOf(
+            "solar", "gallery", "animation", "park",
+            "ar_placement", "physics", "materials",
+        )
+        val knownCategoryOrder = orderedCategories
+            .filter { it in byCategory.keys }
+            .plus(byCategory.keys - orderedCategories.toSet())
+
+        // This list MUST scroll, and MUST clear the navigation bar. It was a plain
+        // `Column` with a fixed `padding(bottom = 32.dp)`: at the current 29 entries
+        // of SampleAssets, device QA saw 8 credits and no way to reach the other 21 —
+        // the sheet did not scroll and its last rows sat under the navigation bar.
+        // For a decorative list that would be a papercut; for this one it is a
+        // licence-compliance failure, because CC-BY 4.0 requires the attribution to
+        // be *reachable*, not merely present in the binary. A LazyColumn also stops
+        // the cost of the sheet growing with the registry, which is the thing that
+        // made it overflow in the first place.
+        val navigationBars = WindowInsets.navigationBars.asPaddingValues()
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
+                .padding(horizontal = 20.dp),
+            // The 32.dp is the original breathing room under the last row; the
+            // inset is added to it rather than replacing it, so the footer clears
+            // a gesture pill and a 3-button bar alike.
+            contentPadding = PaddingValues(
+                bottom = navigationBars.calculateBottomPadding() + 32.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = stringResource(R.string.credits_sheet_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(R.string.credits_sheet_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            val byCategory = SampleAssets.all.groupBy { it.category }
-            // Render in a stable, human-meaningful order rather than hash order.
-            val orderedCategories = listOf(
-                "solar", "gallery", "animation", "park",
-                "ar_placement", "physics", "materials",
-            )
-            val knownCategoryOrder = orderedCategories
-                .filter { it in byCategory.keys }
-                .plus(byCategory.keys - orderedCategories.toSet())
+            item(key = "header") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.credits_sheet_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.credits_sheet_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             for (category in knownCategoryOrder) {
                 val slugs = byCategory[category].orEmpty()
                 if (slugs.isEmpty()) continue
-                Text(
-                    text = categoryLabel(category),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                for (slug in slugs) {
+                item(key = "category-$category") {
+                    Text(
+                        text = categoryLabel(category),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                items(slugs, key = { it.sketchfabUrl }) { slug ->
                     CreditsRow(slug = slug, onOpen = { openUrl(slug.sketchfabUrl) })
                 }
             }
 
             // Footer — explicit CC-BY notice and link to bundled-assets credits.
-            Text(
-                text = stringResource(R.string.credits_sheet_footer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            item(key = "footer") {
+                Text(
+                    text = stringResource(R.string.credits_sheet_footer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
     }
 }
