@@ -3,23 +3,16 @@ package io.github.sceneview.demo.demos
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -31,6 +24,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -115,7 +110,43 @@ fun ARFaceDemo(onBack: () -> Unit) {
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_face_title),
-        onBack = onBack
+        onBack = onBack,
+        // Status banner hosted by the scaffold slot (#2779) — the one container that
+        // knows where the Settings FAB is and applies the system-bar inset.
+        bottomOverlay = {
+            // Always on, as before: this banner is the demo's only running commentary,
+            // so it has no hidden state. The AnimatedVisibility is kept so the
+            // enter/exit spec is unchanged.
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // Tone is derived from the same branch that picks the sentence:
+                // a front camera that could not start is broken until the user acts
+                // outside the demo; tracking and "still starting" are normal states;
+                // "point the camera at a face" is a physical instruction.
+                val (statusText, statusTone) = when {
+                    sessionFailed ->
+                        // Genuine ARCore session failure — a real, distinct error state
+                        // (permission denied, ARCore unavailable), not a slow start.
+                        stringResource(R.string.demo_ar_face_status_camera_failed) to
+                            DemoStatusTone.Blocked
+                    faceCount > 0 ->
+                        stringResource(R.string.demo_ar_face_status_tracking, faceCount) to
+                            DemoStatusTone.Progress
+                    slowCameraWarning ->
+                        // Advisory only: the front camera is slow to open on some devices.
+                        // Progress (not blocked) — this is not a verdict.
+                        stringResource(R.string.demo_ar_face_status_starting) to
+                            DemoStatusTone.Progress
+                    else ->
+                        stringResource(R.string.demo_ar_face_status_aim) to
+                            DemoStatusTone.Guidance
+                }
+                DemoStatusBanner(text = statusText, tone = statusTone)
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -209,53 +240,6 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 initializing = !cameraActive && !sessionFailed,
                 timeoutMillis = SLOW_FRONT_CAMERA_HINT_MS,
             )
-
-            // Status overlay — tracks face count and surfaces camera errors.
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                val (statusText, statusColor) = when {
-                    sessionFailed ->
-                        // Genuine ARCore session failure — a real, distinct error state
-                        // (permission denied, ARCore unavailable), not a slow start.
-                        Pair(
-                            stringResource(R.string.demo_ar_face_status_camera_failed),
-                            MaterialTheme.colorScheme.error
-                        )
-                    faceCount > 0 ->
-                        Pair(
-                            stringResource(R.string.demo_ar_face_status_tracking, faceCount),
-                            MaterialTheme.colorScheme.primary
-                        )
-                    slowCameraWarning ->
-                        // Advisory only: the front camera is slow to open on some devices.
-                        // Primary (not error) tone — this is not a verdict.
-                        Pair(
-                            stringResource(R.string.demo_ar_face_status_starting),
-                            MaterialTheme.colorScheme.primary
-                        )
-                    else ->
-                        Pair(
-                            stringResource(R.string.demo_ar_face_status_aim),
-                            MaterialTheme.colorScheme.primary
-                        )
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 32.dp)
-                        .background(
-                            color = statusColor.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                )
-            }
         }
     }
 }

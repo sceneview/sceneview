@@ -57,25 +57,47 @@ DemoScaffold(
 ) { /* scene */ }
 ```
 
-For a **centred, content-width pill**, inset *both* sides — a centred element
-grows outwards from the middle, so reserving only the end side would shift it
-off-centre without actually keeping its end edge out of the FAB's band:
+For a **centred, content-width pill**, do not reach for a symmetric inset. The
+end-only inset is still the right one — you centre inside what is left of the
+row, not inside the whole screen:
 
 ```kotlin
 bottomOverlay = {
-    Text(
-        text = status,
+    Box(
         modifier = Modifier
-            .padding(horizontal = settingsFabReservedSpace)   // symmetric ⇒ stays centred
-            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-    )
+            .fillMaxWidth()
+            .padding(end = settingsFabReservedSpace),   // end only — one corner is occupied
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = status,
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+    }
 }
 ```
 
-`settingsFabReservedSpace` is `SETTINGS_FAB_RESERVED_SPACE` (88 dp = the 56 dp
-FAB plus its 2 × 16 dp gutter) when the demo passes `controls`, and `0.dp` when
-it does not. It is resolved **once, scaffold-side**, from the same condition that
+This recipe prescribed `padding(horizontal = settingsFabReservedSpace)` until
+#3229, on the reasoning that a centred element grows outwards from the middle so
+both sides have to be reserved. The reserve is then spent twice to protect one
+corner, which was affordable while it was a flat constant and stopped being
+affordable once it started tracking the real cluster: measured on a 411 dp screen
+with `ar-measure`'s first-launch peek header, the symmetric form left the pill
+**73 dp** — narrower than the word "measuring" — where the end-only form leaves
+**242 dp**. The pill still reads as centred, because the band it centres in is the
+band visibly free of chrome.
+
+In the demo app you rarely write either by hand: `DemoStatusBanner` is this
+idiom, already applied.
+
+`settingsFabReservedSpace` is the **measured** width of the Settings cluster,
+floored at `SETTINGS_FAB_RESERVED_SPACE` (104 dp), when the demo passes
+`controls`, and `0.dp` when it does not. It is measured rather than assumed
+because the widest thing in that corner is the peek chip, and a chip is text —
+its width follows the font scale, the locale and the demo's own `peekHeader`,
+none of which a constant can anticipate. It is resolved **once, scaffold-side**, from the same condition that
 composes the FAB — so a demo whose controls are themselves conditional
 (`controls = if (DemoSettings.qaMode) { … } else null`) gets the right inset for
 free, with no duplicated condition to drift out of sync.

@@ -37,6 +37,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -94,6 +96,96 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
         onBack = onBack,
+        // Both bottom tenants live in the scaffold slot (#2779). They used to be
+        // hand-anchored `BottomStart` (legend) and `BottomCenter` (scanning pill), and
+        // both are visible the instant the demo opens — V2 is the default and no plane
+        // is tracked yet — so they shared the same band. The slot is a bottom-aligned
+        // Column: siblings stack and cannot overlap.
+        bottomOverlay = {
+            // Legend card — names the colour codes V2 ships per plane type so the user
+            // can connect the on-screen grid colour to its `Plane.Type`. RGB values come
+            // straight from `planeMaterialPresetFor` (PR #4) — the swatches and the
+            // rendered grid match.
+            //
+            // Hidden when V1 is active (V1's procedural grid is type-agnostic, single
+            // white) so we never lie about what's on screen.
+            AnimatedVisibility(
+                visible = v2Enabled,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                // `ColumnScope.align` — horizontal only, so it keeps the card at the
+                // start edge without being able to re-enter anyone else's pixels.
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(start = 8.dp),
+            ) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.72f),
+                    contentColor = Color.White,
+                    tonalElevation = 4.dp,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = "Plane V2 — type-aware shading",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        LegendRow(
+                            // Cool-white floor — matches FLOOR_PRESET.gridR/G/B (0.85, 0.92, 1.0).
+                            swatch = Color(red = 0.85f, green = 0.92f, blue = 1.0f),
+                            label = "Floor — roughness 0.35",
+                        )
+                        LegendRow(
+                            // Warm-white ceiling — matches CEILING_PRESET (1.0, 0.96, 0.88).
+                            swatch = Color(red = 1.0f, green = 0.96f, blue = 0.88f),
+                            label = "Ceiling — roughness 0.65",
+                        )
+                        LegendRow(
+                            // Neutral-grey wall — matches WALL_PRESET (0.92, 0.92, 0.92).
+                            swatch = Color(red = 0.92f, green = 0.92f, blue = 0.92f),
+                            label = "Wall — roughness 0.80",
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = if (planeDetected) {
+                                "Move slowly — depth mesh + scan-in fired."
+                            } else {
+                                "Move slowly to scan a surface — scan-in fires on first detection."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+            }
+
+            // Scanning / tracking-failure status — never leave the user staring at a
+            // black screen (#1617). Visible until at least one plane is tracked.
+            AnimatedVisibility(
+                visible = !planeDetected,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // A reported tracking failure means the session needs the user to move
+                // the device — guidance. Plain scanning is a normal transient state.
+                val trackingLost = trackingFailureReason != null
+                DemoStatusBanner(
+                    text = if (trackingLost) {
+                        "Move the device slowly to scan a surface…"
+                    } else {
+                        stringResource(R.string.ar_status_scanning)
+                    },
+                    tone = if (trackingLost) {
+                        DemoStatusTone.Guidance
+                    } else {
+                        DemoStatusTone.Progress
+                    },
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Re-key the ARSceneView on the toggle so the renderer rebuilds cleanly — the
@@ -169,89 +261,6 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 }
             }
 
-            // Bottom-start legend card — names the colour codes V2 ships per plane type so
-            // the user can connect the on-screen grid colour to its `Plane.Type`. RGB
-            // values come straight from `planeMaterialPresetFor` (PR #4) — the swatches
-            // and the rendered grid match.
-            //
-            // Hidden when V1 is active (V1's procedural grid is type-agnostic, single
-            // white) so we never lie about what's on screen.
-            AnimatedVisibility(
-                visible = v2Enabled,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 8.dp, bottom = 24.dp),
-            ) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.72f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            text = "Plane V2 — type-aware shading",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        LegendRow(
-                            // Cool-white floor — matches FLOOR_PRESET.gridR/G/B (0.85, 0.92, 1.0).
-                            swatch = Color(red = 0.85f, green = 0.92f, blue = 1.0f),
-                            label = "Floor — roughness 0.35",
-                        )
-                        LegendRow(
-                            // Warm-white ceiling — matches CEILING_PRESET (1.0, 0.96, 0.88).
-                            swatch = Color(red = 1.0f, green = 0.96f, blue = 0.88f),
-                            label = "Ceiling — roughness 0.65",
-                        )
-                        LegendRow(
-                            // Neutral-grey wall — matches WALL_PRESET (0.92, 0.92, 0.92).
-                            swatch = Color(red = 0.92f, green = 0.92f, blue = 0.92f),
-                            label = "Wall — roughness 0.80",
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = if (planeDetected) {
-                                "Move slowly — depth mesh + scan-in fired."
-                            } else {
-                                "Move slowly to scan a surface — scan-in fires on first detection."
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                }
-            }
-
-            // Scanning / tracking-failure overlay — never leave the user staring at a black
-            // screen (#1617). Visible until at least one plane is tracked.
-            AnimatedVisibility(
-                visible = !planeDetected,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            ) {
-                Surface(
-                    modifier = Modifier.padding(bottom = 88.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        text = if (trackingFailureReason != null) {
-                            "Move the device slowly to scan a surface…"
-                        } else {
-                            stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                    )
-                }
-            }
         }
     }
 }

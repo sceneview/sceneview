@@ -721,15 +721,21 @@ DemoScaffold(
         // Full-width card / banner: only its end edge can reach the FAB.
         Surface(modifier = Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)) { /* … */ }
 
-        // Centred content-width pill: inset BOTH sides. A centred element grows
-        // outwards from the middle, so reserving only the end side would shift it
-        // off-centre without keeping its end edge out of the FAB band.
-        Text(text = status, modifier = Modifier.padding(horizontal = settingsFabReservedSpace))
+        // Centred content-width pill: STILL end-only, centred inside what is left.
+        // A symmetric inset spends the reserve twice to protect one corner and
+        // starves the pill (73 dp vs 242 dp on a 411 dp screen, #3229).
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace),
+            contentAlignment = Alignment.Center,
+        ) { Text(text = status) }
+
+        // Or just use the shared one, which is exactly this idiom:
+        DemoStatusBanner(text = status, tone = DemoStatusTone.Progress)
     },
 ) { /* scene */ }
 ```
 
-`settingsFabReservedSpace` resolves to `SETTINGS_FAB_RESERVED_SPACE` (88 dp = 56 dp FAB + 2 × 16 dp gutter) when the demo passes `controls`, and to `0.dp` when it does not — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
+`settingsFabReservedSpace` resolves to the **measured** width of the Settings cluster, floored at `SETTINGS_FAB_RESERVED_SPACE` (104 dp), when the demo passes `controls`, and to `0.dp` when it does not. It is measured rather than assumed because the widest thing in that corner is the peek chip, and a chip is text — its width follows the font scale, the locale and the demo's own `peekHeader` — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
 
 **Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
 

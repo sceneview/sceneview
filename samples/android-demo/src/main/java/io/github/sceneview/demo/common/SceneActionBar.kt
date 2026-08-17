@@ -2,6 +2,7 @@ package io.github.sceneview.demo.common
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -25,38 +26,86 @@ import androidx.compose.ui.unit.dp
  * buried in the Settings bottom sheet. Only secondary / configuration controls
  * (toggles, sliders, pickers) belong in `DemoScaffold(controls = …)`.
  *
- * The bar pins itself **bottom-start** of the scene `Box`, deliberately clear of
- * the Settings FAB at bottom-end so the two never overlap. Multiple actions sit
- * in a single [Row]; the first is rendered as a filled [Button] (the dominant
- * action), the rest as [FilledTonalButton]s — both opaque containers so the
- * cluster stays legible over a live AR camera feed or a busy 3D scene (#1476).
+ * Multiple actions sit in a single [Row]; the first is rendered as a filled
+ * [Button] (the dominant action), the rest as [FilledTonalButton]s — both opaque
+ * containers so the cluster stays legible over a live AR camera feed or a busy
+ * 3D scene (#1476).
  *
- * Place it as the last child of the scene `Box` so it draws above the
- * `SceneView` / `ARSceneView`. Status pills (top-center / bottom-center)
- * continue to live in the demo and never collide with this bottom-start bar.
+ * ## Put it in the `bottomOverlay` slot
  *
- * Usage:
  * ```
- * Box(Modifier.fillMaxSize()) {
- *     ARSceneView(...) { ... }
- *     SceneActionBar(
- *         SceneAction("Drop", onClick = { drop() }),
- *         SceneAction("Reset", onClick = { reset() }, enabled = count > 0),
- *     )
- * }
+ * DemoScaffold(
+ *     bottomOverlay = {
+ *         DemoStatusBanner(statusText, tone = DemoStatusTone.Blocked)
+ *         SceneActionBar(
+ *             SceneAction("Drop", onClick = { drop() }),
+ *             SceneAction("Reset", onClick = { reset() }, enabled = count > 0),
+ *         )
+ *     },
+ * ) { ARSceneView(...) { ... } }
  * ```
+ *
+ * The slot is a bottom-aligned Column, so the banner and the bar **stack**.
+ *
+ * This KDoc used to say the opposite — that status pills "continue to live in the
+ * demo and never collide with this bottom-start bar" — and 23 demo files followed
+ * it, hand-placing a banner in the scene lambda. The claim was false. Both this
+ * bar and a hand-placed `align(BottomCenter).padding(bottom = 24.dp)` banner
+ * resolve into the same ~40…96 dp band above the system bars, so on
+ * `ARTerrainAnchorDemo` the first-launch banner ran under the "Drop here" button
+ * *and* under the Settings FAB — visible to anyone who cloned the repo without an
+ * ARCore Cloud key. Nothing about the old shape made that avoidable: a banner's
+ * height follows its string, its wrap and the font scale, so no clearance
+ * constant survives contact with a longer sentence.
+ *
+ * The [BoxScope] overload below is the pre-existing shape, kept so the scene
+ * lambda still compiles. It is what `check-demo-bottom-overlay.py` refuses.
+ */
+@Composable
+fun ColumnScope.SceneActionBar(
+    vararg actions: SceneAction,
+    modifier: Modifier = Modifier,
+) {
+    // The Column is already inset for the system bars by the slot itself, and it
+    // already spaces its children — so this overload adds only its own gutter, and
+    // aligns start to keep the bar where users learned to find it.
+    SceneActionBarRow(
+        actions = actions,
+        modifier = modifier
+            .align(Alignment.Start)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+/**
+ * Scene-lambda placement — pins itself bottom-start of the scene `Box`.
+ *
+ * Prefer the [ColumnScope] overload in `DemoScaffold(bottomOverlay = …)`: this one
+ * shares the bottom band with anything else anchored there, and cannot be told
+ * about it. See that overload's KDoc for what that cost.
  */
 @Composable
 fun BoxScope.SceneActionBar(
     vararg actions: SceneAction,
     modifier: Modifier = Modifier,
 ) {
-    if (actions.isEmpty()) return
-    Row(
+    SceneActionBarRow(
+        actions = actions,
         modifier = modifier
             .align(Alignment.BottomStart)
             .windowInsetsPadding(WindowInsets.systemBars)
             .padding(16.dp),
+    )
+}
+
+@Composable
+private fun SceneActionBarRow(
+    actions: Array<out SceneAction>,
+    modifier: Modifier,
+) {
+    if (actions.isEmpty()) return
+    Row(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

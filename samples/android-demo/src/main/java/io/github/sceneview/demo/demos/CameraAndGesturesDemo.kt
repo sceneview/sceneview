@@ -169,6 +169,38 @@ private fun CameraModesSection(
 
     val isFreeFlight = selectedMode.second == Manipulator.Mode.FREE_FLIGHT
 
+    // One Filament manipulator per (mode, reset, distance). Building it with the
+    // FREE_FLIGHT start state pointed *at* the model (yaw faces the camera back
+    // toward `target` from `homePosition`) is what keeps Free Flight from opening
+    // on a black void (#2357).
+    //
+    // Hoisted out of the scene lambda because the flight pad now lives in the
+    // scaffold's `bottomOverlay` slot and drives the very same manipulator.
+    val manipulator = remember(selectedMode, resetKey, cameraDistance) {
+        Manipulator.Builder()
+            .orbitHomePosition(homePosition)
+            .targetPosition(target)
+            .flightStartPosition(homePosition.x, homePosition.y, homePosition.z)
+            .flightStartOrientation(
+                flightStartPitch(homePosition, target),
+                flightStartYaw(homePosition, target),
+            )
+            .flightMaxMoveSpeed(2.0f)
+            .orbitSpeed(0.005f, 0.005f)
+            .zoomSpeed(0.05f)
+            .build(selectedMode.second)
+    }
+    // Swap the live manipulator on the SAME SceneView instead of re-keying the
+    // whole subtree. Re-keying tore down + rebuilt the SceneView every time the
+    // mode changed, and the rebuilt ModelNode reused the already-attached shared
+    // `modelInstance`, leaving the new scene with nothing to render — a black
+    // void that then leaked back into Orbit (#2357). SceneView reacts to a new
+    // `cameraManipulator` via its internal SideEffect, so a stable subtree + a
+    // remembered-per-mode manipulator is all that's needed.
+    val cameraManipulator = remember(manipulator) {
+        CameraGestureDetector.DefaultCameraManipulator(manipulator)
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_camera_and_gestures_title),
         onBack = onBack,
@@ -212,37 +244,28 @@ private fun CameraModesSection(
                 valueRange = 0.5f..8f,
                 valueText = "%.1f m".format(Locale.US, cameraDistance),
             )
+        },
+        // Both bottom tenants live in the scaffold's slot, which is a bottom-aligned
+        // Column: the flight pad stacks above the action bar instead of clearing it
+        // with a hand-picked `bottom = 88.dp`. Both are tappable, so the old
+        // arrangement was a touch-target conflict as much as a visual one — the pad
+        // grows with the font scale and the constant did not.
+        bottomOverlay = {
+            if (isFreeFlight) {
+                FreeFlightMovementPad(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    onKeyDown = { manipulator.keyDown(it) },
+                    onKeyUp = { manipulator.keyUp(it) }
+                )
+            }
+            SceneActionBar(
+                SceneAction("Reset Camera", onClick = { cameraDistance = 1.5f; resetKey++ }),
+            )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // One Filament manipulator per (mode, reset, distance). Building it with the
-            // FREE_FLIGHT start state pointed *at* the model (yaw faces the camera back
-            // toward `target` from `homePosition`) is what keeps Free Flight from opening
-            // on a black void (#2357).
-            val manipulator = remember(selectedMode, resetKey, cameraDistance) {
-                Manipulator.Builder()
-                    .orbitHomePosition(homePosition)
-                    .targetPosition(target)
-                    .flightStartPosition(homePosition.x, homePosition.y, homePosition.z)
-                    .flightStartOrientation(
-                        flightStartPitch(homePosition, target),
-                        flightStartYaw(homePosition, target),
-                    )
-                    .flightMaxMoveSpeed(2.0f)
-                    .orbitSpeed(0.005f, 0.005f)
-                    .zoomSpeed(0.05f)
-                    .build(selectedMode.second)
-            }
-            // Swap the live manipulator on the SAME SceneView instead of re-keying the
-            // whole subtree. Re-keying tore down + rebuilt the SceneView every time the
-            // mode changed, and the rebuilt ModelNode reused the already-attached shared
-            // `modelInstance`, leaving the new scene with nothing to render — a black
-            // void that then leaked back into Orbit (#2357). SceneView reacts to a new
-            // `cameraManipulator` via its internal SideEffect, so a stable subtree + a
-            // remembered-per-mode manipulator is all that's needed.
-            val cameraManipulator = remember(manipulator) {
-                CameraGestureDetector.DefaultCameraManipulator(manipulator)
-            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = firstFrame.onFrame,
@@ -260,20 +283,7 @@ private fun CameraModesSection(
                     )
                 }
             }
-            if (isFreeFlight) {
-                FreeFlightMovementPad(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-                    onKeyDown = { manipulator.keyDown(it) },
-                    onKeyUp = { manipulator.keyUp(it) }
-                )
-            }
             LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
-
-            SceneActionBar(
-                SceneAction("Reset Camera", onClick = { cameraDistance = 1.5f; resetKey++ }),
-            )
         }
     }
 }

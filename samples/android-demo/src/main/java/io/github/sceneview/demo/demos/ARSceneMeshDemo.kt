@@ -53,6 +53,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -250,7 +252,60 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
             { ForceTrackingFailureMenu() }
         } else {
             null
-        }
+        },
+        // Legend + status pill are hosted by the scaffold's `bottomOverlay` slot, a
+        // bottom-aligned Column: they stack instead of sharing the same strip of pixels,
+        // and the banner is laid out against the Settings FAB instead of under it (#2779).
+        bottomOverlay = {
+            // Classification legend — only visible once geometry is rendering.
+            if (geometryCount > 0) {
+                MeshClassificationLegend(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = 16.dp)
+                )
+            }
+
+            // Status overlay.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // The tone is derived from the same branches as the text: a missing key or
+                // a dead session is Blocked, a tracking failure asks the user to move the
+                // phone (Guidance), everything else is a normal transient state.
+                val (statusText, statusTone) = when {
+                    sessionError != null ->
+                        "AR session error: $sessionError" to DemoStatusTone.Blocked
+                    !hasArcoreApiKey ->
+                        "ARCore Cloud API key not configured — see samples/android-demo/ARCORE_CLOUD_SETUP.md" to
+                            DemoStatusTone.Blocked
+                    geospatialUnavailable != null ->
+                        "${geospatialUnavailable!!} — needs outdoor area with Street View coverage + Cloud API key" to
+                            DemoStatusTone.Blocked
+                    ForcedTrackingFailure.override != null ->
+                        (trackingFailureMessage(effectiveReason) ?: "Scanning…") to
+                            DemoStatusTone.Guidance
+                    geometryCount > 0 ->
+                        "Rendering $geometryCount mesh(es)" to DemoStatusTone.Progress
+                    !isTracking -> {
+                        val failure = trackingFailureMessage(effectiveReason)
+                        if (failure != null) {
+                            failure to DemoStatusTone.Guidance
+                        } else {
+                            "Scanning environment…" to DemoStatusTone.Progress
+                        }
+                    }
+                    noGeometryGuidance ->
+                        stringResource(R.string.demo_ar_scene_mesh_no_geometry_hint) to
+                            DemoStatusTone.Guidance
+                    else -> "Looking for scene mesh…" to DemoStatusTone.Progress
+                }
+                DemoStatusBanner(statusText, tone = statusTone)
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -319,51 +374,6 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
             // Cover the still-black AR viewport until the first camera frame; lifts on a
             // session error so the error banner below is never hidden (#2484).
             ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
-
-            // Classification legend — only visible once geometry is rendering.
-            if (geometryCount > 0) {
-                MeshClassificationLegend(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, bottom = 72.dp)
-                )
-            }
-
-            // Status overlay.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                val statusText = when {
-                    sessionError != null -> "AR session error: $sessionError"
-                    !hasArcoreApiKey ->
-                        "ARCore Cloud API key not configured — see samples/android-demo/ARCORE_CLOUD_SETUP.md"
-                    geospatialUnavailable != null ->
-                        "${geospatialUnavailable!!} — needs outdoor area with Street View coverage + Cloud API key"
-                    ForcedTrackingFailure.override != null ->
-                        trackingFailureMessage(effectiveReason) ?: "Scanning…"
-                    geometryCount > 0 -> "Rendering $geometryCount mesh(es)"
-                    !isTracking -> trackingFailureMessage(effectiveReason)
-                        ?: "Scanning environment…"
-                    noGeometryGuidance -> stringResource(R.string.demo_ar_scene_mesh_no_geometry_hint)
-                    else -> "Looking for scene mesh…"
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                )
-            }
         }
     }
 }

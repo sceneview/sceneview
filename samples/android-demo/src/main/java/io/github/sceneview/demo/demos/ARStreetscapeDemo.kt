@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -339,21 +340,29 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                         stringResource(R.string.demo_ar_streetscape_no_geometry_hint)
                     else -> "Looking for streetscape geometry\u2026"
                 }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                // Content-width pill, centred in the band left free by the Settings
+                // FAB. End-only inset, not the symmetric one this used to apply: the
+                // reserve now tracks the real peek chip, and spending it on both edges
+                // to protect one corner left the pill too narrow for its own four-line
+                // status text (#3229).
+                Box(
                     modifier = Modifier
-                        .padding(bottom = 32.dp)
-                        // Content-width pill: symmetric inset, so it stays centred and
-                        // its end edge never reaches the FAB band.
-                        .padding(horizontal = settingsFabReservedSpace)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                )
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp, end = settingsFabReservedSpace),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
+                }
             }
         },
     ) {

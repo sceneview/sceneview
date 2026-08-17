@@ -44,6 +44,8 @@ import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
@@ -211,7 +213,50 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // Status banner + primary action are hosted by the scaffold's `bottomOverlay`
+        // slot, a bottom-aligned Column: they stack instead of sharing the same band,
+        // and both are laid out against the Settings FAB instead of under it (#2779).
+        // The action bar goes last so the button sits closest to the thumb.
+        bottomOverlay = {
+            // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately, without
+            // waiting for the next ARCore tracking-failure callback.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = !isTracking || ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // A tracking-failure message always asks the user to do something
+                // physical (add light, slow down, aim at texture) — Guidance. The
+                // "scanning" fallback is just a normal transient state.
+                val failure = trackingFailureMessage(effectiveReason)
+                if (failure != null) {
+                    DemoStatusBanner(failure, tone = DemoStatusTone.Guidance)
+                } else {
+                    DemoStatusBanner(
+                        stringResource(R.string.ar_status_scanning),
+                        tone = DemoStatusTone.Progress,
+                    )
+                }
+            }
+
+            // Primary action on-screen (#1964) — Clear re-arms placement (a
+            // primary re-interaction), so it lives on-screen instead of in
+            // the Settings sheet. The depth Switch stays in the sheet — genuine
+            // secondary configuration. Hidden until something has been placed.
+            if (placedAnchor != null) {
+                SceneActionBar(
+                    SceneAction("Clear", onClick = {
+                        placedAnchor?.let { runCatching { it.detach() } }
+                        placedAnchor = null
+                    }),
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Toggling the camera-stream material requires a clean swap: the depth and flat
@@ -380,46 +425,6 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                         )
                     }
                 }
-            }
-
-            // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately, without
-            // waiting for the next ARCore tracking-failure callback.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                Surface(
-                    modifier = Modifier.padding(bottom = 32.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = trackingFailureMessage(effectiveReason)
-                            ?: stringResource(R.string.ar_status_scanning),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
-
-            // Primary action on-screen (#1964) — Clear re-arms placement (a
-            // primary re-interaction), so it lives bottom-start instead of in
-            // the Settings sheet. The depth Switch stays in the sheet — genuine
-            // secondary configuration. Hidden until something has been placed.
-            if (placedAnchor != null) {
-                SceneActionBar(
-                    SceneAction("Clear", onClick = {
-                        placedAnchor?.let { runCatching { it.detach() } }
-                        placedAnchor = null
-                    }),
-                )
             }
         }
     }

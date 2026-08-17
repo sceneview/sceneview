@@ -101,6 +101,54 @@ fun WallPlacementDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_wall_placement_title),
         onBack = onBack,
+        // D-pad fine-adjust — the precise half of the dual manipulation model.
+        // Drives the most recently placed TV; absent until one is placed.
+        //
+        // In the scaffold's bottom slot rather than hand-anchored in the scene: the
+        // slot is bottom-aligned, centred and already clear of the system bars, so
+        // the pad no longer needs the `bottom = 24.dp` clearance it used to guess at.
+        bottomOverlay = {
+            val target = latestAnchor
+            if (phase == WallPlacementPhase.PLACED && target != null) {
+                // Read-modify-write the target's own adjustment, so earlier TVs keep theirs.
+                fun adjust(transform: (Adjustment) -> Adjustment) {
+                    adjustments[target] = transform(adjustments[target] ?: Adjustment())
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    FilledTonalIconButton(onClick = {
+                        adjust { it.copy(offset = it.offset.copy(y = it.offset.y + NUDGE_STEP)) }
+                    }) {
+                        Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.wall_dpad_up))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw + YAW_STEP) } }) {
+                            Icon(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.wall_dpad_rotate_left))
+                        }
+                        FilledTonalIconButton(onClick = {
+                            adjust { it.copy(offset = it.offset.copy(x = it.offset.x - NUDGE_STEP)) }
+                        }) {
+                            Icon(Icons.Filled.KeyboardArrowLeft, stringResource(R.string.wall_dpad_left))
+                        }
+                        FilledTonalIconButton(onClick = {
+                            adjust { it.copy(offset = it.offset.copy(x = it.offset.x + NUDGE_STEP)) }
+                        }) {
+                            Icon(Icons.Filled.KeyboardArrowRight, stringResource(R.string.wall_dpad_right))
+                        }
+                        FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw - YAW_STEP) } }) {
+                            Icon(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.wall_dpad_rotate_right))
+                        }
+                    }
+                    FilledTonalIconButton(onClick = {
+                        adjust { it.copy(offset = it.offset.copy(y = it.offset.y - NUDGE_STEP)) }
+                    }) {
+                        Icon(Icons.Filled.KeyboardArrowDown, stringResource(R.string.wall_dpad_down))
+                    }
+                }
+            }
+        },
     ) {
         WallPlacementScene(
             modifier = Modifier.fillMaxSize(),
@@ -196,52 +244,6 @@ fun WallPlacementDemo(onBack: () -> Unit) {
                     strokeWidth = 6.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
-            }
-        }
-
-        // D-pad fine-adjust — the precise half of the dual manipulation model.
-        // Drives the most recently placed TV; a no-op until one is placed.
-        val target = latestAnchor
-        if (phase == WallPlacementPhase.PLACED && target != null) {
-            // Read-modify-write the target's own adjustment, so earlier TVs keep theirs.
-            fun adjust(transform: (Adjustment) -> Adjustment) {
-                adjustments[target] = transform(adjustments[target] ?: Adjustment())
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                FilledTonalIconButton(onClick = {
-                    adjust { it.copy(offset = it.offset.copy(y = it.offset.y + NUDGE_STEP)) }
-                }) {
-                    Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.wall_dpad_up))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw + YAW_STEP) } }) {
-                        Icon(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.wall_dpad_rotate_left))
-                    }
-                    FilledTonalIconButton(onClick = {
-                        adjust { it.copy(offset = it.offset.copy(x = it.offset.x - NUDGE_STEP)) }
-                    }) {
-                        Icon(Icons.Filled.KeyboardArrowLeft, stringResource(R.string.wall_dpad_left))
-                    }
-                    FilledTonalIconButton(onClick = {
-                        adjust { it.copy(offset = it.offset.copy(x = it.offset.x + NUDGE_STEP)) }
-                    }) {
-                        Icon(Icons.Filled.KeyboardArrowRight, stringResource(R.string.wall_dpad_right))
-                    }
-                    FilledTonalIconButton(onClick = { adjust { it.copy(yaw = it.yaw - YAW_STEP) } }) {
-                        Icon(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.wall_dpad_rotate_right))
-                    }
-                }
-                FilledTonalIconButton(onClick = {
-                    adjust { it.copy(offset = it.offset.copy(y = it.offset.y - NUDGE_STEP)) }
-                }) {
-                    Icon(Icons.Filled.KeyboardArrowDown, stringResource(R.string.wall_dpad_down))
-                }
             }
         }
     }

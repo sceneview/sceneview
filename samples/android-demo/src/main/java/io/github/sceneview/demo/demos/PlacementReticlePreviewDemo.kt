@@ -7,10 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +30,8 @@ import io.github.sceneview.ar.ReticlePhase
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.rememberHDREnvironment
@@ -121,6 +120,22 @@ fun PlacementReticlePreviewDemo(onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 LabeledSwitch("Ring style (off = legacy disc)", ring) { ring = it }
             }
+        },
+        bottomOverlay = {
+            // The coaching line the user reads in the real flow, mirrored here so the whole
+            // "point → ready → placed" story is visible in one preview.
+            //
+            // Guidance in every branch: none of the three sentences reports a transient
+            // machine state, they all tell the user what to do next with the device or
+            // their fingers — move the phone, tap, drag/pinch.
+            DemoStatusBanner(
+                text = when {
+                    placed -> "Placed — drag to move, pinch to rotate & scale"
+                    ready -> "Surface found — tap to place"
+                    else -> "Move your phone to find a surface"
+                },
+                tone = DemoStatusTone.Guidance,
+            )
         }
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -184,28 +199,6 @@ fun PlacementReticlePreviewDemo(onBack: () -> Unit) {
                         )
                     }
                 }
-            }
-
-            // The coaching line the user reads in the real flow, mirrored here so the whole
-            // "point → ready → placed" story is visible in one preview.
-            val coaching = when {
-                placed -> "Placed — drag to move, pinch to rotate & scale"
-                ready -> "Surface found — tap to place"
-                else -> "Move your phone to find a surface"
-            }
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.Black.copy(alpha = 0.55f)
-            ) {
-                Text(
-                    text = coaching,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
-                )
             }
         }
     }

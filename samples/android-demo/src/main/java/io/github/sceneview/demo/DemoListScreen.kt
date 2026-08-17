@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +54,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
@@ -304,69 +306,81 @@ private fun DemoCard(
             color = MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Compact icon tile — ~36% of the 168dp card height. The
-                // demo title and subtitle below should win the eye, not the
-                // icon. (Previous build had a 88dp tile = 55%, which read
-                // as a kids' app launcher.)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    accent.copy(alpha = 0.32f),
-                                    accent.copy(alpha = 0.14f),
-                                ),
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Compact icon tile — ~36% of the 168dp card height. The
+            // demo title and subtitle below should win the eye, not the
+            // icon. (Previous build had a 88dp tile = 55%, which read
+            // as a kids' app launcher.)
+            //
+            // The icon and the status chip are SIBLINGS IN A ROW, not a centred
+            // icon with the chip overlaid on top of it. They used to be the
+            // latter, and `demo_list_light.png` recorded the result: on the
+            // "Contact Shadow" card the "In review" pill covered ~12dp of the
+            // 28dp icon, and at large font scale it swallowed it whole. No
+            // padding fixes that — the chip's width follows its string and the
+            // font scale, so any clearance tuned for "In review" at 1.0x is
+            // gone at 1.15x or in a language with a longer word. A Row cannot
+            // overlap its own children, so the defect is not tuned away, it is
+            // made unrepresentable.
+            //
+            // The icon moves from centred to the leading edge as a consequence,
+            // which is the better reading anyway: it now shares the 14dp left
+            // edge with the title and subtitle below.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                accent.copy(alpha = 0.32f),
+                                accent.copy(alpha = 0.14f),
                             ),
                         ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = demo.icon,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(28.dp),
                     )
-                }
-
-                // Title + subtitle — bigger weight in the card hierarchy.
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(demo.titleRes),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = stringResource(demo.subtitleRes),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        lineHeight = 16.sp,
-                    )
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = demo.icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(28.dp),
+                )
+                // The gutter carries the weight and the chip carries none, so the chip
+                // measures at its intrinsic width and the Spacer absorbs whatever is
+                // left. Weighting BOTH — the first shape this fix took — splits the
+                // free space 50/50 and squeezed "In review" onto three lines inside a
+                // pill taller than the tile it sits in.
+                Spacer(modifier = Modifier.weight(1f))
+                // Only renders for non-Working demos. Outlined M3 AssistChip-style
+                // pill on a neutral surface so it reads as an honest signal
+                // ("Preview") rather than a red alarm.
+                if (demo.status != DemoStatus.Working) {
+                    StatusChip(status = demo.status)
                 }
             }
 
-            // Status chip — only renders for non-Working demos. Outlined
-            // M3 AssistChip-style pill on a neutral surface so it reads as
-            // an honest signal ("Preview") rather than a red alarm. Sits
-            // inside the card with proper padding instead of floating
-            // clipped above the rounded corner.
-            if (demo.status != DemoStatus.Working) {
-                StatusChip(
-                    status = demo.status,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 8.dp, end = 8.dp),
+            // Title + subtitle — bigger weight in the card hierarchy.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(demo.titleRes),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+                Text(
+                    text = stringResource(demo.subtitleRes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    lineHeight = 16.sp,
                 )
             }
         }
@@ -401,11 +415,16 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(12.dp),
             )
+            // A chip label is a two-word signal, never a paragraph. Without this it
+            // wraps as soon as the row is tight — which at a large font scale turns a
+            // pill into a three-line blob taller than the 60dp tile holding it.
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

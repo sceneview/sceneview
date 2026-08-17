@@ -59,6 +59,8 @@ import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
@@ -178,7 +180,53 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // Status banner + primary action are both bottom-anchored, so both live in the
+        // scaffold slot: a bottom-aligned Column that stacks them instead of letting
+        // them share the band with each other and with the Settings FAB (#2779).
+        bottomOverlay = {
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = !isTracking || ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                val trackingHint = trackingFailureMessage(effectiveReason)
+                DemoStatusBanner(
+                    text = trackingHint ?: stringResource(R.string.ar_status_scanning),
+                    // Tone comes from the same reason that picks the sentence: a bad
+                    // session state or a camera taken by another app needs the user to
+                    // act outside this demo, the light / motion / texture reasons ask
+                    // for a physical move, and no reason at all is plain scanning.
+                    tone = when {
+                        trackingHint == null -> DemoStatusTone.Progress
+                        effectiveReason == TrackingFailureReason.BAD_STATE ||
+                            effectiveReason == TrackingFailureReason.CAMERA_UNAVAILABLE ->
+                            DemoStatusTone.Blocked
+                        else -> DemoStatusTone.Guidance
+                    },
+                )
+            }
+
+            // Primary action on-screen (#1964) — "Save & Share recording" is
+            // the demo's core action, so it lives bottom-start instead of in
+            // the Settings sheet. The button is gated on the bridge's actual
+            // connection state (#2658): with no reachable sidecar a save can
+            // only fail, so the CTA is disabled and its label states why inline
+            // instead of leading straight to a failure dialog. Label also
+            // reflects the in-flight save state.
+            val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
+            SceneActionBar(
+                SceneAction(
+                    label = saveUx.label,
+                    onClick = onSaveAndShare,
+                    enabled = saveUx.enabled,
+                ),
+            )
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -262,48 +310,6 @@ fun ARRerunDemo(onBack: () -> Unit) {
                     },
                 )
             }
-
-            // Status overlay
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                Text(
-                    text = trackingFailureMessage(effectiveReason)
-                        ?: stringResource(R.string.ar_status_scanning),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                )
-            }
-
-            // Primary action on-screen (#1964) — "Save & Share recording" is
-            // the demo's core action, so it lives bottom-start instead of in
-            // the Settings sheet. The button is gated on the bridge's actual
-            // connection state (#2658): with no reachable sidecar a save can
-            // only fail, so the CTA is disabled and its label states why inline
-            // instead of leading straight to a failure dialog. Label also
-            // reflects the in-flight save state.
-            val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
-            SceneActionBar(
-                SceneAction(
-                    label = saveUx.label,
-                    onClick = onSaveAndShare,
-                    enabled = saveUx.enabled,
-                ),
-            )
         }
     }
 }

@@ -1177,6 +1177,33 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-demo-design-system.sh
 
+      # Demo bottom overlay. Three things compete for the strip of pixels above the system
+      # bars on every demo screen — the Settings FAB at bottom-end, `SceneActionBar` at
+      # bottom-start, and the demo's own status banner at bottom-center — and 25 demo
+      # files placed theirs by hand, each with its own clearance constant. Fifteen collided,
+      # most visible on first launch. `DemoScaffold(bottomOverlay = { … })` is a bottom-aligned
+      # Column that stacks them instead, so this refuses bottom anchoring anywhere else.
+      #
+      # A doc cannot be the enforcement here: `SceneActionBar`'s KDoc used to promise those
+      # pills "never collide with this bottom-start bar", which is precisely why the drift was
+      # systematic. A banner's height follows its string, its wrap and the font scale, so no
+      # constant a demo author picks survives a longer sentence in a future locale.
+      #
+      # Not path-gated, same reason as every gate above it (#2988).
+      - name: Check demo bottom overlays
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: python3 .claude/scripts/check-demo-bottom-overlay.py
+
+      # Drives the gate's FAILING path on synthetic trees. It hinges on a brace matcher, and
+      # both directions are one line away from silent: a brace inside a Kotlin string template
+      # closes the slot early and fails a correctly-migrated demo, while an unterminated
+      # construct swallows the file and reports clean for life.
+      - name: Self-test the demo bottom-overlay gate
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-check-demo-bottom-overlay.sh
+
       # This job's own `if:` guards. Self-test first, same discipline as the
       # pair above — and here it is the whole point, because the gate's subject
       # is the file it is running from: reading the YAML is exactly what this is

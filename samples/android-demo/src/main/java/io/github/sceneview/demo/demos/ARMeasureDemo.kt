@@ -4,7 +4,6 @@ import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -45,6 +43,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.demos.internal.BoxDimensions
@@ -161,6 +161,10 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     // shown to the user: a tap that silently does nothing is the single most confusing
     // thing a measuring tool can do.
     var lastTapFeedback by remember { mutableStateOf<String?>(null) }
+    // Loudness of `lastTapFeedback`, set in the same branches that set the sentence: the
+    // two failure messages tell the user to move or re-aim the device (Guidance), the
+    // success one just confirms a point landed (Progress).
+    var lastTapTone by remember { mutableStateOf(DemoStatusTone.Progress) }
 
     // Anchors are native ARCore handles: dropping the composable without detaching them
     // leaks them into the session for as long as it lives.
@@ -239,6 +243,52 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 12.dp),
             )
         },
+        bottomOverlay = {
+            // Per-tap feedback, including the hit source that produced the point.
+            AnimatedVisibility(
+                visible = lastTapFeedback != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                DemoStatusBanner(
+                    text = lastTapFeedback.orEmpty(),
+                    tone = lastTapTone,
+                )
+            }
+
+            SceneActionBar(
+                SceneAction(
+                    label = stringResource(R.string.demo_ar_measure_action_undo),
+                    onClick = {
+                        points.removeLastOrNull()?.anchor?.detach()
+                        worldPoints = points.map { it.anchor.pose.toPosition() }
+                        if (points.size < 3) closedLoop = false
+                        lastTapFeedback = null
+                    },
+                    enabled = points.isNotEmpty(),
+                ),
+                SceneAction(
+                    label = if (closedLoop) {
+                        stringResource(R.string.demo_ar_measure_action_open)
+                    } else {
+                        stringResource(R.string.demo_ar_measure_action_close)
+                    },
+                    onClick = { closedLoop = !closedLoop },
+                    enabled = points.size > 2,
+                ),
+                SceneAction(
+                    label = stringResource(R.string.demo_ar_measure_action_clear),
+                    onClick = {
+                        points.forEach { it.anchor.detach() }
+                        points.clear()
+                        worldPoints = emptyList()
+                        closedLoop = false
+                        lastTapFeedback = null
+                    },
+                    enabled = points.isNotEmpty(),
+                ),
+            )
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -283,8 +333,10 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                         val frame = latestFrame
                         val currentSession = session
                         when {
-                            frame == null || currentSession == null || !isTracking ->
+                            frame == null || currentSession == null || !isTracking -> {
                                 lastTapFeedback = "Not tracking yet — move the device slowly"
+                                lastTapTone = DemoStatusTone.Guidance
+                            }
 
                             else -> {
                                 val placed = placeMeasurePoint(
@@ -300,9 +352,11 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                                     closedLoop = false
                                     worldPoints = points.map { it.anchor.pose.toPosition() }
                                     lastTapFeedback = "Point ${points.size} on ${placed.source.label}"
+                                    lastTapTone = DemoStatusTone.Progress
                                 } else {
                                     lastTapFeedback =
                                         "No surface there — aim at a detected plane or textured surface"
+                                    lastTapTone = DemoStatusTone.Guidance
                                 }
                             }
                         }
@@ -385,60 +439,6 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                     }
                 }
             }
-
-            // Per-tap feedback, including the hit source that produced the point.
-            AnimatedVisibility(
-                visible = lastTapFeedback != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            ) {
-                Text(
-                    text = lastTapFeedback.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .padding(bottom = 88.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(24.dp),
-                        )
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
-                )
-            }
-
-            SceneActionBar(
-                SceneAction(
-                    label = stringResource(R.string.demo_ar_measure_action_undo),
-                    onClick = {
-                        points.removeLastOrNull()?.anchor?.detach()
-                        worldPoints = points.map { it.anchor.pose.toPosition() }
-                        if (points.size < 3) closedLoop = false
-                        lastTapFeedback = null
-                    },
-                    enabled = points.isNotEmpty(),
-                ),
-                SceneAction(
-                    label = if (closedLoop) {
-                        stringResource(R.string.demo_ar_measure_action_open)
-                    } else {
-                        stringResource(R.string.demo_ar_measure_action_close)
-                    },
-                    onClick = { closedLoop = !closedLoop },
-                    enabled = points.size > 2,
-                ),
-                SceneAction(
-                    label = stringResource(R.string.demo_ar_measure_action_clear),
-                    onClick = {
-                        points.forEach { it.anchor.detach() }
-                        points.clear()
-                        worldPoints = emptyList()
-                        closedLoop = false
-                        lastTapFeedback = null
-                    },
-                    enabled = points.isNotEmpty(),
-                ),
-            )
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(initializing = !cameraReady)

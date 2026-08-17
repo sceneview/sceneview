@@ -40,6 +40,8 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.RawDepthCloud
@@ -212,7 +214,64 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // The two bottom-anchored banners live in the scaffold slot (#2779). They were
+        // hand-lifted to 120 dp and 56 dp to miss each other and the Settings FAB — a
+        // pair of constants that a longer sentence, a wrap or a larger font scale
+        // invalidates. In the slot they are Column siblings and simply stack.
+        bottomOverlay = {
+            // First-launch onboarding hint — motion-stereo on non-LiDAR Pixels needs
+            // parallax frames before any points show up, otherwise "0 points" looks
+            // like the demo is broken (#1873). Auto-dismisses on first non-zero frame
+            // or after 8 s. `rememberSaveable`-backed so configuration changes don't
+            // re-show it. Co-exists with the top-centre warm-up surface during the
+            // first frames.
+            AnimatedVisibility(
+                visible = hintVisible && depthSupported == true,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // Guidance: nothing is broken, the user has to physically move the
+                // device before depth can converge.
+                DemoStatusBanner(
+                    text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint),
+                    tone = DemoStatusTone.Guidance,
+                )
+            }
+
+            // Tracking-failure banner.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = (!isTracking && trackingFailureReason != null) ||
+                    ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // Tone comes from the same branch that picks the sentence: light,
+                // motion and texture are things the user fixes by moving; a lost
+                // camera or a bad session state is broken until they act outside
+                // the demo; no reason at all is plain scanning.
+                val (statusText, statusTone) = when (effectiveReason) {
+                    TrackingFailureReason.INSUFFICIENT_LIGHT ->
+                        "Not enough light" to DemoStatusTone.Guidance
+                    TrackingFailureReason.EXCESSIVE_MOTION ->
+                        "Moving too fast" to DemoStatusTone.Guidance
+                    TrackingFailureReason.INSUFFICIENT_FEATURES ->
+                        "Not enough detail — point at a textured surface" to
+                            DemoStatusTone.Guidance
+                    TrackingFailureReason.CAMERA_UNAVAILABLE ->
+                        "Camera unavailable" to DemoStatusTone.Blocked
+                    TrackingFailureReason.BAD_STATE ->
+                        "AR session error" to DemoStatusTone.Blocked
+                    else -> stringResource(R.string.ar_status_scanning) to
+                        DemoStatusTone.Progress
+                }
+                DemoStatusBanner(text = statusText, tone = statusTone)
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -333,33 +392,6 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                 }
             }
 
-            // First-launch onboarding hint — motion-stereo on non-LiDAR Pixels needs
-            // parallax frames before any points show up, otherwise "0 points" looks
-            // like the demo is broken (#1873). Auto-dismisses on first non-zero frame
-            // or after 8 s. `rememberSaveable`-backed so configuration changes don't
-            // re-show it. Visually distinct from the warm-up surface above (bottom
-            // placement, larger padding) so it co-exists during the first frames.
-            AnimatedVisibility(
-                visible = hintVisible && depthSupported == true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 120.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                    )
-                }
-            }
-
             // Passive "still no points after >2 s" chip — small, non-blocking,
             // top-end corner. Surfaces when the user has missed (or dismissed) the
             // first-launch hint but raw depth still hasn't converged. Hides as soon
@@ -381,41 +413,6 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                         text = stringResource(R.string.demo_ar_raw_depth_cloud_move_hint_short),
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            // Tracking-failure overlay.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = (!isTracking && trackingFailureReason != null) ||
-                    ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 56.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = when (effectiveReason) {
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                "Not enough detail — point at a textured surface"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            else -> stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )
                 }
             }

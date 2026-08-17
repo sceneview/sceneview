@@ -45,6 +45,8 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.DepthVisualization
@@ -52,7 +54,6 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import kotlin.math.max
 
 /**
  * AR demo — render ARCore's environment depth image as a false-color overlay on
@@ -196,7 +197,58 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // Legend pill + tracking-failure banner are hosted by the scaffold's
+        // `bottomOverlay` slot, a bottom-aligned Column: they stack instead of sharing
+        // the same band, and the banner is laid out against the Settings FAB (#2779).
+        bottomOverlay = {
+            // Bottom legend pill — only relevant once we're actually showing depth.
+            if (depthEverReceived && blend > 0.05f) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    contentColor = Color.White,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = "Near (~0.3 m) ──── Far (~5 m)",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            // Tracking-failure overlay — same vocabulary as ARPlacementDemo.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = (!isTracking && trackingFailureReason != null) ||
+                    ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // Tone follows the same branches as the text: a dead camera or session is
+                // Blocked, the reasons the user can act on physically are Guidance, and the
+                // plain "scanning" fallback is a normal transient state.
+                val (statusText, statusTone) = when (effectiveReason) {
+                    TrackingFailureReason.INSUFFICIENT_LIGHT ->
+                        "Not enough light" to DemoStatusTone.Guidance
+                    TrackingFailureReason.EXCESSIVE_MOTION ->
+                        "Moving too fast" to DemoStatusTone.Guidance
+                    TrackingFailureReason.INSUFFICIENT_FEATURES ->
+                        "Not enough detail — point at a textured surface" to
+                            DemoStatusTone.Guidance
+                    TrackingFailureReason.CAMERA_UNAVAILABLE ->
+                        "Camera unavailable" to DemoStatusTone.Blocked
+                    TrackingFailureReason.BAD_STATE ->
+                        "AR session error" to DemoStatusTone.Blocked
+                    else -> stringResource(R.string.ar_status_scanning) to
+                        DemoStatusTone.Progress
+                }
+                DemoStatusBanner(statusText, tone = statusTone)
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -298,59 +350,6 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                         text = "Warming up depth — move the camera slowly across a textured scene",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Bottom legend pill — only relevant once we're actually showing depth.
-            if (depthEverReceived && blend > 0.05f) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
-                    color = Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = "Near (~0.3 m) ──── Far (~5 m)",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            // Tracking-failure overlay — same vocabulary as ARPlacementDemo.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = (!isTracking && trackingFailureReason != null) ||
-                    ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = max(56, 0).dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = when (effectiveReason) {
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                "Not enough detail — point at a textured surface"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            else -> stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                     )
                 }
             }

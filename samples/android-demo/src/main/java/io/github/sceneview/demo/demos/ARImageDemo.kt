@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +50,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -110,6 +111,10 @@ fun ARImageDemo(onBack: () -> Unit) {
     // Status of the last on-device capture attempt — surfaced as a transient banner so the
     // user gets specific feedback (added / low-quality / error) rather than a silent button.
     var captureStatus by remember { mutableStateOf<String?>(null) }
+    // Loudness of `captureStatus`, set in the same branches that set the sentence — a
+    // failed capture is blocked, a retry-or-reaim message is guidance, and "processing"
+    // is just progress.
+    var captureTone by remember { mutableStateOf(DemoStatusTone.Progress) }
     var isCapturing by remember { mutableStateOf(false) }
     // "What to scan" card is expanded by default so a first-time user immediately sees the
     // reference image to point the camera at; it collapses to a chip once detection succeeds.
@@ -145,6 +150,107 @@ fun ARImageDemo(onBack: () -> Unit) {
             }
         } else {
             null
+        },
+        bottomOverlay = {
+            // On-device capture controls — the #1553 "take a photo, add it to the database"
+            // flow. Grabs the live AR camera frame, registers it in the runtime database, and
+            // ARCore starts tracking that scene with no pre-bundled database.
+            //
+            // Status overlay
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+                // when a developer has picked one in the debug menu (#1881). Read it here
+                // (not inside `onTrackingFailureChanged`) so flipping the override from
+                // the debug menu re-renders the overlay immediately, without waiting for
+                // the next ARCore tracking-failure callback. The forced reason wins over
+                // the live tracking state so QA can validate the message overlay even
+                // while a real image is being tracked.
+                val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+                val trackingHint = trackingFailureMessage(effectiveReason)
+                val statusText = when {
+                    captureStatus != null -> captureStatus!!
+                    ForcedTrackingFailure.override != null ->
+                        trackingHint ?: "Scanning for images…"
+                    imageCount > 0 -> "Tracking $imageCount image(s)"
+                    !isTracking -> trackingHint ?: "Scanning for images…"
+                    else -> "Looking for reference image…"
+                }
+                // A reported tracking failure always asks the user to move the phone;
+                // plain scanning is a normal transient state.
+                val trackingTone = if (trackingHint != null) {
+                    DemoStatusTone.Guidance
+                } else {
+                    DemoStatusTone.Progress
+                }
+                // Same branches as `statusText`, so the loudness always matches the
+                // sentence actually shown.
+                val statusTone = when {
+                    captureStatus != null -> captureTone
+                    ForcedTrackingFailure.override != null -> trackingTone
+                    imageCount > 0 -> DemoStatusTone.Progress
+                    !isTracking -> trackingTone
+                    else -> DemoStatusTone.Progress
+                }
+                DemoStatusBanner(text = statusText, tone = statusTone)
+            }
+
+            // The demo's primary action stays a raw Button rather than a SceneAction:
+            // it carries the CameraAlt icon that says "this takes a picture", and
+            // `SceneAction` is label-only, so mapping it would silently drop the icon.
+            Button(
+                onClick = {
+                    val frame = latestFrame ?: return@Button
+                    isCapturing = true
+                    captureStatus = "Processing capture…"
+                    captureTone = DemoStatusTone.Progress
+                    scope.launch {
+                        // Grab + convert the camera frame off the main thread — JPEG
+                        // round-trip + YUV->ARGB conversion would jank the renderer.
+                        val photo = withContext(Dispatchers.Default) {
+                            frame.captureCameraBitmap()
+                        }
+                        val (message, tone) = if (photo == null) {
+                            "Camera image not ready yet — try again" to
+                                DemoStatusTone.Guidance
+                        } else {
+                            // addImage runs feature extraction off-thread and re-applies
+                            // the session config on the main thread itself (#1553).
+                            when (val result = runtimeDatabase.addImage(
+                                name = "capture-${runtimeDatabase.size}",
+                                bitmap = photo
+                            )) {
+                                is AddImageResult.Added ->
+                                    "Image added — point the camera back at this scene" to
+                                        DemoStatusTone.Guidance
+                                is AddImageResult.LowQuality ->
+                                    ("Too few features — aim at a textured, " +
+                                        "high-contrast scene and retry") to
+                                        DemoStatusTone.Guidance
+                                is AddImageResult.Error ->
+                                    "Capture failed: ${result.cause.message}" to
+                                        DemoStatusTone.Blocked
+                            }
+                        }
+                        captureStatus = message
+                        captureTone = tone
+                        isCapturing = false
+                    }
+                },
+                enabled = !isCapturing && latestFrame != null
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CameraAlt,
+                    contentDescription = null
+                )
+                Text(
+                    text = "Capture this view",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -276,97 +382,6 @@ fun ARImageDemo(onBack: () -> Unit) {
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }
-                }
-            }
-
-            // On-device capture controls — the #1553 "take a photo, add it to the database"
-            // flow. Grabs the live AR camera frame, registers it in the runtime database, and
-            // ARCore starts tracking that scene with no pre-bundled database.
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Status overlay
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
-                    // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-                    // when a developer has picked one in the debug menu (#1881). Read it here
-                    // (not inside `onTrackingFailureChanged`) so flipping the override from
-                    // the debug menu re-renders the overlay immediately, without waiting for
-                    // the next ARCore tracking-failure callback. The forced reason wins over
-                    // the live tracking state so QA can validate the message overlay even
-                    // while a real image is being tracked.
-                    val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-                    val trackingHint = trackingFailureMessage(effectiveReason)
-                    val statusText = when {
-                        captureStatus != null -> captureStatus!!
-                        ForcedTrackingFailure.override != null ->
-                            trackingHint ?: "Scanning for images…"
-                        imageCount > 0 -> "Tracking $imageCount image(s)"
-                        !isTracking -> trackingHint ?: "Scanning for images…"
-                        else -> "Looking for reference image…"
-                    }
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier
-                            .background(
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-
-                Button(
-                    onClick = {
-                        val frame = latestFrame ?: return@Button
-                        isCapturing = true
-                        captureStatus = "Processing capture…"
-                        scope.launch {
-                            // Grab + convert the camera frame off the main thread — JPEG
-                            // round-trip + YUV->ARGB conversion would jank the renderer.
-                            val photo = withContext(Dispatchers.Default) {
-                                frame.captureCameraBitmap()
-                            }
-                            captureStatus = if (photo == null) {
-                                "Camera image not ready yet — try again"
-                            } else {
-                                // addImage runs feature extraction off-thread and re-applies
-                                // the session config on the main thread itself (#1553).
-                                when (val result = runtimeDatabase.addImage(
-                                    name = "capture-${runtimeDatabase.size}",
-                                    bitmap = photo
-                                )) {
-                                    is AddImageResult.Added ->
-                                        "Image added — point the camera back at this scene"
-                                    is AddImageResult.LowQuality ->
-                                        "Too few features — aim at a textured, " +
-                                            "high-contrast scene and retry"
-                                    is AddImageResult.Error ->
-                                        "Capture failed: ${result.cause.message}"
-                                }
-                            }
-                            isCapturing = false
-                        }
-                    },
-                    enabled = !isCapturing && latestFrame != null
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CameraAlt,
-                        contentDescription = null
-                    )
-                    Text(
-                        text = "Capture this view",
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
                 }
             }
         }
