@@ -11,7 +11,7 @@ import org.robolectric.RuntimeEnvironment
  * Staleness guard for the "What's new" surface.
  *
  * The Samples tab derives its What's new content from `CHANGELOG.md`, which
- * `bundleChangelogAsset` (samples/android-demo/build.gradle) copies into the
+ * `bundle<Variant>ChangelogAsset` (samples/android-demo/build.gradle) copies into the
  * APK assets on every build. Two independent failure modes would silently
  * blank the card while everything still compiled:
  *

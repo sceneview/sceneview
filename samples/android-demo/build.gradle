@@ -356,20 +356,36 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 // (collate-changelog.sh) and can never silently go stale — shipping a release
 // IS updating the screen. WhatsNewAssetIntegrityTest (Robolectric) fails if
 // this wiring rots: it opens the merged asset and requires it to parse.
-def whatsNewAssetsDir = layout.buildDirectory.dir("generated/whatsNewAssets").get().asFile
-def bundleChangelogAsset = tasks.register("bundleChangelogAsset", Copy) {
-    description = "Copies the repo-root CHANGELOG.md into the demo assets for the What's new screen."
-    group = "build"
-    from rootProject.file("CHANGELOG.md")
-    into whatsNewAssetsDir
+//
+// The directory is registered through `sources.assets.addGeneratedSourceDirectory`
+// rather than appended to `sourceSets.main.assets.srcDirs`: AGP then owns the
+// output location and declares the producer as a dependency of *every* consumer
+// it generates. A plain srcDirs entry is invisible to the task graph, so each
+// consumer has to be named by hand — and the one nobody thinks of,
+// `lintVitalAnalyzeRelease`, only exists in release, which is why it broke the
+// Play deploy instead of PR CI.
+abstract class BundleChangelogAsset extends DefaultTask {
+    @InputFile
+    abstract RegularFileProperty getChangelog()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @TaskAction
+    void bundle() {
+        def target = outputDir.get().file("CHANGELOG.md").asFile
+        target.parentFile.mkdirs()
+        target.text = changelog.get().asFile.text
+    }
 }
-android.sourceSets.main.assets.srcDirs += whatsNewAssetsDir
-// Every asset merge/package task (app variants, androidTest, and the unit-test
-// merged assets Robolectric reads via includeAndroidResources) must run after
-// the copy, or Gradle fails the build with an implicit-dependency error.
-tasks.configureEach { task ->
-    def lower = task.name.toLowerCase()
-    if (lower.contains("assets") && (lower.startsWith("merge") || lower.startsWith("package") || lower.startsWith("compress"))) {
-        task.dependsOn(bundleChangelogAsset)
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def bundleChangelogAsset = tasks.register(
+                "bundle${variant.name.capitalize()}ChangelogAsset", BundleChangelogAsset) {
+            it.description = "Copies the repo-root CHANGELOG.md into the ${variant.name} assets for the What's new screen."
+            it.group = "build"
+            it.changelog.set(rootProject.file("CHANGELOG.md"))
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(bundleChangelogAsset) { it.outputDir }
     }
 }
