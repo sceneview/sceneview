@@ -210,18 +210,10 @@ private struct ARPoseDemo: View {
     }
 
     private func offsetSlider(label: String, value: Binding<Float>, range: ClosedRange<Float>) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .frame(width: 14)
-            Slider(value: value, in: range)
-                .onChange(of: value.wrappedValue) { _, _ in
-                    lanternEntity?.position = SIMD3<Float>(x, y, z)
-                }
-            Text(String(format: "%.2f", value.wrappedValue))
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 44, alignment: .trailing)
-        }
+        LabeledSlider(label: label, value: value, range: range)
+            .onChange(of: value.wrappedValue) { _, _ in
+                lanternEntity?.position = SIMD3<Float>(x, y, z)
+            }
     }
 
     // MARK: - Overlays

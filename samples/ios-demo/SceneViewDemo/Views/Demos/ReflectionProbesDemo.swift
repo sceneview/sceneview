@@ -117,18 +117,13 @@ struct ReflectionProbesDemo: View {
 
         Divider()
 
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Intensity")
-                    .font(.subheadline)
-                Spacer()
-                Text(String(format: "%.1f", intensity))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: $intensity, in: 0.1...3.0, step: 0.1)
-        }
+        LabeledSlider(
+            label: "Intensity",
+            value: $intensity,
+            range: 0.1...3.0,
+            step: 0.1,
+            decimals: 1
+        )
 
         Divider()
 

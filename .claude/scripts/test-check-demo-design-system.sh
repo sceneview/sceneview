@@ -156,6 +156,134 @@ fun Fixture(v: Float, on: (Float) -> Unit) {
 KT
 assert_exit "a test source is not policed" "$root" 0
 
+# ══ Swift ═════════════════════════════════════════════════════════════════════════════════
+# SwiftUI spells the same drift differently, so the Swift half needs its own fixtures. The iOS
+# demo carried this control in five incompatible shapes; a gate that only reads Kotlin would
+# have called that tree clean.
+
+new_swift_fixture() {
+    local name="$1"
+    local root="$TMP_ROOT/$name"
+    mkdir -p "$root/.claude/scripts" "$root/samples/ios-demo/SceneViewDemo/Views/Demos"
+    mkdir -p "$root/samples/ios-demo/SceneViewDemo/Views/Components"
+    cp "$GATE_SRC" "$root/.claude/scripts/"
+    echo "$root"
+}
+
+# ── A Text view above a bare Slider fails, modifier chain and all ─────────────────────────
+# THE REGRESSION THIS PINS: the walk-back over `.font(...)` lines used a `^`-anchored pattern
+# with `.match(src, start, end)`. Without re.MULTILINE, `^` matches only at index 0 — so the
+# rule never fired once, on any file, and reported clean for life. Every real call site in the
+# iOS demo has a modifier chain between the label and the track; a fixture without one would
+# have gone green against the broken code.
+root="$(new_swift_fixture swift_handrolled)"
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Demos/Speed.swift" <<'SW'
+struct SpeedDemo: View {
+    @State private var speed: Float = 1.0
+    var body: some View {
+        HStack {
+            Text("Speed")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Slider(value: $speed, in: 0.25...3.0)
+                .tint(.blue)
+        }
+    }
+}
+SW
+assert_exit "swift: a Text above a bare Slider fails" "$root" 1
+assert_reports "  and names the shared Swift control" "$root" "LabeledSlider.swift"
+
+# ── A label fused into the value, via a nested string literal, still fails ────────────────
+root="$(new_swift_fixture swift_fused)"
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Demos/Gravity.swift" <<'SW'
+struct GravityDemo: View {
+    @State private var gravity: Float = 9.8
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(String(format: "Gravity: %.1f m/s\u{00B2} (\(unitName))", gravity))
+                .font(.subheadline.weight(.semibold))
+            Slider(value: $gravity, in: 1.6...20)
+        }
+    }
+}
+SW
+assert_exit "swift: a value fused into an interpolated label fails" "$root" 1
+
+# ── A text-only readout row closing right above the track fails ───────────────────────────
+root="$(new_swift_fixture swift_readout)"
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Demos/Depth.swift" <<'SW'
+struct DepthDemo: View {
+    @State private var depth: Float = 0.15
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Extrusion Depth")
+                    .font(.subheadline)
+                Spacer()
+                Text(String(format: "%.2f m", depth))
+                    .monospacedDigit()
+            }
+            Slider(value: $depth, in: 0...0.4, step: 0.01)
+        }
+    }
+}
+SW
+assert_exit "swift: a text-only readout row above a track fails" "$root" 1
+
+# ── A bespoke composition is a design, not a copy ─────────────────────────────────────────
+# A rich header (icon + headline value + a badge) and a track bookended by min/max glyphs are
+# both deliberate. The rule is "a label paired with a track", not "a track" — if these two
+# fixtures ever go red, the gate has started dictating layout instead of preventing drift.
+root="$(new_swift_fixture swift_bespoke)"
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Demos/Sky.swift" <<'SW'
+struct SkyDemo: View {
+    @State private var timeOfDay: Float = 12
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Image(systemName: timeIcon)
+                Text(timeLabel)
+                    .font(.title2).bold()
+                Text(periodLabel)
+                    .clipShape(Capsule())
+            }
+            Slider(value: $timeOfDay, in: 0...24, step: 0.25)
+        }
+    }
+}
+SW
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Demos/Light.swift" <<'SW'
+struct LightDemo: View {
+    @State private var intensity: Float = 50_000
+    var body: some View {
+        HStack {
+            Image(systemName: "sun.max")
+            Slider(value: $intensity, in: 1_000...100_000)
+            Image(systemName: "sun.max.fill")
+        }
+    }
+}
+SW
+assert_exit "swift: a bespoke header and an icon-bookended track are left alone" "$root" 0
+
+# ── The shared Swift control's own file is exempt ─────────────────────────────────────────
+root="$(new_swift_fixture swift_home)"
+cat > "$root/samples/ios-demo/SceneViewDemo/Views/Components/LabeledSlider.swift" <<'SW'
+struct LabeledSlider<V>: View where V: BinaryFloatingPoint {
+    let label: String
+    @Binding var value: V
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.subheadline)
+            Slider(value: $value, in: range)
+        }
+    }
+}
+SW
+assert_exit "swift: the shared control's own file is exempt" "$root" 0
+
 echo
 if [ "$fail" -gt 0 ]; then
     printf "${RED}%d passed, %d FAILED${NC}\n" "$pass" "$fail"

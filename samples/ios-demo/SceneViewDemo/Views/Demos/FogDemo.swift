@@ -98,20 +98,12 @@ struct FogDemo: View {
                 }
             }
 
-            // Density slider
-            HStack {
-                Text("Density")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Slider(value: $density, in: 0.05...0.8)
-                    .tint(.blue)
-                    .accessibilityLabel("Fog density")
-                Text("\(Int(density * 100))%")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 36)
-            }
+            LabeledSlider(
+                label: "Fog density",
+                value: $density,
+                range: 0.05...0.8,
+                valueText: "\(Int(density * 100))%"
+            )
         }
     }
 }
