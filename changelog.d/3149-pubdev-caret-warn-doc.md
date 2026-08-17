@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **Version-bump docs now say the Flutter README's pub.dev caret range must not be bumped ([#3149](https://github.com/sceneview/sceneview/issues/3149)).** `sync-versions.sh` already enforced it, but neither the `versioning` skill nor `/version-bump` said so — a session that "fixed" the `WARN` row would point `flutter_sceneview: ^X.Y.Z` at a version pub.dev does not serve yet, which resolves to nothing and fails `flutter pub get`.

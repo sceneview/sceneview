@@ -50,7 +50,7 @@
     {
       "platform": "maven",
       "url": "https://central.sonatype.com/artifact/io.github.sceneview/sceneview",
-      "id": "io.github.sceneview:sceneview:4.30.0"
+      "id": "io.github.sceneview:sceneview:4.31.0"
     },
     {
       "platform": "swift",

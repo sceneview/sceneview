@@ -588,6 +588,20 @@ else
     add_check "website-static SVG path data (no version inside d=)" "$SOURCE_VERSION"
 fi
 
+# Guard (#3234): same class as the SVG one above, on a different carrier — an
+# analytics identifier. A GA4 stream id is purely numeric, so a dot inside one
+# can only come from the blanket sweep. At v4.6.0 the then-unescaped `4.5.0`
+# matched `43570` inside `Stream ID: 14357002837` and rewrote it to
+# `14.6.002837`; from that point the comment held a literal version string, so
+# 25 later releases faithfully re-bumped it up to `14.31.0`. Escaping the dots
+# fixed the entry door and did nothing for the corruption already inside.
+STREAM_ID_CORRUPTED=$(grep -rhoE 'Stream ID: [0-9]+\.[0-9.]*' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null || true)
+if [ -n "$STREAM_ID_CORRUPTED" ]; then
+    add_check "website-static GA4 stream id (dotted: $(echo "$STREAM_ID_CORRUPTED" | tr '\n' ' '))" "CORRUPTED"
+else
+    add_check "website-static GA4 stream id (numeric, no version injected)" "$SOURCE_VERSION"
+fi
+
 # Website surfaces that drifted in #2564 — now pinned so they can't rot again.
 # iOS install-snippet comment on the homepage (`// Version: X.Y.Z`).
 if [ -f "$WEBSITE_INDEX" ]; then
@@ -666,7 +680,22 @@ if [ -d "$WEBSITE_DIR" ]; then
     if [ -f "$WEBSITE_DEPLOYED" ]; then
         V=$(grep 'softwareVersion' "$WEBSITE_DEPLOYED" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
         if [ "$V" != "NOT FOUND" ]; then
-            add_check "sceneview.github.io/index.html" "$V"
+            # Same shape as the consumed-SDK-dep rule (#1494), different carrier
+            # (#3234): this is a *deployed artefact*, written by `docs.yml` after
+            # the tag is pushed. During a release it is CORRECT for it to hold
+            # the previous version — demanding SOURCE_VERSION turns every
+            # pre-push gate of every release red on a file no human edits. It is
+            # still not free to rot: anything older than the last tag means the
+            # clone was never pulled, or the deploy is broken. Both are real.
+            LAST_TAG_V=$(git -C "$REPO_ROOT" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || echo "")
+            LOCATIONS+=("sceneview.github.io/index.html (deployed after tag)")
+            VERSIONS+=("$V")
+            if [ "$V" = "$SOURCE_VERSION" ] || { [ -n "$LAST_TAG_V" ] && [ "$V" = "$LAST_TAG_V" ]; }; then
+                STATUSES+=("OK")
+            else
+                STATUSES+=("MISMATCH")
+                ERRORS=$((ERRORS + 1))
+            fi
         fi
     fi
 fi
@@ -1364,12 +1393,18 @@ if changed:
     # any+`0`, which matched the SVG-logo coordinate substring `4 390` and
     # rewrote `390,194 390,340` to `390,194.17.0,340`, corrupting the markup.
     # Escaping restricts the match to a literal version string.
+    #
+    # Escaping is necessary and not sufficient (#3234): once a *legitimate*
+    # digit run has been corrupted into something containing a real version,
+    # the escaped replace re-bumps it forever. The GA4 stream id lived that
+    # for 25 releases. Lines carrying an opaque identifier are therefore
+    # excluded from the sweep by address — they never hold a version to sync.
     if [ -f "$WEBSITE_INDEX" ]; then
         for OLD_V in $OLD_VERSIONS; do
             [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
             OLD_V_RE="${OLD_V//./\\.}"
             if grep -qE "$OLD_V_RE" "$WEBSITE_INDEX" 2>/dev/null; then
-                _sed_inplace "s/$OLD_V_RE/$SOURCE_VERSION/g" "$WEBSITE_INDEX"
+                _sed_inplace "/Stream ID:/!s/$OLD_V_RE/$SOURCE_VERSION/g" "$WEBSITE_INDEX"
                 echo -e "  Fixed: website-static/index.html ($OLD_V -> $SOURCE_VERSION)"
             fi
         done
@@ -1887,6 +1922,31 @@ if [ "$FIX_MODE" = "--fix" ]; then
         } > "$TMP_CL"
         mv "$TMP_CL" "$FLUTTER_CL"
         echo -e "  Fixed: flutter/.../CHANGELOG.md — prepended '## $SOURCE_VERSION' stub (pub.dev preflight requires it, #2775)"
+        echo ""
+    fi
+fi
+
+# ─── Regenerate gpt/knowledge-*.md (--fix; also outside the ERRORS gate) ───
+# Same shape as the Flutter stub above, different generator (#3234): these four
+# files are GENERATED from llms.txt, which `--fix` has just rewritten, so a bump
+# leaves them drifted by construction. `check-gpt-knowledge-drift.sh` then fails
+# the pre-push gate of every single release — a rouge that is real, expected,
+# and pure friction, since the only correct answer is always "run the
+# generator". Never hand-edit these: they are gated as generated output.
+# `node` is routinely off a non-interactive PATH, so nvm is sourced when present
+# rather than assumed; a missing node leaves the drift check to speak for itself.
+if [ "$FIX_MODE" = "--fix" ] && [ -f "$REPO_ROOT/tools/generate-gpt-knowledge.js" ]; then
+    if ! command -v node >/dev/null 2>&1 && [ -s "$HOME/.nvm/nvm.sh" ]; then
+        # shellcheck disable=SC1091
+        . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1 || true
+    fi
+    if command -v node >/dev/null 2>&1; then
+        if (cd "$REPO_ROOT" && node tools/generate-gpt-knowledge.js >/dev/null 2>&1); then
+            echo -e "  Fixed: gpt/knowledge-*.md — regenerated from llms.txt (generated files, #3234)"
+            echo ""
+        fi
+    else
+        echo -e "  ${YELLOW}Skipped: gpt/knowledge-*.md — node not found; run 'node tools/generate-gpt-knowledge.js' by hand${NC}"
         echo ""
     fi
 fi
