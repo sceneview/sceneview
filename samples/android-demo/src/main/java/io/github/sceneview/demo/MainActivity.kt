@@ -46,9 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
 import io.github.sceneview.demo.feedback.BugReportSheet
-import io.github.sceneview.demo.feedback.FEEDBACK_FAB_BOTTOM_OFFSET
-import io.github.sceneview.demo.feedback.FeedbackButton
-import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.feedback.PendingBugReport
 import io.github.sceneview.demo.feedback.captureBugReportInfo
@@ -349,35 +346,6 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 FeedbackOpenRequest.consume()
                 openBugReport()
             }
-        }
-
-        // FeedbackChrome.chipVisible is flipped to false by tab content that
-        // fully occupies the bottom of the screen (e.g. ArViewTabContent while
-        // the live ARSceneView is running), so the chip never masks the AR
-        // model picker pill or any other bottom-anchored interaction (#2194).
-        //
-        // FeedbackChrome.listScrolled is driven by the visible list tab's
-        // scroll state: the chip sits at a fixed y-band on the bottom-left, so
-        // a full-width card resting in that band (the first Trending card on
-        // Explore, the Sponsor card on About) is masked at rest even though the
-        // tabs already reserve FEEDBACK_FAB_RESERVED_SPACE for the *last* item
-        // (#2358). Standard M3 scroll-aware-FAB behaviour fixes it: hide the
-        // chip at rest (where the overlap occurs) and reveal it — sliding in
-        // from the left, since it is bottom-start anchored — the moment the
-        // user scrolls and the overlapped card leaves the band.
-        AnimatedVisibility(
-            visible = onListScreen &&
-                FeedbackChrome.chipVisible && FeedbackChrome.listScrolled,
-            modifier = Modifier.align(Alignment.BottomStart),
-            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
-        ) {
-            FeedbackButton(
-                onClick = { openBugReport() },
-                modifier = Modifier
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 16.dp, bottom = FEEDBACK_FAB_BOTTOM_OFFSET),
-            )
         }
 
         bugReport?.let { report ->

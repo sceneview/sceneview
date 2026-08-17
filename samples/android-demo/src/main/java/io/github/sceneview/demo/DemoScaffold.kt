@@ -523,8 +523,13 @@ object DemoScaffoldTestTags {
  * `DemoScaffold(bottomOverlay = …)` instead: it resolves to this value only when
  * the demo actually renders a FAB, and to `0.dp` when it does not.
  *
- * Sibling of `FEEDBACK_FAB_RESERVED_SPACE`, which does the same job for the
- * bottom-**start** feedback chip on the tab screens (#2194).
+ * It has no sibling any more: the tab screens used to reserve a matching
+ * `FEEDBACK_FAB_RESERVED_SPACE` for a bottom-**start** feedback chip, and that
+ * chip is gone — a FAB floating over a scrolling list masks whatever rests
+ * under it at every scroll position but the top one, so it became a card in
+ * the About tab instead. This constant survives because a demo's Settings FAB
+ * floats over a *scene*, not over a list, and it is a floor rather than the
+ * answer (see below).
  */
 val SETTINGS_FAB_RESERVED_SPACE = 104.dp
 

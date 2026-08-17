@@ -237,6 +237,8 @@
     <string name="about_card_sponsor_subtitle">Help keep the project free &amp; active</string>
     <string name="about_card_credits_title">Credits</string>
     <string name="about_card_credits_subtitle">Authors &amp; CC-BY attribution for every streamed Sketchfab model</string>
+    <string name="about_card_feedback_title">Send feedback</string>
+    <string name="about_card_feedback_subtitle">Report a bug with your device info, the recent log and a screenshot</string>
 
     <!-- Credits bottom sheet (#1152 Stage 3 — CC-BY attribution surface) -->
     <string name="credits_sheet_title">Streamed model credits</string>
@@ -300,7 +302,6 @@
     <string name="tracking_failure_camera_unavailable">Camera unavailable — close other camera apps</string>
 
     <!-- In-app bug report — lightweight, permission-free (successor of #1932/#2188) -->
-    <string name="feedback_button">Feedback</string>
     <string name="feedback_action_cd">Send feedback</string>
     <!-- Generic close a11y label — also reused by GalleryModelViewerScreen. -->
     <string name="feedback_cd_close">Close</string>

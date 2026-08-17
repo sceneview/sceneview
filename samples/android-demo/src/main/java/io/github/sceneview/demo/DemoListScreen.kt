@@ -48,8 +48,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
-import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
 import io.github.sceneview.demo.ui.ParticleBackground
 import io.github.sceneview.sample.ui.DemoCategoryAccent
 
@@ -84,7 +83,6 @@ fun DemoListScreen(
     // Hide the floating feedback chip at rest and reveal it on scroll, so it
     // never masks a card resting in its fixed bottom-left band — #2358.
     val gridState = rememberLazyGridState()
-    DriveFeedbackChipReveal(gridState)
     val grouped = remember {
         DEMO_CATEGORIES.map { cat ->
             cat to ALL_DEMOS.filter { it.category == cat }
@@ -142,15 +140,11 @@ fun DemoListScreen(
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(2),
-            // Bottom contentPadding reserves a gutter for the floating
-            // feedback FAB so short categories (3D Basics with only Animation
-            // + Geometry, e.g.) don't have their last row masked by the chip
-            // (#2194).
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+                bottom = LIST_BOTTOM_GUTTER,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

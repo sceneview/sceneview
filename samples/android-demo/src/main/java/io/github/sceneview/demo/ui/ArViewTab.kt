@@ -97,12 +97,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sceneview.demo.common.placement.PlacementSpec
 import io.github.sceneview.demo.common.placement.TapToPlaceArSession
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
-import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
-import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
-import io.github.sceneview.demo.feedback.FeedbackChrome
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
@@ -260,16 +258,6 @@ fun ArViewTabContent(
             onArDemoClick = onDemoClick,
         )
         return
-    }
-
-    // Hide the floating feedback FAB while the live ARSceneView is on screen
-    // — the AR-View bottom action bar (model picker + Reset) would otherwise be
-    // masked on its left side by the chip (#2194). The chip re-appears as soon
-    // as the user exits the AR session (back gesture / back arrow) or switches
-    // tabs (DisposableEffect cleanup).
-    DisposableEffect(Unit) {
-        FeedbackChrome.chipVisible = false
-        onDispose { FeedbackChrome.chipVisible = true }
     }
 
     // From this point the user has tapped "Start AR Camera". Re-request the
@@ -622,23 +610,17 @@ private fun ArLauncherScreen(
     val ctaEnabled = !isChecking && arSupported
     val showCta = availability != ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
 
-    // Hide the floating feedback chip at rest and reveal it on scroll, so it
-    // never masks a card resting in its fixed bottom-left band — #2358. (The
-    // chip is already fully hidden during a live AR session via chipVisible.)
     val scroll = rememberScrollState()
-    DriveFeedbackChipReveal(scroll)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            // Bottom padding leaves a gutter for the floating feedback FAB so
-            // it does not mask the last row of the AR demo grid (#2194).
             .padding(
                 start = 20.dp,
                 end = 20.dp,
                 top = 12.dp,
-                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+                bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
