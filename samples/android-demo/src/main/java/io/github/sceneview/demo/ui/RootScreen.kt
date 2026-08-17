@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Group
@@ -67,8 +68,7 @@ import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoListScreen
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
-import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 
 /**
@@ -197,23 +197,17 @@ private fun AboutTabContent() {
         CreditsSheet(onDismiss = { showCreditsSheet = false })
     }
 
-    // Hide the floating feedback chip at rest (it masks the Sponsor card) and
-    // reveal it on scroll — #2358.
     val scroll = rememberScrollState()
-    DriveFeedbackChipReveal(scroll)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            // Bottom padding reserves a gutter for the floating feedback FAB
-            // so it does not mask the bottom "Help keep the project free &
-            // active" sponsor row on first render (#2194).
             .padding(
                 start = 16.dp,
                 end = 16.dp,
                 top = 12.dp,
-                bottom = FEEDBACK_FAB_RESERVED_SPACE,
+                bottom = LIST_BOTTOM_GUTTER,
             ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -263,6 +257,25 @@ private fun AboutTabContent() {
             subtitle = stringResource(R.string.about_card_credits_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
             onClick = { showCreditsSheet = true },
+        )
+        // Feedback lives here, as a card among cards, because it used to be a
+        // FAB floating over these tabs — and a FAB floating over a scrolling
+        // list masks whatever is under it, always. The previous mitigation was
+        // to hide it at rest and reveal it on scroll (#2358), on the reasoning
+        // that scrolling moves the overlapped card out of the FAB's fixed band.
+        // That holds for the *one* card that rested there; on a list taller
+        // than the viewport there is always another card in the band, so the
+        // FAB masked text at every scroll position but the top one. No
+        // clearance constant can fix that shape. As a sibling in this column
+        // it cannot overlap anything, the four tabs get their 168 dp of dead
+        // bottom gutter back, and the in-context path is untouched: a demo
+        // screen still raises `FeedbackOpenRequest` from its own top app bar.
+        AboutInfoCard(
+            icon = Icons.Filled.BugReport,
+            iconColor = Color(0xFF7E57C2),
+            title = stringResource(R.string.about_card_feedback_title),
+            subtitle = stringResource(R.string.about_card_feedback_subtitle),
+            onClick = { FeedbackOpenRequest.request() },
         )
 
         Button(
