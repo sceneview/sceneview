@@ -37,12 +37,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +58,13 @@ import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.ui.ParticleBackground
+import io.github.sceneview.demo.whatsnew.WhatsNewCard
+import io.github.sceneview.demo.whatsnew.WhatsNewRelease
+import io.github.sceneview.demo.whatsnew.WhatsNewSheet
+import io.github.sceneview.demo.whatsnew.loadWhatsNew
 import io.github.sceneview.sample.ui.DemoCategoryAccent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The Samples tab — a 2-column M3 Expressive grid of demos grouped by
@@ -91,6 +104,36 @@ fun DemoListScreen(
         }
     }
     val dark = isSystemInDarkTheme()
+
+    // "What's new" — derived, never hand-maintained: releases are parsed from
+    // the CHANGELOG.md the build bundles into assets (regenerated every
+    // release by collate-changelog.sh), and the "try these" rows are whatever
+    // the registry currently flags InReview. Loading is skipped in inspection
+    // mode for the same two reasons ParticleBackground short-circuits there:
+    // the DemoListScreenSnapshotTest goldens pin the grid chrome and must not
+    // churn on every release's version string, and preview/snapshot
+    // environments should not depend on asset I/O. The card renders only once
+    // real data arrived, so the goldens are byte-identical with this feature.
+    val inspectionMode = LocalInspectionMode.current
+    val context = LocalContext.current
+    val whatsNew by produceState(initialValue = emptyList<WhatsNewRelease>()) {
+        if (!inspectionMode) {
+            value = withContext(Dispatchers.IO) { loadWhatsNew(context.assets) }
+        }
+    }
+    val inReviewDemos = remember { ALL_DEMOS.filter { it.status == DemoStatus.InReview } }
+    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
+    if (showWhatsNew) {
+        WhatsNewSheet(
+            releases = whatsNew,
+            inReviewDemos = inReviewDemos,
+            onDemoClick = { id ->
+                showWhatsNew = false
+                onDemoClick(id)
+            },
+            onDismiss = { showWhatsNew = false },
+        )
+    }
 
     // Animated 3D particle backdrop (#1488) — a SceneView scene drawn as the
     // bottom layer of this Box, behind the demo grid. It only exists while the
@@ -158,6 +201,23 @@ fun DemoListScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // "What's new" entry point — an ordinary grid item, a SIBLING of
+            // the demo cards that scrolls away with them. Never a floating
+            // overlay: an element floating over this grid masks card content
+            // at rest, the exact bug class #2194/#2358 fixed.
+            whatsNew.firstOrNull()?.let { latest ->
+                item(
+                    key = "whats-new",
+                    span = { GridItemSpan(2) },
+                ) {
+                    WhatsNewCard(
+                        latest = latest,
+                        onClick = { showWhatsNew = true },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+
             grouped.forEach { (category, demos) ->
                 item(
                     // Namespaced key — guards against an `ALL_DEMOS` entry

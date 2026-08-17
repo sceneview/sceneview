@@ -346,3 +346,30 @@ tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.c
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(generateDemoRegistry)
 }
+
+// ─── Bundled "What's new" changelog ──────────────────────────────────────
+//
+// The Samples tab surfaces recently shipped / fixed work by parsing the
+// repo-root CHANGELOG.md at runtime (io.github.sceneview.demo.whatsnew). The
+// file is copied into a generated assets dir on every build, so the in-app
+// list is regenerated from the same artifact the release pipeline writes
+// (collate-changelog.sh) and can never silently go stale — shipping a release
+// IS updating the screen. WhatsNewAssetIntegrityTest (Robolectric) fails if
+// this wiring rots: it opens the merged asset and requires it to parse.
+def whatsNewAssetsDir = layout.buildDirectory.dir("generated/whatsNewAssets").get().asFile
+def bundleChangelogAsset = tasks.register("bundleChangelogAsset", Copy) {
+    description = "Copies the repo-root CHANGELOG.md into the demo assets for the What's new screen."
+    group = "build"
+    from rootProject.file("CHANGELOG.md")
+    into whatsNewAssetsDir
+}
+android.sourceSets.main.assets.srcDirs += whatsNewAssetsDir
+// Every asset merge/package task (app variants, androidTest, and the unit-test
+// merged assets Robolectric reads via includeAndroidResources) must run after
+// the copy, or Gradle fails the build with an implicit-dependency error.
+tasks.configureEach { task ->
+    def lower = task.name.toLowerCase()
+    if (lower.contains("assets") && (lower.startsWith("merge") || lower.startsWith("package") || lower.startsWith("compress"))) {
+        task.dependsOn(bundleChangelogAsset)
+    }
+}
