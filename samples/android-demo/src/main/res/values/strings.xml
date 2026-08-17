@@ -151,6 +151,20 @@
     <string name="samples_footer_version">SceneView v%s</string>
     <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 
+    <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
+         the release content itself is parsed at runtime from the bundled
+         CHANGELOG.md, so it can never go stale by someone forgetting an edit. -->
+    <string name="whats_new_title">What\'s new</string>
+    <string name="whats_new_card_subtitle_fallback">Recently shipped and fixed in SceneView</string>
+    <string name="whats_new_sheet_subtitle">Recently shipped and fixed, straight from the release notes</string>
+    <string name="whats_new_in_review_header">New in this build — try them</string>
+    <string name="whats_new_release_version">v%s</string>
+    <string name="whats_new_category_added">Added</string>
+    <string name="whats_new_category_fixed">Fixed</string>
+    <string name="whats_new_category_changed">Changed</string>
+    <string name="whats_new_category_performance">Performance</string>
+    <string name="whats_new_category_removed">Removed</string>
+
     <!-- Sample categories (legacy keys kept for accessibility / cross-platform docs) -->
     <string name="category_3d">3D</string>
     <string name="category_effects">Effects</string>
