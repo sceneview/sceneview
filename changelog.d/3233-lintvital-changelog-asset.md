@@ -1,0 +1,7 @@
+<!-- category: Fixed -->
+
+- **Shipping the demo to Play stopped working the moment the "What's new" card landed; the build now declares the asset it generates.** [#3232](https://github.com/sceneview/sceneview/pull/3232) added a `bundleChangelogAsset` task that copies the repo-root `CHANGELOG.md` into the demo's assets, and registered the output directory by appending it to `sourceSets.main.assets.srcDirs`. A `srcDirs` entry is invisible to Gradle's task graph, so every consumer had to be named by hand — the task list did name the asset merge, package and compress tasks, and missed `lintVitalAnalyzeRelease`. Gradle refused the build with *"uses this output of task `bundleChangelogAsset` without declaring an explicit or implicit dependency"*, and `Deploy Demo to Play Internal` went red on `main`.
+
+  **`lintVital` only exists in release**, which is exactly why no pull-request check could catch it: the whole PR pipeline was green, and the failure appeared for the first time on the merge commit, at deploy time. Naming consumers by hand was the defect, not the missing name — the next task to read that directory would have broken the same way.
+
+  The generated directory is now registered through `variant.sources.assets.addGeneratedSourceDirectory(...)`, the AGP API whose contract is precisely that the producer becomes a declared dependency of *every* consumer AGP wires, present and future. The copy moved from a `Copy` task to a small typed task with a `@OutputDirectory`, because that API owns the output location.

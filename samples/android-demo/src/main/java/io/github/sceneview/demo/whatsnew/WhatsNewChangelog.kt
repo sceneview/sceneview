@@ -12,7 +12,7 @@ import android.content.res.AssetManager
  * author forgot to update it. `CHANGELOG.md` cannot rot the same way: it is
  * regenerated on every release by `.claude/scripts/collate-changelog.sh` from
  * the per-PR `changelog.d/` fragments, and the demo build copies it into the
- * APK assets on every assemble (`bundleChangelogAsset` in
+ * APK assets on every assemble (`bundle<Variant>ChangelogAsset` in
  * `samples/android-demo/build.gradle`). Shipping a release *is* updating this
  * screen. `WhatsNewAssetIntegrityTest` fails the build if the asset goes
  * missing or the collator's format drifts past what this parser understands.
