@@ -1155,6 +1155,28 @@ jobs:
         shell: bash
         run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
 
+      # Demo design system. The samples had no shared UI vocabulary, so each demo grew its
+      # own: 37 hand-rolled sliders across 21 files, and the per-category accent palette
+      # copied into three screens — one copy annotated "keep these in sync by hand", another
+      # with no dark variant at all, so in dark mode it rendered the light hues the dark
+      # palette exists to avoid. None of it was carelessness; a control typed inline is the
+      # shortest path when writing one demo on its own, which is exactly why the check has to
+      # be mechanical rather than a convention someone re-reads for.
+      #
+      # Not path-gated, for the same reason as the pair above: a gate that skips itself on
+      # the diff it polices is green for life (#2988).
+      - name: Check the demo design system
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: python3 .claude/scripts/check-demo-design-system.py
+
+      # Drives the gate's FAILING path on synthetic trees — including the label that nests
+      # quotes inside a string template, which is where a flat regex silently stops looking.
+      - name: Self-test the demo design-system gate
+        if: always() && steps.checkout.outcome == 'success'
+        shell: bash
+        run: bash .claude/scripts/test-check-demo-design-system.sh
+
       # This job's own `if:` guards. Self-test first, same discipline as the
       # pair above — and here it is the whole point, because the gate's subject
       # is the file it is running from: reading the YAML is exactly what this is

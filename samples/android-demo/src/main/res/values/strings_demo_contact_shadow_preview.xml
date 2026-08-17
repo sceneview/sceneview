@@ -4,7 +4,10 @@
     <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
-    <string name="contact_shadow_intensity">Shadow intensity: %1$d%%</string>
+    <!-- Split from a single "Shadow intensity: %d%%" string when the demos moved to the shared
+         LabeledSlider, which renders the name and the value on opposite edges of one line. -->
+    <string name="contact_shadow_intensity_label">Shadow intensity</string>
+    <string name="contact_shadow_intensity_value">%1$d%%</string>
     <string name="contact_shadow_wall_beat_title">Wall TV — the pool no shadow map can draw</string>
     <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a thin band of shade hugs the panel\'s lower edge — it reads as pressed against the wall. Correct.</string>
     <string name="contact_shadow_wall_verdict_floor">Floor on a wall: too dark, too round — reads as a sticker, not a shadow.</string>

@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +40,7 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -137,11 +137,12 @@ private fun CustomMeshSection(
                 Switch(checked = rotating, onCheckedChange = null)
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Scale: ${"%.1f".format(Locale.US, scale)}x", style = MaterialTheme.typography.labelLarge)
-            Slider(
+            LabeledSlider(
+                label = "Scale",
                 value = scale,
                 onValueChange = { scale = it },
-                valueRange = 0.5f..2.5f
+                valueRange = 0.5f..2.5f,
+                valueText = "${"%.1f".format(Locale.US, scale)}x",
             )
         }
     ) {

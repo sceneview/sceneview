@@ -81,10 +81,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -106,6 +106,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -863,10 +864,9 @@ private fun ArDemoCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Match the Samples-tab "Augmented Reality" accent verbatim so the two
-    // grids look like a single app surface. Keep these in sync with
-    // `DemoListScreen.categoryAccent*` if either palette ever changes.
-    val accent = if (dark) Color(0xFFA5D6A7) else Color(0xFF66BB6A)
+    // The Samples-tab "Augmented Reality" accent, read from the shared palette rather than
+    // recopied, so the two grids cannot drift into looking like two apps.
+    val accent = DemoCategoryAccent["Augmented Reality", dark]
 
     Surface(
         modifier = modifier

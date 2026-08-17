@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +42,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.texture.ImageTexture
 import kotlin.math.PI
 import kotlin.math.cos
@@ -156,14 +156,12 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                 Switch(checked = brightBackground, onCheckedChange = null)
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Surface tilt: ${surfaceTilt.toInt()}°",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Surface tilt",
                 value = surfaceTilt,
                 onValueChange = { surfaceTilt = it },
-                valueRange = 0f..80f
+                valueRange = 0f..80f,
+                valueText = "${surfaceTilt.toInt()}°",
             )
         }
     ) {

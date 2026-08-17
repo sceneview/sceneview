@@ -28,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -75,6 +74,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -205,14 +205,12 @@ private fun CameraModesSection(
                 style = MaterialTheme.typography.bodySmall
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Camera distance: %.1f m".format(Locale.US, cameraDistance),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Camera distance",
                 value = cameraDistance,
                 onValueChange = { cameraDistance = it },
-                valueRange = 0.5f..8f
+                valueRange = 0.5f..8f,
+                valueText = "%.1f m".format(Locale.US, cameraDistance),
             )
         }
     ) {
@@ -508,14 +506,12 @@ private fun NodeGesturesSection(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                "Scale sensitivity: ${(scaleSensitivity * 100f).roundToInt()}%",
-                style = MaterialTheme.typography.labelMedium
-            )
-            Slider(
+            LabeledSlider(
+                label = "Scale sensitivity",
                 value = scaleSensitivity,
                 onValueChange = { scaleSensitivity = it },
                 valueRange = 0.05f..1f,
+                valueText = "${(scaleSensitivity * 100f).roundToInt()}%",
             )
 
             Spacer(modifier = Modifier.height(8.dp))

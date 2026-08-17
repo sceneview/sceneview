@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +40,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -122,15 +122,13 @@ fun FogDemo(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
 
             // Density slider
-            Text(
-                text = "Density: ${"%.2f".format(Locale.US, fogDensity)}",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Density",
                 value = fogDensity,
                 onValueChange = { fogDensity = it },
                 valueRange = 0f..1f,
-                enabled = fogEnabled
+                valueText = "%.2f".format(Locale.US, fogDensity),
+                enabled = fogEnabled,
             )
 
             Spacer(modifier = Modifier.height(12.dp))

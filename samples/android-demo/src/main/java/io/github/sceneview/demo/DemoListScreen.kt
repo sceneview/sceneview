@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.feedback.DriveFeedbackChipReveal
 import io.github.sceneview.demo.feedback.FEEDBACK_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.ui.ParticleBackground
+import io.github.sceneview.sample.ui.DemoCategoryAccent
 
 /**
  * The Samples tab — a 2-column M3 Expressive grid of demos grouped by
@@ -225,7 +226,7 @@ private fun DemoCard(
     dark: Boolean,
     onClick: () -> Unit,
 ) {
-    val accent = categoryAccent(demo.category, dark)
+    val accent = DemoCategoryAccent[demo.category, dark]
 
     Surface(
         modifier = Modifier
@@ -354,34 +355,5 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-/**
- * Per-category accent color. The light-mode palette mirrors the v4.1.0
- * SceneView design system (see DESIGN.md); the dark-mode palette desaturates each hue and
- * lifts the lightness so the tinted gradients and icon tints don't
- * burn at >9:1 contrast against an M3 dark `surfaceContainer`.
- */
-private fun categoryAccent(category: String, dark: Boolean): Color =
-    if (dark) categoryAccentDark(category) else categoryAccentLight(category)
-
-private fun categoryAccentLight(category: String): Color = when (category) {
-    "3D Basics" -> Color(0xFF6446CD)
-    "Lighting & Environment" -> Color(0xFFE6A23C)
-    "Content" -> Color(0xFF42A5F5)
-    "Interaction" -> Color(0xFFEC407A)
-    "Advanced" -> Color(0xFF26A69A)
-    "Augmented Reality" -> Color(0xFF66BB6A)
-    else -> Color(0xFF6446CD)
-}
-
-private fun categoryAccentDark(category: String): Color = when (category) {
-    "3D Basics" -> Color(0xFFB39DDB)
-    "Lighting & Environment" -> Color(0xFFFFCC80)
-    "Content" -> Color(0xFF90CAF9)
-    "Interaction" -> Color(0xFFF48FB1)
-    "Advanced" -> Color(0xFF80CBC4)
-    "Augmented Reality" -> Color(0xFFA5D6A7)
-    else -> Color(0xFFB39DDB)
 }
 

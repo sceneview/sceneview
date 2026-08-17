@@ -70,6 +70,7 @@ import io.github.sceneview.demo.sources.ModelSource
 import io.github.sceneview.demo.sources.ModelSourceId
 import io.github.sceneview.demo.sources.rememberModelSources
 import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
+import io.github.sceneview.sample.ui.demoCategoryAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -791,7 +792,7 @@ private fun FeedSection(
 
 @Composable
 private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
-    val accent = remember(sample.category) { sampleAccent(sample.category) }
+    val accent = demoCategoryAccent(sample.category)
     androidx.compose.material3.Surface(
         modifier = Modifier
             .width(168.dp)
@@ -846,17 +847,6 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
         }
     }
 }
-
-private fun sampleAccent(category: String): androidx.compose.ui.graphics.Color =
-    when (category) {
-        "3D Basics" -> androidx.compose.ui.graphics.Color(0xFF6446CD)
-        "Lighting & Environment" -> androidx.compose.ui.graphics.Color(0xFFE6A23C)
-        "Content" -> androidx.compose.ui.graphics.Color(0xFF42A5F5)
-        "Interaction" -> androidx.compose.ui.graphics.Color(0xFFEC407A)
-        "Advanced" -> androidx.compose.ui.graphics.Color(0xFF26A69A)
-        "Augmented Reality" -> androidx.compose.ui.graphics.Color(0xFF66BB6A)
-        else -> androidx.compose.ui.graphics.Color(0xFF6446CD)
-    }
 
 // Preserved for a future redesign — see #2237. Currently unwired from
 // ExploreBody; do not delete the definition.

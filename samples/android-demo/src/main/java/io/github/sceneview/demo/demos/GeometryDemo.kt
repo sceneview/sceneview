@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +47,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -318,17 +318,21 @@ internal fun GeometryDemoControls(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    Text(
-        "Metallic: ${"%.2f".format(Locale.US, metallic)}",
-        style = MaterialTheme.typography.labelLarge,
+    LabeledSlider(
+        label = "Metallic",
+        value = metallic,
+        onValueChange = onMetallicChange,
+        valueRange = 0f..1f,
+        valueText = "%.2f".format(Locale.US, metallic),
     )
-    Slider(value = metallic, onValueChange = onMetallicChange, valueRange = 0f..1f)
 
-    Text(
-        "Roughness: ${"%.2f".format(Locale.US, roughness)}",
-        style = MaterialTheme.typography.labelLarge,
+    LabeledSlider(
+        label = "Roughness",
+        value = roughness,
+        onValueChange = onRoughnessChange,
+        valueRange = 0f..1f,
+        valueText = "%.2f".format(Locale.US, roughness),
     )
-    Slider(value = roughness, onValueChange = onRoughnessChange, valueRange = 0f..1f)
 }
 
 // ── Android Studio @Preview support ────────────────────────────────────────────

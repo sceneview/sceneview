@@ -59,6 +59,7 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -239,14 +240,12 @@ private fun LightTypesScene(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Intensity slider
-            Text(
-                "Intensity: ${intensity.toInt()}",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Intensity",
                 value = intensity,
                 onValueChange = { intensity = it },
-                valueRange = 10_000f..500_000f
+                valueRange = 10_000f..500_000f,
+                decimals = 0,
             )
 
             Spacer(modifier = Modifier.height(12.dp))

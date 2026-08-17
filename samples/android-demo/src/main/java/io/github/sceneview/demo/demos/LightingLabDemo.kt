@@ -18,7 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,6 +59,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberScene
 import io.github.sceneview.rememberView
 import com.google.android.filament.Scene as FilamentScene
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -188,24 +188,20 @@ private fun SkySection(
         firstFrameRendered = firstFrame.rendered,
         controls = {
             ModeSelector(mode, onModeChange)
-            Text(
-                "Time of Day: %.1f h  ·  $periodLabel".format(Locale.US, timeOfDay),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Time of Day",
                 value = timeOfDay,
                 onValueChange = { timeOfDay = it },
-                valueRange = 0f..24f
+                valueRange = 0f..24f,
+                valueText = "%.1f h  ·  $periodLabel".format(Locale.US, timeOfDay),
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Turbidity: %.1f".format(Locale.US, turbidity),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Turbidity",
                 value = turbidity,
                 onValueChange = { turbidity = it },
-                valueRange = 1f..10f
+                valueRange = 1f..10f,
+                valueText = "%.1f".format(Locale.US, turbidity),
             )
         }
     ) {
@@ -449,24 +445,20 @@ private fun ReflectionsSection(
         firstFrameRendered = firstFrame.rendered,
         controls = {
             ModeSelector(mode, onModeChange)
-            Text(
-                "Probe Radius: %.1f m".format(Locale.US, probeRadius),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Probe Radius",
                 value = probeRadius,
                 onValueChange = { probeRadius = it },
-                valueRange = 0f..10f
+                valueRange = 0f..10f,
+                valueText = "%.1f m".format(Locale.US, probeRadius),
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Probe Y Position: %.1f".format(Locale.US, probeY),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Probe Y Position",
                 value = probeY,
                 onValueChange = { probeY = it },
-                valueRange = -2f..3f
+                valueRange = -2f..3f,
+                valueText = "%.1f".format(Locale.US, probeY),
             )
         }
     ) {

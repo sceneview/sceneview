@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,6 +77,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.Locale
@@ -318,14 +318,12 @@ private fun SingleModelSection(
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
-            Text(
-                "Camera distance: %.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Camera distance",
                 value = sliderDistance ?: autoFitRadius,
                 onValueChange = { DemoSettings.cameraDistance = it },
-                valueRange = 0.5f..10f
+                valueRange = 0.5f..10f,
+                valueText = "%.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
             )
         }
     ) {

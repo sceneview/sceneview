@@ -14,7 +14,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -48,6 +47,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -181,28 +181,24 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
 
             Spacer(Modifier.height(8.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Focus depth: %.2f m".format(Locale.US, focusDepth),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Slider(
+                LabeledSlider(
+                    label = "Focus depth",
                     value = focusDepth,
                     onValueChange = { focusDepth = it },
                     valueRange = 0.1f..5.0f,
+                    valueText = "%.2f m".format(Locale.US, focusDepth),
                     enabled = depthSupported != false,
                 )
             }
 
             Spacer(Modifier.height(4.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Blur strength: %.2f×".format(Locale.US, blurStrength),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Slider(
+                LabeledSlider(
+                    label = "Blur strength",
                     value = blurStrength,
                     onValueChange = { blurStrength = it },
                     valueRange = 0f..6f,
+                    valueText = "%.2f×".format(Locale.US, blurStrength),
                     enabled = depthSupported != false,
                 )
             }
