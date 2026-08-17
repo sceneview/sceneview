@@ -5092,7 +5092,7 @@ DemoScaffold(
         ) { Text(text = status) }
 
         // Or just use the shared one, which is exactly this idiom:
-        DemoStatusBanner(text = status, tone = DemoStatusTone.Info)
+        DemoStatusBanner(text = status, tone = DemoStatusTone.Progress)
     },
 ) { /* scene */ }
 ```
