@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +32,7 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -144,14 +144,12 @@ internal fun SplatPreviewControls(
     totalSplats: Int,
     onVisibleSplatsChange: (Int) -> Unit,
 ) {
-    Text(
-        text = "Visible splats: $visibleSplats / $totalSplats",
-        style = MaterialTheme.typography.labelLarge,
-    )
-    Slider(
+    LabeledSlider(
+        label = "Visible splats",
         value = visibleSplats.toFloat(),
         onValueChange = { onVisibleSplatsChange(it.toInt()) },
         valueRange = 0f..totalSplats.coerceAtLeast(1).toFloat(),
+        valueText = "$visibleSplats / $totalSplats",
         enabled = totalSplats > 0,
     )
     Spacer(modifier = Modifier.height(8.dp))

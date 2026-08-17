@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +29,7 @@ import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
@@ -83,25 +83,21 @@ fun LinesPathsDemo(onBack: () -> Unit) {
                 FilterChip(showPath, onClick = { showPath = !showPath }, label = { Text("Path") })
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Path Points: ${pointCount.toInt()}",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Path Points",
                 value = pointCount,
                 onValueChange = { pointCount = it },
                 valueRange = 3f..30f,
-                steps = 27
+                decimals = 0,
+                steps = 27,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Stroke Width: ${"%.0f".format(Locale.US, lineWidth * 100)}%",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Stroke Width",
                 value = lineWidth,
                 onValueChange = { lineWidth = it },
-                valueRange = 0f..1f
+                valueRange = 0f..1f,
+                valueText = "${"%.0f".format(Locale.US, lineWidth * 100)}%",
             )
         }
     ) {

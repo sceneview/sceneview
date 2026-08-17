@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +54,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
+import io.github.sceneview.sample.ui.LabeledSlider
 
 /**
  * **Contact Shadow Preview** — a *non-AR* SceneView that shows what the procedural contact
@@ -624,14 +624,15 @@ internal fun ContactShadowControls(
         Switch(checked = motionEnabled, onCheckedChange = null)
     }
     Spacer(modifier = Modifier.height(12.dp))
-    Text(
-        stringResource(R.string.contact_shadow_intensity, (intensityFactor * 100).toInt()),
-        style = MaterialTheme.typography.labelLarge
-    )
-    Slider(
+    LabeledSlider(
+        label = stringResource(R.string.contact_shadow_intensity_label),
         value = intensityFactor,
         onValueChange = onIntensityFactorChange,
-        valueRange = 0f..1.5f
+        valueRange = 0f..1.5f,
+        valueText = stringResource(
+            R.string.contact_shadow_intensity_value,
+            (intensityFactor * 100).toInt()
+        ),
     )
 }
 

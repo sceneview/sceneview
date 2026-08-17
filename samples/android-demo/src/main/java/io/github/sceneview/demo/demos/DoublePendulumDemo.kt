@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +45,7 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlin.math.atan2
 
@@ -153,23 +153,29 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         controls = {
-            Text(
-                "Lead arm: ${"%.2f".format(Locale.US, length1)} m",
-                style = MaterialTheme.typography.labelLarge,
+            LabeledSlider(
+                label = "Lead arm",
+                value = length1,
+                onValueChange = { length1 = it },
+                valueRange = 0.3f..0.65f,
+                valueText = "${"%.2f".format(Locale.US, length1)} m",
             )
-            Slider(value = length1, onValueChange = { length1 = it }, valueRange = 0.3f..0.65f)
 
-            Text(
-                "Trailing arm: ${"%.2f".format(Locale.US, length2)} m",
-                style = MaterialTheme.typography.labelLarge,
+            LabeledSlider(
+                label = "Trailing arm",
+                value = length2,
+                onValueChange = { length2 = it },
+                valueRange = 0.2f..0.5f,
+                valueText = "${"%.2f".format(Locale.US, length2)} m",
             )
-            Slider(value = length2, onValueChange = { length2 = it }, valueRange = 0.2f..0.5f)
 
-            Text(
-                "Gravity: ${"%.1f".format(Locale.US, gravity)} m/s²",
-                style = MaterialTheme.typography.labelLarge,
+            LabeledSlider(
+                label = "Gravity",
+                value = gravity,
+                onValueChange = { gravity = it },
+                valueRange = 1.6f..20f,
+                valueText = "${"%.1f".format(Locale.US, gravity)} m/s²",
             )
-            Slider(value = gravity, onValueChange = { gravity = it }, valueRange = 1.6f..20f)
 
             Spacer(modifier = Modifier.height(8.dp))
             Row(

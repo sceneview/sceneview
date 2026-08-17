@@ -33,7 +33,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -73,6 +72,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.safeDestroySkybox
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -169,11 +169,12 @@ private fun TextSection(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Font Size: ${fontSize.toInt()}px", style = MaterialTheme.typography.labelLarge)
-            Slider(
+            LabeledSlider(
+                label = "Font Size",
                 value = fontSize,
                 onValueChange = { fontSize = it },
-                valueRange = 16f..96f
+                valueRange = 16f..96f,
+                valueText = "${fontSize.toInt()}px",
             )
         }
     ) {
@@ -246,14 +247,12 @@ private fun ImageSection(
         firstFrameRendered = firstFrame.rendered,
         controls = {
             ModeSelector(mode, onModeChange)
-            Text(
-                "Gallery scale: ${"%.1f".format(Locale.US, scaleFactor)}x",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Gallery scale",
                 value = scaleFactor,
                 onValueChange = { scaleFactor = it },
-                valueRange = 0.4f..2f
+                valueRange = 0.4f..2f,
+                valueText = "${"%.1f".format(Locale.US, scaleFactor)}x",
             )
         }
     ) {

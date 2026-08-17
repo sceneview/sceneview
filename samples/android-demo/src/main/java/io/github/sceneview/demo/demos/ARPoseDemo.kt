@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +37,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -90,62 +90,26 @@ fun ARPoseDemo(onBack: () -> Unit) {
             Text("Position Controls", style = MaterialTheme.typography.labelLarge)
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // X slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("X", modifier = Modifier.alignByBaseline())
-                    Slider(
-                        value = x,
-                        onValueChange = { x = it },
-                        valueRange = -1f..1f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "%.2f".format(Locale.US, x),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.alignByBaseline()
-                    )
-                }
+                LabeledSlider(
+                    label = "X",
+                    value = x,
+                    onValueChange = { x = it },
+                    valueRange = -1f..1f,
+                )
 
-                // Y slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Y", modifier = Modifier.alignByBaseline())
-                    Slider(
-                        value = y,
-                        onValueChange = { y = it },
-                        valueRange = -0.5f..0.5f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "%.2f".format(Locale.US, y),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.alignByBaseline()
-                    )
-                }
+                LabeledSlider(
+                    label = "Y",
+                    value = y,
+                    onValueChange = { y = it },
+                    valueRange = -0.5f..0.5f,
+                )
 
-                // Z slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Z", modifier = Modifier.alignByBaseline())
-                    Slider(
-                        value = z,
-                        onValueChange = { z = it },
-                        valueRange = -0.5f..0.5f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "%.2f".format(Locale.US, z),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.alignByBaseline()
-                    )
-                }
+                LabeledSlider(
+                    label = "Z",
+                    value = z,
+                    onValueChange = { z = it },
+                    valueRange = -0.5f..0.5f,
+                )
             }
         }
     ) {

@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -76,6 +75,7 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
 import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.io.File
 import java.util.Locale
 import kotlin.math.cos
@@ -796,15 +796,13 @@ private fun AnimationSection(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                "Speed: ${"%.1f".format(Locale.US, speed)}x",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "Speed",
                 value = speed,
                 onValueChange = { speed = it },
                 valueRange = DemoMath.ANIMATION_SPEED_RANGE,
-                steps = 10
+                valueText = "${"%.1f".format(Locale.US, speed)}x",
+                steps = 10,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -827,14 +825,12 @@ private fun AnimationSection(
             // IBL intensity — the rooftop_night HDR is over-bright from cmgen's defaults.
             // 0 lux gives a pitch-black scene (only the directional sun left), 5 000 lux
             // is the atmospheric default, 10 000 lux pushes into over-exposed neutral.
-            Text(
-                "IBL Intensity: ${iblIntensity.toInt()} lux",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Slider(
+            LabeledSlider(
+                label = "IBL Intensity",
                 value = iblIntensity,
                 onValueChange = { iblIntensity = it },
                 valueRange = DemoMath.IBL_INTENSITY_RANGE,
+                valueText = "${iblIntensity.toInt()} lux",
             )
         }
     ) {

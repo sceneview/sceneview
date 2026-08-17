@@ -16,7 +16,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -53,6 +52,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberView
+import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 
 /**
@@ -186,40 +186,34 @@ fun ARFogDemo(onBack: () -> Unit) {
 
             Spacer(Modifier.height(12.dp))
 
-            Text(
-                text = "Density: ${"%.2f".format(Locale.US, fogDensity)}",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Slider(
+            LabeledSlider(
+                label = "Density",
                 value = fogDensity,
                 onValueChange = { fogDensity = it },
                 valueRange = 0f..1f,
+                valueText = "%.2f".format(Locale.US, fogDensity),
                 enabled = fogEnabled,
             )
 
             Spacer(Modifier.height(8.dp))
 
-            Text(
-                text = "Start: ${"%.1f".format(Locale.US, fogStart)} m",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Slider(
+            LabeledSlider(
+                label = "Start",
                 value = fogStart,
                 onValueChange = { fogStart = it; if (fogEnd <= it + 0.1f) fogEnd = it + 0.1f },
                 valueRange = 0f..20f,
+                valueText = "${"%.1f".format(Locale.US, fogStart)} m",
                 enabled = fogEnabled,
             )
 
             Spacer(Modifier.height(8.dp))
 
-            Text(
-                text = "End: ${"%.1f".format(Locale.US, fogEnd)} m",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Slider(
+            LabeledSlider(
+                label = "End",
                 value = fogEnd,
                 onValueChange = { fogEnd = it.coerceAtLeast(fogStart + 0.1f) },
                 valueRange = 0f..30f,
+                valueText = "${"%.1f".format(Locale.US, fogEnd)} m",
                 enabled = fogEnabled,
             )
 
