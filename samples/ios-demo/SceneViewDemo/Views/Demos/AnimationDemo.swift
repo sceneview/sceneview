@@ -241,17 +241,12 @@ struct AnimationDemo: View {
                     .buttonStyle(.plain)
                 }
 
-                HStack {
-                    Text("Speed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Slider(value: $speed, in: 0.25...3.0)
-                        .tint(.blue)
-                    Text(String(format: "%.1fx", speed))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
-                }
+                LabeledSlider(
+                    label: "Speed",
+                    value: $speed,
+                    range: 0.25...3.0,
+                    valueText: String(format: "%.1fx", speed)
+                )
 
                 HStack(spacing: 8) {
                     Button {

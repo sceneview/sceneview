@@ -130,6 +130,7 @@
 		C10000000000000000000060 /* AppStoreUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000060 /* AppStoreUpdater.swift */; };
 		C10000000000000000000061 /* UpdateBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000061 /* UpdateBanner.swift */; };
 		A10000000000000000002961 /* AssetSourcePill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002961 /* AssetSourcePill.swift */; };
+		A10000000000000000002963 /* LabeledSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000002963 /* LabeledSlider.swift */; };
 		D10000000000000000000001 /* game_boy_classic.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* game_boy_classic.usdz */; };
 		D10000000000000000000002 /* tree_scene.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* tree_scene.usdz */; };
 		D10000000000000000000003 /* red_car.usdz in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* red_car.usdz */; };
@@ -171,6 +172,7 @@
 		E10000000000000000000007 /* night_sky.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* night_sky.hdr */; };
 		ED794E60A009AF57DE2B2861 /* MovableLightDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E3457CB732DF2AE71757CC /* MovableLightDemo.swift */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
+		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
 		F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000072 /* DemoRegistryGuardTests.swift */; };
@@ -234,6 +236,7 @@
 		F10000000000000000000001 /* SceneViewDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SceneViewDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000072 /* DemoRegistryGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoRegistryGuardTests.swift; path = SceneViewDemoTests/DemoRegistryGuardTests.swift; sourceTree = SOURCE_ROOT; };
@@ -299,6 +302,7 @@
 		C20000000000000000000060 /* AppStoreUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdater.swift; path = SceneViewDemo/Services/AppStoreUpdater.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000061 /* UpdateBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UpdateBanner.swift; path = SceneViewDemo/Views/Components/UpdateBanner.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000002961 /* AssetSourcePill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetSourcePill.swift; path = SceneViewDemo/Views/Components/AssetSourcePill.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000002963 /* LabeledSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSlider.swift; path = SceneViewDemo/Views/Components/LabeledSlider.swift; sourceTree = SOURCE_ROOT; };
 		D20000000000000000000001 /* game_boy_classic.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = game_boy_classic.usdz; sourceTree = "<group>"; };
 		D20000000000000000000002 /* tree_scene.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = tree_scene.usdz; sourceTree = "<group>"; };
 		D20000000000000000000003 /* red_car.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = red_car.usdz; sourceTree = "<group>"; };
@@ -464,6 +468,7 @@
 			isa = PBXGroup;
 			children = (
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
+				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
@@ -530,6 +535,7 @@
 				C20000000000000000000050 /* DemoSheet.swift */,
 				C20000000000000000000061 /* UpdateBanner.swift */,
 				A20000000000000000002961 /* AssetSourcePill.swift */,
+				A20000000000000000002963 /* LabeledSlider.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -963,6 +969,7 @@
 				C10000000000000000000060 /* AppStoreUpdater.swift in Sources */,
 				C10000000000000000000061 /* UpdateBanner.swift in Sources */,
 				A10000000000000000002961 /* AssetSourcePill.swift in Sources */,
+				A10000000000000000002963 /* LabeledSlider.swift in Sources */,
 				7E28E9DEA941B656301CDA67 /* DemoScene.swift in Sources */,
 				F962AD205078EAFC5201865B /* AnimationScene.swift in Sources */,
 				96C00DAEDB204FF3E420ED1B /* ArAugmentedFacesScene.swift in Sources */,
@@ -1040,6 +1047,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
+				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,

@@ -234,27 +234,14 @@ struct DoublePendulumDemo: View {
     @ViewBuilder
     private var controlsSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(format: "Upper link: %.2f m", length1))
-                    .font(.subheadline.weight(.semibold))
-                Slider(value: $length1, in: 0.2...0.6)
-                    .tint(.blue)
-                    .onChange(of: length1) { _, _ in restart() }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(format: "Lower link: %.2f m", length2))
-                    .font(.subheadline.weight(.semibold))
-                Slider(value: $length2, in: 0.2...0.6)
-                    .tint(.blue)
-                    .onChange(of: length2) { _, _ in restart() }
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(format: "Gravity: %.1f m/s²", gravity))
-                    .font(.subheadline.weight(.semibold))
-                Slider(value: $gravity, in: 1.6...20)
-                    .tint(.blue)
-                    .onChange(of: gravity) { _, _ in restart() }
-            }
+            LabeledSlider(label: "Upper link", value: $length1, range: 0.2...0.6, unit: "m")
+                .onChange(of: length1) { _, _ in restart() }
+            LabeledSlider(label: "Lower link", value: $length2, range: 0.2...0.6, unit: "m")
+                .onChange(of: length2) { _, _ in restart() }
+            LabeledSlider(
+                label: "Gravity", value: $gravity, range: 1.6...20, decimals: 1, unit: "m/s²"
+            )
+            .onChange(of: gravity) { _, _ in restart() }
 
             Button {
                 restart()

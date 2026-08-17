@@ -16,7 +16,16 @@ human re-reading every demo is a check that fails when a demo re-types one.
 What it refuses
 ---------------
 1. A `Text(...)` sitting directly above a bare `Slider(...)` — that is `LabeledSlider`.
+   Enforced on Kotlin AND on Swift: the iOS demo had the same control in five mutually
+   incompatible shapes, and a gate that polices one platform lets the two demo apps drift
+   into looking like two products.
 2. A category accent hex literal outside `DemoCategoryAccent.kt` — that is the shared palette.
+   Kotlin only; on iOS the categories are a `DemoCategory` enum, which is already one
+   definition point and has no colours to copy.
+
+What it deliberately leaves alone: a bespoke composition that merely happens to contain a
+track — a rich header with tick marks, or a slider bookended by min/max icons. The rule is
+"a label paired with a track", not "a track".
 
 Exit 0 clean, 1 with findings, 2 if it could not run.
 """
@@ -28,6 +37,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 SAMPLES = REPO / "samples"
 
 SHARED_UI = "samples/common/src/main/java/io/github/sceneview/sample/ui"
+SWIFT_SHARED_SLIDER = "samples/ios-demo/SceneViewDemo/Views/Components/LabeledSlider.swift"
 
 # The palette's own home, plus this checker, are the only files allowed to name these.
 PALETTE_EXEMPT = (
@@ -112,6 +122,139 @@ def line_of(src, index):
     return src.count("\n", 0, index) + 1
 
 
+# ── Swift ─────────────────────────────────────────────────────────────────────────────────────
+# SwiftUI spells the same drift differently: the label is a sibling view, not a preceding
+# statement, and the value often lives in an `HStack { Text; Spacer; Text }` one line above the
+# track. Two shapes are refused; a third — a track inside a genuinely bespoke composition — is
+# not, and that distinction is the whole reason this is not just "grep for Slider(".
+
+SWIFT_SLIDER = re.compile(r"^([ \t]*)Slider\s*\(", re.M)
+SWIFT_TEXT = re.compile(r"\bText\s*\(")
+# No `^`: this is used with `.match(src, start, end)`, which already anchors at `start`, and
+# without re.MULTILINE a `^` there matches only at index 0 — the pattern would silently never
+# fire and the whole "label above a track" rule would report clean for life.
+SWIFT_MODIFIER_LINE = re.compile(r"[ \t]*\.[A-Za-z_]")
+SWIFT_STACK_OPEN = re.compile(r"\b[HVZ]Stack\b")
+# A view that makes the block above a track something richer than a label + readout. Any of
+# these and the composition is deliberate — `DynamicSkyDemo`'s icon/time/period header, or a
+# track bookended by min/max glyphs, are designs, not copies of the shared control.
+SWIFT_RICH_VIEW = re.compile(
+    r"\b(Image|Button|Toggle|Picker|Menu|Label|ForEach|Slider|[HVZ]Stack|Capsule|Divider)\b"
+)
+
+
+def swift_literal_end(src, i):
+    """Index just past the Swift string literal starting at src[i] == '"', or None."""
+    if src.startswith('"""', i):
+        j = src.find('"""', i + 3)
+        return None if j < 0 else j + 3
+    n, j = len(src), i + 1
+    while j < n:
+        if src[j] == "\\":
+            # `\(` opens an interpolation, which can nest strings and parens of its own.
+            if j + 1 < n and src[j + 1] == "(":
+                depth, j = 0, j + 1
+                while j < n:
+                    if src[j] == '"':
+                        j = swift_literal_end(src, j)
+                        if j is None:
+                            return None
+                        continue
+                    if src[j] == "(":
+                        depth += 1
+                    elif src[j] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            j += 1
+                            break
+                    j += 1
+                continue
+            j += 2
+            continue
+        if src[j] == '"':
+            return j + 1
+        j += 1
+    return None
+
+
+def swift_call_end(src, open_paren):
+    """Index just past the ')' closing the call whose '(' is at open_paren, or None."""
+    depth, i, n = 0, open_paren, len(src)
+    while i < n:
+        c = src[i]
+        if c == '"':
+            i = swift_literal_end(src, i)
+            if i is None:
+                return None
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return None
+
+
+def _skip_modifier_lines_back(src, line_start):
+    """Walk back over `.font(...)`-style modifier lines; return the index they start at."""
+    pos = line_start
+    while pos > 0:
+        prev_start = src.rfind("\n", 0, pos - 1) + 1
+        if prev_start >= pos or not SWIFT_MODIFIER_LINE.match(src, prev_start, pos):
+            break
+        pos = prev_start
+    return pos
+
+
+def _block_above(src, end_brace):
+    """For a '}' at end_brace, the (open_index, body) of the block it closes, or None."""
+    depth, i = 0, end_brace
+    while i >= 0:
+        if src[i] == "}":
+            depth += 1
+        elif src[i] == "{":
+            depth -= 1
+            if depth == 0:
+                return i, src[i + 1:end_brace]
+        i -= 1
+    return None
+
+
+def find_hand_rolled_sliders_swift(src):
+    out = []
+    for m in SWIFT_SLIDER.finditer(src):
+        line_start = m.start()
+        probe = _skip_modifier_lines_back(src, line_start)
+        head = src[:probe].rstrip()
+
+        # Shape 1 — a labelled `Text(...)` view directly above the track.
+        if head.endswith(")"):
+            for tm in reversed(list(SWIFT_TEXT.finditer(src, 0, probe))):
+                end = swift_call_end(src, src.index("(", tm.start()))
+                if end is not None and end == len(head):
+                    out.append((line_of(src, m.start()),
+                                "Text(...) directly above a bare Slider("))
+                break
+            continue
+
+        # Shape 2 — an `HStack { Text; Spacer; Text }` readout row closing right above the
+        # track. Only when that row holds nothing but text: anything richer is a design.
+        if head.endswith("}"):
+            block = _block_above(src, len(head) - 1)
+            if block is None:
+                continue
+            open_index, body = block
+            opener = src[src.rfind("\n", 0, open_index) + 1:open_index]
+            if not SWIFT_STACK_OPEN.search(opener):
+                continue
+            if SWIFT_TEXT.search(body) and not SWIFT_RICH_VIEW.search(body):
+                out.append((line_of(src, m.start()),
+                            "a text-only label/readout row directly above a bare Slider("))
+    return out
+
+
 def find_hand_rolled_sliders(path, src):
     out = []
     for m in SLIDER_CALL.finditer(src):
@@ -151,15 +294,28 @@ def main():
         return 2
 
     findings = []
-    for path in sorted(SAMPLES.rglob("*.kt")):
+    sources = sorted(SAMPLES.rglob("*.kt")) + sorted(SAMPLES.rglob("*.swift"))
+    for path in sources:
         rel = path.relative_to(REPO).as_posix()
         if "/build/" in f"/{rel}" or "/src/test/" in f"/{rel}":
+            continue
+        # The Swift demo keeps its tests in a sibling target, not under `src/test`.
+        if "/SceneViewDemoTests/" in f"/{rel}" or "/SceneViewDemoUITests/" in f"/{rel}":
             continue
         try:
             src = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             print(f"check-demo-design-system: cannot read {rel}: {exc}", file=sys.stderr)
             return 2
+
+        if path.suffix == ".swift":
+            if rel == SWIFT_SHARED_SLIDER:
+                continue
+            for line, why in find_hand_rolled_sliders_swift(src):
+                findings.append((rel, line, why,
+                                 "use SceneViewDemo/Views/Components/LabeledSlider.swift"))
+            continue
+
         for line, why in find_hand_rolled_sliders(path, src):
             findings.append((rel, line, why, "use io.github.sceneview.sample.ui.LabeledSlider"))
         if rel not in PALETTE_EXEMPT:

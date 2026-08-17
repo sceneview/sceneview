@@ -133,18 +133,13 @@ struct ShapeExtrudeDemo: View {
 
         Divider()
 
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Extrusion Depth")
-                    .font(.subheadline)
-                Spacer()
-                Text(String(format: "%.2f m", extrusionDepth))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(value: $extrusionDepth, in: 0...0.4, step: 0.01)
-        }
+        LabeledSlider(
+            label: "Extrusion Depth",
+            value: $extrusionDepth,
+            range: 0...0.4,
+            step: 0.01,
+            unit: "m"
+        )
 
         Divider()
 
