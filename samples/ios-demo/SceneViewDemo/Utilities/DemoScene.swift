@@ -72,6 +72,23 @@ import SwiftUI
 /// equivalent, e.g. ARCore Geospatial/VPS) rather than merely not ported yet.
 /// Omit it for the ordinary "not ported yet, might land later" case.
 ///
+/// # `@available false` is no longer a shipping state (#3231)
+///
+/// Every `@available false` Scene file was deleted: a Samples card that opens
+/// a "Coming soon" screen is a dead end, and a showcase app does not display
+/// its holes. An id with no iOS screen now has **no Scene file at all** — its
+/// deep link falls through to `DeepLinkPlaceholder`
+/// (`DemoDeepLinkRegistry.destination(for:)`), and its absence from the iOS
+/// catalog is recorded in the cross-platform ledger `parity-manifest.yml`
+/// (`iosStatus: android-only`), which `.claude/scripts/check-demo-id-parity.sh`
+/// enforces.
+///
+/// The `@available` / `comingSoon` / ``ComingSoonScreen`` machinery below is
+/// kept deliberately — it is the compile-time path a new `@available false`
+/// file would take, and `DemoRegistryGuardTests.testNoSamplesCardIsADeadEnd`
+/// is what fails the build if one is ever added again. Adding a demo means
+/// adding a Scene file with a **real** destination.
+///
 /// The conforming type must also provide:
 /// - `static var destination: AnyView { get }` — SwiftUI view (ignored when
 ///   `@available false`).

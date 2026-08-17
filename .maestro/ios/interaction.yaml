@@ -3,8 +3,10 @@
 # Run a fast subset of the iOS device-QA harness:
 #   maestro test .maestro/ios/interaction.yaml
 #
-# `camera-controls`, `collision`, and `gesture-editing` are live on iOS;
-# `view-node` is still "Coming soon" and is covered by placeholders.yaml.
+# `camera-controls`, `collision`, and `gesture-editing` are live on iOS — the
+# whole iOS Interaction category. `view-node` has no iOS screen and no
+# catalogue card (#3231); its deep link falls through to the placeholder and is
+# covered by placeholders.yaml.
 #
 # Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
 appId: io.github.sceneview.demo
