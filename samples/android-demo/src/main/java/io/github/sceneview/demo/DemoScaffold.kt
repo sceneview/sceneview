@@ -547,9 +547,27 @@ val SETTINGS_FAB_RESERVED_SPACE = 104.dp
  *   the need to measure the container.
  *
  * Both idioms collapse to a no-op when [settingsFabReservedSpace] is `0.dp`.
+ *
+ * ## It is a [ColumnScope], and that is the point
+ *
+ * The slot lays its children out in a bottom-aligned [Column], so a demo that
+ * needs a status banner *and* an action bar *and* a legend writes all three and
+ * they **stack**. They cannot be made to overlap, because siblings in a Column
+ * do not share pixels.
+ *
+ * That is not a convenience. Before it, the slot was a `Box` and the only place
+ * to put a second bottom element was the scene lambda, hand-aligned — and a
+ * survey of the demo app found 23 files doing exactly that, against 4 using this
+ * slot. `SceneActionBar`'s own KDoc had promised that "status pills … never
+ * collide with this bottom-start bar", which was simply untrue: on
+ * `ARTerrainAnchorDemo` the default first-launch banner ran straight under both
+ * the "Drop here" button and the Settings FAB. Padding cannot fix that class of
+ * bug — the banner's height follows its string, its wrap and the font scale —
+ * so the container had to stop allowing it.
  */
 @Stable
 class DemoBottomOverlayScope internal constructor(
+    private val columnScope: ColumnScope,
     /**
      * Width of the bottom-end band occupied by the Settings FAB:
      * [SETTINGS_FAB_RESERVED_SPACE] when this demo passes `controls` to
@@ -557,7 +575,7 @@ class DemoBottomOverlayScope internal constructor(
      * bottom edge is free, and the overlay should use all of it).
      */
     val settingsFabReservedSpace: Dp,
-)
+) : ColumnScope by columnScope
 
 /**
  * Renders the `bottomOverlay` slot: full scene width, pinned to the bottom of the
@@ -581,6 +599,12 @@ class DemoBottomOverlayScope internal constructor(
  * grew it upwards into pixels nobody looked at — but it *does* land in the
  * measured band height, and on the QA Pixel_7a it inflated the reserved band by
  * 146 px of status bar no overlay was ever using (#2957).
+ *
+ * The container is a bottom-aligned [Column], not a `Box`: a demo with a status
+ * banner *and* an action bar gets them stacked, and cannot get them on top of
+ * each other. A slot holding exactly one centred child — every caller before
+ * this change — lays out identically, because `CenterHorizontally` on a
+ * wrap-height Column filling the width is `Alignment.BottomCenter` on a Box.
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
@@ -588,8 +612,7 @@ private fun BoxScope.DemoBottomOverlay(
     onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoBottomOverlayScope.() -> Unit,
 ) {
-    val scope = remember(reservedSpace) { DemoBottomOverlayScope(reservedSpace) }
-    Box(
+    Column(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
@@ -600,11 +623,19 @@ private fun BoxScope.DemoBottomOverlay(
                 )
             )
             .testTag(DemoScaffoldTestTags.BOTTOM_OVERLAY),
-        contentAlignment = Alignment.BottomCenter,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(BOTTOM_OVERLAY_STACK_SPACING),
     ) {
-        scope.content()
+        DemoBottomOverlayScope(this, reservedSpace).content()
     }
 }
+
+/**
+ * Gap between two elements stacked in the `bottomOverlay` slot — a banner over an
+ * action bar, say. Matches the 8 dp the Settings FAB column already puts between
+ * its own peek chip and FAB, so the two bottom clusters read as one frame.
+ */
+private val BOTTOM_OVERLAY_STACK_SPACING = 8.dp
 
 /**
  * Peek chip + FAB + ModalBottomSheet — pulled into its own composable so the
