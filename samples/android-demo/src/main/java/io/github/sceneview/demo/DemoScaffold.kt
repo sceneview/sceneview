@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -64,8 +65,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -330,6 +333,13 @@ fun DemoScaffold(
         var bottomOverlayBandPx by remember { mutableIntStateOf(0) }
         val bottomOverlayBand = with(LocalDensity.current) { bottomOverlayBandPx.toDp() }
 
+        // Width of the Settings FAB cluster, measured for the same reason the band height
+        // is: the widest thing in that corner is the peek chip, and a chip is *text*. Its
+        // width follows the font scale, the locale and the demo's own `peekHeader`, none
+        // of which a constant can anticipate — see [SETTINGS_FAB_RESERVED_SPACE].
+        var settingsClusterWidthPx by remember { mutableIntStateOf(0) }
+        val settingsClusterWidth = with(LocalDensity.current) { settingsClusterWidthPx.toDp() }
+
         // Scene always full-screen below the top app bar.
         Box(
             modifier = Modifier
@@ -362,7 +372,16 @@ fun DemoScaffold(
                     // the reserve from the same condition is what keeps a demo like
                     // `ARStreetscapeDemo` (controls gated on `DemoSettings.qaMode`)
                     // correct without restating the condition in the demo (#2779).
-                    reservedSpace = if (controls != null) SETTINGS_FAB_RESERVED_SPACE else 0.dp,
+                    // The measured cluster width wins whenever it exceeds the constant —
+                    // which is exactly what happens at a large font scale, where the peek
+                    // chip outgrows the 104 dp the constant reserves for it. The constant
+                    // stays as the floor: it is what the first composition has to go on,
+                    // before any measurement has landed.
+                    reservedSpace = if (controls != null) {
+                        maxOf(SETTINGS_FAB_RESERVED_SPACE, settingsClusterWidth)
+                    } else {
+                        0.dp
+                    },
                     onBandHeightChanged = { bottomOverlayBandPx = it },
                     content = bottomOverlay,
                 )
@@ -375,6 +394,7 @@ fun DemoScaffold(
                     haptic = haptic,
                     peekHeader = peekHeader,
                     onResetSettings = onResetSettings,
+                    onClusterWidthChanged = { settingsClusterWidthPx = it },
                 )
             }
         }
@@ -518,6 +538,22 @@ object DemoScaffoldTestTags {
  * peeks and retracts — so it only has to read as "not touching", not as a
  * permanently balanced gutter.
  *
+ * ## It is a floor, not the answer (#3229)
+ *
+ * That 79 dp was measured with the word "Settings" at font scale 1.0. The chip is
+ * **text**, so its width follows the font scale, the translation and the demo's
+ * own `peekHeader` — and at font scale 1.3 it outgrows this band. Device-QA on
+ * the Pixel_7a emulator caught the consequence on two screens at once:
+ * `ar-terrain-anchor`'s first-launch banner ran back under the FAB, and
+ * `ar-measure`'s "Clear" button was clipped by it. Both were clean at 1.0, which
+ * is precisely why a constant is the wrong instrument — it fails only in the
+ * configurations nobody screenshots.
+ *
+ * [DemoScaffold] therefore **measures** the real cluster every composition and
+ * reserves `maxOf(this, measured)`. This constant remains as the floor the first
+ * composition uses, before any measurement has landed, and as the documented
+ * baseline for the 1.0 layout it was tuned against.
+ *
  * Do **not** hard-code it in a demo. Read
  * [DemoBottomOverlayScope.settingsFabReservedSpace] inside
  * `DemoScaffold(bottomOverlay = …)` instead: it resolves to this value only when
@@ -538,13 +574,17 @@ val SETTINGS_FAB_RESERVED_SPACE = 104.dp
  * - **Full-width card / banner** →
  *   `Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)`.
  *   Only the end edge can ever reach the FAB, so only the end edge is inset.
- * - **Centred, content-width pill** →
- *   `Modifier.padding(horizontal = settingsFabReservedSpace)`.
- *   The inset is deliberately **symmetric**: insetting the end side alone would
- *   shift the pill off-centre, and a *centred* element only keeps its end edge
- *   out of the band when the band is reserved on both sides (it grows outwards
- *   from the middle). Equivalent to `widthIn(max = width - 2 × reserve)`, minus
- *   the need to measure the container.
+ * - **Centred, content-width pill** → the *same* end-only inset, on a
+ *   `fillMaxWidth()` box with `contentAlignment = Alignment.Center`. The pill
+ *   then centres in the band that is actually free, which is what a viewer
+ *   reads as centred anyway — the occupied corner is visibly occupied.
+ *
+ *   This used to be a **symmetric** `padding(horizontal = …)`, on the reasoning
+ *   that a centred element grows both ways so both edges must be reserved. True,
+ *   and unaffordable: it spends the reserve twice to protect one corner. Once
+ *   the reserve started tracking the real chip instead of a flat 104 dp, that
+ *   doubling left `ar-measure`'s banner **73 dp** wide on a 411 dp screen. The
+ *   end-only inset leaves it 242 dp (#3229).
  *
  * Both idioms collapse to a no-op when [settingsFabReservedSpace] is `0.dp`.
  *
@@ -569,10 +609,17 @@ val SETTINGS_FAB_RESERVED_SPACE = 104.dp
 class DemoBottomOverlayScope internal constructor(
     private val columnScope: ColumnScope,
     /**
-     * Width of the bottom-end band occupied by the Settings FAB:
-     * [SETTINGS_FAB_RESERVED_SPACE] when this demo passes `controls` to
-     * [DemoScaffold], `0.dp` when it does not (no `controls` → no FAB → the whole
-     * bottom edge is free, and the overlay should use all of it).
+     * Width of the bottom-end band occupied by the Settings FAB and its peek chip:
+     * the **measured** width of that cluster, floored at
+     * [SETTINGS_FAB_RESERVED_SPACE], when this demo passes `controls` to
+     * [DemoScaffold] — and `0.dp` when it does not (no `controls` → no FAB → the
+     * whole bottom edge is free, and the overlay should use all of it).
+     *
+     * Measured, not constant, because the widest thing in that corner is a chip
+     * carrying text: at font scale 1.3 it outgrew the constant and put two demos'
+     * bottom overlays back under the FAB (#3229). Reading this value is therefore
+     * the only correct way for a demo to clear the FAB — a hand-picked `dp` is
+     * right until the first font-scale or locale change.
      */
     val settingsFabReservedSpace: Dp,
 ) : ColumnScope by columnScope
@@ -655,6 +702,7 @@ private fun BoxScope.DemoSettingsLayer(
     haptic: SceneViewHaptic,
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
+    onClusterWidthChanged: (Int) -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -676,11 +724,31 @@ private fun BoxScope.DemoSettingsLayer(
     val openSettingsCd = stringResource(R.string.demo_settings_open)
     val fabCd = stringResource(R.string.demo_settings_fab_cd)
 
+    // Ceiling on the peek chip, expressed as a fraction of the screen rather than a
+    // `dp` count — the thing it has to stay proportionate to is the room left for the
+    // bottom overlay beside it, and that is a fraction by nature. Two constraints meet
+    // here: the chip must stay readable, and the overlay must keep enough width to hold
+    // a centred pill after a *symmetric* inset of the reserve
+    // ([DemoBottomOverlayScope.settingsFabReservedSpace]). Symmetric means the reserve
+    // is spent twice, so a chip allowed a third of the screen already leaves the pill
+    // barely any. A third is the compromise; the text ellipsises past it, and the full
+    // string is one tap away inside the sheet.
+    val peekChipMaxWidth = LocalConfiguration.current.screenWidthDp.dp / 3
+
     // FAB + peek chip pinned to the bottom-end of the scene area.
     Column(
         modifier = Modifier
             .align(Alignment.BottomEnd)
             .windowInsetsPadding(WindowInsets.systemBars)
+            // Reports this cluster's width to the bottom-overlay slot, which insets
+            // itself by it. Position in the chain is load-bearing, and it is the
+            // *mirror* of the rule on `DemoBottomOverlay`'s own measurement: here the
+            // read sits AFTER `windowInsetsPadding` and BEFORE `padding`, so it covers
+            // the 16 dp gutter (real empty pixels the overlay must not cross) but not
+            // the system-bar inset — the overlay already applies that same horizontal
+            // inset itself, and counting it twice would push the overlay a navigation
+            // bar's width off-centre in landscape.
+            .onSizeChanged { onClusterWidthChanged(it.width) }
             .padding(16.dp),
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -709,6 +777,7 @@ private fun BoxScope.DemoSettingsLayer(
                             },
                         )
                     }
+                    .widthIn(max = peekChipMaxWidth)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
                     .semantics {
                         contentDescription = openSettingsCd
@@ -729,6 +798,14 @@ private fun BoxScope.DemoSettingsLayer(
                     text = " " + (peekHeader ?: stringResource(R.string.demo_settings_title)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface,
+                    // A *peek* chip peeks. Unbounded, it did not: `ar-measure`'s
+                    // first-launch header is "Tap a surface to drop the first point",
+                    // which measures ≈ 230 dp of a 411 dp screen at font scale 1.0 —
+                    // more than half the width, in the corner an overlay is supposed to
+                    // be able to sit beside. Every demo below it was overlapping at the
+                    // *default* font scale, not just at 1.3 (#3229).
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

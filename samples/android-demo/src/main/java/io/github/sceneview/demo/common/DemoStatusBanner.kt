@@ -1,11 +1,14 @@
 package io.github.sceneview.demo.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -73,24 +76,38 @@ fun DemoBottomOverlayScope.DemoStatusBanner(
         DemoStatusTone.Guidance -> scheme.onTertiary
         DemoStatusTone.Blocked -> scheme.onError
     }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = content,
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            // Symmetric, so the pill stays centred while its end edge stays out of
-            // the FAB's band. Collapses to a no-op on a demo with no `controls`.
-            .padding(horizontal = settingsFabReservedSpace)
-            .background(
-                // 0.92f rather than the 0.85f the demos had settled on: these
-                // banners are read over a live camera feed, and at 0.85 the
-                // highest-contrast text in the app was still failing WCAG AA
-                // against a bright outdoor scene showing through.
-                color = container.copy(alpha = 0.92f),
-                shape = RoundedCornerShape(24.dp),
-            )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .testTag(DEMO_STATUS_BANNER_TAG),
-    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // End-only, and centred inside what is left — *not* the symmetric inset
+            // this used to apply. The FAB and its peek chip occupy exactly one corner,
+            // so reserving their band on both edges spends the reserve twice to
+            // protect one side. That was affordable while the reserve was a flat
+            // 104 dp; it stopped being affordable once the reserve started tracking
+            // the real chip, which can legitimately be a third of the screen. Measured
+            // on a 411 dp screen with `ar-measure`'s first-launch header: symmetric
+            // left the pill 73 dp — narrower than the word "measuring" — while
+            // end-only leaves 242 dp. The pill still reads as centred, because the
+            // band it centres in is the band visibly free of chrome (#3229).
+            .padding(end = settingsFabReservedSpace),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = content,
+            textAlign = TextAlign.Center,
+            modifier = modifier
+                .background(
+                    // 0.92f rather than the 0.85f the demos had settled on: these
+                    // banners are read over a live camera feed, and at 0.85 the
+                    // highest-contrast text in the app was still failing WCAG AA
+                    // against a bright outdoor scene showing through.
+                    color = container.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(24.dp),
+                )
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .testTag(DEMO_STATUS_BANNER_TAG),
+        )
+    }
 }

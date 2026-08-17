@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -205,21 +206,29 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                 modifier = Modifier.padding(bottom = 32.dp),
             ) {
                 if (hintText != null) {
-                    Text(
-                        text = hintText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                    // Content-width pill, centred in the band left free by the
+                    // Settings FAB. End-only inset, not the symmetric one this
+                    // used to apply: the reserve now tracks the real peek chip,
+                    // and spending it on both edges to protect one corner left
+                    // the pill too narrow to hold its own sentence (#3229).
+                    Box(
                         modifier = Modifier
-                            // Content-width pill: a symmetric inset keeps it centred
-                            // while its end edge stays clear of the Settings FAB. The
-                            // hint then wraps instead of disappearing under the FAB.
-                            .padding(horizontal = settingsFabReservedSpace)
-                            .background(
-                                color = hintColor.copy(alpha = 0.82f),
-                                shape = RoundedCornerShape(24.dp),
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
-                    )
+                            .fillMaxWidth()
+                            .padding(end = settingsFabReservedSpace),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = hintText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier
+                                .background(
+                                    color = hintColor.copy(alpha = 0.82f),
+                                    shape = RoundedCornerShape(24.dp),
+                                )
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                        )
+                    }
                 }
             }
         },

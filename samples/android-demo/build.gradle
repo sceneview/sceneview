@@ -291,6 +291,21 @@ dependencies {
     testImplementation platform(libs.androidx.compose.bom)
     testImplementation libs.androidx.compose.ui
 
+    // Compose layout assertions on the JVM, via Robolectric — no emulator.
+    // Added for DemoScaffoldBottomBandTest (#3229), which measures the real
+    // bottom band at a large font scale. The defect it pins was invisible to
+    // every existing check: a Roborazzi golden only fails if a human looks at
+    // the diff, and the overlap it captures is 4 dp.
+    testImplementation libs.androidx.compose.ui.test.junit4
+    // `debugImplementation`, not `testImplementation`, and that is not a slip:
+    // this artifact is nothing but a manifest declaring the bare
+    // `ComponentActivity` the compose rule launches into, and a unit test reads
+    // the *debug variant's merged manifest*. On `testImplementation` it is on
+    // the classpath but not in the manifest, and every test dies with
+    // "Unable to resolve activity for Intent … ComponentActivity". Debug-only,
+    // so it never reaches the release APK Play ships.
+    debugImplementation libs.androidx.compose.ui.test.manifest
+
     testImplementation libs.kotlin.coroutines.test
     // Local HTTP double for SketchfabService's cooperative-cancellation test
     // (#2644) — proves an aborted search releases its socket instead of
