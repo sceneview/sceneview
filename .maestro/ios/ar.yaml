@@ -13,7 +13,9 @@
 # Two kinds of AR id reach this flow (see flows/ar-demo.yaml):
 #   - Ported AR demos — route to the real iOS AR demo view, which renders a
 #     `simulatorPlaceholder` on the simulator. That copy is the crash gate.
-#   - Registered-but-unported AR ids — route to `DeepLinkPlaceholder`;
+#   - Unported AR ids — no iOS screen, and since #3231 no Samples card and no
+#     `allowedIds` entry either; the deep link falls through
+#     `SceneViewDemoApp.onOpenURL` to `DeepLinkPlaceholder`.
 #     flows/placeholder.yaml handles those, included here so the AR flow is
 #     the single place every AR deep-link id is smoked.
 #
@@ -105,7 +107,7 @@ appId: io.github.sceneview.demo
       DEMO_ID: ar-point-cloud
       DEMO_NAME: AR Point Cloud
       ASSERT_TEXT: "Feature-point detection requires a physical device"
-# ── Coming-soon AR demos (route to DeepLinkPlaceholder) ─────────────────────
+# ── Unported AR ids (no card, deep link → DeepLinkPlaceholder) ──────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
@@ -130,7 +132,7 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: ar-terrain
-# ── Newer Android AR demos (added after the 42-id widening, routed to placeholder) ──
+# ── Newer Android AR ids (added after the 42-id widening, → placeholder) ────
 - runFlow:
     file: flows/placeholder.yaml
     env:

@@ -19,15 +19,17 @@
 #                    representative pre-regroup granular scene).
 #   - stub:         the id is a member of `allowedIds` but currently falls
 #                    through to the honest placeholder (a `*Scene.swift` file
-#                    exists but is `@available false`). A stub whose Scene
-#                    also sets `@androidOnlyReason` (L0.6, #2804) shows an
-#                    "Android-only" card instead of "Coming soon" — for a
-#                    capability that is permanently platform-locked, not
-#                    merely not-yet-ported.
+#                    exists but is `@available false`). NO ROW USES THIS
+#                    TODAY, by design: such a Scene puts a card in the iOS
+#                    Samples tab that opens a "Coming soon" screen, i.e. a
+#                    dead end in a showcase app. #3231 deleted all 21 of them.
+#                    Prefer `android-only` — same honesty, no dead card.
 #   - android-only: the id is NOT a member of `allowedIds` at all today —
 #                    either a genuinely platform-exclusive capability (no
 #                    ARKit equivalent, never planned) or a demo iOS simply
-#                    hasn't reserved an id for yet.
+#                    hasn't reserved an id for yet. The deep link still lands
+#                    on `DeepLinkPlaceholder` via the unregistered-id path, so
+#                    this is not a 404.
 # `reason` is required for every non-`working` row (one line, honest, cites
 # the tracking issue). It is ALSO allowed (optional) on a `working` row as a
 # CAPABILITY CAVEAT — the id resolves to a real screen (so it is honestly
@@ -63,14 +65,15 @@
 #   python3 -c "import yaml,collections; print(collections.Counter(
 #     r['iosStatus'] for r in yaml.safe_load(open('parity-manifest.yml'))['demos']))"
 #
-# Measured 2026-08-10, after `ar-measure` landed on Android (#531). Previous
-# reading: 2026-07-22, once the Wave-A iOS ports (#2836 #2837 #2838 #2839
-# #2840 #2841) had all landed — 53 Android ids, 34 working / 19 stub / 0
-# android-only.
+# Measured 2026-08-17, after #3231 deleted every coming-soon card from the iOS
+# demo. Previous reading: 2026-08-10, after `ar-measure` landed on Android
+# (#531) — 54 Android ids, 34 working / 19 stub / 1 android-only.
 #   - Android: 54 fragments — 44 Working / 5 KnownIssue / 2 ComingSoon / 3 InReview.
-#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 79 (69 generated ∪ 10 legacy/
-#     umbrella aliases ∪ 0 residual ids).
-#   - Of the 54 Android ids: 34 working, 19 stub, 1 android-only.
+#   - iOS: `DemoDeepLinkRegistry.allowedIds` = 56 (48 generated ∪ 8 legacy/
+#     umbrella aliases ∪ 0 residual ids). Every one of the 56 opens a real
+#     screen — the catalogue no longer carries an id that resolves to a
+#     "Coming soon" card.
+#   - Of the 54 Android ids: 34 working, 0 stub, 20 android-only.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -80,16 +83,12 @@
 #   - Job A: the 6 `#2239`-umbrella ids got a `legacyAliases` entry to their
 #     most-representative pre-regroup granular scene (real content, not a
 #     coming-soon card) → promoted from `android-only` to `working`.
-#   - Job B: the 6 ids with no iOS equivalent at all (plus `contact-shadow-preview`,
-#     added to Android mid-chantier — 7 total) got a dedicated stub Scene file
-#     with an honest `comingSoonTitle` → promoted from `android-only` to `stub`.
-#   - Job C: the 11 residual ids (previously hand-listed in
-#     `DemoDeepLinkRegistry.residualIds` with no Scene file) each got their own
-#     stub Scene file — `residualIds` is now `[]`. The 3 platform-locked ids
-#     (`ar-rooftop`, `ar-streetscape`, `ar-image-stabilization`) additionally
-#     got `@androidOnlyReason` so their card reads "Android-only: <reason>"
-#     instead of "Coming soon" (their status stays `stub` — they ARE in
-#     `allowedIds` — only the CARD TREATMENT changed).
+#   - Job B / Job C: 18 ids with no iOS equivalent got a dedicated stub Scene
+#     file with an honest `comingSoonTitle` → `android-only` became `stub`.
+#     REVERSED by #3231: an honest label on a card that opens nothing is still
+#     a dead end, and 21 of them were the iOS demo's most visible defect. The
+#     stubs are gone, the ids are `android-only` again, and the deep links
+#     resolve exactly as they did — through `DeepLinkPlaceholder`.
 #   - Wave A (#2798) then genuinely ported six AR demos to iOS, promoting
 #     their rows from `stub` to `working`. Two of them (`ar-depth-collider`,
 #     `ar-cloud-anchor`) are `KnownIssue` on Android and a third
@@ -224,149 +223,60 @@ demos:
     androidStatus: InReview
     iosStatus: working
 
-  # ─── stub (19) — iOS registry has the id, but it falls to the placeholder ──
+  # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
+  # Deliberately empty, and meant to stay that way. A `stub` row means the
+  # iOS catalogue lists a card that opens a "Coming soon" screen — a dead end
+  # in a showcase app, and the most visible defect it can ship. #3231 deleted
+  # all 21 of them; every id below moved to `android-only`, which is the
+  # honest bucket for "iOS has no screen for this". The status stays a legal
+  # value (`check-demo-id-parity.sh` still enforces it) so a future id that
+  # must be *accepted* without having a screen has somewhere to go.
+
+  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
+  # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
+  # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
+  # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
+  # these ids no longer get is a Samples card that leads nowhere.
   - id: ar-collaborative
     androidStatus: Working
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — a
-      CollaborativeSession SDK + demo is not yet ported (Phase 2 Wave B, #2798).
+      No iOS screen — a CollaborativeSession SDK + demo is not ported (Phase 2
+      Wave B, #2798). Its coming-soon Scene stub was deleted in #3231.
   - id: ar-depth-of-field
     androidStatus: Working
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false —
-      depth-of-field post-process not yet ported (Phase 2 Wave B, #2798).
+      No iOS screen — depth-of-field post-process not ported (Phase 2 Wave B,
+      #2798). Its coming-soon Scene stub was deleted in #3231.
   - id: ar-depth-visualization
     androidStatus: Working
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — depth
-      visualization + the SDK depth API it needs are not yet ported (Phase 2
-      Wave B, #2798).
+      No iOS screen — depth visualization and the SDK depth API it needs are
+      not ported (Phase 2 Wave B, #2798). Its coming-soon Scene stub was
+      deleted in #3231.
   - id: ar-fog
     androidStatus: Working
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — the
-      AR-specific fog demo is not yet ported.
+      No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
+      from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
+      stub was deleted in #3231.
   - id: ar-hand-tracking
     androidStatus: ComingSoon
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — Android
-      itself is ComingSoon (visionOS hand-tracking SDK work); the iOS card
-      title says "(visionOS)" rather than mirroring Android's "(Jetpack XR)".
+      No iOS screen — Android itself is ComingSoon (headset hand-tracking SDK
+      work), and the Apple equivalent is visionOS-only. Its coming-soon Scene
+      stub was deleted in #3231.
   - id: ar-image-stabilization
     androidStatus: Working
-    iosStatus: stub
+    iosStatus: android-only
     reason: >-
-      Platform-locked: ARCore's Electronic Image Stabilization (EIS) toggle
-      has no public ARKit equivalent. Scene file exists but @available
-      false — a permanent honest placeholder, not a port target (#2798).
-      Since L0.6 (#2804), the Scene sets @androidOnlyReason so its card reads
-      "Android-only" instead of "Coming soon".
-  - id: ar-ml-object-label
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false —
-      Vision/CoreML object labeling not yet ported (Phase 3, #2798); the iOS
-      card title drops Android's "ML Kit" branding (Apple's own Vision
-      framework would back a real port).
-  - id: ar-plane-renderer-v2
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog; needs LiDAR-backed
-      plane rendering.
-  - id: ar-raw-depth-point-cloud
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — raw depth
-      point cloud not yet ported (Phase 2 Wave B, #2798).
-  - id: ar-rooftop
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Platform-locked: ARCore Geospatial rooftop anchors are a Google-backend
-      service with no ARKit equivalent. Scene file exists (canonicalized from
-      ArRooftopAnchorsScene in #2799) but @available false — a permanent
-      honest placeholder, not a port target. Android itself is KnownIssue too.
-      Since L0.6 (#2804), the Scene sets @androidOnlyReason so its card reads
-      "Android-only" instead of "Coming soon".
-  - id: ar-scene-semantics
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — scene
-      semantics not yet ported (Phase 3, #2798).
-  - id: ar-streetscape
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Platform-locked: ARCore Streetscape Geometry (Geospatial/VPS) is a
-      Google-backend service with no ARKit equivalent. Scene file exists but
-      @available false — a permanent honest placeholder, not a port target.
-      Android itself is KnownIssue too. Since L0.6 (#2804), the Scene sets
-      @androidOnlyReason so its card reads "Android-only" instead of
-      "Coming soon".
-  - id: ar-terrain
-    androidStatus: KnownIssue
-    iosStatus: stub
-    reason: >-
-      Scene file exists (canonicalized from ArTerrainAnchorsScene in #2799)
-      but @available false — Geospatial terrain anchors not yet implemented.
-      Android itself is KnownIssue too.
-  - id: ar-xr-face
-    androidStatus: ComingSoon
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job C) but @available false — Android
-      itself is ComingSoon (visionOS face-tracking SDK work); the iOS card
-      title says "(visionOS)" rather than mirroring Android's "(Jetpack XR)".
-  - id: contact-shadow-preview
-    androidStatus: InReview
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog (#2817, contact-shadow
-      sub-task C of #2740; Android itself is InReview); card subtitle notes
-      "(Android: in review)".
-  - id: point-and-ask
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog; a port would use
-      Apple's Foundation Models (#2648) rather than Gemini Nano.
-  - id: secondary-camera
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists but @available false — picture-in-picture camera
-      view not yet implemented.
-  - id: splat-preview
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog; blocked on an iOS
-      SplatNode renderer (#2768).
-  - id: video-recording
-    androidStatus: Working
-    iosStatus: stub
-    reason: >-
-      Scene file exists (L0.6, #2804 Job B) but @available false — added to
-      Android after iOS stopped tracking the catalog.
-
-  # ─── android-only (1) — iOS has not reserved an id for these yet ────────
-  # L0.6 (#2804) had emptied this section: the 6 #2239-umbrella ids became
-  # `working` (Job A aliases) and the remaining 7 became `stub` (Job B stub
-  # Scenes). It is the landing spot for the next Android id iOS hasn't
-  # reserved an id for yet — which is exactly what `ar-measure` is.
+      Platform-locked: ARCore's Electronic Image Stabilization (EIS) toggle has
+      no public ARKit equivalent — not a port target (#2798). Its Android-only
+      Scene stub was deleted in #3231.
   - id: ar-measure
     androidStatus: InReview
     iosStatus: android-only
@@ -375,3 +285,90 @@ demos:
       plus scene reconstruction covers every brick this demo needs, so an iOS
       port is expected rather than excluded; iOS simply has no id reserved for
       it yet. Porting it is tracked by the iOS-parity epic #894 / #2798.
+  - id: ar-ml-object-label
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — Vision/CoreML object labeling not ported (Phase 3,
+      #2798). Its coming-soon Scene stub was deleted in #3231.
+  - id: ar-plane-renderer-v2
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — needs LiDAR-backed plane rendering, added to Android
+      after iOS stopped tracking the catalog. Its coming-soon Scene stub was
+      deleted in #3231.
+  - id: ar-raw-depth-point-cloud
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — raw depth point cloud not ported (Phase 2 Wave B,
+      #2798). Its coming-soon Scene stub was deleted in #3231.
+  - id: ar-rooftop
+    androidStatus: KnownIssue
+    iosStatus: android-only
+    reason: >-
+      Platform-locked: ARCore Geospatial rooftop anchors are a Google-backend
+      service with no ARKit equivalent — not a port target. Android itself is
+      KnownIssue. Its Android-only Scene stub, and the `ar-rooftop-anchors`
+      rename alias that pointed at it, were deleted in #3231.
+  - id: ar-scene-semantics
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — scene semantics not ported (Phase 3, #2798). Its
+      coming-soon Scene stub was deleted in #3231.
+  - id: ar-streetscape
+    androidStatus: KnownIssue
+    iosStatus: android-only
+    reason: >-
+      Platform-locked: ARCore Streetscape Geometry (Geospatial/VPS) is a
+      Google-backend service with no ARKit equivalent — not a port target.
+      Android itself is KnownIssue. Its Android-only Scene stub was deleted in
+      #3231.
+  - id: ar-terrain
+    androidStatus: KnownIssue
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — Geospatial terrain anchors are a Google-backend service
+      with no ARKit equivalent. Android itself is KnownIssue. Its coming-soon
+      Scene stub, and the `ar-terrain-anchors` rename alias that pointed at
+      it, were deleted in #3231.
+  - id: ar-xr-face
+    androidStatus: ComingSoon
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — Android itself is ComingSoon (headset face-tracking SDK
+      work), and the Apple equivalent is visionOS-only. Its coming-soon Scene
+      stub was deleted in #3231.
+  - id: contact-shadow-preview
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — added to Android after iOS stopped tracking the catalog
+      (#2817, contact-shadow sub-task C of #2740; Android itself is InReview).
+      Its coming-soon Scene stub was deleted in #3231.
+  - id: point-and-ask
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — a port would use Apple's Foundation Models (#2648)
+      rather than Gemini Nano. Its coming-soon Scene stub was deleted in #3231.
+  - id: secondary-camera
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — picture-in-picture camera view not implemented. Its
+      coming-soon Scene stub was deleted in #3231.
+  - id: splat-preview
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — blocked on an iOS SplatNode renderer (#2768). Its
+      coming-soon Scene stub was deleted in #3231.
+  - id: video-recording
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen — added to Android after iOS stopped tracking the catalog.
+      Its coming-soon Scene stub was deleted in #3231.

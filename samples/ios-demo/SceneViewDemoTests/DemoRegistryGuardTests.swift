@@ -176,22 +176,56 @@ final class DemoRegistryGuardTests: XCTestCase {
         }
     }
 
-    /// Ids known today to be coming-soon or not-yet-ported — a regression pin
-    /// so a demo doesn't quietly start claiming to be "working" (a false
-    /// promise to users) without this test (and `parity-manifest.yml`, if the
-    /// id is Android-sourced) also being updated intentionally.
-    func testKnownComingSoonAndResidualIdsStillFallThroughToThePlaceholder() {
-        let mustBePlaceholder = [
-            "ar-rooftop", "ar-terrain",                      // #2799 canonicalized ids, still @available false
-            "post-processing", "secondary-camera",           // long-standing coming-soon cards
-            "ar-collaborative",                              // L0.6 (#2804) gave this a stub Scene file, still @available false
+    /// Android-only ids — no iOS screen, and therefore no catalogue entry.
+    /// A regression pin so one of them doesn't quietly come back as a
+    /// coming-soon card (the dead-end class this app deliberately has none of)
+    /// or start claiming to be "working" without this test — and
+    /// `parity-manifest.yml`, since every id here is Android-sourced — being
+    /// updated intentionally.
+    func testAndroidOnlyIdsAreUnregisteredAndStillReachThePlaceholder() {
+        let androidOnly = [
+            "ar-rooftop", "ar-terrain",             // #2799 canonicalized ids, Geospatial-backed
+            "post-processing", "secondary-camera",  // no RealityKit equivalent wired up
+            "ar-collaborative",                     // CollaborativeSession not ported
         ]
-        for id in mustBePlaceholder {
+        for id in androidOnly {
             XCTAssertNil(GeneratedScenes.destination(for: id),
-                        "'\(id)' was expected to still be coming-soon/residual. If it now has a " +
-                        "real, @available Scene, that's great — update this pin (and " +
-                        "residualIds / parity-manifest.yml if it's an Android-sourced id).")
+                        "'\(id)' is expected to have no iOS destination. If a real port landed, " +
+                        "that's great — update this pin and parity-manifest.yml.")
+            XCTAssertFalse(DemoDeepLinkRegistry.allowedIds.contains(id),
+                        "'\(id)' has no iOS screen, so it must not be in allowedIds — an id in " +
+                        "the catalogue that opens nothing is exactly the dead end we removed.")
+            // Still not a 404: the app forwards an unregistered candidate here
+            // and gets the honest placeholder.
+            _ = DemoDeepLinkRegistry.destination(for: id)
         }
+    }
+
+    /// The invariant behind the whole catalogue: **every** card in the Samples
+    /// tab opens a real screen. A `.comingSoon` item would render a card that
+    /// routes to `ComingSoonScreen` — a dead end in a showcase app, and the
+    /// single most visible defect it can ship. 21 such cards were removed;
+    /// this keeps the count at zero.
+    func testNoSamplesCardIsADeadEnd() {
+        let deadEnds = GeneratedScenes.all().filter { !$0.status.isAvailable }
+        XCTAssertTrue(
+            deadEnds.isEmpty,
+            "Samples cards with no destination: \(deadEnds.map(\.title)). Either implement the " +
+            "demo (@available true) or delete its *Scene.swift file — never ship a card that " +
+            "opens a \"Coming soon\" screen."
+        )
+        // `destination(for:)` deliberately answers `nil` for an `@iosOnly` AR
+        // scene on a non-iOS build, so the id→view side of the invariant is
+        // asserted on iOS only (same assumption as
+        // `testGeneratedAllCountMatchesAllowedIdsCountOnIOS` below).
+        #if os(iOS)
+        for id in GeneratedScenes.allowedIds {
+            XCTAssertNotNil(
+                GeneratedScenes.destination(for: id),
+                "'\(id)' is in the generated catalogue but resolves to no destination"
+            )
+        }
+        #endif
     }
 
     /// The #2769 regression, pinned directly. Before #2800, `custom-geometry`
@@ -200,17 +234,18 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// real scope by adding umbrella aliases for the 6 #2239-regrouped ids
     /// (`custom-geometry`, `camera-gestures`, `picking-collision`,
     /// `animation-physics`, `two-d-in-three-d`, `lighting-lab`) alongside the
-    /// 4 pre-#2799 rename aliases. Each of these 10 must keep resolving —
+    /// pre-#2799 rename aliases. Two of those rename aliases
+    /// (`ar-rooftop-anchors`, `ar-terrain-anchors`) were dropped when their
+    /// dead-end canonical targets were deleted — an alias may only point at a
+    /// live Scene id, and both ids still reach `DeepLinkPlaceholder` through
+    /// the unregistered-id path. Each of the remaining 8 must keep resolving —
     /// through its canonical target — to exactly that target's current
-    /// realness, whichever way the canonical scene's own `@available` flag
-    /// goes.
+    /// realness.
     func testLegacyAliasesArePinnedAndInheritTheirCanonicalTargetsRealness() {
         let aliases = DemoDeepLinkRegistry.legacyAliases
         XCTAssertEqual(aliases, [
             "ar-recording": "ar-record-playback",
             "ar-cloud-anchors": "ar-cloud-anchor",
-            "ar-rooftop-anchors": "ar-rooftop",
-            "ar-terrain-anchors": "ar-terrain",
             "custom-geometry": "custom-mesh",
             "camera-gestures": "camera-controls",
             "picking-collision": "collision",

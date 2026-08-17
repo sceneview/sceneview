@@ -44,13 +44,11 @@ import SwiftUI
 ///        piece of work (#2804) — this only fixes deep-link resolution.
 ///     Either way, the alias inherits its target scene's destination (or its
 ///     placeholder, if the target is itself `@available false`).
-///   - `residualIds` — AR demos present in Android's catalog whose iOS card is
-///     still to be ported. They resolve to a placeholder until a Scene file
-///     lands; when one does, delete the id here and the generated union
-///     covers it automatically. Emptied by L0.6 (#2804) — every id that was
-///     here now has a Scene file — kept as an empty `Set` (rather than
-///     deleted) since it is still the documented landing spot for the NEXT
-///     not-yet-ported AR id.
+///   - `residualIds` — ids that must be accepted by the gate without having
+///     any iOS screen of their own. Empty today, and the preferred state: an
+///     id with no real screen needs no registry entry at all, because an
+///     unregistered id already reaches the same honest placeholder (see
+///     "Deep-link guarantee" below).
 ///
 /// # Deep-link guarantee
 ///
@@ -72,10 +70,18 @@ enum DemoDeepLinkRegistry {
     /// `DeepLinkRouterTest` asserts directly against `DEMO_ID_ALIASES`.
     static let legacyAliases: [String: String] = [
         // Rename aliases (#2799) — pre-canonicalization ids.
+        //
+        // `ar-rooftop-anchors` / `ar-terrain-anchors` used to live here too.
+        // Their canonical targets (`ar-rooftop`, `ar-terrain`) were
+        // coming-soon Scene stubs with no destination, and were deleted with
+        // the rest of the dead-end catalogue — an alias may only point at a
+        // live Scene id (`DemoRegistryGuardTests`
+        // `testEveryLegacyAliasTargetIsARegisteredSceneId`). Both ids still
+        // land on `DeepLinkPlaceholder` through the unregistered-id path
+        // below, so no QR code 404s; they simply no longer claim a catalogue
+        // entry that does not exist.
         "ar-recording": "ar-record-playback",
         "ar-cloud-anchors": "ar-cloud-anchor",
-        "ar-rooftop-anchors": "ar-rooftop",
-        "ar-terrain-anchors": "ar-terrain",
 
         // Umbrella aliases (L0.6, #2804 Job A / #2769) — a live Android
         // #2239-regrouped id routed to the single most-representative
@@ -101,19 +107,20 @@ enum DemoDeepLinkRegistry {
         "lighting-lab": "dynamic-sky",
     ]
 
-    /// Deep-linkable ids with no `*Scene.swift` file yet — AR demos present in
-    /// Android's catalog whose iOS card is still to be ported. They pass
-    /// `allowedIds` so the URL is accepted, and resolve to the coming-soon
-    /// placeholder. Remove an id from here the moment a matching Scene file is
-    /// added; the generated union then covers it with no hand edit.
+    /// Deep-linkable ids with no `*Scene.swift` file — accepted by the gate,
+    /// resolved to `DeepLinkPlaceholder`. Remove an id from here the moment a
+    /// matching Scene file is added; the generated union then covers it with
+    /// no hand edit.
     ///
-    /// Empty as of L0.6 (#2804) — every AR id that was here (`ar-collaborative`,
-    /// `ar-depth-collider`, `ar-depth-of-field`, `ar-depth-visualization`,
-    /// `ar-fog`, `ar-hand-tracking`, `ar-ml-object-label`,
-    /// `ar-raw-depth-point-cloud`, `ar-scene-semantics`, `ar-xr-face`,
-    /// `placement-scene`) now has its own `*Scene.swift` stub with an honest
-    /// `comingSoonTitle`. Kept as an empty `Set` (not deleted) — it is still
-    /// the documented landing spot for the next not-yet-ported AR id, and
+    /// Empty, and expected to stay that way: an id with no real iOS screen
+    /// does not get a catalogue entry at all. L0.6 (#2804) had emptied this
+    /// list by giving each residual id a coming-soon `*Scene.swift` stub;
+    /// those stubs were themselves deleted (a Samples card that opens a
+    /// "Coming soon" screen is a dead end in a showcase app), so the ids are
+    /// simply unregistered now and fall through to `DeepLinkPlaceholder` via
+    /// the unregistered-id path in `destination(for:)`. Kept as an empty
+    /// `Set` (not deleted) — it is still the documented landing spot for an
+    /// id that must be *accepted* without having a screen, and
     /// `check-demo-id-parity.sh` (#2801) is specifically tested against this
     /// `[]` case.
     ///
@@ -123,10 +130,11 @@ enum DemoDeepLinkRegistry {
     static let residualIds: Set<String> = []
 
     /// Full set of accepted deep-link ids: the generated scene ids
-    /// (`GeneratedScenes.allowedIds`) ∪ legacy aliases ∪ not-yet-ported
-    /// residual ids. Every `sceneview://demo/<id>` QR code for a real Android
-    /// demo resolves on iOS through this set — coming-soon ids included, routed
-    /// to a placeholder so the URL is never a silent 404.
+    /// (`GeneratedScenes.allowedIds`) ∪ legacy aliases ∪ residual ids. Every
+    /// id in this set opens a real iOS screen. An Android-only id is NOT in
+    /// the set and is not a 404 either: `SceneViewDemoApp.onOpenURL` forwards
+    /// the unregistered candidate to `destination(for:)`, which answers with
+    /// `DeepLinkPlaceholder`.
     static let allowedIds: Set<String> =
         GeneratedScenes.allowedIds
             .union(legacyAliases.keys)
@@ -135,11 +143,10 @@ enum DemoDeepLinkRegistry {
     /// Resolve a demo id to its presented `View`.
     ///
     /// Resolution order: the generated id→view map, then the legacy-alias
-    /// indirection, then a coming-soon placeholder. The placeholder is returned
-    /// for any id without a live destination — a coming-soon scene, a residual
-    /// not-yet-ported AR id, an iOS-only AR scene on a non-iOS build, or an id
-    /// that isn't in `allowedIds` at all — so a deep link always lands on a
-    /// screen and is never silently dropped.
+    /// indirection, then `DeepLinkPlaceholder`. The placeholder is returned for
+    /// any id without a live destination — an Android-only id, an iOS-only AR
+    /// scene on a non-iOS build, or an id that isn't in `allowedIds` at all —
+    /// so a deep link always lands on a screen and is never silently dropped.
     ///
     /// `@MainActor`-isolated because it constructs SwiftUI `View` values, which
     /// are main-actor-isolated; the only call site (`ContentView`'s

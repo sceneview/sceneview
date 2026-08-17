@@ -3,10 +3,14 @@
 # Run a fast subset of the iOS device-QA harness:
 #   maestro test .maestro/ios/placeholders.yaml
 #
-# Some Android demo ids are registered in `DemoDeepLinkRegistry.allowedIds`
-# (so the cross-platform `sceneview://demo/<id>` QR-code contract holds) but
-# have no iOS destination yet — they route to the `DeepLinkPlaceholder`. This
-# flow smoke-tests that router + placeholder path for the non-AR ids.
+# Some Android demo ids have no iOS destination at all. They are deliberately
+# NOT registered in `DemoDeepLinkRegistry.allowedIds` and have no Samples card
+# (#3231 deleted every "Coming soon" card — a showcase app does not present a
+# dead end), yet the cross-platform `sceneview://demo/<id>` QR-code contract
+# still holds: `SceneViewDemoApp.onOpenURL` forwards the unregistered id to
+# `DemoDeepLinkRegistry.destination(for:)`, which answers with the
+# `DeepLinkPlaceholder`. This flow smoke-tests that fallback for the non-AR ids
+# — which is now the ONLY thing keeping those QR codes from being a no-op.
 # (AR placeholder ids are smoked from ar.yaml so every AR id lives in one place.)
 #
 # Each id is exercised by flows/placeholder.yaml. When an id gains a real iOS
@@ -14,7 +18,7 @@
 # ASSERT_TEXT and drop it from here.
 appId: io.github.sceneview.demo
 ---
-# ── Advanced (no iOS destination yet) ───────────────────────────────────────
+# ── Advanced (no iOS destination, no catalogue card) ────────────────────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
@@ -23,7 +27,7 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: secondary-camera
-# ── Content / Interaction (no iOS destination yet) ──────────────────────────
+# ── Content / Interaction (no iOS destination, no catalogue card) ───────────
 - runFlow:
     file: flows/placeholder.yaml
     env:
