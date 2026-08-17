@@ -42,6 +42,8 @@ import io.github.sceneview.ar.node.ARFogNode
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -237,6 +239,27 @@ fun ARFogDemo(onBack: () -> Unit) {
 
             ForceTrackingFailureMenu()
         },
+        bottomOverlay = {
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = !isTracking || ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                val trackingHint = trackingFailureMessage(effectiveReason)
+                DemoStatusBanner(
+                    text = trackingHint ?: stringResource(R.string.ar_status_scanning),
+                    // A reported tracking failure always asks the user to move the
+                    // phone (more light, slower motion, a textured surface); plain
+                    // scanning is a normal transient state.
+                    tone = if (trackingHint != null) {
+                        DemoStatusTone.Guidance
+                    } else {
+                        DemoStatusTone.Progress
+                    },
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // The depth occlusion material is wired at camera-stream creation
@@ -327,28 +350,6 @@ fun ARFogDemo(onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge,
                 )
-            }
-
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            ) {
-                Surface(
-                    modifier = Modifier.padding(bottom = 32.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        text = trackingFailureMessage(effectiveReason)
-                            ?: stringResource(R.string.ar_status_scanning),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                    )
-                }
             }
         }
     }

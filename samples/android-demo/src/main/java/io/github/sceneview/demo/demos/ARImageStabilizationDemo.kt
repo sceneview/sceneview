@@ -39,6 +39,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
@@ -221,6 +223,45 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
+        },
+        bottomOverlay = {
+            // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo and
+            // ARDepthOcclusionDemo so all three AR demos share the same visual language.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = !isTracking || ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                val trackingHint = trackingFailureMessage(effectiveReason)
+                DemoStatusBanner(
+                    text = trackingHint ?: stringResource(R.string.ar_status_scanning),
+                    // A reported tracking failure always asks the user to move the
+                    // phone (more light, slower motion, a textured surface); plain
+                    // scanning is a normal transient state.
+                    tone = if (trackingHint != null) {
+                        DemoStatusTone.Guidance
+                    } else {
+                        DemoStatusTone.Progress
+                    },
+                )
+            }
+
+            // Primary action on-screen (#1964) — Clear re-arms placement (a
+            // primary re-interaction), so it lives bottom-start instead of in
+            // the Settings sheet. The EIS Switch stays in the sheet — genuine
+            // secondary configuration. Hidden until something has been placed.
+            if (placedAnchor != null) {
+                SceneActionBar(
+                    SceneAction("Clear", onClick = {
+                        placedAnchor?.let { runCatching { it.detach() } }
+                        placedAnchor = null
+                    }),
+                )
+            }
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -344,46 +385,6 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                     },
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge
-                )
-            }
-
-            // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo and
-            // ARDepthOcclusionDemo so all three AR demos share the same visual language.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                Surface(
-                    modifier = Modifier.padding(bottom = 32.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = trackingFailureMessage(effectiveReason)
-                            ?: stringResource(R.string.ar_status_scanning),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
-
-            // Primary action on-screen (#1964) — Clear re-arms placement (a
-            // primary re-interaction), so it lives bottom-start instead of in
-            // the Settings sheet. The EIS Switch stays in the sheet — genuine
-            // secondary configuration. Hidden until something has been placed.
-            if (placedAnchor != null) {
-                SceneActionBar(
-                    SceneAction("Clear", onClick = {
-                        placedAnchor?.let { runCatching { it.detach() } }
-                        placedAnchor = null
-                    }),
                 )
             }
         }

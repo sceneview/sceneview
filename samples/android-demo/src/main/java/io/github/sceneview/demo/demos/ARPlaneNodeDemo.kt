@@ -29,6 +29,8 @@ import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Size
@@ -92,7 +94,37 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
             { ForceTrackingFailureMenu() }
         } else {
             null
-        }
+        },
+        // Scanning / tracking-failure banner, hosted by the scaffold slot (#2779) so it
+        // is laid out against the Settings FAB instead of blindly under it. This demo's
+        // `controls` is itself gated on qaMode, and the slot resolves the FAB reserve
+        // from that same condition — no duplicated gate to drift.
+        bottomOverlay = {
+            // Never leave the user staring at a black screen (#1617). Visible until at
+            // least one plane is tracked.
+            val noPlanesYet = totalDetected == 0
+            AnimatedVisibility(
+                visible = noPlanesYet,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                // A reported tracking failure asks the user to move the device —
+                // guidance. Plain scanning is a normal transient state.
+                val trackingLost = trackingFailureReason != null
+                DemoStatusBanner(
+                    text = if (trackingLost) {
+                        "Move the device slowly to scan a surface…"
+                    } else {
+                        stringResource(R.string.ar_status_scanning)
+                    },
+                    tone = if (trackingLost) {
+                        DemoStatusTone.Guidance
+                    } else {
+                        DemoStatusTone.Progress
+                    },
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -151,33 +183,6 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                     Text(
                         text = "$totalDetected detected since start",
                         style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-
-            // Scanning / tracking-failure overlay — never leave the user staring at a black
-            // screen (#1617). Visible until at least one plane is tracked.
-            val noPlanesYet = totalDetected == 0
-            AnimatedVisibility(
-                visible = noPlanesYet,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            ) {
-                Surface(
-                    modifier = Modifier.padding(bottom = 32.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        text = if (trackingFailureReason != null) {
-                            "Move the device slowly to scan a surface…"
-                        } else {
-                            stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                     )
                 }
             }

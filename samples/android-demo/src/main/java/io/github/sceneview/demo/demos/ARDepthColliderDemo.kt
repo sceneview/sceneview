@@ -124,6 +124,31 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 )
             }
         },
+        // Primary actions on-screen (#1964) — Drop / Drop 5 / Reset are the demo's core
+        // interaction. Hosted by the scaffold's `bottomOverlay` slot so the bar is laid
+        // out against the Settings FAB instead of blindly sharing its band (#2779).
+        // Reset is disabled until at least one ball is dropped.
+        bottomOverlay = {
+            SceneActionBar(
+                SceneAction("Drop", onClick = {
+                    spawnAnchorRef.value = latestCameraPoseRef.value
+                    ballCount++
+                }),
+                SceneAction("Drop 5", onClick = {
+                    spawnAnchorRef.value = latestCameraPoseRef.value
+                    ballCount += 5
+                }),
+                SceneAction(
+                    label = "Reset",
+                    onClick = {
+                        ballCount = 0
+                        spawnAnchorRef.value = null
+                        generation++
+                    },
+                    enabled = ballCount > 0,
+                ),
+            )
+        },
     ) {
       Box(modifier = Modifier.fillMaxSize()) {
         // key(generation) forces full recomposition on reset so previous bodies are torn down.
@@ -289,29 +314,6 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
 
         // Cover the still-black AR viewport until the first camera frame (#2484).
         ARCameraInitScrim(initializing = !cameraReady)
-
-        // Primary actions on-screen (#1964) — Drop / Drop 5 / Reset are the
-        // demo's core interaction, so they live bottom-start, clear of the
-        // Settings FAB. Reset is disabled until at least one ball is dropped.
-        SceneActionBar(
-            SceneAction("Drop", onClick = {
-                spawnAnchorRef.value = latestCameraPoseRef.value
-                ballCount++
-            }),
-            SceneAction("Drop 5", onClick = {
-                spawnAnchorRef.value = latestCameraPoseRef.value
-                ballCount += 5
-            }),
-            SceneAction(
-                label = "Reset",
-                onClick = {
-                    ballCount = 0
-                    spawnAnchorRef.value = null
-                    generation++
-                },
-                enabled = ballCount > 0,
-            ),
-        )
       }
     }
 }

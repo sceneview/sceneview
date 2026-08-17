@@ -5,11 +5,8 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
@@ -116,30 +113,11 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                 )
             }
         },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
-                engine = engine,
-                modelLoader = modelLoader,
-                environmentLoader = environmentLoader,
-                environment = rememberModelDemoEnvironment(environmentLoader),
-                cameraManipulator = cameraManipulator,
-                surfaceMirrorer = surfaceMirrorer,
-            ) {
-                modelInstance?.let { instance ->
-                    ModelNode(modelInstance = instance, scaleToUnits = 1f)
-                }
-            }
-
-            LoadingScrim(
-                loading = modelInstance == null,
-                label = stringResource(R.string.demo_video_recording_loading),
-            )
-
-            // Record / Stop toggle. Bottom-START — the DemoScaffold Settings FAB owns
-            // the bottom-END corner (same rationale as ModelViewerDemo's Surprise FAB).
+        bottomOverlay = {
+            // Record / Stop toggle — the demo's primary action, so it lives in the
+            // scaffold's bottom slot (#2779). It keeps the START edge because the
+            // Settings FAB owns the bottom-END corner; the slot, not a constant here,
+            // supplies the system-bar inset.
             ExtendedFloatingActionButton(
                 onClick = {
                     recording?.let { active ->
@@ -170,9 +148,30 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                     )
                 },
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .windowInsetsPadding(WindowInsets.systemBars)
+                    .align(Alignment.Start)
                     .padding(16.dp),
+            )
+        },
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
+                cameraManipulator = cameraManipulator,
+                surfaceMirrorer = surfaceMirrorer,
+            ) {
+                modelInstance?.let { instance ->
+                    ModelNode(modelInstance = instance, scaleToUnits = 1f)
+                }
+            }
+
+            LoadingScrim(
+                loading = modelInstance == null,
+                label = stringResource(R.string.demo_video_recording_loading),
             )
         }
     }

@@ -166,6 +166,13 @@ private fun RayHitTestSection(
                     "button to clear all highlights.",
                 style = MaterialTheme.typography.bodyMedium
             )
+        },
+        // The demo's primary action goes in the scaffold's bottom slot, which lays it
+        // out against the Settings FAB instead of blindly beside it (#2779).
+        bottomOverlay = {
+            SceneActionBar(
+                SceneAction("Reset Colors", onClick = { highlightedIndices = emptySet() }),
+            )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -213,10 +220,6 @@ private fun RayHitTestSection(
                     }
                 }
             }
-
-            SceneActionBar(
-                SceneAction("Reset Colors", onClick = { highlightedIndices = emptySet() }),
-            )
         }
     }
 }

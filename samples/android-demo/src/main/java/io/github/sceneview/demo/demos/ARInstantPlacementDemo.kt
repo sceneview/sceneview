@@ -22,6 +22,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -133,6 +134,11 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
         }.value
     }
 
+    // Placement state shared between the scene and the bottom-overlay "Clear All"
+    // control. Keyed on `instantEnabled` so flipping the toggle drops every placed
+    // model, exactly as the `key(instantEnabled)` remount below already did.
+    val sceneState = remember(instantEnabled) { InstantPlacementSceneState() }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_instant_placement_title),
         onBack = onBack,
@@ -217,7 +223,35 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // Clear-all control. Bottom-anchored, so it is a tenant of the shared bottom
+        // band and belongs in the scaffold slot (#2779) rather than hand-aligned
+        // `BottomStart` in the scene, where it could only share pixels with the
+        // Settings FAB.
+        //
+        // Only surface it once something has actually been placed — issue #1199.
+        // Before any tap, the button is a dead affordance that creates the impression
+        // of two stacked buttons.
+        bottomOverlay = {
+            AnimatedVisibility(
+                visible = sceneState.placedModels.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+                // `ColumnScope.align` — horizontal only, so it keeps the button at the
+                // start edge users learned, with no way to re-enter another tenant.
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                // Solid filled button (#1476). The previous OutlinedButton drew only a
+                // hairline border with a transparent fill, so over the live camera feed
+                // it was nearly invisible. A filled M3 Button gives an opaque surface
+                // with a guaranteed contrast pairing (container / onContainer).
+                Button(onClick = { sceneState.clearAll() }) {
+                    Text("Clear All")
+                }
+            }
+        },
     ) {
         // `key(instantEnabled)` rebuilds the entire ARSceneView (and its ARCore session) when
         // the user flips the toggle. ARCore configs can be reapplied live, but reusing the same
@@ -229,38 +263,32 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
                 selectedSlug = selectedSlug,
                 selectedFile = selectedFile,
                 playbackDataset = arPlaybackDataset,
+                state = sceneState,
             )
         }
     }
 }
 
-@Composable
-private fun InstantPlacementScene(
-    instantEnabled: Boolean,
-    selectedSlug: SketchfabSlug?,
-    selectedFile: File?,
-    playbackDataset: File?,
-) {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val materialLoader = rememberMaterialLoader(engine)
-
-    val placedModels = remember { mutableStateListOf<InstantPlacedModel>() }
-    var nextId by remember { mutableStateOf(0) }
-    var cycleIndex by remember { mutableStateOf(0) }
-
-    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    var isTracking by remember { mutableStateOf(false) }
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+/**
+ * Placement state shared between [InstantPlacementScene] and the "Clear All" control
+ * the scaffold hosts in its `bottomOverlay` slot.
+ *
+ * It is hoisted out of the scene composable only because the button that clears it
+ * moved into that slot — the one container that lays a bottom-anchored control out
+ * against the Settings FAB instead of on top of it (#2779). Lifetime is unchanged:
+ * the caller creates it with `remember(instantEnabled)`, so it dies with the same
+ * toggle flip that remounts the scene.
+ */
+@Stable
+private class InstantPlacementSceneState {
+    val placedModels = mutableStateListOf<InstantPlacedModel>()
 
     // Live status of each placed Instant Placement point. Keyed by model id.
     // Using a `mutableStateMapOf` (vs. a list rebuilt every frame) means the per-
     // frame onSessionUpdated only writes when a value actually changes — Compose
     // therefore only recomposes the badges when ARCore promotes a point from
     // approximate → full tracking, not on every one of the 60 ARCore frames/sec.
-    val trackingMethods = remember {
-        mutableStateMapOf<Int, InstantPlacementPoint.TrackingMethod>()
-    }
+    val trackingMethods = mutableStateMapOf<Int, InstantPlacementPoint.TrackingMethod>()
 
     // Per-anchor lost flag (#1184). When ARCore can no longer refine an Instant
     // Placement point — typically because the user panned away from the screen
@@ -273,7 +301,44 @@ private fun InstantPlacementScene(
     // the badge so the user knows they can drop a fresh tap to retry. Detach the
     // dead anchor too — ARCore won't revive a STOPPED point even on re-entering
     // its screen region.
-    val lostAnchors = remember { mutableStateMapOf<Int, Boolean>() }
+    val lostAnchors = mutableStateMapOf<Int, Boolean>()
+
+    var cycleIndex by mutableStateOf(0)
+
+    /** Detach every placed anchor, drop every model and restart the bundled cycle. */
+    fun clearAll() {
+        placedModels.forEach { runCatching { it.anchor.detach() } }
+        placedModels.clear()
+        trackingMethods.clear()
+        lostAnchors.clear()
+        cycleIndex = 0
+    }
+}
+
+@Composable
+private fun InstantPlacementScene(
+    instantEnabled: Boolean,
+    selectedSlug: SketchfabSlug?,
+    selectedFile: File?,
+    playbackDataset: File?,
+    state: InstantPlacementSceneState,
+) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
+
+    // Placement state lives in the caller (see [InstantPlacementSceneState]) so the
+    // "Clear All" control can sit in the scaffold's bottom slot; aliased here so the
+    // scene body reads exactly as it did.
+    val placedModels = state.placedModels
+    val trackingMethods = state.trackingMethods
+    val lostAnchors = state.lostAnchors
+
+    var nextId by remember { mutableStateOf(0) }
+
+    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    var isTracking by remember { mutableStateOf(false) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ARSceneView(
@@ -358,8 +423,10 @@ private fun InstantPlacementScene(
                     val (location, name) = if (selectedSlug != null && selectedFile != null) {
                         "file://${selectedFile.absolutePath}" to selectedSlug.displayName
                     } else {
-                        val entry = INSTANT_MODEL_CYCLE[cycleIndex % INSTANT_MODEL_CYCLE.size]
-                        cycleIndex = (cycleIndex + 1) % INSTANT_MODEL_CYCLE.size
+                        val entry =
+                            INSTANT_MODEL_CYCLE[state.cycleIndex % INSTANT_MODEL_CYCLE.size]
+                        state.cycleIndex =
+                            (state.cycleIndex + 1) % INSTANT_MODEL_CYCLE.size
                         entry.assetPath to entry.displayName
                     }
                     placedModels.add(
@@ -490,34 +557,8 @@ private fun InstantPlacementScene(
             }
         }
 
-        // Clear-all control at the bottom-left. Only surface it once something
-        // has actually been placed — issue #1199. Before any tap, the button is
-        // a dead affordance that shares vertical space with the "Initializing
-        // camera" pill and creates the impression of two stacked buttons.
-        AnimatedVisibility(
-            visible = placedModels.isNotEmpty(),
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(16.dp)
-        ) {
-            // Solid filled button (#1476). The previous OutlinedButton drew only a
-            // hairline border with a transparent fill, so over the live camera feed
-            // it was nearly invisible. A filled M3 Button gives an opaque surface
-            // with a guaranteed contrast pairing (container / onContainer).
-            Button(
-                onClick = {
-                    placedModels.forEach { runCatching { it.anchor.detach() } }
-                    placedModels.clear()
-                    trackingMethods.clear()
-                    lostAnchors.clear()
-                    cycleIndex = 0
-                },
-            ) {
-                Text("Clear All")
-            }
-        }
+        // The "Clear All" control is no longer here: it is bottom-anchored, so it lives
+        // in the scaffold's `bottomOverlay` slot, declared by ARInstantPlacementDemo.
 
         // Scanning indicator pill. Anchored top-center just below the stats pill
         // (issue #1199) so it never competes with the bottom-anchored Clear All

@@ -194,7 +194,23 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
             if (DemoSettings.qaMode) {
                 ForceTrackingFailureMenu()
             }
-        }
+        },
+        // Bottom color legend — maps the 12 overlay colors to their class names so the
+        // segmentation is readable. Only relevant once the overlay is actually showing.
+        //
+        // Hosted by the scaffold's `bottomOverlay` slot (#2779): the legend is a wide card
+        // and, hand-anchored bottom-center, its end edge ran straight under the Settings
+        // FAB. Start-aligned with the FAB's own band reserved on the end side, the two
+        // cannot meet at any screen width, density or font scale.
+        bottomOverlay = {
+            if (semanticsEverReceived && overlayBlend > 0.05f) {
+                SemanticLegend(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = 16.dp, end = settingsFabReservedSpace)
+                )
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
@@ -320,16 +336,6 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
-            }
-
-            // Bottom color legend — maps the 12 overlay colors to their class names so the
-            // segmentation is readable. Only relevant once the overlay is actually showing.
-            if (semanticsEverReceived && overlayBlend > 0.05f) {
-                SemanticLegend(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp)
-                )
             }
 
             // Tracking-failure overlay — same vocabulary as the other AR demos.

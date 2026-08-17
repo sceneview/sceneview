@@ -41,6 +41,8 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.demos.internal.friendlyArSessionError
@@ -304,6 +306,54 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                     }
                 }
             }
+        },
+        // Status banner + primary actions both live in the scaffold's bottom slot —
+        // a bottom-aligned Column, so they stack instead of sharing the same strip
+        // of pixels above the system bars (#2779). Before this, the first-launch
+        // "no ARCore Cloud API key" banner ran under both the "Drop here" button
+        // and the Settings FAB.
+        bottomOverlay = {
+            // Reuses ARStreetscapeDemo's wording for the missing-API-key + no-VPS-coverage
+            // cases so the empire-wide UX stays consistent. The tone is derived from the
+            // same branches as the text: a missing key / dead session is Blocked, a
+            // transient wait is Progress, and a "do this now" sentence is Guidance.
+            val (statusText, statusTone) = when {
+                // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                sessionError != null -> sessionError!! to DemoStatusTone.Blocked
+                !hasArcoreApiKey ->
+                    ("ARCore Cloud API key not configured — see samples/android-demo/" +
+                        "ARCORE_CLOUD_SETUP.md") to DemoStatusTone.Blocked
+                geospatialUnavailable != null ->
+                    ("${geospatialUnavailable!!} — needs outdoor area with VPS coverage + " +
+                        "Cloud API key") to DemoStatusTone.Blocked
+                !isTracking -> "Initializing camera…" to DemoStatusTone.Progress
+                !earthTracking ->
+                    "Waiting for VPS lock — go outside, look around" to DemoStatusTone.Progress
+                else ->
+                    "Ready — point at the ground and tap \"Drop here\"" to
+                        DemoStatusTone.Guidance
+            }
+            DemoStatusBanner(text = statusText, tone = statusTone)
+
+            // Primary actions on-screen (#1964) — the banner tells the user to
+            // tap "Drop here", so it (and the Clear All reset) must be on-screen
+            // buttons. Same enabled gates as the previous in-sheet buttons;
+            // Clear All only appears once something is placed.
+            SceneActionBar(
+                SceneAction(
+                    label = "Drop here",
+                    onClick = onDrop,
+                    enabled = hasArcoreApiKey &&
+                        earthTracking &&
+                        earthState == Earth.EarthState.ENABLED &&
+                        cameraLat != null,
+                ),
+                *(if (placedAnchors.isNotEmpty()) {
+                    arrayOf(SceneAction("Clear All", onClick = onClearAll))
+                } else {
+                    emptyArray()
+                }),
+            )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -377,63 +427,9 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Bottom-center status banner. Reuses ARStreetscapeDemo's wording for the
-            // missing-API-key + no-VPS-coverage cases so the empire-wide UX stays consistent.
-            val statusText = when {
-                // friendlyArSessionError already yields a complete, honest sentence (#2349).
-                sessionError != null -> sessionError!!
-                !hasArcoreApiKey ->
-                    "ARCore Cloud API key not configured — see samples/android-demo/" +
-                        "ARCORE_CLOUD_SETUP.md"
-                geospatialUnavailable != null ->
-                    "${geospatialUnavailable!!} — needs outdoor area with VPS coverage + " +
-                        "Cloud API key"
-                !isTracking -> "Initializing camera…"
-                !earthTracking -> "Waiting for VPS lock — go outside, look around"
-                else -> "Ready — point at the ground and tap \"Drop here\""
-            }
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
-                    .background(
-                        color = if (!hasArcoreApiKey || sessionError != null ||
-                            geospatialUnavailable != null) {
-                            MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
-                        } else {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                        },
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            )
-
             // Cover the still-black ARSceneView surface until ARCore delivers its
             // first camera frame, so the entry doesn't read as a frozen screen (#1473).
             ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
-
-            // Primary actions on-screen (#1964) — the banner tells the user to
-            // tap "Drop here", so it (and the Clear All reset) must be on-screen
-            // buttons. Same enabled gates as the previous in-sheet buttons;
-            // Clear All only appears once something is placed.
-            SceneActionBar(
-                SceneAction(
-                    label = "Drop here",
-                    onClick = onDrop,
-                    enabled = hasArcoreApiKey &&
-                        earthTracking &&
-                        earthState == Earth.EarthState.ENABLED &&
-                        cameraLat != null,
-                ),
-                *(if (placedAnchors.isNotEmpty()) {
-                    arrayOf(SceneAction("Clear All", onClick = onClearAll))
-                } else {
-                    emptyArray()
-                }),
-            )
         }
     }
 }

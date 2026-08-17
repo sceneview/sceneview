@@ -6,13 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -167,7 +164,7 @@ private fun ModeSelector(
 // same surface every frame.
 //
 // **"Surprise me" button.** When the user taps the extended FAB at the
-// bottom-right, the demo searches the Sketchfab API for a downloadable model
+// bottom-start, the demo searches the Sketchfab API for a downloadable model
 // tagged like the previous pick (or just downloadable PBR content on first
 // tap), then routes the resulting URL through SceneView's `file://` model
 // loader. The streamed pick replaces the helmet for the rest of the session
@@ -325,6 +322,53 @@ private fun SingleModelSection(
                 valueRange = 0.5f..10f,
                 valueText = "%.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
             )
+        },
+        bottomOverlay = {
+            // Surprise FAB lives only when the user has a Sketchfab API key —
+            // tapping it without a key would silently fall back to the same
+            // bundled helmet, which is worse than no button at all.
+            //
+            // Hosted by the scaffold's bottom slot (#2779). The Settings FAB / peek
+            // chip is pinned to the bottom-END corner, so this one keeps the START
+            // edge and the scaffold — not a constant picked here — owns the gutter
+            // and the system-bar inset, which is what stops the round Settings
+            // control from landing on top of the extended FAB and clipping its
+            // "Surprise me" label to "Surprise…" (#2350).
+            if (hasSketchfabKey) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (surpriseInFlight) return@ExtendedFloatingActionButton
+                        surpriseInFlight = true
+                        scope.launch {
+                            val picked = runCatching {
+                                pickRandomDownloadableModel(service, resolver)
+                            }.getOrNull()
+                            // Even on failure we exit the in-flight state so
+                            // the user can retry. The helmet stays put.
+                            streamedFileUrl = picked
+                            surpriseInFlight = false
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = if (surpriseInFlight) {
+                                stringResource(R.string.demo_model_viewer_surprise_loading)
+                            } else {
+                                stringResource(R.string.demo_model_viewer_surprise)
+                            },
+                        )
+                    },
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(16.dp),
+                )
+            }
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -360,53 +404,6 @@ private fun SingleModelSection(
                 loading = activeModelInstance == null,
                 label = stringResource(R.string.demo_model_viewer_loading),
             )
-
-            // Surprise FAB lives only when the user has a Sketchfab API key —
-            // tapping it without a key would silently fall back to the same
-            // bundled helmet, which is worse than no button at all.
-            if (hasSketchfabKey) {
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        if (surpriseInFlight) return@ExtendedFloatingActionButton
-                        surpriseInFlight = true
-                        scope.launch {
-                            val picked = runCatching {
-                                pickRandomDownloadableModel(service, resolver)
-                            }.getOrNull()
-                            // Even on failure we exit the in-flight state so
-                            // the user can retry. The helmet stays put.
-                            streamedFileUrl = picked
-                            surpriseInFlight = false
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = if (surpriseInFlight) {
-                                stringResource(R.string.demo_model_viewer_surprise_loading)
-                            } else {
-                                stringResource(R.string.demo_model_viewer_surprise)
-                            },
-                        )
-                    },
-                    // Bottom-START (#2350). The DemoScaffold's Settings FAB / peek
-                    // chip is pinned to the bottom-END corner with the same 16 dp
-                    // padding, so a bottom-END placement here had the round Settings
-                    // control sitting on top of the extended FAB and clipping its
-                    // "Surprise me" label to "Surprise…". Bottom-start keeps the two
-                    // controls in opposite corners. `systemBars` inset padding lifts it
-                    // above the nav bar, matching the Settings column.
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .windowInsetsPadding(WindowInsets.systemBars)
-                        .padding(16.dp),
-                )
-            }
         }
     }
 }

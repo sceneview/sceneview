@@ -204,6 +204,30 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             // overlay can be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
+        },
+        // Primary actions on-screen (#1964 / #1614) — the banner tells the
+        // user to tap Host / Resolve, so both are on-screen buttons, never
+        // buried in the Settings sheet. Hosted by the scaffold's bottom slot so
+        // the bar is laid out against the Settings FAB instead of blindly
+        // beside it (#2779). Both stay TAPPABLE (#2486): a disabled M3 Button
+        // over the camera feed reads as faint grey text ("there are no
+        // buttons"), so instead of disabling on the not-yet-actionable states
+        // the handlers explain the next step on-screen. Only the
+        // genuinely-unavailable cases stay disabled: no Cloud API key at all,
+        // or Host after a successful host.
+        bottomOverlay = {
+            SceneActionBar(
+                SceneAction(
+                    label = "Host",
+                    onClick = onHost,
+                    enabled = hasArcoreApiKey && hostedId == null,
+                ),
+                SceneAction(
+                    label = "Resolve",
+                    onClick = onResolve,
+                    enabled = hasArcoreApiKey,
+                ),
+            )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -374,26 +398,6 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Primary actions on-screen (#1964 / #1614) — the banner tells the
-            // user to tap Host / Resolve, so both are on-screen buttons, never
-            // buried in the Settings sheet. Both stay TAPPABLE (#2486): a
-            // disabled M3 Button over the camera feed reads as faint grey text
-            // ("there are no buttons"), so instead of disabling on the
-            // not-yet-actionable states the handlers explain the next step
-            // on-screen. Only the genuinely-unavailable cases stay disabled:
-            // no Cloud API key at all, or Host after a successful host.
-            SceneActionBar(
-                SceneAction(
-                    label = "Host",
-                    onClick = onHost,
-                    enabled = hasArcoreApiKey && hostedId == null,
-                ),
-                SceneAction(
-                    label = "Resolve",
-                    onClick = onResolve,
-                    enabled = hasArcoreApiKey,
-                ),
-            )
         }
     }
 }
