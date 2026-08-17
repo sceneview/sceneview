@@ -90,6 +90,22 @@ def scan_forward(src, i):
                 return j + 1
             j += 1
         return n
+    if src[i] == "'":
+        # A char literal. `'{'`, `'}'` and `'"'` are all legal Kotlin, and each one
+        # derails a matcher that does not consume it: an unpaired brace shifts every
+        # slot boundary after it, and a lone quote makes the rest of the file look
+        # like one enormous string literal — which reads as "no findings", for life.
+        j = i + 1
+        while j < n:
+            if src[j] == "\\":
+                j += 2
+                continue
+            if src[j] == "'":
+                return j + 1
+            if src[j] == "\n":
+                break  # not a char literal after all; treat the quote as ordinary
+            j += 1
+        return i + 1
     if src.startswith("//", i):
         j = src.find("\n", i)
         return n if j < 0 else j
@@ -118,10 +134,19 @@ def token_ranges(src):
     return out
 
 
-def slot_ranges(src):
-    """(start, end) index pairs covering every `bottomOverlay = { … }` body."""
+def slot_ranges(src, tokens):
+    """(start, end) index pairs covering every real `bottomOverlay = { … }` body.
+
+    `tokens` gates which matches count. A `bottomOverlay = {` written inside a KDoc
+    example — this file's own migration guidance does exactly that — is prose, and
+    treating it as a slot carves out an exemption zone spanning whatever braces
+    happen to balance after it. Everything hand-anchored inside that zone then
+    passes silently, which is the one failure mode a gate must not have.
+    """
     out = []
     for m in SLOT_START.finditer(src):
+        if any(a <= m.start() < b for a, b in tokens):
+            continue
         i = m.end() - 1  # on the '{'
         depth, n = 0, len(src)
         while i < n:
@@ -145,8 +170,8 @@ def line_of(src, index):
 
 
 def find_hand_anchored(src):
-    slots = slot_ranges(src)
     tokens = token_ranges(src)
+    slots = slot_ranges(src, tokens)
 
     def is_code(pos):
         """True when `pos` is real code outside every `bottomOverlay = { … }` body."""

@@ -161,6 +161,53 @@ fun ProseDemo(onBack: () -> Unit) {
 KT
 assert_exit "a mention in prose is not flagged as a call site" "$root" 0
 
+# ── A `bottomOverlay = {` in prose must not become an exemption zone ──────────────────────
+# THE REGRESSION THIS PINS: the slot scanner used to run over the raw source, so a comment
+# naming the slot — the very thing this gate tells authors to write — was read as a real
+# one. Its opening brace has no partner inside the comment, so the match ran on until the
+# next real `}`, and the region between them became an exemption zone covering live code.
+# Measured on the pre-fix gate, this exact file reported "every bottom-anchored element is
+# in the shared slot", exit 0, with a `.align(Alignment.BottomCenter)` sitting in it. A
+# gate with a false negative is worse than no gate: it certifies the defect it exists to
+# catch. Note the missing `}` in the comment — that asymmetry is the whole mechanism.
+root="$(new_fixture prose_slot)"
+cat > "$root/$DEMOS_REL/ProseSlot.kt" <<'KT'
+@Composable
+fun ProseSlotDemo(onBack: () -> Unit) {
+    DemoScaffold(title = "ProseSlot", onBack = onBack) {
+        ARSceneView(modifier = Modifier.fillMaxSize())
+        // TODO(#3229): this banner belongs in bottomOverlay = {
+        Text(status, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+}
+KT
+assert_exit "a bottomOverlay named in a comment does not exempt real code" "$root" 1
+assert_reports "  and the hand-anchored element is still named" "$root" "ProseSlot.kt"
+
+# ── A char literal holding a brace or a quote must not derail the scan ────────────────────
+# THE REGRESSION THIS PINS: `'{'`, `'}'` and `'"'` are legal Kotlin. An unconsumed `'{'`
+# shifts every slot boundary after it; an unconsumed `'"'` makes the remainder of the file
+# look like one string literal, so nothing at all is reported — silently, and green.
+root="$(new_fixture charlit)"
+cat > "$root/$DEMOS_REL/CharLit.kt" <<'KT'
+@Composable
+fun CharLitDemo(onBack: () -> Unit) {
+    val open = '{'
+    val quote = '"'
+    val esc = '\''
+    DemoScaffold(
+        title = "CharLit",
+        onBack = onBack,
+        bottomOverlay = { DemoStatusBanner(status) },
+    ) {
+        ARSceneView(modifier = Modifier.fillMaxSize())
+        Text(hud, modifier = Modifier.align(Alignment.BottomEnd))
+    }
+}
+KT
+assert_exit "a char literal holding a brace or a quote does not blind the scan" "$root" 1
+assert_reports "  and the element outside the slot is reported" "$root" "CharLit.kt"
+
 echo
 if [ "$fail" -gt 0 ]; then
     printf "${RED}%d passed, %d FAILED${NC}\n" "$pass" "$fail"

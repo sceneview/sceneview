@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
  * ```
  * DemoScaffold(
  *     bottomOverlay = {
- *         DemoStatusBanner(statusText, tone = DemoStatusTone.Error)
+ *         DemoStatusBanner(statusText, tone = DemoStatusTone.Blocked)
  *         SceneActionBar(
  *             SceneAction("Drop", onClick = { drop() }),
  *             SceneAction("Reset", onClick = { reset() }, enabled = count > 0),
