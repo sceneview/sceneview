@@ -456,7 +456,7 @@ fi
 
 # Demo bottom-overlay gate. Three tenants compete for the same strip of pixels above the
 # system bars on every demo screen — the Settings FAB at bottom-end, `SceneActionBar` at
-# bottom-start, the demo's own status banner at bottom-center — and 23 of 27 demo files
+# bottom-start, the demo's own status banner at bottom-center — and 25 demo files
 # placed theirs by hand, each with its own clearance constant. Fifteen collided, most on
 # first launch. `SceneActionBar`'s KDoc had promised they "never collide", which is why the
 # drift was systematic rather than careless; a doc cannot be the enforcement when a banner's

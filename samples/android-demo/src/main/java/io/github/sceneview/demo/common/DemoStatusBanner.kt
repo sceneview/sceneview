@@ -44,11 +44,16 @@ const val DEMO_STATUS_BANNER_TAG = "demo-status-banner"
  *
  * Only callable inside `DemoScaffold(bottomOverlay = …)`, because the receiver is
  * what carries the geometry it cannot otherwise know: how much room the Settings
- * FAB is taking at the bottom-end of *this* demo. It applies that inset
- * symmetrically — the banner is centred, and a centred element only keeps its end
- * edge out of the FAB's band when the band is reserved on both sides.
+ * FAB is taking at the bottom-end of *this* demo. It applies that inset at the
+ * **end only**, then centres the pill inside what is left. Not symmetrically:
+ * the FAB and its peek chip occupy exactly one corner, so reserving their band
+ * on both edges spends the reserve twice to protect one side, and the pill it
+ * leaves can be narrower than the word it has to hold (measured: 73 dp against
+ * `ar-measure`'s first-launch header, where end-only leaves 242 dp). The pill
+ * still reads as centred, because the band it centres in is the band visibly
+ * free of chrome.
  *
- * Before this existed, 23 demo files each wrote their own: a `Text` with an
+ * Before this existed, 25 demo files each wrote their own: a `Text` with an
  * `align(Alignment.BottomCenter)`, a hand-picked `padding(bottom = 24.dp)` or
  * `32.dp`, a hand-picked background colour and alpha, and no idea the FAB or the
  * action bar were sitting in the same band. A sweep of the demo directory found

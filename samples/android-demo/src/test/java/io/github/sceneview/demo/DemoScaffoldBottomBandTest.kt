@@ -94,12 +94,15 @@ class DemoScaffoldBottomBandTest {
 
     @Test
     fun bottomOverlay_keepsUsableWidth_besideAWordyChip() {
-        // The opposite failure, and the reason the peek chip is now capped: a
-        // reserve that clears the chip by *starving* the overlay is not a fix.
-        // `DemoStatusBanner` spends the reserve twice — it insets both sides to
-        // stay centred — so an uncapped chip taking 230 dp of a 411 dp screen
-        // leaves a centred pill negative width. Anything at or below half the
-        // screen means the chip has stopped peeking and started occupying.
+        // The opposite failure, and the reason the peek chip is now capped and
+        // the inset is end-only: a reserve that clears the chip by *starving*
+        // the overlay is not a fix. Both halves were needed. Uncapped, the chip
+        // takes 230 dp of a 411 dp screen; under the symmetric inset this idiom
+        // used to prescribe, the reserve is spent twice and the centred pill
+        // comes out negative. `DemoStatusBanner` now insets the end only, so
+        // what is left is `411 - reserve` rather than `411 - 2 × reserve`.
+        // Anything at or below half the screen means the chip has stopped
+        // peeking and started occupying.
         val overlay = measureOverlay(
             fontScale = 1.3f,
             // `ar-measure`'s real first-launch header, verbatim — 38 characters.
