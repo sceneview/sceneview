@@ -64,6 +64,9 @@ total_bundled=0
 total_cdn=0
 missing_bundled=0
 broken_cdn=0
+# CDN URLs whose reachability could not be established — counted separately from
+# broken ones so a rate-limited runner never reports a live URL as dead.
+skipped_cdn=0
 broken_refs_list=""
 
 append_broken() {
@@ -88,6 +91,38 @@ cdn_cache_set() {
 
 LAST_CDN_ERR=""
 
+# A status code that says "ask again later", never "this URL is wrong".
+#
+# 429 is the one that actually bit us: raw.githubusercontent.com rate-limited a
+# CI runner and this gate reported
+#   DEAD https://.../FlightHelmet.gltf [FAIL(429)]
+# blocking a merge over a URL that was, and remained, perfectly valid. A rate
+# limit is not evidence of a dead link, and neither is a timeout or a 502 — those
+# describe the checker's luck, not the repo's contents. Treating them as failures
+# makes this gate go red on someone else's load, which trains everyone to re-run
+# it until it is green: the exact habit that lets a REAL dead link through.
+#
+# 403 is deliberately absent. GitHub returns it for a private or removed asset,
+# which is a real broken reference from this repo's point of view.
+is_transient_http_code() {
+    case "$1" in
+        000|408|425|429|500|502|503|504) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# One HEAD, falling back to a ranged GET for CDNs that reject HEAD.
+probe_cdn_url() {
+    local url="$1" code
+    # -L follows redirects (GitHub releases return 302 → S3/ObjectStore).
+    code=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 -I "$url" 2>/dev/null || echo "000")
+    if [ "$code" != "200" ] && [ "$code" != "206" ]; then
+        code=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 -r 0-0 "$url" 2>/dev/null || echo "000")
+    fi
+    printf "%s" "$code"
+}
+
+# 0 = reachable · 1 = broken · 2 = inconclusive (transient, after retries)
 check_cdn_url() {
     local url="$1"
     if [ "$check_cdn" != true ]; then
@@ -96,28 +131,35 @@ check_cdn_url() {
     local cached
     cached=$(cdn_cache_get "$url")
     if [ -n "$cached" ]; then
-        if [ "$cached" = "OK" ]; then
+        case "$cached" in
+            OK) return 0 ;;
+            SKIP*) LAST_CDN_ERR="$cached"; return 2 ;;
+            *) LAST_CDN_ERR="$cached"; return 1 ;;
+        esac
+    fi
+
+    local code delay
+    # Backoff spread over ~23s. A GitHub raw rate-limit window is short, but not
+    # instant — retrying three times in a row without waiting just spends the
+    # same rejection three times.
+    for delay in 0 2 6 15; do
+        [ "$delay" -gt 0 ] && sleep "$delay"
+        code=$(probe_cdn_url "$url")
+        if [ "$code" = "200" ] || [ "$code" = "206" ]; then
+            cdn_cache_set "$url" "OK"
             return 0
-        else
-            LAST_CDN_ERR="$cached"
-            return 1
         fi
+        is_transient_http_code "$code" || break
+    done
+
+    if is_transient_http_code "$code"; then
+        cdn_cache_set "$url" "SKIP($code)"
+        LAST_CDN_ERR="SKIP($code)"
+        return 2
     fi
-    local code
-    # -L follows redirects (GitHub releases return 302 → S3/ObjectStore).
-    # -I does HEAD. Some CDNs reject HEAD → fall back to ranged GET.
-    code=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 -I "$url" 2>/dev/null || echo "000")
-    if [ "$code" != "200" ] && [ "$code" != "206" ]; then
-        code=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 -r 0-0 "$url" 2>/dev/null || echo "000")
-    fi
-    if [ "$code" = "200" ] || [ "$code" = "206" ]; then
-        cdn_cache_set "$url" "OK"
-        return 0
-    else
-        cdn_cache_set "$url" "FAIL($code)"
-        LAST_CDN_ERR="FAIL($code)"
-        return 1
-    fi
+    cdn_cache_set "$url" "FAIL($code)"
+    LAST_CDN_ERR="FAIL($code)"
+    return 1
 }
 
 # ---- Extract references from source files ----
@@ -286,12 +328,19 @@ check_bundled_ref() {
 check_url_ref() {
     local url="$1"
     local source="$2"
+    local rc=0
     total_cdn=$((total_cdn + 1))
-    if check_cdn_url "$url"; then
+    check_cdn_url "$url" || rc=$?
+    [ "$rc" = 0 ] && return 0
+    local rel_source="${source#$REPO_ROOT/}"
+    if [ "$rc" = 2 ]; then
+        # Reported, never fatal: the run says what it could not confirm instead of
+        # silently claiming full coverage it did not have.
+        skipped_cdn=$((skipped_cdn + 1))
+        append_broken "  ${YELLOW}SKIP${NC} $url  ${GRAY}($rel_source) [${LAST_CDN_ERR}] not checked${NC}"
         return 0
     fi
     broken_cdn=$((broken_cdn + 1))
-    local rel_source="${source#$REPO_ROOT/}"
     append_broken "  ${RED}DEAD${NC} $url  ${GRAY}($rel_source) [${LAST_CDN_ERR}]${NC}"
     return 1
 }
@@ -507,12 +556,22 @@ fi
 echo
 echo -e "${BLUE}== Summary ==${NC}"
 echo -e "  Bundled refs checked : ${total_bundled}"
-echo -e "  CDN refs checked     : ${total_cdn}"
+echo -e "  CDN refs checked     : $((total_cdn - skipped_cdn))/${total_cdn}"
 if [ "$platforms" = "all" ]; then
     echo -e "  Catalog drift        : ${catalog_undeclared} undeclared"
 fi
+# Named even on a clean run. A gate that quietly drops what it could not reach
+# reads as "everything verified" when it is not, which is how a real dead link
+# eventually ships behind a green tick.
+if [ $skipped_cdn -ne 0 ]; then
+    echo -e "  ${YELLOW}CDN not checked      : ${skipped_cdn} (transient — rate limit, timeout or 5xx)${NC}"
+fi
 if [ $missing_bundled -eq 0 ] && [ $broken_cdn -eq 0 ] && [ $catalog_undeclared -eq 0 ]; then
     echo -e "  ${GREEN}All references resolve ✓${NC}"
+    if [ -n "$broken_refs_list" ]; then
+        echo
+        printf "%b\n" "$broken_refs_list"
+    fi
     exit 0
 else
     [ $missing_bundled -ne 0 ] && echo -e "  ${RED}Missing bundled: ${missing_bundled}${NC}"
