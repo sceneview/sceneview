@@ -75,14 +75,14 @@ resolve_codex() {
     [ -x "$c" ] && { printf '%s\n' "$c"; return 0; }
   done
   if command -v codex >/dev/null 2>&1; then
-    printf '\033[36m· codex résolu via PATH (hors emplacements canoniques): %s\033[0m\n' \
+    printf '\033[36m· codex resolved via PATH (outside canonical locations): %s\033[0m\n' \
       "$(command -v codex)" >&2
     command -v codex; return 0
   fi
   return 1
 }
 
-CODEX_BIN="$(resolve_codex)" || die "Codex CLI introuvable. Installer: npm i -g @openai/codex" 2
+CODEX_BIN="$(resolve_codex)" || die "Codex CLI not found. Install it with: npm i -g @openai/codex" 2
 CODEX_PATH_PREFIX="$(dirname "$CODEX_BIN")"   # node shim needs its own bin dir
 
 # --------------------------------------------------------------- env scrubbing
@@ -108,24 +108,26 @@ preflight() {
   # for billing, which would defeat the whole point of this check.
   local auth="${CODEX_HOME:-$HOME/.codex}/auth.json"
 
-  [ -f "$auth" ] || die "Pas d'auth Codex. Lancer: codex login (flux ChatGPT)" 2
+  [ -f "$auth" ] || die "No Codex credentials. Run: codex login (ChatGPT flow)" 2
 
   # Authoritative check first — the CLI's own view of its credentials.
   local status
-  status="$(run_codex login status 2>&1)" || die "codex login status a échoué: $status" 2
+  status="$(run_codex login status 2>&1)" || die "codex login status failed: $status" 2
   case "$status" in
     *ChatGPT*|*chatgpt*) : ;;
     *API*key*|*api*key*|*API\ key*)
-      die "Codex est authentifié par CLÉ API (facturation à l'usage). Refus. Repasser en ChatGPT: codex logout && codex login" 2 ;;
-    *) die "Mode d'authentification Codex INDÉTERMINÉ ($status) — ne pas déléguer avant clarification" 2 ;;
+      die "Codex is authenticated with an API KEY (pay-per-token billing). Refusing. Switch back to ChatGPT: codex logout && codex login" 2 ;;
+    *) die "Codex authentication mode is UNDETERMINED ($status) — do not delegate until this is clarified" 2 ;;
   esac
 
   # Second, independent check on the credential file itself.
   local mode key
-  mode="$(python3 -c "import json;print(json.load(open('$auth')).get('auth_mode'))" 2>/dev/null)"
-  key="$(python3 -c "import json;d=json.load(open('$auth'));print('SET' if d.get('OPENAI_API_KEY') else 'NONE')" 2>/dev/null)"
-  [ "$mode" = "chatgpt" ] || die "auth.json: auth_mode=$mode (attendu chatgpt). Refus." 2
-  [ "$key" = "NONE" ]     || die "auth.json contient une clé API OpenAI. Refus — la facturation API n'est pas autorisée." 2
+  # Path goes through argv, never interpolated into the source literal: a
+  # single quote in CODEX_HOME/HOME would otherwise break out and execute.
+  mode="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("auth_mode"))' "$auth" 2>/dev/null)"
+  key="$(python3 -c 'import json,sys;print("SET" if json.load(open(sys.argv[1])).get("OPENAI_API_KEY") else "NONE")' "$auth" 2>/dev/null)"
+  [ "$mode" = "chatgpt" ] || die "auth.json: auth_mode=$mode (expected chatgpt). Refusing." 2
+  [ "$key" = "NONE" ]     || die "auth.json carries an OpenAI API key. Refusing — API billing is not authorised." 2
 
   if [ "$quiet" != "quiet" ]; then
     # Through run_codex, never the raw binary: the codex shim is a node script
@@ -133,22 +135,22 @@ preflight() {
     # or directory" INSIDE a green line — a false green, which this repo treats
     # as the most expensive class of bug.
     local ver
-    ver="$(run_codex --version 2>&1)" || die "codex --version a échoué: $ver" 2
+    ver="$(run_codex --version 2>&1)" || die "codex --version failed: $ver" 2
     case "$ver" in
       *codex*) : ;;
-      *) die "Sortie inattendue de codex --version: $ver" 2 ;;
+      *) die "Unexpected output from codex --version: $ver" 2 ;;
     esac
     ok "Codex $ver — $CODEX_BIN"
-    ok "Authentification: ChatGPT (auth_mode=chatgpt, aucune clé API dans auth.json)"
-    local leak="" v
+    ok "Auth: ChatGPT (auth_mode=chatgpt, no API key in auth.json)"
+    local leak="" v val
     for v in $SCRUB; do
       eval "val=\${$v:-}"
       [ -n "$val" ] && leak="$leak $v"
     done
     if [ -n "$leak" ]; then
-      info "Présentes dans l'environnement mais NEUTRALISÉES pour Codex:$leak"
+      info "Present in the environment but SCRUBBED from Codex:$leak"
     else
-      ok "Aucune variable de clé API dans l'environnement"
+      ok "No API-key variable in the environment"
     fi
   fi
 }
@@ -157,8 +159,15 @@ reject_banned_flags() {
   local a
   for a in "$@"; do
     case "$a" in
-      --with-api-key|--dangerously-bypass-approvals-and-sandbox|--dangerously-bypass-hook-trust|--oss)
-        die "Option interdite par la politique de délégation: $a" 2 ;;
+      --with-api-key|--with-api-key=*|--with-access-token|--with-access-token=*|\
+      --oss|--oss=*|\
+      --dangerously-bypass-approvals-and-sandbox*|--dangerously-bypass-hook-trust*)
+        # The glued `--with-api-key=sk-...` form used to fall through here,
+        # land in REST, and be forwarded verbatim to codex: a key on argv is
+        # invisible to the env scrub (env vars only) AND to both preflights
+        # (auth.json + login status, never argv), so it defeated the whole
+        # billing invariant. Match both spellings.
+        die "Flag forbidden by the delegation policy: $a" 2 ;;
     esac
   done
 }
@@ -175,9 +184,9 @@ check_quota_and_exit() {
   local log="$1" rc="$2"
   [ "$rc" -eq 0 ] && return 0
   if tail -25 "$log" 2>/dev/null | grep -qiE "usage limit|rate limit|quota|too many requests|plan limit|429"; then
-    printf '\033[33m⚠ Codex signale une limite de quota. Aucun contournement ne sera tenté.\033[0m\n' >&2
+    printf '\033[33m⚠ Codex reports a quota limit. No workaround will be attempted.\033[0m\n' >&2
     printf '  Log: %s\n' "$log" >&2
-    printf '  → Prévenir Thomas. Ne pas changer de compte, ne pas basculer sur l API.\n' >&2
+    printf '  → Tell Thomas. Do not switch account, do not fall back to the API.\n' >&2
     exit 3
   fi
 }
@@ -200,13 +209,13 @@ invoke() {
       -C "$workdir" --sandbox "$sandbox" -o "$out" 2>&1 | tee "$log"
   rc="${PIPESTATUS[0]}"
 
-  [ "$rc" -eq 124 ] && die "Codex a dépassé le timeout de ${tmo}s. Log: $log" 4
+  [ "$rc" -eq 124 ] && die "Codex exceeded the ${tmo}s timeout. Log: $log" 4
   check_quota_and_exit "$log" "$rc"
   preflight quiet          # billing mode must be unchanged after the call
-  [ "$rc" -eq 0 ] || die "Codex a échoué (code $rc). Log: $log" 1
+  [ "$rc" -eq 0 ] || die "Codex failed (exit $rc). Log: $log" 1
 
-  ok "Résultat: $out"
-  ok "Log complet: $log"
+  ok "Result: $out"
+  ok "Full log: $log"
   return 0
 }
 
@@ -236,12 +245,12 @@ CODEX_ARGS=()
 
 get_prompt() {
   if [ -n "$FILE" ]; then
-    [ -f "$FILE" ] || die "Fichier de prompt introuvable: $FILE"
+    [ -f "$FILE" ] || die "Prompt file not found: $FILE"
     cat "$FILE"; return
   fi
   local first="${REST[0]:-}"
   case "$first" in
-    "") die "Prompt vide. Passer un texte, --file F, ou - pour stdin." ;;
+    "") die "Empty prompt. Pass text, --file F, or - for stdin." ;;
     -)  cat ;;
     *)  printf '%s' "$first" ;;
   esac
@@ -250,14 +259,14 @@ get_prompt() {
 case "$CMD" in
   check)
     preflight
-    ok "Délégation Claude → Codex opérationnelle"
+    ok "Claude → Codex delegation is operational"
     ;;
 
   ask)
     # Read-only second opinion / analysis. Codex cannot modify the tree.
     preflight quiet
     PROMPT="$(get_prompt)" || exit 2
-    [ -n "$PROMPT" ] || die "Prompt vide." 2
+    [ -n "$PROMPT" ] || die "Empty prompt." 2
     printf '%s' "$PROMPT" | invoke "${LABEL:-ask}" read-only "${TIMEOUT:-600}" "${DIR:-$REPO_ROOT}" \
       exec ${CODEX_ARGS[@]+"${CODEX_ARGS[@]}"} -
     ;;
@@ -283,16 +292,16 @@ case "$CMD" in
       esac
     done
     if [ -n "$HAS_SEL" ] && [ -n "$HAS_PROMPT" ]; then
-      die "codex review n'accepte pas d'instructions libres avec --uncommitted/--base/--commit. Soit 'review --base main' seul, soit passer les instructions via 'ask'." 2
+      die "codex review rejects free-text instructions combined with --uncommitted/--base/--commit. Use 'review --base main' alone, or pass instructions through 'ask'." 2
     fi
     info "Codex → review (read-only, cwd=$RDIR)"
     ( cd "$RDIR" && PATH="$CODEX_PATH_PREFIX:$PATH" timeout --foreground "${TIMEOUT:-900}" \
         env "${UNSET_ARGS[@]}" "$CODEX_BIN" review ${REST[@]+"${REST[@]}"} ) 2>&1 | tee "$LOG"
     RC="${PIPESTATUS[0]}"
-    [ "$RC" -eq 124 ] && die "codex review a dépassé le timeout. Log: $LOG" 4
+    [ "$RC" -eq 124 ] && die "codex review timed out. Log: $LOG" 4
     check_quota_and_exit "$LOG" "$RC"
     preflight quiet
-    [ "$RC" -eq 0 ] || die "codex review a échoué (code $RC). Log: $LOG" 1
+    [ "$RC" -eq 0 ] || die "codex review failed (exit $RC). Log: $LOG" 1
     ok "Review: $LOG"
     ;;
 
@@ -300,30 +309,35 @@ case "$CMD" in
     # The only write-capable mode. Isolation is mandatory unless --here.
     preflight quiet
     PROMPT="$(get_prompt)" || exit 2
-    [ -n "$PROMPT" ] || die "Prompt vide." 2
+    [ -n "$PROMPT" ] || die "Empty prompt." 2
 
     if [ -n "$NEW_WT" ]; then
       WT_PATH="$REPO_ROOT/.claude/worktrees/codex-$NEW_WT"
       if [ -d "$WT_PATH" ]; then
-        info "Worktree existant réutilisé: $WT_PATH"
+        info "Reusing existing worktree: $WT_PATH"
       else
         git -C "$REPO_ROOT" worktree add -b "codex/$NEW_WT" "$WT_PATH" >/dev/null 2>&1 \
           || git -C "$REPO_ROOT" worktree add "$WT_PATH" "codex/$NEW_WT" >/dev/null \
-          || die "Création du worktree impossible: $WT_PATH"
-        ok "Worktree dédié: $WT_PATH (branche codex/$NEW_WT)"
+          || die "Could not create worktree: $WT_PATH"
+        ok "Dedicated worktree: $WT_PATH (branch codex/$NEW_WT)"
       fi
       DIR="$WT_PATH"
     fi
 
     TARGET="${DIR:-$REPO_ROOT}"
-    [ -d "$TARGET" ] || die "Répertoire cible inexistant: $TARGET"
-    if [ -z "$NEW_WT" ] && [ -z "$HERE" ] && [ "$(cd "$TARGET" && pwd)" = "$(pwd)" ]; then
-      die "implement refuse d'écrire dans le worktree courant sans isolation. Utiliser --new-worktree NOM, --dir PATH, ou --here si l'écriture concurrente est réellement exclue." 2
+    [ -d "$TARGET" ] || die "Target directory does not exist: $TARGET"
+    # Compare WORKTREE ROOTS, not literal cwd: launched from any subdirectory
+    # of the repo, $(pwd) != REPO_ROOT and the guard silently did not fire,
+    # handing Codex workspace-write over the caller's own tree — exactly the
+    # concurrent-edit hazard it exists to prevent.
+    TARGET_ROOT="$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null || (cd "$TARGET" && pwd))"
+    if [ -z "$NEW_WT" ] && [ -z "$HERE" ] && [ "$TARGET_ROOT" = "$REPO_ROOT" ]; then
+      die "implement refuses to write in the caller's own worktree without isolation. Use --new-worktree NAME, --dir PATH, or --here if concurrent writes are genuinely ruled out." 2
     fi
 
     printf '%s' "$PROMPT" | invoke "${LABEL:-implement}" workspace-write "${TIMEOUT:-1800}" "$TARGET" \
       exec ${CODEX_ARGS[@]+"${CODEX_ARGS[@]}"} -
-    info "État git de $TARGET après passage de Codex (à inspecter avant intégration):"
+    info "Git state of $TARGET after Codex ran (inspect before integrating):"
     git -C "$TARGET" status --short >&2
     ;;
 
@@ -332,5 +346,5 @@ case "$CMD" in
     ;;
 
   *)
-    die "Sous-commande inconnue: $CMD (check|ask|review|implement)" 2 ;;
+    die "Unknown subcommand: $CMD (check|ask|review|implement)" 2 ;;
 esac

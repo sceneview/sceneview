@@ -30,7 +30,7 @@ Two independent mechanisms enforce it, both inside the wrapper:
    null `OPENAI_API_KEY`. Anything else exits 2 before any call is made.
    Preflight runs again *after* every call, so a mid-run switch cannot pass.
 2. **Environment scrub** — `OPENAI_API_KEY`, `CODEX_API_KEY`, `OPENAI_BASE_URL`
-   and eight siblings are stripped from Codex's environment with `env -u`. Even
+   and 7 siblings are stripped from Codex's environment with `env -u`. Even
    if a key is exported later, Codex cannot see it.
 
 Banned outright, rejected before exec: `--with-api-key`, `--oss`,
