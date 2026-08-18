@@ -71,6 +71,20 @@ After Codex returns: **inspect the diff, check coherence, run the relevant
 tests, then integrate.** Codex never commits, pushes or merges — `AGENTS.md`
 tells it so, and Git stays Claude's responsibility.
 
+A fresh worktree inherits no gitignored file, so Codex reports "no Android SDK"
+and cannot compile. **Never fix that by copying `local.properties` across** — on
+2026-08-18 that file held a live `sketchfab.api.key` beside `sdk.dir`, and the
+sibling `ar-model-viewer` checkout keeps the Play upload keystore's passwords in
+the same file. `--new-worktree` now writes a safe one itself: `sdk.dir` is kept
+because it is a path, every other key keeps its name and loses its value. A key
+read as an empty string still configures; a missing key can throw. Nothing has to
+be recognised as a secret for this to hold, so a key nobody has thought of yet is
+neutralised like the rest.
+
+Codex still cannot always compile — the Gradle user-home lock is shared with the
+main checkout. When it says so, that is the honest report; **compile it yourself
+before integrating.**
+
 ## Cost policy — Claude quota is the scarce resource (2026-08-18)
 
 The weekly Claude 20x allowance was at **66% by Tuesday 18 August**, resetting
