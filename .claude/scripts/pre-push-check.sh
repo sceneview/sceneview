@@ -96,7 +96,7 @@ echo "════════════════════════�
 # often a poisoned Gradle build cache (an empty FROM-CACHE entry), not a real
 # break — `rm -rf <module>/build && ./gradlew … --no-build-cache` is the only
 # measured remedy. That is why the log tail is printed instead of hidden.
-echo -e "\n${YELLOW}[1/23] Compiling sceneview...${NC}"
+echo -e "\n${YELLOW}[1/24] Compiling sceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-sceneview.log" :sceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ sceneview compiles${NC}"
 else
@@ -104,7 +104,7 @@ else
         "sceneview FAILED to compile" "sceneview was never compiled"
 fi
 
-echo -e "${YELLOW}[2/23] Compiling arsceneview...${NC}"
+echo -e "${YELLOW}[2/24] Compiling arsceneview...${NC}"
 if gradle_run "$LOG_DIR/compile-arsceneview.log" :arsceneview:compileReleaseKotlin; then
     echo -e "${GREEN}  ✓ arsceneview compiles${NC}"
 else
@@ -113,7 +113,7 @@ else
 fi
 
 # 2. Unit tests
-echo -e "\n${YELLOW}[3/23] Running sceneview unit tests...${NC}"
+echo -e "\n${YELLOW}[3/24] Running sceneview unit tests...${NC}"
 if gradle_run "$LOG_DIR/test-sceneview.log" :sceneview:test; then
     echo -e "${GREEN}  ✓ sceneview tests pass${NC}"
 else
@@ -131,7 +131,7 @@ fi
 # behind. `test-ci-parity-gradle-tasks.sh` (leg 19) now fails on any task CI
 # runs that is neither run nor excluded here in writing, so the next task added
 # to that job cannot repeat it silently.
-echo -e "${YELLOW}[4/23] Running the remaining CI unit-test tasks...${NC}"
+echo -e "${YELLOW}[4/24] Running the remaining CI unit-test tasks...${NC}"
 if gradle_run "$LOG_DIR/test-arsceneview.log" \
         :arsceneview:testDebugUnitTest \
         :sceneview-core:androidTest \
@@ -176,7 +176,7 @@ fi
 #     even when the test task FAILS (`changed:1` on a red run), and left
 #     untouched on an UP-TO-DATE run — so its mtime discriminates all four
 #     cases (pass / real diff / skipped / infra death).
-echo -e "\n${YELLOW}[5/23] Verifying Android screenshot goldens...${NC}"
+echo -e "\n${YELLOW}[5/24] Verifying Android screenshot goldens...${NC}"
 SNAPSHOTS_DIR="samples/android-demo/src/test/snapshots"
 RR_SUMMARY="samples/android-demo/build/test-results/roborazzi/debug/results-summary.json"
 RR_LOG="$LOG_DIR/roborazzi.log"
@@ -254,7 +254,7 @@ fi
 # Golden target = a STATIC screen (About) — never a network-fed screen like
 # Explore, whose remote gallery re-drifts a 1%-threshold pixel golden.
 # NB: the golden is resolution-bound — capture and verify on the same sim model.
-echo -e "${YELLOW}[6/23] Verifying iOS screenshot goldens...${NC}"
+echo -e "${YELLOW}[6/24] Verifying iOS screenshot goldens...${NC}"
 IOS_GOLDENS="samples/ios-demo/goldens"
 IOS_GOLDEN_NAME="about_static"
 IOS_BUNDLE_ID="io.github.sceneview.demo"
@@ -283,7 +283,7 @@ else
 fi
 
 # 5. Version sync
-echo -e "\n${YELLOW}[7/23] Checking version sync...${NC}"
+echo -e "\n${YELLOW}[7/24] Checking version sync...${NC}"
 # Capture sync-versions.sh output and exit code separately, so a crash of the
 # script is not swallowed by the pipeline (a piped crash would falsely report
 # "0 mismatches"). `set -o pipefail` is deliberately NOT used globally — many
@@ -304,7 +304,7 @@ else
 fi
 
 # 6. Website JS syntax
-echo -e "\n${YELLOW}[8/23] Validating website JS...${NC}"
+echo -e "\n${YELLOW}[8/24] Validating website JS...${NC}"
 NODE_CMD=$(resolve_node || echo "")
 if [ -n "$NODE_CMD" ]; then
     if [ ! -f website-static/js/sceneview.js ]; then
@@ -327,7 +327,7 @@ fi
 # Scans every samples/* for broken bundled paths or dead CDN URLs so the
 # class of bugs fixed in session 34 (TV demo pointing at non-existent
 # models/*.glb, web-demo pointing at 404 CDN URLs) cannot come back.
-echo -e "\n${YELLOW}[9/23] Validating demo app asset references...${NC}"
+echo -e "\n${YELLOW}[9/24] Validating demo app asset references...${NC}"
 # --no-cdn to keep pre-push fast; CI runs the full check with CDN hits.
 ASSETS_LOG="$LOG_DIR/validate-demo-assets.log"
 if bash .claude/scripts/validate-demo-assets.sh --no-cdn > "$ASSETS_LOG" 2>&1; then
@@ -346,7 +346,7 @@ fi
 # runs in quality-gate.sh, ci.yml and daily via maintenance.yml — but
 # the lighter pre-push gate skipped it, so a skill-only push could land drift
 # without ever hitting quality-gate.sh. Invoke it directly here too.
-echo -e "\n${YELLOW}[10/23] Checking agent skill drift...${NC}"
+echo -e "\n${YELLOW}[10/24] Checking agent skill drift...${NC}"
 if [ -f .claude/scripts/check-sceneview-skill.sh ]; then
     SKILL_LOG="$LOG_DIR/skill-drift.log"
     if bash .claude/scripts/check-sceneview-skill.sh > "$SKILL_LOG" 2>&1; then
@@ -367,7 +367,7 @@ fi
 # not impact-check.sh — so editing llms.txt passed every local gate and only
 # turned red on CI. That is exactly what happened to the PR that added this
 # leg. Sub-second (a node regenerate-and-compare, no write).
-echo -e "\n${YELLOW}[11/23] Checking GPT knowledge base drift...${NC}"
+echo -e "\n${YELLOW}[11/24] Checking GPT knowledge base drift...${NC}"
 if [ -f tools/generate-gpt-knowledge.js ] && [ -n "${NODE_CMD:-$(resolve_node || true)}" ]; then
     GPT_LOG="$LOG_DIR/gpt-knowledge-drift.log"
     # Not `${NODE_CMD:-node}`: the bare word is exactly the lookup that fails on
@@ -391,7 +391,7 @@ fi
 # Vendored-download hardening gate. Passes silently while nothing builds
 # third_party/filament-kmp; fails the moment something does and its downloads
 # are still unverified / its symlink extraction unvalidated.
-echo -e "\n${YELLOW}[12/23] Checking the vendored download chain...${NC}"
+echo -e "\n${YELLOW}[12/24] Checking the vendored download chain...${NC}"
 if [ -f .claude/scripts/check-vendored-download-safety.sh ]; then
     VENDORED_LOG="$LOG_DIR/vendored-dl.log"
     if bash .claude/scripts/check-vendored-download-safety.sh > "$VENDORED_LOG" 2>&1; then
@@ -415,7 +415,7 @@ fi
 # it must keep sending fork PRs to a disposable hosted runner AND keep sending
 # push / dispatch / schedule to the Mac we already own. Both halves fail
 # silently — one leaks reach, the other just quietly spends money.
-echo -e "\n${YELLOW}[13/23] Checking self-hosted runner routing...${NC}"
+echo -e "\n${YELLOW}[13/24] Checking self-hosted runner routing...${NC}"
 if [ -f .claude/scripts/check-self-hosted-runner-routing.py ]; then
     ROUTING_LOG="$LOG_DIR/runner-routing.log"
     if python3 .claude/scripts/check-self-hosted-runner-routing.py > "$ROUTING_LOG" 2>&1; then
@@ -438,7 +438,7 @@ fi
 # "keep these in sync by hand" comment, another missing its dark variant entirely, so in
 # dark mode it rendered the light hues. Nothing local caught any of it, because a control
 # typed inline is always the shortest path when writing one demo on its own.
-echo -e "\n${YELLOW}[14/23] Checking the demo design system...${NC}"
+echo -e "\n${YELLOW}[14/24] Checking the demo design system...${NC}"
 if [ -f .claude/scripts/check-demo-design-system.py ]; then
     DESIGN_LOG="$LOG_DIR/demo-design-system.log"
     if python3 .claude/scripts/check-demo-design-system.py > "$DESIGN_LOG" 2>&1; then
@@ -454,6 +454,24 @@ else
     missing_gate_script "check-demo-design-system.py"
 fi
 
+# DESIGN.md is the single source of truth for every design token, and it used to
+# disagree with itself: `radius-lg` was 24px in its table and 28px in two prose
+# sentences. The Compose theme copied the prose. Months of green, one wrong file.
+echo -e "\n${YELLOW}[15/24] Checking DESIGN.md token coherence...${NC}"
+if [ -f .claude/scripts/check-design-token-coherence.py ]; then
+    TOKEN_LOG="$LOG_DIR/design-token-coherence.log"
+    if python3 .claude/scripts/check-design-token-coherence.py > "$TOKEN_LOG" 2>&1; then
+        cat "$TOKEN_LOG"
+    else
+        gate_script_failure "DESIGN.md token coherence" "$TOKEN_LOG" $? \
+            "DESIGN.md contradicts itself:" \
+            "DESIGN.md contradicts itself" \
+            "The table row is the authority — fix the prose, or the table if the table is wrong."
+    fi
+else
+    missing_gate_script "check-design-token-coherence.py"
+fi
+
 # Demo bottom-overlay gate. Three tenants compete for the same strip of pixels above the
 # system bars on every demo screen — the Settings FAB at bottom-end, `SceneActionBar` at
 # bottom-start, the demo's own status banner at bottom-center — and 25 demo files
@@ -466,7 +484,7 @@ fi
 # only the bottom edge of demos/, and said so in its own docstring — behind that sentence
 # the top edge of those same files accumulated 35 uncoordinated anchors in three
 # incompatible inset conventions, and the app-wide update banner sat unchecked in ui/.
-echo -e "\n${YELLOW}[15/23] Checking demo overlay anchors...${NC}"
+echo -e "\n${YELLOW}[16/24] Checking demo overlay anchors...${NC}"
 if [ -f .claude/scripts/check-demo-overlay-anchors.py ]; then
     OVERLAY_LOG="$LOG_DIR/demo-overlay-anchors.log"
     if python3 .claude/scripts/check-demo-overlay-anchors.py > "$OVERLAY_LOG" 2>&1; then
@@ -485,7 +503,7 @@ fi
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI
 # check — catch an unintentional public-API change locally before CI does.
 # Intentional changes: ./gradlew apiDump, review + commit the .api diff.
-echo -e "\n${YELLOW}[16/23] Checking public-API ABI (apiCheck)...${NC}"
+echo -e "\n${YELLOW}[17/24] Checking public-API ABI (apiCheck)...${NC}"
 if [ -f gradlew ]; then
     if gradle_run "$LOG_DIR/api-check.log" apiCheck; then
         echo -e "${GREEN}  ✓ public API matches the committed .api dumps${NC}"
@@ -588,7 +606,7 @@ fi
 # Android's canonical demo ids against iOS's live registry and the committed
 # parity-manifest.yml. Self-contained: it regenerates iOS's (gitignored)
 # GeneratedScenes.swift itself, so it works in a fresh worktree.
-echo -e "\n${YELLOW}[17/23] Checking Android <-> iOS demo id parity...${NC}"
+echo -e "\n${YELLOW}[18/24] Checking Android <-> iOS demo id parity...${NC}"
 if [ -f .claude/scripts/check-demo-id-parity.sh ]; then
     PARITY_LOG="$LOG_DIR/demo-id-parity.log"
     if bash .claude/scripts/check-demo-id-parity.sh > "$PARITY_LOG" 2>&1; then
@@ -615,7 +633,7 @@ fi
 # models once shipped uncredited; the copy inside the Play Store APK then ran
 # two months and six bundled files behind because nothing generated or checked
 # it (#2941). Deterministic regenerate-and-compare, no write, sub-second.
-echo -e "\n${YELLOW}[18/23] Checking asset credits...${NC}"
+echo -e "\n${YELLOW}[19/24] Checking asset credits...${NC}"
 if [ -f .claude/scripts/generate-credits.py ]; then
     CREDITS_LOG="$LOG_DIR/asset-credits.log"
     if python3 .claude/scripts/generate-credits.py --check > "$CREDITS_LOG" 2>&1; then
@@ -640,7 +658,7 @@ fi
 # a measured install no-op and has been rediscovered THREE times (#2796,
 # #2854, #2990) because each fix landed in one call site while the docs went
 # on recommending it. Documenting the trap is fine; recommending it is not.
-echo -e "\n${YELLOW}[19/23] Checking no file teaches \`android run\` for installing...${NC}"
+echo -e "\n${YELLOW}[20/24] Checking no file teaches \`android run\` for installing...${NC}"
 if [ -f .claude/scripts/check-android-run-not-taught.sh ]; then
     ANDROID_RUN_LOG="$LOG_DIR/android-run-not-taught.log"
     if bash .claude/scripts/check-android-run-not-taught.sh > "$ANDROID_RUN_LOG" 2>&1; then
@@ -659,7 +677,7 @@ fi
 # blocks are exec'd line-by-line through `sh -c` = dash on Linux runners, so a
 # bashism there only fails once it is on main. Needs dash + shellcheck, which
 # ship on the CI runner but not on every Mac — hence the guard.
-echo -e "\n${YELLOW}[20/23] Validating workflow shell blocks...${NC}"
+echo -e "\n${YELLOW}[21/24] Validating workflow shell blocks...${NC}"
 if ! command -v dash >/dev/null 2>&1 || ! command -v shellcheck >/dev/null 2>&1; then
     echo -e "${YELLOW}  ⚠ dash or shellcheck missing — NOT checked here (CI still gates it)${NC}"
     echo -e "${YELLOW}      Arm it locally: brew install dash shellcheck${NC}"
@@ -691,7 +709,7 @@ fi
 # shape this whole block exists to fix. And because the list comes from a
 # regex, "found nothing" is a broken extractor, never a clean bill of health
 # (#3050) — a count below the floor fails the leg instead of blessing it.
-echo -e "\n${YELLOW}[21/23] Running the repo-hygiene gate self-tests...${NC}"
+echo -e "\n${YELLOW}[22/24] Running the repo-hygiene gate self-tests...${NC}"
 # 48 self-tests on 2026-08-17. The floor guards against a regex that silently
 # degrades to a handful of matches; raise it if repo-hygiene ever legitimately
 # shrinks, but never delete it.
@@ -848,7 +866,7 @@ fi
 # the .filamat ↔ Filament-runtime ABI invariant (GenerateFilamat.sh --check),
 # the worktree-prune regression suite, and the website asset rules (no Google
 # Fonts, no Three.js, no <model-viewer>). Measured ~50 s.
-echo -e "\n${YELLOW}[22/23] Running the full quality gate (offline profile)...${NC}"
+echo -e "\n${YELLOW}[23/24] Running the full quality gate (offline profile)...${NC}"
 if [ -f .claude/scripts/quality-gate.sh ]; then
     QG_LOG="$LOG_DIR/quality-gate.log"
     if bash .claude/scripts/quality-gate.sh --quick > "$QG_LOG" 2>&1; then
@@ -882,7 +900,7 @@ fi
 # learn that a verification step was dropped. Its mutation suite runs in leg 19
 # (the suite proves the gate bites; this leg is the gate itself, on the tree
 # being pushed).
-echo -e "\n${YELLOW}[23/23] Checking the release publishers' contracts...${NC}"
+echo -e "\n${YELLOW}[24/24] Checking the release publishers' contracts...${NC}"
 if [ -f .claude/scripts/check-release-publish-verification.py ]; then
     RPV_LOG="$LOG_DIR/release-publish-verification.log"
     if python3 .claude/scripts/check-release-publish-verification.py > "$RPV_LOG" 2>&1; then

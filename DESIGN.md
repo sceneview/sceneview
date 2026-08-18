@@ -23,7 +23,7 @@ Material 3 Expressive principles guide all interactive surfaces and motion:
 - **Bold colors:** Use primary and gradient tokens with high saturation for hero elements; avoid washed-out or neutral-only palettes.
 - **Variable typography:** Scale headings expressively with `clamp()` — hero text should feel large and confident; body text stays readable and compact.
 - **Spring animations:** Interactive elements (buttons, cards, nav items) use spring-based easing (`ease-spring`) for physical, bouncy feedback.
-- **Dynamic shapes:** Corners vary by component role — small utility elements use `radius-xs` (8px), prominent cards use `radius-lg` (28px), pills use `radius-full`.
+- **Dynamic shapes:** Corners vary by component role — small utility elements use `radius-xs` (8px), prominent cards use `radius-xl` (28px), pills use `radius-full`.
 
 ### Liquid Glass Accents
 
@@ -309,7 +309,7 @@ Glassmorphism layer system for surfaces that float over content. Apply with rest
 ### Cards
 - Background: `surface-container`
 - Border: 1px solid `outline`
-- Radius: `radius-lg` (28px)
+- Radius: `radius-lg` (24px)
 - Padding: `space-xl` (32px), `space-lg` on mobile
 - Hover: lift -3px, shadow `shadow-lg`, border `primary-subtle`
 
