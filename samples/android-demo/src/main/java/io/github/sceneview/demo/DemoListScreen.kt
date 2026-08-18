@@ -85,10 +85,19 @@ import kotlinx.coroutines.withContext
  * "Preview" chip in the top-right corner so users have honest expectations
  * without feeling like the card is flagged as broken.
  */
+/*
+ * `onAboutClick` deliberately has NO default. It used to default to `{}`, the only
+ * production call site omitted it, and the (i) action in the app bar was therefore a
+ * dead button in every shipped build — it announced "About" to TalkBack and did
+ * nothing. A no-op default turns "the caller forgot" into silence at every layer:
+ * the compiler is satisfied, the snapshot test still renders a button, and only a
+ * human tapping it on a device finds out. Requiring the argument makes the omission
+ * a compile error, which is the only place it can still be caught for free.
+ */
 @Composable
 fun DemoListScreen(
     onDemoClick: (String) -> Unit,
-    onAboutClick: () -> Unit = {},
+    onAboutClick: () -> Unit,
 ) {
     // `rememberTopAppBarState()` survives recomposition + rotation so the
     // collapse offset doesn't snap back to expanded after a state change.

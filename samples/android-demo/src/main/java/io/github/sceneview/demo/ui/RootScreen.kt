@@ -128,7 +128,15 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                     onDemoClick = onDemoClick,
                     onSessionActiveChange = { arSessionActive = it },
                 )
-                RootTab.Samples -> DemoListScreen(onDemoClick = onDemoClick)
+                // `onAboutClick` has a default of `{}`, and for as long as this call
+                // site omitted it the (i) action in the Samples app bar was a dead
+                // button in the Play Store build — it announced "About" to TalkBack
+                // and did nothing at all. A defaulted lambda parameter fails silently;
+                // nothing in the type system or the tests noticed. Device QA did.
+                RootTab.Samples -> DemoListScreen(
+                    onDemoClick = onDemoClick,
+                    onAboutClick = { selectedTab = RootTab.About },
+                )
                 RootTab.About -> AboutTabContent()
             }
         }
