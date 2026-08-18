@@ -241,6 +241,34 @@ fun ViewerScreen(onBack: () -> Unit) {
 KT
 assert_exit "a full-screen ui/ anchor that declares its inset frame passes" "$root" 0
 
+# ── ui/ — imePadding and consumeWindowInsets are NOT an inset frame ───────────────────────
+# THE REGRESSION THIS PINS: both were in the accepted-modifier tuple when this gate first
+# shipped (#3237 review caught it). Neither clears a system bar — `imePadding` pads for the
+# keyboard, and `consumeWindowInsets` *removes* an inset from the children's frame — so an
+# overlay whose only inset token was one of those passed the gate while still sitting under
+# the status bar. That is the exact bug the gate exists to stop, spelled with a token that
+# looks inset-shaped.
+for fake in "imePadding()" "consumeWindowInsets(WindowInsets.systemBars)"; do
+  root="$(new_fixture "ui_fake_${fake%%(*}")"
+  cat > "$root/$UI_REL/Viewer.kt" <<KT
+@Composable
+fun ViewerScreen(onBack: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        SceneView(modifier = Modifier.fillMaxSize())
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .$fake
+                .padding(8.dp),
+        ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+    }
+}
+KT
+  assert_exit "a ui/ anchor insetted only by .$fake fails" "$root" 1
+  assert_reports "  and says the inset is what is missing" "$root" "no window inset"
+done
+
 # ── common/ — a BoxScope extension is judged by the inset rule, not the slot rule ─────────
 # THE REGRESSION THIS PINS: a composable that anchors into a `BoxScope` it received is
 # drawing into somebody else's body, and that body may belong to a tab host with no

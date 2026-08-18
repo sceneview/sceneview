@@ -101,6 +101,12 @@ SLOT_START = re.compile(r"\b(topOverlay|bottomOverlay)\s*=\s*\{")
 BOX_CALL = re.compile(r"\bBox\s*\(")
 CHAIN_START = re.compile(r"\b[Mm]odifier\b")
 CHAIN_LINK = re.compile(r"\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# Only modifiers that actually push content clear of a system bar or a cutout
+# count. `imePadding` pads for the keyboard and `consumeWindowInsets` *removes*
+# an inset from the children's frame — an overlay whose sole inset token was one
+# of those would satisfy the gate while still sitting under the status bar, which
+# is precisely the bug this file exists to stop. They were in this tuple until
+# #3237 review caught it; nothing relied on them.
 INSET_MODIFIERS = (
     "windowInsetsPadding",
     "safeDrawingPadding",
@@ -110,8 +116,6 @@ INSET_MODIFIERS = (
     "statusBarsPadding",
     "navigationBarsPadding",
     "displayCutoutPadding",
-    "imePadding",
-    "consumeWindowInsets",
 )
 
 
