@@ -276,8 +276,14 @@
     <string name="demo_reset_cd">Reset this demo to its initial state</string>
     <string name="demo_reset_done">Demo reset — ready to try again</string>
     <string name="about_star_on_github">Star on GitHub</string>
+    <!--
+      These two sit either side of a heart icon. Neither carries padding
+      whitespace: aapt strips leading and trailing spaces from an unquoted
+      string, which is exactly how "Made with <heart>by Thomas Gorisse" reached
+      production. The gap is a layout concern and is set on the Icon. #3237
+    -->
     <string name="about_made_with">Made with</string>
-    <string name="about_made_by"> by Thomas Gorisse</string>
+    <string name="about_made_by">by Thomas Gorisse</string>
     <string name="about_made_by_team">and the SceneView contributors</string>
 
     <!-- Update banner -->

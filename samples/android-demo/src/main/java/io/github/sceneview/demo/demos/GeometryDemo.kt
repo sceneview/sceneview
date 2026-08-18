@@ -215,9 +215,9 @@ fun GeometryDemo(onBack: () -> Unit) {
             // the horizontal footprint, which is what makes the group fit a phone-portrait
             // frame — the four-wide row it replaces was wider than the frame at every
             // camera distance (#2873).
-            // Each shape spins on its Y axis to expose all sides — particularly
-            // important for the cylinder + plane which have visually distinct
-            // front/side faces.
+            // The three SOLID shapes spin on Y to expose all sides — particularly
+            // the cylinder, whose curved side and flat caps read very differently.
+            // The plane is deliberately not one of them; see its own rotation below.
             val spinRotation = Rotation(y = spinDegrees)
             if (showCube) {
                 CubeNode(
@@ -276,7 +276,18 @@ fun GeometryDemo(onBack: () -> Unit) {
                         y = -GeometryLayout.ROW_Y,
                         z = GeometryLayout.TARGET_Z,
                     ),
-                    rotation = spinRotation,
+                    // NOT `spinRotation`. A zero-thickness quad spun about Y goes
+                    // edge-on twice per revolution and disappears outright — the
+                    // one shape in this demo that could vanish, in the demo whose
+                    // whole subject is shapes. Spinning about Z turns the quad in
+                    // its own plane, which leaves its normal pointing at the
+                    // camera, and PLANE_TILT_DEGREES tilts that normal by a fixed
+                    // amount so the panel still catches the light and reads as a
+                    // surface in space rather than a sticker. #3237
+                    rotation = Rotation(
+                        x = GeometryLayout.PLANE_TILT_DEGREES,
+                        z = spinDegrees,
+                    ),
                 )
             }
         }

@@ -7,10 +7,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -380,63 +386,88 @@ fun BoxScope.TapToPlaceStatusOverlays(
     }
     val placedSomething = placed > 0
 
-    Surface(
+    // ONE top-anchored stack, not two elements at two hardcoded offsets.
+    //
+    // The status pill used to sit at `padding(top = 8.dp)` and the gesture pill at
+    // `padding(top = 56.dp)`, each anchored to TopCenter on its own. The 56 was
+    // "48 dp of pill plus 8 of gap" — arithmetic done once, against one font
+    // scale, one locale and one of the six strings the pill can hold. At font
+    // scale 1.3 the status pill is taller than 48 dp and the gesture pill lands on
+    // top of it. A Column with `spacedBy` computes the same offset from the pill's
+    // *actual* height, every composition, and cannot go stale.
+    //
+    // This composable is a `BoxScope` extension because it is also used by
+    // `ArViewTab`, which is a full-screen tab and has no DemoScaffold to hand it a
+    // slot. So the inset is applied here, in the one place both callers share, and
+    // it is `safeDrawing` Top+Horizontal — the same frame DemoScaffold's top slot
+    // uses. Inside a DemoScaffold it resolves to nothing (the scaffold body already
+    // consumed those insets), which is exactly the property that makes one frame
+    // work for both callers. #3237
+    Column(
         modifier = Modifier
             .align(Alignment.TopCenter)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                )
+            )
             .padding(top = 8.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(50),
-        tonalElevation = 6.dp,
-        shadowElevation = 4.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = if (placedSomething) {
-                    Icons.Filled.CheckCircle
-                } else {
-                    Icons.Filled.TouchApp
-                },
-                contentDescription = null,
-                tint = if (placedSomething) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.tertiary
-                },
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = pillText,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-
-    // Active-gesture indicator — below the status pill, only while manipulating a model.
-    AnimatedVisibility(
-        visible = state.activeGesture != null,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-            .align(Alignment.TopCenter)
-            .padding(top = 56.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            tonalElevation = 4.dp,
-            shape = MaterialTheme.shapes.small
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shape = RoundedCornerShape(50),
+            tonalElevation = 6.dp,
+            shadowElevation = 4.dp,
         ) {
-            Text(
-                text = state.activeGesture?.let { stringResource(gestureLabelRes(it)) } ?: "",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelLarge
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = if (placedSomething) {
+                        Icons.Filled.CheckCircle
+                    } else {
+                        Icons.Filled.TouchApp
+                    },
+                    contentDescription = null,
+                    tint = if (placedSomething) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.tertiary
+                    },
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = pillText,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+
+        // Active-gesture indicator — the Column's next child, so it lands under the
+        // status pill whatever that pill's measured height turns out to be.
+        AnimatedVisibility(
+            visible = state.activeGesture != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = state.activeGesture?.let { stringResource(gestureLabelRes(it)) } ?: "",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
     }
 
@@ -446,8 +477,18 @@ fun BoxScope.TapToPlaceStatusOverlays(
         visible = uxState == TapToPlaceUxState.AIMING,
         enter = fadeIn(),
         exit = fadeOut(),
+        // Same frame as the top stack above, mirrored: the 96 dp clears this
+        // session's own bottom chrome, and the inset clears the system's. The
+        // magic number was doing both jobs, which meant it was right only on a
+        // gesture-navigation phone — on a 3-button bar the prompt sat 48 dp
+        // lower than intended, relative to the button row. #3237
         modifier = Modifier
             .align(Alignment.BottomCenter)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
             .padding(bottom = 96.dp),
     ) {
         Surface(

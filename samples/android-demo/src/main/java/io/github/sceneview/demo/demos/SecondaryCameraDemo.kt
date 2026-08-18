@@ -109,9 +109,10 @@ private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
  * IBL / skybox is built once rather than once per SceneView.
  *
  * The PiP uses [SurfaceType.TextureSurface] so it composites correctly over
- * the main [SurfaceType.Surface] view. Placed top-start so it never collides
- * with the top-end `AssetSourceChip` or bottom-end settings FAB used by
- * [DemoScaffold]. `cameraPreset` is [rememberSaveable] so configuration
+ * the main [SurfaceType.Surface] view. It rides [DemoScaffold]'s `topOverlay`
+ * slot, aligned to the start edge, so the scaffold owns its gutter and inset
+ * and it stays clear of the top-end asset-source chip and the bottom-end
+ * settings FAB. `cameraPreset` is [rememberSaveable] so configuration
  * changes (rotation, dark-mode toggle) preserve the user's selection.
  */
 @Composable
@@ -196,6 +197,51 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     )
                 }
             }
+        },
+        topOverlay = {
+            val pipDescription = stringResource(
+                R.string.demo_secondary_camera_pip_cd,
+                stringResource(cameraPreset.labelRes)
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .padding(horizontal = 16.dp)
+                    .size(160.dp, 120.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(
+                        2.dp,
+                        MaterialTheme.colorScheme.outline,
+                        RoundedCornerShape(12.dp)
+                    )
+                    // The PiP renders into a TextureView that TalkBack cannot
+                    // introspect — describe it explicitly, and mark it a polite
+                    // live region so the angle change is announced when the user
+                    // picks a different chip.
+                    .semantics {
+                        contentDescription = pipDescription
+                        liveRegion = LiveRegionMode.Polite
+                    }
+            ) {
+                SceneView(
+                    modifier = Modifier.fillMaxSize(),
+                    surfaceType = SurfaceType.TextureSurface,
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    environmentLoader = environmentLoader,
+                    environment = environment,
+                    cameraNode = pipCameraNode,
+                    cameraManipulator = null,
+                ) {
+                    pipInstance?.let { instance ->
+                        ModelNode(
+                            modelInstance = instance,
+                            scaleToUnits = 0.5f,
+                        )
+                    }
+                }
+            }
         }
     ) {
         SceneView(
@@ -212,50 +258,6 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     modelInstance = instance,
                     scaleToUnits = 0.5f,
                 )
-            }
-        }
-
-        val pipDescription = stringResource(
-            R.string.demo_secondary_camera_pip_cd,
-            stringResource(cameraPreset.labelRes)
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp)
-                .size(160.dp, 120.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .border(
-                    2.dp,
-                    MaterialTheme.colorScheme.outline,
-                    RoundedCornerShape(12.dp)
-                )
-                // The PiP renders into a TextureView that TalkBack cannot
-                // introspect — describe it explicitly, and mark it a polite
-                // live region so the angle change is announced when the user
-                // picks a different chip.
-                .semantics {
-                    contentDescription = pipDescription
-                    liveRegion = LiveRegionMode.Polite
-                }
-        ) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                surfaceType = SurfaceType.TextureSurface,
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                environmentLoader = environmentLoader,
-                environment = environment,
-                cameraNode = pipCameraNode,
-                cameraManipulator = null,
-            ) {
-                pipInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.5f,
-                    )
-                }
             }
         }
     }

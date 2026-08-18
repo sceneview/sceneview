@@ -22,8 +22,20 @@ import androidx.compose.ui.platform.LocalContext
  * Shapes: M3 Expressive with DESIGN.md radius tokens (8/12/16/28/32dp).
  * Motion: Expressive spring animations.
  *
- * On Android 12+, dynamic color (Material You) overrides the palette
- * while preserving SceneView brand colors as fallback.
+ * ## Dynamic colour is OFF by default, on purpose
+ *
+ * `dynamicColor` used to default to `true`. On any Android 12+ device that means
+ * [dynamicLightColorScheme] / [dynamicDarkColorScheme] win, the wallpaper palette
+ * paints the whole app, and the brand ramp below — every `md_theme_*` token,
+ * derived from the SceneView source colour `#005bc1` — never executes. In practice
+ * the Play Store app shipped in whatever lavender or peach the user's wallpaper
+ * happened to produce, which `DESIGN.md` explicitly rules out, and screenshots of
+ * it showed a different product on every device.
+ *
+ * This app is the showcase for an SDK. Showing the brand is part of the job, so
+ * the default is now `false` and the schemes below are what actually run. The
+ * parameter is kept so a host that *wants* Material You can opt in — that is a
+ * legitimate choice for a consumer app, just not for this one.
  */
 
 private val LightColors = lightColorScheme(
@@ -44,6 +56,24 @@ private val LightColors = lightColorScheme(
     onError = md_theme_light_onError,
     errorContainer = md_theme_light_errorContainer,
     onErrorContainer = md_theme_light_onErrorContainer,
+    // `background` is the role that paints Scaffold's container, and therefore the
+    // strip behind the status bar on every screen in this app. It was the one
+    // surface role this scheme never named, so it fell through to the Material3
+    // BASELINE #FEF7FF while every other surface here is #F9F9FF — five levels
+    // apart in the red channel, which is exactly enough to read as a hard line
+    // across the top of the display. Measured on a Pixel 7a at #3237: rows 0-130
+    // #fef7ff, rows 131+ #f9f9ff.
+    //
+    // It looked like Material You and it is not (it survived `dynamicColor =
+    // false`); it looked like the XML theme's missing `colorSurface` and it is not
+    // (binding that changed nothing on screen — the strip is Compose-drawn). It was
+    // a defaulted parameter, in a 30-line argument list where every neighbour is
+    // spelled out, which is the least visible place a wrong colour can hide.
+    //
+    // M3 treats background and surface as the same tone; keeping them equal here is
+    // both correct and the only way this stays true when a token is re-generated.
+    background = md_theme_light_surface,
+    onBackground = md_theme_light_onSurface,
     surface = md_theme_light_surface,
     onSurface = md_theme_light_onSurface,
     surfaceVariant = md_theme_light_surfaceVariant,
@@ -79,6 +109,10 @@ private val DarkColors = darkColorScheme(
     onError = md_theme_dark_onError,
     errorContainer = md_theme_dark_errorContainer,
     onErrorContainer = md_theme_dark_onErrorContainer,
+    // Same omission, same consequence in the dark scheme: baseline #141218 against
+    // this app's #111318. See the note on LightColors above.
+    background = md_theme_dark_surface,
+    onBackground = md_theme_dark_onSurface,
     surface = md_theme_dark_surface,
     onSurface = md_theme_dark_onSurface,
     surfaceVariant = md_theme_dark_surfaceVariant,
@@ -99,7 +133,7 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun SceneViewDemoTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

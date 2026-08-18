@@ -195,6 +195,111 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 ForceTrackingFailureMenu()
             }
         },
+        // Top band: the label HUD, then whichever of the three banners applies. They are
+        // siblings in the scaffold's top Column, so they stack instead of overlapping —
+        // this demo used to place them by arithmetic (8 dp, 8 dp, 56 dp), which held only
+        // while the pill above stayed one line at font scale 1.0 in English (#3237).
+        topOverlay = {
+            // Top-start HUD listing the 3 highest semantic-label fractions. Hidden until the
+            // first non-zero update so the empty list doesn't show during startup warmup.
+            if (semanticsSupported == true && semanticsEverReceived && topLabels.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    color = Color.Black.copy(alpha = 0.65f),
+                    contentColor = Color.White
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(
+                            text = "Scene Semantics",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        topLabels.forEach { (label, fraction) ->
+                            LabelRow(label, fraction)
+                        }
+                    }
+                }
+            }
+
+            // Device-unsupported banner — surfaced on-screen (not buried in a
+            // Settings sheet) so a user on a device without the Scene Semantics
+            // ML model immediately understands why the HUD never appears (#1620
+            // thread 1).
+            AnimatedVisibility(
+                visible = semanticsSupported == false,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Your device doesn't have the ARCore Scene Semantics " +
+                            "model — see ARCore docs for the supported device list.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            // Warming-up overlay — shown when supported but no semantic data yet (first
+            // ~5 frames after resume on the typical device). Crucial: never leave the user
+            // staring at a black screen (see #1617) if semantics takes a moment to warm up.
+            AnimatedVisibility(
+                visible = semanticsSupported == true && !semanticsEverReceived,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Warming up Scene Semantics — point the camera at an outdoor scene",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            // Tracking-failure overlay — same vocabulary as the other AR demos.
+            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
+            // when a developer has picked one in the debug menu (#1881). Read it here
+            // so flipping the override re-renders the overlay immediately.
+            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+            AnimatedVisibility(
+                visible = (!isTracking && trackingFailureReason != null) ||
+                    ForcedTrackingFailure.override != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = when (effectiveReason) {
+                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
+                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
+                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
+                                "Not enough detail — point at a textured outdoor scene"
+                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
+                            TrackingFailureReason.BAD_STATE -> "AR session error"
+                            else -> stringResource(R.string.ar_status_scanning)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
+                }
+            }
+        },
         // Bottom color legend — maps the 12 overlay colors to their class names so the
         // segmentation is readable. Only relevant once the overlay is actually showing.
         //
@@ -263,115 +368,6 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                     trackingFailureReason = reason
                 },
             )
-
-            // Top-left HUD listing the 3 highest semantic-label fractions. Hidden until the
-            // first non-zero update so the empty list doesn't show during startup warmup.
-            if (semanticsSupported == true && semanticsEverReceived && topLabels.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    color = Color.Black.copy(alpha = 0.65f),
-                    contentColor = Color.White
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            text = "Scene Semantics",
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        topLabels.forEach { (label, fraction) ->
-                            LabelRow(label, fraction)
-                        }
-                    }
-                }
-            }
-
-            // Device-unsupported banner — surfaced on-screen (not buried in a
-            // Settings sheet) so a user on a device without the Scene Semantics
-            // ML model immediately understands why the HUD never appears (#1620
-            // thread 1).
-            AnimatedVisibility(
-                visible = semanticsSupported == false,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Your device doesn't have the ARCore Scene Semantics " +
-                            "model — see ARCore docs for the supported device list.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Warming-up overlay — shown when supported but no semantic data yet (first
-            // ~5 frames after resume on the typical device). Crucial: never leave the user
-            // staring at a black screen (see #1617) if semantics takes a moment to warm up.
-            AnimatedVisibility(
-                visible = semanticsSupported == true && !semanticsEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Warming up Scene Semantics — point the camera at an outdoor scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // Tracking-failure overlay — same vocabulary as the other AR demos.
-            // ForcedTrackingFailure.override shadows the real ARCore-reported reason
-            // when a developer has picked one in the debug menu (#1881). Read it here
-            // so flipping the override re-renders the overlay immediately.
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = (!isTracking && trackingFailureReason != null) ||
-                    ForcedTrackingFailure.override != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 56.dp)
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = when (effectiveReason) {
-                            TrackingFailureReason.INSUFFICIENT_LIGHT -> "Not enough light"
-                            TrackingFailureReason.EXCESSIVE_MOTION -> "Moving too fast"
-                            TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                                "Not enough detail — point at a textured outdoor scene"
-                            TrackingFailureReason.CAMERA_UNAVAILABLE -> "Camera unavailable"
-                            TrackingFailureReason.BAD_STATE -> "AR session error"
-                            else -> stringResource(R.string.ar_status_scanning)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
         }
     }
 }

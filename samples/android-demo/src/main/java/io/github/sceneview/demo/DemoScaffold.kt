@@ -2,6 +2,9 @@
 
 package io.github.sceneview.demo
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -14,10 +17,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
@@ -76,6 +81,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -109,8 +115,10 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *
  * - `controls == null` → no FAB / no sheet, scene fills the entire area below the top bar.
  * - `controls != null` → a `Tune` FAB pinned to the bottom-end opens the controls
- *   sheet. While the sheet is closed, a small peek chip ("Settings") sits above
- *   the FAB to advertise the gesture (see [#951] discoverability lesson).
+ *   sheet. A small peek chip ("Settings") appears above the FAB to advertise the
+ *   gesture (see [#951] discoverability lesson) and retracts after
+ *   [PEEK_CHIP_DWELL_MILLIS] so it does not sit on the scene for the whole
+ *   session; it comes back whenever the sheet closes or `peekHeader` changes.
  * - `assetSource != null` → an "Streamed / Streaming / Offline model" chip
  *   pinned to the top-end of the scene area, advertising the offline origin
  *   of the currently visible asset (#1152 Stage 3). The chip auto-hides when
@@ -204,6 +212,43 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   The default (`false`) keeps the historical float-over-the-viewport
  *   behaviour, which is correct for status pills and answer cards that annotate
  *   camera pixels rather than a modelled subject.
+ *
+ * Collision-free **top** overlays (#3237):
+ * - `topOverlay != null` → the demo's status pill / HUD / warm-up banner is
+ *   composed **by the scaffold**, in the mirror image of the `bottomOverlay`
+ *   container: a top-aligned [Column] that already knows where the asset-source
+ *   chip is.
+ *
+ *   This slot exists because the scaffold used to own only the bottom band.
+ *   The top band was self-service, and a device-QA sweep found **three different
+ *   inset reference frames inside the same `Box`**: `ARFogDemo`'s pill at
+ *   `Alignment.TopCenter` with a bare `padding(top = 8.dp)` and no inset at all,
+ *   the scaffold's own asset-source chip at `TopEnd` adding a full
+ *   `windowInsetsPadding(systemBars)` on top of a Scaffold inset it had already
+ *   been given, and `MainActivity`'s update banner applying only `statusBars`.
+ *   Thirty-five hand-written `.align(Alignment.Top…)` call sites in `demos/`
+ *   agreed with none of them. A container that owns three edges and leaves the
+ *   fourth to thirty-five authors does not own a layout; this slot is the fourth
+ *   edge.
+ *
+ *   Lay children out against
+ *   [DemoTopOverlayScope.assetSourceChipReservedSpace], the same way the bottom
+ *   slot uses [DemoBottomOverlayScope.settingsFabReservedSpace]: measured from
+ *   the real chip, `0.dp` when this demo passes no `assetSource`, and therefore
+ *   never a constant that a longer label or a larger font scale invalidates.
+ *
+ *   The slot is a [ColumnScope], so a demo with a status pill *and* a
+ *   tracking-failure banner *and* a HUD writes all three and they **stack**.
+ *   Per-child horizontal placement is `Modifier.align(Alignment.Start / End)` —
+ *   a corner HUD stays in its corner without leaving the shared frame.
+ *
+ * One inset frame for the whole body (#3237):
+ *   The scaffold body **consumes** the Scaffold's own padding, so every
+ *   descendant sees the same, already-applied insets. Before this, an overlay
+ *   that added `windowInsetsPadding(systemBars)` inside the body was applying a
+ *   status bar the top app bar had already accounted for, and one that added
+ *   nothing was right by accident. Both spellings are now correct and identical,
+ *   which is the property that makes the slot safe to migrate into.
  */
 @Composable
 fun DemoScaffold(
@@ -215,6 +260,7 @@ fun DemoScaffold(
     peekHeader: String? = null,
     onResetSettings: (() -> Unit)? = null,
     onReset: (() -> Unit)? = null,
+    topOverlay: (@Composable DemoTopOverlayScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     bottomOverlayReservesScene: Boolean = false,
     scene: @Composable BoxScope.() -> Unit
@@ -340,11 +386,28 @@ fun DemoScaffold(
         var settingsClusterWidthPx by remember { mutableIntStateOf(0) }
         val settingsClusterWidth = with(LocalDensity.current) { settingsClusterWidthPx.toDp() }
 
+        // Width of the asset-source chip at the top-end — the top band's mirror of the
+        // Settings cluster measurement, and measured for the same reason: the chip is a
+        // dot plus a *translated string* ("Offline model" / "Modèle hors ligne"), so no
+        // constant survives a locale or a font-scale change. `0` while `assetSource` is
+        // null, because then no chip is composed and the whole top edge is free.
+        var assetChipWidthPx by remember { mutableIntStateOf(0) }
+        val assetChipWidth = with(LocalDensity.current) { assetChipWidthPx.toDp() }
+
         // Scene always full-screen below the top app bar.
+        //
+        // `consumeWindowInsets(padding)` is what gives this Box's whole subtree ONE
+        // inset reference frame. `padding` already carries the top app bar, the
+        // navigation bar and (in landscape) the side bars; without the consume, a child
+        // writing `windowInsetsPadding(systemBars)` applied them a SECOND time while a
+        // child writing nothing applied them once — and both spellings were live in
+        // this file. Consuming makes the two identical, so migrating an overlay into a
+        // scaffold slot cannot move it (#3237).
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .consumeWindowInsets(padding),
         ) {
             Box(
                 modifier = Modifier
@@ -359,8 +422,26 @@ fun DemoScaffold(
                 FirstFrameScrim(firstFrameRendered = firstFrameRendered)
             }
 
+            // Top band, mirror of the bottom one: the demo's own overlays first, then
+            // the scaffold's chip on top of them — the same z-order rule the bottom band
+            // uses for the Settings FAB, so scaffold chrome always stays tappable and
+            // visible whatever a demo puts in its slot.
+            if (topOverlay != null) {
+                DemoTopOverlay(
+                    // Resolved from the same `assetSource != null` condition that decides
+                    // whether the chip is composed at all, so a demo whose asset source is
+                    // itself conditional gets the right inset with no duplicated condition
+                    // to drift out of sync — exactly how the bottom slot resolves the FAB.
+                    reservedSpace = if (assetSource != null) assetChipWidth else 0.dp,
+                    content = topOverlay,
+                )
+            }
+
             if (assetSource != null) {
-                AssetSourceChip(state = assetSource)
+                AssetSourceChip(
+                    state = assetSource,
+                    onWidthChanged = { assetChipWidthPx = it },
+                )
             }
 
             // Rendered before the FAB layer so the FAB always wins the z-order and
@@ -394,7 +475,18 @@ fun DemoScaffold(
                     haptic = haptic,
                     peekHeader = peekHeader,
                     onResetSettings = onResetSettings,
-                    onClusterWidthChanged = { settingsClusterWidthPx = it },
+                    // High-water mark, not the live value. The peek chip retracts
+                    // after a few seconds, which shrinks this cluster to the bare
+                    // FAB — and if the reserve followed it down, every bottom
+                    // overlay wide enough to have been inset by the chip would
+                    // visibly reflow three seconds after the demo opened. Keeping
+                    // the maximum costs a few dp of over-reserve on the demos with
+                    // the longest `peekHeader`, and buys a layout that never moves
+                    // on its own. Over-reserving is the safe direction here: the
+                    // failure it prevents (#2779) is an overlay touching the chip.
+                    onClusterWidthChanged = {
+                        settingsClusterWidthPx = maxOf(settingsClusterWidthPx, it)
+                    },
                 )
             }
         }
@@ -403,11 +495,28 @@ fun DemoScaffold(
 
 /**
  * Compact chip surfacing the [AssetSourceState] of the demo's currently
- * visible asset. Pinned to the top-end of the scene area below the system
- * bars so it doesn't crash into the controls FAB at the bottom-end.
+ * visible asset. Pinned to the top-end of the scene area so it doesn't crash
+ * into the controls FAB at the bottom-end.
+ *
+ * The inset it applies is `safeDrawing`, not `systemBars`, and it is applied
+ * against a body that has already **consumed** the Scaffold's padding — so it
+ * resolves to zero in the ordinary case (the top app bar above it already
+ * cleared the status bar) and to the real remainder when there is one, e.g. a
+ * display cutout wider than the app bar in landscape. Before #3237 it applied a
+ * full unconsumed `systemBars`, i.e. a second status bar's worth of padding,
+ * which is why the chip sat visibly lower than every hand-placed pill beside it.
+ *
+ * [onWidthChanged] reports the chip's width — including its gutter — to the
+ * `topOverlay` slot, which insets itself by it. The read sits after
+ * `windowInsetsPadding` and before the content padding for the same reason the
+ * Settings cluster's does: the gutter is real pixels an overlay must not cross,
+ * the inset is not the overlay's to count twice.
  */
 @Composable
-private fun BoxScope.AssetSourceChip(state: AssetSourceState) {
+private fun BoxScope.AssetSourceChip(
+    state: AssetSourceState,
+    onWidthChanged: (Int) -> Unit = {},
+) {
     val (label, tint) = when (state) {
         AssetSourceState.Streamed -> stringResource(R.string.demo_chip_streamed) to
             MaterialTheme.colorScheme.tertiary
@@ -419,7 +528,12 @@ private fun BoxScope.AssetSourceChip(state: AssetSourceState) {
     Row(
         modifier = Modifier
             .align(Alignment.TopEnd)
-            .windowInsetsPadding(WindowInsets.systemBars)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                )
+            )
+            .onSizeChanged { onWidthChanged(it.width) }
             .padding(12.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
@@ -518,6 +632,7 @@ object DemoScaffoldTestTags {
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
     const val FIRST_FRAME_SCRIM = "demo-first-frame-scrim"
     const val BOTTOM_OVERLAY = "demo-bottom-overlay"
+    const val TOP_OVERLAY = "demo-top-overlay"
 }
 
 /**
@@ -568,6 +683,23 @@ object DemoScaffoldTestTags {
  * answer (see below).
  */
 val SETTINGS_FAB_RESERVED_SPACE = 104.dp
+
+/**
+ * How long the Settings peek chip stays on screen before it retracts, in
+ * milliseconds.
+ *
+ * Long enough to be *read*, not merely glimpsed: the chip can carry a demo's own
+ * status string, and three seconds covers a short sentence at a comfortable
+ * reading pace with room to spare for a user whose attention is on the 3D scene
+ * rather than the corner. Short enough that the chip is gone before anyone frames
+ * a screenshot, which is the whole point — a demo screen should end up showing
+ * the demo.
+ *
+ * The affordance is not lost when it retracts: the FAB beside it stays, and it is
+ * the primary, discoverable way in. The chip is the *hint*, and a hint that never
+ * leaves is just clutter.
+ */
+private const val PEEK_CHIP_DWELL_MILLIS = 3_000L
 
 /**
  * Receiver of the [DemoScaffold] `bottomOverlay` slot.
@@ -690,6 +822,111 @@ private fun BoxScope.DemoBottomOverlay(
 private val BOTTOM_OVERLAY_STACK_SPACING = 8.dp
 
 /**
+ * Receiver of the [DemoScaffold] `topOverlay` slot — the mirror of
+ * [DemoBottomOverlayScope].
+ *
+ * Carries the one piece of geometry a floating top overlay cannot know on its
+ * own: how much room the shared asset-source chip is taking at the top-end of
+ * *this* demo. Two idioms cover every overlay shape, and they are the same two
+ * the bottom slot documents:
+ *
+ * - **Full-width banner** →
+ *   `Modifier.fillMaxWidth().padding(end = assetSourceChipReservedSpace)`.
+ * - **Centred pill / corner HUD** → the same end-only inset. A HUD that belongs
+ *   in a corner keeps it with `Modifier.align(Alignment.Start)` or
+ *   `Modifier.align(Alignment.End)`, which is a [ColumnScope] alignment inside
+ *   the shared frame rather than a `BoxScope` alignment outside it.
+ *
+ * Both collapse to a no-op when [assetSourceChipReservedSpace] is `0.dp`, which
+ * is the case for every demo that passes no `assetSource`.
+ *
+ * ## It is a [ColumnScope], and that is the point
+ *
+ * The slot lays its children out in a top-aligned [Column], so a demo that needs
+ * a status pill *and* a warm-up banner *and* a tracking-failure banner writes
+ * all three and they **stack**. They cannot be made to overlap, because siblings
+ * in a Column do not share pixels.
+ *
+ * That is not a convenience. Before it, the top band had no owner at all, and
+ * demos stacked by arithmetic: `ARSceneSemanticsDemo` wrote `padding(top = 8.dp)`
+ * on two mutually-exclusive banners and `padding(top = 56.dp)` on the third, and
+ * `TapToPlaceStatusOverlays` did the same with 8 and 56. The 56 is the height of
+ * the first pill *at font scale 1.0, in English* — the moment the pill above
+ * wraps to two lines, the banner below is drawn across it. A Column cannot be
+ * made to do that.
+ */
+@Stable
+class DemoTopOverlayScope internal constructor(
+    private val columnScope: ColumnScope,
+    /**
+     * Width of the top-end band occupied by the asset-source chip: the
+     * **measured** width of that chip, including its gutter, when this demo
+     * passes `assetSource` to [DemoScaffold] — and `0.dp` when it does not (no
+     * chip → the whole top edge is free, and the overlay should use all of it).
+     *
+     * Measured, not constant, because the chip is a dot plus a translated label:
+     * "Offline model" is 13 characters in English and grows in most locales, and
+     * it grows again with the font scale. A hand-picked `dp` is right until the
+     * first translation.
+     */
+    val assetSourceChipReservedSpace: Dp,
+) : ColumnScope by columnScope
+
+/**
+ * Renders the `topOverlay` slot: full scene width, pinned to the top of the
+ * scene area and clear of anything the top app bar did not already clear — the
+ * one place a demo should put a floating status pill, HUD or banner.
+ *
+ * Like its bottom twin, the container deliberately applies **no horizontal
+ * padding of its own**, so a demo migrating an existing `Alignment.TopCenter`
+ * overlay keeps its own gutter verbatim and only adds the chip inset.
+ *
+ * The inset is `safeDrawing`, restricted to the sides a top-anchored band can
+ * meet (`Top` + `Horizontal`), resolved against a body that has already consumed
+ * the Scaffold padding. In the ordinary portrait case that is zero — the top app
+ * bar cleared the status bar and the consume said so — and it is non-zero only
+ * where something really is still in the way, such as a landscape cutout deeper
+ * than the bar. `safeDrawing` rather than `systemBars` because a cutout is
+ * exactly the case a demo author cannot see on the emulator they are looking at.
+ *
+ * [TOP_OVERLAY_GUTTER] is the container's own top gutter, so every demo's top
+ * overlay begins at the same y — the defect this slot exists to remove was
+ * thirty-five different answers to that question.
+ */
+@Composable
+private fun BoxScope.DemoTopOverlay(
+    reservedSpace: Dp,
+    content: @Composable DemoTopOverlayScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                )
+            )
+            .padding(top = TOP_OVERLAY_GUTTER)
+            .testTag(DemoScaffoldTestTags.TOP_OVERLAY),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(TOP_OVERLAY_STACK_SPACING),
+    ) {
+        DemoTopOverlayScope(this, reservedSpace).content()
+    }
+}
+
+/**
+ * Distance from the top of the scene area to the first element of the
+ * `topOverlay` slot. 8 dp, which is what the majority of the migrated demos had
+ * hand-written; the point is not the number but that there is now exactly one.
+ */
+private val TOP_OVERLAY_GUTTER = 8.dp
+
+/** Gap between two elements stacked in the `topOverlay` slot. Mirrors the bottom band. */
+private val TOP_OVERLAY_STACK_SPACING = 8.dp
+
+/**
  * Peek chip + FAB + ModalBottomSheet — pulled into its own composable so the
  * sheet `LaunchedEffect`s scope to the `expanded` state without re-running on
  * every recomposition of the parent Scaffold body.
@@ -740,6 +977,26 @@ private fun BoxScope.DemoSettingsLayer(
     // string is one tap away inside the sheet.
     val peekChipMaxWidth = LocalConfiguration.current.screenWidthDp.dp / 3
 
+    // The chip RETRACTS. It never used to: `if (!expanded)` left it on screen for
+    // the entire life of the demo, so every screenshot of every demo carried a
+    // translucent grey chip in the bottom-end corner — over the 3D content the
+    // screen exists to show. Its own KDoc had described it as transient
+    // ("it peeks and retracts") since #2779, and the bottom-band reserve is sized
+    // half a gutter tighter *because* of that claim. The code simply never
+    // implemented it.
+    //
+    // Re-armed on every `peekHeader` change, not just at entry: when a demo feeds
+    // live status through the chip ("3 anchors placed"), a new value is news and
+    // deserves its three seconds. Re-armed on close too, so dismissing the sheet
+    // brings the affordance back rather than leaving the user with only the FAB.
+    var peekVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(expanded, peekHeader) {
+        if (expanded) return@LaunchedEffect
+        peekVisible = true
+        delay(PEEK_CHIP_DWELL_MILLIS)
+        peekVisible = false
+    }
+
     // FAB + peek chip pinned to the bottom-end of the scene area.
     Column(
         modifier = Modifier
@@ -765,7 +1022,15 @@ private fun BoxScope.DemoSettingsLayer(
         // on the top-bar title). The chip is intentionally semi-transparent so
         // it disappears against busy 3D scenes but stays legible on plain
         // backgrounds.
-        if (!expanded) {
+        AnimatedVisibility(
+            visible = !expanded && peekVisible,
+            // Fade only — no slide or shrink. The FAB sits directly below the chip
+            // in this Column, so any size animation would drag the FAB up and down
+            // the screen every time the chip came and went, and the FAB is the one
+            // control here that must never move under a reaching thumb.
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))

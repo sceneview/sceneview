@@ -85,10 +85,19 @@ import kotlinx.coroutines.withContext
  * "Preview" chip in the top-right corner so users have honest expectations
  * without feeling like the card is flagged as broken.
  */
+/*
+ * `onAboutClick` deliberately has NO default. It used to default to `{}`, the only
+ * production call site omitted it, and the (i) action in the app bar was therefore a
+ * dead button in every shipped build — it announced "About" to TalkBack and did
+ * nothing. A no-op default turns "the caller forgot" into silence at every layer:
+ * the compiler is satisfied, the snapshot test still renders a button, and only a
+ * human tapping it on a device finds out. Requiring the argument makes the omission
+ * a compile error, which is the only place it can still be caught for free.
+ */
 @Composable
 fun DemoListScreen(
     onDemoClick: (String) -> Unit,
-    onAboutClick: () -> Unit = {},
+    onAboutClick: () -> Unit,
 ) {
     // `rememberTopAppBarState()` survives recomposition + rotation so the
     // collapse offset doesn't snap back to expanded after a state change.
@@ -166,13 +175,20 @@ fun DemoListScreen(
                 // "Samples" header (#1425). Zero the bar's own insets so the
                 // header sits flush below the status bar.
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                // Semi-transparent so the particle backdrop (#1488) drifts
-                // behind the header instead of being clipped by an opaque bar;
-                // the slight surface tint keeps the title legible.
+                // The bar is DRAWN, and that is the fix, not a regression of
+                // #1488. Fully transparent, there was no bar — just a title and
+                // an (i) button floating over a drifting particle field with
+                // nothing tying them together, no edge, and no answer to "what
+                // is this icon acting on". #1488 wanted the backdrop *felt*
+                // behind the header, and it still is: `surface` here is the same
+                // colour ParticleBackground now clears its render target to and
+                // holds its scrim at across the top band, so the bar reads as a
+                // continuation of the backdrop rather than a patch over it — and
+                // the particles keep drifting in the region below, where they
+                // are decoration instead of noise behind text. #3237
                 colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor =
-                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
@@ -380,6 +396,10 @@ private fun DemoCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
+                    // Without this the subtitle is hard-clipped at the second
+                    // line and the last word is cut through its middle, with no
+                    // sign anything was removed. #3237
+                    overflow = TextOverflow.Ellipsis,
                     lineHeight = 16.sp,
                 )
             }
@@ -392,7 +412,9 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
     val label = when (status) {
         DemoStatus.KnownIssue -> stringResource(R.string.samples_chip_preview)
         DemoStatus.ComingSoon -> stringResource(R.string.samples_chip_soon)
-        DemoStatus.InReview -> stringResource(R.string.samples_chip_in_review)
+        // Release builds draw no chip at all for InReview — see IN_REVIEW_BADGE_VISIBLE.
+        DemoStatus.InReview ->
+            if (IN_REVIEW_BADGE_VISIBLE) stringResource(R.string.samples_chip_in_review) else return
         DemoStatus.Working -> return // Caller already gates; defensive no-op.
     }
     Surface(

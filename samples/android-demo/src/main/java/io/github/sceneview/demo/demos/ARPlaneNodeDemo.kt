@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -95,6 +94,34 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
         } else {
             null
         },
+        // Live tracked-plane count + total ever detected, hosted by the scaffold's top
+        // slot (#3237) so it shares one inset frame with the asset-source chip beside it.
+        topOverlay = {
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                val tracked = arSession?.getAllTrackables(Plane::class.java)?.count {
+                    it.trackingState == com.google.ar.core.TrackingState.TRACKING
+                } ?: 0
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text(
+                        text = if (tracked == 1) {
+                            "1 plane tracked"
+                        } else {
+                            "$tracked planes tracked"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = "$totalDetected detected since start",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        },
         // Scanning / tracking-failure banner, hosted by the scaffold slot (#2779) so it
         // is laid out against the Settings FAB instead of blindly under it. This demo's
         // `controls` is itself gated on qaMode, and the slot resolves the FAB reserve
@@ -155,35 +182,6 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                             materialInstance = markerMaterial,
                         )
                     }
-                }
-            }
-
-            // Top-center pill: live tracked-plane count + total ever detected.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = Color.Black.copy(alpha = 0.7f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                val tracked = arSession?.getAllTrackables(Plane::class.java)?.count {
-                    it.trackingState == com.google.ar.core.TrackingState.TRACKING
-                } ?: 0
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Text(
-                        text = if (tracked == 1) {
-                            "1 plane tracked"
-                        } else {
-                            "$tracked planes tracked"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        text = "$totalDetected detected since start",
-                        style = MaterialTheme.typography.labelSmall,
-                    )
                 }
             }
         }

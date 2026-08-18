@@ -214,6 +214,26 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
             ) {
                 Text("Reset")
             }
+        },
+        // HUD pill — shows the current focus distance so screenshots make the
+        // before/after diff obvious.
+        topOverlay = {
+            Surface(
+                color = if (dofEnabled) {
+                    Color(0xFF1B5E20).copy(alpha = 0.85f)
+                } else {
+                    Color(0xFF424242).copy(alpha = 0.85f)
+                },
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = if (dofEnabled) "FOCUS %.2f m".format(Locale.US, focusDepth) else "DOF OFF",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -283,28 +303,6 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                         scaleToUnits = 0.3f,
                     )
                 }
-            }
-
-            // Top-center HUD pill — shows the current focus distance so screenshots make the
-            // before/after diff obvious.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = if (dofEnabled) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFF424242).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = if (dofEnabled) "FOCUS %.2f m".format(Locale.US, focusDepth) else "DOF OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
             }
         }
     }

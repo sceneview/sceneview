@@ -239,6 +239,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         ),
         onReset = resetAll,
         onResetSettings = resetAll,
+        // The wall TV's live A/B, hosted by the scaffold's top band so it sits in the TV's
+        // half of the frame — see [WallShadowBeat] for why this is an on-screen control and
+        // not a settings-sheet row. The slot owns the gutter and the inset, so the beat
+        // lands at the same y as every other demo's top overlay (#3237).
+        topOverlay = {
+            WallShadowBeat(
+                wallContext = wallContext,
+                onWallContextChange = { wallContext = it },
+            )
+        },
         // The legend must never be drawn across the grounded box, and no gutter constant
         // can promise that: where the box lands on screen is a projection, so a lift
         // tuned on one viewport is wrong on the next. The scaffold insets the viewport by
@@ -393,23 +403,6 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 )
             }
         }
-
-        // The wall TV's live A/B, in the TV's half of the frame — see [WallShadowBeat] for why
-        // this is an on-screen control and not a settings-sheet row.
-        //
-        // This one stays in the scene box rather than moving to a scaffold slot like the
-        // legend did (#2779/#2780): those slots own the BOTTOM band, and the whole point of
-        // this overlay is to sit in the TV's half of the frame, at the top. No
-        // `windowInsetsPadding` either — `DemoScaffold`'s Scaffold already offsets this box
-        // below the top bar and past the status bar, so re-applying the inset would push the
-        // beat a bar-height too low, into the TV it annotates.
-        WallShadowBeat(
-            wallContext = wallContext,
-            onWallContextChange = { wallContext = it },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 12.dp),
-        )
     }
 }
 

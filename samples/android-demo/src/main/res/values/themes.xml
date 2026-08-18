@@ -1,9 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      The XML theme and the Compose colour scheme are two independent copies of the
+      same palette, and only the Compose one was complete. Everything Compose draws
+      picked up `md_theme_surface`; everything the *platform* draws — the window
+      background, and therefore the strip behind the status bar before the first
+      frame — fell through to the Material3 baseline, #FEF7FF light / #141218 dark.
+
+      That is the seam device QA measured at the top of every screen: a near-white
+      status-bar band against a #F9F9FF page, off by 5 levels in the red channel and
+      visible as a line. It was easy to blame on Material You, but it survived
+      `dynamicColor = false` because it never came from the wallpaper — it came from
+      this file not binding `colorSurface` at all.
+
+      So: bind the surface roles here too, and pin `android:windowBackground` to the
+      same token. A colour that exists in `colors.xml` but is named by nobody is not
+      a palette, it is a comment.
+    -->
     <style name="Theme.SceneViewDemo" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/md_theme_primary</item>
         <item name="colorOnPrimary">@color/md_theme_onPrimary</item>
         <item name="colorPrimaryContainer">@color/md_theme_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_onPrimaryContainer</item>
         <item name="colorSecondary">@color/md_theme_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/md_theme_secondaryContainer</item>
+        <item name="colorTertiary">@color/md_theme_tertiary</item>
+        <item name="colorOnTertiary">@color/md_theme_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/md_theme_tertiaryContainer</item>
+        <item name="colorSurface">@color/md_theme_surface</item>
+        <item name="colorOnSurface">@color/md_theme_onSurface</item>
+        <item name="colorError">@color/md_theme_error</item>
+        <item name="colorOnError">@color/md_theme_onError</item>
+        <item name="android:windowBackground">@color/md_theme_surface</item>
     </style>
 </resources>

@@ -198,6 +198,28 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // "Waiting for depth" overlay — shown until the first depth frame
+        // lands. Crucial: never leave the user staring at a black screen
+        // (see #1617) if depth takes a moment to warm up.
+        topOverlay = {
+            AnimatedVisibility(
+                visible = depthSupported == true && !depthEverReceived,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Warming up depth — move the camera slowly across a textured scene",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        },
         // Legend pill + tracking-failure banner are hosted by the scaffold's
         // `bottomOverlay` slot, a bottom-aligned Column: they stack instead of sharing
         // the same band, and the banner is laid out against the Settings FAB (#2779).
@@ -329,29 +351,6 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                     alpha = blend,
                     modifier = Modifier.fillMaxSize()
                 )
-            }
-
-            // "Waiting for depth" overlay — shown until the first depth frame
-            // lands. Crucial: never leave the user staring at a black screen
-            // (see #1617) if depth takes a moment to warm up.
-            AnimatedVisibility(
-                visible = depthSupported == true && !depthEverReceived,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.TopCenter)
-            ) {
-                Surface(
-                    modifier = Modifier.padding(top = 8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = "Warming up depth — move the camera slowly across a textured scene",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
             }
         }
     }

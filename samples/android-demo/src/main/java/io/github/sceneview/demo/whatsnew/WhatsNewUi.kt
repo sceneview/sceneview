@@ -37,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.IN_REVIEW_BADGE_VISIBLE
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.sample.ui.demoCategoryAccent
@@ -225,12 +226,16 @@ private fun InReviewDemoRow(demo: DemoEntry, onClick: () -> Unit) {
                     maxLines = 1,
                 )
             }
-            Text(
-                text = stringResource(R.string.samples_chip_in_review),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // Debug-only: the row itself is a user-facing "try this" entry, the
+            // chip on it is internal review vocabulary. See IN_REVIEW_BADGE_VISIBLE.
+            if (IN_REVIEW_BADGE_VISIBLE) {
+                Text(
+                    text = stringResource(R.string.samples_chip_in_review),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

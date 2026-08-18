@@ -128,7 +128,15 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                     onDemoClick = onDemoClick,
                     onSessionActiveChange = { arSessionActive = it },
                 )
-                RootTab.Samples -> DemoListScreen(onDemoClick = onDemoClick)
+                // `onAboutClick` has a default of `{}`, and for as long as this call
+                // site omitted it the (i) action in the Samples app bar was a dead
+                // button in the Play Store build — it announced "About" to TalkBack
+                // and did nothing at all. A defaulted lambda parameter fails silently;
+                // nothing in the type system or the tests noticed. Device QA did.
+                RootTab.Samples -> DemoListScreen(
+                    onDemoClick = onDemoClick,
+                    onAboutClick = { selectedTab = RootTab.About },
+                )
                 RootTab.About -> AboutTabContent()
             }
         }
@@ -300,7 +308,7 @@ private fun AboutTabContent() {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.about_made_with) + " ",
+                    stringResource(R.string.about_made_with),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -308,7 +316,13 @@ private fun AboutTabContent() {
                     Icons.Filled.Favorite,
                     contentDescription = null,
                     tint = Color(0xFFE91E63),
-                    modifier = Modifier.size(14.dp),
+                    // The gap on BOTH sides of the heart lives here, not in the
+                    // strings: a leading space in a resource is stripped by aapt
+                    // unless quoted, which is why this read "…<heart>by Thomas
+                    // Gorisse" in the store build. #3237
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(14.dp),
                 )
                 Text(
                     stringResource(R.string.about_made_by),

@@ -461,20 +461,25 @@ fi
 # first launch. `SceneActionBar`'s KDoc had promised they "never collide", which is why the
 # drift was systematic rather than careless; a doc cannot be the enforcement when a banner's
 # height follows its string, its wrap and the font scale.
-echo -e "\n${YELLOW}[15/23] Checking demo bottom overlays...${NC}"
-if [ -f .claude/scripts/check-demo-bottom-overlay.py ]; then
-    OVERLAY_LOG="$LOG_DIR/demo-bottom-overlay.log"
-    if python3 .claude/scripts/check-demo-bottom-overlay.py > "$OVERLAY_LOG" 2>&1; then
+#
+# It now covers BOTH edges and three directories (#3237). The previous version policed
+# only the bottom edge of demos/, and said so in its own docstring — behind that sentence
+# the top edge of those same files accumulated 35 uncoordinated anchors in three
+# incompatible inset conventions, and the app-wide update banner sat unchecked in ui/.
+echo -e "\n${YELLOW}[15/23] Checking demo overlay anchors...${NC}"
+if [ -f .claude/scripts/check-demo-overlay-anchors.py ]; then
+    OVERLAY_LOG="$LOG_DIR/demo-overlay-anchors.log"
+    if python3 .claude/scripts/check-demo-overlay-anchors.py > "$OVERLAY_LOG" 2>&1; then
         cat "$OVERLAY_LOG"
     else
-        # exit 2 (demos/ missing, unreadable source) is not an overlay verdict either.
-        gate_script_failure "demo bottom overlay" "$OVERLAY_LOG" $? \
-            "a demo anchors to the bottom band by hand:" \
-            "anchored outside the slot" \
-            "Move it into DemoScaffold(bottomOverlay = { … }) — it stacks there instead of overlapping."
+        # exit 2 (a scanned directory missing, unreadable source) is not a verdict either.
+        gate_script_failure "demo overlay anchors" "$OVERLAY_LOG" $? \
+            "a screen-edge overlay is anchored by hand:" \
+            "anchored by hand" \
+            "Move it into DemoScaffold(topOverlay/bottomOverlay = { … }) — it stacks there instead of overlapping, and the slot applies safeDrawing once. A screen with no scaffold must at least spell its inset frame out."
     fi
 else
-    missing_gate_script "check-demo-bottom-overlay.py"
+    missing_gate_script "check-demo-overlay-anchors.py"
 fi
 
 # Public-API ABI gate (#2723): the committed .api dumps are a BLOCKING CI

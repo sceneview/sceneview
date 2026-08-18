@@ -101,6 +101,27 @@ fun WallPlacementDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_wall_placement_title),
         onBack = onBack,
+        topOverlay = {
+            // Phase banner — mirrors the scene's onboarding state machine.
+            Surface(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            ) {
+                Text(
+                    text = stringResource(
+                        when (phase) {
+                            WallPlacementPhase.FINDING_FLOOR -> R.string.wall_phase_finding_floor
+                            WallPlacementPhase.FINDING_WALL -> R.string.wall_phase_finding_wall
+                            WallPlacementPhase.ALIGNING_EDGE -> R.string.wall_phase_aligning_edge
+                            WallPlacementPhase.PLACED -> R.string.wall_phase_placed
+                        }
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        },
         // D-pad fine-adjust — the precise half of the dual manipulation model.
         // Drives the most recently placed TV; absent until one is placed.
         //
@@ -201,28 +222,6 @@ fun WallPlacementDemo(onBack: () -> Unit) {
                 }
             },
         )
-
-        // Phase banner — mirrors the scene's onboarding state machine.
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        ) {
-            Text(
-                text = stringResource(
-                    when (phase) {
-                        WallPlacementPhase.FINDING_FLOOR -> R.string.wall_phase_finding_floor
-                        WallPlacementPhase.FINDING_WALL -> R.string.wall_phase_finding_wall
-                        WallPlacementPhase.ALIGNING_EDGE -> R.string.wall_phase_aligning_edge
-                        WallPlacementPhase.PLACED -> R.string.wall_phase_placed
-                    }
-                ),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
 
         // Orange alignment guide — fixed screen-space line the user physically aligns
         // with the floor↔wall seam (the Amazon "ligne orange" from the teardown).

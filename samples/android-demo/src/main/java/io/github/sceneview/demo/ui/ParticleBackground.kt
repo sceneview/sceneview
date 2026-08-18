@@ -3,6 +3,7 @@ package io.github.sceneview.demo.ui
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -12,13 +13,18 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.foundation.background
 import com.google.android.filament.MaterialInstance
+import com.google.android.filament.Skybox
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.createCameraNode
+import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
+import io.github.sceneview.math.colorOf
+import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import kotlin.math.cos
@@ -62,6 +68,16 @@ import kotlin.random.Random
 fun ParticleBackground(modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
 
+    // The colour the render target is cleared to, the colour the scrim fades toward,
+    // and the colour the `@Preview` stand-in paints — one value, read from the theme.
+    // They used to be three different things, and that is the whole of defect #3237-a:
+    // the scene cleared to BLACK (the `isOpaque = true` default builds an α=1 skybox at
+    // rgb 0), the scrim faded toward a hard-coded `Color.White`, and at the scrim's
+    // lightest stop — α 0.55 — white over black composites to #8C8C8C. The Samples and
+    // Explore tabs rendered a dirty grey field in light mode, seamed against a #FAF8FF
+    // status bar. No alpha value fixes that; the target has to stop being black.
+    val backdrop = MaterialTheme.colorScheme.surface
+
     // `@Preview` panes and Roborazzi run on the JVM, where `rememberEngine()`
     // below throws `UnsatisfiedLinkError: no filament-jni`. Short-circuit to a
     // static backdrop first — same pattern as [GeometryDemo] and
@@ -73,14 +89,30 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(inspectionBackdrop(dark))
-                .background(scrimBrush(dark)),
+                .background(SolidColor(backdrop))
+                .background(scrimBrush(backdrop, dark)),
         )
         return
     }
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
+
+    // Clear colour = the theme surface. Filament's skybox colour is LINEAR, the theme
+    // token is sRGB, so the conversion is not optional — skipping it renders a visibly
+    // lighter field than the surrounding surface, which is the same seam by a smaller
+    // margin. Keyed on `backdrop` so a light/dark switch rebuilds (and disposes) it.
+    val environment = rememberEnvironment(engine, key = backdrop) {
+        createEnvironment(
+            engine = engine,
+            // No IBL: every particle is an unlit material, so an indirect light would
+            // be uploaded and sampled for nothing.
+            indirectLight = null,
+            skybox = Skybox.Builder()
+                .color(colorOf(backdrop).toLinearSpace().toFloatArray())
+                .build(engine),
+        )
+    }
 
     // Seed the layout once per composition entry (≈ once per launch / per tab
     // switch into Samples). `Random.Default` is unseeded so each cold start
@@ -109,10 +141,14 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
             // No gesture manipulator — this is a passive backdrop, all touches
             // must fall through to the demo grid on top.
             cameraManipulator = null,
-            // Opaque dark render target: a flat low-brightness backdrop so the
-            // particles read as glints on a calm field, and the demo cards keep
-            // their contrast.
+            // Opaque render target, cleared to the theme surface by `environment`
+            // above — the particles read as glints on a calm field of exactly the
+            // colour the rest of the screen is, and the demo cards keep their
+            // contrast. Opaque (rather than a translucent surface) on purpose: this
+            // is a SurfaceView, and a translucent one shows what is under the
+            // *window*, not the Compose background above it.
             isOpaque = true,
+            environment = environment,
             // Static content is centred by hand; skip the auto-centre pass so
             // the seeded layout is not re-translated on the first frame.
             autoCenterContent = false,
@@ -145,7 +181,7 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(scrimBrush(dark)),
+                .background(scrimBrush(backdrop, dark)),
         )
     }
 }
@@ -235,26 +271,77 @@ private fun particleColor(base: Color, dark: Boolean): Color {
 }
 
 /**
- * Flat stand-in for the opaque [SceneView] render target, used only when
- * [LocalInspectionMode] is on. It is the colour the live scene's scrim already
- * fades toward, so a preview reads as "calm dark field" rather than a hole.
+ * Vertical scrim drawn on top of the [SceneView]. Fades toward [surface] — the
+ * same colour the render target is cleared to — so the particle field is meant
+ * to be felt, not read.
+ *
+ * ## The top band is held nearly solid, and that is deliberate
+ *
+ * Both screens that use this backdrop put their **controls** in the top band: the
+ * Explore tab's search field and its "Poly Haven" source chip, the Samples tab's
+ * "Trending models" header. The old dark ramp opened at α 0.30 there, i.e. 70 % of
+ * a drifting particle field showing through the exact rectangle a user types into
+ * — device QA found blue and mauve discs crossing the search field and overlapping
+ * the chip's label. A backdrop is allowed to be visible; it is not allowed to be
+ * visible *through a text input*.
+ *
+ * So the ramp is held at [SCRIM_TOP_ALPHA_DARK] / [SCRIM_TOP_ALPHA_LIGHT] down to
+ * [SCRIM_CONTROLS_BAND], which covers the controls on both screens at every
+ * supported size, and only then opens up over the scrolling content below. Held
+ * flat rather than ramped from zero: a gradient that starts opening immediately
+ * puts the fade line somewhere different on every screen height, which is how a
+ * value tuned on one device stops being right on the next.
+ *
+ * Light mode never had the contrast problem — it had a *colour* problem, fixed at
+ * the clear colour — but it carries the same band, because a faint disc drifting
+ * under a search field is the same defect at a lower amplitude.
+ *
+ * The band and the alphas were both re-tuned after a two-frame diff of the first
+ * attempt was measured rather than eyeballed; see [SCRIM_TOP_ALPHA_DARK].
  */
-private fun inspectionBackdrop(dark: Boolean): Brush =
-    SolidColor(if (dark) SceneViewColors.SurfaceDim else Color.White)
+private fun scrimBrush(surface: Color, dark: Boolean): Brush = Brush.verticalGradient(
+    0.0f to surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
+    SCRIM_CONTROLS_BAND to
+        surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
+    0.88f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
+    1.0f to surface.copy(alpha = if (dark) 0.82f else 0.92f),
+)
 
 /**
- * Vertical scrim drawn on top of the [SceneView]. Fades toward the theme
- * surface so the demo grid keeps its contrast — the particle field is meant to
- * be felt, not read.
+ * Fraction the scrim holds at full strength from its top — the band the Explore
+ * search field, the source chips and the "Trending models" header occupy.
+ *
+ * ## It is a fraction of THIS BOX, not of the screen — that distinction cost two rounds
+ *
+ * [Brush.verticalGradient] stops are fractions of the area being drawn, and this
+ * composable is `fillMaxSize()` *inside* the Scaffold's content padding: it starts
+ * under the status bar and stops at the top of the bottom navigation bar. On the QA
+ * emulator the window is 1600 px tall and this box is **1418**. A value picked off a
+ * screenshot is therefore in the wrong frame, and lands 11 % of the screen too high:
+ * 0.62 was chosen to clear "Trending models" at screen-fraction 0.59, and the measured
+ * onset of visible particles came out at y 879 — exactly 0.62 x 1418, over the header
+ * it was supposed to cover.
+ *
+ * Measured in this box's own frame on the QA emulator: search field 0.19–0.25, source
+ * chips 0.30–0.34, "Try a sample" 0.39, "Trending models" **0.652–0.677**. The band has
+ * to clear the last of those, not the first, with room for a larger font scale pushing
+ * the header further down.
  */
-private fun scrimBrush(dark: Boolean): Brush {
-    val surface = if (dark) SceneViewColors.SurfaceDim else Color.White
-    return Brush.verticalGradient(
-        0.0f to surface.copy(alpha = if (dark) 0.30f else 0.55f),
-        0.45f to surface.copy(alpha = if (dark) 0.55f else 0.78f),
-        1.0f to surface.copy(alpha = if (dark) 0.80f else 0.92f),
-    )
-}
+private const val SCRIM_CONTROLS_BAND = 0.74f
+
+/**
+ * Scrim alpha over the controls band.
+ *
+ * This started at 0.30 (dark), which put 70 % of a drifting particle field through
+ * the search field. The first correction took it to 0.88 because "≥ 0.85" was the
+ * stated bar — and a two-frame diff of the result still showed **15 % of the pixels
+ * moving** in the rows holding the source chips: at 0.88 over an 18-level surface, a
+ * particle still lands ~5 levels above the background, which the eye reads as a disc.
+ * A threshold that was never measured against the thing it was protecting is not a
+ * threshold. 0.97 puts the residual at ~1 level, below the display's own banding.
+ */
+private const val SCRIM_TOP_ALPHA_DARK = 0.97f
+private const val SCRIM_TOP_ALPHA_LIGHT = 0.98f
 
 // ── Tuning constants — see the KDoc on [ParticleBackground] ─────────────────
 

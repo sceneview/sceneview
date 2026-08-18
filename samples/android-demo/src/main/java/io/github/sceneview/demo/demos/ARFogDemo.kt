@@ -239,6 +239,24 @@ fun ARFogDemo(onBack: () -> Unit) {
 
             ForceTrackingFailureMenu()
         },
+        topOverlay = {
+            Surface(
+                color = if (fogEnabled) {
+                    Color(0xFF1B5E20).copy(alpha = 0.85f)
+                } else {
+                    Color(0xFF555555).copy(alpha = 0.85f)
+                },
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    text = if (fogEnabled) "FOG ON" else "FOG OFF",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        },
         bottomOverlay = {
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
@@ -331,26 +349,6 @@ fun ARFogDemo(onBack: () -> Unit) {
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(initializing = !cameraReady)
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = if (fogEnabled) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFF555555).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(
-                    text = if (fogEnabled) "FOG ON" else "FOG OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
         }
     }
 }

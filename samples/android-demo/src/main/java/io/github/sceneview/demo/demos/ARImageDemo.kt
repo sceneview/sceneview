@@ -151,6 +151,70 @@ fun ARImageDemo(onBack: () -> Unit) {
         } else {
             null
         },
+        // "What to scan" guide — shows the actual reference target so the user knows
+        // exactly which image to point the camera at. Tap to expand/collapse.
+        topOverlay = {
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .clickable { showScanGuide = !showScanGuide },
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(20.dp),
+                tonalElevation = 4.dp,
+                shadowElevation = 4.dp
+            ) {
+                if (showScanGuide) {
+                    Column(
+                        modifier = Modifier
+                            .width(220.dp)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Point your camera at this image",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Image(
+                            bitmap = referenceBitmap.asImageBitmap(),
+                            contentDescription = "Reference image to scan",
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .size(160.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .padding(8.dp)
+                        )
+                        Text(
+                            text = "Display it on another screen or print it, " +
+                                "then aim the camera at it. Or capture your own image below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.QrCode2,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Show target image",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+        },
         bottomOverlay = {
             // On-device capture controls — the #1553 "take a photo, add it to the database"
             // flow. Grabs the live AR camera frame, registers it in the runtime database, and
@@ -320,70 +384,6 @@ fun ARImageDemo(onBack: () -> Unit) {
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(initializing = !cameraReady)
-
-            // "What to scan" guide — shows the actual reference target so the user knows
-            // exactly which image to point the camera at. Tap to expand/collapse.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp)
-                    .clickable { showScanGuide = !showScanGuide },
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                shape = RoundedCornerShape(20.dp),
-                tonalElevation = 4.dp,
-                shadowElevation = 4.dp
-            ) {
-                if (showScanGuide) {
-                    Column(
-                        modifier = Modifier
-                            .width(220.dp)
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Point your camera at this image",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Image(
-                            bitmap = referenceBitmap.asImageBitmap(),
-                            contentDescription = "Reference image to scan",
-                            modifier = Modifier
-                                .padding(top = 12.dp)
-                                .size(160.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .padding(8.dp)
-                        )
-                        Text(
-                            text = "Display it on another screen or print it, " +
-                                "then aim the camera at it. Or capture your own image below.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.QrCode2,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Show target image",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }

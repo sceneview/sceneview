@@ -172,6 +172,31 @@ fun ARPeopleOcclusionDemo(onBack: () -> Unit) {
             // Developer-only debug toggle — visible when QA mode is on.
             ForceTrackingFailureMenu()
         },
+        // Status pill — green when people occlusion is ON, red when OFF, and showing
+        // the live PERSON-pixel fraction so QA can confirm the model is actually
+        // classifying a person.
+        topOverlay = {
+            Surface(
+                color = if (peopleOn) {
+                    Color(0xFF1B5E20).copy(alpha = 0.85f)
+                } else {
+                    Color(0xFFB71C1C).copy(alpha = 0.85f)
+                },
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = if (peopleOn) {
+                        "PEOPLE OCCLUSION ON · person ${(personFraction * 100).toInt()}%"
+                    } else {
+                        "PEOPLE OCCLUSION OFF"
+                    },
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        },
         bottomOverlay = {
             // Scanning / tracking-failure overlay — same vocabulary as ARDepthOcclusionDemo.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
@@ -296,33 +321,6 @@ fun ARPeopleOcclusionDemo(onBack: () -> Unit) {
                         }
                     }
                 }
-            }
-
-            // Top-center status pill — green when people occlusion is ON, red when OFF,
-            // and showing the live PERSON-pixel fraction so QA can confirm the model is
-            // actually classifying a person.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = if (peopleOn) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFFB71C1C).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = if (peopleOn) {
-                        "PEOPLE OCCLUSION ON · person ${(personFraction * 100).toInt()}%"
-                    } else {
-                        "PEOPLE OCCLUSION OFF"
-                    },
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
             }
         }
     }

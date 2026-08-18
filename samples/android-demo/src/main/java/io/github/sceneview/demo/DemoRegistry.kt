@@ -29,6 +29,23 @@ enum class DemoStatus {
 }
 
 /**
+ * Whether the "In review" chip may be drawn.
+ *
+ * [DemoStatus.InReview] is a *process* state, addressed to whoever runs the
+ * on-device review pass: it says "exercise this one before sign-off". Its KDoc
+ * says as much — "so testers know exactly which demos to exercise". The chip was
+ * nevertheless rendered unconditionally, so it shipped to the Play Store, where
+ * "In review" reads to a user as *this demo may be broken* — the opposite of the
+ * honest-expectations job the badge set was built for.
+ *
+ * The status itself stays: it is what drives the "New in this build — try them"
+ * section, which is written for users. Only the internal vocabulary is gated.
+ * #3237
+ */
+val IN_REVIEW_BADGE_VISIBLE: Boolean
+    get() = BuildConfig.DEBUG
+
+/**
  * One entry in the curated demo list shown on the Samples tab.
  *
  * String content is referenced through Android resources to keep literals

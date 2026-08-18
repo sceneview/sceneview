@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.dp
  * constant survives contact with a longer sentence.
  *
  * The [BoxScope] overload below is the pre-existing shape, kept so the scene
- * lambda still compiles. It is what `check-demo-bottom-overlay.py` refuses.
+ * lambda still compiles. It is what `check-demo-overlay-anchors.py` refuses.
  */
 @Composable
 fun ColumnScope.SceneActionBar(

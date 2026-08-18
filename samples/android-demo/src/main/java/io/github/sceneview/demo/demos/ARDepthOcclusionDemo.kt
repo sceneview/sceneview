@@ -214,6 +214,26 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
+        // Status pill — green tint when depth is ON, red tint when OFF.
+        // Big enough for a screenshot to read at a glance.
+        topOverlay = {
+            Surface(
+                color = if (depthOn) {
+                    Color(0xFF1B5E20).copy(alpha = 0.85f)
+                } else {
+                    Color(0xFFB71C1C).copy(alpha = 0.85f)
+                },
+                contentColor = Color.White,
+                tonalElevation = 4.dp,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = if (depthOn) "DEPTH ON" else "DEPTH OFF",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        },
         // Status banner + primary action are hosted by the scaffold's `bottomOverlay`
         // slot, a bottom-aligned Column: they stack instead of sharing the same band,
         // and both are laid out against the Settings FAB instead of under it (#2779).
@@ -368,28 +388,6 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // Outside `key(depthOn)` so the depth toggle never resurrects the entry
             // scrim — the toggle's own #1777 spinner below covers that flash.
             ARCameraInitScrim(initializing = !cameraReady)
-
-            // Top-center status pill — green tint when depth is ON, red tint when OFF.
-            // Big enough for a screenshot to read at a glance.
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-                color = if (depthOn) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFFB71C1C).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = if (depthOn) "DEPTH ON" else "DEPTH OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
 
             // Depth-toggle transition spinner (#1777) — covers the 2-3 frame engine +
             // camera-stream rebuild triggered by the `key(depthOn)` remount. Without it
