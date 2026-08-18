@@ -101,6 +101,36 @@ run_codex() {
 }
 
 # ------------------------------------------------------------------- preflight
+# A fresh worktree inherits no gitignored file, so it has no local.properties and
+# every Android build in it dies at configuration time. The obvious fix — copy the
+# one from the main checkout — is a leak: on 2026-08-18 that file held a live
+# sketchfab.api.key next to sdk.dir, and the sibling ar-model-viewer checkout holds
+# the Play upload keystore's passwords in the same file.
+#
+# So the default is inverted. No value is ever copied except sdk.dir, which is a
+# path and not a secret. Every other key keeps its NAME and loses its VALUE, which
+# is what Gradle needs to configure: a key read as an empty string configures, a
+# missing key can throw. Nothing has to be recognised as secret for this to hold —
+# a key nobody has thought of yet is neutralised like the rest.
+provision_local_properties() {
+  local wt="$1" src="$REPO_ROOT/local.properties" dst="$1/local.properties"
+  [ -f "$src" ] || return 0
+  [ -f "$dst" ] && return 0
+  awk -F= '
+    /^[[:space:]]*#/ || NF == 0 { next }
+    {
+      key = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      if (key == "") next
+      if (key == "sdk.dir") { print; kept++ } else { print key "="; blanked++ }
+    }
+    END { printf "%d %d\n", kept, blanked > "/dev/stderr" }
+  ' "$src" > "$dst" 2> /tmp/codex-lp-counts.$$
+  read -r kept blanked < /tmp/codex-lp-counts.$$ || true
+  rm -f /tmp/codex-lp-counts.$$
+  ok "local.properties: sdk.dir kept, ${blanked:-0} other key(s) blanked (no value copied)"
+}
+
 preflight() {
   local quiet="${1:-}"
   # CODEX_HOME wins when set — Codex itself honours it, so reading ~/.codex
@@ -321,6 +351,7 @@ case "$CMD" in
           || die "Could not create worktree: $WT_PATH"
         ok "Dedicated worktree: $WT_PATH (branch codex/$NEW_WT)"
       fi
+      provision_local_properties "$WT_PATH"
       DIR="$WT_PATH"
     fi
 
