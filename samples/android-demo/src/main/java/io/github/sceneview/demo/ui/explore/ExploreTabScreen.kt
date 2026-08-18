@@ -3,6 +3,7 @@
 package io.github.sceneview.demo.ui.explore
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,9 +48,12 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,11 +61,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SketchfabService
@@ -70,6 +75,8 @@ import io.github.sceneview.demo.sources.ModelSource
 import io.github.sceneview.demo.sources.ModelSourceId
 import io.github.sceneview.demo.sources.rememberModelSources
 import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
+import io.github.sceneview.demo.ui.explore.components.SpatialHero
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.sample.ui.demoCategoryAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -79,19 +86,8 @@ import kotlinx.coroutines.supervisorScope
  * Curated 3D-model discovery feed. Mirrors the iOS `ExploreTab` so QA can
  * compare both apps side-by-side.
  *
- * Top-down layout:
- *   1. Search bar (Sketchfab queries)
- *   2. Filter chips — currently "Animated" (toggle reloads the three feeds)
- *   3. "Try a sample" curated row — links straight into existing demos
- *   4. "Staff Picks"     carousel (Sketchfab)
- *   5. "Most Liked"      carousel (Sketchfab)
- *   6. "Recently Added"  carousel (Sketchfab)
- *   7. Categories grid (18 official Sketchfab slugs)
- *   8. Recent searches (SharedPreferences-backed)
- *
- * When `BuildConfig.SKETCHFAB_API_KEY` is empty the three Sketchfab carousels
- * are hidden and only the curated sample row + categories are shown — keeps
- * the public Play Store build useful even without the proprietary key.
+ * Spatial Gallery home: a static featured stage, expandable catalog search,
+ * media-first trending rail, compact source filters, and sample showcase.
  */
 @Composable
 fun ExploreTabScreen(
@@ -109,6 +105,7 @@ fun ExploreTabScreen(
     val selectedSource = sources.selected
 
     var searchQuery by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
     var animatedOnly by remember { mutableStateOf(false) }
     var selectedModel by remember { mutableStateOf<GalleryModel?>(null) }
 
@@ -278,6 +275,9 @@ fun ExploreTabScreen(
             },
             activeSearchQuery = activeSearchQuery,
             searchResults = searchResults,
+            searchExpanded = searchExpanded,
+            onSearchExpandedChange = { searchExpanded = it },
+            recentSearches = recentSearches,
             animatedOnly = animatedOnly,
             onToggleAnimated = { animatedOnly = !animatedOnly },
             curatedSamples = curatedSamples,
@@ -334,6 +334,9 @@ private fun ExploreBody(
     onSearchSubmit: (String) -> Unit,
     activeSearchQuery: String,
     searchResults: List<GalleryModel>?,
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    recentSearches: RecentSearchesState,
     animatedOnly: Boolean,
     onToggleAnimated: () -> Unit,
     curatedSamples: List<DemoEntry>,
@@ -352,43 +355,70 @@ private fun ExploreBody(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(
-                start = 16.dp,
-                end = 16.dp,
-                top = 8.dp,
+                start = SceneViewTokens.Layout.containerPaddingMobile,
+                end = SceneViewTokens.Layout.containerPaddingMobile,
+                top = SceneViewTokens.Space.sm,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        Spacer(Modifier.height(0.dp))
-        // Hide the page title when the user is actively searching (#2229) —
-        // it's noise that pushes the results below the fold. The SearchField
-        // below carries the "what is this page" affordance on its own.
-        if (!isSearching) {
-            Text(
-                text = stringResource(R.string.explore_heading),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+        Spacer(Modifier.height(SceneViewTokens.Space.xs))
+
+        if (searchExpanded || isSearching) {
+            SearchField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                onSubmit = onSearchSubmit,
+                sourceName = selectedSource.id.displayName,
+                onCollapse = {
+                    if (searchQuery.isBlank()) onSearchExpandedChange(false)
+                },
             )
-        }
-
-        SearchField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
-            onSubmit = onSearchSubmit,
-            // Placeholder names the catalog being searched so the field reflects
-            // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
-            sourceName = selectedSource.id.displayName,
-            // The selected source is always usable (Sketchfab is dropped from the
-            // picker when it has no key), so the search field is always live.
-            apiKeyAvailable = true,
-        )
-
-        // Source picker (#2645) — stays visible even mid-search so switching
-        // catalogs re-runs the query against the new one. Hidden only when a
-        // single source is available (nothing to choose between).
-        if (sources.size > 1) {
-            SourcePickerRow(sources = sources, selected = selectedSource, onSelect = onSelectSource)
+            if (searchQuery.isBlank() && recentSearches.items.isNotEmpty()) {
+                RecentSearchesSection(
+                    items = recentSearches.items,
+                    onClear = recentSearches::clear,
+                    onClick = { query ->
+                        onSearchQueryChange(query)
+                        onSearchSubmit(query)
+                    },
+                    onRemove = recentSearches::remove,
+                )
+            }
+            CompactBrowseRail(
+                sources = sources,
+                selectedSource = selectedSource,
+                onSelectSource = onSelectSource,
+                showAnimated = selectedSource.supportsAnimatedFilter && !isSearching,
+                animatedOnly = animatedOnly,
+                onToggleAnimated = onToggleAnimated,
+            )
+        } else {
+            val hero = feedsByKind[FeedKind.TRENDING]?.firstOrNull()
+                ?: selectedSource.feedKinds.asSequence().flatMap { feedsByKind[it].orEmpty().asSequence() }.firstOrNull()
+            Box {
+                if (hero != null) {
+                    SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SceneViewTokens.Layout.heroStageHeight)
+                            .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
+                            .background(MaterialTheme.colorScheme.surfaceDim),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (loadingFeeds) CircularProgressIndicator()
+                    }
+                }
+                FloatingSearchPill(
+                    sourceName = selectedSource.id.displayName,
+                    onClick = { onSearchExpandedChange(true) },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(SceneViewTokens.Space.md),
+                )
+            }
         }
 
         // "Sketchfab unavailable" banner (#2095) — only when the Sketchfab key was
@@ -396,35 +426,6 @@ private fun ExploreBody(
         // is degraded but functional (samples + other sources still work).
         if (showSketchfabBanner) {
             SketchfabDisabledBanner(keyRejected = true)
-        }
-
-        // FiltersBar (Animated chip) and the "Try a sample" carousel both belong
-        // to the browse experience — hidden while searching (#2229). The Animated
-        // filter is meaningful only for Sketchfab; the CC sources don't expose it.
-        if (selectedSource.supportsAnimatedFilter && !isSearching) {
-            FiltersBar(animatedOnly = animatedOnly, onToggle = onToggleAnimated)
-        }
-
-        if (curatedSamples.isNotEmpty() && !isSearching) {
-            CarouselSection(title = stringResource(R.string.explore_try_a_sample)) {
-                val state = rememberLazyListState()
-                LazyRow(
-                    state = state,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    // Edge padding so the first/last card has breathing room
-                    // and never sits half-cropped at the viewport edge — the
-                    // Pixel 9 audit (#1182) caught a screenshot where a card
-                    // appeared truncated mid-name purely because of zero-pad.
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                    // Snap to card boundaries on fling so the user never
-                    // releases scroll on a half-card.
-                    flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
-                ) {
-                    items(curatedSamples) { sample ->
-                        SampleCard(sample = sample, onClick = { onSampleClick(sample) })
-                    }
-                }
-            }
         }
 
         if (isSearching) {
@@ -450,20 +451,37 @@ private fun ExploreBody(
                     onModelClick = onModelClick,
                 )
             }
-        } else {
-            // One carousel per feed the selected source advertises. When a source
-            // is unreachable each empty FeedSection self-hides and the page falls
-            // back to the "Try a sample" carousel + the picker (switch sources) —
-            // a degraded source never blanks the tab (#2645). No red dev-style
-            // error banner: that was the v4.1.0 "horrible UI" complaint.
-            selectedSource.feedKinds.forEach { kind ->
-                val models = feedsByKind[kind].orEmpty()
-                FeedSection(
-                    title = feedTitle(kind),
-                    models = models,
-                    loading = loadingFeeds && models.isEmpty(),
-                    onModelClick = onModelClick,
-                )
+        } else if (!searchExpanded) {
+            val trending = feedsByKind[FeedKind.TRENDING]
+                ?: selectedSource.feedKinds.firstNotNullOfOrNull { kind ->
+                    feedsByKind[kind]?.takeIf { models -> models.isNotEmpty() }
+                }
+                ?: emptyList()
+            TrendingRail(models = trending, loading = loadingFeeds, onModelClick = onModelClick)
+
+            CompactBrowseRail(
+                sources = sources,
+                selectedSource = selectedSource,
+                onSelectSource = onSelectSource,
+                showAnimated = selectedSource.supportsAnimatedFilter,
+                animatedOnly = animatedOnly,
+                onToggleAnimated = onToggleAnimated,
+            )
+
+            if (curatedSamples.isNotEmpty()) {
+                CarouselSection(title = stringResource(R.string.explore_built_with_sceneview)) {
+                    val state = rememberLazyListState()
+                    LazyRow(
+                        state = state,
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                        contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.xs),
+                        flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
+                    ) {
+                        items(curatedSamples) { sample ->
+                            SampleCard(sample = sample, onClick = { onSampleClick(sample) })
+                        }
+                    }
+                }
             }
         }
 
@@ -475,7 +493,7 @@ private fun ExploreBody(
         // RecentSearchesState data layer is preserved for a future
         // search-focus dropdown (Google Search style).
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(SceneViewTokens.Space.md))
     }
 }
 
@@ -487,13 +505,17 @@ private fun SearchField(
     onValueChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
     sourceName: String,
-    apiKeyAvailable: Boolean = true,
+    onCollapse: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val focusRequester = remember { FocusRequester() }
+    // Focus (and IME) only on first appearance — recompositions after a
+    // submitted search must not re-open the keyboard over the results.
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs)) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             placeholder = { Text(stringResource(R.string.explore_search_placeholder, sourceName)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,
@@ -501,25 +523,127 @@ private fun SearchField(
             // the LaunchedEffect short-circuits in ExploreTabScreen.kt:165, so
             // disabling the input is honest UX rather than letting users type
             // queries that go into a black hole (#1909).
-            enabled = apiKeyAvailable,
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(SceneViewTokens.Radius.full),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSubmit(value) }),
-            trailingIcon = if (value.isNotEmpty()) {
-                {
+            trailingIcon = {
+                if (value.isNotEmpty()) {
                     IconButton(onClick = { onValueChange("") }) {
                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_clear_search))
                     }
+                } else {
+                    IconButton(onClick = onCollapse) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_clear_search))
+                    }
                 }
-            } else null,
+            },
         )
-        if (!apiKeyAvailable) {
+    }
+}
+
+@Composable
+private fun FloatingSearchPill(sourceName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = SceneViewTokens.SpatialGalleryColor
+    val dark = isSystemInDarkTheme()
+    Surface(
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+        color = if (dark) colors.glassSurfaceDark else colors.glassSurfaceLight,
+        border = BorderStroke(
+            colors.glassBorderWidth,
+            if (dark) colors.glassBorderDark else colors.glassBorderLight,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(SceneViewTokens.Space.md),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Search, contentDescription = null)
             Text(
-                text = stringResource(R.string.explore_sketchfab_search_hint),
-                style = MaterialTheme.typography.bodySmall,
+                text = stringResource(R.string.explore_search_placeholder, sourceName),
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun TrendingRail(
+    models: List<GalleryModel>,
+    loading: Boolean,
+    onModelClick: (GalleryModel) -> Unit,
+) {
+    if (models.isEmpty() && !loading) return
+    CarouselSection(title = stringResource(R.string.explore_trending_in_3d)) {
+        if (models.isEmpty()) {
+            CircularProgressIndicator(modifier = Modifier.size(SceneViewTokens.Space.lg))
+        } else {
+            val state = rememberLazyListState()
+            LazyRow(
+                state = state,
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.xs),
+                flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
+            ) {
+                items(models, key = { it.cardKey }) { model ->
+                    val width = if (model == models.first()) {
+                        SceneViewTokens.Layout.heroStageHeight
+                    } else {
+                        SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l
+                    }
+                    FeaturedModelCard(
+                        model = model,
+                        onClick = { onModelClick(model) },
+                        modifier = Modifier.width(width),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactBrowseRail(
+    sources: List<ModelSource>,
+    selectedSource: ModelSource,
+    onSelectSource: (ModelSource) -> Unit,
+    showAnimated: Boolean,
+    animatedOnly: Boolean,
+    onToggleAnimated: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+        Text(
+            text = stringResource(R.string.explore_browse_by_source),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        ) {
+            sources.forEach { source ->
+                FilterChip(
+                    selected = source.id == selectedSource.id,
+                    onClick = { onSelectSource(source) },
+                    label = { Text(source.id.displayName) },
+                )
+            }
+            if (showAnimated) {
+                FilterChip(
+                    selected = animatedOnly,
+                    onClick = onToggleAnimated,
+                    label = { Text(stringResource(R.string.explore_filter_animated)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                )
+            }
         }
     }
 }
@@ -561,14 +685,14 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { showDialog = true },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         ) {
             Icon(
                 imageVector = Icons.Filled.Info,
@@ -623,7 +747,7 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
 
 @Composable
 private fun FiltersBar(animatedOnly: Boolean, onToggle: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
         FilterChip(
             selected = animatedOnly,
             onClick = onToggle,
@@ -656,7 +780,7 @@ private fun SourcePickerRow(
     onSelect: (ModelSource) -> Unit,
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         modifier = Modifier.horizontalScroll(rememberScrollState()),
     ) {
         Text(
@@ -693,7 +817,7 @@ private fun CarouselSection(
     title: String,
     content: @Composable () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
@@ -749,7 +873,7 @@ private fun FeedSection(
     // ghost sections stacking under each other in the offline path.
     if (models.isEmpty() && !loading) return
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -762,22 +886,31 @@ private fun FeedSection(
                 modifier = Modifier.weight(1f),
             )
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(SceneViewTokens.Space.lg),
+                    strokeWidth = SceneViewTokens.Space.xs,
+                )
             }
         }
         val state = rememberLazyListState()
         LazyRow(
             state = state,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
             // Edge padding so the first/last card has breathing room and never
             // sits half-cropped at the viewport edge (#1182).
-            contentPadding = PaddingValues(horizontal = 4.dp),
+            contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.xs),
             // Snap to card boundaries on fling so the user never releases
             // scroll on a half-card mid-name.
             flingBehavior = rememberSnapFlingBehavior(lazyListState = state),
         ) {
             items(models, key = { it.cardKey }) { m ->
-                FeaturedModelCard(model = m, onClick = { onModelClick(m) })
+                FeaturedModelCard(
+                    model = m,
+                    onClick = { onModelClick(m) },
+                    modifier = Modifier.width(
+                        SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l,
+                    ),
+                )
             }
         }
     }
@@ -786,60 +919,58 @@ private fun FeedSection(
 @Composable
 private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
     val accent = demoCategoryAccent(sample.category)
-    androidx.compose.material3.Surface(
+    Box(
         modifier = Modifier
-            .width(168.dp)
-            .height(168.dp)
+            .width(SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l * 3)
+            .aspectRatio(SceneViewTokens.Layout.mediaAspect)
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.lg))
+            .background(
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                    colors = listOf(
+                        accent.copy(alpha = SceneViewTokens.SpatialGalleryColor.glassSurfaceLight.alpha),
+                        MaterialTheme.colorScheme.surfaceDim,
+                    ),
+                ),
+            )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(88.dp)
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                            colors = listOf(
-                                accent.copy(alpha = 0.32f),
-                                accent.copy(alpha = 0.14f),
-                            ),
+        Icon(
+            imageVector = sample.icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(SceneViewTokens.Space.x2l),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(
+                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                            SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
                         ),
                     ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = sample.icon,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(36.dp),
                 )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = stringResource(sample.titleRes),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-                Text(
-                    text = stringResource(sample.subtitleRes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    // Twin of the Samples-tab card: clip with an ellipsis rather
-                    // than mid-word. #3237
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+                .padding(SceneViewTokens.Space.sm),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+        ) {
+            Text(
+                text = stringResource(sample.titleRes),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = androidx.compose.ui.graphics.Color.White,
+                maxLines = 1,
+            )
+            Text(
+                text = stringResource(sample.subtitleRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -850,7 +981,7 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
 @Composable
 private fun CategoriesSection(onCategoryClick: (SketchfabCategory) -> Unit) {
     val scrollState = rememberScrollState()
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
         Text(
             text = stringResource(R.string.explore_categories),
             style = MaterialTheme.typography.titleLarge,
@@ -863,16 +994,16 @@ private fun CategoriesSection(onCategoryClick: (SketchfabCategory) -> Unit) {
         // verticalScroll). Same compromise as the iOS demo.
         val all = SketchfabCategory.entries
         val rowSize = (all.size + 1) / 2
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
             Row(
                 modifier = Modifier.horizontalScroll(scrollState),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
                 all.take(rowSize).forEach { CategoryChip(it, onCategoryClick) }
             }
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
                 all.drop(rowSize).forEach { CategoryChip(it, onCategoryClick) }
             }
@@ -884,10 +1015,10 @@ private fun CategoriesSection(onCategoryClick: (SketchfabCategory) -> Unit) {
 private fun CategoryChip(category: SketchfabCategory, onClick: (SketchfabCategory) -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.full))
             .background(MaterialTheme.colorScheme.tertiaryContainer)
             .clickable { onClick(category) }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
     ) {
         Text(
             text = category.displayName,
@@ -908,7 +1039,7 @@ private fun RecentSearchesSection(
     onClick: (String) -> Unit,
     onRemove: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
@@ -927,17 +1058,17 @@ private fun RecentSearchesSection(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(SceneViewTokens.Radius.md))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable { onClick(query) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
             ) {
                 Icon(
                     Icons.Filled.History,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(SceneViewTokens.Space.sm))
                 Text(
                     text = query,
                     style = MaterialTheme.typography.bodyMedium,

@@ -28,6 +28,9 @@
     <string name="explore_filter_animated">Animated</string>
     <string name="explore_try_a_sample">Try a sample</string>
     <string name="explore_trending_models">Trending models</string>
+    <string name="explore_trending_in_3d">Trending in 3D</string>
+    <string name="explore_built_with_sceneview">Built with SceneView</string>
+    <string name="explore_browse_by_source">Browse by source</string>
     <string name="explore_staff_picks">Staff picks</string>
     <string name="explore_recently_added">Recently added</string>
     <string name="explore_categories">Categories</string>
