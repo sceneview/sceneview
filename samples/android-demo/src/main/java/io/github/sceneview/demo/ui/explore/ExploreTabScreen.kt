@@ -396,7 +396,9 @@ private fun ExploreBody(
         } else {
             val hero = feedsByKind[FeedKind.TRENDING]?.firstOrNull()
                 ?: selectedSource.feedKinds.asSequence().flatMap { feedsByKind[it].orEmpty().asSequence() }.firstOrNull()
-            Box {
+            // The pill is anchored to the hero card, not the display: this Box lives
+            // inside the scrolled column, whose host applies the window insets.
+            Box(modifier = Modifier.fillMaxWidth()) {
                 if (hero != null) {
                     SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
                 } else {
