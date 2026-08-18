@@ -83,11 +83,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 
 /**
- * Curated 3D-model discovery feed. Mirrors the iOS `ExploreTab` so QA can
- * compare both apps side-by-side.
+ * Curated 3D-model discovery feed — the demo app's Spatial Gallery home: a
+ * static featured stage, expandable catalog search, media-first trending rail,
+ * compact source filters, and sample showcase.
  *
- * Spatial Gallery home: a static featured stage, expandable catalog search,
- * media-first trending rail, compact source filters, and sample showcase.
+ * The iOS `ExploreTab` still shows the previous layout; it catches up in the
+ * iOS leg of the demo-app redesign plan.
  */
 @Composable
 fun ExploreTabScreen(
@@ -350,6 +351,10 @@ private fun ExploreBody(
     // the CC sources never reach it, and a missing Sketchfab key simply drops the
     // chip from the picker rather than showing dead UI (#1909/#2095, #2645).
     val showSketchfabBanner = selectedSource.id == ModelSourceId.SKETCHFAB && keyRejected
+    // The featured stage fronts the first available model; the trending rail
+    // below filters it out so the same card never appears twice on screen.
+    val hero = feedsByKind[FeedKind.TRENDING]?.firstOrNull()
+        ?: selectedSource.feedKinds.asSequence().flatMap { feedsByKind[it].orEmpty().asSequence() }.firstOrNull()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -394,8 +399,6 @@ private fun ExploreBody(
                 onToggleAnimated = onToggleAnimated,
             )
         } else {
-            val hero = feedsByKind[FeedKind.TRENDING]?.firstOrNull()
-                ?: selectedSource.feedKinds.asSequence().flatMap { feedsByKind[it].orEmpty().asSequence() }.firstOrNull()
             // The pill is anchored to the hero card, not the display: this Box lives
             // inside the scrolled column, whose host applies the window insets.
             Box(modifier = Modifier.fillMaxWidth()) {
@@ -454,11 +457,13 @@ private fun ExploreBody(
                 )
             }
         } else if (!searchExpanded) {
-            val trending = feedsByKind[FeedKind.TRENDING]
-                ?: selectedSource.feedKinds.firstNotNullOfOrNull { kind ->
-                    feedsByKind[kind]?.takeIf { models -> models.isNotEmpty() }
-                }
-                ?: emptyList()
+            val trending = (
+                feedsByKind[FeedKind.TRENDING]
+                    ?: selectedSource.feedKinds.firstNotNullOfOrNull { kind ->
+                        feedsByKind[kind]?.takeIf { models -> models.isNotEmpty() }
+                    }
+                    ?: emptyList()
+                ).filterNot { it.cardKey == hero?.cardKey }
             TrendingRail(models = trending, loading = loadingFeeds, onModelClick = onModelClick)
 
             CompactBrowseRail(
@@ -521,10 +526,6 @@ private fun SearchField(
             placeholder = { Text(stringResource(R.string.explore_search_placeholder, sourceName)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             singleLine = true,
-            // When the API key is missing the search bar is purely cosmetic —
-            // the LaunchedEffect short-circuits in ExploreTabScreen.kt:165, so
-            // disabling the input is honest UX rather than letting users type
-            // queries that go into a black hole (#1909).
             shape = RoundedCornerShape(SceneViewTokens.Radius.full),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSubmit(value) }),
@@ -535,7 +536,7 @@ private fun SearchField(
                     }
                 } else {
                     IconButton(onClick = onCollapse) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_clear_search))
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_close_search))
                     }
                 }
             },
@@ -748,73 +749,6 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
 }
 
 @Composable
-private fun FiltersBar(animatedOnly: Boolean, onToggle: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-        FilterChip(
-            selected = animatedOnly,
-            onClick = onToggle,
-            label = { Text(stringResource(R.string.explore_filter_animated)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                )
-            },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                selectedLeadingIconColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            ),
-        )
-    }
-}
-
-/**
- * Source-picker chip row (#2645): one [FilterChip] per available [ModelSource]
- * (Sketchfab | Icosa Gallery | Poly Haven), the selected one highlighted.
- * Horizontally scrollable so three chips never crowd a narrow phone.
- */
-@Composable
-private fun SourcePickerRow(
-    sources: List<ModelSource>,
-    selected: ModelSource,
-    onSelect: (ModelSource) -> Unit,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-    ) {
-        Text(
-            text = stringResource(R.string.explore_source_label),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.align(Alignment.CenterVertically),
-        )
-        sources.forEach { source ->
-            FilterChip(
-                selected = source.id == selected.id,
-                onClick = { onSelect(source) },
-                label = { Text(source.id.displayName) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                ),
-            )
-        }
-    }
-}
-
-/** Localised carousel title for a [FeedKind]. */
-@Composable
-private fun feedTitle(kind: FeedKind): String = when (kind) {
-    FeedKind.TRENDING -> stringResource(R.string.explore_trending_models)
-    FeedKind.STAFF_PICKS -> stringResource(R.string.explore_staff_picks)
-    FeedKind.RECENTLY_ADDED -> stringResource(R.string.explore_recently_added)
-}
-
-@Composable
 private fun CarouselSection(
     title: String,
     content: @Composable () -> Unit,
@@ -936,6 +870,20 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
             )
             .clickable(onClick = onClick),
     ) {
+        // Full-card scrim, same treatment as FeaturedModelCard: the white title
+        // must stay readable whatever the accent gradient behind it resolves to.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(
+                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                            SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                        ),
+                    ),
+                ),
+        )
         Icon(
             imageVector = sample.icon,
             contentDescription = null,
@@ -948,14 +896,6 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(
-                            SceneViewTokens.SpatialGalleryColor.stageScrimStart,
-                            SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
-                        ),
-                    ),
-                )
                 .padding(SceneViewTokens.Space.sm),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {

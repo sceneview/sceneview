@@ -23,8 +23,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sources.GalleryModel
 import io.github.sceneview.demo.sources.preferredThumbnailUrl
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -84,7 +86,10 @@ fun SpatialHero(model: GalleryModel, onViewIn3D: () -> Unit, modifier: Modifier 
             Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 Button(onClick = onViewIn3D, shape = RoundedCornerShape(SceneViewTokens.Radius.full)) {
                     Icon(Icons.Filled.ViewInAr, contentDescription = null)
-                    Text("View in 3D", modifier = Modifier.padding(start = SceneViewTokens.Space.sm))
+                    Text(
+                        text = stringResource(R.string.explore_view_in_3d),
+                        modifier = Modifier.padding(start = SceneViewTokens.Space.sm),
+                    )
                 }
             }
         }
