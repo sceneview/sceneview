@@ -293,26 +293,42 @@ private fun particleColor(base: Color, dark: Boolean): Color {
  * value tuned on one device stops being right on the next.
  *
  * Light mode never had the contrast problem — it had a *colour* problem, fixed at
- * the clear colour — so its alphas move only enough to match the shape.
+ * the clear colour — but it carries the same band, because a faint disc drifting
+ * under a search field is the same defect at a lower amplitude.
+ *
+ * The band and the alphas were both re-tuned after a two-frame diff of the first
+ * attempt was measured rather than eyeballed; see [SCRIM_TOP_ALPHA_DARK].
  */
 private fun scrimBrush(surface: Color, dark: Boolean): Brush = Brush.verticalGradient(
     0.0f to surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
     SCRIM_CONTROLS_BAND to
         surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
-    0.62f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
+    0.80f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
     1.0f to surface.copy(alpha = if (dark) 0.82f else 0.92f),
 )
 
 /**
  * Fraction of the screen height the scrim holds at full strength from the top —
- * the band the Explore search field, the source chip and the Samples header
- * occupy. Measured against the tallest of the three at font scale 2.0.
+ * the band the Explore search field, the source chips and the "Trending models"
+ * header occupy. Measured on the 720x1600 QA emulator: search field 0.16–0.22,
+ * source chips 0.26–0.30, "Try a sample" 0.34, "Trending models" 0.59. The band
+ * has to clear the *last* of those, not the first.
  */
-private const val SCRIM_CONTROLS_BAND = 0.30f
+private const val SCRIM_CONTROLS_BAND = 0.62f
 
-/** Scrim alpha over the controls band. ≥ 0.85 is what keeps a particle off a text field. */
-private const val SCRIM_TOP_ALPHA_DARK = 0.88f
-private const val SCRIM_TOP_ALPHA_LIGHT = 0.94f
+/**
+ * Scrim alpha over the controls band.
+ *
+ * This started at 0.30 (dark), which put 70 % of a drifting particle field through
+ * the search field. The first correction took it to 0.88 because "≥ 0.85" was the
+ * stated bar — and a two-frame diff of the result still showed **15 % of the pixels
+ * moving** in the rows holding the source chips: at 0.88 over an 18-level surface, a
+ * particle still lands ~5 levels above the background, which the eye reads as a disc.
+ * A threshold that was never measured against the thing it was protecting is not a
+ * threshold. 0.97 puts the residual at ~1 level, below the display's own banding.
+ */
+private const val SCRIM_TOP_ALPHA_DARK = 0.97f
+private const val SCRIM_TOP_ALPHA_LIGHT = 0.98f
 
 // ── Tuning constants — see the KDoc on [ParticleBackground] ─────────────────
 
