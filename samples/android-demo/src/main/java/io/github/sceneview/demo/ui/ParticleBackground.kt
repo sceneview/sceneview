@@ -303,18 +303,31 @@ private fun scrimBrush(surface: Color, dark: Boolean): Brush = Brush.verticalGra
     0.0f to surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
     SCRIM_CONTROLS_BAND to
         surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
-    0.80f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
+    0.88f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
     1.0f to surface.copy(alpha = if (dark) 0.82f else 0.92f),
 )
 
 /**
- * Fraction of the screen height the scrim holds at full strength from the top —
- * the band the Explore search field, the source chips and the "Trending models"
- * header occupy. Measured on the 720x1600 QA emulator: search field 0.16–0.22,
- * source chips 0.26–0.30, "Try a sample" 0.34, "Trending models" 0.59. The band
- * has to clear the *last* of those, not the first.
+ * Fraction the scrim holds at full strength from its top — the band the Explore
+ * search field, the source chips and the "Trending models" header occupy.
+ *
+ * ## It is a fraction of THIS BOX, not of the screen — that distinction cost two rounds
+ *
+ * [Brush.verticalGradient] stops are fractions of the area being drawn, and this
+ * composable is `fillMaxSize()` *inside* the Scaffold's content padding: it starts
+ * under the status bar and stops at the top of the bottom navigation bar. On the QA
+ * emulator the window is 1600 px tall and this box is **1418**. A value picked off a
+ * screenshot is therefore in the wrong frame, and lands 11 % of the screen too high:
+ * 0.62 was chosen to clear "Trending models" at screen-fraction 0.59, and the measured
+ * onset of visible particles came out at y 879 — exactly 0.62 x 1418, over the header
+ * it was supposed to cover.
+ *
+ * Measured in this box's own frame on the QA emulator: search field 0.19–0.25, source
+ * chips 0.30–0.34, "Try a sample" 0.39, "Trending models" **0.652–0.677**. The band has
+ * to clear the last of those, not the first, with room for a larger font scale pushing
+ * the header further down.
  */
-private const val SCRIM_CONTROLS_BAND = 0.62f
+private const val SCRIM_CONTROLS_BAND = 0.74f
 
 /**
  * Scrim alpha over the controls band.
