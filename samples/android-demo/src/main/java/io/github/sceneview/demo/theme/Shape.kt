@@ -2,22 +2,22 @@ package io.github.sceneview.demo.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
-import androidx.compose.ui.unit.dp
 
 /**
  * SceneView M3 Expressive Shape System
  *
- * Dynamic shapes from DESIGN.md:
+ * Material shape roles mapped to the radius tokens defined in [SceneViewTokens].
+ * The role names and usage descriptions below are Compose-specific mappings:
  * - ExtraSmall (8dp): utility elements, chips
- * - Small (12dp): buttons, text fields
- * - Medium (16dp): cards, dialogs
- * - Large (28dp): prominent cards, bottom sheets
- * - ExtraLarge (32dp): hero cards, large surfaces
+ * - Small (12dp): code blocks, inputs, badges, tooltips
+ * - Medium (16dp): buttons, medium cards, dialogs
+ * - Large (24dp): section cards, bottom sheets
+ * - ExtraLarge (28dp): prominent cards, showcase items, hero panels
  */
 val SceneViewShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(SceneViewTokens.Radius.xs),
+    small = RoundedCornerShape(SceneViewTokens.Radius.sm),
+    medium = RoundedCornerShape(SceneViewTokens.Radius.md),
+    large = RoundedCornerShape(SceneViewTokens.Radius.lg),
+    extraLarge = RoundedCornerShape(SceneViewTokens.Radius.xl),
 )
