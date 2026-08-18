@@ -2,6 +2,7 @@ package io.github.sceneview.demo.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
@@ -18,6 +19,17 @@ import androidx.compose.ui.unit.dp
  */
 @Immutable
 object SceneViewTokens {
+    /** `DESIGN.md` — Spatial Gallery overlay colours. */
+    object SpatialGalleryColor {
+        val stageScrimStart = Color.Transparent
+        val stageScrimEnd = Color(0xE6000000)
+        val glassSurfaceLight = Color(0xB8FFFFFF)
+        val glassSurfaceDark = Color(0x0DFFFFFF)
+        val glassBorderLight = Color(0x14FFFFFF)
+        val glassBorderDark = Color(0x14FFFFFF)
+        val glassBorderWidth = 1.dp
+    }
+
     /** `DESIGN.md` — Spacing scale (`space-*`). */
     object Space {
         val xs = 4.dp
@@ -58,5 +70,7 @@ object SceneViewTokens {
         val containerPaddingDesktop = 24.dp
         val containerPaddingMobile = 16.dp
         val navigationHeight = 64.dp
+        val heroStageHeight = 360.dp
+        const val mediaAspect = 1.25f
     }
 }

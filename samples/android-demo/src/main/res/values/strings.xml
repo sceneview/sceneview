@@ -23,24 +23,23 @@
     <string name="explore_play">Play animation</string>
     <string name="explore_animation_count">%d animations</string>
     <string name="explore_loading">Loading 3D model</string>
-    <string name="explore_heading">Explore</string>
     <string name="explore_search_placeholder">Search 3D models on %1$s</string>
     <string name="explore_filter_animated">Animated</string>
-    <string name="explore_try_a_sample">Try a sample</string>
-    <string name="explore_trending_models">Trending models</string>
-    <string name="explore_staff_picks">Staff picks</string>
-    <string name="explore_recently_added">Recently added</string>
+    <string name="explore_trending_in_3d">Trending in 3D</string>
+    <string name="explore_built_with_sceneview">Built with SceneView</string>
+    <string name="explore_browse_by_source">Browse by source</string>
     <string name="explore_categories">Categories</string>
     <string name="explore_recent_searches">Recent searches</string>
     <string name="explore_clear">Clear</string>
     <string name="explore_clear_search">Clear search</string>
+    <string name="explore_close_search">Close search</string>
+    <string name="explore_view_in_3d">View in 3D</string>
     <string name="explore_remove_query">Remove %s</string>
     <string name="explore_search_results">Search results</string>
     <string name="explore_search_no_results">No results for "%s"</string>
     <string name="explore_search_loading">Searching…</string>
     <!-- Source picker chip row (#2645): label preceding the Sketchfab | Icosa
          Gallery | Poly Haven chips that let the user switch model catalog. -->
-    <string name="explore_source_label">Source</string>
     <!-- Defensive banner shown when SketchfabConfig.apiKey is null (#1909).
          End-user release builds with a missing or revoked secret would
          otherwise silently render an Explore tab without carousels and a
@@ -50,7 +49,6 @@
     <string name="explore_sketchfab_disabled_dialog_title">Sketchfab integration is off</string>
     <string name="explore_sketchfab_disabled_dialog_body">This build was published without a Sketchfab API key, so the Staff Picks, Most Liked and Recently Added carousels are hidden and search is disabled.\n\nThe curated samples and category grid below still work — they bundle local 3D models.\n\nIf you\'re building locally, add the line below to <b>local.properties</b> and rebuild:\n\n  sketchfab.api.key=&lt;your-token&gt;\n\nGrab a token at Sketchfab → Settings → Password &amp; API → API Token.</string>
     <string name="explore_sketchfab_disabled_dismiss">Got it</string>
-    <string name="explore_sketchfab_search_hint">Search needs a Sketchfab API key — see banner above.</string>
     <!-- Shown instead of the "key missing" copy when the key is present but the
          Sketchfab API rejected it with HTTP 401/403 — see issue #2095. -->
     <string name="explore_sketchfab_rejected_title">Sketchfab unavailable</string>

@@ -67,6 +67,10 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `surface` | #ffffff | #0D1117 | Page background |
 | `surface-dim` | #f1f3f5 | #161B22 | Secondary background, cards |
 | `surface-container` | #ffffff | #161c2c | Elevated surfaces |
+| `stage-scrim-start` | transparent | transparent | Spatial Gallery media scrim start |
+| `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
+| `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
+| `glass-border` | 1px rgba(255,255,255,0.08) | 1px rgba(255,255,255,0.08) | Floating control outline |
 
 ### Text
 
@@ -171,6 +175,13 @@ Base unit: **8px**
 | `space-2xl` | 48px | Large section gaps |
 | `space-3xl` | 64px | Section separators |
 | `space-4xl` | 96px | Section top/bottom padding |
+
+### Spatial Gallery Media
+
+| Token | Value | Usage |
+|---|---|---|
+| `hero-stage-height` | 360px | Explore hero stage height |
+| `media-aspect` | 1.25 | Explore model-card media aspect ratio |
 
 ---
 
