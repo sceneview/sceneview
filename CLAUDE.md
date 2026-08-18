@@ -74,6 +74,9 @@ never opens that skill never learns it. Gated by `test-context-budget.sh`.
   release ships with a red *blocking* leg. → `device-qa`
 - **Never sync `mcp/` or the Flutter/RN *consumed* dependency to `VERSION_NAME`** —
   both are independent tracks, and forcing them has caused regressions. → `versioning`
+- **Codex is a delegated developer, and it bills the ChatGPT plan only** — every
+  call goes through `.claude/scripts/codex-delegate.sh`, never a raw `codex`.
+  Never `--with-api-key`, never an OpenAI API key. → `codex-delegation`
 - **CI-green is never proof of live.** Upload ≠ submitted ≠ approved ≠ live.
 - **Public surfaces are English only** — commits and PR bodies included.
 
@@ -122,6 +125,7 @@ stripped; a fragment declaring a breaking change forces a MINOR release.
 | `cross-platform` | Adding an API to one platform, assessing parity |
 | `ci-agents` | Touching the review fan-out or the `@claude` bot |
 | `self-hosted-runner` | A macOS CI job is slow or the runner looks offline |
+| `codex-delegation` | Handing a bounded task to Codex, or a Codex call failed |
 
 This file is re-sent on **every turn of every session**. Anything only *some* sessions
 need belongs in a skill. It was 263 lines; it is not allowed to grow back.
