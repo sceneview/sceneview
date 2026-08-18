@@ -40,7 +40,7 @@ enum class DemoStatus {
  *
  * The status itself stays: it is what drives the "New in this build — try them"
  * section, which is written for users. Only the internal vocabulary is gated.
- * #3231
+ * #3237
  */
 val IN_REVIEW_BADGE_VISIBLE: Boolean
     get() = BuildConfig.DEBUG

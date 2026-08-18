@@ -176,7 +176,7 @@ fun DemoListScreen(
                 // holds its scrim at across the top band, so the bar reads as a
                 // continuation of the backdrop rather than a patch over it — and
                 // the particles keep drifting in the region below, where they
-                // are decoration instead of noise behind text. #3231
+                // are decoration instead of noise behind text. #3237
                 colors = TopAppBarDefaults.largeTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -389,7 +389,7 @@ private fun DemoCard(
                     maxLines = 2,
                     // Without this the subtitle is hard-clipped at the second
                     // line and the last word is cut through its middle, with no
-                    // sign anything was removed. #3231
+                    // sign anything was removed. #3237
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 16.sp,
                 )

@@ -402,7 +402,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     // it is `safeDrawing` Top+Horizontal — the same frame DemoScaffold's top slot
     // uses. Inside a DemoScaffold it resolves to nothing (the scaffold body already
     // consumed those insets), which is exactly the property that makes one frame
-    // work for both callers. #3231
+    // work for both callers. #3237
     Column(
         modifier = Modifier
             .align(Alignment.TopCenter)
@@ -481,7 +481,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
         // session's own bottom chrome, and the inset clears the system's. The
         // magic number was doing both jobs, which meant it was right only on a
         // gesture-navigation phone — on a 3-button bar the prompt sat 48 dp
-        // lower than intended, relative to the button row. #3231
+        // lower than intended, relative to the button row. #3237
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .windowInsetsPadding(

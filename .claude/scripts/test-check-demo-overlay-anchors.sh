@@ -7,7 +7,7 @@
 # away.
 #
 # The gate this replaces policed one edge of one directory, and every exemption it
-# documented turned out to be a hiding place (#3231). So the cases below are organised by
+# documented turned out to be a hiding place (#3237). So the cases below are organised by
 # the thing that can go wrong rather than by feature: each edge, each directory, each
 # rule, and the four lexing regressions that make a Kotlin brace matcher lie.
 set -euo pipefail
@@ -358,7 +358,7 @@ fun ProseSlotDemo(onBack: () -> Unit) {
     DemoScaffold(title = "ProseSlot", onBack = onBack) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(modifier = Modifier.fillMaxSize())
-            // TODO(#3231): this pill belongs in topOverlay = {
+            // TODO(#3237): this pill belongs in topOverlay = {
             Text(status, modifier = Modifier.align(Alignment.TopCenter))
         }
     }

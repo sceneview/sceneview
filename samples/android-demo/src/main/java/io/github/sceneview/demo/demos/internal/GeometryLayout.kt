@@ -136,7 +136,7 @@ internal object GeometryLayout {
      * never perfectly flat-on either, which is what gives the panel its shading.
      * 20° is the smallest angle that still reads as depth at Play Store thumbnail
      * size; past ~35° the quad starts to foreshorten enough to look narrower than
-     * the cube beside it. #3231
+     * the cube beside it. #3237
      */
     const val PLANE_TILT_DEGREES = 20f
 

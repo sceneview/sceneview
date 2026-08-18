@@ -836,7 +836,7 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     // Twin of the Samples-tab card: clip with an ellipsis rather
-                    // than mid-word. #3231
+                    // than mid-word. #3237
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -198,7 +198,7 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
         // Top band: the label HUD, then whichever of the three banners applies. They are
         // siblings in the scaffold's top Column, so they stack instead of overlapping —
         // this demo used to place them by arithmetic (8 dp, 8 dp, 56 dp), which held only
-        // while the pill above stayed one line at font scale 1.0 in English (#3231).
+        // while the pill above stayed one line at font scale 1.0 in English (#3237).
         topOverlay = {
             // Top-start HUD listing the 3 highest semantic-label fractions. Hidden until the
             // first non-zero update so the empty list doesn't show during startup warmup.

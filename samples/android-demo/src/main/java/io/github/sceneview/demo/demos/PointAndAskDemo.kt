@@ -372,7 +372,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         // The status pill — one clear instruction, and it gets out of the way: hidden
         // while thinking/answering, and hidden from the AI's captured frame. Hosted by
         // the scaffold's `topOverlay` slot, which owns the top gutter and the inset
-        // (#3231).
+        // (#3237).
         topOverlay = {
             AnimatedVisibility(
                 visible = !hideOverlaysForCapture &&

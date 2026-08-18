@@ -203,7 +203,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             ForceTrackingFailureMenu()
         },
         // Status line + on-screen Cloud Anchor ID input, hosted by the scaffold's
-        // top slot (#2486 / #3231).
+        // top slot (#2486 / #3237).
         //
         // They live at the top of the screen, not the bottom: the long
         // ERROR_NOT_AUTHORIZED message used to wrap into — and be clipped by —

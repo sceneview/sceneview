@@ -283,7 +283,7 @@ fun GeometryDemo(onBack: () -> Unit) {
                     // its own plane, which leaves its normal pointing at the
                     // camera, and PLANE_TILT_DEGREES tilts that normal by a fixed
                     // amount so the panel still catches the light and reads as a
-                    // surface in space rather than a sticker. #3231
+                    // surface in space rather than a sticker. #3237
                     rotation = Rotation(
                         x = GeometryLayout.PLANE_TILT_DEGREES,
                         z = spinDegrees,

@@ -213,7 +213,7 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   behaviour, which is correct for status pills and answer cards that annotate
  *   camera pixels rather than a modelled subject.
  *
- * Collision-free **top** overlays (#3231):
+ * Collision-free **top** overlays (#3237):
  * - `topOverlay != null` → the demo's status pill / HUD / warm-up banner is
  *   composed **by the scaffold**, in the mirror image of the `bottomOverlay`
  *   container: a top-aligned [Column] that already knows where the asset-source
@@ -242,7 +242,7 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
  *   Per-child horizontal placement is `Modifier.align(Alignment.Start / End)` —
  *   a corner HUD stays in its corner without leaving the shared frame.
  *
- * One inset frame for the whole body (#3231):
+ * One inset frame for the whole body (#3237):
  *   The scaffold body **consumes** the Scaffold's own padding, so every
  *   descendant sees the same, already-applied insets. Before this, an overlay
  *   that added `windowInsetsPadding(systemBars)` inside the body was applying a
@@ -402,7 +402,7 @@ fun DemoScaffold(
         // writing `windowInsetsPadding(systemBars)` applied them a SECOND time while a
         // child writing nothing applied them once — and both spellings were live in
         // this file. Consuming makes the two identical, so migrating an overlay into a
-        // scaffold slot cannot move it (#3231).
+        // scaffold slot cannot move it (#3237).
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -502,7 +502,7 @@ fun DemoScaffold(
  * against a body that has already **consumed** the Scaffold's padding — so it
  * resolves to zero in the ordinary case (the top app bar above it already
  * cleared the status bar) and to the real remainder when there is one, e.g. a
- * display cutout wider than the app bar in landscape. Before #3231 it applied a
+ * display cutout wider than the app bar in landscape. Before #3237 it applied a
  * full unconsumed `systemBars`, i.e. a second status bar's worth of padding,
  * which is why the chip sat visibly lower than every hand-placed pill beside it.
  *

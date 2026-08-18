@@ -462,7 +462,7 @@ fi
 # drift was systematic rather than careless; a doc cannot be the enforcement when a banner's
 # height follows its string, its wrap and the font scale.
 #
-# It now covers BOTH edges and three directories (#3231). The previous version policed
+# It now covers BOTH edges and three directories (#3237). The previous version policed
 # only the bottom edge of demos/, and said so in its own docstring — behind that sentence
 # the top edge of those same files accumulated 35 uncoordinated anchors in three
 # incompatible inset conventions, and the app-wide update banner sat unchecked in ui/.

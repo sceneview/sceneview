@@ -297,7 +297,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // does not describe: in landscape the notch is a *side* inset, and the
         // banner ran straight under it. Top + Horizontal is the same frame
         // DemoScaffold now applies to its own top overlays, which is the point —
-        // this used to be the third distinct inset spelling in the app (#3231).
+        // this used to be the third distinct inset spelling in the app (#3237).
         activity?.updateManager?.let { mgr ->
             UpdateBanner(
                 updateManager = mgr,

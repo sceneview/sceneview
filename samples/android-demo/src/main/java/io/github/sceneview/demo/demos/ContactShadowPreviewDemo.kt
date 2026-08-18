@@ -242,7 +242,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         // The wall TV's live A/B, hosted by the scaffold's top band so it sits in the TV's
         // half of the frame — see [WallShadowBeat] for why this is an on-screen control and
         // not a settings-sheet row. The slot owns the gutter and the inset, so the beat
-        // lands at the same y as every other demo's top overlay (#3231).
+        // lands at the same y as every other demo's top overlay (#3237).
         topOverlay = {
             WallShadowBeat(
                 wallContext = wallContext,

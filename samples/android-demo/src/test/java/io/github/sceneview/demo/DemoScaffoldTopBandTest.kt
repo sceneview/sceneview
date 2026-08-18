@@ -28,7 +28,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The mirror of [DemoScaffoldBottomBandTest], for the edge that had no owner.
  *
- * ## The regression this pins (#3231)
+ * ## The regression this pins (#3237)
  *
  * The bottom band had a slot, a reserve and a gate. The top band had none of
  * the three, and every demo negotiated it alone: a survey found 35

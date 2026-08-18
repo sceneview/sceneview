@@ -215,7 +215,7 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
-        // The two top-anchored surfaces live in the scaffold slot (#3231): the scaffold
+        // The two top-anchored surfaces live in the scaffold slot (#3237): the scaffold
         // owns the top gutter and the system-bar inset, and stacks them as Column
         // siblings.
         topOverlay = {

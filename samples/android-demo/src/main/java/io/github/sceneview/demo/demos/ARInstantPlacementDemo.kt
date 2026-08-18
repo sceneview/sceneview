@@ -226,7 +226,7 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
             ForceTrackingFailureMenu()
         },
         // Top band: the stats pill, the latest-model badge under it, then the scanning
-        // indicator. They are siblings in the scaffold's top Column (#3231), so they
+        // indicator. They are siblings in the scaffold's top Column (#3237), so they
         // stack by layout instead of by the 8 / 44 / 56 dp arithmetic they used to carry
         // — arithmetic that only held while every pill above stayed one line.
         topOverlay = {
@@ -390,7 +390,7 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
  *
  * It is hoisted out of the scene composable only because those controls moved into the
  * slots — the containers that lay a bottom- or top-anchored control out against the
- * Settings FAB and the asset-source chip instead of on top of them (#2779, #3231).
+ * Settings FAB and the asset-source chip instead of on top of them (#2779, #3237).
  * Lifetime is unchanged: the caller creates it with `remember(instantEnabled)`, so it
  * dies with the same toggle flip that remounts the scene.
  */

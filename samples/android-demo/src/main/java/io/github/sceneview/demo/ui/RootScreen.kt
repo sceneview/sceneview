@@ -311,7 +311,7 @@ private fun AboutTabContent() {
                     // The gap on BOTH sides of the heart lives here, not in the
                     // strings: a leading space in a resource is stripped by aapt
                     // unless quoted, which is why this read "…<heart>by Thomas
-                    // Gorisse" in the store build. #3231
+                    // Gorisse" in the store build. #3237
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
                         .size(14.dp),

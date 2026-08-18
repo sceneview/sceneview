@@ -461,7 +461,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
-        // The two top-anchored tenants live here (#3231): the RECORD timer + tracking
+        // The two top-anchored tenants live here (#3237): the RECORD timer + tracking
         // pill, and the "now replaying" banner. They are Column siblings, so a mode that
         // ever showed both would stack them instead of drawing one over the other, and
         // the top gutter + system-bar inset are the scaffold's, not each caller's.
@@ -681,7 +681,7 @@ private enum class Mode(val label: String) {
  *
  * Nothing edge-anchored is here. The shutter, the recorder error, the tracking banner and
  * the ANALYSE HUD live in `DemoScaffold(bottomOverlay = …)` (#2779); the REC timer +
- * tracking-quality pill and the "now replaying" banner live in `topOverlay` (#3231). All
+ * tracking-quality pill and the "now replaying" banner live in `topOverlay` (#3237). All
  * of them read the same [RecordPlaybackModeState] this composable writes.
  */
 @Composable
@@ -863,7 +863,7 @@ private fun ModeContent(
  * camera feed it is drawn over and therefore stays in the viewport.
  *
  * Every edge-anchored piece of RECORD chrome lives in a scaffold slot instead: the REC
- * timer + tracking-quality pill in `topOverlay` (#3231), the shutter and the recorder
+ * timer + tracking-quality pill in `topOverlay` (#3237), the shutter and the recorder
  * error pill in `bottomOverlay` (#2779) — which is what stopped the error pill (80 dp up)
  * being drawn *inside* the shutter ring (72 dp tall, 32 dp up).
  */
@@ -1003,7 +1003,7 @@ private fun TrackingQualityPill(
     }
 }
 
-/** "Now replaying" banner — rendered in the scaffold's `topOverlay` slot (#3231). */
+/** "Now replaying" banner — rendered in the scaffold's `topOverlay` slot (#3237). */
 @Composable
 private fun PlaybackBanner(filename: String) {
     Surface(

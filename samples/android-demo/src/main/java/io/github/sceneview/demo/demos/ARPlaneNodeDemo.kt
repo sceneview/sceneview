@@ -95,7 +95,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
             null
         },
         // Live tracked-plane count + total ever detected, hosted by the scaffold's top
-        // slot (#3231) so it shares one inset frame with the asset-source chip beside it.
+        // slot (#3237) so it shares one inset frame with the asset-source chip beside it.
         topOverlay = {
             Surface(
                 color = Color.Black.copy(alpha = 0.7f),

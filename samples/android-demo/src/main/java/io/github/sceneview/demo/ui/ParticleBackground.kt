@@ -70,7 +70,7 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
 
     // The colour the render target is cleared to, the colour the scrim fades toward,
     // and the colour the `@Preview` stand-in paints — one value, read from the theme.
-    // They used to be three different things, and that is the whole of defect #3231-a:
+    // They used to be three different things, and that is the whole of defect #3237-a:
     // the scene cleared to BLACK (the `isOpaque = true` default builds an α=1 skybox at
     // rgb 0), the scrim faded toward a hard-coded `Color.White`, and at the scrim's
     // lightest stop — α 0.55 — white over black composites to #8C8C8C. The Samples and
