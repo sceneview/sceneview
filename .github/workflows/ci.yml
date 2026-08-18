@@ -1190,7 +1190,9 @@ jobs:
       # uncoordinated anchors across three incompatible inset conventions (`systemBars`, a
       # magic `padding(top = 8.dp)`, nothing at all) inside the same Box; `safeDrawing`
       # appeared zero times in the repository; and the app-wide update banner sat unchecked
-      # in `ui/`. A guard that polices one edge of one folder is how that happens.
+      # in `MainActivity.kt`. A guard that polices one edge of one folder is how that
+      # happens — so this one has no folder allowlist at all. It scans every Kotlin file in
+      # the demo app and names its two exemptions by path.
       #
       # A doc cannot be the enforcement here: `SceneActionBar`'s KDoc used to promise those
       # pills "never collide with this bottom-start bar", which is precisely why the drift was

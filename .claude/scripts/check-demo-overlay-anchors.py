@@ -22,11 +22,17 @@ be load-bearing. While the bottom edge was clean, the top edge of the same files
 accumulated 35 uncoordinated `.align(Alignment.Top*)` calls across three mutually
 incompatible inset conventions — some writing `windowInsetsPadding(systemBars)`,
 some writing `padding(top = 8.dp)`, some writing nothing — inside the same Box.
-`safeDrawing` appeared zero times in the entire repository. And the worst single
-offender, the app-wide update banner, was in `ui/`, outside the scanned tree.
+`safeDrawing` appeared zero times in the entire repository. And the app-wide
+update banner — the one overlay every screen in the app renders under — lives in
+`MainActivity.kt`, in the package root, outside the scanned tree.
 
-A guard that polices one edge of one folder is what let all this through. So:
-both edges, three directories, and the rule below.
+A guard that polices one edge of one folder is what let all this through. The
+first draft of this file answered that with a longer allowlist, three directories
+instead of one; #3237 review pointed out that three out of eleven is the same
+mistake with a bigger number. So there is no directory allowlist: **every** Kotlin
+file under the demo app is scanned, both edges, and the two files that have to
+write the anchoring everyone else is forbidden are named individually in `EXEMPT`.
+What varies by location is only how strict the rule is, per the two sections below.
 
 What it refuses
 ---------------
@@ -38,8 +44,10 @@ overload, which shares the band with whatever else is anchored there and cannot
 be told about it). `common/` is included because a helper that draws chrome for
 several screens gets those screens wrong all at once.
 
-**In `ui/`** — the tab hosts and full-screen viewers, which have no `DemoScaffold`
-to hand them a slot — the same anchors are allowed, but only when the modifier
+**Everywhere else** — `ui/`, the package root (`MainActivity`, `DemoListScreen`),
+`update/`, `whatsnew/`, `sketchfab/`, `sources/`, `feedback/`, `ai/`, `fragments/`,
+`theme/`: hosts, viewers and banners that have no `DemoScaffold` to hand them a
+slot — the same anchors are allowed, but only when the modifier
 chain carrying them also declares an inset frame (`windowInsetsPadding`,
 `safeDrawingPadding`, `systemBarsPadding`, `statusBarsPadding`,
 `navigationBarsPadding`, `displayCutoutPadding`, `safeContentPadding` or
@@ -49,8 +57,13 @@ bar* is the bug this gate exists to stop.
 
 `common/` is held to the strict `demos/` rule except where a composable is a
 `BoxScope` extension with no enclosing Box in its own file — those are shared by
-both a scaffolded and an unscaffolded host, so they are judged by the `ui/` rule
+both a scaffolded and an unscaffolded host, so they are judged by the weaker rule
 instead.
+
+The weaker rule is not a loophole: it is what would have caught the update banner
+had someone ever dropped its `windowInsetsPadding(statusBars)`. Removing that one
+line is a two-character diff that no test renders and no reviewer is likely to
+question, and before this change the gate returned 0 on it.
 
 What it deliberately leaves alone
 ---------------------------------
@@ -61,9 +74,10 @@ What it deliberately leaves alone
   enclosing `Box` and only fires when that Box fills the screen (or when the
   anchor sits in a `BoxScope` receiver with no Box in the file at all, which in
   this app means a scaffold body).
-- `DemoScaffold.kt` and `SceneActionBar` themselves: they have to write the
-  anchoring this gate forbids everyone else, and they are outside the three
-  scanned directories.
+- `DemoScaffold.kt` and `common/SceneActionBar.kt` themselves: they have to write
+  the anchoring this gate forbids everyone else. Both are now inside the scanned
+  tree, so they are named in `EXEMPT` rather than excluded by geography — which
+  means adding a third exemption is a visible line in a diff.
 
 Exit 0 clean, 1 with findings, 2 if it could not run.
 """
@@ -74,21 +88,31 @@ import pathlib
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DEMO_APP = REPO / "samples/android-demo/src/main/java/io/github/sceneview/demo"
 
-# (directory, strict) — strict means "must be in the scaffold slot"; non-strict
-# means "must at least declare an inset frame".
-SCANNED = (
-    (DEMO_APP / "demos", True),
-    (DEMO_APP / "common", True),
-    (DEMO_APP / "ui", False),
-)
+# Every Kotlin file in the demo app is scanned. The first version of this gate
+# listed three directories — `demos/`, `common/`, `ui/` — and #3237 review found
+# the hole immediately: the app-wide update banner that motivated the whole PR
+# lives in `MainActivity.kt`, in the package ROOT, and the package root was not
+# one of the three. Neither were `update/`, `whatsnew/`, `sketchfab/`, `sources/`,
+# `feedback/`, `ai/` or `fragments/`. A guard that polices three directories out
+# of eleven reproduces the defect it was written to end, so the allowlist is gone:
+# the default is "scanned", and the two exceptions below are named by path.
+#
+# `strict` means "must be in the scaffold slot". It applies only where a scaffold
+# is actually in scope — the demo screens and the shared session composables they
+# are built from. Everywhere else there is no slot to move into, so the rule is
+# the weaker, still sufficient one: declare an inset frame.
+STRICT_SUBTREES = ("demos", "common")
 
-# The component's own definition cannot be held to the rule that names it: the
-# `BoxScope` overload of `SceneActionBar` is precisely the thing every demo is
-# forbidden to call, and it is declared here. Listed by path rather than skipped
-# by a heuristic, so adding a second exemption has to be a deliberate edit that
-# shows up in a diff.
+# A component's own definition cannot be held to the rule that names it. These two
+# files ARE the shared slot machinery: `DemoScaffold` has to anchor the overlay
+# bands it hands out, and the `BoxScope` overload of `SceneActionBar` is precisely
+# the thing every demo is forbidden to call. Listed by path rather than skipped by
+# a heuristic, so a third exemption has to be a deliberate edit that shows up in a
+# diff — an allowlist that grows quietly is how the previous version of this gate
+# ended up covering three directories out of eleven.
 EXEMPT = {
     "samples/android-demo/src/main/java/io/github/sceneview/demo/common/SceneActionBar.kt",
+    "samples/android-demo/src/main/java/io/github/sceneview/demo/DemoScaffold.kt",
 }
 
 EDGES = {
@@ -396,23 +420,40 @@ def find_hand_anchored(src, strict):
     return sorted(out)
 
 
+def is_strict(path):
+    """True when `path` sits under a subtree where a DemoScaffold slot is in scope."""
+    rel = path.relative_to(DEMO_APP).parts
+    return len(rel) > 1 and rel[0] in STRICT_SUBTREES
+
+
 def main():
     findings = []
-    for root, strict in SCANNED:
-        if not root.is_dir():
-            print(f"check-demo-overlay-anchors: {root} not found", file=sys.stderr)
+    if not DEMO_APP.is_dir():
+        print(f"check-demo-overlay-anchors: {DEMO_APP} not found", file=sys.stderr)
+        return 2
+    scanned = 0
+    for path in sorted(DEMO_APP.rglob("*.kt")):
+        rel = path.relative_to(REPO).as_posix()
+        if "/build/" in f"/{rel}" or rel in EXEMPT:
+            continue
+        try:
+            src = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"check-demo-overlay-anchors: cannot read {rel}: {exc}", file=sys.stderr)
             return 2
-        for path in sorted(root.rglob("*.kt")):
-            rel = path.relative_to(REPO).as_posix()
-            if "/build/" in f"/{rel}" or rel in EXEMPT:
-                continue
-            try:
-                src = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                print(f"check-demo-overlay-anchors: cannot read {rel}: {exc}", file=sys.stderr)
-                return 2
-            for line, token, why in find_hand_anchored(src, strict):
-                findings.append((rel, line, token, why))
+        scanned += 1
+        for line, token, why in find_hand_anchored(src, is_strict(path)):
+            findings.append((rel, line, token, why))
+
+    # A gate that silently scans nothing is the failure mode this whole PR is
+    # about. If the package moves, say so instead of printing a green tick.
+    if scanned == 0:
+        print(
+            f"check-demo-overlay-anchors: no .kt files under {DEMO_APP} — "
+            "the package moved and this gate is checking nothing",
+            file=sys.stderr,
+        )
+        return 2
 
     if not findings:
         print("✓ demo overlay anchors: every screen-edge overlay is in a slot or insetted")

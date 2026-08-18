@@ -9,4 +9,5 @@
 - **Smaller demo-app fixes ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** Sample subtitles ellipsise instead of being cut mid-word; the internal "In review" badge no longer ships in release builds; the samples top app bar is drawn instead of being invisible; the Geometry demo's plane no longer disappears every half turn; the Settings chip retracts after three seconds as its documentation always claimed; and the About footer has its missing space back.
 
 <!-- category: Tests -->
-- **`DemoScaffoldTopBandTest` pins the top band at three font scales**, and the demo overlay gate now refuses a hand-anchored overlay at either screen edge, across `demos/`, `common/` and `ui/`.
+- **`DemoScaffoldTopBandTest` pins the top band at three font scales**, and the demo overlay gate now refuses a hand-anchored overlay at either screen edge, in every Kotlin file of the demo app rather than in a list of directories — the app-wide update banner sits in `MainActivity.kt`, which no earlier version of the gate looked at.
+- **`DemoXmlThemePaletteTest` pins the XML palette** that no static check could see: `colorSurface` and `android:windowBackground` must resolve to the SceneView tokens in both light and night, and specifically not to the Material3 baseline.

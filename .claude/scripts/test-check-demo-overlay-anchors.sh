@@ -323,10 +323,91 @@ fun Widget() {
 KT
 assert_exit "a common/ anchor in the file's own full-screen Box needs the slot" "$root" 1
 
-# ── A missing directory is exit 2, never exit 0 ───────────────────────────────────────────
+# ── The package ROOT is scanned, and that is where the update banner lives ────────────────
+# THE REGRESSION THIS PINS: the first version of this gate scanned demos/, common/ and ui/.
+# The app-wide update banner — the one overlay every screen in the app renders under —
+# is anchored in MainActivity.kt, in the package root, and was therefore ungated. Three
+# directories out of eleven is the same defect as one, with a bigger number.
+root="$(new_fixture packageroot)"
+cat > "$root/$APP_REL/MainActivity.kt" <<'KT'
+@Composable
+fun SceneViewDemoApp() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        RootScreen()
+        UpdateBanner(modifier = Modifier.align(Alignment.TopCenter).padding(8.dp))
+    }
+}
+KT
+assert_exit "an un-insetted anchor in the package root fails" "$root" 1
+assert_reports "  and it is named by file" "$root" "MainActivity.kt"
+
+# The same banner with a real inset is the shipped shape, and must stay green.
+root="$(new_fixture packageroot_ok)"
+cat > "$root/$APP_REL/MainActivity.kt" <<'KT'
+@Composable
+fun SceneViewDemoApp() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        RootScreen()
+        UpdateBanner(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars),
+        )
+    }
+}
+KT
+assert_exit "the same banner with an inset frame passes" "$root" 0
+
+# ── A sibling package nobody thought to list is scanned too ────────────────────────────────
+# update/, whatsnew/, sketchfab/, sources/, feedback/, ai/, fragments/, theme/ were all
+# outside the old allowlist. The gate must not need to be taught a new directory name.
+root="$(new_fixture siblingpkg)"
+mkdir -p "$root/$APP_REL/whatsnew"
+cat > "$root/$APP_REL/whatsnew/WhatsNewSheet.kt" <<'KT'
+@Composable
+fun WhatsNewOverlay() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Text("New", modifier = Modifier.align(Alignment.BottomCenter))
+    }
+}
+KT
+assert_exit "an un-insetted anchor in a package the gate was never told about fails" "$root" 1
+assert_reports "  and it is named by file" "$root" "WhatsNewSheet.kt"
+
+# ── DemoScaffold.kt is exempt BY NAME, not by living outside the scan ──────────────────────
+# It has to write the anchoring it forbids everyone else. Now that the whole package is
+# scanned it is inside the tree, so the exemption has to be explicit — and pinned, because
+# an EXEMPT entry that silently stopped matching would redden a correct repo forever.
+root="$(new_fixture scaffoldexempt)"
+# One ordinary file alongside it: EXEMPT files do not count towards "did this gate scan
+# anything", so a fixture holding only the exemption is exit 2 rather than exit 0 — which
+# is right, and would make this case pass for the wrong reason.
+cat > "$root/$DEMOS_REL/Plain.kt" <<'KT'
+@Composable
+fun PlainDemo() {
+    Box(modifier = Modifier.fillMaxSize()) { Text("hi") }
+}
+KT
+cat > "$root/$APP_REL/DemoScaffold.kt" <<'KT'
+@Composable
+fun DemoScaffold(topOverlay: @Composable ColumnScope.() -> Unit) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.align(Alignment.TopCenter)) { topOverlay() }
+    }
+}
+KT
+assert_exit "DemoScaffold.kt may anchor by hand — it is the slot" "$root" 0
+
+# ── A gate that finds no code is exit 2, never exit 0 ──────────────────────────────────────
+# The failure mode this whole file exists to make impossible: the package is renamed or
+# moved, the gate scans nothing at all, and prints a green tick forever.
 root="$(new_fixture missingdir)"
-rm -rf "$root/$UI_REL"
-assert_exit "a missing scanned directory is a hard error, not a green run" "$root" 2
+rm -rf "$root/$APP_REL"
+assert_exit "a missing demo package is a hard error, not a green run" "$root" 2
+
+root="$(new_fixture nokotlin)"
+assert_exit "a demo package with no Kotlin in it is a hard error too" "$root" 2
+assert_reports "  and it says the gate is checking nothing" "$root" "checking nothing"
 
 # ── A brace inside a string template must not close a slot early ──────────────────────────
 # THE REGRESSION THIS PINS: a slot's extent is found by counting braces. Kotlin string
