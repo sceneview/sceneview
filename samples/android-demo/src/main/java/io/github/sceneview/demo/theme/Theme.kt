@@ -56,6 +56,24 @@ private val LightColors = lightColorScheme(
     onError = md_theme_light_onError,
     errorContainer = md_theme_light_errorContainer,
     onErrorContainer = md_theme_light_onErrorContainer,
+    // `background` is the role that paints Scaffold's container, and therefore the
+    // strip behind the status bar on every screen in this app. It was the one
+    // surface role this scheme never named, so it fell through to the Material3
+    // BASELINE #FEF7FF while every other surface here is #F9F9FF — five levels
+    // apart in the red channel, which is exactly enough to read as a hard line
+    // across the top of the display. Measured on a Pixel 7a at #3237: rows 0-130
+    // #fef7ff, rows 131+ #f9f9ff.
+    //
+    // It looked like Material You and it is not (it survived `dynamicColor =
+    // false`); it looked like the XML theme's missing `colorSurface` and it is not
+    // (binding that changed nothing on screen — the strip is Compose-drawn). It was
+    // a defaulted parameter, in a 30-line argument list where every neighbour is
+    // spelled out, which is the least visible place a wrong colour can hide.
+    //
+    // M3 treats background and surface as the same tone; keeping them equal here is
+    // both correct and the only way this stays true when a token is re-generated.
+    background = md_theme_light_surface,
+    onBackground = md_theme_light_onSurface,
     surface = md_theme_light_surface,
     onSurface = md_theme_light_onSurface,
     surfaceVariant = md_theme_light_surfaceVariant,
@@ -91,6 +109,10 @@ private val DarkColors = darkColorScheme(
     onError = md_theme_dark_onError,
     errorContainer = md_theme_dark_errorContainer,
     onErrorContainer = md_theme_dark_onErrorContainer,
+    // Same omission, same consequence in the dark scheme: baseline #141218 against
+    // this app's #111318. See the note on LightColors above.
+    background = md_theme_dark_surface,
+    onBackground = md_theme_dark_onSurface,
     surface = md_theme_dark_surface,
     onSurface = md_theme_dark_onSurface,
     surfaceVariant = md_theme_dark_surfaceVariant,
