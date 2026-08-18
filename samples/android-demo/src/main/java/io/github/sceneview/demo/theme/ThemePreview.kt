@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 private fun ThemeSampler() {
     Surface {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(SceneViewTokens.Space.md)) {
             Text("SceneView Theme", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -51,21 +51,21 @@ private fun ThemeSampler() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 Button(onClick = {}, shape = MaterialTheme.shapes.extraLarge) { Text("Primary") }
                 FilledTonalButton(onClick = {}, shape = MaterialTheme.shapes.extraLarge) { Text("Tonal") }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 FilterChip(selected = true, onClick = {}, label = { Text("Selected") }, shape = MaterialTheme.shapes.extraLarge)
                 FilterChip(selected = false, onClick = {}, label = { Text("Unselected") }, shape = MaterialTheme.shapes.extraLarge)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 listOf("primary", "secondary", "tertiary", "error").forEach { name ->
                     val color = when (name) {
                         "primary" -> MaterialTheme.colorScheme.primary

@@ -19,7 +19,7 @@ import androidx.compose.ui.platform.LocalContext
  *
  * Color system from the SceneView design system (source: #005bc1).
  * Typography: M3 Expressive scale with Inter-weight equivalents.
- * Shapes: M3 Expressive with DESIGN.md radius tokens (8/12/16/28/32dp).
+ * Shapes: M3 Expressive with DESIGN.md radius tokens (8/12/16/24/28dp).
  * Motion: Expressive spring animations.
  *
  * ## Dynamic colour is OFF by default, on purpose
