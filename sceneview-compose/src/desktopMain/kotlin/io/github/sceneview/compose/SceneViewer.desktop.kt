@@ -233,14 +233,12 @@ private fun unprojectPick(
 ): Float3? {
     val viewMatrix = camera.viewMatrix ?: return null
     val projection = camera.projectionMatrix ?: return null
-    val viewport = view?.viewport ?: return null
-    if (viewport.width <= 0 || viewport.height <= 0) return null
+    val viewport = view?.viewport?.takeIf { it.width > 0 && it.height > 0 } ?: return null
 
     val ndcX = 2f * result.fragCoords[0] / viewport.width - 1f
     val ndcY = 2f * result.fragCoords[1] / viewport.height - 1f
     val ndcZ = 2f * result.depth - 1f
-    val clip = Float4(ndcX, ndcY, ndcZ, 1f)
-    val worldH = inverse(projection * viewMatrix) * clip
+    val worldH = inverse(projection * viewMatrix) * Float4(ndcX, ndcY, ndcZ, 1f)
     if (worldH.w == 0f) return null
     return Float3(worldH.x / worldH.w, worldH.y / worldH.w, worldH.z / worldH.w)
 }

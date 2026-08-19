@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class OrbitCameraTest {
 
     @Test
-    fun azimuth_zero_elevation_zero_looks_along_plus_z() {
+    fun azimuthZeroElevationZeroLooksAlongPlusZ() {
         val eye = orbitEyePosition(Float3(0f, 0f, 0f), distance = 4f, azimuthDegrees = 0f, elevationDegrees = 0f)
         assertClose(0f, eye.x)
         assertClose(0f, eye.y)
@@ -18,7 +18,7 @@ class OrbitCameraTest {
     }
 
     @Test
-    fun azimuth_90_orbits_to_plus_x() {
+    fun azimuth90OrbitsToPlusX() {
         val eye = orbitEyePosition(Float3(0f, 0f, 0f), distance = 4f, azimuthDegrees = 90f, elevationDegrees = 0f)
         assertClose(4f, eye.x)
         assertClose(0f, eye.y)
@@ -26,7 +26,7 @@ class OrbitCameraTest {
     }
 
     @Test
-    fun elevation_raises_the_eye_and_shortens_the_horizontal() {
+    fun elevationRaisesTheEyeAndShortensTheHorizontal() {
         val target = Float3(0f, 1f, 0f)
         val eye = orbitEyePosition(target, distance = 4f, azimuthDegrees = 0f, elevationDegrees = 30f)
         assertClose(0f, eye.x)
