@@ -18,11 +18,11 @@ SceneView uses **native renderers per platform** for the best performance and to
 | **macOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.0.0) |
 | **visionOS** | RealityKit | SwiftUI | `SceneViewSwift` | Alpha (v4.0.0) |
 | **Web** | Filament.js (WASM) | Kotlin/JS | `sceneview-web` | Alpha |
-| **Desktop** | Software wireframe (placeholder) | Compose Desktop | `samples/desktop-demo` | Placeholder (not SceneView) |
+| **Desktop** | Filament via `SceneViewer` (filament-kmp) | Compose Desktop | `samples/desktop-demo` | Alpha (JDK 22+) |
 | **Android TV** | Filament | Compose TV | `sceneview` | Alpha |
 | **Flutter** | Filament / RealityKit | PlatformView | `flutter/sceneview_flutter` | Alpha |
 | **React Native** | Filament / RealityKit | Fabric | `react-native/react-native-sceneview` | Alpha |
-| **Compose Multiplatform** | per-platform | Compose Multiplatform | `sceneview-compose` | Android + iOS implemented; Desktop placeholder |
+| **Compose Multiplatform** | per-platform | Compose Multiplatform | `sceneview-compose` | Android, iOS, Desktop implemented |
 
 !!! note "Compose Multiplatform is a façade, not a platform"
     `sceneview-compose` gives you one `SceneViewer` composable from `commonMain` and

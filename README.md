@@ -467,7 +467,7 @@ sceneview-core (Kotlin Multiplatform)
 ├── arsceneview (Android)    → ARCore
 ├── SceneViewSwift (Apple)   → RealityKit + SwiftUI
 ├── sceneview-web (Web)      → Filament.js + WebXR
-└── desktop-demo (JVM)       → Compose Desktop (software wireframe placeholder)
+└── desktop-demo (JVM)       → Compose Desktop (`SceneViewer`, filament-kmp)
 ```
 
 ---

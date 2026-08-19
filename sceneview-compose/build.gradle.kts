@@ -11,8 +11,8 @@ plugins {
 // ── sceneview-compose ────────────────────────────────────────────────────────
 // A thin Compose Multiplatform façade over the per-platform renderers. One API,
 // several renderers: Android delegates to the Filament `SceneView { }`, iOS to
-// RealityKit through SceneViewSwift, desktop to a Filament FFM binding that is not
-// vendored yet (see docs/docs/desktop-filament.md).
+// RealityKit through SceneViewSwift, desktop to filament-kmp on Maven (FFM, JDK 22+;
+// see docs/docs/desktop-filament.md).
 //
 // Scope is the VIEWER SUBSET only — see docs/docs/compose-multiplatform.md and
 // this module's README. AR, materials and post-processing stay platform-native.
@@ -22,6 +22,8 @@ plugins {
 // root build) make a violation a reviewable diff rather than a silent leak.
 kotlin {
     explicitApi()
+    // Desktop filament-kmp is FFM (JDK 22+). Android still emits JVM 21 bytecode.
+    jvmToolchain(22)
 
     androidTarget {
         publishLibraryVariants("release")
@@ -30,13 +32,10 @@ kotlin {
         }
     }
 
-    // Desktop/JVM. The desktop `actual` is not wired yet — it lands with the
-    // vendored Filament binding, which carries a JDK 22+ floor of its own
-    // (Project Panama / FFM). Until then this target compiles the common API
-    // against a not-yet-implemented expect, which keeps the seam honest.
+    // Desktop/JVM. Filament via filament-kmp FFM — JDK 22+ at compile and run.
     jvm("desktop") {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_21)
+            jvmTarget.set(JvmTarget.JVM_22)
         }
     }
 
@@ -74,6 +73,25 @@ kotlin {
 
         commonTest.dependencies {
             implementation(kotlin("test"))
+        }
+
+        // JVM family only — HttpURLConnection + the shared orbit math. iOS cannot
+        // see this set. Both androidMain and desktopMain compile it into their target.
+        val androidAndDesktopMain by creating {
+            dependsOn(commonMain.get())
+        }
+
+        val desktopMain by getting {
+            dependsOn(androidAndDesktopMain)
+            dependencies {
+                // Renderer only — never `api`. Same guardrail as androidMain.
+                implementation(libs.filament.kmp.compose)
+                implementation(libs.filament.kmp.gltfio)
+            }
+        }
+
+        val androidMain by getting {
+            dependsOn(androidAndDesktopMain)
         }
 
         androidMain.dependencies {

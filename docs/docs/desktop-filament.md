@@ -1,11 +1,18 @@
 # Filament on Compose Desktop — status & decision
 
-Decision record for hardware-accelerated 3D rendering on Desktop, replacing the
-wireframe placeholder in `samples/desktop-demo/`.
+Decision record for hardware-accelerated 3D rendering on Desktop. `samples/desktop-demo`
+now consumes `SceneViewer`.
 
-**Last updated:** 2026-08-03 · **Decision:** superseded — see
+**Last updated:** 2026-08-19 · **Decision:** superseded — see
 [compose-multiplatform.md](compose-multiplatform.md). The offscreen architecture below
 still stands; the *binding supply* decision does not.
+
+> **2026-08-19 update.** The desktop `SceneViewer` actual is implemented. It depends on
+> Maven `io.github.erkko68.filament:filament-compose:0.3.1` as `implementation` (never
+> `api`) — filament-kmp already does the offscreen readback → Skia path. Not vendored.
+> Requires JDK 22+ and `--enable-native-access=ALL-UNNAMED` at run. See
+> [compose-multiplatform.md](compose-multiplatform.md). Issue
+> [#2540](https://github.com/sceneview/sceneview/issues/2540).
 
 > **2026-08-03 update.** Desktop rendering is now delivered as the desktop `actual` of
 > the `sceneview-compose` façade. The binding supply changed: instead of *depending on*
@@ -26,16 +33,11 @@ still stands; the *binding supply* decision does not.
 
 ---
 
-## Current state: software renderer
+## Current state: `SceneViewer` on desktop
 
-The desktop demo (`samples/desktop-demo/`) uses a pure-software approach:
-
-- **Compose Desktop** (JetBrains) provides the window and UI framework
-- **Compose Canvas** draws wireframe geometry (cube, octahedron, diamond)
-- **sceneview-core** KMP math is available but rendering is manual projection + line drawing
-- No texture mapping, no PBR materials, no glTF loading, no shadows
-
-This is a placeholder and says so in its README/About screen.
+`samples/desktop-demo` consumes `sceneview-compose` `SceneViewer`. Filament is
+filament-kmp on Maven (offscreen readback → Skia). JDK 22+ and
+`--enable-native-access=ALL-UNNAMED`.
 
 ---
 
