@@ -89,14 +89,13 @@ npx http-server samples/web-demo/site -p 8080
 
 ### Desktop Demo
 
-**`samples/desktop-demo/`** — Compose Desktop (Software Wireframe Placeholder)
+**`samples/desktop-demo/`** — Compose Desktop (`SceneViewer`)
 
-> **Note:** This demo does **not** use SceneView or Filament. It is a Compose Canvas
-> wireframe renderer that serves as a UI placeholder for a future Filament JNI integration.
+`sceneview-compose` `SceneViewer` on JVM. Filament via filament-kmp (offscreen →
+Skia). **JDK 22+**.
 
-- Rotating wireframe cube, octahedron, diamond (Canvas 2D drawing, not GPU-accelerated)
-- Manual perspective projection with basic trigonometry
-- Material 3 dark theme
+- Loads `Duck.glb` through `ModelSource.Bytes`
+- Drag to orbit, scroll to zoom
 
 ```bash
 ./gradlew :samples:desktop-demo:run

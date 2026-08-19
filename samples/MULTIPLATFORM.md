@@ -31,7 +31,7 @@ samples/
 ├── android-tv-demo/             # Android TV — D-pad controls, Compose TV
 ├── ios-demo/                    # iOS / macOS / visionOS — SwiftUI + RealityKit
 ├── web-demo/                    # Web — Kotlin/JS + Filament.js (WASM), WebXR
-├── desktop-demo/                # Desktop — Compose Desktop wireframe placeholder
+├── desktop-demo/                # Desktop — Compose Desktop `SceneViewer` (filament-kmp)
 ├── flutter-demo/                # Flutter — PlatformView bridge (Android + iOS)
 ├── react-native-demo/           # React Native — Fabric bridge (Android + iOS)
 │
@@ -83,15 +83,12 @@ SceneView { content in
 .cameraControls(.orbit)
 ```
 
-**Desktop (future — requires Filament JNI, not yet available):**
+**Desktop (`sceneview-compose`, JDK 22+):**
 ```kotlin
-// This API does NOT work yet — Filament JNI desktop binaries must be built from source.
-// The current desktop-demo is a wireframe placeholder, not a real SceneView integration.
-SceneView(cameraManipulator = rememberCameraManipulator()) {
-    rememberModelInstance(modelLoader, "model.glb")?.let {
-        ModelNode(modelInstance = it, scaleToUnits = 1f)
-    }
-}
+SceneViewer(
+    model = ModelSource.Bytes(glb),
+    modifier = Modifier.fillMaxSize(),
+)
 ```
 
 ## Available recipes
@@ -130,7 +127,7 @@ Android + iOS code):
 2. **iOS / macOS / visionOS** — SceneViewSwift, 19 node types, RealityKit backend (alpha)
 3. **Web** — sceneview-web on npm (Filament.js WASM), 3D + WebXR (AR + VR)
 4. **Flutter / React Native** — PlatformView / Fabric bridges to Android + iOS native renderers
-5. **Desktop** — Compose Desktop wireframe placeholder (Filament JVM bindings still pending)
+5. **Desktop** — `SceneViewer` via filament-kmp (JDK 22+)
 
 ## What makes this achievable
 
