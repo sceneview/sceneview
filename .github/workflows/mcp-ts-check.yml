@@ -54,14 +54,13 @@ name: MCP TypeScript check
 # own Biome binary). That file has its own ~120-error baseline; wiring it is a
 # separate piece of work, deliberately not smuggled in here.
 #
-# NOT IN `ci-gate.yml`'s `REQUIRED_CHECKS`
-# ----------------------------------------
+# NOT A REQUIRED CHECK ON `main`
+# ------------------------------
 # Same rule as `rn-ts-check.yml` and `snippets-check.yml`: this is a positively
-# path-filtered workflow. When it runs, its check run is picked up by the
-# head-SHA poll and gates the merge; when the filter skips it, no check run
-# registers and the aggregator does not wait. Adding its name to
-# `REQUIRED_CHECKS` would make every non-MCP PR block on a check that never
-# fires.
+# path-filtered workflow, and a required check that does not trigger registers
+# no check run at all — the PR would block forever. It stays advisory: when it
+# runs and fails, the red check is visible on the PR even though branch
+# protection does not enforce it.
 
 on:
   pull_request:

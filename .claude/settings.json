@@ -1,34 +1,6 @@
 {
+  "model": "opus",
   "permissions": {
     "defaultMode": "bypassPermissions"
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "bash $CLAUDE_PROJECT_DIR/.claude/scripts/statusline.sh",
-    "padding": 0
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/hook-dispatch.sh\"; if [ -f \"$H\" ]; then bash \"$H\" pre-bash; else exit 0; fi"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "EnterWorktree",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/hook-dispatch.sh\"; if [ -f \"$H\" ]; then bash \"$H\" post-worktree; else exit 0; fi"
-          }
-        ]
-      }
-    ]
   }
 }

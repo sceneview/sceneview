@@ -28,15 +28,11 @@ name: Snippets
 # tools/extract-doc-snippets.js). `agents/sceneview/references/**` is the
 # broad form so a newly-added reference file is covered without editing here.
 #
-# CI GATE (#1314): when this workflow runs, its `Doc snippets compile check`
-# check run is picked up automatically by the head-SHA poll and gates the
-# merge; when the `paths:` filter skips it, NO check run registers and the
-# aggregator simply doesn't wait for it. NEVER add this job's name to
-# ci-gate.yml's REQUIRED_CHECKS — that list is only for ci.yml's always-on
-# core jobs; adding it would make the gate block ~50 min waiting for a check
-# that never fires on a non-docs PR. Bonus: a llms-only PR now registers one
-# check run, which flips off the docs-only bypass (#2117) so the gate waits
-# for this compile's real verdict — precisely the intent.
+# NOT A REQUIRED CHECK ON `main`: this workflow is positively path-filtered,
+# and a required check that does not trigger registers no check run at all —
+# every non-docs PR would block forever. It stays advisory: when it runs and
+# fails, the red check is visible on the PR even though branch protection
+# does not enforce it.
 
 on:
   pull_request:

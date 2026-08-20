@@ -33,7 +33,7 @@ Re-run a script after pulling new commits to refresh the installed copy.
 
 `bash .claude/scripts/check-sceneview-skill.sh` validates all three skills
 against the live library source (frontmatter, API identifiers, demo refs) and
-runs in the quality gate, `pr-check.yml`, and daily via `maintenance.yml`.
+runs manually; the CI workflows that used to invoke it have been removed.
 
 ## Google `android-cli` registry submission (#1082)
 

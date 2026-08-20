@@ -19,7 +19,7 @@ name: Device QA
 # COST CONTROL
 # ------------
 # Device-QA boots emulators and a browser — it is expensive. It is therefore
-# NOT in the per-PR `CI Gate`. It runs only when:
+# NOT a per-PR required check. It runs only when:
 #   - a harness script, Maestro flow, or demo app actually changes (push to
 #     main, path-gated), OR
 #   - manually via workflow_dispatch (vet a feature branch / pre-tag), OR
