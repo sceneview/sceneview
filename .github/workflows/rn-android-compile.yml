@@ -10,7 +10,8 @@ name: React Native Android bridge compile
 # `ARRecorderModule.kt`) was compiled by NO CI job. It is not in the root
 # `settings.gradle`, and grepping every file under `.github/workflows/` for
 # `react-native` returned only `rn-ios-compile.yml` (iOS Swift type-check),
-# `release.yml` (npm publish — TypeScript only) and `issue-intake.yml` (prose).
+# `release.yml` (npm publish — TypeScript only) and `issue-intake.yml`
+# (prose; workflow since deleted).
 # Over a thousand lines of Kotlin shipped to npm having never been compiled by
 # anything but a contributor's laptop.
 #

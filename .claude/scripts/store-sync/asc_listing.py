@@ -355,8 +355,8 @@ def classify_live_checksums(live_sets, local_md5s=(), console_sourced=False):
     per_type, buckets, matched, matched_by_type = {}, {}, [], {}
     # Sort defensively: a live set whose screenshotDisplayType is missing keys
     # this dict on None, and None vs str is a TypeError that would take the
-    # whole read-only run down — reported, thanks to the partial-read guard in
-    # maintenance.yml, but still a probe that measures nothing.
+    # whole read-only run down — reported, thanks to the partial-read guard
+    # below, but still a probe that measures nothing.
     for dtype, checksums in sorted(live_sets.items(),
                                    key=lambda kv: (kv[0] is None, kv[0] or "")):
         kinds = [classify_checksum(c) for c in checksums]

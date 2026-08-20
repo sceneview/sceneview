@@ -319,17 +319,19 @@ correct. Specifically:
 
 - **`ci.yml`** — the single consolidated PR workflow (`build`, `lint`,
   `unit-test`, `api-check`, `web-desktop`, `flutter-demo`, `compile-kmp`,
-  `repo-hygiene`, `quality-gate`) — carries a `paths-ignore` filter for those
-  paths, so it
-  does not trigger on a docs-only PR. (Before #1370 this was three separate
+  `kmp-native-test`). Its `paths-ignore` filter sits under the `push:`
+  trigger only — on a pull request the skipping is done by the `changes`
+  job, which detects the touched paths and gates every other job, so a
+  docs-only PR runs none of them. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
 - **`render-tests.yml`** never runs on *any* pull request — it is push-to-main
   + `workflow_dispatch` only — so docs-only PRs skip it for that reason rather
   than via a path filter.
-- The **`CI Gate`** aggregator (`ci-gate.yml`) still runs on every PR and
-  resolves green when the path-filtered jobs are skipped — that is how a
-  docs-only PR stays mergeable.
+- The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
+  on every PR whatever it touches, and it is the required check: it resolves
+  green once path detection has run. That is how a docs-only PR stays
+  mergeable without any job being "skipped → green for life".
 
 If your docs PR needs to force a full CI run (for example, you suspect a
 markdown change has accidentally invalidated an example referenced from
@@ -395,9 +397,9 @@ bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as
 
 The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable via `$XDG_CACHE_HOME`); the first run downloads it, subsequent runs reuse it. `--ci-tolerant` exists for sandboxed CI runners with no network — it lets the check pass with a WARN instead of failing the build when `matc` cannot be fetched.
 
-**The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
+**The drift check.** `bash tools/GenerateFilamat.sh --check` reports every `.filamat` blob that no longer matches its `.mat` source. Nothing runs it for you — run it yourself in the same sitting as any `.mat` edit. Shipping a `.mat` change without recompiling its blob is the v4.1.0-class mistake, and this is the check that catches it.
 
-**The runtime gate (#2783).** `--check` proves a blob matches its `.mat` *source*; it compiles with the pinned `matc`, so a blob wired to the wrong pin still passes. [`.claude/scripts/check-web-filamat-abi.sh`](.claude/scripts/check-web-filamat-abi.sh) closes that gap for the two web tracks: it reads each blob's `MATERIAL_VERSION` header and compares it to its own runtime pin, and sha256-pins the vendored `filament.js`/`.wasm` (via `website-static/js/filament/RUNTIME.json`) so the runtime cannot be swapped without moving the pin. It needs no `matc` and no network, so it is a hard gate leg.
+**The runtime check (#2783).** `--check` proves a blob matches its `.mat` *source*; it compiles with the pinned `matc`, so a blob wired to the wrong pin still passes. [`.claude/scripts/check-web-filamat-abi.sh`](.claude/scripts/check-web-filamat-abi.sh) closes that gap for the two web tracks: it reads each blob's `MATERIAL_VERSION` header and compares it to its own runtime pin, and sha256-pins the vendored `filament.js`/`.wasm` (via `website-static/js/filament/RUNTIME.json`) so the runtime cannot be swapped without moving the pin. It needs no `matc` and no network, so it runs anywhere in a second — pair it with the drift check above.
 
 **The five matc flag profiles.** The committed blobs were compiled with five distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
 
@@ -417,7 +419,7 @@ When adding a new material, pick a profile by deployment target and add an entry
 2. Run `bash tools/GenerateFilamat.sh` — it downloads the matching `matc` and recompiles every `.filamat` from its `.mat` source.
 3. Commit **the runtime bump AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
 
-`GenerateFilamat.sh --check` (and the `quality-gate.sh` drift gate) will catch a runtime/blob mismatch before merge. If you somehow bypass the gate, the first signal is a runtime crash on whichever demo loads the affected material first.
+`GenerateFilamat.sh --check` and `check-web-filamat-abi.sh` catch a runtime/blob mismatch — but only if you run them. If you skip them, the first signal is a runtime crash on whichever demo loads the affected material first.
 
 #### Visual QA for material / shader changes (Mac-friendly)
 
@@ -432,55 +434,6 @@ A material change can compile, pass unit tests, and still render wrong (the v4.1
 **4 — Analyse the screen recording.** Pull it, then: contact-sheet the frames with ffmpeg's `tile` filter (`-vf "fps=1/3,scale=200:-1,tile=5x4"` — no ImageMagick needed) for a fast overview, then extract full-res frames at the interesting timestamps for the actual judgement. If the recording has narration, transcribe with Whisper **large-v3** (smaller models are not reliable for this). ⚠️ A transcript that is only `Sous-titrage ST'…` / `Merci` / `Amara.org` repeated is Whisper's **silence hallucination** — it means there was no speech, not a real transcript.
 
 **Two hard rules (born from the #2224 saga):** (a) **look at an actual rendered frame — and pixel-measure it — before claiming a visual fix works**; never infer "it looks better" from code. (b) **Verify any flag an LLM suggests against the real binary before trusting it** — e.g. the proposed ARCore replay property `debug.com.google.ar.core.camera_playback_autostart` was a confident hallucination (0 hits in 1 M strings extracted from the ARCore APK).
-
----
-
-## Maintenance scripts
-
-The `.claude/scripts/` directory holds the housekeeping scripts that
-keep parallel-orchestrator sessions tidy. Two are worth knowing about
-explicitly because the safety contract has gotten complex enough that
-you can't infer it from the source on first read.
-
-### `worktree-auto-prune.sh`
-
-Reclaims `.claude/worktrees/*` whose branch has merged. Safe-by-default:
-the only way it can lose work is via an explicit override flag.
-
-| Flag | Effect |
-|---|---|
-| `--dry-run` | Preview only. No worktree is removed. |
-| `--yes` | Non-interactive. Skip the confirmation prompt. |
-| `--keep <path>` | Repeatable. Never touch this worktree (the caller's own tree should always be `--keep`). |
-| `--allow-stale` | Proceed offline if `git fetch origin main` fails. `ahead=0` then additionally requires a merged-PR signal. |
-| `--no-check-active-sessions` | Disable the cwd scan that protects worktrees with a live process inside them. Almost never the right call. |
-| `--unlock-locked` | Override `git worktree lock`: prune locked-but-clean worktrees too. The dirty check still wins. |
-
-Skip ladder (a worktree must pass every layer to be reclaimed):
-
-1. Not in `--keep`.
-2. `git status --porcelain` is empty (no uncommitted changes).
-3. Not `locked` via `git worktree lock` (unless `--unlock-locked`).
-4. No process anywhere on the host has cwd inside the worktree
-   (gradle daemons, `python`, IDE indexers — all detected, not just
-   `node`/`claude`).
-5. Either `ahead-count == 0` vs `origin/main`, OR the branch's
-   associated GitHub PR is `MERGED`.
-
-Forensic trail: every evaluated worktree appends one JSON line to
-`~/.claude/logs/worktree-prune-YYYYMMDD.log` (daily-rotated, never
-auto-deleted). Cheap to write, priceless if an incident occurs.
-
-Pin: `.claude/scripts/test-worktree-auto-prune.sh` exercises 7 scenarios
-(merged, unmerged, dirty, locked, locked + `--unlock-locked`, active
-subprocess, `--keep`) and runs advisorily inside `quality-gate.sh`.
-
-### `cleanup-branches-worktrees.sh`
-
-Wrapper that runs `worktree-auto-prune.sh` AND deletes the corresponding
-merged `claude/*` branches (local + remote) in a single batched
-`git push --delete` to avoid bot-burst rate limits. Same flags, same
-safety contract; runs daily in `.github/workflows/maintenance.yml`.
 
 ---
 
