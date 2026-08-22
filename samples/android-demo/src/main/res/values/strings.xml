@@ -334,7 +334,11 @@
     <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
     <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording.</string>
     <string name="feedback_report_share">Share report</string>
-    <string name="feedback_report_open_github">Open a GitHub issue</string>
+    <string name="feedback_report_open_github">Send to GitHub</string>
     <string name="feedback_report_share_chooser">Share bug report</string>
     <string name="feedback_report_no_app">No app available to send the report</string>
+    <string name="feedback_report_sent_github">GitHub opened — finish and submit there. Thanks!</string>
+    <string name="feedback_report_sent_share">Report shared — thanks!</string>
+    <string name="feedback_report_voice_cd">Dictate description</string>
+    <string name="feedback_report_voice_prompt">Describe the issue</string>
 </resources>

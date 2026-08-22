@@ -46,6 +46,16 @@
          the app's own window, the app's own logcat tail, and a user-driven share
          intent — zero foreground service, zero Play Console FGS declaration. -->
 
+    <!-- Package-visibility (API 30+): without this, resolveActivity() on the
+         speech-recognition intent below always returns null, even when a
+         recognizer is installed — the bug-report sheet's mic button would
+         hide itself unconditionally instead of only when genuinely absent. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

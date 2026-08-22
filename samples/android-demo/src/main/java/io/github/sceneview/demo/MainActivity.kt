@@ -34,6 +34,9 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -331,6 +334,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // re-opening re-captures in <100 ms.
         var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }
         val reportScope = rememberCoroutineScope()
+        val snackbarHostState = remember { SnackbarHostState() }
 
         fun openBugReport() {
             if (bugReport != null) return
@@ -368,8 +372,24 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // (sweepStaleFeedbackMedia) reclaims the few-hundred-KB file
                 // on the next launch instead.
                 onDismiss = { bugReport = null },
+                onSent = { message ->
+                    reportScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            message = message,
+                            duration = SnackbarDuration.Long,
+                        )
+                    }
+                },
             )
         }
+
+        // Confirms a sent bug report (#3263) — sits above everything else in
+        // this Box, same z-order reasoning as the update banner above.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
