@@ -5,16 +5,11 @@ import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.Image
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -51,6 +45,8 @@ import io.github.sceneview.ar.body.SKELETON_BONES
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.displayRotationDegrees
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
@@ -197,56 +193,38 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
         // it. That matches ARStreetscapeDemo, where the status pill has always drawn on
         // top of the same scrim (#2484) — status copy should not be hidden by it.
         //
+        // Renders through the shared `DemoStatusBanner` (`ar-scrim` dark pill, #3265) —
+        // this demo hand-rolled its own `primary` / `error` @ 82 % alpha pill instead,
+        // which is exactly the anti-pattern `DemoStatusBanner`'s own kdoc calls out: a
+        // mid-tone brand colour sits close to a lot of real-world luminance (a lit wall,
+        // in this case), which is precisely what Pixel 4a device QA hit — the pill read
+        // as a pale, low-contrast lavender over a white wall instead of the near-opaque
+        // scrim every other AR demo uses (device QA, #3295 follow-up).
+        //
         // State priority:
-        //   model missing  → "Pose model unavailable" (error, red)
-        //   tracking failed → ARCore's standard tracking-failure reason
+        //   model missing  → "Pose model unavailable" (Blocked)
+        //   tracking failed → ARCore's standard tracking-failure reason (Blocked for a
+        //                      hard stop, Guidance for a "move to fix it" one)
         //   body tracked    → hidden (skeleton overlay is the feedback)
-        //   else            → "Point the camera at a person — full body visible"
+        //   else            → "Point the camera at a person — full body visible" (Guidance)
         bottomOverlay = {
             val trackingFailureHint = trackingFailureMessage(trackingFailureReason)
-            val (hintText, hintColor) = when {
+            val (statusText, statusTone) = when {
                 landmarker == null ->
                     stringResource(R.string.demo_ar_body_tracker_status_no_model) to
-                        MaterialTheme.colorScheme.error
+                        DemoStatusTone.Blocked
                 trackingFailureHint != null ->
-                    trackingFailureHint to MaterialTheme.colorScheme.error
-                bodyPose.isTracked -> null to MaterialTheme.colorScheme.primary
+                    trackingFailureHint to when (trackingFailureReason) {
+                        TrackingFailureReason.CAMERA_UNAVAILABLE,
+                        TrackingFailureReason.BAD_STATE -> DemoStatusTone.Blocked
+                        else -> DemoStatusTone.Guidance
+                    }
+                bodyPose.isTracked -> null to DemoStatusTone.Guidance
                 else ->
                     stringResource(R.string.demo_ar_body_tracker_hint_aim) to
-                        MaterialTheme.colorScheme.primary
+                        DemoStatusTone.Guidance
             }
-            AnimatedVisibility(
-                visible = hintText != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.padding(bottom = 32.dp),
-            ) {
-                if (hintText != null) {
-                    // Content-width pill, centred in the band left free by the
-                    // Settings FAB. End-only inset, not the symmetric one this
-                    // used to apply: the reserve now tracks the real peek chip,
-                    // and spending it on both edges to protect one corner left
-                    // the pill too narrow to hold its own sentence (#3229).
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(end = settingsFabReservedSpace),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = hintText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier
-                                .background(
-                                    color = hintColor.copy(alpha = 0.82f),
-                                    shape = RoundedCornerShape(24.dp),
-                                )
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                        )
-                    }
-                }
-            }
+            DemoStatusBanner(statusText, tone = statusTone)
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
