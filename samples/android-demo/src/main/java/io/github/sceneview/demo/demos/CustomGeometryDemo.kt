@@ -149,7 +149,7 @@ private fun CustomMeshSection(
             engine = engine,
             materialLoader = materialLoader,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(0f, 0.1f, 2f),
+                orbitHomePosition = Position(0f, 0.1f, 2f),
                 targetPosition = Position(0f, 0f, 0f),
             ),
         ) {
@@ -265,7 +265,7 @@ private fun ShapeSection(
             onFrame = firstFrame.onFrame,
             engine = engine,
             materialLoader = materialLoader,
-            // The orbit distance is the LENGTH of `eyePosition`, not its distance to
+            // The orbit distance is the LENGTH of `orbitHomePosition`, not its distance to
             // `targetPosition`: `autoCenterContent = true` (the default, kept here) moves the
             // shape onto the world origin and Filament takes the vector verbatim as the eye
             // (#2930). The previous `(0, 0, 1.5)` / target `(0, 0, -1)` pairing therefore put
@@ -274,7 +274,7 @@ private fun ShapeSection(
             // distance from the frustum and a unit test pins the margin, as #2923 did for the
             // geometry demo.
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = ShapeFraming.orbitHomeOffset(ShapeFraming.CAMERA_DISTANCE),
+                orbitHomePosition = ShapeFraming.orbitHomeOffset(ShapeFraming.CAMERA_DISTANCE),
                 targetPosition = Position(0f, 0f, ShapeFraming.TARGET_Z),
             ),
         ) {

@@ -11,9 +11,9 @@ import kotlin.math.sin
  * Outlines + framing arithmetic for the *Shape Extrude* sub-mode of
  * [io.github.sceneview.demo.demos.CustomGeometryDemo].
  *
- * The sub-mode used to pair `eyePosition = (0, 0, 1.5)` with `targetPosition = (0, 0, -1)`
+ * The sub-mode used to pair `orbitHomePosition = (0, 0, 1.5)` with `targetPosition = (0, 0, -1)`
  * and a shape authored at `z = -1` — which reads as "a camera 2.5 m from the subject". It is
- * not: the orbit distance is the **length** of `eyePosition`, because `SceneView`'s
+ * not: the orbit distance is the **length** of `orbitHomePosition`, because `SceneView`'s
  * default `autoCenterContent = true` moves the shape onto the world origin and Filament takes
  * the vector verbatim as the eye (see `rememberCameraManipulator`'s KDoc, #2930, and
  * [GeometryLayout]'s orbit-distance note, #2873). The camera was therefore 1.5 m out — 40 %
@@ -28,7 +28,7 @@ import kotlin.math.sin
  * test measures the vertices the demo actually extrudes rather than a copy of them.
  *
  * **Precondition:** the sub-mode keeps `autoCenterContent` at its default. With it off the
- * distance would become `|eyePosition − contentCentre|` and [CAMERA_DISTANCE] would need
+ * distance would become `|orbitHomePosition − contentCentre|` and [CAMERA_DISTANCE] would need
  * re-deriving.
  */
 internal object ShapeFraming {
@@ -81,7 +81,7 @@ internal object ShapeFraming {
     )
 
     /**
-     * Orbit offset to pass as `eyePosition`, for a camera [distance] metres from the
+     * Orbit offset to pass as `orbitHomePosition`, for a camera [distance] metres from the
      * shape: a vector of length exactly [distance], straight down the view axis. The shape is a
      * flat extrusion facing +Z, so unlike [GeometryLayout.orbitHomeOffset] there is no elevation
      * — a tilt would only foreshorten it.

@@ -171,7 +171,7 @@ fun GeometryDemo(onBack: () -> Unit) {
             environmentLoader = environmentLoader,
             // Framing lives in GeometryLayout so the cluster's fit in a portrait frame is
             // arithmetic a unit test can check, not a number tuned by eye (#2873). Note that
-            // the orbit distance is the LENGTH of `eyePosition`: Filament takes it as
+            // the orbit distance is the LENGTH of `orbitHomePosition`: Filament takes it as
             // the eye verbatim, and `autoCenterContent = true` (the default, kept here) has
             // already moved the cluster onto the world origin, so `targetPosition` does not
             // enter into the distance — see GeometryLayout's orbit-distance note and #2930.
@@ -186,7 +186,7 @@ fun GeometryDemo(onBack: () -> Unit) {
             // no-op on non-hero-orbit demos is #2785's scope; wiring it here fixes it for
             // this one demo and makes the framing verifiable from a capture run.
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = GeometryLayout.orbitHomeOffset(
+                orbitHomePosition = GeometryLayout.orbitHomeOffset(
                     DemoSettings.cameraDistance ?: GeometryLayout.CAMERA_DISTANCE
                 ),
                 targetPosition = Position(0f, 0f, GeometryLayout.TARGET_Z),

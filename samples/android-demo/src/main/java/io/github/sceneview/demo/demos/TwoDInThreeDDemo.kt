@@ -184,7 +184,7 @@ private fun TextSection(
             materialLoader = materialLoader,
             onFrame = firstFrame.onFrame,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(0f, 0f, 1.5f),
+                orbitHomePosition = Position(0f, 0f, 1.5f),
                 targetPosition = Position(0f, 0f, 0f),
             ),
         ) {
@@ -773,7 +773,7 @@ private fun BillboardSection(
             engine = engine,
             materialLoader = materialLoader,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(0f, 0.55f, 1.5f),
+                orbitHomePosition = Position(0f, 0.55f, 1.5f),
                 targetPosition = Position(0f, -0.05f, -0.8f),
             )
         ) {

@@ -318,7 +318,7 @@ fun rememberFirstFrameState(): FirstFrameState {
  * Returns a [OrbitState] whose [yaw][OrbitState.yaw] advances from 0° to 360° in
  * [durationMillis] and resets. Converts to a `Position` on a circle of radius
  * [radius] at height [yHeight]. Wire this into a SceneView with
- * `cameraManipulator = rememberCameraManipulator(eyePosition = state.toPosition())`
+ * `cameraManipulator = rememberCameraManipulator(orbitHomePosition = state.toPosition())`
  * OR directly into a `CameraNode.position` via SideEffect.
  *
  * When [DemoSettings.qaMode] is `true` the orbit freezes at [staticYaw] so screenshot

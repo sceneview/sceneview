@@ -391,7 +391,7 @@ fun CameraManipulatorScreen() {
         modelLoader = modelLoader,
         cameraNode = cameraNode,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = cameraNode.worldPosition,
+            orbitHomePosition = cameraNode.worldPosition,
             targetPosition = Position(0f)
         )
     ) {
@@ -587,7 +587,7 @@ fun PhysicsDemoScreen() {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             engine = engine,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(x = 0f, y = 3f, z = 6f),
+                orbitHomePosition = Position(x = 0f, y = 3f, z = 6f),
                 targetPosition = Position(0f, 1f, 0f)
             ),
             environment = rememberEnvironment(environmentLoader) {
@@ -663,7 +663,7 @@ fun DynamicSkyScreen() {
             engine = engine,
             modelLoader = modelLoader,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(x = 0f, y = 2f, z = 6f),
+                orbitHomePosition = Position(x = 0f, y = 2f, z = 6f),
                 targetPosition = Position(0f, 0f, 0f)
             ),
             environment = rememberEnvironment(environmentLoader) {
@@ -754,7 +754,7 @@ fun LinePathScreen() {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             engine = engine,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(x = 0f, y = 1f, z = 5f),
+                orbitHomePosition = Position(x = 0f, y = 1f, z = 5f),
                 targetPosition = Position(0f, 0f, 0f)
             )
         ) {
@@ -821,7 +821,7 @@ fun TextLabelsScreen() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 1.5f, z = 5f),
+            orbitHomePosition = Position(x = 0f, y = 1.5f, z = 5f),
             targetPosition = Position(0f, 0.5f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -996,7 +996,7 @@ fun MultiModelScreen() {
         engine = engine,
         modelLoader = modelLoader,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 3f, z = 8f),
+            orbitHomePosition = Position(x = 0f, y = 3f, z = 8f),
             targetPosition = Position(0f, 0f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -1130,7 +1130,7 @@ fun EnvironmentLightingScreen() {
         engine = engine,
         modelLoader = modelLoader,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 2f, z = 5f),
+            orbitHomePosition = Position(x = 0f, y = 2f, z = 5f),
             targetPosition = Position(0f, 0f, 0f)
         ),
         // HDR environment provides both IBL (indirect lighting) and skybox (background)
@@ -1199,7 +1199,7 @@ fun ProceduralGeometryScreen() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 2f, z = 6f),
+            orbitHomePosition = Position(x = 0f, y = 2f, z = 6f),
             targetPosition = Position(0f, 0.5f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -1345,7 +1345,7 @@ fun NodeHierarchyScreen() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 4f, z = 8f),
+            orbitHomePosition = Position(x = 0f, y = 4f, z = 8f),
             targetPosition = Position(0f, 0f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -1858,7 +1858,7 @@ fun ImageNodeScreen() {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 1f, z = 4f),
+            orbitHomePosition = Position(x = 0f, y = 1f, z = 4f),
             targetPosition = Position(0f, 0.5f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -1937,7 +1937,7 @@ fun BillboardSpriteScreen() {
         engine = engine,
         modelLoader = modelLoader,
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(x = 0f, y = 2f, z = 5f),
+            orbitHomePosition = Position(x = 0f, y = 2f, z = 5f),
             targetPosition = Position(0f, 0.5f, 0f)
         ),
         environment = rememberEnvironment(environmentLoader) {
@@ -1990,7 +1990,7 @@ fun AnimationStateScreen() {
             engine = engine,
             modelLoader = modelLoader,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(x = 0f, y = 1f, z = 3f),
+                orbitHomePosition = Position(x = 0f, y = 1f, z = 3f),
                 targetPosition = Position(0f, 0.8f, 0f)
             ),
             environment = rememberEnvironment(environmentLoader) {
@@ -2073,7 +2073,7 @@ fun SpringAnimationScreen() {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             engine = engine,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(x = 0f, y = 2f, z = 6f),
+                orbitHomePosition = Position(x = 0f, y = 2f, z = 6f),
                 targetPosition = Position(0f, 0.5f, 0f)
             ),
             environment = rememberEnvironment(environmentLoader) {

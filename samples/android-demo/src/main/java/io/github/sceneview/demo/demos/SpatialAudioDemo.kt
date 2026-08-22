@@ -153,7 +153,7 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
             materialLoader = materialLoader,
             cameraNode = cameraNode,
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = cameraNode.worldPosition,
+                orbitHomePosition = cameraNode.worldPosition,
             ),
             onFrame = { nanos ->
                 firstFrame.onFrame(nanos)

@@ -326,35 +326,36 @@ SceneView(
 }
 ```
 
-To place the eye yourself, pass `eyePosition` and `targetPosition` instead
-(`eyePosition` was `orbitHomePosition` before 4.32 — the old name still compiles with a
-deprecation warning; same behaviour, there was never a "home" gesture):
+To place the eye yourself, pass `orbitHomePosition` and `targetPosition` instead
+(same behaviour as before 4.32; the name is kept as-is rather than renamed to `eyePosition`,
+since major version 4 forbids the binary break a rename of this Composable parameter would
+cause — there was never a "home" gesture):
 
 ```kotlin
 cameraManipulator = rememberCameraManipulator(
-    // Absolute eye position. Targets the origin here, so |eyePosition| ≈ 4.47 m
+    // Absolute eye position. Targets the origin here, so |orbitHomePosition| ≈ 4.47 m
     // is the distance the subject is framed from.
-    eyePosition = Position(x = 0f, y = 2f, z = 4f),
+    orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
 )
 ```
 
-!!! warning "`eyePosition` is an absolute eye position, and its **length** is your framing distance"
+!!! warning "`orbitHomePosition` is an absolute eye position, and its **length** is your framing distance"
 
-    Filament's `OrbitManipulator` uses `eyePosition` verbatim as the eye
+    Filament's `OrbitManipulator` uses `orbitHomePosition` verbatim as the eye
     (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`); it is never re-based on
     `targetPosition`, which only sets the orbit pivot and the initial look direction.
 
     On top of that, `SceneView`'s default `autoCenterContent = true` translates the DSL
     content so its bounding-box centre lands on the **world origin**. The distance your
-    subject is framed from is therefore `|eyePosition|` — the coordinates you gave
+    subject is framed from is therefore `|orbitHomePosition|` — the coordinates you gave
     your nodes do not survive, and `targetPosition` does not enter into it:
 
     ```kotlin
     // Frames from |(0, 0.2, 1.2)| ≈ 1.22 m — NOT the 2.7 m that
-    // |eyePosition − targetPosition| suggests.
+    // |orbitHomePosition − targetPosition| suggests.
     rememberCameraManipulator(
-        eyePosition = Position(0f, 0.2f, 1.2f),
+        orbitHomePosition = Position(0f, 0.2f, 1.2f),
         targetPosition = Position(0f, 0f, -1.5f)
     )
     ```
@@ -362,11 +363,11 @@ cameraManipulator = rememberCameraManipulator(
     Prefer `rememberCameraManipulator(orbitRadius = …)`, which takes the distance directly;
     otherwise pass a vector of that **length**, or set
     `autoCenterContent = false` so authored world positions survive (the framing distance
-    then becomes `|eyePosition − contentCentre|`). Both readings coincide when the
+    then becomes `|orbitHomePosition − contentCentre|`). Both readings coincide when the
     target is the origin — which is why every example on this page looks fine and why the
     discrepancy went unnoticed until [#2873](https://github.com/sceneview/sceneview/issues/2873).
 
-    There is no built-in gesture that returns the camera to `eyePosition`:
+    There is no built-in gesture that returns the camera to `orbitHomePosition`:
     `onDoubleTap` is a plain callback `SceneView` forwards to your code, never wired to
     the camera.
 
@@ -425,7 +426,7 @@ SceneView(
     engine = engine,
     modelLoader = modelLoader,
     cameraManipulator = rememberCameraManipulator(
-        eyePosition = Position(0f, 1f, 3f),
+        orbitHomePosition = Position(0f, 1f, 3f),
         targetPosition = Position(0f, 0f, 0f)
     )
 ) {
@@ -979,7 +980,7 @@ fun ProductListScreen(products: List<Product>) {
                         engine = engine,
                         modelLoader = modelLoader,
                         cameraManipulator = rememberCameraManipulator(
-                            eyePosition = Position(0f, 0.5f, 2f),
+                            orbitHomePosition = Position(0f, 0.5f, 2f),
                             targetPosition = Position(0f)
                         )
                     ) {

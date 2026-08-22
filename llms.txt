@@ -110,7 +110,7 @@ LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mut
 SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
 ```
 
-**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|eyePosition\|` (see "Camera"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
+**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see \"Camera\"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 
 Minimal usage:
 ```kotlin
@@ -3243,7 +3243,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
 | `rememberCameraManipulator(orbitRadius, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. See "Camera" |
-| `rememberCameraManipulator(eyePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `eyePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|eyePosition\|` — see "Camera". Was `orbitHomePosition` before 4.32 (deprecated alias, same behaviour — there is no "home" gesture) |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
@@ -3280,12 +3280,11 @@ val mat = remember(materialLoader) {
 // looking down). With the default target this is exactly the camera-to-subject distance.
 SceneView(cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f))
 
-// Or an explicit eye position. `eyePosition` is the camera's ABSOLUTE eye position, not
+// Or an explicit eye position. `orbitHomePosition` is the camera's ABSOLUTE eye position, not
 // an offset from `targetPosition`. This example targets the origin, where the two readings
 // coincide — which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
-// (`eyePosition` was `orbitHomePosition` before 4.32 — still accepted, deprecated.)
 SceneView(cameraManipulator = rememberCameraManipulator(
-    eyePosition = Position(x = 0f, y = 2f, z = 4f),
+    orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
 ))
 
@@ -3306,23 +3305,23 @@ SceneView(
 )
 ```
 
-### How far `eyePosition` actually puts the camera
+### How far `orbitHomePosition` actually puts the camera
 
 Getting this wrong is a factor-of-2 framing bug, and every example above hides it because
 they all target the origin (#2873).
 
-- `eyePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
+- `orbitHomePosition` is the eye's **absolute world position**. Filament's `OrbitManipulator`
   assigns it verbatim (`mEye = mProps.orbitHomePosition`) — it is never re-based on
   `targetPosition`.
 - `targetPosition` is the orbit pivot and the initial look-at point (default: the origin). It
   does **not** set the distance.
-- **Omitting `eyePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
+- **Omitting `orbitHomePosition` does not give you Filament's `(0, 0, 1)` default.** `SceneView`'s
   own default manipulator is `rememberCameraManipulator(cameraNode.worldPosition)`, so the
   effective default is the camera node's position — `(0, 0.4, 2.75)`, i.e. ≈ 2.78 m, for the
   default `CameraNode`.
 - Under `SceneView`'s default `autoCenterContent = true`, the DSL content is translated so its
   bounding-box centre lands on the **world origin**. So the distance the subject is framed from
-  is **`|eyePosition|`** — the coordinates you gave your nodes do not survive, and
+  is **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
   `targetPosition` does not enter into it.
 
 ```kotlin
@@ -3330,7 +3329,7 @@ they all target the origin (#2873).
 // The nodes are auto-centred onto the origin first, so this frames from
 // |(0, 0.2, 1.2)| ≈ 1.22 m — half the intended distance.
 rememberCameraManipulator(
-    eyePosition = Position(0f, 0.2f, 1.2f),
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
     targetPosition = Position(0f, 0f, -1.5f)
 )
 
@@ -3339,17 +3338,17 @@ rememberCameraManipulator(
 rememberCameraManipulator(orbitRadius = 2.7f)
 
 // Equivalent with an explicit eye: a vector of that LENGTH.
-rememberCameraManipulator(eyePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
+rememberCameraManipulator(orbitHomePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
 
 // Or opt out of auto-centring, and authored world positions survive: the framing
-// distance becomes |eyePosition − contentCentre|.
+// distance becomes |orbitHomePosition − contentCentre|.
 SceneView(autoCenterContent = false, cameraManipulator = rememberCameraManipulator(
-    eyePosition = Position(0f, 0.2f, 1.2f),
+    orbitHomePosition = Position(0f, 0.2f, 1.2f),
     targetPosition = Position(0f, 0f, -1.5f)
 ))
 ```
 
-There is no built-in gesture that returns the camera to `eyePosition`: `onDoubleTap` is a
+There is no built-in gesture that returns the camera to `orbitHomePosition`: `onDoubleTap` is a
 plain callback `SceneView` forwards to your code, never wired to the camera.
 
 ### Auto-fit camera framing

@@ -176,7 +176,7 @@ fun DataGlobe(dataPoints: List<GeoPoint>) {
     SceneView(
         modifier = Modifier.size(300.dp),
         cameraManipulator = rememberCameraManipulator(
-            eyePosition = Position(0f, 0f, 3f)
+            orbitHomePosition = Position(0f, 0f, 3f)
         )
     ) {
         // Earth sphere
@@ -242,7 +242,7 @@ fun FloorPlanViewer() {
         SceneView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             cameraManipulator = rememberCameraManipulator(
-                eyePosition = Position(0f, 5f, 8f)
+                orbitHomePosition = Position(0f, 5f, 8f)
             )
         ) {
             rememberModelInstance(modelLoader, "models/apartment.glb")?.let {

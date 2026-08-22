@@ -94,7 +94,7 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     }
 
     val cameraManipulator = rememberCameraManipulator(
-        eyePosition = HOME_CAMERA_POSITION,
+        orbitHomePosition = HOME_CAMERA_POSITION,
         targetPosition = Position(0f),
     )
 

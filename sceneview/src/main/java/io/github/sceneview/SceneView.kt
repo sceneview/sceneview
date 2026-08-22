@@ -141,7 +141,7 @@ import io.github.sceneview.node.findActivity
  *                              `ModelNode(centerOrigin = …)`. It lands on the origin, not on the
  *                              manipulator's `targetPosition`; the two coincide only for the
  *                              default target, which is why the camera-to-subject distance is
- *                              `|eyePosition|` — see [rememberCameraManipulator]. Lights /
+ *                              `|orbitHomePosition|` — see [rememberCameraManipulator]. Lights /
  *                              camera are passed as separate parameters, never DSL children, so
  *                              they are unaffected. Mirrors the iOS `autoCenterContent` feature
  *                              (#1026). Pass `false` for scenes with intentional off-centre
@@ -277,7 +277,7 @@ fun SceneView(
      * node which is translated once — on the first frame the content's union bounding box is
      * non-empty — so the content centroid lands on the **world origin** and renders centred. Not
      * on the manipulator's `targetPosition`: the two coincide only for the default target, which
-     * is why the camera-to-subject distance is `|eyePosition|` (see
+     * is why the camera-to-subject distance is `|orbitHomePosition|` (see
      * [rememberCameraManipulator]). Mirrors the iOS library-level `autoCenterContent` feature
      * (#1026 / PR #1038). Pass `false` to keep strict per-node placement semantics for scenes with
      * intentional off-centre composition — authored world positions then survive.
@@ -339,7 +339,7 @@ fun SceneView(
      * Helper that enables camera interaction similar to sketchfab or Google Maps.
      */
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        eyePosition = cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     /**
      * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment.
@@ -1647,6 +1647,80 @@ fun rememberOnGestureListener(
 }
 
 /**
+ * Creates and remembers a [CameraGestureDetector.CameraManipulator] for orbit/pan/zoom control.
+ *
+ * The manipulator translates touch gestures into camera transform updates — one-finger drag to
+ * orbit, two-finger drag to pan, pinch to zoom. It is updated automatically every frame inside
+ * `SceneView`.
+ *
+ * Pass `null` to `SceneView(cameraManipulator = null)` to disable camera interaction entirely.
+ *
+ * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to: no built-in
+ * gesture does that, `onDoubleTap` is a plain callback `SceneView` forwards to your code and
+ * never wires to the camera. For the common case of framing a subject from a known distance,
+ * prefer [rememberCameraManipulator] with `orbitRadius` instead — it sidesteps the vector-length
+ * reasoning below entirely.
+ *
+ * ```kotlin
+ * val cameraManipulator = rememberCameraManipulator(
+ *     // Eye 2.5 m from an auto-centred subject — it is the LENGTH of this vector that frames.
+ *     orbitHomePosition = Position(x = 0f, y = 0.5f, z = 2.45f),
+ *     targetPosition    = Position(x = 0f, y = 0f, z = 0f)
+ * )
+ * ```
+ *
+ * ### How far away the camera actually ends up
+ *
+ * `orbitHomePosition` is the eye's **absolute world position**: Filament's `OrbitManipulator`
+ * assigns it verbatim (`mEye = mProps.orbitHomePosition`, defaulting to `(0, 0, 1)`) and never
+ * re-bases it on `targetPosition`. `targetPosition` sets the orbit pivot and the direction the
+ * camera initially looks in — it does not set the distance.
+ *
+ * What makes that easy to get wrong is the interaction with auto-centring. Under `SceneView`'s
+ * default `autoCenterContent = true` the DSL content is translated so its bounding-box centre
+ * lands on the **world origin**, so the distance your subject is framed from is
+ * **`|orbitHomePosition|`** — the coordinates you gave your nodes do not survive, and
+ * `targetPosition` does not enter into it:
+ *
+ * ```kotlin
+ * // Nodes authored at z = -1.5 are auto-centred back onto the origin, so this frames the
+ * // subject from |(0, 0.2, 1.2)| ≈ 1.22 m — NOT from |(0, 0.2, 1.2) − (0, 0, -1.5)| ≈ 2.7 m.
+ * rememberCameraManipulator(
+ *     orbitHomePosition = Position(0f, 0.2f, 1.2f),
+ *     targetPosition    = Position(0f, 0f, -1.5f)
+ * )
+ * ```
+ *
+ * Aiming `targetPosition` at where the content was authored does not push the subject away from
+ * the camera; it only tilts the view. Both readings coincide whenever the target is the origin,
+ * which is why every doc example looks fine and why this cost issue #2873 its diagnosis (the demo
+ * was framed from 1.22 m while its own comment claimed 2.7 m). Pass `autoCenterContent = false`
+ * to `SceneView` when authored world positions should survive; the framing distance is then
+ * `|orbitHomePosition − contentCentre|`. The `orbitRadius` overload sidesteps all of this for the
+ * common case: with the default (origin) target its value *is* the subject distance (#2932).
+ *
+ * @param orbitHomePosition Camera's initial eye position in **world space** (optional). Its
+ *                          *length* is the framing distance under the default
+ *                          `autoCenterContent = true` — see above. Omitting it does **not** give
+ *                          you Filament's `(0, 0, 1)`: `SceneView`'s own default manipulator
+ *                          passes `cameraNode.worldPosition`, i.e. `(0, 0.4, 2.75)` ≈ 2.78 m for
+ *                          the default [CameraNode]. No built-in gesture returns the camera to
+ *                          this position either; `onDoubleTap` is a plain callback that
+ *                          `SceneView` forwards to your code and never wires to the camera.
+ * @param targetPosition    Point in world space the camera orbits around and initially looks at
+ *                          (optional; defaults to the origin). Does not affect the distance.
+ * @param creator           Factory for the manipulator. Override to set a custom orbit speed, etc.
+ */
+@Composable
+fun rememberCameraManipulator(
+    orbitHomePosition: Position? = null,
+    targetPosition: Position? = null,
+    creator: () -> CameraGestureDetector.CameraManipulator = {
+        createDefaultCameraManipulator(orbitHomePosition, targetPosition)
+    }
+) = remember(creator)
+
+/**
  * Creates and remembers a [ViewNode.WindowManager] required by [SceneScope.ViewNode].
  *
  * `ViewNode` renders Compose UI content onto a 3D plane by attaching an off-screen `Window`
@@ -1778,7 +1852,7 @@ fun Scene(
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        eyePosition = cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),

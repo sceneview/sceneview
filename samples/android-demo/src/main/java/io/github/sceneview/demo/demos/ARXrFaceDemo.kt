@@ -132,7 +132,7 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
                 engine = engine,
                 materialLoader = materialLoader,
                 cameraManipulator = rememberCameraManipulator(
-                    eyePosition = Position(0f, 0f, 0.45f),
+                    orbitHomePosition = Position(0f, 0f, 0.45f),
                     targetPosition = Position(0f, 0f, 0f),
                 ),
             ) {

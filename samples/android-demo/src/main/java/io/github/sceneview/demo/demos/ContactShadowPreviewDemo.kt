@@ -295,7 +295,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
                 // pair in the lower half and the wall TV in the upper half. Seen high and far
                 // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-                eyePosition = Position(x = 0.0f, y = 1.35f, z = 3.3f),
+                orbitHomePosition = Position(x = 0.0f, y = 1.35f, z = 3.3f),
                 targetPosition = Position(x = 0.0f, y = 0.75f, z = -0.5f),
             ),
         ) {

@@ -32,7 +32,7 @@ class ShapeFramingTest {
 
     @Test
     fun `the old framing really was clipped`() {
-        // eyePosition = (0, 0, 1.5) → 1.5 m out, not the 2.5 m the target suggested.
+        // orbitHomePosition = (0, 0, 1.5) → 1.5 m out, not the 2.5 m the target suggested.
         val fill = ShapeFraming.horizontalFillRatio(1.5f, GeometryLayout.PHONE_PORTRAIT_ASPECT)
         assertTrue("expected the 1.5 m framing to clip, it fills $fill", fill > 1f)
     }

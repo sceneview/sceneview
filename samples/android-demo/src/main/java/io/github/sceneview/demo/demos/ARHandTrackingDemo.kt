@@ -126,7 +126,7 @@ fun ARHandTrackingDemo(onBack: () -> Unit) {
                 engine = engine,
                 materialLoader = materialLoader,
                 cameraManipulator = rememberCameraManipulator(
-                    eyePosition = Position(0f, 0f, 0.55f),
+                    orbitHomePosition = Position(0f, 0f, 0.55f),
                     targetPosition = Position(0f, 0f, 0f),
                 ),
             ) {

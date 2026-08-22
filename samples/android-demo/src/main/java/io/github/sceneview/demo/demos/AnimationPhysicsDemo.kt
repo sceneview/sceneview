@@ -1136,7 +1136,7 @@ private fun PhysicsSection(
                 cameraNode = cameraNode,
                 onFrame = firstFrame.onFrame,
                 cameraManipulator = rememberCameraManipulator(
-                    eyePosition = cameraNode.worldPosition
+                    orbitHomePosition = cameraNode.worldPosition
                 )
             ) {
                 // Left-side counter-fill — same as v4.3.1, kept verbatim.
