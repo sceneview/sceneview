@@ -17,6 +17,9 @@ struct ReflectionProbesDemo: View {
     @State private var selectedEnvironment: ProbeEnvironment = .sunset
     @State private var intensity: Double = 1.0
     @State private var showSphere: Bool = true
+    /// The selected environment, loaded once per selection and handed to the
+    /// probe as its reflection texture. `nil` until the load lands (#3158).
+    @State private var probeEnvironment: EnvironmentResource?
 
     var body: some View {
         ZStack {
@@ -32,6 +35,10 @@ struct ReflectionProbesDemo: View {
         .demoSettingsSheet {
             settingsContent
         }
+        .task(id: selectedEnvironment) {
+            probeEnvironment = nil
+            probeEnvironment = try? await selectedEnvironment.sceneEnvironment.load()
+        }
     }
 
     // MARK: - Scene
@@ -43,15 +50,50 @@ struct ReflectionProbesDemo: View {
         }
         .cameraControls(.orbit)
         .environment(selectedEnvironment.sceneEnvironment)
-        .id("\(selectedEnvironment.id)-\(showSphere)-\(String(format: "%.2f", intensity))")
+        // The key also flips when the probe texture finishes loading: keyed on
+        // the picker alone the scene would already sit at its final key while
+        // `probeEnvironment` is still `nil`, and the probe would stay empty.
+        .id("\(selectedEnvironment.id)-\(showSphere)-\(String(format: "%.2f", intensity))-\(probeEnvironment != nil)")
         .ignoresSafeArea()
+    }
+
+    /// Builds the demo's probe: a 4 m box at the origin carrying the selected
+    /// environment as its reflection texture.
+    ///
+    /// `ReflectionProbeNode.intensity` only reaches RealityKit through the
+    /// `ImageBasedLightComponent` that `environmentTexture(_:)` installs — a
+    /// probe without a texture is an empty `Entity`, and the intensity slider
+    /// driving it is inert (#3158). Static and internal so
+    /// `ReflectionProbesDemoTests` can pin that the demo path installs the
+    /// component.
+    @MainActor
+    static func makeProbe(intensity: Float, environment: EnvironmentResource?) -> ReflectionProbeNode {
+        let probe = ReflectionProbeNode.box(size: [4, 4, 4], intensity: intensity)
+        probe.entity.position = .zero
+        if let environment {
+            probe.environmentTexture(environment)
+        }
+        return probe
+    }
+
+    /// Points a reflective entity at the probe instead of the scene's global IBL.
+    ///
+    /// RealityKit resolves `ImageBasedLightReceiverComponent` per entity: the
+    /// receiver `environmentTexture(_:)` sets lives on the probe entity itself,
+    /// so the geometry that should *show* the probe needs its own receiver
+    /// targeting the probe — otherwise it keeps reflecting the global
+    /// environment and the probe contributes nothing (#3158).
+    @MainActor
+    static func attach(_ entity: Entity, to probe: ReflectionProbeNode) {
+        entity.components.set(
+            ImageBasedLightReceiverComponent(imageBasedLight: probe.entity)
+        )
     }
 
     @MainActor
     private func buildScene(root: Entity) {
         // Centre box probe
-        let probe = ReflectionProbeNode.box(size: [4, 4, 4], intensity: Float(intensity))
-        probe.entity.position = .zero
+        let probe = Self.makeProbe(intensity: Float(intensity), environment: probeEnvironment)
         root.addChild(probe.entity)
 
         if showSphere {
@@ -61,6 +103,7 @@ struct ReflectionProbesDemo: View {
                 material: .pbr(color: .white, metallic: 0.9, roughness: 0.05)
             )
             sphere.entity.position = .init(x: 0, y: 0, z: -1.5)
+            Self.attach(sphere.entity, to: probe)
             root.addChild(sphere.entity)
         }
 
@@ -77,6 +120,7 @@ struct ReflectionProbesDemo: View {
                 material: .pbr(color: .white, metallic: metals[i], roughness: 0.1)
             )
             cube.entity.position = pos
+            Self.attach(cube.entity, to: probe)
             root.addChild(cube.entity)
         }
 
