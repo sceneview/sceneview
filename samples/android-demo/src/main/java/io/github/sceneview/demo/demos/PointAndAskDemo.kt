@@ -180,9 +180,9 @@ private class AnswerPanel(
  * is shown in an overlay card. Fully offline — the frame never leaves the device.
  *
  * Long-press a surface to drop a virtual prop into the room: because the capture is the
- * composited window (PixelCopy), the on-device model *sees the augmented scene* — ask
- * "Is there an animal in this room?" after placing the shiba and Nano answers about a
- * dog that only exists in AR. That is the demo's whole point.
+ * composited window (PixelCopy), the on-device model *sees the augmented scene* — tap the
+ * shiba you just placed and Nano describes a dog that only exists in AR. That is the
+ * demo's whole point, which is why a tap on a node is never swallowed (#3187).
  *
  *  - Availability is gated honestly: AICore devices (Pixel 8+, recent flagships) get the
  *    real engine; a `DOWNLOADABLE` model gets a download CTA with progress; unsupported
@@ -196,8 +196,10 @@ private class AnswerPanel(
  * overlays, offline badge, auto-dismissing answer card. P2 anchors the answer **in world
  * space**: the tap is hit-tested against the latest frame and a hit on a tracked surface
  * pins an [AnswerPanel] (`AnchorNode` + `ViewNode`) that holds its place in the room while
- * the camera orbits it. Panels accumulate — one per successful tap — until Reset; a tap
- * that hits nothing trackable keeps the screen-space card.
+ * the camera orbits it. Panels accumulate — one per successful tap — until Reset. The
+ * screen-space card shows every round regardless (thinking, answer, failure) — it is the
+ * surface the user can always see, the anchored card is the one that stays in the room
+ * (#3188).
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
@@ -271,12 +273,13 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // composite is a clean viewfinder (no pill, no card baked into the AI's input).
     var hideOverlaysForCapture by remember { mutableStateOf(false) }
 
-    // Free-form question (P3): blank = the default English prompt (best Nano quality).
-    // Saveable so a rotation mid-session keeps the user's custom question. Film mode
-    // prefills the "AI sees the augmented room" reveal question.
+    // Free-form question (P3): blank = the default English prompt (best Nano quality),
+    // which asks the model to describe what the tap pointed at. The field starts blank so
+    // the placeholder shows that default instead of a canned question that has nothing to
+    // do with what the user tapped (#3187). Saveable so a rotation mid-session keeps the
+    // user's custom question.
     val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
-    val prefillQuestion = stringResource(R.string.demo_point_and_ask_prefill_question)
-    var questionText by rememberSaveable { mutableStateOf(prefillQuestion) }
+    var questionText by rememberSaveable { mutableStateOf("") }
     val question = questionText.trim().ifBlank { defaultQuestion }
     // Resolved at composition — anchored panels route results from non-composable callbacks.
     val failedText = stringResource(R.string.demo_point_and_ask_error)
@@ -313,10 +316,20 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         hideOverlaysForCapture = true
         delay(CAPTURE_OVERLAY_SETTLE_MS)
         val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+        // If PixelCopy never calls back, nothing else would ever leave `Capturing`: the
+        // overlays stay hidden, `busy` stays true and every later tap is dropped — a
+        // permanent blank viewfinder (#3188). The round is failed after a timeout instead;
+        // `roundLive` keeps a late callback from resurrecting it.
+        var roundLive = true
         PixelCopy.request(
             activity.window,
             bitmap,
             { result ->
+                if (!roundLive) {
+                    bitmap.recycle()
+                    return@request
+                }
+                roundLive = false
                 hideOverlaysForCapture = false
                 if (result == PixelCopy.SUCCESS) {
                     askState = AskState.Thinking
@@ -328,6 +341,12 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             },
             Handler(Looper.getMainLooper()),
         )
+        delay(CAPTURE_TIMEOUT_MS)
+        if (roundLive) {
+            roundLive = false
+            hideOverlaysForCapture = false
+            onResult(AskState.Failed)
+        }
     }
 
     // Auto-dismiss a completed answer so nothing lingers over the viewfinder.
@@ -419,7 +438,18 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     .padding(end = settingsFabReservedSpace),
             ) {
                 when (val status = engineStatus) {
-                    null -> Unit
+                    // Say so in words while the availability check runs: a blank bottom
+                    // edge here was indistinguishable from a broken demo (#3188).
+                    null -> BottomCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text(
+                                text = stringResource(R.string.demo_point_and_ask_status_checking),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                    }
 
                     AskEngineStatus.Unavailable -> BottomCard {
                         Text(
@@ -542,10 +572,15 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 },
                 onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { e, node ->
+                    onSingleTapConfirmed = { e, _ ->
                         // `busy` is hoisted to the demo scope so the status pill above
                         // shares it — see its declaration for why askState is not enough.
-                        if (node == null && engineStatus == AskEngineStatus.Ready && !busy) {
+                        //
+                        // The hit node is deliberately ignored: "tap anything" includes the
+                        // prop you just dropped and an answer already pinned. A `node ==
+                        // null` guard here swallowed every tap on the object the user most
+                        // wanted described — no ping, no capture, no answer (#3187).
+                        if (engineStatus == AskEngineStatus.Ready && !busy) {
                             ping = Offset(e.x, e.y) to System.nanoTime()
                             // P2 — pin the answer where the user pointed. The hit-test runs
                             // on the latest frame, the same one the capture is about to
@@ -767,6 +802,9 @@ private const val PROP_SCALE_UNITS = 0.45f
 /** Frames-settle delay between hiding overlays and the PixelCopy. */
 private const val CAPTURE_OVERLAY_SETTLE_MS = 120L
 
+/** A PixelCopy that has not called back by then fails the round instead of wedging it. */
+private const val CAPTURE_TIMEOUT_MS = 3_000L
+
 /** A finished answer stays on screen this long, then clears the viewfinder. */
 private const val ANSWER_AUTO_DISMISS_MS = 12_000L
 
@@ -794,21 +832,26 @@ private const val PANEL_SCALE = 0.15f
 private const val MAX_PANELS = 8
 
 /**
- * Routes one ask round's results: into [panel] when the tap pinned one (P2), otherwise to
- * [fallback], the screen-space card. With a panel, [fallback] is also driven back to
- * [AskState.Idle] so the bottom sheet hands the round over instead of showing the same
- * answer twice.
+ * Routes one ask round's results: always to [screenCard] (the bottom card), and ALSO into
+ * [panel] when the tap pinned one (P2).
+ *
+ * The screen card is never handed off. An earlier version drove it back to [AskState.Idle]
+ * once a panel existed, so an anchored round drew zero screen chrome — no card, no pill, no
+ * failure text — and when the in-scene card was off-screen, edge-on or its texture had not
+ * come up, the answer was simply invisible (#3188). The bottom card is the guaranteed
+ * surface; the anchored card is the bonus that stays in the room after the bottom card
+ * auto-dismisses.
  */
 private fun answerSink(
     panel: AnswerPanel?,
     failedText: String,
-    fallback: (AskState) -> Unit,
+    screenCard: (AskState) -> Unit,
 ): (AskState) -> Unit = if (panel == null) {
-    fallback
+    screenCard
 } else {
     { state ->
         panel.accept(state, failedText)
-        fallback(AskState.Idle)
+        screenCard(state)
     }
 }
 

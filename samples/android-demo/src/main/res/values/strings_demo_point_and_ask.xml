@@ -25,10 +25,8 @@
     <!-- Free-form question input (P3) -->
     <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>
 
-    <!-- The default prompt sent to the model — English on purpose (best on-device answer quality). -->
-    <string name="demo_point_and_ask_question" translatable="false">What am I looking at? Answer in one short sentence.</string>
-
-    <!-- Film-mode prefill — the "AI sees the augmented room" reveal question. Sent to the
-         model as-is, so English on purpose like demo_point_and_ask_question. -->
-    <string name="demo_point_and_ask_prefill_question" translatable="false">Is there an animal in this room?</string>
+    <!-- The default prompt sent to the model when the question field is blank — English on
+         purpose (best on-device answer quality). A tap means "describe what I'm pointing at",
+         so the default asks exactly that (#3187). -->
+    <string name="demo_point_and_ask_question" translatable="false">Describe what I\'m pointing at, in one short sentence.</string>
 </resources>
