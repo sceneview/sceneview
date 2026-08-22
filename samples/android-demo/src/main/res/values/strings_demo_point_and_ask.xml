@@ -29,4 +29,11 @@
          purpose (best on-device answer quality). A tap means "describe what I'm pointing at",
          so the default asks exactly that (#3187). -->
     <string name="demo_point_and_ask_question" translatable="false">Describe what I\'m pointing at, in one short sentence.</string>
+
+    <!-- Voice input (#3083) -->
+    <string name="demo_point_and_ask_voice_cd">Ask by voice</string>
+    <string name="demo_point_and_ask_voice_prompt">Ask a question</string>
+
+    <!-- Drop-3D mode picker (#3083) -->
+    <string name="demo_point_and_ask_prop_picker_label">Long-press drops</string>
 </resources>
