@@ -60,4 +60,6 @@ Full API reference: [`llms.txt`](./llms.txt).
 `.github/workflows/ci.yml` is the one PR workflow. Its `changes` job detects touched
 paths and gates every other job; `changes-verdict` ("Path filter completed") always runs
 and is the required check. Heavy suites (`render-tests.yml`, `device-qa.yml`) run
-nightly, not per PR. Details in [CONTRIBUTING.md](CONTRIBUTING.md).
+on push to `main` and nightly, never cancelling each other; the one per-PR
+exception is `render-tests.yml`'s `android-library-render` job, path-gated on
+`sceneview/**`, `sceneview-core/**` and the Gradle files (#3216). Details in [CONTRIBUTING.md](CONTRIBUTING.md).
