@@ -6,7 +6,7 @@ composeMultiplatform = "1.11.1"
 
 # AndroidX Core
 coreKtx = "1.18.0"
-appcompat = "1.7.1"
+appcompat = "1.8.0"
 fragmentKtx = "1.8.9"
 
 # Compose
