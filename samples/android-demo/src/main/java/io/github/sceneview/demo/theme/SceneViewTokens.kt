@@ -1,6 +1,11 @@
 package io.github.sceneview.demo.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.SpringSpec
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -28,6 +33,32 @@ object SceneViewTokens {
         val glassBorderLight = Color(0x14FFFFFF)
         val glassBorderDark = Color(0x14FFFFFF)
         val glassBorderWidth = 1.dp
+    }
+
+    /**
+     * `DESIGN.md` — Liquid Glass, the "button glass" row, as the demo chrome uses it.
+     *
+     * Theme-independent on purpose: the chrome floats over a live Filament/ARCore
+     * viewport, which is media, not a themed surface. White on media reads in both
+     * themes, and the fill is the same 8 % in light and dark per the spec. There is
+     * no blur: a `SurfaceView` cannot be sampled by a Compose render effect.
+     */
+    object Glass {
+        /** `glass-surface` over media — white at 8 %. */
+        val surface = Color(0x14FFFFFF)
+        /** `glass-border` — white at 8 %, 1 dp. */
+        val border = Color(0x14FFFFFF)
+        val borderWidth = 1.dp
+        /** Foreground on glass over media: always white. */
+        val onGlass = Color.White
+        /** Secondary foreground on glass — white at 72 %. */
+        val onGlassMuted = Color(0xB8FFFFFF)
+        /** `GlassIconButton` visual diameter. The touch target is [Layout.touchTarget]. */
+        val iconButtonSize = 44.dp
+        /** `GlassPill` height. */
+        val pillHeight = 36.dp
+        /** `GlassPill` horizontal content padding. */
+        val pillPaddingHorizontal = 14.dp
     }
 
     /** `DESIGN.md` — Spacing scale (`space-*`). */
@@ -59,6 +90,31 @@ object SceneViewTokens {
         const val longMillis = 700
     }
 
+    /**
+     * Demo-chrome motion (`final-spec.md` §6): one spring, one fade.
+     *
+     * The spring drives dock show/hide and press scale; the fade drives every
+     * opacity change in the chrome (chrome toggle, menu, preview crossfade uses
+     * [Duration.mediumMillis]). Nothing else animates.
+     */
+    object Motion {
+        const val springDampingRatio = 0.85f
+        const val springStiffness = 450f
+        const val fadeMillis = 300
+        /** Press scale on dock items and glass buttons. */
+        const val pressScale = 0.97f
+
+        fun <T> spring(): SpringSpec<T> = spring(
+            dampingRatio = springDampingRatio,
+            stiffness = springStiffness,
+        )
+
+        fun <T> fade(): TweenSpec<T> = tween(
+            durationMillis = fadeMillis,
+            easing = FastOutSlowInEasing,
+        )
+    }
+
     /** `DESIGN.md` — Easing curves (`ease-*`). */
     object Ease {
         val spring = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
@@ -70,6 +126,12 @@ object SceneViewTokens {
         val containerPaddingDesktop = 24.dp
         val containerPaddingMobile = 16.dp
         val navigationHeight = 64.dp
+        /** Minimum touch target (M3 / WCAG). */
+        val touchTarget = 48.dp
+        /** Height of the demo dock (`HorizontalFloatingToolbar`). */
+        val dockHeight = 64.dp
+        /** Dock items are [touchTarget] square; their icons are this size. */
+        val dockIconSize = 22.dp
         val heroStageHeight = 360.dp
         const val mediaAspect = 1.25f
     }

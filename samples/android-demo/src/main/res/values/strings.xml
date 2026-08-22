@@ -265,6 +265,16 @@
     <string name="demo_chip_bundled">Offline model</string>
 
     <!-- DemoScaffold v2 bottom-sheet settings (#1154) -->
+    <!-- Identity-pill asset-source suffix (DemoScaffold top row). -->
+    <string name="demo_source_streamed">Streamed</string>
+    <string name="demo_source_streaming">Streaming</string>
+    <string name="demo_source_bundled">Offline</string>
+    <!-- Overflow menu + stalled-load card (DemoScaffold). -->
+    <string name="demo_menu_cd">More options</string>
+    <string name="demo_menu_qa_mode">QA mode</string>
+    <string name="demo_loading_stalled_title">Still loading…</string>
+    <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
+    <string name="demo_loading_retry">Retry</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>

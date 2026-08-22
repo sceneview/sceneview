@@ -1,45 +1,64 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package io.github.sceneview.demo
 
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Feedback
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -50,8 +69,6 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,32 +84,39 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassIconButton
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Asset source state surfaced in the per-demo indicator chip (#1152 Stage 3).
+ * Asset source state surfaced as the suffix of the identity pill (#1152 Stage 3).
  *
  * Demos that load models via `SketchfabAssetResolver` expose this state to
  * advertise the offline / streaming / cached origin of the currently visible
- * asset. The chip floats top-end of the scene area and is intentionally
- * compact + low-contrast so it doesn't compete with the 3D content.
+ * asset.
  *
  * - [Streamed] — model came from the Sketchfab CDN and is now cached on disk
  *   (LRU). Subsequent launches are instant.
@@ -101,154 +125,79 @@ import kotlinx.coroutines.launch
  * - [Bundled] — no API key or network → showing the offline fallback declared
  *   in the slug registry. Demos still render fully.
  *
- * Demos that never touch the resolver should pass `null` for the chip param so
- * the chip is hidden entirely.
+ * Demos that never touch the resolver pass `null` so no suffix is shown.
  */
 enum class AssetSourceState { Streamed, Streaming, Bundled }
 
 /**
- * Shared scaffold for all demo screens — version 2 (modal bottom sheet).
+ * One item of the [DemoScaffold] bottom dock.
  *
- * Renders the 3D scene **full-screen** under the top bar, with the user controls
- * tucked behind a ModalBottomSheet — a settings FAB and a peek chip make the
- * controls discoverable without stealing viewport real estate from the showcase.
+ * Rendered as a 48 dp icon button inside the floating toolbar; [label] is its
+ * content description. [selected] tints the icon with the theme primary so a
+ * toggle (wireframe on, grid on) reads as active. At most four items are shown
+ * before the auto-appended Controls item and the optional accent.
+ */
+data class DockItem(
+    val icon: ImageVector,
+    val label: String,
+    val onClick: () -> Unit,
+    val enabled: Boolean = true,
+    val selected: Boolean = false,
+)
+
+/**
+ * Shared scaffold for all demo screens — version 3 (edge-to-edge glass chrome).
  *
- * - `controls == null` → no FAB / no sheet, scene fills the entire area below the top bar.
- * - `controls != null` → a `Tune` FAB pinned to the bottom-end opens the controls
- *   sheet. A small peek chip ("Settings") appears above the FAB to advertise the
- *   gesture (see [#951] discoverability lesson) and retracts after
- *   [PEEK_CHIP_DWELL_MILLIS] so it does not sit on the scene for the whole
- *   session; it comes back whenever the sheet closes or `peekHeader` changes.
- * - `assetSource != null` → an "Streamed / Streaming / Offline model" chip
- *   pinned to the top-end of the scene area, advertising the offline origin
- *   of the currently visible asset (#1152 Stage 3). The chip auto-hides when
- *   `null` so legacy demos stay untouched.
+ * The 3D / AR scene fills the **whole window**. There is no top app bar: the
+ * chrome is a glass layer floating over the media, padded by `safeDrawing`
+ * insets, and it is theme-independent — white on media in light and dark alike
+ * (`final-spec.md` §3, `DESIGN.md` Liquid Glass). The sheets, by contrast,
+ * follow the app theme.
  *
- * Gestures:
- * - **Tap FAB / tap peek chip** → opens the sheet at the detent this demo was
- *   last left at — partial for a demo never opened before, or whatever detent
- *   the user last settled it on (#2084, persisted per demo across process
- *   death via [DemoSheetDetentStore]).
- * - **Long-press peek chip** → toggles `DemoSettings.qaMode` (deterministic
- *   captures for screenshot suites). Previously this gesture lived on the
- *   top-app-bar title; moved to the peek chip so the title can carry the demo
- *   name verbatim and the QA toggle is hidden away from the primary FAB tap
- *   target (long-pressing a FAB is a confusing dual-purpose pattern).
- * - **Drag handle / outside tap / back gesture** → dismiss the sheet.
- * - **AR**: opening the sheet does NOT pause the AR session (the sheet sits on
- *   top of the existing scene; AR keeps tracking 6DOF underneath).
+ * **Top row** (16 dp margins): back glass button (contentDescription
+ * "Navigate back" — Maestro's per-demo liveness gate taps it) · identity pill
+ * with the demo [title] and the optional [assetSource] suffix · the QA pill
+ * (`" QA ×"`, unchanged — the rendering suite keys on it) · overflow glass
+ * button opening a menu with Reset ([onReset]), Reset settings
+ * ([onResetSettings]), Feedback and the QA-mode toggle.
  *
- * The sheet content is rendered inside a vertically-scrolling Column so the same
- * `controls = { ... }` blocks that worked with the v1 side-panel work unchanged
- * — 35 demo call-sites stay byte-identical.
+ * **Dock** (bottom-centre, [HorizontalFloatingToolbar]): up to four [dock]
+ * items, the auto-appended *Controls* item when [controls] is non-null (it
+ * carries `SETTINGS_FAB` + "Demo settings", so `DemoInteractionTest` opens the
+ * same sheet it always did), and an optional [dockAccent] rendered as a filled
+ * primary button — the AR action. Hidden entirely when there is nothing to put
+ * in it. [SETTINGS_FAB_RESERVED_SPACE] names the band it occupies; the
+ * `bottomOverlay` slot stacks **above** that band, measured from the real dock.
  *
- * - `firstFrameRendered != null` → a surface-tinted scrim covers the 3D viewport
- *   until the first Filament frame is presented, hiding the 5–12 s cold-start
- *   black viewport that reads as a crash to users (#1022). Wire it with
- *   [rememberFirstFrameState] + `SceneView(onFrame = …)`. A defensive 12 s
- *   timeout dismisses the scrim even if `onFrame` never fires. Demos that load
- *   models can still layer their own [LoadingScrim] spinner on top.
+ * **Chrome toggle**: a tap on the scene — observed in the `Initial` pointer
+ * pass without consuming, so the 3D view keeps every drag, tap and pinch —
+ * fades the whole chrome out and back (300 ms). Forced visible under
+ * TalkBack (touch exploration) and in `DemoSettings.qaMode`, so automation
+ * that taps the viewport and then asserts on the chrome keeps working.
  *
- *   All 3D (non-AR) demos wire `firstFrameRendered`. The AR demos
- *   (`ARSceneView`-based: `AR*Demo` + `OrbitalARDemo`) **intentionally skip it**
- *   — their viewport is the live camera feed, which appears instantly with no
- *   cold-start black frame, and they already gate behind their own ARCore
- *   permission / availability screens. Passing `firstFrameRendered = null`
- *   from an AR demo is correct, not an oversight (#1361).
+ * **Loading**: `firstFrameRendered != null` covers the viewport until the
+ * first Filament frame is presented (#1022) — with the demo's [previewRes]
+ * image when given, else a surface-tinted scrim — and crossfades it out over
+ * 350 ms. After 12 s without a frame the cover gives way to an explicit
+ * "Still loading…" card with a Retry action ([onReset]) instead of a blank
+ * viewport. AR demos pass `null` on purpose: their viewport is the live camera
+ * feed (#1361).
  *
- * Stage 3 polish (#1154):
- * - `peekHeader` → a short status string (e.g. `"3 anchors placed"`) rendered on
- *   the closed peek chip in place of the generic "Settings" label. Mirrors the
- *   top-center status pills without stealing more viewport. `null` falls back to
- *   the plain "Settings" label.
- * - `onResetSettings != null` → a "Reset" text button is shown in the sheet
- *   header. Tapping it lets a demo clear any in-memory tweaks back to its
- *   defaults. `null` hides the button entirely so demos opt in.
+ * **Controls sheet**: `controls != null` → a [ModalBottomSheet] on the theme's
+ * `surfaceContainer` with a 28 dp top radius, opened from the dock's Controls
+ * item at the detent this demo was last left at (#2084, persisted per demo via
+ * [DemoSheetDetentStore]). [onResetSettings] adds a "Reset" text button in the
+ * sheet header. [peekHeader] — a short live status such as "3 anchors placed"
+ * — is rendered as a glass status pill at the top of the bottom band; the old
+ * peek chip it used to label is gone.
  *
- * Predictable demo reset (#1966):
- * - `onReset != null` → a single, **consistent** reset action is rendered in the
- *   top app bar (a `Refresh` icon, always in the same place across every demo).
- *   Tapping it returns the demo to its initial state and re-arms its core
- *   interaction (clear placed anchors, drop highlights, re-centre the camera,
- *   etc.). A brief confirmation snackbar ("Demo reset — ready to try again")
- *   then tells the user the demo is ready for re-interaction. `null` hides the
- *   action entirely so demos opt in.
- *
- *   This complements (does not replace) [io.github.sceneview.demo.common.SceneActionBar]:
- *   a demo whose reset is *contextual* (only meaningful once something is placed)
- *   can still use the bottom-start action bar, while `onReset` gives every demo
- *   one always-available, always-discoverable reset path in a fixed location —
- *   the predictable re-interaction path #1966 asks for.
- *
- * Collision-free bottom overlays (#2779):
- * - `bottomOverlay != null` → the demo's floating bottom banner / status pill /
- *   answer card is composed **by the scaffold**, in a container that already
- *   knows where the Settings FAB is. Device QA on a Pixel 9 found demos placing
- *   their own `Alignment.BottomCenter` overlay straight under the bottom-end
- *   FAB — a class of defect no single demo can fix on its own, because the FAB
- *   is scaffold chrome and its very presence depends on `controls`.
- *
- *   Put the overlay here instead of in `scene`, and lay it out against
- *   [DemoBottomOverlayScope.settingsFabReservedSpace] — resolved once, here,
- *   from the same `controls != null` condition that decides whether the FAB is
- *   composed at all. A demo whose `controls` is itself conditional (e.g.
- *   `if (DemoSettings.qaMode)`) therefore gets the right inset for free, with
- *   no duplicated condition to drift out of sync.
- *
- *   The slot is drawn above `scene` and below the FAB, so the overlay floats
- *   over the 3D/AR viewport while the FAB stays on top and tappable.
- *
- * Overlay that must never cross the subject (#2957):
- * - `bottomOverlayReservesScene = true` → `scene` is inset at the bottom by the
- *   **measured** height of the `bottomOverlay` band, so the viewport and the
- *   overlay are disjoint rectangles instead of stacked ones. Opt in when the
- *   demo's hero object can descend into the bottom band — device QA on
- *   `contact-shadow-preview` measured the legend chip drawn across 51 % of the
- *   grounded box's width at its landing pose, and no gutter constant can fix
- *   that: where a 3D object lands on screen depends on the viewport, so a value
- *   tuned on one device is wrong on the next. Reserving the band is a *layout*
- *   guarantee — it holds at any screen size, density, font scale and locale.
- *
- *   The default (`false`) keeps the historical float-over-the-viewport
- *   behaviour, which is correct for status pills and answer cards that annotate
- *   camera pixels rather than a modelled subject.
- *
- * Collision-free **top** overlays (#3237):
- * - `topOverlay != null` → the demo's status pill / HUD / warm-up banner is
- *   composed **by the scaffold**, in the mirror image of the `bottomOverlay`
- *   container: a top-aligned [Column] that already knows where the asset-source
- *   chip is.
- *
- *   This slot exists because the scaffold used to own only the bottom band.
- *   The top band was self-service, and a device-QA sweep found **three different
- *   inset reference frames inside the same `Box`**: `ARFogDemo`'s pill at
- *   `Alignment.TopCenter` with a bare `padding(top = 8.dp)` and no inset at all,
- *   the scaffold's own asset-source chip at `TopEnd` adding a full
- *   `windowInsetsPadding(systemBars)` on top of a Scaffold inset it had already
- *   been given, and `MainActivity`'s update banner applying only `statusBars`.
- *   Thirty-five hand-written `.align(Alignment.Top…)` call sites in `demos/`
- *   agreed with none of them. A container that owns three edges and leaves the
- *   fourth to thirty-five authors does not own a layout; this slot is the fourth
- *   edge.
- *
- *   Lay children out against
- *   [DemoTopOverlayScope.assetSourceChipReservedSpace], the same way the bottom
- *   slot uses [DemoBottomOverlayScope.settingsFabReservedSpace]: measured from
- *   the real chip, `0.dp` when this demo passes no `assetSource`, and therefore
- *   never a constant that a longer label or a larger font scale invalidates.
- *
- *   The slot is a [ColumnScope], so a demo with a status pill *and* a
- *   tracking-failure banner *and* a HUD writes all three and they **stack**.
- *   Per-child horizontal placement is `Modifier.align(Alignment.Start / End)` —
- *   a corner HUD stays in its corner without leaving the shared frame.
- *
- * One inset frame for the whole body (#3237):
- *   The scaffold body **consumes** the Scaffold's own padding, so every
- *   descendant sees the same, already-applied insets. Before this, an overlay
- *   that added `windowInsetsPadding(systemBars)` inside the body was applying a
- *   status bar the top app bar had already accounted for, and one that added
- *   nothing was right by accident. Both spellings are now correct and identical,
- *   which is the property that makes the slot safe to migrate into.
+ * **Overlays**: [topOverlay] and [bottomOverlay] are scaffold-owned,
+ * collision-free slots (#2779, #3237). The top slot starts below the identity
+ * row and the bottom slot ends above the dock, both from **measured** bounds,
+ * so no demo constant can drift out of sync with the chrome. Both are Columns:
+ * two children stack, they never overlap. [bottomOverlayReservesScene] insets
+ * the scene by the measured bottom band so the hero object can never descend
+ * under it (#2957).
  */
 @Composable
 fun DemoScaffold(
@@ -263,146 +212,57 @@ fun DemoScaffold(
     topOverlay: (@Composable DemoTopOverlayScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     bottomOverlayReservesScene: Boolean = false,
+    dock: List<DockItem> = emptyList(),
+    dockAccent: DockItem? = null,
+    previewRes: Int? = null,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val resetScope = rememberCoroutineScope()
     val resetConfirmation = stringResource(R.string.demo_reset_done)
+
+    // Chrome visibility. Starts visible; a scene tap toggles it. TalkBack users
+    // explore by touch, so hiding controls behind a viewport tap would strand
+    // them — and qa_mode automation taps the viewport then asserts the chrome.
+    val touchExploration = remember(context) {
+        (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)
+            ?.isTouchExplorationEnabled == true
+    }
+    var chromeToggled by rememberSaveable { mutableStateOf(true) }
+    val chromeVisible = chromeToggled || touchExploration || DemoSettings.qaMode
+
+    var settingsExpanded by rememberSaveable { mutableStateOf(false) }
+    val hasDock = dock.isNotEmpty() || dockAccent != null || controls != null
+
     Scaffold(
+        // Edge-to-edge: the scene owns every pixel; the chrome applies the insets.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row {
-                        Text(title)
-                        if (DemoSettings.qaMode) {
-                            // Tappable QA pill: tap to disable, so a user who
-                            // long-pressed the peek chip by accident has a
-                            // single-tap escape hatch instead of having to
-                            // guess that another long-press toggles it back
-                            // off. See #951.
-                            Text(
-                                text = " QA ×",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier
-                                    .padding(start = 8.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.tertiaryContainer)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                    ) {
-                                        haptic.medium()
-                                        DemoSettings.qaMode = false
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    .testTag(DemoScaffoldTestTags.QA_PILL),
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_back_button)
-                        )
-                    }
-                },
-                actions = {
-                    // In-app feedback entry point — #1930 requires the feedback
-                    // button "on the 4 tabs AND inside every demo", and a bug
-                    // hit inside a demo is the highest-value feedback case. A
-                    // top-app-bar action is the right slot: a FAB would collide
-                    // with the demo controls `Tune` FAB at the bottom-end.
-                    // Tapping it raises FeedbackOpenRequest, which
-                    // SceneViewDemoApp observes to open the shared bug-report
-                    // sheet (BugReportSheet).
-                    val feedbackCd = stringResource(R.string.feedback_action_cd)
-                    IconButton(
-                        onClick = {
-                            haptic.selection()
-                            io.github.sceneview.demo.feedback.FeedbackOpenRequest.request()
-                        },
-                        modifier = Modifier
-                            .semantics { contentDescription = feedbackCd }
-                            .testTag(DemoScaffoldTestTags.FEEDBACK_ACTION),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Feedback,
-                            contentDescription = null,
-                        )
-                    }
-                    // Predictable, always-in-the-same-place reset action (#1966).
-                    // Every demo that opts in surfaces this single Refresh icon
-                    // in the top bar, so users have one consistent path back to
-                    // a demo's initial state regardless of which demo they are
-                    // in. A brief snackbar then confirms the demo is re-armed.
-                    if (onReset != null) {
-                        val resetCd = stringResource(R.string.demo_reset_cd)
-                        IconButton(
-                            onClick = {
-                                haptic.medium()
-                                onReset()
-                                resetScope.launch {
-                                    snackbarHostState.currentSnackbarData?.dismiss()
-                                    snackbarHostState.showSnackbar(
-                                        message = resetConfirmation,
-                                        duration = SnackbarDuration.Short,
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .semantics { contentDescription = resetCd }
-                                .testTag(DemoScaffoldTestTags.RESET_ACTION),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = null,
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
     ) { padding ->
         // Height of the `bottomOverlay` band, measured (never assumed) so
         // `bottomOverlayReservesScene` can inset the viewport by exactly the room the
-        // overlay takes — including its own gutter, the system-bar inset, and whatever
-        // the current font scale and locale do to the chip text (#2957).
+        // overlay takes — including the dock band it stacks on, the system-bar inset,
+        // and whatever the font scale does to the chip text (#2957).
         var bottomOverlayBandPx by remember { mutableIntStateOf(0) }
         val bottomOverlayBand = with(LocalDensity.current) { bottomOverlayBandPx.toDp() }
 
-        // Width of the Settings FAB cluster, measured for the same reason the band height
-        // is: the widest thing in that corner is the peek chip, and a chip is *text*. Its
-        // width follows the font scale, the locale and the demo's own `peekHeader`, none
-        // of which a constant can anticipate — see [SETTINGS_FAB_RESERVED_SPACE].
-        var settingsClusterWidthPx by remember { mutableIntStateOf(0) }
-        val settingsClusterWidth = with(LocalDensity.current) { settingsClusterWidthPx.toDp() }
+        // Height of the dock band (toolbar + gutter, excluding the navigation-bar
+        // inset), measured for the same reason: the toolbar height is a token, but a
+        // measurement is what keeps the reserve honest under a future redesign. Kept
+        // as a high-water mark so a chrome fade-out cannot reflow the overlay.
+        var dockBandPx by remember { mutableIntStateOf(0) }
+        val dockBand = with(LocalDensity.current) { dockBandPx.toDp() }
 
-        // Width of the asset-source chip at the top-end — the top band's mirror of the
-        // Settings cluster measurement, and measured for the same reason: the chip is a
-        // dot plus a *translated string* ("Offline model" / "Modèle hors ligne"), so no
-        // constant survives a locale or a font-scale change. `0` while `assetSource` is
-        // null, because then no chip is composed and the whole top edge is free.
-        var assetChipWidthPx by remember { mutableIntStateOf(0) }
-        val assetChipWidth = with(LocalDensity.current) { assetChipWidthPx.toDp() }
+        // Height of the identity row (glass buttons + gutter, excluding the status-bar
+        // inset) — the top band's mirror of the dock band.
+        var identityRowPx by remember { mutableIntStateOf(0) }
+        val identityRow = with(LocalDensity.current) { identityRowPx.toDp() }
 
-        // Scene always full-screen below the top app bar.
-        //
-        // `consumeWindowInsets(padding)` is what gives this Box's whole subtree ONE
-        // inset reference frame. `padding` already carries the top app bar, the
-        // navigation bar and (in landscape) the side bars; without the consume, a child
-        // writing `windowInsetsPadding(systemBars)` applied them a SECOND time while a
-        // child writing nothing applied them once — and both spellings were live in
-        // this file. Consuming makes the two identical, so migrating an overlay into a
-        // scaffold slot cannot move it (#3237).
+        // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
+        // reference frame (#3237). With `contentWindowInsets = 0` the padding is
+        // empty, so every child that applies `safeDrawing` gets the real bars once.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -414,79 +274,84 @@ fun DemoScaffold(
                     .fillMaxSize()
                     .padding(
                         bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
-                    ),
+                    )
+                    // Observe taps without taking them: the 3D view keeps its drags.
+                    .sceneTapToggle(enabled = !touchExploration) {
+                        chromeToggled = !chromeToggled
+                    },
                 content = scene,
             )
 
             if (firstFrameRendered != null) {
-                FirstFrameScrim(firstFrameRendered = firstFrameRendered)
+                FirstFrameCover(
+                    firstFrameRendered = firstFrameRendered,
+                    previewRes = previewRes,
+                    onRetry = onReset,
+                )
             }
 
-            // Top band, mirror of the bottom one: the demo's own overlays first, then
-            // the scaffold's chip on top of them — the same z-order rule the bottom band
-            // uses for the Settings FAB, so scaffold chrome always stays tappable and
-            // visible whatever a demo puts in its slot.
+            // Top band: the demo's own overlays below the identity row, then the
+            // chrome on top so scaffold controls always win the z-order.
             if (topOverlay != null) {
                 DemoTopOverlay(
-                    // Resolved from the same `assetSource != null` condition that decides
-                    // whether the chip is composed at all, so a demo whose asset source is
-                    // itself conditional gets the right inset with no duplicated condition
-                    // to drift out of sync — exactly how the bottom slot resolves the FAB.
-                    reservedSpace = if (assetSource != null) assetChipWidth else 0.dp,
+                    reservedTop = identityRow,
                     content = topOverlay,
                 )
             }
 
-            if (assetSource != null) {
-                AssetSourceChip(
-                    state = assetSource,
-                    onWidthChanged = { assetChipWidthPx = it },
-                )
-            }
-
-            // Rendered before the FAB layer so the FAB always wins the z-order and
-            // stays tappable — the overlay never needs to fight it for either
-            // pixels (it reserves the FAB's band) or touches.
-            if (bottomOverlay != null) {
+            // Bottom band: status pill + demo overlays stacked above the dock.
+            if (bottomOverlay != null || peekHeader != null) {
                 DemoBottomOverlay(
-                    // The FAB only exists when the demo declares `controls`; resolving
-                    // the reserve from the same condition is what keeps a demo like
-                    // `ARStreetscapeDemo` (controls gated on `DemoSettings.qaMode`)
-                    // correct without restating the condition in the demo (#2779).
-                    // The measured cluster width wins whenever it exceeds the constant —
-                    // which is exactly what happens at a large font scale, where the peek
-                    // chip outgrows the 104 dp the constant reserves for it. The constant
-                    // stays as the floor: it is what the first composition has to go on,
-                    // before any measurement has landed.
-                    reservedSpace = if (controls != null) {
-                        maxOf(SETTINGS_FAB_RESERVED_SPACE, settingsClusterWidth)
-                    } else {
-                        0.dp
-                    },
+                    reservedBottom = if (hasDock) maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand) else 0.dp,
                     onBandHeightChanged = { bottomOverlayBandPx = it },
+                    status = peekHeader,
                     content = bottomOverlay,
                 )
             }
 
-            if (controls != null) {
-                DemoSettingsLayer(
+            DemoChrome(
+                visible = chromeVisible,
+                title = title,
+                assetSource = assetSource,
+                onBack = onBack,
+                onReset = onReset?.let { reset ->
+                    {
+                        haptic.medium()
+                        reset()
+                        resetScope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar(
+                                message = resetConfirmation,
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    }
+                },
+                onResetSettings = onResetSettings,
+                haptic = haptic,
+                dock = dock,
+                dockAccent = dockAccent,
+                controlsItem = if (controls != null) {
+                    DockItem(
+                        icon = Icons.Outlined.Tune,
+                        label = stringResource(R.string.demo_settings_fab_cd),
+                        onClick = {
+                            haptic.selection()
+                            settingsExpanded = true
+                        },
+                    )
+                } else null,
+                onIdentityRowHeight = { identityRowPx = maxOf(identityRowPx, it) },
+                onDockBandHeight = { dockBandPx = maxOf(dockBandPx, it) },
+            )
+
+            if (controls != null && settingsExpanded) {
+                DemoSettingsSheet(
                     demoTitle = title,
                     controlsContent = controls,
                     haptic = haptic,
-                    peekHeader = peekHeader,
                     onResetSettings = onResetSettings,
-                    // High-water mark, not the live value. The peek chip retracts
-                    // after a few seconds, which shrinks this cluster to the bare
-                    // FAB — and if the reserve followed it down, every bottom
-                    // overlay wide enough to have been inset by the chip would
-                    // visibly reflow three seconds after the demo opened. Keeping
-                    // the maximum costs a few dp of over-reserve on the demos with
-                    // the longest `peekHeader`, and buys a layout that never moves
-                    // on its own. Over-reserving is the safe direction here: the
-                    // failure it prevents (#2779) is an overlay touching the chip.
-                    onClusterWidthChanged = {
-                        settingsClusterWidthPx = maxOf(settingsClusterWidthPx, it)
-                    },
+                    onDismissed = { settingsExpanded = false },
                 )
             }
         }
@@ -494,307 +359,558 @@ fun DemoScaffold(
 }
 
 /**
- * Compact chip surfacing the [AssetSourceState] of the demo's currently
- * visible asset. Pinned to the top-end of the scene area so it doesn't crash
- * into the controls FAB at the bottom-end.
- *
- * The inset it applies is `safeDrawing`, not `systemBars`, and it is applied
- * against a body that has already **consumed** the Scaffold's padding — so it
- * resolves to zero in the ordinary case (the top app bar above it already
- * cleared the status bar) and to the real remainder when there is one, e.g. a
- * display cutout wider than the app bar in landscape. Before #3237 it applied a
- * full unconsumed `systemBars`, i.e. a second status bar's worth of padding,
- * which is why the chip sat visibly lower than every hand-placed pill beside it.
- *
- * [onWidthChanged] reports the chip's width — including its gutter — to the
- * `topOverlay` slot, which insets itself by it. The read sits after
- * `windowInsetsPadding` and before the content padding for the same reason the
- * Settings cluster's does: the gutter is real pixels an overlay must not cross,
- * the inset is not the overlay's to count twice.
+ * Observes a tap on the scene without consuming anything, so the 3D view under
+ * it keeps every gesture. Runs in [PointerEventPass.Initial]; a tap is a single
+ * pointer going down and up within the touch slop and before the long-press
+ * timeout. A second pointer, a drag, or a long press is not a tap.
+ */
+private fun Modifier.sceneTapToggle(enabled: Boolean, onTap: () -> Unit): Modifier =
+    if (!enabled) this else pointerInput(Unit) {
+        val slop = viewConfiguration.touchSlop
+        val longPress = viewConfiguration.longPressTimeoutMillis
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            var isTap = true
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.size > 1) isTap = false
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if ((change.position - down.position).getDistance() > slop) isTap = false
+                if (change.uptimeMillis - down.uptimeMillis > longPress) isTap = false
+                if (!change.pressed) {
+                    if (isTap) onTap()
+                    break
+                }
+            }
+        }
+    }
+
+/**
+ * The whole glass layer — identity row on top, dock at the bottom — under one
+ * fade so a scene tap hides and shows it as a unit. The two bands report their
+ * measured heights so the overlay slots can clear them.
  */
 @Composable
-private fun BoxScope.AssetSourceChip(
-    state: AssetSourceState,
-    onWidthChanged: (Int) -> Unit = {},
+private fun BoxScope.DemoChrome(
+    visible: Boolean,
+    title: String,
+    assetSource: AssetSourceState?,
+    onBack: () -> Unit,
+    onReset: (() -> Unit)?,
+    onResetSettings: (() -> Unit)?,
+    haptic: SceneViewHaptic,
+    dock: List<DockItem>,
+    dockAccent: DockItem?,
+    controlsItem: DockItem?,
+    onIdentityRowHeight: (Int) -> Unit,
+    onDockBandHeight: (Int) -> Unit,
 ) {
-    val (label, tint) = when (state) {
-        AssetSourceState.Streamed -> stringResource(R.string.demo_chip_streamed) to
-            MaterialTheme.colorScheme.tertiary
-        AssetSourceState.Streaming -> stringResource(R.string.demo_chip_streaming) to
-            MaterialTheme.colorScheme.primary
-        AssetSourceState.Bundled -> stringResource(R.string.demo_chip_bundled) to
-            MaterialTheme.colorScheme.outline
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(SceneViewTokens.Motion.fade()),
+        exit = fadeOut(SceneViewTokens.Motion.fade()),
+        modifier = Modifier.matchParentSize(),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            DemoIdentityRow(
+                title = title,
+                assetSource = assetSource,
+                onBack = onBack,
+                onReset = onReset,
+                onResetSettings = onResetSettings,
+                haptic = haptic,
+                onHeightChanged = onIdentityRowHeight,
+            )
+            val items = dock.take(DOCK_MAX_ITEMS) + listOfNotNull(controlsItem)
+            if (items.isNotEmpty() || dockAccent != null) {
+                DemoDock(
+                    items = items,
+                    accent = dockAccent,
+                    controlsItem = controlsItem,
+                    onHeightChanged = onDockBandHeight,
+                )
+            }
+        }
     }
+}
+
+/** Maximum number of demo-supplied dock items before the Controls item and the accent. */
+private const val DOCK_MAX_ITEMS = 4
+
+@Composable
+private fun BoxScope.DemoIdentityRow(
+    title: String,
+    assetSource: AssetSourceState?,
+    onBack: () -> Unit,
+    onReset: (() -> Unit)?,
+    onResetSettings: (() -> Unit)?,
+    haptic: SceneViewHaptic,
+    onHeightChanged: (Int) -> Unit,
+) {
     Row(
         modifier = Modifier
-            .align(Alignment.TopEnd)
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top
                 )
             )
-            .onSizeChanged { onWidthChanged(it.width) }
-            .padding(12.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-            .testTag(DemoScaffoldTestTags.ASSET_SOURCE_CHIP)
-            .semantics { contentDescription = "Asset source: $label" },
+            // After the inset, before the gutter: the overlay slot applies the same
+            // inset itself and must not count it twice, but the gutter is real pixels
+            // it must stay clear of.
+            .onSizeChanged { onHeightChanged(it.height) }
+            .padding(SceneViewTokens.Space.md)
+            .testTag(DemoScaffoldTestTags.IDENTITY_ROW),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(tint),
+        GlassIconButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = stringResource(R.string.cd_back_button),
+            onClick = onBack,
         )
-        Text(
-            text = " $label",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+        // The identity pill: full title in the tree, one line on screen.
+        val sourceLabel = assetSource?.let {
+            stringResource(
+                when (it) {
+                    AssetSourceState.Streamed -> R.string.demo_source_streamed
+                    AssetSourceState.Streaming -> R.string.demo_source_streaming
+                    AssetSourceState.Bundled -> R.string.demo_source_bundled
+                }
+            )
+        }
+        GlassPill(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .then(
+                    if (sourceLabel != null) {
+                        Modifier
+                            .testTag(DemoScaffoldTestTags.ASSET_SOURCE_CHIP)
+                            .semantics { contentDescription = "Asset source: $sourceLabel" }
+                    } else Modifier
+                ),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                color = SceneViewTokens.Glass.onGlass,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (sourceLabel != null) {
+                Spacer(Modifier.width(SceneViewTokens.Space.sm))
+                Text(
+                    text = sourceLabel,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = SceneViewTokens.Glass.onGlassMuted,
+                    maxLines = 1,
+                )
+            }
+        }
+        if (DemoSettings.qaMode) {
+            // Tappable QA pill: tap to disable — a single-tap escape hatch for a
+            // user who toggled QA mode from the overflow menu by accident (#951).
+            // Text is exactly `" QA ×"`: the rendering suite keys on it.
+            GlassPill(
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        haptic.medium()
+                        DemoSettings.qaMode = false
+                    }
+                    .testTag(DemoScaffoldTestTags.QA_PILL),
+            ) {
+                Text(
+                    text = " QA ×",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SceneViewTokens.Glass.onGlass,
+                    maxLines = 1,
+                )
+            }
+        }
+        DemoOverflowMenu(
+            onReset = onReset,
+            onResetSettings = onResetSettings,
+            haptic = haptic,
         )
     }
 }
 
 /**
- * Surface-tinted scrim that covers the 3D viewport until the SceneView presents
- * its first Filament frame (#1022). Without it, a 3D demo renders a black
- * viewport for 5–12 s on a cold start while shaders compile — which reads as a
- * crash to a first-time user. All 3D demos wire it; AR demos skip it (#1361).
- *
- * The scrim is an opaque [MaterialTheme.colorScheme.surface] fill (light + dark
- * both covered by the theme token) carrying a small centred progress indicator.
- * Once [firstFrameRendered] flips true it cross-fades out over 350 ms (the
- * `DESIGN.md` `duration-medium` token), revealing the rendered scene underneath.
- *
- * Defensive timeout: if `onFrame` never fires (a broken demo, a viewport that
- * never composes a SceneView) the scrim still dismisses after 12 s so the
- * controls are never permanently blocked.
+ * Overflow glass button + [DropdownMenu]. Feedback keeps `FEEDBACK_ACTION` and
+ * raises [io.github.sceneview.demo.feedback.FeedbackOpenRequest] exactly as the
+ * former top-bar action did (#1930); Reset keeps `RESET_ACTION` (#1966). The
+ * QA-mode toggle moved here from the long-press on the deleted peek chip.
  */
 @Composable
-private fun BoxScope.FirstFrameScrim(
-    firstFrameRendered: androidx.compose.runtime.State<Boolean>,
+private fun DemoOverflowMenu(
+    onReset: (() -> Unit)?,
+    onResetSettings: (() -> Unit)?,
+    haptic: SceneViewHaptic,
 ) {
-    // Defensive fallback: dismiss even if the first frame is never reported.
+    var open by remember { mutableStateOf(false) }
+    Box {
+        GlassIconButton(
+            icon = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.demo_menu_cd),
+            onClick = { open = true },
+            modifier = Modifier.testTag(DemoScaffoldTestTags.OVERFLOW_MENU),
+        )
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            if (onReset != null) {
+                val resetCd = stringResource(R.string.demo_reset_cd)
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.demo_settings_reset)) },
+                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        onReset()
+                    },
+                    modifier = Modifier
+                        .semantics { contentDescription = resetCd }
+                        .testTag(DemoScaffoldTestTags.RESET_ACTION),
+                )
+            }
+            if (onResetSettings != null) {
+                val resetSettingsCd = stringResource(R.string.demo_settings_reset_cd)
+                DropdownMenuItem(
+                    text = { Text(resetSettingsCd) },
+                    leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        haptic.selection()
+                        onResetSettings()
+                    },
+                )
+            }
+            val feedbackCd = stringResource(R.string.feedback_action_cd)
+            DropdownMenuItem(
+                text = { Text(feedbackCd) },
+                leadingIcon = { Icon(Icons.Outlined.Feedback, contentDescription = null) },
+                onClick = {
+                    open = false
+                    haptic.selection()
+                    io.github.sceneview.demo.feedback.FeedbackOpenRequest.request()
+                },
+                modifier = Modifier
+                    .semantics { contentDescription = feedbackCd }
+                    .testTag(DemoScaffoldTestTags.FEEDBACK_ACTION),
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.demo_menu_qa_mode)) },
+                leadingIcon = { Icon(Icons.Outlined.Science, contentDescription = null) },
+                trailingIcon = if (DemoSettings.qaMode) {
+                    { Text("✓", style = MaterialTheme.typography.labelLarge) }
+                } else null,
+                onClick = {
+                    open = false
+                    haptic.medium()
+                    DemoSettings.qaMode = !DemoSettings.qaMode
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Bottom dock: a glass [HorizontalFloatingToolbar] with 48 dp items, 22 dp icons,
+ * and the optional accent as a filled primary button. The dock's shown height
+ * (toolbar + gutter, after the navigation-bar inset) is reported so the bottom
+ * overlay slot can stack above it.
+ */
+@Composable
+private fun BoxScope.DemoDock(
+    items: List<DockItem>,
+    accent: DockItem?,
+    controlsItem: DockItem?,
+    onHeightChanged: (Int) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
+            .onSizeChanged { onHeightChanged(it.height) }
+            .padding(bottom = SceneViewTokens.Space.md),
+    ) {
+        HorizontalFloatingToolbar(
+            expanded = true,
+            modifier = Modifier
+                .height(SceneViewTokens.Layout.dockHeight)
+                .testTag(DemoScaffoldTestTags.DOCK),
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = SceneViewTokens.Glass.surface,
+                toolbarContentColor = SceneViewTokens.Glass.onGlass,
+            ),
+            shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+            trailingContent = if (accent != null) {
+                {
+                    FilledIconButton(
+                        onClick = accent.onClick,
+                        enabled = accent.enabled,
+                        modifier = Modifier
+                            .size(SceneViewTokens.Layout.touchTarget)
+                            .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = accent.icon,
+                            contentDescription = accent.label,
+                            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                        )
+                    }
+                }
+            } else null,
+        ) {
+            items.forEach { item ->
+                DockIconButton(
+                    item = item,
+                    modifier = if (item === controlsItem) {
+                        Modifier.testTag(DemoScaffoldTestTags.SETTINGS_FAB)
+                    } else Modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) SceneViewTokens.Motion.pressScale else 1f,
+        animationSpec = SceneViewTokens.Motion.spring(),
+        label = "dock-press",
+    )
+    IconButton(
+        onClick = item.onClick,
+        enabled = item.enabled,
+        interactionSource = interaction,
+        modifier = modifier
+            .size(SceneViewTokens.Layout.touchTarget)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .semantics { contentDescription = item.label },
+        colors = IconButtonDefaults.iconButtonColors(
+            contentColor = if (item.selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                SceneViewTokens.Glass.onGlass
+            },
+            disabledContentColor = SceneViewTokens.Glass.onGlass.copy(alpha = 0.38f),
+        ),
+    ) {
+        Icon(
+            imageVector = item.icon,
+            contentDescription = null,
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+        )
+    }
+}
+
+/**
+ * Covers the 3D viewport until the SceneView presents its first Filament frame
+ * (#1022): the demo's [previewRes] image when it has one — the same image the
+ * home card shows, so the transition reads as the card coming alive — else a
+ * surface-tinted scrim with a progress indicator. Cross-fades out over
+ * `duration-medium` (350 ms) once [firstFrameRendered] flips, never the reverse.
+ *
+ * After [FIRST_FRAME_SCRIM_TIMEOUT_MS] without a frame the cover fades and an
+ * explicit "Still loading…" card takes its place, with Retry wired to the
+ * demo's reset when it has one — a stalled demo must say so, not go blank.
+ */
+@Composable
+private fun BoxScope.FirstFrameCover(
+    firstFrameRendered: androidx.compose.runtime.State<Boolean>,
+    previewRes: Int?,
+    onRetry: (() -> Unit)?,
+) {
     var timedOut by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(FIRST_FRAME_SCRIM_TIMEOUT_MS)
         timedOut = true
     }
-    val dismissed = firstFrameRendered.value || timedOut
-    // Cross-fade out on the M3 `duration-medium` (350 ms) — the surface fades to
-    // reveal the rendered scene, never the reverse, so it can't imply readiness
-    // and then flash black again (see #1022 rejected-timeout note).
-    val alpha by androidx.compose.animation.core.animateFloatAsState(
+    val rendered = firstFrameRendered.value
+    val dismissed = rendered || timedOut
+    val alpha by animateFloatAsState(
         targetValue = if (dismissed) 0f else 1f,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 350),
-        label = "first-frame-scrim",
+        animationSpec = tween(durationMillis = SceneViewTokens.Duration.mediumMillis),
+        label = "first-frame-cover",
     )
-    if (alpha <= 0f) return
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .alpha(alpha)
-            .background(MaterialTheme.colorScheme.surface)
-            // Swallow touches while the scrim is opaque so a stray tap can't
-            // reach the (not-yet-rendered) scene; lets them through once fading.
-            .then(
-                if (dismissed) Modifier
-                else Modifier.pointerInput(Unit) { detectTapGestures { } }
-            )
-            .testTag(DemoScaffoldTestTags.FIRST_FRAME_SCRIM),
-        contentAlignment = Alignment.Center,
-    ) {
-        androidx.compose.material3.CircularProgressIndicator(
-            modifier = Modifier.size(40.dp),
-            color = MaterialTheme.colorScheme.primary,
-            strokeWidth = 4.dp,
-        )
+    if (alpha > 0f) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(alpha)
+                .background(MaterialTheme.colorScheme.surface)
+                // Swallow touches while the cover is opaque so a stray tap can't
+                // reach the (not-yet-rendered) scene; lets them through once fading.
+                .then(
+                    if (dismissed) Modifier
+                    else Modifier.pointerInput(Unit) { detectTapGestures { } }
+                )
+                .testTag(DemoScaffoldTestTags.FIRST_FRAME_SCRIM),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (previewRes != null) {
+                Image(
+                    painter = painterResource(previewRes),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(SceneViewTokens.Space.xl + SceneViewTokens.Space.sm),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = SceneViewTokens.Space.xs,
+                )
+            }
+        }
+    }
+    if (timedOut && !rendered) {
+        Card(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(SceneViewTokens.Space.lg)
+                .testTag(DemoScaffoldTestTags.LOADING_STALLED),
+            shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(SceneViewTokens.Space.lg),
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            ) {
+                Text(
+                    text = stringResource(R.string.demo_loading_stalled_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.demo_loading_stalled_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (onRetry != null) {
+                    TextButton(
+                        onClick = onRetry,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(stringResource(R.string.demo_loading_retry))
+                    }
+                }
+            }
+        }
     }
 }
 
 private const val FIRST_FRAME_SCRIM_TIMEOUT_MS = 12_000L
 
 /**
- * Stable test tags consumed by `DemoInteractionTest` and any future visual smoke
- * tooling so the controls sheet can be opened deterministically without relying
- * on accessibility-tree heuristics. Kept in the public surface of this file so
- * tests can `import io.github.sceneview.demo.DemoScaffoldTestTags`.
+ * Stable test tags consumed by `DemoInteractionTest`, the band tests and any
+ * future visual smoke tooling so the chrome can be driven deterministically
+ * without relying on accessibility-tree heuristics.
  */
 object DemoScaffoldTestTags {
+    /** The dock's Controls item — historically the settings FAB; the name is the contract. */
     const val SETTINGS_FAB = "demo-settings-fab"
-    const val SETTINGS_PEEK = "demo-settings-peek"
     const val SETTINGS_SHEET = "demo-settings-sheet"
     const val SETTINGS_RESET = "demo-settings-reset"
     const val RESET_ACTION = "demo-reset-action"
     const val FEEDBACK_ACTION = "demo-feedback-action"
+    const val OVERFLOW_MENU = "demo-overflow-menu"
     const val QA_PILL = "demo-qa-pill"
+    /** The identity pill, tagged only when it carries an asset-source suffix. */
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
+    const val IDENTITY_ROW = "demo-identity-row"
+    const val DOCK = "demo-dock"
+    const val DOCK_ACCENT = "demo-dock-accent"
+    /** Glass pill carrying `peekHeader`, first child of the bottom band. */
+    const val STATUS_PILL = "demo-status-pill"
     const val FIRST_FRAME_SCRIM = "demo-first-frame-scrim"
+    const val LOADING_STALLED = "demo-loading-stalled"
     const val BOTTOM_OVERLAY = "demo-bottom-overlay"
     const val TOP_OVERLAY = "demo-top-overlay"
 }
 
 /**
- * Width of the band the Settings FAB reserves at the **bottom-end** of a demo's
- * scene area (#2779).
+ * Height of the band the dock reserves at the **bottom** of a demo's scene
+ * area (#2779, now the dock band).
  *
- * [DemoScaffold] pins its `Tune` FAB `BottomEnd` inside a 16 dp gutter, and an
- * M3 `FloatingActionButton` body is ≈ 56 dp — but the FAB is **not** the widest
- * thing in that corner: the **"Settings" peek chip** rendered beside it is, at
- * ≈ 79 dp. Sizing this band off the FAB alone (the original 88 dp = 56 + 2 × 16)
- * left a bottom overlay ending 324 dp from the start edge while the chip begins
- * at 317 dp — a 7 dp shortfall that put the two in visible contact (device-QA
- * measured a 1 px gap on `ar-streetscape`'s four-line status pill, #2779).
+ * 104 dp: a 64 dp toolbar, its 16 dp gutter, and 24 dp of breathing room so a
+ * bottom overlay reads as stacked above the dock rather than resting on it.
  *
- * So the band is derived from the **chip**, matching how the sibling constant
- * below is derived: **79 dp chip + 16 dp gutter + 8 dp breathing room = 104 dp**.
- * The breathing room is half the FAB's 16 dp because the chip is transient — it
- * peeks and retracts — so it only has to read as "not touching", not as a
- * permanently balanced gutter.
- *
- * ## It is a floor, not the answer (#3229)
- *
- * That 79 dp was measured with the word "Settings" at font scale 1.0. The chip is
- * **text**, so its width follows the font scale, the translation and the demo's
- * own `peekHeader` — and at font scale 1.3 it outgrows this band. Device-QA on
- * the Pixel_7a emulator caught the consequence on two screens at once:
- * `ar-terrain-anchor`'s first-launch banner ran back under the FAB, and
- * `ar-measure`'s "Clear" button was clipped by it. Both were clean at 1.0, which
- * is precisely why a constant is the wrong instrument — it fails only in the
- * configurations nobody screenshots.
- *
- * [DemoScaffold] therefore **measures** the real cluster every composition and
- * reserves `maxOf(this, measured)`. This constant remains as the floor the first
- * composition uses, before any measurement has landed, and as the documented
- * baseline for the 1.0 layout it was tuned against.
- *
- * Do **not** hard-code it in a demo. Read
- * [DemoBottomOverlayScope.settingsFabReservedSpace] inside
- * `DemoScaffold(bottomOverlay = …)` instead: it resolves to this value only when
- * the demo actually renders a FAB, and to `0.dp` when it does not.
- *
- * It has no sibling any more: the tab screens used to reserve a matching
- * `FEEDBACK_FAB_RESERVED_SPACE` for a bottom-**start** feedback chip, and that
- * chip is gone — a FAB floating over a scrolling list masks whatever rests
- * under it at every scroll position but the top one, so it became a card in
- * the About tab instead. This constant survives because a demo's Settings FAB
- * floats over a *scene*, not over a list, and it is a floor rather than the
- * answer (see below).
+ * It is a floor, not the answer (#3229): [DemoScaffold] **measures** the real
+ * dock band every composition and reserves `maxOf(this, measured)`. The
+ * constant is what the first composition has to go on, before any measurement
+ * has landed. Do **not** hard-code it in a demo — the `bottomOverlay` slot
+ * already stacks above the band.
  */
 val SETTINGS_FAB_RESERVED_SPACE = 104.dp
 
 /**
- * How long the Settings peek chip stays on screen before it retracts, in
- * milliseconds.
- *
- * Long enough to be *read*, not merely glimpsed: the chip can carry a demo's own
- * status string, and three seconds covers a short sentence at a comfortable
- * reading pace with room to spare for a user whose attention is on the 3D scene
- * rather than the corner. Short enough that the chip is gone before anyone frames
- * a screenshot, which is the whole point — a demo screen should end up showing
- * the demo.
- *
- * The affordance is not lost when it retracts: the FAB beside it stays, and it is
- * the primary, discoverable way in. The chip is the *hint*, and a hint that never
- * leaves is just clutter.
- */
-private const val PEEK_CHIP_DWELL_MILLIS = 3_000L
-
-/**
  * Receiver of the [DemoScaffold] `bottomOverlay` slot.
- *
- * Carries the one piece of geometry a floating bottom overlay cannot know on its
- * own: how much room the shared Settings FAB is taking at the bottom-end of
- * *this* demo. Two idioms cover every overlay shape:
- *
- * - **Full-width card / banner** →
- *   `Modifier.fillMaxWidth().padding(end = settingsFabReservedSpace)`.
- *   Only the end edge can ever reach the FAB, so only the end edge is inset.
- * - **Centred, content-width pill** → the *same* end-only inset, on a
- *   `fillMaxWidth()` box with `contentAlignment = Alignment.Center`. The pill
- *   then centres in the band that is actually free, which is what a viewer
- *   reads as centred anyway — the occupied corner is visibly occupied.
- *
- *   This used to be a **symmetric** `padding(horizontal = …)`, on the reasoning
- *   that a centred element grows both ways so both edges must be reserved. True,
- *   and unaffordable: it spends the reserve twice to protect one corner. Once
- *   the reserve started tracking the real chip instead of a flat 104 dp, that
- *   doubling left `ar-measure`'s banner **73 dp** wide on a 411 dp screen. The
- *   end-only inset leaves it 242 dp (#3229).
- *
- * Both idioms collapse to a no-op when [settingsFabReservedSpace] is `0.dp`.
  *
  * ## It is a [ColumnScope], and that is the point
  *
- * The slot lays its children out in a bottom-aligned [Column], so a demo that
- * needs a status banner *and* an action bar *and* a legend writes all three and
- * they **stack**. They cannot be made to overlap, because siblings in a Column
- * do not share pixels.
- *
- * That is not a convenience. Before it, the slot was a `Box` and the only place
- * to put a second bottom element was the scene lambda, hand-aligned — and a
- * survey of the demo app found 23 files doing exactly that, against 4 using this
- * slot. `SceneActionBar`'s own KDoc had promised that "status pills … never
- * collide with this bottom-start bar", which was simply untrue: on
- * `ARTerrainAnchorDemo` the default first-launch banner ran straight under both
- * the "Drop here" button and the Settings FAB. Padding cannot fix that class of
- * bug — the banner's height follows its string, its wrap and the font scale —
- * so the container had to stop allowing it.
+ * The slot lays its children out in a bottom-aligned [Column] that the scaffold
+ * has already placed **above the dock band**, so a demo that needs a status
+ * banner *and* an action bar *and* a legend writes all three and they
+ * **stack**. They cannot be made to overlap, because siblings in a Column do not
+ * share pixels — and they cannot land under the dock, because the Column's
+ * bottom edge is the dock's measured top edge (#2779, #3229, #2957).
  */
 @Stable
 class DemoBottomOverlayScope internal constructor(
     private val columnScope: ColumnScope,
     /**
-     * Width of the bottom-end band occupied by the Settings FAB and its peek chip:
-     * the **measured** width of that cluster, floored at
-     * [SETTINGS_FAB_RESERVED_SPACE], when this demo passes `controls` to
-     * [DemoScaffold] — and `0.dp` when it does not (no `controls` → no FAB → the
-     * whole bottom edge is free, and the overlay should use all of it).
+     * Width of the bottom-**end** band a demo overlay must keep clear: `0.dp`.
      *
-     * Measured, not constant, because the widest thing in that corner is a chip
-     * carrying text: at font scale 1.3 it outgrew the constant and put two demos'
-     * bottom overlays back under the FAB (#3229). Reading this value is therefore
-     * the only correct way for a demo to clear the FAB — a hand-picked `dp` is
-     * right until the first font-scale or locale change.
+     * This used to be the Settings FAB cluster. The dock is now bottom-centre and
+     * the whole `bottomOverlay` slot is stacked above its band by the scaffold, so
+     * there is no corner left to clear and the documented idiom
+     * (`padding(end = settingsFabReservedSpace)`) is a no-op. Kept so existing
+     * call sites keep compiling and laying out identically.
      */
     val settingsFabReservedSpace: Dp,
 ) : ColumnScope by columnScope
 
 /**
- * Renders the `bottomOverlay` slot: full scene width, pinned to the bottom of the
- * scene area and clear of the system bars — the one place a demo should put a
- * floating bottom banner, status pill or answer card.
+ * Renders the `bottomOverlay` slot: full scene width, pinned to the bottom of
+ * the scene area, clear of the system bars and **above the dock band**.
  *
- * The container deliberately applies **no horizontal or bottom padding of its
- * own**, so a demo migrating an existing `Alignment.BottomCenter` overlay keeps
- * its own gutter verbatim and only adds the FAB inset. It does apply the same
- * `systemBars` inset the FAB layer uses, so both sit in one coherent frame.
- *
- * [onBandHeightChanged] reports the band's full height — content **plus** the
- * demo's own gutter **plus** the system-bar inset — which is what
+ * [onBandHeightChanged] reports the band's full height — content, the demo's
+ * own gutter, the dock reserve, and the system-bar inset — which is what
  * `bottomOverlayReservesScene` insets the viewport by (#2957). `onSizeChanged`
- * sits *before* `windowInsetsPadding` in the chain on purpose: a size read after
- * it would exclude the inset and under-reserve by a navigation bar.
+ * sits *before* `windowInsetsPadding` in the chain on purpose: a size read
+ * after it would exclude the inset and under-reserve by a navigation bar.
  *
- * The inset is restricted to the sides a bottom-anchored band can actually meet
- * (`Bottom` + `Horizontal`). The **top** side never moved this container's
- * content — the box wraps its height and is bottom-aligned, so a top inset only
- * grew it upwards into pixels nobody looked at — but it *does* land in the
- * measured band height, and on the QA Pixel_7a it inflated the reserved band by
- * 146 px of status bar no overlay was ever using (#2957).
- *
- * The container is a bottom-aligned [Column], not a `Box`: a demo with a status
- * banner *and* an action bar gets them stacked, and cannot get them on top of
- * each other. A slot holding exactly one centred child — every caller before
- * this change — lays out identically, because `CenterHorizontally` on a
- * wrap-height Column filling the width is `Alignment.BottomCenter` on a Box.
+ * [status] — the demo's short live status (`peekHeader`) — is the first child
+ * of the Column, as a glass pill, so it stacks with the demo's own overlays.
  */
 @Composable
 private fun BoxScope.DemoBottomOverlay(
-    reservedSpace: Dp,
+    reservedBottom: Dp,
     onBandHeightChanged: (Int) -> Unit,
-    content: @Composable DemoBottomOverlayScope.() -> Unit,
+    status: String?,
+    content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -802,100 +918,63 @@ private fun BoxScope.DemoBottomOverlay(
             .fillMaxWidth()
             .onSizeChanged { onBandHeightChanged(it.height) }
             .windowInsetsPadding(
-                WindowInsets.systemBars.only(
+                WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                 )
             )
+            .padding(bottom = reservedBottom)
             .testTag(DemoScaffoldTestTags.BOTTOM_OVERLAY),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(BOTTOM_OVERLAY_STACK_SPACING),
+        verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
     ) {
-        DemoBottomOverlayScope(this, reservedSpace).content()
+        if (status != null) {
+            GlassPill(modifier = Modifier.testTag(DemoScaffoldTestTags.STATUS_PILL)) {
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SceneViewTokens.Glass.onGlass,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (content != null) {
+            DemoBottomOverlayScope(this, 0.dp).content()
+        }
     }
 }
 
-/**
- * Gap between two elements stacked in the `bottomOverlay` slot — a banner over an
- * action bar, say. Matches the 8 dp the Settings FAB column already puts between
- * its own peek chip and FAB, so the two bottom clusters read as one frame.
- */
-private val BOTTOM_OVERLAY_STACK_SPACING = 8.dp
+/** Gap between two elements stacked in an overlay slot. */
+private val OVERLAY_STACK_SPACING = SceneViewTokens.Space.sm
 
 /**
  * Receiver of the [DemoScaffold] `topOverlay` slot — the mirror of
- * [DemoBottomOverlayScope].
- *
- * Carries the one piece of geometry a floating top overlay cannot know on its
- * own: how much room the shared asset-source chip is taking at the top-end of
- * *this* demo. Two idioms cover every overlay shape, and they are the same two
- * the bottom slot documents:
- *
- * - **Full-width banner** →
- *   `Modifier.fillMaxWidth().padding(end = assetSourceChipReservedSpace)`.
- * - **Centred pill / corner HUD** → the same end-only inset. A HUD that belongs
- *   in a corner keeps it with `Modifier.align(Alignment.Start)` or
- *   `Modifier.align(Alignment.End)`, which is a [ColumnScope] alignment inside
- *   the shared frame rather than a `BoxScope` alignment outside it.
- *
- * Both collapse to a no-op when [assetSourceChipReservedSpace] is `0.dp`, which
- * is the case for every demo that passes no `assetSource`.
- *
- * ## It is a [ColumnScope], and that is the point
- *
- * The slot lays its children out in a top-aligned [Column], so a demo that needs
- * a status pill *and* a warm-up banner *and* a tracking-failure banner writes
- * all three and they **stack**. They cannot be made to overlap, because siblings
- * in a Column do not share pixels.
- *
- * That is not a convenience. Before it, the top band had no owner at all, and
- * demos stacked by arithmetic: `ARSceneSemanticsDemo` wrote `padding(top = 8.dp)`
- * on two mutually-exclusive banners and `padding(top = 56.dp)` on the third, and
- * `TapToPlaceStatusOverlays` did the same with 8 and 56. The 56 is the height of
- * the first pill *at font scale 1.0, in English* — the moment the pill above
- * wraps to two lines, the banner below is drawn across it. A Column cannot be
- * made to do that.
+ * [DemoBottomOverlayScope]. The slot is a top-aligned [Column] that the
+ * scaffold has already placed **below the identity row**, so children stack and
+ * never cross the chrome (#3237).
  */
 @Stable
 class DemoTopOverlayScope internal constructor(
     private val columnScope: ColumnScope,
     /**
-     * Width of the top-end band occupied by the asset-source chip: the
-     * **measured** width of that chip, including its gutter, when this demo
-     * passes `assetSource` to [DemoScaffold] — and `0.dp` when it does not (no
-     * chip → the whole top edge is free, and the overlay should use all of it).
+     * Width of the top-**end** band a demo overlay must keep clear: `0.dp`.
      *
-     * Measured, not constant, because the chip is a dot plus a translated label:
-     * "Offline model" is 13 characters in English and grows in most locales, and
-     * it grows again with the font scale. A hand-picked `dp` is right until the
-     * first translation.
+     * The asset-source chip that used to occupy the top-end corner is now the
+     * suffix of the identity pill, inside the identity row the whole slot sits
+     * below. Kept so `padding(end = assetSourceChipReservedSpace)` call sites
+     * keep compiling as a no-op.
      */
     val assetSourceChipReservedSpace: Dp,
 ) : ColumnScope by columnScope
 
 /**
  * Renders the `topOverlay` slot: full scene width, pinned to the top of the
- * scene area and clear of anything the top app bar did not already clear — the
- * one place a demo should put a floating status pill, HUD or banner.
- *
- * Like its bottom twin, the container deliberately applies **no horizontal
- * padding of its own**, so a demo migrating an existing `Alignment.TopCenter`
- * overlay keeps its own gutter verbatim and only adds the chip inset.
- *
- * The inset is `safeDrawing`, restricted to the sides a top-anchored band can
- * meet (`Top` + `Horizontal`), resolved against a body that has already consumed
- * the Scaffold padding. In the ordinary portrait case that is zero — the top app
- * bar cleared the status bar and the consume said so — and it is non-zero only
- * where something really is still in the way, such as a landscape cutout deeper
- * than the bar. `safeDrawing` rather than `systemBars` because a cutout is
- * exactly the case a demo author cannot see on the emulator they are looking at.
- *
- * [TOP_OVERLAY_GUTTER] is the container's own top gutter, so every demo's top
- * overlay begins at the same y — the defect this slot exists to remove was
- * thirty-five different answers to that question.
+ * scene area, clear of the system bars and **below the identity row**
+ * ([reservedTop], measured from the real row including its gutter).
  */
 @Composable
 private fun BoxScope.DemoTopOverlay(
-    reservedSpace: Dp,
+    reservedTop: Dp,
     content: @Composable DemoTopOverlayScope.() -> Unit,
 ) {
     Column(
@@ -907,53 +986,35 @@ private fun BoxScope.DemoTopOverlay(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top
                 )
             )
-            .padding(top = TOP_OVERLAY_GUTTER)
+            .padding(top = reservedTop)
             .testTag(DemoScaffoldTestTags.TOP_OVERLAY),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(TOP_OVERLAY_STACK_SPACING),
+        verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
     ) {
-        DemoTopOverlayScope(this, reservedSpace).content()
+        DemoTopOverlayScope(this, 0.dp).content()
     }
 }
 
 /**
- * Distance from the top of the scene area to the first element of the
- * `topOverlay` slot. 8 dp, which is what the majority of the migrated demos had
- * hand-written; the point is not the number but that there is now exactly one.
- */
-private val TOP_OVERLAY_GUTTER = 8.dp
-
-/** Gap between two elements stacked in the `topOverlay` slot. Mirrors the bottom band. */
-private val TOP_OVERLAY_STACK_SPACING = 8.dp
-
-/**
- * Peek chip + FAB + ModalBottomSheet — pulled into its own composable so the
- * sheet `LaunchedEffect`s scope to the `expanded` state without re-running on
- * every recomposition of the parent Scaffold body.
+ * The controls [ModalBottomSheet], opened from the dock's Controls item.
  *
- * [demoTitle] keys the per-demo last-detent memory (#2084): when the sheet is
- * (re-)created it opens at the detent the user last settled it at for *this*
- * demo, persisted in [DemoSheetDetentStore] so it survives navigation away from
- * the demo and full process death — a demo never seen before defaults to the
- * partial detent (unchanged behaviour).
+ * Follows the app theme (`surfaceContainer`, 28 dp top radius) — it is a
+ * themed surface, unlike the glass chrome over the media.
+ *
+ * [demoTitle] keys the per-demo last-detent memory (#2084): the sheet opens at
+ * the detent the user last settled it at for *this* demo, persisted in
+ * [DemoSheetDetentStore] so it survives navigation and process death — a demo
+ * never seen before defaults to the partial detent.
  */
 @Composable
-private fun BoxScope.DemoSettingsLayer(
+private fun DemoSettingsSheet(
     demoTitle: String,
     controlsContent: @Composable ColumnScope.() -> Unit,
     haptic: SceneViewHaptic,
-    peekHeader: String? = null,
-    onResetSettings: (() -> Unit)? = null,
-    onClusterWidthChanged: (Int) -> Unit = {},
+    onResetSettings: (() -> Unit)?,
+    onDismissed: () -> Unit,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    // Per-demo last-detent memory (#2084): read the persisted detent so the
-    // sheet can reopen where the user last left it for this demo. Resolved
-    // against the persistent settings store ([DemoSheetDetentStore]), so it
-    // survives navigating away from the demo and process death — not just
-    // config changes. A demo never opened before resolves to
-    // `PartiallyExpanded`, the unchanged default.
+    val context = LocalContext.current
     val restoredDetent: SheetValue = remember(demoTitle) {
         DemoSheetDetentStore.lastDetent(context, demoTitle)
     }
@@ -963,252 +1024,104 @@ private fun BoxScope.DemoSettingsLayer(
         skipPartiallyExpanded = false,
     )
     val scope = rememberCoroutineScope()
-    val openSettingsCd = stringResource(R.string.demo_settings_open)
-    val fabCd = stringResource(R.string.demo_settings_fab_cd)
 
-    // Ceiling on the peek chip, expressed as a fraction of the screen rather than a
-    // `dp` count — the thing it has to stay proportionate to is the room left for the
-    // bottom overlay beside it, and that is a fraction by nature. Two constraints meet
-    // here: the chip must stay readable, and the overlay must keep enough width to hold
-    // a centred pill after a *symmetric* inset of the reserve
-    // ([DemoBottomOverlayScope.settingsFabReservedSpace]). Symmetric means the reserve
-    // is spent twice, so a chip allowed a third of the screen already leaves the pill
-    // barely any. A third is the compromise; the text ellipsises past it, and the full
-    // string is one tap away inside the sheet.
-    val peekChipMaxWidth = LocalConfiguration.current.screenWidthDp.dp / 3
-
-    // The chip RETRACTS. It never used to: `if (!expanded)` left it on screen for
-    // the entire life of the demo, so every screenshot of every demo carried a
-    // translucent grey chip in the bottom-end corner — over the 3D content the
-    // screen exists to show. Its own KDoc had described it as transient
-    // ("it peeks and retracts") since #2779, and the bottom-band reserve is sized
-    // half a gutter tighter *because* of that claim. The code simply never
-    // implemented it.
-    //
-    // Re-armed on every `peekHeader` change, not just at entry: when a demo feeds
-    // live status through the chip ("3 anchors placed"), a new value is news and
-    // deserves its three seconds. Re-armed on close too, so dismissing the sheet
-    // brings the affordance back rather than leaving the user with only the FAB.
-    var peekVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(expanded, peekHeader) {
-        if (expanded) return@LaunchedEffect
-        peekVisible = true
-        delay(PEEK_CHIP_DWELL_MILLIS)
-        peekVisible = false
-    }
-
-    // FAB + peek chip pinned to the bottom-end of the scene area.
-    Column(
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            // Reports this cluster's width to the bottom-overlay slot, which insets
-            // itself by it. Position in the chain is load-bearing, and it is the
-            // *mirror* of the rule on `DemoBottomOverlay`'s own measurement: here the
-            // read sits AFTER `windowInsetsPadding` and BEFORE `padding`, so it covers
-            // the 16 dp gutter (real empty pixels the overlay must not cross) but not
-            // the system-bar inset — the overlay already applies that same horizontal
-            // inset itself, and counting it twice would push the overlay a navigation
-            // bar's width off-centre in landscape.
-            .onSizeChanged { onClusterWidthChanged(it.width) }
-            .padding(16.dp),
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ModalBottomSheet(
+        onDismissRequest = {
+            scope.launch {
+                sheetState.hide()
+                onDismissed()
+            }
+        },
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(
+            topStart = SceneViewTokens.Radius.xl,
+            topEnd = SceneViewTokens.Radius.xl,
+        ),
+        modifier = Modifier.testTag(DemoScaffoldTestTags.SETTINGS_SHEET),
     ) {
-        // Peek chip — only shown while the sheet is closed. Tap opens the sheet
-        // at this demo's last-used detent (#2084, same as tapping the FAB).
-        // Long-press toggles
-        // QA mode (deterministic captures for screenshot suites — previously
-        // on the top-bar title). The chip is intentionally semi-transparent so
-        // it disappears against busy 3D scenes but stays legible on plain
-        // backgrounds.
-        AnimatedVisibility(
-            visible = !expanded && peekVisible,
-            // Fade only — no slide or shrink. The FAB sits directly below the chip
-            // in this Column, so any size animation would drag the FAB up and down
-            // the screen every time the chip came and went, and the FAB is the one
-            // control here that must never move under a reaching thumb.
-            enter = fadeIn(),
-            exit = fadeOut(),
+        // Header row pinned above the scrolling controls — carries the sheet
+        // title and, when the demo opts in, a "Reset" text button (#1154 Stage 3).
+        // It sits OUTSIDE the verticalScroll so a long controls list never
+        // scrolls the Reset affordance offscreen.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = SceneViewTokens.Space.md,
+                    end = SceneViewTokens.Space.sm,
+                    bottom = SceneViewTokens.Space.xs,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                haptic.selection()
-                                expanded = true
-                            },
-                            onLongPress = {
-                                haptic.medium()
-                                DemoSettings.qaMode = !DemoSettings.qaMode
-                            },
-                        )
-                    }
-                    .widthIn(max = peekChipMaxWidth)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .semantics {
-                        contentDescription = openSettingsCd
-                    }
-                    .testTag(DemoScaffoldTestTags.SETTINGS_PEEK),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Tune,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    // Stage 3: surface a short demo status (e.g. "3 anchors
-                    // placed") on the closed chip when the demo provides one,
-                    // else fall back to the generic "Settings" label.
-                    text = " " + (peekHeader ?: stringResource(R.string.demo_settings_title)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    // A *peek* chip peeks. Unbounded, it did not: `ar-measure`'s
-                    // first-launch header is "Tap a surface to drop the first point",
-                    // which measures ≈ 230 dp of a 411 dp screen at font scale 1.0 —
-                    // more than half the width, in the corner an overlay is supposed to
-                    // be able to sit beside. Every demo below it was overlapping at the
-                    // *default* font scale, not just at 1.3 (#3229).
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Text(
+                text = stringResource(R.string.demo_settings_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            if (onResetSettings != null) {
+                val resetCd = stringResource(R.string.demo_settings_reset_cd)
+                TextButton(
+                    onClick = {
+                        haptic.selection()
+                        onResetSettings()
+                    },
+                    modifier = Modifier
+                        .semantics { contentDescription = resetCd }
+                        .testTag(DemoScaffoldTestTags.SETTINGS_RESET),
+                ) {
+                    Text(stringResource(R.string.demo_settings_reset))
+                }
             }
         }
-
-        // Standard M3 FAB — single short tap opens the sheet. Long-press lives
-        // on the peek chip below (visible, discoverable, no hidden gesture on
-        // a clickable element). Wrapping the FAB in `Modifier.combinedClickable`
-        // collapsed its hit-target to ~24 dp on Compose Material3 1.5.x.
-        FloatingActionButton(
-            onClick = {
-                haptic.selection()
-                expanded = true
-            },
-            shape = CircleShape,
+        Column(
             modifier = Modifier
-                .semantics {
-                    contentDescription = fabCd
-                }
-                .testTag(DemoScaffoldTestTags.SETTINGS_FAB),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Tune,
-                contentDescription = null,
-            )
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = SceneViewTokens.Space.md,
+                    end = SceneViewTokens.Space.md,
+                    bottom = SceneViewTokens.Space.lg,
+                ),
+            content = controlsContent,
+        )
+    }
+
+    // The `SheetState` starts at `Hidden` and animates open, so this effect fires
+    // once with `Hidden` *before* the sheet has shown. Treating that as a dismiss
+    // would kill the sheet on every demo (#1420): only honour `Hidden` after the
+    // sheet has settled in a shown detent at least once.
+    var hasShown by remember { mutableStateOf(false) }
+
+    // #2084: restore this demo's last-used detent. The sheet always animates
+    // open to `PartiallyExpanded`; when the persisted detent is `Expanded`, expand
+    // the rest of the way as a one-shot once it first settles.
+    LaunchedEffect(Unit) {
+        if (restoredDetent == SheetValue.Expanded) {
+            snapshotFlow { sheetState.currentValue }
+                .filter { it != SheetValue.Hidden }
+                .first()
+            if (sheetState.currentValue != SheetValue.Expanded) {
+                sheetState.expand()
+            }
         }
     }
 
-    if (expanded) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                scope.launch {
-                    sheetState.hide()
-                    expanded = false
-                }
-            },
-            sheetState = sheetState,
-            modifier = Modifier.testTag(DemoScaffoldTestTags.SETTINGS_SHEET),
-        ) {
-            // Header row pinned above the scrolling controls — carries the
-            // sheet title and, when the demo opts in, a "Reset" text button
-            // that clears any in-memory tweaks back to the demo's defaults
-            // (#1154 Stage 3). The header sits OUTSIDE the verticalScroll so a
-            // long controls list never scrolls the Reset affordance offscreen.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.demo_settings_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                if (onResetSettings != null) {
-                    val resetCd = stringResource(R.string.demo_settings_reset_cd)
-                    TextButton(
-                        onClick = {
-                            haptic.selection()
-                            onResetSettings()
-                        },
-                        modifier = Modifier
-                            .semantics { contentDescription = resetCd }
-                            .testTag(DemoScaffoldTestTags.SETTINGS_RESET),
-                    ) {
-                        Text(stringResource(R.string.demo_settings_reset))
-                    }
-                }
+    LaunchedEffect(sheetState.currentValue) {
+        when (sheetState.currentValue) {
+            SheetValue.Expanded,
+            SheetValue.PartiallyExpanded -> {
+                hasShown = true
+                haptic.selection()
+                // #2084: persist the detent the user just settled on.
+                DemoSheetDetentStore.setLastDetent(context, demoTitle, sheetState.currentValue)
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
-                content = controlsContent,
-            )
-        }
-
-        // Medium-tick haptic when the user moves between detents.
-        //
-        // The `SheetState` starts at `SheetValue.Hidden` (the sheet animates
-        // open from hidden to its restored #2084 detent), so this effect fires
-        // once with `Hidden` *before* the sheet has animated open.
-        // Treating that initial value as a dismiss would slam `expanded = false`
-        // and kill the sheet on every demo (#1420). Only honour `Hidden` as a
-        // dismiss after the sheet has actually settled in a shown detent at
-        // least once — the actual outside-tap / back-gesture dismiss is already
-        // handled by `onDismissRequest`, this branch just keeps `expanded` in
-        // sync if the sheet collapses by any other path.
-        var hasShown by remember { mutableStateOf(false) }
-
-        // #2084: restore this demo's last-used detent. `rememberModalBottomSheetState`
-        // always animates open to `PartiallyExpanded`, so when the persisted
-        // detent is `Expanded` we expand the sheet the rest of the way as a
-        // one-shot, right after it first settles in a shown detent. Keyed to
-        // `expanded` so it re-arms each time the sheet is (re-)opened. A
-        // never-seen demo resolves to `PartiallyExpanded` → this is a no-op and
-        // the unchanged default behaviour holds.
-        LaunchedEffect(expanded) {
-            if (restoredDetent == SheetValue.Expanded) {
-                snapshotFlow { sheetState.currentValue }
-                    .filter { it != SheetValue.Hidden }
-                    .first()
-                if (sheetState.currentValue != SheetValue.Expanded) {
-                    sheetState.expand()
-                }
-            }
-        }
-
-        LaunchedEffect(sheetState.currentValue) {
-            when (sheetState.currentValue) {
-                SheetValue.Expanded,
-                SheetValue.PartiallyExpanded -> {
-                    hasShown = true
+            SheetValue.Hidden -> {
+                if (hasShown) {
+                    // Subtle tick on drag-down-to-dismiss (#1154 Stage 3).
                     haptic.selection()
-                    // #2084: persist the detent the user just settled on so this
-                    // demo's sheet reopens here next time — including after the
-                    // demo screen leaves composition or the process is killed.
-                    DemoSheetDetentStore.setLastDetent(
-                        context,
-                        demoTitle,
-                        sheetState.currentValue,
-                    )
-                }
-                SheetValue.Hidden -> {
-                    if (hasShown) {
-                        // Subtle tick on drag-down-to-dismiss so the gesture
-                        // gets the same tactile confirmation as a detent
-                        // change (#1154 Stage 3).
-                        haptic.selection()
-                        expanded = false
-                    }
+                    onDismissed()
                 }
             }
         }
