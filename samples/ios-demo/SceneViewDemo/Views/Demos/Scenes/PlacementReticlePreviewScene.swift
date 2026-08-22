@@ -34,7 +34,7 @@ import SceneViewSwift
 /// hoisted into its own `Demos/` file later with a pure file move.
 ///
 /// ### Known iOS/RealityKit deltas from the Android original
-/// - **Camera framing**: Android hand-tunes a fixed `orbitHomePosition` /
+/// - **Camera framing**: Android hand-tunes a fixed `eyePosition` /
 ///   `targetPosition` and disables auto-centering. `SceneViewSwift.SceneView`
 ///   has no public API to set an initial camera position, so this port
 ///   relies on the library's own fit-to-bounds auto-centering

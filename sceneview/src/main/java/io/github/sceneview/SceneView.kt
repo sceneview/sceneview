@@ -339,7 +339,7 @@ fun SceneView(
      * Helper that enables camera interaction similar to sketchfab or Google Maps.
      */
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     /**
      * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment.
@@ -1655,6 +1655,12 @@ fun rememberOnGestureListener(
  *
  * Pass `null` to `SceneView(cameraManipulator = null)` to disable camera interaction entirely.
  *
+ * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to: no built-in
+ * gesture does that, `onDoubleTap` is a plain callback `SceneView` forwards to your code and
+ * never wires to the camera. For the common case of framing a subject from a known distance,
+ * prefer [rememberCameraManipulator] with `orbitRadius` instead — it sidesteps the vector-length
+ * reasoning below entirely.
+ *
  * ```kotlin
  * val cameraManipulator = rememberCameraManipulator(
  *     // Eye 2.5 m from an auto-centred subject — it is the LENGTH of this vector that frames.
@@ -1690,7 +1696,8 @@ fun rememberOnGestureListener(
  * which is why every doc example looks fine and why this cost issue #2873 its diagnosis (the demo
  * was framed from 1.22 m while its own comment claimed 2.7 m). Pass `autoCenterContent = false`
  * to `SceneView` when authored world positions should survive; the framing distance is then
- * `|orbitHomePosition − contentCentre|`.
+ * `|orbitHomePosition − contentCentre|`. The `orbitRadius` overload sidesteps all of this for the
+ * common case: with the default (origin) target its value *is* the subject distance (#2932).
  *
  * @param orbitHomePosition Camera's initial eye position in **world space** (optional). Its
  *                          *length* is the framing distance under the default
@@ -1845,7 +1852,7 @@ fun Scene(
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),

@@ -83,16 +83,27 @@ open class CameraGestureDetector(
         protected val pinchZoomDamping: Float = DEFAULT_PINCH_ZOOM_DAMPING,
     ): CameraManipulator {
 
+        /**
+         * Builds a sensible default ORBIT-mode manipulator.
+         *
+         * @param eyePosition    Camera's initial eye position in **world space** (optional).
+         *                       Filament's `orbitHomePosition` — there is no "home" gesture, it
+         *                       is only where the camera starts. `null` keeps Filament's
+         *                       `(0, 0, 1)`. See `rememberCameraManipulator` for how this
+         *                       interacts with `autoCenterContent`.
+         * @param targetPosition Point in world space the camera orbits around and initially
+         *                       looks at (optional; defaults to the origin).
+         */
         @JvmOverloads
         constructor(
-            orbitHomePosition: Position? = null,
+            eyePosition: Position? = null,
             targetPosition: Position? = null,
             pinchZoomSpeed: Float = DEFAULT_PINCH_ZOOM_SPEED,
             pinchZoomDamping: Float = DEFAULT_PINCH_ZOOM_DAMPING,
         ) : this(
             Manipulator.Builder()
                 .apply {
-                    orbitHomePosition?.let { orbitHomePosition(it) }
+                    eyePosition?.let { orbitHomePosition(it) }
                     targetPosition?.let { targetPosition(it) }
                 }
                 // Re-tuned in #1427: orbit/pan felt "beaucoup trop vite" on-device
@@ -103,6 +114,27 @@ open class CameraGestureDetector(
                 .build(Manipulator.Mode.ORBIT),
             pinchZoomSpeed,
             pinchZoomDamping,
+        )
+
+        /**
+         * Builds a default ORBIT-mode manipulator whose camera starts [orbitRadius] metres from
+         * [targetPosition], along [DEFAULT_ORBIT_DIRECTION] — see [orbitEyePosition].
+         *
+         * @param orbitRadius    Camera-to-target distance in metres. Must be `> 0`.
+         * @param targetPosition Point in world space the camera orbits around and initially
+         *                       looks at (optional; defaults to the origin).
+         */
+        @JvmOverloads
+        constructor(
+            orbitRadius: Float,
+            targetPosition: Position? = null,
+            pinchZoomSpeed: Float = DEFAULT_PINCH_ZOOM_SPEED,
+            pinchZoomDamping: Float = DEFAULT_PINCH_ZOOM_DAMPING,
+        ) : this(
+            eyePosition = orbitEyePosition(orbitRadius, targetPosition ?: Position(0f)),
+            targetPosition = targetPosition,
+            pinchZoomSpeed = pinchZoomSpeed,
+            pinchZoomDamping = pinchZoomDamping,
         )
 
         override fun setViewport(width: Int, height: Int) {

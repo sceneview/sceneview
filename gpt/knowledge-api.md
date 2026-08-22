@@ -31,6 +31,7 @@ fun SceneView(
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -79,7 +80,7 @@ LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mut
 SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
 ```
 
-**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see "Camera"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
+**`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see \"Camera\"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 
 Minimal usage:
 ```kotlin
@@ -3211,7 +3212,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera" |
+| `rememberCameraManipulator(orbitRadius, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. See "Camera" |
+| `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
@@ -3243,10 +3245,14 @@ val mat = remember(materialLoader) {
 ## Camera
 
 ```kotlin
-// Orbit / pan / zoom (default)
-// `orbitHomePosition` is the camera's ABSOLUTE eye position, not an offset from
-// `targetPosition`. This example targets the origin, where the two readings coincide —
-// which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
+// Orbit / pan / zoom (default) — say the DISTANCE you want. The camera starts
+// `orbitRadius` metres from the target along the default 3/4 angle (slightly above,
+// looking down). With the default target this is exactly the camera-to-subject distance.
+SceneView(cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f))
+
+// Or an explicit eye position. `orbitHomePosition` is the camera's ABSOLUTE eye position, not
+// an offset from `targetPosition`. This example targets the origin, where the two readings
+// coincide — which is exactly why the trap below goes unnoticed. Framed from |(0,2,4)| ≈ 4.47 m.
 SceneView(cameraManipulator = rememberCameraManipulator(
     orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
     targetPosition = Position(x = 0f, y = 0f, z = 0f)
@@ -3297,7 +3303,11 @@ rememberCameraManipulator(
     targetPosition = Position(0f, 0f, -1.5f)
 )
 
-// RIGHT: pick the distance you want and give a vector of that LENGTH.
+// RIGHT: say the distance. `orbitRadius` places the eye that far from the target
+// (the origin, where the auto-centred subject is) along the default 3/4 angle.
+rememberCameraManipulator(orbitRadius = 2.7f)
+
+// Equivalent with an explicit eye: a vector of that LENGTH.
 rememberCameraManipulator(orbitHomePosition = Position(0f, 0.2f, 2.7f))  // ≈ 2.71 m
 
 // Or opt out of auto-centring, and authored world positions survive: the framing
@@ -3346,6 +3356,12 @@ SceneView(autoFitContent = true, cameraManipulator = null) {
         ModelNode(modelInstance = it)   // null while loading — always handle it
     }
 }
+
+// Per-scene air around the content (v4.27.0+, #2946). `framingPadding` is the same
+// additive fraction as `frameToContent(padding = …)`: 0.15 (default) = 15% more
+// distance, 0 = tangent, clamped to >= 0. It is NOT iOS's `framingMargin` multiplier —
+// `margin == 1 + padding`, so iOS `.framingMargin(1.15)` is `framingPadding = 0.15f`.
+SceneView(autoFitContent = true, framingPadding = 0.05f, cameraManipulator = null) { … }
 
 // Manual guard for a custom frame loop (diagonal-stability gated — #1596):
 val fitState = remember { SceneAutoFitState() }
@@ -4059,7 +4075,7 @@ sceneView.enableCameraControls(
     targetX: Double = 0.0, targetY: Double = 0.0, targetZ: Double = 0.0,
     autoRotate: Boolean = false
 ): OrbitCameraController
-sceneView.fitToModels()                      // auto-fit camera to bounding box
+sceneView.fitToModels(margin: Double = 1.0)  // auto-fit camera to bounding box; margin = iOS-style multiplier, 0.2…10
 sceneView.resize(width: Int, height: Int)
 sceneView.startRendering()
 sceneView.stopRendering()
@@ -4200,7 +4216,8 @@ sv.setAutoRotateSpeed(radiansPerFrame)
 sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)  // 0-1 range
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)
-sv.fitToModels()
+sv.fitToModels()                   // frame every loaded model
+sv.fitToModels(0.9)                // optional margin — multiplier on the fit distance (1 = default, <1 tighter, >1 more air; clamped 0.2…10)
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
@@ -4683,20 +4700,24 @@ SceneView { root in root.addChild(hero.entity) }
 ```
 
 > **Android equivalent — `padding`, and the unit is inverted.** Android's lever is
-> `CameraNode.frameToContent(padding = …)` / `frameToBounds(…)` /
-> `fitDistanceForBounds(…)`, with `DEFAULT_FRAMING_PADDING = 0.15f` (documented
-> above under Camera framing). It is a *fraction* where iOS's `framingMargin` is a
-> *multiplier*: `margin == 1 + padding`, so iOS `1.15` is Android `0.15`, and
-> tangent is iOS `1.0` / Android `0.0`. Android's demo host additionally accepts a
-> `camera_distance` intent extra, but that is a sample-app knob, not the library
-> API. **Web has no framing-padding lever** — `fitToModels()` takes no margin —
-> but the initial orbit *is* settable, imperatively rather than declaratively:
-> `sv.setCameraOrbit(theta, phi, distance)`. Android also clamps padding to
-> `max(0, padding)`, so it cannot frame **tighter** than tangent, while iOS
-> `framingMargin` accepts down to `0.2` — the sub-tangent range has no Android
-> equivalent today. The library-side parity gap (a per-scene padding parameter on
-> Android's `Scene { }`, a margin on Web's `fitToModels()`) is tracked in #2946;
-> the iOS launch-argument counterpart to the sample-app intent extra is a separate
+> the per-scene `SceneView(autoFitContent = true, framingPadding = …)` parameter
+> (v4.27.0+, #2946) and, imperatively, `CameraNode.frameToContent(padding = …)` /
+> `frameToBounds(…)` / `fitDistanceForBounds(…)`, all sharing
+> `DEFAULT_FRAMING_PADDING = 0.15f` (documented above under Camera framing). It is a
+> *fraction* where iOS's `framingMargin` is a *multiplier*: `margin == 1 + padding`,
+> so iOS `1.15` is Android `0.15`, and tangent is iOS `1.0` / Android `0.0`. Never
+> port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Android's
+> demo host additionally accepts a `camera_distance` intent extra, but that is a
+> sample-app knob, not the library API. **Web follows the iOS convention**:
+> `sv.fitToModels(margin)` (v4.27.0+, #2946) takes the same multiplier, clamped to
+> the same `0.2…10` range, but its default is `1.0` — the historical
+> `2.5 × bounding-sphere-radius` dolly, not a frustum-tangent fit — so iOS `1.15`
+> and Web `1.15` both mean "15% more air than that platform's default", not the
+> same absolute distance. Web's initial orbit is settable imperatively rather than
+> declaratively: `sv.setCameraOrbit(theta, phi, distance)`. Android clamps padding to
+> `max(0, padding)`, so it cannot frame **tighter** than tangent, while iOS and Web
+> accept a margin down to `0.2` — the sub-tangent range has no Android equivalent.
+> The iOS launch-argument counterpart to the sample-app intent extra is a separate
 > item, #2785. These modifiers are the in-scene lever (#2896).
 
 ### Render defaults (v4.2.0+)

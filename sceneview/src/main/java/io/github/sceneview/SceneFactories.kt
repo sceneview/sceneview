@@ -201,13 +201,61 @@ fun createMainLightNode(engine: Engine): LightNode = DefaultLightNode(engine)
  */
 fun createFillLightNode(engine: Engine): LightNode = DefaultFillLightNode(engine)
 
+/**
+ * Creates the default orbit/pan/zoom [CameraGestureDetector.DefaultCameraManipulator] — the
+ * non-Compose twin of `rememberCameraManipulator`, for `SceneView` used as a plain View.
+ *
+ * @param eyePosition    Camera's initial eye position in **world space** (optional). It is
+ *                       Filament's `orbitHomePosition` — there is no "home" gesture, only a
+ *                       starting point. Under `SceneView`'s default `autoCenterContent = true`
+ *                       the subject is framed from `|eyePosition|`; see
+ *                       `rememberCameraManipulator`. `null` keeps Filament's `(0, 0, 1)`.
+ * @param targetPosition Point in world space the camera orbits around and initially looks at
+ *                       (optional; defaults to the origin). Does not affect the distance.
+ */
 fun createDefaultCameraManipulator(
-    orbitHomePosition: Position? = null,
+    eyePosition: Position? = null,
     targetPosition: Position? = null
 ) = CameraGestureDetector.DefaultCameraManipulator(
-    orbitHomePosition = orbitHomePosition,
+    eyePosition = eyePosition,
     targetPosition = targetPosition
 )
+
+/**
+ * Creates the default orbit/pan/zoom [CameraGestureDetector.DefaultCameraManipulator] with the
+ * camera [orbitRadius] metres from [targetPosition], along
+ * [io.github.sceneview.gesture.DEFAULT_ORBIT_DIRECTION] (see
+ * [io.github.sceneview.gesture.orbitEyePosition]).
+ *
+ * @param orbitRadius    Camera-to-target distance in metres. Must be `> 0`.
+ * @param targetPosition Point in world space the camera orbits around and initially looks at
+ *                       (optional; defaults to the origin).
+ */
+fun createDefaultCameraManipulator(
+    orbitRadius: Float,
+    targetPosition: Position? = null
+) = CameraGestureDetector.DefaultCameraManipulator(
+    orbitRadius = orbitRadius,
+    targetPosition = targetPosition
+)
+
+/**
+ * Deprecated spelling of [createDefaultCameraManipulator] — `orbitHomePosition` promised a
+ * "home" gesture that does not exist (#2932). Same behaviour, new name.
+ */
+@Deprecated(
+    message = "orbitHomePosition is the camera's initial eye position — there is no home " +
+        "gesture. Use eyePosition, or the orbitRadius overload (#2932).",
+    replaceWith = ReplaceWith(
+        "createDefaultCameraManipulator(eyePosition = orbitHomePosition, targetPosition = targetPosition)"
+    ),
+    level = DeprecationLevel.WARNING
+)
+@JvmName("createDefaultCameraManipulatorOrbitHome")
+fun createDefaultCameraManipulator(
+    orbitHomePosition: Position,
+    targetPosition: Position? = null
+) = createDefaultCameraManipulator(eyePosition = orbitHomePosition, targetPosition = targetPosition)
 
 fun createViewNodeManager(context: Context) = ViewNode.WindowManager(context)
 
