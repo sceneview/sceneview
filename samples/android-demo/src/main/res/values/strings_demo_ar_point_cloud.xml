@@ -9,4 +9,5 @@
     <string name="demo_ar_point_cloud_subtitle">World-space feature points via PointCloudNode</string>
     <string name="demo_ar_point_cloud_count">Tracking %1$d points</string>
     <string name="demo_ar_point_cloud_move_hint">Move your device to detect feature points</string>
+    <string name="demo_ar_point_cloud_move_hint_short">Still scanning — keep moving</string>
 </resources>

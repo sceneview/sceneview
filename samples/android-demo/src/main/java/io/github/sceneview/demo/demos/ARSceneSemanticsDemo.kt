@@ -127,6 +127,14 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // overlay so the user knows the model is initialising rather than broken.
     var semanticsEverReceived by remember { mutableStateOf(false) }
 
+    // #3274: the Scene Semantics model has no indoor training data — pointed at a
+    // living-room wall it classifies almost every pixel UNLABELED, which the overlay
+    // shader paints fully transparent. Without this flag the demo then shows exactly the
+    // plain camera feed with zero on-screen explanation, which read to a user as "nothing
+    // ...rendered" even though the pipeline was working end to end. Derived from `topLabels`
+    // below via the pure [SemanticsOverlay.isOutdoorSceneUnclassified] gate.
+    var sceneUnclassified by remember { mutableStateOf(false) }
+
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
 
@@ -268,6 +276,29 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 }
             }
 
+            // #3274 — the scene has been classified but almost every pixel came back
+            // UNLABELED (typically: an indoor scene — the model has no indoor training
+            // data). The overlay shader paints UNLABELED fully transparent, so without this
+            // the demo silently shows the plain camera feed and reads as broken.
+            AnimatedVisibility(
+                visible = semanticsSupported == true && semanticsEverReceived && sceneUnclassified,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Nothing classified yet — Scene Semantics is outdoor-only. " +
+                            "Try a street, park or back yard.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             // Tracking-failure overlay — same vocabulary as the other AR demos.
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason
             // when a developer has picked one in the debug menu (#1881). Read it here
@@ -350,6 +381,14 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                         if (snapshot.any { it.fraction > 0f }) {
                             semanticsEverReceived = true
                         }
+                        // #3274 — a dominant UNLABELED top label means the model has
+                        // classified essentially nothing this frame (typically: indoors).
+                        sceneUnclassified = snapshot.firstOrNull()?.let {
+                            SemanticsOverlay.isOutdoorSceneUnclassified(
+                                topOrdinal = it.label.ordinal,
+                                topFraction = it.fraction,
+                            )
+                        } ?: false
 
                         // Per-pixel raster overlay — acquire the R8 semantic image, upload it
                         // into the Filament texture, (re)build the camera-parented overlay quad
