@@ -76,6 +76,28 @@ if (!pubMatch) {
 }
 const flutterPubVersion = pubMatch[1];
 
+// The two WEB Filament runtimes, read from `gradle/libs.versions.toml` — the
+// single pin table CLAUDE.md designates for every Filament track. Both strings
+// used to be a hand-copied "1.70.2" in `artifact.ts` and `extra-guides.ts`, a
+// version that (a) was never published on npm, so the artifact CDN URL
+// 404'd, and (b) never matched the runtime vendored for the website. See #3173.
+//
+//   filamentWeb     — the npm `filament` package (sceneview-web / Kotlin-JS and
+//                     the jsDelivr CDN the generated artifacts load).
+//   filamentWebsite — the runtime vendored at website-static/js/filament/
+//                     that sceneview.js runs on.
+const versionsToml = readFileSync(resolve(mcpRoot, "..", "gradle", "libs.versions.toml"), "utf8");
+function readPin(name) {
+  const m = versionsToml.match(new RegExp(`^\\s*${name}\\s*=\\s*"([^"]+)"`, "m"));
+  if (!m) {
+    console.error(`[generate-version] FATAL: ${name} not found in ../gradle/libs.versions.toml`);
+    process.exit(1);
+  }
+  return m[1];
+}
+const filamentWebVersion = readPin("filamentWeb");
+const filamentWebsiteVersion = readPin("filamentWebsite");
+
 const outDir = resolve(mcpRoot, "src/generated");
 mkdirSync(outDir, { recursive: true });
 
@@ -92,14 +114,20 @@ const content =
   `// The pub.dev coordinate for \`flutter_sceneview\`, read from the plugin's\n` +
   `// README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,\n` +
   `// and a caret range against an unpublished version cannot be resolved.\n` +
-  `export const LATEST_FLUTTER_PUB_RELEASE = "${flutterPubVersion}" as const;\n`;
+  `export const LATEST_FLUTTER_PUB_RELEASE = "${flutterPubVersion}" as const;\n` +
+  `// Web Filament runtimes, from ../gradle/libs.versions.toml (#3173).\n` +
+  `// FILAMENT_WEB_NPM_VERSION is the npm \`filament\` pin (CDN artifacts, Kotlin/JS);\n` +
+  `// FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.\n` +
+  `export const FILAMENT_WEB_NPM_VERSION = "${filamentWebVersion}" as const;\n` +
+  `export const FILAMENT_WEBSITE_VERSION = "${filamentWebsiteVersion}" as const;\n`;
 
 writeFileSync(outPath, content, "utf8");
 // Log to stderr so we don't pollute stdout (npm pack --dry-run --json
 // pipes stdout through, and the package-files test parses that JSON).
 console.error(
   `[generate-version] wrote ${outPath} ` +
-    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion})`
+    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion}, ` +
+    `filament-web-npm=${filamentWebVersion}, filament-website=${filamentWebsiteVersion})`
 );
 
 // Keep the `android-ok` test fixture's SceneView pin in sync with the SDK
