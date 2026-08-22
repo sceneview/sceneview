@@ -30,6 +30,37 @@ object SceneViewTokens {
         val glassBorderWidth = 1.dp
     }
 
+    /**
+     * `DESIGN.md` — AR coaching overlay colours (`ar-scrim`, `on-ar-scrim`, …).
+     *
+     * These do **not** flip with the app theme the way a surface token does: the
+     * ground behind an AR overlay is an arbitrary camera frame, so the pill stays
+     * a dark scrim with white text in both themes, and only its opacity moves
+     * (light mode is used outdoors more often, where the frame is brightest).
+     * The accents are the dark-scheme values of the Material roles for the same
+     * reason — they are read on black, never on `surface`.
+     */
+    object ArOverlay {
+        val scrimLight = Color(0xF0000000)
+        val scrimDark = Color(0xE0000000)
+        val onScrim = Color(0xFFFFFFFF)
+        val borderLight = Color(0x29FFFFFF)
+        val borderDark = Color(0x1AFFFFFF)
+        val borderWidth = 1.dp
+
+        /** Transient work in progress — spinner accent. `primary` (dark value). */
+        val accentProgress = Color(0xFFA4C1FF)
+
+        /** Waiting on the user to move the phone — `warning`. */
+        val accentGuidance = Color(0xFFF59E0B)
+
+        /** Broken until something changes — dark-scheme `error`. */
+        val accentBlocked = Color(0xFFFFB4AB)
+
+        /** Widest a coaching pill may grow — a long line stays one readable column. */
+        val maxWidth = 480.dp
+    }
+
     /** `DESIGN.md` — Spacing scale (`space-*`). */
     object Space {
         val xs = 4.dp

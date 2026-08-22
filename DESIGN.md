@@ -71,6 +71,8 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
 | `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
 | `glass-border` | 1px rgba(255,255,255,0.08) | 1px rgba(255,255,255,0.08) | Floating control outline |
+| `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
+| `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 
 ### Text
 
@@ -79,6 +81,8 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `on-surface` | #1a1a2e | #f3f4f6 | Primary text |
 | `on-surface-dim` | #3d4654 | #9ca3af | Secondary text |
 | `on-surface-faint` | #5c6370 | #6b7280 | Tertiary text, captions |
+| `on-ar-scrim` | #ffffff | #ffffff | AR coaching overlay text — white in both themes, the ground is the camera |
+| `on-ar-scrim-dim` | rgba(255,255,255,0.72) | rgba(255,255,255,0.72) | AR coaching overlay secondary text |
 
 ### Borders
 
@@ -331,6 +335,29 @@ Glassmorphism layer system for surfaces that float over content. Apply with rest
 - Padding: `space-md`
 - Border: 1px solid rgba(255,255,255,0.05)
 - Font size: `text-xs` (0.85rem)
+
+### AR Coaching Overlay
+
+The one instruction surface shown over a live camera feed (`DemoStatusBanner` on Android).
+
+- Ground: `ar-scrim` — a near-opaque dark pill, **not** a brand-coloured one. The
+  background it must beat is an arbitrary camera frame, not an app surface, so the
+  ground does not flip with the theme; only its opacity does (light mode is used
+  outdoors more often, so it is a touch more opaque).
+- Text: `on-ar-scrim`, `text-body` at `weight-medium`, max 3 lines, one short sentence.
+- Border: `ar-scrim-border`, shadow `shadow-lg` — separates the pill from a busy frame.
+- Radius: `radius-lg`; padding 16px horizontal, 12px vertical; max width 480px.
+- Leading indicator, 20px, one per severity:
+
+| Severity | Indicator | Accent |
+|---|---|---|
+| Progress | Indeterminate spinner | `primary` (dark value #a4c1ff) |
+| Guidance | Gesture / move-device icon | `warning` |
+| Blocked | Error icon | #ffb4ab (dark-scheme error) |
+
+- Accents are the **dark-scheme** values in both themes: they are read on `ar-scrim`.
+- Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
+  with fade + fall (`duration-short`). Nothing to say → nothing on screen.
 
 ### Tabs
 - Padding: 10px 20px
