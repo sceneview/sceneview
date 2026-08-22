@@ -11,7 +11,8 @@ struct AboutTab: View {
     }()
 
     // #1152 Stage 3 — Credits sheet (CC-BY attribution for every streamed
-    // Sketchfab model in `SampleAssets`).
+    // Sketchfab model in `SampleAssets`); #3214 — bundled assets too, from
+    // the generated `BundledCredits.json`.
     @State private var showCreditsSheet = false
 
     var body: some View {
@@ -129,7 +130,7 @@ struct AboutTab: View {
                 icon: "person.2.fill",
                 iconColor: .teal,
                 title: "Credits",
-                subtitle: "Authors & CC-BY attribution for every streamed Sketchfab model",
+                subtitle: "Authors & licenses for every bundled and streamed 3D asset",
                 trailing: .chevron,
                 action: { showCreditsSheet = true }
             )
