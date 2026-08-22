@@ -291,7 +291,7 @@ What you can do across all 3D and AR scenes — beyond placing nodes.
 
 ## Apple (iOS / macOS / visionOS)
 
-Native Swift Package built on RealityKit. **19 node types** mirroring the Android API.
+Native Swift Package built on RealityKit, with a node set mirroring the Android API.
 
 ```swift
 SceneView(environment: .studio) {
