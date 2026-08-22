@@ -21,6 +21,10 @@ import org.junit.Test
  * device, an emulator, or a screenshot baseline.
  */
 class DemoMathTest {
+    @Test fun `viewer framing reserves dock and applies margin`() {
+        assertEquals(0.625f, DemoMath.viewerViewportAspect(400f, 744f, 104f), 0.0001f)
+        assertEquals(2.8f, DemoMath.viewerFitRadius(2.5f), 0.0001f)
+    }
 
     private val eps = 0.001f
 

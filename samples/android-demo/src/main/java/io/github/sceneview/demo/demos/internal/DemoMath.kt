@@ -22,6 +22,15 @@ import kotlin.math.tan
  * non-AR demo regression-detection roadmap.
  */
 internal object DemoMath {
+    /** Aspect of the scene area after reserving the floating dock band. */
+    fun viewerViewportAspect(width: Float, height: Float, reservedHeight: Float): Float {
+        val usableHeight = (height - reservedHeight).coerceAtLeast(1f)
+        return (width / usableHeight).takeIf { it.isFinite() && it > 0f } ?: 1f
+    }
+
+    /** Applies the viewer's breathing-room margin and safe camera bounds. */
+    fun viewerFitRadius(fitDistance: Float, margin: Float = 1.12f): Float =
+        (fitDistance * margin).coerceIn(0.2f, 50f)
 
     /**
      * Y-axis spin used by [io.github.sceneview.demo.demos.GeometryDemo]. Returns the

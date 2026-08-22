@@ -215,6 +215,7 @@ fun DemoScaffold(
     dock: List<DockItem> = emptyList(),
     dockAccent: DockItem? = null,
     previewRes: Int? = null,
+    chromeToggleOnTap: Boolean = false,
     scene: @Composable BoxScope.() -> Unit
 ) {
     val haptic = rememberHapticFeedback()
@@ -276,7 +277,7 @@ fun DemoScaffold(
                         bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
                     )
                     // Observe taps without taking them: the 3D view keeps its drags.
-                    .sceneTapToggle(enabled = !touchExploration) {
+                    .sceneTapToggle(enabled = chromeToggleOnTap && !touchExploration) {
                         chromeToggled = !chromeToggled
                     },
                 content = scene,

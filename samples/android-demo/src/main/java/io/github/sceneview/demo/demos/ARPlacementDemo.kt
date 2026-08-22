@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.PlacementSpec
@@ -124,7 +125,10 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // behaviour). Mutually exclusive with the streamed `selectedSlug`
     // chip row above — if a streamed slug is selected and resolved, that
     // wins regardless of `selectedBundledIndex`.
-    var selectedBundledIndex by remember { mutableStateOf<Int?>(null) }
+    val requestedModel = remember { DemoSettings.requestedModel.also { DemoSettings.requestedModel = null } }
+    var selectedBundledIndex by remember(requestedModel) {
+        mutableStateOf(MODEL_CYCLE.indexOfFirst { it.assetPath == requestedModel || it.assetPath.substringAfterLast('/').substringBeforeLast('.') == requestedModel }.takeIf { it >= 0 })
+    }
 
     // Settings toggles (#1883). Defaults preserve the previous strict
     // plane-only behaviour. Show-reticle is forwarded to the session's

@@ -24,6 +24,10 @@ import androidx.compose.ui.unit.dp
  */
 @Immutable
 object SceneViewTokens {
+    /** Model-viewer stage, deliberately identical in light and dark themes. */
+    object Stage {
+        val background = Color(0xFF0B0F16)
+    }
     /** `DESIGN.md` — Spatial Gallery overlay colours. */
     object SpatialGalleryColor {
         val stageScrimStart = Color.Transparent
@@ -132,6 +136,9 @@ object SceneViewTokens {
         val dockHeight = 64.dp
         /** Dock items are [touchTarget] square; their icons are this size. */
         val dockIconSize = 22.dp
+        val viewerEnvironmentTile = 72.dp
+        val viewerAnimationButton = 48.dp
+        val selectedOutlineWidth = 2.dp
         val heroStageHeight = 360.dp
         const val mediaAspect = 1.25f
     }
