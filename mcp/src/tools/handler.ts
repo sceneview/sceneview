@@ -49,7 +49,7 @@ import {
 import { formatGenerateResult, type GenerateQuality, generateModel } from "../generate-model.js";
 import { formatGeneratedScene, generateScene } from "../generate-scene.js";
 import { LLMS_TXT } from "../generated/llms-txt.js";
-import { LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
+import { IOS_NODE_TYPE_COUNT, LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
 import {
   AR_SETUP_GUIDE,
   BEST_PRACTICES,
@@ -806,7 +806,7 @@ export async function dispatchTool(
           status: "Alpha",
           version: LATEST_SCENEVIEW_RELEASE,
           dependency: "SceneViewSwift (SPM)",
-          features: ["3D", "AR (ARKit)", "16 node types", "USDZ models"],
+          features: ["3D", "AR (ARKit)", `${IOS_NODE_TYPE_COUNT} node types`, "USDZ models"],
         },
         {
           platform: "macOS",

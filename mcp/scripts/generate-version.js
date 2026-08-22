@@ -15,7 +15,7 @@
  * into the generated file.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -98,6 +98,34 @@ function readPin(name) {
 const filamentWebVersion = readPin("filamentWeb");
 const filamentWebsiteVersion = readPin("filamentWebsite");
 
+// SceneViewSwift node inventory, counted from the Swift sources so the MCP
+// never states a hand-typed number again (#2999: mcp/ said 16, README said 19,
+// the tree held 21 files). The rule: a node type is a `public struct` whose
+// name ends in `Node` anywhere under SceneViewSwift/Sources. `public enum`
+// namespaces that merely group static helpers (`CloudAnchorNode`,
+// `SceneReconstructionNode`) are not scene nodes and are excluded; `AnchorNode`
+// lives in ARSceneView.swift rather than its own file and is included.
+const swiftRoot = resolve(mcpRoot, "..", "SceneViewSwift", "Sources");
+function walkSwift(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = resolve(dir, entry);
+    if (statSync(full).isDirectory()) walkSwift(full, out);
+    else if (entry.endsWith(".swift")) out.push(full);
+  }
+  return out;
+}
+const iosNodeTypes = [];
+for (const file of walkSwift(swiftRoot)) {
+  for (const m of readFileSync(file, "utf8").matchAll(/^public struct ([A-Za-z0-9]+Node)\b/gm)) {
+    iosNodeTypes.push(m[1]);
+  }
+}
+iosNodeTypes.sort();
+if (iosNodeTypes.length === 0) {
+  console.error(`[generate-version] FATAL: no \`public struct *Node\` found under ${swiftRoot}`);
+  process.exit(1);
+}
+
 const outDir = resolve(mcpRoot, "src/generated");
 mkdirSync(outDir, { recursive: true });
 
@@ -119,7 +147,11 @@ const content =
   `// FILAMENT_WEB_NPM_VERSION is the npm \`filament\` pin (CDN artifacts, Kotlin/JS);\n` +
   `// FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.\n` +
   `export const FILAMENT_WEB_NPM_VERSION = "${filamentWebVersion}" as const;\n` +
-  `export const FILAMENT_WEBSITE_VERSION = "${filamentWebsiteVersion}" as const;\n`;
+  `export const FILAMENT_WEBSITE_VERSION = "${filamentWebsiteVersion}" as const;\n` +
+  `// SceneViewSwift node types: every \`public struct *Node\` under\n` +
+  `// SceneViewSwift/Sources (#2999). Enum namespaces are not nodes.\n` +
+  `export const IOS_NODE_TYPES = ${JSON.stringify(iosNodeTypes)} as const;\n` +
+  `export const IOS_NODE_TYPE_COUNT = ${iosNodeTypes.length} as const;\n`;
 
 writeFileSync(outPath, content, "utf8");
 // Log to stderr so we don't pollute stdout (npm pack --dry-run --json
@@ -127,7 +159,8 @@ writeFileSync(outPath, content, "utf8");
 console.error(
   `[generate-version] wrote ${outPath} ` +
     `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion}, ` +
-    `filament-web-npm=${filamentWebVersion}, filament-website=${filamentWebsiteVersion})`
+    `filament-web-npm=${filamentWebVersion}, filament-website=${filamentWebsiteVersion}, ` +
+    `ios-nodes=${iosNodeTypes.length})`
 );
 
 // Keep the `android-ok` test fixture's SceneView pin in sync with the SDK

@@ -146,6 +146,8 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 | `DynamicSkyNode` | Time-of-day sun positioning with atmospheric color model |
 | `FogNode` | Atmospheric fog (linear, exponential, height-based) |
 | `ReflectionProbeNode` | Local cubemap reflections for realistic surfaces |
+| `SpatialAudioNode` | Positional 3D audio source attached to the scene graph |
+| `ViewNode` | Placeholder plane for a SwiftUI view (content not rendered yet) |
 | `AnchorNode` | AR world/plane anchor |
 | `AugmentedImageNode` | Detect real-world images and place 3D content (iOS only) |
 
