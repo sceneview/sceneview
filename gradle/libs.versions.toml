@@ -26,7 +26,7 @@ kotlinMath = "1.8.0"
 # Wired as `compileOnly` in arsceneview/ so phone-only apps pay nothing
 # at runtime. See arsceneview/docs/JETPACK-XR-INTEGRATION.md for the
 # integration approach and slicing plan (issue #1738).
-jetpackXrArCore = "1.0.0-beta01"
+jetpackXrArCore = "1.0.0-beta02"
 
 # Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
 # of the .filamat files committed under sceneview/src/main/assets/materials/ and
