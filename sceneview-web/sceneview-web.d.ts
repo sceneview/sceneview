@@ -142,8 +142,12 @@ export interface SceneViewer {
   /** Clear-colour for the framebuffer. Components are `0..1`. */
   setBackgroundColor(r: number, g: number, b: number, a: number): void;
 
-  /** Frame the camera so every loaded model is fully visible. */
-  fitToModels(): void;
+  /** Frame the camera so every loaded model is fully visible.
+   *  `margin` multiplies the fit distance (iOS `framingMargin` convention):
+   *  `1.0` (default) keeps the historical fit, `< 1` frames tighter, `> 1`
+   *  leaves more air. Clamped to `0.2…10`. Not Android's additive `padding`
+   *  fraction — `margin == 1 + padding`. */
+  fitToModels(margin?: number): void;
 
   /** Toggle library-level auto-centring of loaded content. When enabled
    *  (the default), content is translated so its bounding box is centred

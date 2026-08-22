@@ -154,6 +154,13 @@ import io.github.sceneview.node.findActivity
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
+ * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
+ *                              *fraction* of the fit distance — `0.15` (the default,
+ *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
+ *                              bounds exactly tangent. Clamped to `>= 0`. Per-scene counterpart of
+ *                              `CameraNode.frameToContent(padding = …)` (#2946). Not the iOS
+ *                              `framingMargin` *multiplier*: `margin == 1 + padding`, so iOS
+ *                              `1.15` is `0.15` here. No effect when [autoFitContent] is `false`.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -286,6 +293,15 @@ fun SceneView(
      * [cameraNode] explicitly keep full control — opt in for model-viewer style scenes.
      */
     autoFitContent: Boolean = false,
+    /**
+     * Extra air the [autoFitContent] pass leaves around the content, as a *fraction* of the fit
+     * distance: `0.15` (the default, [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames
+     * the bounds exactly tangent. Clamped to `>= 0`. Same unit as
+     * `CameraNode.frameToContent(padding = …)` — and **not** the iOS `framingMargin` multiplier
+     * (`margin == 1 + padding`, so iOS `1.15` is `0.15` here) (#2946). Ignored unless
+     * [autoFitContent] is `true`.
+     */
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
     /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
@@ -729,6 +745,10 @@ fun SceneView(
     // Same for `autoFitContent` — the auto-fit pass is read through this ref so toggling the
     // parameter at runtime is picked up by the frame loop without restarting it.
     val currentAutoFitContent = rememberUpdatedState(autoFitContent)
+    // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
+    // instead of staying latched on the previous framing.
+    val currentFramingPadding = rememberUpdatedState(framingPadding)
+    LaunchedEffect(framingPadding) { autoFitState.reset() }
 
     // The loop's real wake condition: the caller wants frames, *or* the current surface is still
     // owed one. Derived state so the park below observes both through a single snapshot read.
@@ -785,9 +805,14 @@ fun SceneView(
                         // when a deferred async model grows the union (#1596).
                         if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
                             if (currentAutoCenterContent.value) {
-                                autoFitState.maybeFit(cameraNode, contentRoot)
+                                autoFitState.maybeFit(
+                                    cameraNode, contentRoot, padding = currentFramingPadding.value
+                                )
                             } else {
-                                autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                                autoFitState.maybeFit(
+                                    cameraNode, childNodesRef.get(),
+                                    padding = currentFramingPadding.value
+                                )
                             }
                         }
 
@@ -1811,6 +1836,7 @@ fun Scene(
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -1841,6 +1867,7 @@ fun Scene(
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
     renderer = renderer,
     scene = scene,
     environment = environment,
