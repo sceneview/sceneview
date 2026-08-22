@@ -42,6 +42,7 @@ import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
@@ -625,38 +626,6 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             }
         }
     }
-}
-
-/**
- * Load a [io.github.sceneview.model.ModelInstance] from a nullable streamed [File],
- * returning `null` until the file is ready.
- *
- * The resolver always hands back a real on-disk [File] (streamed GLB or staged
- * bundled fallback), so the model must be loaded through
- * [io.github.sceneview.loaders.ModelLoader.loadModelInstance], which understands
- * `file://` URIs. The two-argument `rememberModelInstance(modelLoader, String)`
- * call is **not** usable here: Kotlin overload resolution binds it to the
- * asset-path overload (the one without a defaulted `resourceResolver`), which
- * feeds the `file://` string straight to `AssetManager.open` — that throws
- * `FileNotFoundException`, the instance stays `null`, and the streamed planet
- * never renders (#1422). Loading via `produceState` + `loadModelInstance` keeps
- * the Filament JNI work on the loader's own Main-thread hop.
- */
-@Composable
-private fun rememberFileModelInstance(
-    modelLoader: io.github.sceneview.loaders.ModelLoader,
-    file: File?,
-): io.github.sceneview.model.ModelInstance? {
-    if (file == null) return null
-    return produceState<io.github.sceneview.model.ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = file.absolutePath,
-    ) {
-        value = runCatching {
-            modelLoader.loadModelInstance("file://${file.absolutePath}")
-        }.getOrNull()
-    }.value
 }
 
 /**
