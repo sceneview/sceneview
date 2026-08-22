@@ -7,7 +7,7 @@ composeMultiplatform = "1.11.1"
 # AndroidX Core
 coreKtx = "1.18.0"
 appcompat = "1.8.0"
-fragmentKtx = "1.8.9"
+fragmentKtx = "1.9.0"
 
 # Compose
 composeBom = "2026.06.01"
