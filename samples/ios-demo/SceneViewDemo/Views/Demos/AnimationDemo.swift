@@ -112,7 +112,8 @@ struct AnimationDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(assetSource)
+            .assetSourcePill(assetSource,
+                             placeholder: selectedSubject.streamedSlug?.fallbackRole == .placeholder)
             .demoSettingsSheet {
                 controlsSheet
             }

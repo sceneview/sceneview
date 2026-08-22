@@ -110,7 +110,8 @@ struct ARInstantPlacementDemo: View {
                 if let assetSource {
                     HStack {
                         Spacer()
-                        AssetSourcePill(state: assetSource)
+                        AssetSourcePill(state: assetSource,
+                                        isPlaceholder: selectedSlug?.fallbackRole == .placeholder)
                     }
                     .padding(.horizontal, 16)
                 }

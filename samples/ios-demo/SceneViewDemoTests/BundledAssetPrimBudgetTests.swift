@@ -185,4 +185,57 @@ final class BundledAssetPrimBudgetTests: XCTestCase {
             }
         }
     }
+
+    /// #2960's rule: every slug's fallback is either the same kind of thing as
+    /// its label, or the slug declares `fallbackRole: .placeholder` so the pill
+    /// reads "Offline placeholder" instead of pretending.
+    ///
+    /// `.subjectMatch` is the init default, so a new slug would claim a match
+    /// by omission. This allowlist is what stops that: a `.subjectMatch` slug
+    /// that is not listed here fails, and listing one is a reviewed claim that
+    /// the bundled asset really is a fox for a fox, a lantern for a lamp.
+    func testEveryFallbackIsASubjectMatchOrADeclaredPlaceholder() {
+        let reviewedSubjectMatches: Set<String> = [
+            // solar — a butterfly for a butterfly
+            "Fantasy Butterfly", "Fluttering Butterfly", "Animated Butterfly", "Animated Butterflies",
+            // gallery
+            "PBR Low-Poly Fox",      // khronos_fox
+            "Desk Lamp",             // khronos_lantern
+            // animation — an animated humanoid for a robot / mech (#3007)
+            "Retro TV Robot", "Catfish Mech", "Walking Robot", "Enforcer Mk1",
+            // park — the one tree_scene consumer that IS trees
+            "Oak Trees",
+            // ar_placement
+            "Floor Lamp",            // khronos_lantern
+            // materials — an insect scan for an insect scan
+            "Iridescent Beetle",     // mosquito_amber
+        ]
+        for slug in SampleAssets.all {
+            switch slug.fallbackRole {
+            case .placeholder:
+                XCTAssertFalse(
+                    reviewedSubjectMatches.contains(slug.displayName),
+                    "\"\(slug.displayName)\" is declared a placeholder but is also on " +
+                    "the reviewed subject-match allowlist — pick one"
+                )
+            case .subjectMatch:
+                XCTAssertTrue(
+                    reviewedSubjectMatches.contains(slug.displayName),
+                    "\"\(slug.displayName)\" claims its fallback \(slug.fallbackBundledPath) " +
+                    "is the same subject as its label, but nobody reviewed that claim. " +
+                    "Either add it to the allowlist above (if it really is) or declare " +
+                    "`fallbackRole: .placeholder` in SampleAssets (#2960)."
+                )
+            }
+        }
+    }
+
+    /// The placeholder flag has to reach the screen, or it is just metadata.
+    func testPillSaysPlaceholderOnlyForABundledPlaceholder() {
+        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: true), "Offline placeholder")
+        XCTAssertEqual(AssetSourcePill.label(state: .bundled, isPlaceholder: false), "Offline model")
+        // A model that actually streamed is never a placeholder.
+        XCTAssertEqual(AssetSourcePill.label(state: .streamed, isPlaceholder: true), "Streamed (cached)")
+        XCTAssertEqual(AssetSourcePill.label(state: .streaming, isPlaceholder: true), "Streaming…")
+    }
 }

@@ -53,7 +53,8 @@ struct SceneGalleryDemo: View {
                 controls
             }
         }
-        .assetSourcePill(assetSource)
+        .assetSourcePill(assetSource,
+                         placeholder: selectedSlug?.fallbackRole == .placeholder)
         .background(Color.black)
         .task(id: selectedSlug?.uid) {
             await loadSelectedSlug()

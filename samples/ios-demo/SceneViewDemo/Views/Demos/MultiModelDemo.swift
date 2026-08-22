@@ -133,7 +133,12 @@ struct MultiModelDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(assetSource)
+            .assetSourcePill(
+                assetSource,
+                // Three of the four park stand-ins are not trees (#2960); the
+                // whole-scene verdict says so.
+                placeholder: Self.slots.compactMap(\.slug).contains { $0.fallbackRole == .placeholder }
+            )
             .demoSettingsSheet { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
