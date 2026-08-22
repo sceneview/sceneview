@@ -84,15 +84,18 @@ struct GestureEditingDemo: View {
             floor.entity.position = SIMD3(0, -0.45, -2)
             root.addChild(floor.entity)
         }
-        // .cameraControls must precede .id — .id wraps to some View which loses the modifier.
         .cameraControls(isEditable ? .none : .orbit)
         // The loaded subject is the bundled Ferrari F40 — a PBR USDZ with
         // metallic paint — and with no IBL it has nothing to reflect while
         // the user drags/pinches/rotates it. Same `.studio` preset as
-        // ModelViewerDemo (#2114); must also precede .id (see above).
+        // ModelViewerDemo (#2114).
         .environment(.studio)
-        // Don't include isEditable in the id — camera mode changes without scene rebuild.
-        .id("gesture-\(loadedModel != nil)")
+        // The scene stays mounted while the model loads and the content is
+        // rebuilt in place once it lands — never re-keyed with `.id(_:)`,
+        // which discards the `RealityView` and intermittently leaves it black
+        // on iOS 26 Simulator (#3008). `isEditable` is deliberately not part
+        // of the key: the camera mode changes without a content rebuild.
+        .contentID(loadedModel == nil ? nil : "loaded")
         .ignoresSafeArea()
     }
 

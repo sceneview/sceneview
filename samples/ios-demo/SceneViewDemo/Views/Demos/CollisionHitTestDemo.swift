@@ -66,7 +66,10 @@ struct CollisionHitTestDemo: View {
             }
             .cameraControls(.orbit)
             .environment(.studio)
-            .id(sceneKey)
+            // Reset rebuilds the shapes under the same `RealityView`; a
+            // `.id(_:)` re-key would discard the renderer and intermittently
+            // leave the viewport black on iOS 26 Simulator (#3008).
+            .contentID(sceneKey)
             .ignoresSafeArea()
             .background(Color.black)
 
@@ -82,7 +85,7 @@ struct CollisionHitTestDemo: View {
                     Spacer()
                     Button {
                         highlightedIndices.removeAll()
-                        sceneKey = UUID()  // force scene rebuild to reset materials
+                        sceneKey = UUID()  // rebuild the content to reset materials
                         #if os(iOS)
                         SceneViewHaptic.shared.medium()
                         #endif
