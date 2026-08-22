@@ -65,7 +65,6 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.seconds
@@ -720,13 +719,20 @@ private fun OffscreenTargetArrows(
             setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
         }
 
-        for (target in targets) {
+        val placements = declutterOffscreenArrowPlacements(
+            targets = targets,
+            centerX = centerX,
+            centerY = centerY,
+            halfW = halfW,
+            halfH = halfH,
+            minSpacingPx = MIN_ARROW_SPACING_DP.dp.toPx(),
+        )
+
+        for (placement in placements) {
             drawOffscreenTargetArrow(
-                target = target,
-                centerX = centerX,
-                centerY = centerY,
-                halfW = halfW,
-                halfH = halfH,
+                target = placement.target,
+                arrowX = placement.x,
+                arrowY = placement.y,
                 color = color,
                 labelPaint = labelPaint,
             )
@@ -734,28 +740,132 @@ private fun OffscreenTargetArrows(
     }
 }
 
-/** Draws a single off-screen arrow + distance label. See [OffscreenTargetArrows]. */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOffscreenTargetArrow(
-    target: OffscreenTarget,
+/**
+ * Minimum on-screen gap, in dp, kept between two off-screen arrows landing on the same
+ * viewport edge. Below this the triangle glyphs overlap into one illegible blob and the
+ * distance labels print on top of each other. Two orbiting objects can transiently align
+ * behind one another from the camera's viewpoint — their true bearings (`angleRad`) end
+ * up a fraction of a degree apart, which used to place both arrows within a few px of
+ * each other on the same edge (device QA on a Pixel 4a hit this live — #3296 follow-up,
+ * see [declutterOffscreenArrowPlacements]).
+ */
+private const val MIN_ARROW_SPACING_DP = 64
+
+/** Which viewport edge an off-screen arrow lands on. */
+private enum class ArrowEdge { LEFT, RIGHT, TOP, BOTTOM }
+
+/** Final screen-space position for one [OffscreenTarget]'s arrow + label. */
+private data class ArrowPlacement(val target: OffscreenTarget, val x: Float, val y: Float)
+
+/** A target's raw (pre-declutter) hit point on the clamp rectangle, decomposed by edge. */
+private data class RawArrowHit(
+    val target: OffscreenTarget,
+    val edge: ArrowEdge,
+    /** Position along the edge — the Y clamp for LEFT/RIGHT, the X clamp for TOP/BOTTOM. */
+    val along: Float,
+    /** The edge's fixed coordinate — X for LEFT/RIGHT, Y for TOP/BOTTOM. */
+    val fixed: Float,
+)
+
+/**
+ * Casts every target's ray to the clamp rectangle (same math [drawOffscreenTargetArrow]
+ * used to do inline), then spreads out any that land within [minSpacingPx] of another on
+ * the *same* edge — the only case that can actually overlap, since the four edges never
+ * touch except at corners. Arrow **rotation** stays exactly the target's true bearing;
+ * only the drawn position is nudged, the standard trade-off radar-style HUDs make to keep
+ * clustered indicators legible (issue #3296 follow-up).
+ */
+private fun declutterOffscreenArrowPlacements(
+    targets: List<OffscreenTarget>,
     centerX: Float,
     centerY: Float,
     halfW: Float,
     halfH: Float,
+    minSpacingPx: Float,
+): List<ArrowPlacement> {
+    val rawHits = targets.map { target ->
+        val dirX = cos(target.angleRad)
+        val dirY = sin(target.angleRad)
+        val tX = if (dirX != 0f) halfW / abs(dirX) else Float.MAX_VALUE
+        val tY = if (dirY != 0f) halfH / abs(dirY) else Float.MAX_VALUE
+        if (tX <= tY) {
+            val edge = if (dirX >= 0f) ArrowEdge.RIGHT else ArrowEdge.LEFT
+            RawArrowHit(
+                target = target,
+                edge = edge,
+                along = centerY + dirY * tX,
+                fixed = centerX + if (dirX >= 0f) halfW else -halfW,
+            )
+        } else {
+            val edge = if (dirY >= 0f) ArrowEdge.BOTTOM else ArrowEdge.TOP
+            RawArrowHit(
+                target = target,
+                edge = edge,
+                along = centerX + dirX * tY,
+                fixed = centerY + if (dirY >= 0f) halfH else -halfH,
+            )
+        }
+    }
+
+    val placements = mutableListOf<ArrowPlacement>()
+    for (edge in ArrowEdge.entries) {
+        val bucket = rawHits.filter { it.edge == edge }.sortedBy { it.along }
+        if (bucket.isEmpty()) continue
+        val (lo, hi) = if (edge == ArrowEdge.LEFT || edge == ArrowEdge.RIGHT) {
+            (centerY - halfH) to (centerY + halfH)
+        } else {
+            (centerX - halfW) to (centerX + halfW)
+        }
+        val declutteredAlong = declutter1D(bucket.map { it.along }, minSpacingPx, lo, hi)
+        bucket.forEachIndexed { index, hit ->
+            val along = declutteredAlong[index]
+            placements += if (edge == ArrowEdge.LEFT || edge == ArrowEdge.RIGHT) {
+                ArrowPlacement(hit.target, x = hit.fixed, y = along)
+            } else {
+                ArrowPlacement(hit.target, x = along, y = hit.fixed)
+            }
+        }
+    }
+    return placements
+}
+
+/**
+ * Spreads already-ascending [values] apart so consecutive entries are at least
+ * [minSpacing] px apart, then keeps the whole run inside `[lo, hi]`: first pushing later
+ * entries forward, then — only if that pushed the run past `hi` — sliding everything back
+ * so it ends exactly on `hi` (and, if the run is wider than `[lo, hi]`, back further so
+ * the first entry lands on `lo`, spacing still preserved even if a few entries spill past
+ * the nominal edge — better than any two of them stacking exactly on top of each other).
+ */
+private fun declutter1D(values: List<Float>, minSpacing: Float, lo: Float, hi: Float): List<Float> {
+    if (values.size <= 1) return values
+    val result = values.toMutableList()
+    for (i in 1 until result.size) {
+        val minAllowed = result[i - 1] + minSpacing
+        if (result[i] < minAllowed) result[i] = minAllowed
+    }
+    val overflow = result.last() - hi
+    if (overflow > 0f) {
+        for (i in result.indices) result[i] -= overflow
+        val deficit = lo - result.first()
+        if (deficit > 0f) {
+            for (i in result.indices) result[i] += deficit
+        }
+    }
+    return result
+}
+
+/** Draws a single off-screen arrow + distance label. See [OffscreenTargetArrows]. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOffscreenTargetArrow(
+    target: OffscreenTarget,
+    arrowX: Float,
+    arrowY: Float,
     color: Color,
     labelPaint: android.graphics.Paint,
 ) {
     val angleRad = target.angleRad
     val dirX = cos(angleRad)
     val dirY = sin(angleRad)
-
-    // Distance along (dirX, dirY) until the ray first crosses the inset rectangle.
-    // Guard the divide for axis-aligned directions (dirX or dirY == 0).
-    val tX = if (dirX != 0f) halfW / kotlin.math.abs(dirX) else Float.MAX_VALUE
-    val tY = if (dirY != 0f) halfH / kotlin.math.abs(dirY) else Float.MAX_VALUE
-    val t = min(tX, tY)
-
-    val arrowX = centerX + dirX * t
-    val arrowY = centerY + dirY * t
 
     // Triangle pointing along +X before rotation; rotateRad spins it to angleRad.
     val tip = 22.dp.toPx()
