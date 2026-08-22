@@ -82,8 +82,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 
 /**
  * Marker the gateway transport looks for to attach the widget pointer
- * (`_meta.ui.resourceUri`) on the JSON-RPC tool result. Kept here so the
- * tool definition and the marker live next to each other.
+ * (`_meta.ui.resourceUri`) on both the `tools/list` declaration and the
+ * JSON-RPC tool result. Kept here so the tool definition and the marker
+ * live next to each other.
  */
 export const WIDGET_TOOL_RESOURCE: Record<string, string> = {
   view_3d_model: "ui://widget/3d-viewer.html",

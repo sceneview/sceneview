@@ -87,6 +87,23 @@ describe("transport: tools/list", () => {
     expect(names.has("list_samples")).toBe(true);
     expect(names.has("get_sample")).toBe(true);
   });
+
+  it("declares the widget pointer on the tool itself, not only on results", async () => {
+    const kv = new MockKv();
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 3, method: "tools/list" }),
+      { kv: kv.asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as {
+      tools: { name: string; _meta?: { ui?: { resourceUri?: string } } }[];
+    };
+    const widget = result.tools.find((t) => t.name === "view_3d_model");
+    expect(widget?._meta?.ui?.resourceUri).toBe("ui://widget/3d-viewer.html");
+    // A host deciding from tools/list must not see phantom widgets either.
+    const plain = result.tools.find((t) => t.name === "list_samples");
+    expect(plain?._meta).toBeUndefined();
+  });
 });
 
 describe("transport: tools/call", () => {

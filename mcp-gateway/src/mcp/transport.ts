@@ -352,9 +352,20 @@ function handleResourcesRead(req: JsonRpcRequest): unknown {
   return { contents: [resource] };
 }
 
-/** Returns the full list of multiplexed tool definitions. */
+/**
+ * Returns the full list of multiplexed tool definitions.
+ *
+ * Widget-bearing tools carry `_meta.ui.resourceUri` on the DECLARATION as
+ * well as on the result (see `handleToolsCall`): a host that decides from
+ * `tools/list` whether a tool has a UI never sees a result first, so a
+ * pointer that only rides on results is invisible to it (#3192).
+ */
 function handleToolsList(): unknown {
-  return { tools: getAllTools() };
+  const tools = getAllTools().map((def) => {
+    const widgetUri = widgetResourceFor(def.name);
+    return widgetUri ? { ...def, _meta: { ui: { resourceUri: widgetUri } } } : def;
+  });
+  return { tools };
 }
 
 /** Validates params and dispatches a `tools/call` to the registry. */
@@ -390,9 +401,10 @@ async function handleToolsCall(
 
   const result = await registryDispatch(toolName, args, ctx.dispatchContext);
 
-  // Widget tools attach `_meta.ui.resourceUri` so OpenAI-Apps-aware clients
-  // know to fetch the bundled HTML widget and render it inline. Other
-  // clients ignore the unknown `_meta` keys and just see the text content.
+  // Widget tools attach `_meta.ui.resourceUri` so MCP-Apps-aware clients
+  // know to fetch the bundled HTML widget and render it inline. The same
+  // pointer is on the tool declaration (`handleToolsList`). Other clients
+  // ignore the unknown `_meta` keys and just see the text content.
   const widgetUri = widgetResourceFor(toolName);
   if (widgetUri) {
     // Narrow through `unknown` to avoid the strict-overlap check on
