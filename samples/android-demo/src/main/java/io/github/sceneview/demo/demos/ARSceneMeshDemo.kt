@@ -5,9 +5,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,10 +51,11 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
-import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.CloudServiceStatusBanner
 import io.github.sceneview.demo.common.rememberHasArcoreApiKey
-import io.github.sceneview.demo.common.isArcoreApiKeyRejected
+import io.github.sceneview.demo.common.rememberIsNetworkAvailable
+import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -233,15 +231,25 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
     var earthState by remember { mutableStateOf<Earth.EarthState?>(null) }
 
     val hasArcoreApiKey = rememberHasArcoreApiKey()
+    // Preemptive network check (#3262): Geospatial silently returns no data with no
+    // network, which otherwise reads identically to a rejected API key.
+    val isNetworkAvailable = rememberIsNetworkAvailable()
 
-    val isArcoreApiKeyUsable = hasArcoreApiKey && !earthState.isArcoreApiKeyRejected
-    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, isArcoreApiKeyUsable) {
+    // The one shared "why can't this demo work right now" answer (#3262): a missing
+    // or rejected key, an exhausted Cloud quota, or no network.
+    val cloudStatus: CloudServiceStatus = when {
+        !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
+        !isNetworkAvailable -> CloudServiceStatus.NoNetwork
+        else -> earthState.toCloudServiceStatus("Geospatial") ?: CloudServiceStatus.Available
+    }
+
+    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, cloudStatus) {
         noGeometryGuidance = false
         val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
-            isArcoreApiKeyUsable
+            !cloudStatus.isUnavailable
         if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
@@ -271,42 +279,43 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
 
             // Status overlay.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                // The tone is derived from the same branches as the text: a missing key or
-                // a dead session is Blocked, a tracking failure asks the user to move the
-                // phone (Guidance), everything else is a normal transient state.
-                val (statusText, statusTone) = when {
-                    sessionError != null ->
-                        "AR session error: $sessionError" to DemoStatusTone.Blocked
-                    !hasArcoreApiKey -> ARCORE_API_KEY_MISSING_MESSAGE to DemoStatusTone.Blocked
-                    earthState.isArcoreApiKeyRejected ->
-                        arcoreApiKeyRejectedMessage("Geospatial") to DemoStatusTone.Blocked
-                    geospatialUnavailable != null ->
-                        "${geospatialUnavailable!!} — needs outdoor area with Street View coverage + Cloud API key" to
-                            DemoStatusTone.Blocked
-                    ForcedTrackingFailure.override != null ->
-                        (trackingFailureMessage(effectiveReason) ?: "Scanning…") to
-                            DemoStatusTone.Guidance
-                    geometryCount > 0 ->
-                        "Rendering $geometryCount mesh(es)" to DemoStatusTone.Progress
-                    !isTracking -> {
-                        val failure = trackingFailureMessage(effectiveReason)
-                        if (failure != null) {
-                            failure to DemoStatusTone.Guidance
-                        } else {
-                            "Scanning environment…" to DemoStatusTone.Progress
+            when {
+                sessionError != null ->
+                    DemoStatusBanner("AR session error: $sessionError", tone = DemoStatusTone.Blocked)
+                // The one shared "Cloud service unavailable" banner (#3262): missing or
+                // rejected key, exhausted quota, no network. Lives in the main AR view,
+                // never only in Settings.
+                cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
+                geospatialUnavailable != null ->
+                    DemoStatusBanner(
+                        "${geospatialUnavailable!!} — needs outdoor area with Street View coverage + Cloud API key",
+                        tone = DemoStatusTone.Blocked,
+                    )
+                else -> {
+                    // The tone is derived from the same branches as the text: a tracking
+                    // failure asks the user to move the phone (Guidance), everything else
+                    // is a normal transient state.
+                    val (statusText, statusTone) = when {
+                        ForcedTrackingFailure.override != null ->
+                            (trackingFailureMessage(effectiveReason) ?: "Scanning…") to
+                                DemoStatusTone.Guidance
+                        geometryCount > 0 ->
+                            "Rendering $geometryCount mesh(es)" to DemoStatusTone.Progress
+                        !isTracking -> {
+                            val failure = trackingFailureMessage(effectiveReason)
+                            if (failure != null) {
+                                failure to DemoStatusTone.Guidance
+                            } else {
+                                "Scanning environment…" to DemoStatusTone.Progress
+                            }
                         }
+                        noGeometryGuidance ->
+                            stringResource(R.string.demo_ar_scene_mesh_no_geometry_hint) to
+                                DemoStatusTone.Guidance
+                        else -> "Looking for scene mesh…" to DemoStatusTone.Progress
                     }
-                    noGeometryGuidance ->
-                        stringResource(R.string.demo_ar_scene_mesh_no_geometry_hint) to
-                            DemoStatusTone.Guidance
-                    else -> "Looking for scene mesh…" to DemoStatusTone.Progress
+                    DemoStatusBanner(statusText, tone = statusTone)
                 }
-                DemoStatusBanner(statusText, tone = statusTone)
             }
         },
     ) {

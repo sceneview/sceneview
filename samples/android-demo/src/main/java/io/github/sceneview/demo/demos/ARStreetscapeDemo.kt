@@ -5,9 +5,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,10 +47,11 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
-import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
-import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.CloudServiceStatusBanner
 import io.github.sceneview.demo.common.rememberHasArcoreApiKey
-import io.github.sceneview.demo.common.isArcoreApiKeyRejected
+import io.github.sceneview.demo.common.rememberIsNetworkAvailable
+import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -258,6 +256,19 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     // the banner so the user sees "Looking for streetscape geometry…" forever
     // turned into a clear "API key not configured" diagnostic instead.
     val hasArcoreApiKey = rememberHasArcoreApiKey()
+    // Preemptive network check (#3262): Geospatial silently returns no data with no
+    // network, which otherwise reads identically to a rejected API key.
+    val isNetworkAvailable = rememberIsNetworkAvailable()
+
+    // The one shared "why can't this demo work right now" answer (#3262): a missing
+    // or rejected key, an exhausted Cloud quota, or no network. `earthState` only
+    // reports the ARCore-side rejection/quota reasons — the key-missing and
+    // no-network checks are known up front.
+    val cloudStatus: CloudServiceStatus = when {
+        !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
+        !isNetworkAvailable -> CloudServiceStatus.NoNetwork
+        else -> earthState.toCloudServiceStatus("Geospatial") ?: CloudServiceStatus.Available
+    }
 
     // Semi-transparent material for streetscape geometry overlays — SceneView TintLight at
     // low alpha so the real camera feed of buildings/sidewalks stays readable through the
@@ -271,19 +282,19 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     )
 
     // Timeout-based outdoor guidance (#1615). When the camera is tracking, Geospatial
-    // is supported (no `geospatialUnavailable`) and no fatal error occurred, but no
-    // streetscape geometry has shown up after `NO_GEOMETRY_HINT_DELAY_MS`, the user
-    // is almost certainly indoors or outside VPS coverage. Surface a clear hint
-    // instead of the perpetual "Looking for streetscape geometry…" spinner. Keyed on
-    // the inputs so the timer re-arms whenever tracking drops or geometry appears.
-    val isArcoreApiKeyUsable = hasArcoreApiKey && !earthState.isArcoreApiKeyRejected
-    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, isArcoreApiKeyUsable) {
+    // is supported (no `geospatialUnavailable`), the cloud service is usable, and no
+    // fatal error occurred, but no streetscape geometry has shown up after
+    // `NO_GEOMETRY_HINT_DELAY_MS`, the user is almost certainly indoors or outside VPS
+    // coverage. Surface a clear hint instead of the perpetual "Looking for streetscape
+    // geometry…" spinner. Keyed on the inputs so the timer re-arms whenever tracking
+    // drops or geometry appears.
+    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, cloudStatus) {
         noGeometryGuidance = false
         val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
-            isArcoreApiKeyUsable
+            !cloudStatus.isUnavailable
         if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
@@ -321,48 +332,50 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
             // when a developer has picked one in the debug menu (#1881). Read it here
             // so flipping the override re-renders the overlay immediately.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                // The tone is derived from the same branches as the text: a missing or
-                // rejected key and a dead session are Blocked, a tracking failure asks
-                // the user to move the phone (Guidance), everything else is transient.
-                val (statusText, statusTone) = when {
-                    // friendlyArSessionError already yields a complete, honest sentence (#2349).
-                    sessionError != null -> sessionError!! to DemoStatusTone.Blocked
-                    !hasArcoreApiKey -> ARCORE_API_KEY_MISSING_MESSAGE to DemoStatusTone.Blocked
-                    earthState.isArcoreApiKeyRejected ->
-                        arcoreApiKeyRejectedMessage("Geospatial") to DemoStatusTone.Blocked
-                    geospatialUnavailable != null ->
-                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key" to
-                            DemoStatusTone.Blocked
-                    ForcedTrackingFailure.override != null ->
-                        (trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026") to
-                            DemoStatusTone.Guidance
-                    geometryCount > 0 ->
-                        "Rendering $geometryCount structure(s)" to DemoStatusTone.Progress
-                    !isTracking -> {
-                        val failure = trackingFailureMessage(effectiveReason)
-                        if (failure != null) {
-                            failure to DemoStatusTone.Guidance
-                        } else {
-                            "Scanning environment\u2026" to DemoStatusTone.Progress
+            when {
+                // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                sessionError != null ->
+                    DemoStatusBanner(sessionError!!, tone = DemoStatusTone.Blocked)
+                // The one shared "Cloud service unavailable" banner (#3262): missing or
+                // rejected key, exhausted quota, no network. Lives in the main AR view,
+                // never only in Settings.
+                cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
+                geospatialUnavailable != null ->
+                    DemoStatusBanner(
+                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key",
+                        tone = DemoStatusTone.Blocked,
+                    )
+                else -> {
+                    // The tone is derived from the same branches as the text: a tracking
+                    // failure asks the user to move the phone (Guidance), everything else
+                    // is a normal transient state.
+                    val (statusText, statusTone) = when {
+                        ForcedTrackingFailure.override != null ->
+                            (trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026") to
+                                DemoStatusTone.Guidance
+                        geometryCount > 0 ->
+                            "Rendering $geometryCount structure(s)" to DemoStatusTone.Progress
+                        !isTracking -> {
+                            val failure = trackingFailureMessage(effectiveReason)
+                            if (failure != null) {
+                                failure to DemoStatusTone.Guidance
+                            } else {
+                                "Scanning environment\u2026" to DemoStatusTone.Progress
+                            }
                         }
+                        // Supported device, no VPS coverage / indoors (#1615): after a
+                        // timeout the perpetual spinner is replaced with explicit
+                        // guidance to step outside and point at buildings.
+                        noGeometryGuidance ->
+                            stringResource(R.string.demo_ar_streetscape_no_geometry_hint) to
+                                DemoStatusTone.Guidance
+                        else -> "Looking for streetscape geometry\u2026" to DemoStatusTone.Progress
                     }
-                    // Supported device, no VPS coverage / indoors (#1615): after a
-                    // timeout the perpetual spinner is replaced with explicit
-                    // guidance to step outside and point at buildings.
-                    noGeometryGuidance ->
-                        stringResource(R.string.demo_ar_streetscape_no_geometry_hint) to
-                            DemoStatusTone.Guidance
-                    else -> "Looking for streetscape geometry\u2026" to DemoStatusTone.Progress
+                    // The shared banner owns the pill geometry — the end-only Settings FAB
+                    // inset (#3229), the colour per tone — so this demo no longer reads as
+                    // "all good" in primary blue while the Cloud API key is unusable (#3210).
+                    DemoStatusBanner(statusText, tone = statusTone)
                 }
-                // The shared banner owns the pill geometry — the end-only Settings FAB
-                // inset (#3229), the colour per tone — so this demo no longer reads as
-                // "all good" in primary blue while the Cloud API key is unusable (#3210).
-                DemoStatusBanner(statusText, tone = statusTone)
             }
         },
     ) {

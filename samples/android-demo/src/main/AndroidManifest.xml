@@ -8,6 +8,11 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Normal permission, granted at install with no runtime prompt. Read by
+         `rememberIsNetworkAvailable` (common/CloudServiceStatus.kt) so the five
+         ARCore Cloud demos can tell "no network" apart from "Cloud rejected the
+         key" instead of both reading as the same silent failure (#3262). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Required by `SceneViewHaptic` (rememberHapticFeedback) — the sceneview
          library deliberately doesn't auto-merge this permission, the demo app
          opts in so the controls sheet, AR placement confirmations, and shutter
