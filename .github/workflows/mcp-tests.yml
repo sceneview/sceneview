@@ -11,26 +11,14 @@ name: MCP tests
 # while the page was wrong and only went red once the page was fixed. Nothing
 # reported that for months.
 #
-# `mcp/`'s own suite is in a subtler state, and the first version of this header
-# got it wrong — worth recording, since the error is the one this workflow is
-# about. It claimed the suite never ran in CI. It does run: `quality-gate.sh`
-# runs it behind `[ -d "mcp/node_modules" ]`, and in ci.yml's `quality-gate` job
-# (`name: Quality gate (full)`) that directory EXISTS, because
-# `- uses: ./.github/actions/setup-mcp` pulls in the composite's `Install MCP
-# dependencies` step — an `npm ci` under `working-directory: mcp` — before the
-# job reaches its `bash .claude/scripts/quality-gate.sh` step. Named by key and
-# not pinned by line number on purpose: `ci.yml:NNNN` rots the moment anything
-# above it moves, and a stale citation reads as evidence while pointing at
-# another job entirely.
-#
-# The real defect is that nothing says so. No declaration ties that leg to
-# `setup-mcp`, which sits in the job for the other MCP work; remove it, reorder
-# the steps, or move the leg to a job without it and the suite stops running
-# while the report reads the same. Until this PR the guard's false branch
-# printed nothing at all, so "did not run" and "passed" were indistinguishable.
-# And because the invocation goes through a wrapper script, no reachability
-# audit can see it — a stated bound of `check-test-suites-reachable.sh`, and the
-# reason `mcp` read as covered there only through `release.yml`.
+# `mcp/`'s own suite was covered only by accident. Until #3244 removed the
+# local harness, `.claude/scripts/quality-gate.sh` ran it behind
+# `[ -d "mcp/node_modules" ]` from ci.yml's `Quality gate (full)` job, and the
+# directory existed there only because `./.github/actions/setup-mcp` happened
+# to sit in that job for the other MCP work. Nothing declared that dependency,
+# the guard's false branch printed nothing, and the invocation went through a
+# wrapper script no reachability audit could see. That job and that script are
+# gone now; this workflow is the only thing that runs the suite on a PR.
 #
 # Accidental coverage that no reader can verify is what this workflow replaces:
 # the same suite, invoked by name, on a declared trigger.
@@ -61,6 +49,16 @@ on:
       - 'mcp/**'
       - 'mcp-gateway/**'
       - '.github/workflows/mcp-tests.yml'
+      # The reachability job below reads every workflow and every versioned
+      # test file, so the PRs that must trigger it are the ones that touch
+      # either — a PR that only deletes a workflow is exactly the PR it is for.
+      - '.github/workflows/**'
+      - '**/*.test.*'
+      - '**/*.spec.*'
+      - '**/__tests__/**'
+      - '**/package.json'
+      - '.claude/scripts/check-test-suites-reachable.sh'
+      - '.claude/scripts/test-check-test-suites-reachable.sh'
   workflow_dispatch:
 
 concurrency:
@@ -176,3 +174,24 @@ jobs:
       - name: Test
         working-directory: mcp-gateway
         run: npx vitest run
+
+  # Every JS/TS package carrying tests must be reachable from a workflow
+  # (#3201): invoked by a step AND triggered when the package changes. This
+  # used to be a step of ci.yml's `repo-hygiene` job; #3244 removed that job
+  # with the rest of the local harness, so the gate lives here, next to the
+  # suites it was written for. Self-test first: the gate's subject is the file
+  # it is declared in, so the fixtures are synthetic repos and a green run says
+  # "the reachability check works", not "today's workflows happen to line up".
+  test-suite-reachability:
+    name: Test suites reachable from a workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Self-test the test-suite reachability gate
+        run: bash .claude/scripts/test-check-test-suites-reachable.sh
+
+      - name: Check every test suite is reachable from a workflow
+        run: bash .claude/scripts/check-test-suites-reachable.sh

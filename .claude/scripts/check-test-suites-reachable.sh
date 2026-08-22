@@ -160,12 +160,13 @@ SUITES=($(printf '%s\n' "${SUITES[@]:-}" | grep -v '^$' | sort -u))
 # Emitted as: workflow<TAB>working-directory<TAB>command<TAB>advisory(0|1)
 #
 # Comment lines are skipped, and that is load-bearing rather than tidy. This
-# repo has a header comment naming a runner — `mcp-ts-check.yml`'s "`npm test`
+# repo had a header comment naming a runner — `mcp-ts-check.yml`'s "`npm test`
 # (run by ci.yml's `Quality gate (full)` job)". Counting it as an invocation
 # would let a SENTENCE satisfy the gate that exists to check whether the command
 # runs. Whether the sentence happens to be true is beside the point: that one
-# is (setup-mcp's `npm ci` makes the guard true), and it still must not count,
-# because a prose claim and a `run:` line are not the same kind of evidence.
+# was, for a while (a wrapper script's guard held until #3244 removed the
+# wrapper), and it still must not count, because a prose claim and a `run:`
+# line are not the same kind of evidence.
 scan_invocations() {
     for wf in "$WF_DIR"/*.yml "$WF_DIR"/*.yaml; do
         [ -f "$wf" ] || continue

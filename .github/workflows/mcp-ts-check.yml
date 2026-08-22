@@ -31,19 +31,13 @@ name: MCP TypeScript check
 # contributor's laptop, the same shape `rn-ts-check.yml` closed for the RN
 # bridge.
 #
-# The parenthetical above — `npm test` is run by ci.yml's `Quality gate (full)`
-# job — is TRUE, and #3201 briefly rewrote it to say the opposite before
-# measuring. It holds because that job (`quality-gate:`) runs
-# `- uses: ./.github/actions/setup-mcp`, whose `Install MCP dependencies` step
-# is an `npm ci` under `working-directory: mcp`, which makes
-# `quality-gate.sh`'s `[ -d "mcp/node_modules" ]` guard true before the job
-# reaches the gate step. By key, not by line number — `ci.yml:NNNN` citations
-# rot silently and then read as proof of the wrong job.
-#
-# What was wrong is that nothing said any of that. The coverage rested on a
-# step present for other reasons, in another job, with no declaration tying the
-# two together — and a reader asking "are the MCP tests covered?" had only this
-# sentence to go on, with no way to check it from here. `npm test` now runs on
+# This header once said `npm test` was "run by ci.yml's `Quality gate (full)`
+# job". It happened to be true — that job ran `quality-gate.sh`, whose
+# `[ -d "mcp/node_modules" ]` guard was satisfied only because
+# `./.github/actions/setup-mcp` sat in the same job for other reasons — but
+# nothing declared the dependency, and a reader asking "are the MCP tests
+# covered?" had only that sentence to go on (#3201). Both the job and the
+# script were removed with the local harness in #3244. `npm test` now runs on
 # every PR in `mcp-tests.yml`, invoked by name on a declared trigger, which is
 # what makes the answer verifiable rather than merely correct.
 #
