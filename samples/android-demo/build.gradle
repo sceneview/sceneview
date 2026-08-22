@@ -404,3 +404,20 @@ androidComponents {
         variant.sources.assets.addGeneratedSourceDirectory(bundleChangelogAsset) { it.outputDir }
     }
 }
+
+// ─── Roborazzi goldens are a declared test input (#3034, root cause of #3029) ─
+//
+// `verifyRoborazziDebug` compares against the PNGs under `src/test/snapshots/`,
+// but the Roborazzi plugin reads them from inside the test JVM, so Gradle never
+// knew the directory was an input of `testDebugUnitTest`. Measured 2026-08-06
+// (#3029): mutate a golden by 8000 red pixels, re-run, and the task came back
+// `UP-TO-DATE` / `BUILD SUCCESSFUL in 1s` having read no golden at all — a PR
+// whose only change IS a golden went green. The workaround was `--rerun` on
+// every gate (a full minute each run); the fix is to tell Gradle the truth.
+// `fileTree` rather than `inputs.dir` so a module without goldens still
+// configures — a missing directory is an empty input, not a failure.
+tasks.withType(Test).configureEach {
+    inputs.files(fileTree("src/test/snapshots"))
+            .withPropertyName("roborazziGoldens")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+}

@@ -103,6 +103,14 @@ Verify against goldens (every CI run):
 ./gradlew :samples:android-demo:verifyRoborazziDebug
 ```
 
+The goldens are a declared input of the test task (`build.gradle`,
+`roborazziGoldens`), so editing a PNG is enough to make Gradle re-run the
+comparison — no `--rerun` needed. Before #3034 they were not, and this exact
+command came back `UP-TO-DATE` / `BUILD SUCCESSFUL in 1s` on a golden mutated by
+8000 red pixels, having read no golden at all (#3029). If you ever see
+`verifyRoborazziDebug UP-TO-DATE` right after changing a golden, that wiring has
+rotted; the comparison did not happen.
+
 **Catches:** Material 3 layout drift, `FilterChip` / `Slider` / `Switch` state
 desync, accessibility labels, font-weight changes.
 
@@ -139,8 +147,8 @@ rendering screenshots share that harness.
 | 2 — controls snapshot | `:samples:android-demo:verifyRoborazziDebug` | no | fast |
 | 3 — render screenshot | `:samples:android-demo:connectedDebugAndroidTest` | yes (GPU) | slow |
 
-Layers 1 and 2 run on every `pre-push-check.sh` and CI gate. Layer 3 runs on the
-device-QA jobs only.
+Layers 1 and 2 run on every CI gate (`unit-test` job in `ci.yml`). Layer 3 runs on
+the device-QA jobs only.
 
 ## Related
 
