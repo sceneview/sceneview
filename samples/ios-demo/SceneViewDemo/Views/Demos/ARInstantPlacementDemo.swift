@@ -134,9 +134,10 @@ struct ARInstantPlacementDemo: View {
             let node: ModelNode
             if let slug = selectedSlug, let url = armedURL {
                 node = try await ModelNode.load(contentsOf: url)
-                _ = node.scaleToUnits(0.3)
+                // Honour the slug's real-world size hint, as ARPlacementDemo
+                // does — the bundled cycle alone is normalised to 0.3 m (#2966).
+                _ = node.scaleToUnits(slug.scaleToUnits)
                 _ = node.centerOrigin()
-                _ = slug
             } else {
                 let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
                 cycleIndex += 1
@@ -216,9 +217,8 @@ struct ARInstantPlacementDemo: View {
                         .font(.caption2)
                         .foregroundStyle(.green)
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Same rule as ARPlacementDemo: credit what is on screen (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             }
 
             Button(role: .destructive) {

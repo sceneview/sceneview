@@ -246,9 +246,9 @@ struct PhysicsDemo: View {
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Credits the model actually on screen — streamed author or the
+                // bundled fallback's own author and licence (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             } else {
                 Text("Drop count capped at 20 on RealityKit — beyond that the simulation lags.")
                     .font(.caption2)
