@@ -10,7 +10,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 - **JDK 17** (for Android/KMP modules)
 - **Android Studio** (latest stable recommended)
-- **Xcode 15+** (for SceneViewSwift / iOS work only)
+- **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor)
 - Optional but recommended: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
   for agent-driven QA. Bootstrap in one shot:
   ```bash
@@ -184,6 +184,17 @@ for full API context in any chat:
 5. **Keep commits clean.** Squash fixups before requesting review.
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
+
+### Changing the Apple platform floor
+
+`SceneViewSwift/Package.swift` is the only *enforced* statement of the iOS / macOS /
+visionOS minimum; the three podspecs, the root `Package.swift`, the README badges, the
+docs site, `llms.txt`, the MCP guides and the demo's About screen all repeat it as prose.
+When you move the floor, run
+[`.claude/scripts/check-ios-floor.sh`](.claude/scripts/check-ios-floor.sh) — it reads
+the manifest and lists every podspec and doc line that still names the old version
+(exit 1 on drift). It runs offline in under a second; nothing in CI runs it for you
+(#3046).
 
 ### Adding a demo to `samples/android-demo`
 

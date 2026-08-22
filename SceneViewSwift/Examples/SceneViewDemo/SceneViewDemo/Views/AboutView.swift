@@ -18,7 +18,7 @@ struct AboutView: View {
                 // SDK info
                 Section {
                     LabeledContent("Version", value: marketingVersion)
-                    LabeledContent("Platform", value: "iOS 17+ / visionOS 1+")
+                    LabeledContent("Platform", value: "iOS 18+ / visionOS 2+")
                     LabeledContent("Engine", value: "RealityKit + ARKit")
                     LabeledContent("License", value: "Apache 2.0")
                 } header: {
