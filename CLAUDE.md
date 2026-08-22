@@ -52,8 +52,11 @@ Full API reference: [`llms.txt`](./llms.txt).
   `<!-- category: Fixed -->` tag. `CHANGELOG.md` is generated — never hand-edit it, same
   for `gpt/knowledge-*.md` and every `CREDITS.md` (licence compliance).
 - **Public surfaces are English only** — commit messages and PR bodies included.
-- **Codex bills the ChatGPT plan**: always `.claude/scripts/codex-delegate.sh`, never a
-  raw `codex`, never an OpenAI API key.
+- **Delegate to Codex by default** — Codex bills the ChatGPT plan, a quota separate
+  from Claude's. Always `.claude/scripts/codex-delegate.sh`, never a raw `codex`, never
+  an OpenAI API key. Default routing: exploration/audit → `ask` · second opinion on a
+  diff → `review` · mechanical implementation → `implement --new-worktree`. Decisions,
+  integration, commits, merges and releases stay with Claude.
 
 ## CI
 
