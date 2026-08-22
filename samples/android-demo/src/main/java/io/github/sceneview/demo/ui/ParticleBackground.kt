@@ -1,90 +1,103 @@
 package io.github.sceneview.demo.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.foundation.background
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Skybox
+import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.createCameraNode
 import io.github.sceneview.createEnvironment
+import io.github.sceneview.createView
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toLinearSpace
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberView
+import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import io.github.sceneview.utils.readBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Animated 3D particle background for the Samples tab — a tasteful nod to the
- * old Windows Media Player music visualizers (#1488). It is itself a
- * [SceneView] scene, so the demo app dogfoods the SDK on its own home screen.
+ * Animated 3D backdrop for the Explore and Samples tabs — itself a [SceneView] scene, so
+ * the demo app dogfoods the SDK on its own home screen (#1488).
  *
- * Design intent (kept deliberately restrained):
- * - **A drifting particle field** — [PARTICLE_COUNT] small unlit spheres,
- *   seeded per launch ([Random] without a fixed seed) so each cold start
- *   looks slightly different. Each particle slowly bobs on its own sine
- *   phase and the whole field auto-orbits via a camera sweep.
- * - **Subtle + performant** — particle count is in the low tens, motion is
- *   low-frequency, the spheres are low-poly ([PARTICLE_STACKS]/[PARTICLE_SLICES]),
- *   and the colours are pulled from the on-brand [SceneViewColors] ramp at low
- *   brightness. A vertical scrim ([scrimBrush]) is drawn on top so the demo
- *   cards keep their contrast (dark-mode readability — see #1443).
- * - **Lifecycle-aware** — the caller only places this composable while the
- *   Samples tab is selected, so the whole [SceneView] (and its frame loop)
- *   leaves composition — and pauses — when another tab is shown.
+ * ## Why it was redesigned (#3236)
  *
- * ## Tuning for iteration
- * This is a first visual experiment. To iterate:
- * - **Particle count** — change [PARTICLE_COUNT] (keep it in the tens; this
- *   runs always-on behind a scrollable list).
- * - **Colours** — swap the [SceneViewColors] ramp used in [particleColor], or
- *   adjust the `alpha` there for more / less brightness.
- * - **Motion** — [ORBIT_PERIOD_SECONDS] sets the camera sweep speed,
- *   [DRIFT_AMPLITUDE] / [DRIFT_PERIOD_SECONDS] set the per-particle bob.
- * - **Scrim** — [scrimBrush] controls how much the background bleeds through
- *   to the cards.
+ * The first version was a cloud of 36 tiny *unlit* spheres orbited by a distant camera.
+ * Unlit means every sphere is a flat disc of one colour; tiny and distant means no
+ * perspective size contrast; a cloud with no floor means no reference for "near" or
+ * "far". The owner's Play Store feedback on 4.31.0 was blunt: "we should really see it's
+ * 3D". Every depth cue the eye uses was missing, so the fix adds them, one by one:
  *
- * The composable is intentionally self-contained (one file, demo app only — it
- * never touches the `sceneview` library module) so it is easy to revert.
+ * - **A ground plane with a perspective grid.** Hairline grid lines converge toward the
+ *   horizon — linear perspective is the single strongest depth cue on a flat screen.
+ * - **Lit PBR volumes, not discs.** Spheres, tori, cubes and capsules in the brand ramp
+ *   wear a lit material with the SDK's neutral IBL, so each one carries a highlight, a
+ *   shaded side and a terminator — a shape reads as a volume only when it is shaded.
+ * - **Cast shadows.** The main light is angled (not straight down) and every object
+ *   drops a shadow onto the floor, which is what anchors it at a depth instead of letting
+ *   it float as a sticker.
+ * - **Depth-staggered layout with size contrast.** Objects spread from a metre in front of
+ *   the camera to ten metres out, so the same radius renders large up close and small far
+ *   away.
+ * - **Atmospheric fade.** Filament fog tinted to the theme surface fades far objects and
+ *   the grid toward the backdrop, so distance reads even in a still frame.
+ * - **A lateral camera dolly.** The camera slides sideways and back over
+ *   [DOLLY_PERIOD_SECONDS] while keeping its gaze on the field, so near objects sweep
+ *   across the frame faster than far ones — motion parallax.
+ *
+ * ## Kept from the first version
+ * - A scrim ([scrimBrush]) so headers drawn on the backdrop keep their contrast in both
+ *   themes (#1443) — re-tuned, because the old 0.97 band hid three quarters of the scene.
+ * - The clear colour is the theme `surface`, converted to linear (#3237-a).
+ * - Lifecycle: the caller places this only while its tab is selected, so the whole
+ *   [SceneView] and its frame loop leave composition on a tab switch.
+ *
+ * ## Frame budget
+ * 20 lit primitives + 1 floor + ~30 hairline cubes, one directional shadow map, fog.
+ * The view is built by [createView] and then trimmed: SSAO and bloom are switched off —
+ * neither is visible behind a scrim, and SSAO is the most expensive default pass — and
+ * the shadow map is kept at Filament's default resolution. The geometry is seeded once
+ * per composition entry; per-frame work is a camera transform and a sine bob per object.
  */
 @Composable
 fun ParticleBackground(modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
 
-    // The colour the render target is cleared to, the colour the scrim fades toward,
-    // and the colour the `@Preview` stand-in paints — one value, read from the theme.
-    // They used to be three different things, and that is the whole of defect #3237-a:
-    // the scene cleared to BLACK (the `isOpaque = true` default builds an α=1 skybox at
-    // rgb 0), the scrim faded toward a hard-coded `Color.White`, and at the scrim's
-    // lightest stop — α 0.55 — white over black composites to #8C8C8C. The Samples and
-    // Explore tabs rendered a dirty grey field in light mode, seamed against a #FAF8FF
-    // status bar. No alpha value fixes that; the target has to stop being black.
+    // Clear colour, fog colour and scrim target — one value, read from the theme
+    // (#3237-a: the three used to differ and light mode rendered a dirty grey field).
     val backdrop = MaterialTheme.colorScheme.surface
+    val floorTint = MaterialTheme.colorScheme.surfaceDim
+    val gridTint = MaterialTheme.colorScheme.outline
 
-    // `@Preview` panes and Roborazzi run on the JVM, where `rememberEngine()`
-    // below throws `UnsatisfiedLinkError: no filament-jni`. Short-circuit to a
-    // static backdrop first — same pattern as [GeometryDemo] and
-    // [SplatPreviewDemo], see [io.github.sceneview.demo.DemoPreviewPlaceholder].
-    // This also makes the composable deterministic: the particle field is
-    // seeded from an *unseeded* [Random], so a pixel-exact golden could never
-    // match the live scene anyway.
+    // `@Preview` panes and Roborazzi run on the JVM, where `rememberEngine()` throws
+    // `UnsatisfiedLinkError: no filament-jni`. Short-circuit to a static backdrop —
+    // same pattern as [io.github.sceneview.demo.DemoPreviewPlaceholder].
     if (LocalInspectionMode.current) {
         Box(
             modifier = modifier
@@ -95,40 +108,77 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
         return
     }
 
+    val context = LocalContext.current
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
-    // Clear colour = the theme surface. Filament's skybox colour is LINEAR, the theme
-    // token is sRGB, so the conversion is not optional — skipping it renders a visibly
-    // lighter field than the surrounding surface, which is the same seam by a smaller
-    // margin. Keyed on `backdrop` so a light/dark switch rebuilds (and disposes) it.
+    // Backdrop budget: keep shadows (the grounding cue), drop SSAO and bloom — both
+    // invisible behind the scrim, and SSAO is the costliest default pass.
+    val view = rememberView(engine) {
+        createView(engine).apply {
+            ambientOcclusionOptions = ambientOcclusionOptions.apply { enabled = false }
+            bloomOptions = bloomOptions.apply { enabled = false }
+        }
+    }
+
+    // Filament's skybox and fog colours are LINEAR, the theme token is sRGB.
+    val linearBackdrop = remember(backdrop) { colorOf(backdrop).toLinearSpace() }
+
+    // Atmospheric fade toward the clear colour: far objects and the grid dissolve into
+    // the backdrop, so distance reads in a still frame. Pushed as a SideEffect (main
+    // thread — Filament JNI) and re-pushed whenever the theme flips.
+    SideEffect {
+        view.fogOptions = view.fogOptions.apply {
+            enabled = true
+            fogColorFromIbl = false
+            color[0] = linearBackdrop.r
+            color[1] = linearBackdrop.g
+            color[2] = linearBackdrop.b
+            distance = FOG_START_DISTANCE
+            density = FOG_DENSITY
+            height = FOG_HEIGHT
+            heightFalloff = FOG_HEIGHT_FALLOFF
+            cutOffDistance = FOG_CUTOFF_DISTANCE
+            maximumOpacity = 1f
+        }
+    }
+
+    // The SDK's neutral studio IBL gives every lit surface a highlight and a shaded
+    // side; the skybox stays a flat clear colour so the field sits on the theme surface.
     val environment = rememberEnvironment(engine, key = backdrop) {
         createEnvironment(
             engine = engine,
-            // No IBL: every particle is an unlit material, so an indirect light would
-            // be uploaded and sampled for nothing.
-            indirectLight = null,
+            indirectLight = KTX1Loader.createIndirectLight(
+                engine,
+                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
+            ).indirectLight?.also { it.intensity = IBL_INTENSITY },
             skybox = Skybox.Builder()
-                .color(colorOf(backdrop).toLinearSpace().toFloatArray())
+                .color(linearBackdrop.toFloatArray())
                 .build(engine),
         )
     }
 
-    // Seed the layout once per composition entry (≈ once per launch / per tab
-    // switch into Samples). `Random.Default` is unseeded so each cold start
-    // produces a different — but always tasteful — constellation.
-    val particles = remember {
-        val rng = Random(Random.nextInt())
-        List(PARTICLE_COUNT) { ParticleSpec.random(rng) }
+    // Angled key light: straight-down (the SDK default) puts the shadow directly under
+    // the object where the object hides it. A 3/4 angle throws it onto the floor where
+    // it can be seen, and shades one side of each volume.
+    val mainLight = rememberMainLightNode(engine) {
+        lightDirection = Direction(x = -0.45f, y = -1f, z = -0.55f)
     }
 
-    // Camera node driven by the frame loop below — a slow continuous orbit
-    // around the field gives the whole scene its drifting "alive" feel
-    // without any per-particle physics.
+    // Seed the layout once per composition entry. `Random.Default` is unseeded so each
+    // cold start produces a different — but always structured — arrangement.
+    val objects = remember {
+        val rng = Random(Random.nextInt())
+        List(OBJECT_COUNT) { index -> FloatingObject.random(rng, index) }
+    }
+
+    // Low, wide perspective: the camera sits at eye height just above the floor so the
+    // grid converges steeply and the near objects tower over the far ones.
     val cameraNode = remember(engine) {
         createCameraNode(engine).apply {
-            position = Position(x = 0f, y = 0f, z = CAMERA_RADIUS)
-            lookAt(Position(0f, 0f, 0f))
+            focalLength = CAMERA_FOCAL_LENGTH_MM
+            position = Position(x = 0f, y = CAMERA_HEIGHT, z = CAMERA_DISTANCE)
+            lookAt(CAMERA_TARGET)
         }
     }
 
@@ -137,47 +187,79 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             materialLoader = materialLoader,
+            view = view,
             cameraNode = cameraNode,
-            // No gesture manipulator — this is a passive backdrop, all touches
-            // must fall through to the demo grid on top.
+            mainLightNode = mainLight,
+            // Passive backdrop — every touch falls through to the content on top.
             cameraManipulator = null,
-            // Opaque render target, cleared to the theme surface by `environment`
-            // above — the particles read as glints on a calm field of exactly the
-            // colour the rest of the screen is, and the demo cards keep their
-            // contrast. Opaque (rather than a translucent surface) on purpose: this
-            // is a SurfaceView, and a translucent one shows what is under the
-            // *window*, not the Compose background above it.
+            // Opaque SurfaceView cleared to the theme surface (a translucent one would
+            // show what is under the *window*, not the Compose background above it).
             isOpaque = true,
             environment = environment,
-            // Static content is centred by hand; skip the auto-centre pass so
-            // the seeded layout is not re-translated on the first frame.
             autoCenterContent = false,
             onFrame = { frameTimeNanos ->
                 val t = frameTimeNanos / 1_000_000_000.0
-                // Slow auto-orbit — one full revolution every ORBIT_PERIOD.
-                val orbit = (t / ORBIT_PERIOD_SECONDS) * 2.0 * Math.PI
+                // Lateral dolly + a slow yaw around the field: near objects cross the
+                // frame faster than far ones, which is the parallax the eye reads as depth.
+                val sway = sin(t / DOLLY_PERIOD_SECONDS * 2.0 * Math.PI)
+                val yaw = sway * DOLLY_YAW_RADIANS
                 cameraNode.position = Position(
-                    x = (sin(orbit) * CAMERA_RADIUS).toFloat(),
-                    y = (sin(t / ORBIT_PERIOD_SECONDS * Math.PI) * CAMERA_BOB).toFloat(),
-                    z = (cos(orbit) * CAMERA_RADIUS).toFloat(),
+                    x = (sin(yaw) * CAMERA_DISTANCE + sway * DOLLY_AMPLITUDE).toFloat(),
+                    y = CAMERA_HEIGHT +
+                        (sin(t / DOLLY_PERIOD_SECONDS * Math.PI) * CAMERA_BOB).toFloat(),
+                    z = (cos(yaw) * CAMERA_DISTANCE).toFloat(),
                 )
-                cameraNode.lookAt(Position(0f, 0f, 0f))
+                cameraNode.lookAt(CAMERA_TARGET)
             },
         ) {
-            // A single shared material per ramp colour keeps the MaterialInstance
-            // count tiny regardless of PARTICLE_COUNT.
-            val materials = SceneViewColors.Ramp4.map { color ->
-                rememberUnlitMaterialInstance(materialLoader, particleColor(color, dark))
+            val floorMaterial = rememberMaterialInstance(
+                materialLoader,
+                floorTint,
+                metallic = 0f,
+                roughness = 0.9f,
+                reflectance = 0.3f,
+            )
+            val gridMaterial = rememberUnlitMaterialInstance(materialLoader, gridTint)
+            val objectMaterials = SceneViewColors.Ramp4.map { color ->
+                rememberMaterialInstance(
+                    materialLoader,
+                    objectColor(color, dark),
+                    metallic = OBJECT_METALLIC,
+                    roughness = OBJECT_ROUGHNESS,
+                    reflectance = 0.5f,
+                )
             }
 
-            particles.forEach { spec ->
-                ParticleNode(spec = spec, materialInstance = materials[spec.colorIndex])
+            // Ground plane — receives every shadow, fades into fog at the horizon.
+            PlaneNode(
+                size = Size(x = FLOOR_SIZE, y = FLOOR_SIZE),
+                materialInstance = floorMaterial,
+                apply = { isShadowCaster = false },
+            )
+
+            // Perspective grid: hairline bars along Z converge at the horizon, bars
+            // along X foreshorten toward it. Unlit so they never pick up a highlight.
+            for (i in -GRID_HALF_LINES..GRID_HALF_LINES) {
+                CubeNode(
+                    size = Size(x = GRID_LINE_WIDTH, y = GRID_LINE_WIDTH, z = FLOOR_SIZE),
+                    materialInstance = gridMaterial,
+                    position = Position(x = i * GRID_SPACING, y = GRID_LINE_WIDTH, z = 0f),
+                    apply = { isShadowCaster = false; isShadowReceiver = false },
+                )
+                CubeNode(
+                    size = Size(x = FLOOR_SIZE, y = GRID_LINE_WIDTH, z = GRID_LINE_WIDTH),
+                    materialInstance = gridMaterial,
+                    position = Position(x = 0f, y = GRID_LINE_WIDTH, z = i * GRID_SPACING),
+                    apply = { isShadowCaster = false; isShadowReceiver = false },
+                )
+            }
+
+            objects.forEach { spec ->
+                FloatingObjectNode(spec = spec, materialInstance = objectMaterials[spec.colorIndex])
             }
         }
 
-        // Scrim — a soft vertical gradient that fades the backdrop toward the
-        // theme surface so the demo cards stay readable on top. Tweak the alpha
-        // values here to let more / less of the scene bleed through.
+        // Scrim — holds the controls band near-solid, opens up over the scrolling content.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -186,82 +268,123 @@ fun ParticleBackground(modifier: Modifier = Modifier) {
     }
 }
 
+/** The primitive an object is built from. Mixed shapes read as a scene, not a pattern. */
+private enum class Shape { Sphere, Torus, Cube, Capsule }
+
 /**
- * One drifting particle: an unlit low-poly [io.github.sceneview.SceneScope.SphereNode]
- * that bobs on its own sine phase. The bob is applied every frame through the
- * node's `onFrame` callback so it never fights Compose recomposition.
+ * One floating volume: a lit primitive hovering just above the floor, bobbing on its own
+ * sine phase and — for the non-spherical shapes — turning slowly so its shading changes.
+ * The motion is applied from the node's own frame loop so it never fights recomposition.
  */
 @Composable
-private fun SceneScope.ParticleNode(
-    spec: ParticleSpec,
+private fun SceneScope.FloatingObjectNode(
+    spec: FloatingObject,
     materialInstance: MaterialInstance,
 ) {
-    SphereNode(
-        radius = spec.radius,
-        stacks = PARTICLE_STACKS,
-        slices = PARTICLE_SLICES,
-        materialInstance = materialInstance,
-        position = spec.basePosition,
-        scale = Scale(1f),
-        apply = {
-            // Drive the gentle vertical bob from the node's own frame loop so it
-            // does not clobber, and is not clobbered by, recomposition.
-            onFrame = { frameTimeNanos ->
-                val t = frameTimeNanos / 1_000_000_000.0
-                val phase = spec.driftPhase + t / DRIFT_PERIOD_SECONDS * 2.0 * Math.PI
-                position = Position(
-                    x = spec.basePosition.x +
-                        (cos(phase) * DRIFT_AMPLITUDE * spec.driftScale).toFloat(),
-                    y = spec.basePosition.y +
-                        (sin(phase) * DRIFT_AMPLITUDE).toFloat(),
-                    z = spec.basePosition.z +
-                        (sin(phase * 0.5) * DRIFT_AMPLITUDE * spec.driftScale).toFloat(),
-                )
+    val drive: Node.() -> Unit = {
+        onFrame = { frameTimeNanos ->
+            val t = frameTimeNanos / 1_000_000_000.0
+            val phase = spec.bobPhase + t / BOB_PERIOD_SECONDS * 2.0 * Math.PI
+            position = Position(
+                x = spec.basePosition.x,
+                y = spec.basePosition.y + (sin(phase) * BOB_AMPLITUDE).toFloat(),
+                z = spec.basePosition.z,
+            )
+            if (spec.shape != Shape.Sphere) {
+                val spin = (t / SPIN_PERIOD_SECONDS * 360.0 + spec.spinOffset).toFloat()
+                rotation = Rotation(x = spec.tilt, y = spin, z = 0f)
             }
-        },
-    )
+        }
+    }
+    when (spec.shape) {
+        Shape.Sphere -> SphereNode(
+            radius = spec.size,
+            stacks = LIT_STACKS,
+            slices = LIT_SLICES,
+            materialInstance = materialInstance,
+            position = spec.basePosition,
+            apply = { drive() },
+        )
+        Shape.Torus -> TorusNode(
+            majorRadius = spec.size,
+            minorRadius = spec.size * 0.38f,
+            majorSegments = LIT_SLICES,
+            minorSegments = LIT_STACKS,
+            materialInstance = materialInstance,
+            position = spec.basePosition,
+            apply = { drive() },
+        )
+        Shape.Cube -> CubeNode(
+            size = Size(spec.size * 1.6f),
+            materialInstance = materialInstance,
+            position = spec.basePosition,
+            apply = { drive() },
+        )
+        Shape.Capsule -> CapsuleNode(
+            radius = spec.size * 0.6f,
+            height = spec.size * 2.4f,
+            capStacks = LIT_STACKS / 2,
+            sideSlices = LIT_SLICES,
+            materialInstance = materialInstance,
+            position = spec.basePosition,
+            apply = { drive() },
+        )
+    }
 }
 
-/** Immutable per-particle layout, seeded once per launch. */
-private data class ParticleSpec(
+/** Immutable per-object layout, seeded once per launch. */
+private data class FloatingObject(
+    val shape: Shape,
     val basePosition: Position,
-    val radius: Float,
+    val size: Float,
     val colorIndex: Int,
-    val driftPhase: Double,
-    val driftScale: Float,
+    val bobPhase: Double,
+    val spinOffset: Double,
+    val tilt: Float,
 ) {
     companion object {
-        fun random(rng: Random): ParticleSpec {
-            // Scatter inside a soft sphere of FIELD_RADIUS so the constellation
-            // reads as a 3D cloud rather than a flat ring.
-            val theta = rng.nextDouble(0.0, 2.0 * Math.PI)
-            val phi = rng.nextDouble(0.0, Math.PI)
-            val r = FIELD_RADIUS * rng.nextDouble(0.35, 1.0).toFloat()
-            return ParticleSpec(
-                basePosition = Position(
-                    x = (r * sin(phi) * cos(theta)).toFloat(),
-                    y = (r * cos(phi)).toFloat(),
-                    z = (r * sin(phi) * sin(theta)).toFloat(),
-                ),
-                radius = rng.nextDouble(
-                    PARTICLE_MIN_RADIUS.toDouble(),
-                    PARTICLE_MAX_RADIUS.toDouble(),
-                ).toFloat(),
+        /**
+         * Objects are dealt into depth lanes — [index] walks from the nearest lane to
+         * the farthest — so every launch has something close enough to look big and
+         * something far enough to look small, instead of leaving that to chance.
+         */
+        fun random(rng: Random, index: Int): FloatingObject {
+            val lane = index.toFloat() / (OBJECT_COUNT - 1)
+            val z = FIELD_NEAR_Z + (FIELD_FAR_Z - FIELD_NEAR_Z) * lane +
+                rng.nextDouble(-LANE_JITTER.toDouble(), LANE_JITTER.toDouble()).toFloat()
+            // Alternate sides so the line of sight down the grid stays open.
+            val side = if (index % 2 == 0) 1f else -1f
+            // The frustum is narrow up close and wide far away: widen the lateral band
+            // with depth so near objects stay inside the frame (not cut by its edge) and
+            // far ones spread across the horizon instead of bunching at the centre.
+            val xMax = FIELD_NEAR_MAX_X + (FIELD_MAX_X - FIELD_NEAR_MAX_X) * lane
+            val x = side * rng.nextDouble(FIELD_MIN_X.toDouble(), xMax.toDouble()).toFloat()
+            // Perspective already makes the near lane huge: scale the physical size down
+            // up close so a near object never swallows a section header, and up far away
+            // so the far lane still reads instead of vanishing into the fog.
+            val size = rng.nextDouble(OBJECT_MIN_SIZE.toDouble(), OBJECT_MAX_SIZE.toDouble()).toFloat() *
+                (NEAR_SIZE_FACTOR + (1f - NEAR_SIZE_FACTOR) * lane)
+            val hover = rng.nextDouble(HOVER_MIN.toDouble(), HOVER_MAX.toDouble()).toFloat()
+            return FloatingObject(
+                shape = Shape.entries[rng.nextInt(Shape.entries.size)],
+                basePosition = Position(x = x, y = size + hover, z = z),
+                size = size,
                 colorIndex = rng.nextInt(SceneViewColors.Ramp4.size),
-                driftPhase = rng.nextDouble(0.0, 2.0 * Math.PI),
-                driftScale = rng.nextDouble(0.6, 1.4).toFloat(),
+                bobPhase = rng.nextDouble(0.0, 2.0 * Math.PI),
+                spinOffset = rng.nextDouble(0.0, 360.0),
+                tilt = rng.nextDouble(-35.0, 35.0).toFloat(),
             )
         }
     }
 }
 
 /**
- * Tones a brand ramp colour down to a low-brightness "glint" suitable for a
- * background — bright particles would compete with the demo cards. Dark mode
- * keeps a touch more luminance because the surface behind it is darker.
+ * Brand ramp colour as a lit base colour. Lit materials get their brightness from the
+ * light, so the colour stays at full saturation; dark mode lifts it a touch because the
+ * scrim above it is darker.
  */
-private fun particleColor(base: Color, dark: Boolean): Color {
-    val lift = if (dark) 0.85f else 0.55f
+private fun objectColor(base: Color, dark: Boolean): Color {
+    val lift = if (dark) 1f else 0.9f
     return Color(
         red = base.red * lift,
         green = base.green * lift,
@@ -271,100 +394,119 @@ private fun particleColor(base: Color, dark: Boolean): Color {
 }
 
 /**
- * Vertical scrim drawn on top of the [SceneView]. Fades toward [surface] — the
- * same colour the render target is cleared to — so the particle field is meant
- * to be felt, not read.
+ * Vertical scrim drawn on top of the [SceneView]. Fades toward [surface] — the same
+ * colour the render target is cleared to.
  *
- * ## The top band is held nearly solid, and that is deliberate
+ * ## Why the top band is no longer held at 0.97
  *
- * Both screens that use this backdrop put their **controls** in the top band: the
- * Explore tab's search field and its "Poly Haven" source chip, the Samples tab's
- * "Trending models" header. The old dark ramp opened at α 0.30 there, i.e. 70 % of
- * a drifting particle field showing through the exact rectangle a user types into
- * — device QA found blue and mauve discs crossing the search field and overlapping
- * the chip's label. A backdrop is allowed to be visible; it is not allowed to be
- * visible *through a text input*.
+ * The previous ramp held the top 74 % of the box at α 0.97 / 0.98 because device QA had
+ * found particle discs drifting *through the Explore search field*. That field has since
+ * moved inside the opaque hero card (#3242), and the first measurement of this redesign
+ * showed the consequence of keeping the band anyway: with 97 % of the backdrop covered
+ * over three quarters of the screen, the scene the owner asked to "really see is 3D"
+ * (#3236) was a faint sliver under the bottom cards.
  *
- * So the ramp is held at [SCRIM_TOP_ALPHA_DARK] / [SCRIM_TOP_ALPHA_LIGHT] down to
- * [SCRIM_CONTROLS_BAND], which covers the controls on both screens at every
- * supported size, and only then opens up over the scrolling content below. Held
- * flat rather than ramped from zero: a gradient that starts opening immediately
- * puts the fade line somewhere different on every screen height, which is how a
- * value tuned on one device stops being right on the next.
- *
- * Light mode never had the contrast problem — it had a *colour* problem, fixed at
- * the clear colour — but it carries the same band, because a faint disc drifting
- * under a search field is the same defect at a lower amplitude.
- *
- * The band and the alphas were both re-tuned after a two-frame diff of the first
- * attempt was measured rather than eyeballed; see [SCRIM_TOP_ALPHA_DARK].
+ * What the band still has to protect is **text drawn directly on the backdrop** — the
+ * "Samples" / "3D Basics" / "Trending in 3D" headers. Those sit on a calm floor with a
+ * hairline grid, not on drifting discs, so they need contrast, not opacity: the top
+ * stop keeps [SCRIM_HEADER_ALPHA_DARK] / [SCRIM_HEADER_ALPHA_LIGHT] through the header
+ * band, then the ramp opens to [SCRIM_OPEN_ALPHA_DARK] / [SCRIM_OPEN_ALPHA_LIGHT] over
+ * the card area, where every card carries its own opaque container, and closes again
+ * toward the bottom so the scene does not end in a hard edge at the navigation bar.
  */
 private fun scrimBrush(surface: Color, dark: Boolean): Brush = Brush.verticalGradient(
-    0.0f to surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
-    SCRIM_CONTROLS_BAND to
-        surface.copy(alpha = if (dark) SCRIM_TOP_ALPHA_DARK else SCRIM_TOP_ALPHA_LIGHT),
-    0.88f to surface.copy(alpha = if (dark) 0.58f else 0.78f),
-    1.0f to surface.copy(alpha = if (dark) 0.82f else 0.92f),
+    // Near-solid at the very top: this box starts under the status bar / top bar, which
+    // are painted plain `surface`, and a backdrop that is visible right at that edge
+    // draws a hard seam across the screen. Fade in over the first stop instead.
+    0.0f to surface.copy(alpha = SCRIM_EDGE_ALPHA),
+    SCRIM_EDGE_FADE to
+        surface.copy(alpha = if (dark) SCRIM_HEADER_ALPHA_DARK else SCRIM_HEADER_ALPHA_LIGHT),
+    SCRIM_HEADER_BAND to
+        surface.copy(alpha = if (dark) SCRIM_HEADER_ALPHA_DARK else SCRIM_HEADER_ALPHA_LIGHT),
+    0.55f to surface.copy(alpha = if (dark) SCRIM_OPEN_ALPHA_DARK else SCRIM_OPEN_ALPHA_LIGHT),
+    1.0f to surface.copy(alpha = if (dark) 0.55f else 0.70f),
 )
 
 /**
- * Fraction the scrim holds at full strength from its top — the band the Explore
- * search field, the source chips and the "Trending models" header occupy.
- *
- * ## It is a fraction of THIS BOX, not of the screen — that distinction cost two rounds
- *
- * [Brush.verticalGradient] stops are fractions of the area being drawn, and this
- * composable is `fillMaxSize()` *inside* the Scaffold's content padding: it starts
- * under the status bar and stops at the top of the bottom navigation bar. On the QA
- * emulator the window is 1600 px tall and this box is **1418**. A value picked off a
- * screenshot is therefore in the wrong frame, and lands 11 % of the screen too high:
- * 0.62 was chosen to clear "Trending models" at screen-fraction 0.59, and the measured
- * onset of visible particles came out at y 879 — exactly 0.62 x 1418, over the header
- * it was supposed to cover.
- *
- * Measured in this box's own frame on the QA emulator: search field 0.19–0.25, source
- * chips 0.30–0.34, "Try a sample" 0.39, "Trending models" **0.652–0.677**. The band has
- * to clear the last of those, not the first, with room for a larger font scale pushing
- * the header further down.
+ * Fraction of this box (not of the screen — the box starts under the status bar and
+ * stops above the bottom bar) held at the header alpha. Covers the page title and the
+ * first section header on both screens.
  */
-private const val SCRIM_CONTROLS_BAND = 0.74f
+private const val SCRIM_HEADER_BAND = 0.28f
+
+/** Alpha at the box's top edge and the fraction over which it eases to the header alpha. */
+private const val SCRIM_EDGE_ALPHA = 0.98f
+private const val SCRIM_EDGE_FADE = 0.10f
+
+/** Scrim alpha over the header band — text on the backdrop keeps its contrast. */
+private const val SCRIM_HEADER_ALPHA_DARK = 0.76f
+private const val SCRIM_HEADER_ALPHA_LIGHT = 0.80f
 
 /**
- * Scrim alpha over the controls band.
- *
- * This started at 0.30 (dark), which put 70 % of a drifting particle field through
- * the search field. The first correction took it to 0.88 because "≥ 0.85" was the
- * stated bar — and a two-frame diff of the result still showed **15 % of the pixels
- * moving** in the rows holding the source chips: at 0.88 over an 18-level surface, a
- * particle still lands ~5 levels above the background, which the eye reads as a disc.
- * A threshold that was never measured against the thing it was protecting is not a
- * threshold. 0.97 puts the residual at ~1 level, below the display's own banding.
+ * Scrim alpha where it opens over the card area. Lit volumes carry their own contrast
+ * (highlight vs. shaded side), and every card on top has an opaque container.
  */
-private const val SCRIM_TOP_ALPHA_DARK = 0.97f
-private const val SCRIM_TOP_ALPHA_LIGHT = 0.98f
+private const val SCRIM_OPEN_ALPHA_DARK = 0.24f
+private const val SCRIM_OPEN_ALPHA_LIGHT = 0.36f
 
 // ── Tuning constants — see the KDoc on [ParticleBackground] ─────────────────
 
-/** Number of particles. Keep in the low tens — this runs always-on. */
-private const val PARTICLE_COUNT = 36
+/** Number of floating volumes. Keep in the low tens — this runs always-on. */
+private const val OBJECT_COUNT = 20
 
-/** Low-poly sphere subdivisions — cheap enough for [PARTICLE_COUNT] spheres. */
-private const val PARTICLE_STACKS = 8
-private const val PARTICLE_SLICES = 8
+/** Lit primitive tessellation — enough for a smooth terminator, cheap at this count. */
+private const val LIT_STACKS = 16
+private const val LIT_SLICES = 24
 
-private const val PARTICLE_MIN_RADIUS = 0.02f
-private const val PARTICLE_MAX_RADIUS = 0.06f
+private const val OBJECT_MIN_SIZE = 0.2f
+private const val OBJECT_MAX_SIZE = 0.55f
+/** Size multiplier on the nearest lane (ramps to 1 on the farthest). */
+private const val NEAR_SIZE_FACTOR = 0.55f
+private const val OBJECT_METALLIC = 0.15f
+private const val OBJECT_ROUGHNESS = 0.35f
 
-/** Radius (m) of the soft sphere the particle field is scattered inside. */
-private const val FIELD_RADIUS = 1.6f
+/** Hover height (m) above the floor, so the shadow detaches from the object. */
+private const val HOVER_MIN = 0.05f
+private const val HOVER_MAX = 0.45f
 
-/** Camera orbit radius (m) and vertical bob amplitude (m). */
-private const val CAMERA_RADIUS = 4.2f
-private const val CAMERA_BOB = 0.5f
+/** Depth lanes (m, camera looks toward -Z) and lateral spread. */
+private const val FIELD_NEAR_Z = 0.8f
+private const val FIELD_FAR_Z = -10.0f
+private const val LANE_JITTER = 0.35f
+private const val FIELD_MIN_X = 0.45f
+/** Lateral band is narrow on the nearest lane and opens up to [FIELD_MAX_X] on the farthest. */
+private const val FIELD_NEAR_MAX_X = 1.3f
+private const val FIELD_MAX_X = 4.0f
 
-/** Seconds for one full camera revolution — higher = slower, calmer. */
-private const val ORBIT_PERIOD_SECONDS = 48.0
+/** Floor and grid. */
+private const val FLOOR_SIZE = 40f
+private const val GRID_SPACING = 1.0f
+private const val GRID_HALF_LINES = 14
+private const val GRID_LINE_WIDTH = 0.012f
 
-/** Per-particle drift bob amplitude (m) and period (s). */
-private const val DRIFT_AMPLITUDE = 0.12f
-private const val DRIFT_PERIOD_SECONDS = 9.0
+/** Camera: eye height, distance from the field origin, lens, gaze. */
+private const val CAMERA_HEIGHT = 1.15f
+private const val CAMERA_DISTANCE = 4.6f
+private const val CAMERA_FOCAL_LENGTH_MM = 22.0
+private const val CAMERA_BOB = 0.12f
+private val CAMERA_TARGET = Position(x = 0f, y = 0.35f, z = -2.5f)
+
+/** Lateral dolly: amplitude (m), yaw swing (rad) and period (s). Longer = calmer. */
+private const val DOLLY_AMPLITUDE = 1.6f
+private const val DOLLY_YAW_RADIANS = 0.26
+private const val DOLLY_PERIOD_SECONDS = 34.0
+
+/** Per-object bob amplitude (m) / period (s) and spin period (s). */
+private const val BOB_AMPLITUDE = 0.08f
+private const val BOB_PERIOD_SECONDS = 11.0
+private const val SPIN_PERIOD_SECONDS = 40.0
+
+/** Neutral IBL intensity — below the SDK default so the backdrop stays behind the UI. */
+private const val IBL_INTENSITY = 6_000f
+
+/** Fog: starts past the nearest objects, fully hides the far edge of the grid. */
+private const val FOG_START_DISTANCE = 2.5f
+private const val FOG_DENSITY = 0.07f
+private const val FOG_HEIGHT = -1f
+private const val FOG_HEIGHT_FALLOFF = 0.02f
+private const val FOG_CUTOFF_DISTANCE = 30f
