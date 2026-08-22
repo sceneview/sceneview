@@ -466,7 +466,7 @@ export async function dispatchTool(
                 ``,
                 `### 2. Minimum Platform`,
                 ``,
-                `AR requires **iOS 17.0+** (ARKit + RealityKit). macOS and visionOS use different AR APIs.`,
+                `AR requires **iOS 18.0+** (ARKit + RealityKit). macOS and visionOS use different AR APIs.`,
                 ``,
                 `### 3. Info.plist — Camera Permission`,
                 ``,

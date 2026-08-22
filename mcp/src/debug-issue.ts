@@ -555,7 +555,7 @@ SceneView(
 
 ### SPM Package Resolution Fails
 
-- Require Xcode 15.0+ (iOS 17 / visionOS targets).
+- Require Xcode 16.0+ (iOS 18 / visionOS 2 targets, Swift 6).
 - Clean: Xcode > Product > Clean Build Folder.
 - Reset packages: File > Packages > Reset Package Caches.
 - URL must be exactly: \`https://github.com/sceneview/sceneview\`

@@ -1,6 +1,6 @@
 # visionOS Spatial Computing
 
-SceneViewSwift supports visionOS 1+ via RealityKit. This page documents the spatial
+SceneViewSwift supports visionOS 2+ via RealityKit. This page documents the spatial
 computing features available on Apple Vision Pro and how SceneViewSwift will integrate
 them.
 

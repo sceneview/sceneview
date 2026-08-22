@@ -4,7 +4,7 @@
 
 ![iOS 18+](https://img.shields.io/badge/iOS-18%2B-blue)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
-![visionOS 1+](https://img.shields.io/badge/visionOS-1%2B-blue)
+![visionOS 2+](https://img.shields.io/badge/visionOS-2%2B-blue)
 
 ## Installation
 
