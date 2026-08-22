@@ -458,16 +458,14 @@ jobs:
         # module was compiled on every relevant PR while its 5 tests were not.
         # Local run before wiring: 5 tests, 0 failures, 7s.
         run: |
-          # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
-          # with verifyRoborazziDebug above it. The goldens under
-          # samples/android-demo/src/test/snapshots/ are not declared inputs of
-          # any task, so with a restored Gradle cache the comparison comes back
-          # UP-TO-DATE having read no golden — measured locally 2026-08-06 on a
-          # golden mutated by 8000 red pixels: `verifyRoborazziDebug UP-TO-DATE`
-          # / `BUILD SUCCESSFUL in 1s`. A PR whose only change IS a golden PNG
-          # would go green on this, the leg that actually gates merge. `--rerun`
-          # binds to the task it follows, so it forces only the demo module's
-          # test task. See #3029.
+          # The goldens under samples/android-demo/src/test/snapshots/ are a
+          # declared input of the demo's test task (`roborazziGoldens` in its
+          # build.gradle, #3034), so a PR whose only change is a golden PNG
+          # re-runs the comparison on its own. Before that declaration the
+          # comparison came back UP-TO-DATE having read no golden — measured
+          # 2026-08-06 on a golden mutated by 8000 red pixels (#3029) — and this
+          # step carried a `testDebugUnitTest --rerun` workaround. If that
+          # declaration is ever removed, the workaround must come back.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
@@ -475,7 +473,6 @@ jobs:
             :samples:common:testDebugUnitTest \
             :samples:android-tv-demo:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
-            :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
 
       - name: Upload unit test reports
