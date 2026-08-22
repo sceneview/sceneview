@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- `sync-versions.sh` no longer sweeps `website-static/index.html` with a blanket find-and-replace. Each version carrier (`softwareVersion`, the iOS `// Version:` snippet, the `sceneview-web@` CDN pin, Maven coordinates) is rewritten by its own anchored sed, the GA4 stream id check asserts the exact value `14357002837`, and a carrier-invariant guard aborts `--fix` (exit 2, file restored) if anything other than a version string changed in a synced page. The unescaped sweep had rewritten the analytics stream id on every release for 25 releases (#3234).
