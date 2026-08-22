@@ -591,6 +591,24 @@ jobs:
       - name: JS tests
         run: ./gradlew :sceneview-core:jsTest :sceneview-web:jsTest --stacktrace
 
+      # This leg has gone red with `Test running process exited unexpectedly`,
+      # zero test results and nothing in the job log to diagnose — the browser
+      # died and nobody wrote down what it said. `karma.config.d/
+      # browser-hardening.js` now captures the browser console to a file under
+      # build/; this upload keeps it when the runner is torn down (#3192).
+      # `if: failure()`: a green run has nothing to explain. `ignore` because a
+      # failure before Karma starts (compile error) legitimately has no log.
+      - name: Upload Karma browser logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: karma-browser-logs
+          path: |
+            **/build/js/packages/*/karma-browser.log
+            **/build/reports/tests/**
+            **/build/test-results/**
+          if-no-files-found: ignore
+
       # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact
       # published to npm/CDN), against the real Filament WASM module. The
       # jsTest suite above stubs the Filament externals, so a real init-path
