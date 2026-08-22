@@ -21,6 +21,14 @@ kotlin {
                 outputFileName = "sceneview-web.js"
             }
             testTask {
+                // Same as sceneview-core: `karma.config.d/` is appended into
+                // the generated karma.conf.js but is not a task input on its
+                // own, so a change to it would not re-run the tests locally.
+                // This module carries two files there — the Filament stub
+                // (#1401) and the #3192 hardening.
+                inputs.dir(layout.projectDirectory.dir("karma.config.d"))
+                    .withPropertyName("karmaConfigD")
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
                 useKarma {
                     useChromeHeadless()
                 }
