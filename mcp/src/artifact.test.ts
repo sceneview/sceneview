@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FILAMENT_WEB_NPM_VERSION } from "./generated/version.js";
 import {
   type ArtifactInput,
   formatArtifactResponse,
   generateArtifact,
   validateArtifactInput,
 } from "./artifact.js";
+import { FILAMENT_WEB_NPM_VERSION } from "./generated/version.js";
 
 // ─── validateArtifactInput ───────────────────────────────────────────────────
 
@@ -97,7 +97,9 @@ describe("generateArtifact — model-viewer (Filament.js)", () => {
 
   it("includes Filament.js CDN script", () => {
     const result = generateArtifact({ type: "model-viewer" });
-    expect(result.html).toContain(`cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`);
+    expect(result.html).toContain(
+      `cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`
+    );
   });
 
   it("does NOT include model-viewer web component", () => {
@@ -732,7 +734,9 @@ describe("Filament.js integration", () => {
   it("all 3D types use Filament.js CDN", () => {
     for (const type of ["model-viewer", "scene", "product-360"] as const) {
       const result = generateArtifact({ type });
-      expect(result.html).toContain(`cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`);
+      expect(result.html).toContain(
+        `cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`
+      );
     }
   });
 
