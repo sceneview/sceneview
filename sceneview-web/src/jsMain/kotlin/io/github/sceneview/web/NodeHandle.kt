@@ -3,7 +3,9 @@ package io.github.sceneview.web
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.web.nodes.ModelNode
 import io.github.sceneview.web.nodes.Node
+import io.github.sceneview.web.nodes.centerOrigin
 
 /**
  * The viewer-side callbacks a [NodeHandle] fires on mutation — the seam between
@@ -89,6 +91,26 @@ class NodeHandle internal constructor(
     @JsName("setScaleUniform")
     fun setScaleUniform(s: Double) {
         node.scale = Scale(s.toFloat())
+        viewer.requestRender()
+    }
+
+    /**
+     * Aligns the AABB point selected by a **normalized** origin with the node origin — Android
+     * `ModelNode.centerOrigin(Position)` parity, exported for plain JS (#2763). `0` = bounding-box
+     * center, `±1` = bounding-box faces, per axis; `(0, -1, 0)` bottom-aligns, `(0, 1, 0)` hangs
+     * the model from the origin. Composes additively with the current position — apply it once,
+     * typically right after `sv.addModelNode(url)` resolves.
+     *
+     * A no-op for a handle that does not wrap a
+     * [io.github.sceneview.web.nodes.ModelNode] (e.g. a pivot, geometry, or light node handle) or
+     * whose model hasn't finished loading yet — same "nothing to align against" contract as the
+     * underlying Kotlin `ModelNode.centerOrigin`.
+     */
+    @JsName("centerOrigin")
+    fun centerOrigin(originX: Double, originY: Double, originZ: Double) {
+        (node as? ModelNode)?.centerOrigin(
+            Position(originX.toFloat(), originY.toFloat(), originZ.toFloat())
+        )
         viewer.requestRender()
     }
 

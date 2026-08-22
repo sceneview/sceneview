@@ -515,7 +515,9 @@ ModelNode class properties (available via `apply` block):
 - `stopAnimation(index: Int)`, `stopAnimation(name: String)`
 - `setAnimationSpeed(index: Int, speed: Float)`
 - `scaleToUnitCube(units: Float = 1.0f)`
-- `centerOrigin(origin: Position = Position(0f, 0f, 0f))`
+- `centerOrigin(origin: Position = Position(0f, 0f, 0f))` — cross-platform parity: iOS
+  `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
+  identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
 
 ### LightNode — light source
@@ -5763,6 +5765,7 @@ There are two `centerOrigin` overloads:
 - **`centerOrigin(_ target:)`** — absolute: moves the model so its visual-bounds **centre** sits at the supplied model-space point (in metres). Pass `.zero` to center on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. The target is an **absolute** point, so `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align).
 - **`centerOrigin(normalized origin:)`** — Android parity (#2632): `origin` is a **normalized** AABB coordinate (`-1..1` per axis, `0` = box centre, `±1` = box faces), and the selected AABB point is aligned with the node origin via `-(center + origin * extents/2)`. `centerOrigin(normalized: SIMD3(0, -1, 0))` bottom-aligns like Android's `Position(0, -1, 0)` (the model sits on the origin); `.zero` is identical to `centerOrigin(.zero)`. Prefer this overload when porting an Android grounding snippet (on an unpositioned entity) — it replaces the former manual grounding workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`.
   - **Apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
+  - **Web parity (#2763):** `sceneview-web`'s `NodeHandle.centerOrigin(x, y, z)` composes additively like Android (not like this iOS overload) since it wraps the same `sceneview-core` KMP formula Android calls — see the Web section's `centerOrigin` entry.
 
 ### iOS: GeometryNode
 
@@ -6169,9 +6172,19 @@ being closed incrementally (issue #2024, v5 milestone):
   `sv.addSphereNode(radius)` / `sv.addLightNode(type)` / `sv.addModelNode(url)`, keep the
   returned handle, and **address it after `create()`** — `setPosition` / `setRotation`
   (Euler degrees) / `setScale` / `setScaleUniform` / `setVisible` / `addChild` /
-  `removeChild` / `getWorldPosition` / `destroy`. This is the thing the builder DSL could
-  never do: mutate content imperatively after the scene is built. It is a **minimal first
-  slice** — no gestures, no collision, no transform object; those are additive later.
+  `removeChild` / `getWorldPosition` / `centerOrigin` / `destroy`. This is the thing the
+  builder DSL could never do: mutate content imperatively after the scene is built. It is
+  a **minimal first slice** — no gestures, no collision, no transform object; those are
+  additive later.
+- **`centerOrigin(originX, originY, originZ)` — Android/iOS parity (#2763).** Aligns the
+  AABB point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) with
+  the node origin, using the exact `-(center + origin * halfExtent) * scale` formula
+  Android's `ModelNode.centerOrigin(Position)` uses (both compile the same
+  `sceneview-core` KMP function, so the two platforms cannot numerically diverge — pinned
+  by the `centerOriginGoldenVectors` table). `(0, -1, 0)` bottom-aligns; `(0, 1, 0)` hangs
+  the model from the origin. A no-op on a non-model handle, or before the model has
+  finished loading. Composes additively with the current position — call it once, right
+  after `sv.addModelNode(url)` resolves.
 
 The builder DSL below stays fully supported and is the simplest path for a static scene;
 `NodeHandle` is the additive imperative surface for scenes that mutate at runtime.
@@ -6188,6 +6201,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 | Parent / child hierarchy | `node.parent = other` / `node.childNodes` | `handle.addChild(child)` / `handle.removeChild(child)` (exported since slice 3); builder-DSL content stays flat |
 | Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | builder `*Config` sets it once (not re-mutable); a `NodeHandle` IS re-mutable via `setPosition` / `setRotation` / `setScale` |
 | Transform inheritance | composed parent→child via Filament `TransformManager` | composed for `NodeHandle` parent/child (Filament `TransformManager`, same as Android); builder-DSL flat content is a world-space leaf |
+| Center a model on its bounding box | `ModelNode(centerOrigin = Position(...))` / iOS `centerOrigin(normalized:)` | `handle.centerOrigin(originX, originY, originZ)` (#2763, model-node handles only) — same formula as Android/iOS |
 
 **Correct Web code** — the builder DSL (simplest for a static scene):
 
@@ -6213,6 +6227,7 @@ sceneview.createViewer("canvas").then(function (sv) {
 
   sv.addModelNode("models/helmet.glb").then(function (model) {
     model.setRotation(0, 45, 0);             // Euler degrees
+    model.centerOrigin(0, -1, 0);            // bottom-align — same formula as Android/iOS (#2763)
     model.addChild(cube);                    // re-parent — cube now follows the model
   });
 
