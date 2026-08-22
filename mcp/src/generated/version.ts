@@ -11,3 +11,8 @@ export const LATEST_SCENEVIEW_RELEASE = "4.31.0" as const;
 // README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,
 // and a caret range against an unpublished version cannot be resolved.
 export const LATEST_FLUTTER_PUB_RELEASE = "4.24.0" as const;
+// Web Filament runtimes, from ../gradle/libs.versions.toml (#3173).
+// FILAMENT_WEB_NPM_VERSION is the npm `filament` pin (CDN artifacts, Kotlin/JS);
+// FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.
+export const FILAMENT_WEB_NPM_VERSION = "1.52.3" as const;
+export const FILAMENT_WEBSITE_VERSION = "1.70.1" as const;
