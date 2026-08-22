@@ -5884,6 +5884,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |
+| `SplatNode` / `SplatCloud` / `rememberSplatCloud` — 3D Gaussian Splatting (`splat-preview` demo, #2646) | No first-party RealityKit Gaussian-splat primitive; would need a custom Metal render path or a mesh-impostor approximation | iOS-skip — Android-only today, absent from every SceneViewSwift surface. Needs-decision on a future custom-Metal or impostor-mesh port (#2768). |
 
 ### Approximated — iOS implements via different mechanism
 

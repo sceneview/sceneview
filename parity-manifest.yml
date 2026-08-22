@@ -364,7 +364,9 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — blocked on an iOS SplatNode renderer (#2768). Its
+      No iOS screen — blocked on an iOS SplatNode renderer, tracked as
+      item 2 of #2646 (#2768 documents the gap but explicitly parks the
+      port as a maintainer decision, not an implementation owner). Its
       coming-soon Scene stub was deleted in #3231.
   - id: video-recording
     androidStatus: Working
