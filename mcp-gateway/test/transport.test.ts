@@ -57,6 +57,38 @@ describe("transport: initialize handshake", () => {
     expect(result.serverInfo.name).toBe("sceneview-mcp-gateway");
   });
 
+  it("negotiates the latest supported version when the client version is unknown", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2099-01-01" },
+      }),
+      { kv: new MockKv().asKv() },
+    );
+    const body = await asJsonRpc(res);
+    expect((body.result as { protocolVersion: string }).protocolVersion).toBe(
+      "2025-06-18",
+    );
+  });
+
+  it("accepts the latest supported client version", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18" },
+      }),
+      { kv: new MockKv().asKv() },
+    );
+    const body = await asJsonRpc(res);
+    expect((body.result as { protocolVersion: string }).protocolVersion).toBe(
+      "2025-06-18",
+    );
+  });
+
   it("acknowledges the initialized notification with 202 and no body", async () => {
     const kv = new MockKv();
     const res = await handleMcpRequest(
@@ -104,9 +136,60 @@ describe("transport: tools/list", () => {
     const plain = result.tools.find((t) => t.name === "list_samples");
     expect(plain?._meta).toBeUndefined();
   });
+
+  it("advertises outputSchema only for structured tools", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+      { kv: new MockKv().asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as {
+      tools: { name: string; outputSchema?: unknown }[];
+    };
+    expect(result.tools.filter((tool) => tool.outputSchema).map((tool) => tool.name).sort()).toEqual([
+      "create_3d_artifact",
+      "embed_web_viewer",
+      "list_car_models",
+      "list_furniture_models",
+      "list_game_models",
+      "list_medical_models",
+      "list_platforms",
+      "render_3d_preview",
+      "setup_rerun_project",
+      "validate_automotive_code",
+      "validate_game_code",
+      "validate_interior_code",
+      "validate_medical_code",
+      "view_3d_model",
+    ]);
+  });
 });
 
 describe("transport: tools/call", () => {
+  it("returns schema-matching structuredContent for a structured tool", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: "view_3d_model",
+          arguments: { modelUrl: "https://example.com/chair.glb" },
+        },
+      }),
+      { kv: new MockKv().asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as { structuredContent?: Record<string, unknown> };
+    expect(result.structuredContent).toMatchObject({
+      modelUrl: "https://example.com/chair.glb",
+      title: "3D model",
+      autoRotate: true,
+      ar: true,
+      alt: "3D model",
+    });
+  });
+
   it("routes to the sceneview-mcp handler for a known free tool", async () => {
     const kv = new MockKv();
     const res = await handleMcpRequest(
@@ -287,6 +370,48 @@ describe("transport: origin validation", () => {
 });
 
 describe("transport: HTTP-level protections", () => {
+  it("accepts a supported MCP-Protocol-Version header", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        { "mcp-protocol-version": "2025-06-18" },
+      ),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts an absent MCP-Protocol-Version header for compatibility", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects an unsupported MCP-Protocol-Version header with HTTP 400", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        { "mcp-protocol-version": "2099-01-01" },
+      ),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(400);
+    const body = await asJsonRpc(res);
+    expect(body.error?.message).toContain("Unsupported protocol version");
+  });
+
+  it("allows MCP-Protocol-Version in CORS preflight", async () => {
+    const res = await handleMcpRequest(
+      new Request("https://example.com/mcp", { method: "OPTIONS" }),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "mcp-protocol-version",
+    );
+  });
+
   it("returns 405 for non-POST/GET methods", async () => {
     const kv = new MockKv();
     const res = await handleMcpRequest(

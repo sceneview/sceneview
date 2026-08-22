@@ -658,7 +658,10 @@ export async function dispatchTool(
       const result = buildPreviewUrl({ modelUrl, codeSnippet, autoRotate, ar, title });
       const text = formatPreviewResponse(result);
 
-      return { content: withDisclaimer([{ type: "text", text }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text }]),
+        structuredContent: { ...result },
+      };
     }
 
     // ── create_3d_artifact ───────────────────────────────────────────────────
@@ -683,7 +686,10 @@ export async function dispatchTool(
 
       const result = generateArtifact(artifactInput);
       const text = formatArtifactResponse(result);
-      return { content: withDisclaimer([{ type: "text", text }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text }]),
+        structuredContent: { ...result },
+      };
     }
 
     // ── get_platform_setup ─────────────────────────────────────────────────
@@ -880,7 +886,10 @@ export async function dispatchTool(
         "KMP `sceneview-core` shares logic (math, collision, geometry, animations) across all platforms.",
       ];
 
-      return { content: withDisclaimer([{ type: "text", text: lines.join("\n") }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text: lines.join("\n") }]),
+        structuredContent: { platforms },
+      };
     }
 
     // ── get_animation_guide ─────────────────────────────────────────────────

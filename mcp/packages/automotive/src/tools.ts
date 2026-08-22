@@ -90,6 +90,7 @@ export interface ToolTextContent {
 
 export interface ToolResult {
   content: ToolTextContent[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
@@ -109,6 +110,7 @@ export interface ToolDefinition {
     required?: string[];
     additionalProperties?: boolean;
   };
+  outputSchema?: { type: "object"; properties?: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
   /** MCP behaviour hints — see mcp/src/tools/types.ts for the full rationale. */
   annotations?: ToolAnnotations;
 }
@@ -421,6 +423,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: [],
     },
+    outputSchema: { type: "object", properties: { models: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, category: { type: "string" }, source: { type: "string" }, sourceUrl: { type: "string" }, format: { type: "string" }, license: { type: "string" }, description: { type: "string" }, tags: { type: "array", items: { type: "string" } } }, required: ["id", "name", "category", "source", "sourceUrl", "format", "license", "description", "tags"], additionalProperties: false } } }, required: ["models"], additionalProperties: false },
     annotations: {
       readOnlyHint: true,
       openWorldHint: false,
@@ -441,6 +444,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["code"],
     },
+    outputSchema: { type: "object", properties: { valid: { type: "boolean" }, issues: { type: "array", items: { type: "object", properties: { severity: { type: "string" }, message: { type: "string" }, line: { type: "number" } }, required: ["severity", "message"], additionalProperties: false } }, issueCount: { type: "object", properties: { errors: { type: "number" }, warnings: { type: "number" }, info: { type: "number" } }, required: ["errors", "warnings", "info"], additionalProperties: false } }, required: ["valid", "issues", "issueCount"], additionalProperties: false },
     annotations: {
       readOnlyHint: true,
       openWorldHint: false,
@@ -841,6 +845,7 @@ export async function dispatchTool(
 
       return {
         content: withDisclaimer([{ type: "text", text }]),
+        structuredContent: { models },
       };
     }
 
@@ -859,6 +864,7 @@ export async function dispatchTool(
 
       return {
         content: [{ type: "text", text: report }],
+        structuredContent: { ...result },
       };
     }
 
