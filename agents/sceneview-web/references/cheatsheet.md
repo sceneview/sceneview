@@ -45,7 +45,8 @@ sv.setAutoRotate(enabled)
 sv.setAutoRotateSpeed(radiansPerFrame)
 sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)       // 0-1 range
-sv.fitToModels()
+sv.fitToModels()                        // frame every loaded model
+sv.fitToModels(margin)                  // multiplier on the fit distance: 1 = default, <1 tighter, >1 more air (0.2…10)
 sv.startRendering()
 sv.stopRendering()
 sv.resize(width, height)
@@ -153,7 +154,7 @@ sceneView.loadDefaultEnvironment()
 sceneView.addLight(config: LightConfig)
 sceneView.addGeometry(config: GeometryConfig)  // returns FilamentAsset?
 sceneView.enableCameraControls(distance, targetX, targetY, targetZ, autoRotate)
-sceneView.fitToModels()
+sceneView.fitToModels(margin: Double = 1.0)  // margin = iOS-style multiplier, 0.2…10
 sceneView.resize(width, height)
 sceneView.startRendering(); sceneView.stopRendering(); sceneView.destroy()
 

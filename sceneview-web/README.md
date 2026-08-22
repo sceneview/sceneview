@@ -74,7 +74,7 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.setBackgroundColor(r, g, b, a)` | Set clear color (components `0..1`) |
 | `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
 | `viewer.resize(width, height)` | Resize the underlying canvas |
-| `viewer.fitToModels()` | Frame the camera so every loaded model is visible |
+| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
 | `viewer.dispose()` | Release Filament resources |
 
 ## Features

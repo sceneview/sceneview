@@ -117,7 +117,8 @@ sceneview.createViewer('viewer').then(function (sv) {
 `SceneViewer` instance methods (from `SceneViewJS.kt`): `loadModel(url)` →
 `Promise`, `setEnvironment`, `setEnvironmentWithSkybox`, `setCameraOrbit`,
 `setCameraTarget`, `setAutoRotate`, `setAutoRotateSpeed`, `setZoomLimits`,
-`setBackgroundColor`, `fitToModels`, `startRendering`, `stopRendering`,
+`setBackgroundColor`, `fitToModels(margin?)` (margin = iOS-style multiplier on the fit
+distance, `1` default, clamped `0.2…10`, #2946), `startRendering`, `stopRendering`,
 `resize`, `dispose`.
 
 Since #2024 slice 3 the viewer also exposes a minimal **imperative node
