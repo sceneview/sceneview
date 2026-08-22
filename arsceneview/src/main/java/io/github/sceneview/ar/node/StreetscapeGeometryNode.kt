@@ -52,14 +52,46 @@ open class StreetscapeGeometryNode(
         engine = engine,
         primitiveType = PrimitiveType.TRIANGLES,
         vertexBuffer = VertexBuffer.Builder()
-            // Position + Normals + UV Coordinates
-            .bufferCount(1)
+            // POSITION + TANGENTS + UV0, one backing buffer each (#3215).
+            //
+            // ARCore ships positions only, but the lit materials this node is normally given
+            // (`opaque_colored` / `transparent_colored` from MaterialLoader.createColorInstance)
+            // require POSITION|TANGENTS|UV0 (MAT_REQA 0xB). Filament does not fail the
+            // mismatch — it logs `missing required attributes (0xb), declared=0x1` and shades
+            // the overlay with a constant fallback normal. So the node derives smooth
+            // per-vertex normals from the mesh once, at construction, and encodes them as
+            // tangent quaternions; UV0 is a zero buffer (no natural parameterisation, and the
+            // colored materials never sample it). See StreetscapeMeshAttributes.kt.
+            .bufferCount(BUFFER_COUNT)
             // Position Attribute (x, y, z)
-            .attribute(VertexAttribute.POSITION, 0, AttributeType.FLOAT3)
+            .attribute(VertexAttribute.POSITION, BUFFER_INDEX_POSITION, AttributeType.FLOAT3)
+            // Tangent frame quaternion (x, y, z, w) — Filament's per-vertex normal input.
+            // No `.normalized(TANGENTS)`: that flag is for integer formats, these are FLOAT4.
+            .attribute(
+                VertexAttribute.TANGENTS,
+                BUFFER_INDEX_TANGENT,
+                AttributeType.FLOAT4,
+                0,
+                STREETSCAPE_TANGENT_STRIDE
+            )
+            .attribute(
+                VertexAttribute.UV0,
+                BUFFER_INDEX_UV,
+                AttributeType.FLOAT2,
+                0,
+                STREETSCAPE_UV_STRIDE
+            )
             .vertexCount(streetscapeGeometry.mesh.vertexListSize)
             .build(engine)
             .apply {
-                setBufferAt(engine, 0, streetscapeGeometry.mesh.vertexList)
+                val mesh = streetscapeGeometry.mesh
+                setBufferAt(engine, BUFFER_INDEX_POSITION, mesh.vertexList)
+                setBufferAt(
+                    engine,
+                    BUFFER_INDEX_TANGENT,
+                    computeStreetscapeTangents(mesh.vertexList, mesh.indexList, mesh.vertexListSize)
+                )
+                setBufferAt(engine, BUFFER_INDEX_UV, zeroStreetscapeUvs(mesh.vertexListSize))
             },
         indexBuffer = IndexBuffer.Builder()
             .bufferType(IndexBuffer.Builder.IndexType.UINT)
@@ -110,3 +142,11 @@ open class StreetscapeGeometryNode(
         }
     }
 }
+
+// Vertex buffer slots of a StreetscapeGeometryNode. File-private: a `const val` in a
+// `private companion object` still compiles to a public static field on the class and
+// trips apiCheck.
+private const val BUFFER_INDEX_POSITION = 0
+private const val BUFFER_INDEX_TANGENT = 1
+private const val BUFFER_INDEX_UV = 2
+private const val BUFFER_COUNT = 3
