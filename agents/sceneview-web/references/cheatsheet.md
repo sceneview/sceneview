@@ -16,7 +16,7 @@ Kotlin/JS source or `llms.txt` — do not improvise.
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"></script>
 ```
 
 filament.js MUST load first. npm: `npm install sceneview-web filament`.
