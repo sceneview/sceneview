@@ -884,9 +884,15 @@ fun SceneView(
  * glTF [Model] — a bundle of Filament textures, vertex/index buffers and materials). When
  * [assetFileLocation] changes, the previously produced instance's `Model` is destroyed
  * (`modelLoader.destroyModel(it.model)`) and the new asset is loaded; the old `Model` is also
- * destroyed when this composable leaves the composition. Disposal runs **after** any consuming
- * [SceneScope.ModelNode] has detached its renderable entities from the scene (Compose disposes the
- * later-declared node effect first), so the renderables are never left dangling. The [ModelLoader]
+ * destroyed when this composable leaves the composition. Disposal order relative to a consuming
+ * [SceneScope.ModelNode] is **not** guaranteed: Compose forgets effects in reverse registration
+ * order only within one composition, and a node declared in a child composition (a
+ * `SubcomposeLayout` slot such as Material3's `Scaffold`, the common case) may detach *after* the
+ * `Model` is destroyed. Either order is safe — `Node.destroy()` only touches entity ids and
+ * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
+ * Only a model that finished loading is disposed here: a load cancelled by a key change after
+ * `ModelLoader` registered the `Model` but before it was produced stays resident until the
+ * loader is cleared. The [ModelLoader]
  * does **not** dedupe by path — each call creates a fresh, independent `Model`; re-loading the same
  * path is a new GPU allocation, not a cache hit. For a model you manage imperatively (outside this
  * composable's keyed lifecycle), use [ModelLoader.loadModelInstanceAsync] and call
@@ -917,11 +923,12 @@ fun rememberModelInstance(
     // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
     // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
     // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. The disposal is registered before any consuming `ModelNode` (declared
-    // later in the caller), so on a swap the node's `NodeLifecycle.onDispose` (detach + node.destroy)
-    // runs first and this `destroyModel` runs after — the renderables are off the scene before the
-    // `Model`'s buffers are freed, respecting #2424's render-loop ordering. `onDispose` runs on the
-    // composition (main) thread, satisfying the Filament JNI contract.
+    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
+    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
+    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
+    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
+    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
+    // the Filament JNI contract.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
@@ -941,8 +948,9 @@ fun rememberModelInstance(
  *
  * **Lifecycle & ownership.** Like the asset overload, this composable owns the produced
  * [ModelInstance] and its backing [Model]: the previous model is destroyed when [fileLocation]
- * changes and on leave-composition, after any consuming [SceneScope.ModelNode] has detached its
- * renderables. The [ModelLoader] does not dedupe by path — each distinct [fileLocation] is a fresh
+ * changes and on leave-composition, in no guaranteed order relative to a consuming
+ * [SceneScope.ModelNode] — safe either way. The [ModelLoader] does not dedupe by path — each
+ * distinct [fileLocation] is a fresh
  * GPU allocation. See the asset-path overload for details.
  *
  * @param modelLoader  The [ModelLoader] to use.
