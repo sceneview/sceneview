@@ -17,9 +17,12 @@ import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -141,12 +144,14 @@ class ModelLoader(
     ): Model? = context.loadFileBuffer(fileLocation)?.let { buffer ->
         // Transcoding decodes and re-encodes images: keep it off the main thread.
         val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
-        val model = withContext(Dispatchers.Main) {
+        val model = createOrDestroyOnCancel(::destroyModel) {
             assetLoader.createAsset(source)
         } ?: return@let null
         models += model
-        loadResourcesSuspended(model) { resourceFileName: String ->
-            context.loadFileBuffer(resourceResolver(resourceFileName))
+        destroyOnCancel(model, ::destroyModel) {
+            loadResourcesSuspended(model) { resourceFileName: String ->
+                context.loadFileBuffer(resourceResolver(resourceFileName))
+            }
         }
         model
     }
@@ -373,12 +378,14 @@ class ModelLoader(
     ): List<ModelInstance> = context.loadFileBuffer(fileLocation)?.let { buffer ->
         val instances = arrayOfNulls<ModelInstance>(count)
         val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
-        val model = withContext(Dispatchers.Main) {
+        val model = createOrDestroyOnCancel(::destroyModel) {
             assetLoader.createInstancedAsset(source, instances)
         } ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
-        loadResourcesSuspended(model) { resourceFileName: String ->
-            context.loadFileBuffer(resourceResolver(resourceFileName))
+        destroyOnCancel(model, ::destroyModel) {
+            loadResourcesSuspended(model) { resourceFileName: String ->
+                context.loadFileBuffer(resourceResolver(resourceFileName))
+            }
         }
         instances.filterNotNull()
     } ?: listOf()
@@ -501,6 +508,59 @@ class ModelLoader(
     companion object {
         fun getFolderPath(baseFileName: String, resourceFileName: String) =
             "${baseFileName.substringBeforeLast("/")}/$resourceFileName"
+    }
+}
+
+/**
+ * Runs [create] on [dispatcher] and returns its result — unless the caller was cancelled
+ * in the meantime, in which case the result is handed to [destroy] before the
+ * [CancellationException] propagates.
+ *
+ * This closes the window described in #3051: `withContext` delivers its result through
+ * a cancellable resume, so a coroutine cancelled while the main-thread block is running
+ * (or while the hop back is queued) resumes with [CancellationException] and the value
+ * the block returned is dropped on the floor. For a Filament asset that value is a live
+ * GPU-side model nothing else references — `rememberModelInstance` in `sceneview-compose`
+ * swaps sources by cancelling the producer, which is exactly this sequence. The block
+ * itself never starts once the caller is cancelled, so [created] is either unset or
+ * holds the one value that would otherwise leak.
+ *
+ * The dispatcher is a parameter only so the mechanism can be pinned in a JVM unit test;
+ * production callers leave it on [Dispatchers.Main], the Filament JNI contract.
+ */
+internal suspend fun <T : Any> createOrDestroyOnCancel(
+    destroy: (T) -> Unit,
+    dispatcher: CoroutineDispatcher = Dispatchers.Main,
+    create: () -> T?,
+): T? {
+    var created: T? = null
+    try {
+        return withContext(dispatcher) { create()?.also { created = it } }
+    } catch (cancellation: CancellationException) {
+        created?.let { withContext(NonCancellable + dispatcher) { destroy(it) } }
+        throw cancellation
+    }
+}
+
+/**
+ * Runs [block] and, if it is cancelled, destroys [created] — the model a load has
+ * already built but not yet returned to the caller — before rethrowing.
+ *
+ * Resource loading suspends once per external buffer; a source swap that lands there
+ * would otherwise leave the half-loaded model in [ModelLoader]'s list until the loader
+ * is destroyed, with no caller holding a handle to free it earlier.
+ */
+internal suspend fun <T : Any> destroyOnCancel(
+    created: T,
+    destroy: (T) -> Unit,
+    dispatcher: CoroutineDispatcher = Dispatchers.Main,
+    block: suspend () -> Unit,
+) {
+    try {
+        block()
+    } catch (cancellation: CancellationException) {
+        withContext(NonCancellable + dispatcher) { destroy(created) }
+        throw cancellation
     }
 }
 

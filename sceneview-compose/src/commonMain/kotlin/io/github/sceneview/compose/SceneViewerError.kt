@@ -12,6 +12,12 @@ package io.github.sceneview.compose
  * platform log under the `SceneViewer` tag, exactly as before; nothing throws, and the
  * viewport keeps rendering.
  *
+ * The constructor is public so an app can unit-test its own handler — a retry button
+ * rendered from `onError` should not need a real renderer and a real failed load to be
+ * exercised (#3051). Build one with any `message` and an optional `cause`; the fields
+ * are the whole contract, and any future addition will carry a default so existing call
+ * sites keep compiling.
+ *
  * @property message what failed, in English, naming the source — e.g.
  *   `loading asset 'models/helmet.glb'`. Intended for logs and bug reports, not for
  *   display to end users: it is not localised and its wording is not part of the API
@@ -20,7 +26,7 @@ package io.github.sceneview.compose
  *   platform reported a failure without one — a loader returning "no model" rather than
  *   throwing, or an error forwarded from a non-Kotlin renderer.
  */
-public class SceneViewerError internal constructor(
+public class SceneViewerError(
     public val message: String,
     public val cause: Throwable? = null,
 ) {
