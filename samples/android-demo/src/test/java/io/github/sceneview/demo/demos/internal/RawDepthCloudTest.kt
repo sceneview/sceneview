@@ -306,6 +306,123 @@ class RawDepthCloudTest {
     }
 
     @Test
+    fun `buildCloud with rotationDegrees 0 matches the unrotated coordinates`() {
+        val (depth, conf) = buildPair(
+            depthMm = intArrayOf(300, 1_000, 2_000, 5_000),
+            confidence = intArrayOf(200, 200, 200, 200),
+            width = 4,
+            height = 1,
+        )
+
+        val packed = RawDepthCloud.buildCloud(
+            depthBytes = depth,
+            depthRowStrideBytes = 8,
+            confidenceBytes = conf,
+            confidenceRowStrideBytes = 4,
+            width = 4,
+            height = 1,
+            stride = 1,
+            confidenceThreshold = 0,
+            rotationDegrees = 0,
+        )
+
+        assertEquals(0, RawDepthCloud.x(packed, 0))
+        assertEquals(0, RawDepthCloud.y(packed, 0))
+        assertEquals(3, RawDepthCloud.x(packed, 3))
+        assertEquals(0, RawDepthCloud.y(packed, 3))
+    }
+
+    @Test
+    fun `buildCloud rotates points 90 degrees clockwise (portrait sensor fix, #3271)`() {
+        // 4x2 source image. A single qualifying pixel at (3, 0) — the top-right corner of
+        // the sensor-frame image — must land in the top-left corner of the 90°-rotated
+        // (2x4) output frame, exactly mirroring DepthVisualization.depthBufferToArgb's
+        // pixel remap for the same rotation.
+        val width = 4
+        val height = 2
+        val depthMm = IntArray(width * height)
+        val confidence = IntArray(width * height) { 200 }
+        depthMm[0 * width + 3] = 1_000 // (x=3, y=0)
+        val (depth, conf) = buildPair(depthMm, confidence, width, height)
+
+        val packed = RawDepthCloud.buildCloud(
+            depthBytes = depth,
+            depthRowStrideBytes = width * 2,
+            confidenceBytes = conf,
+            confidenceRowStrideBytes = width,
+            width = width,
+            height = height,
+            stride = 1,
+            confidenceThreshold = 0,
+            rotationDegrees = 90,
+        )
+
+        assertEquals(1, RawDepthCloud.pointCount(packed))
+        // outX = height - 1 - y = 2 - 1 - 0 = 1; outY = x = 3.
+        assertEquals(1, RawDepthCloud.x(packed, 0))
+        assertEquals(3, RawDepthCloud.y(packed, 0))
+    }
+
+    @Test
+    fun `buildCloud rotates points 180 degrees`() {
+        val width = 4
+        val height = 2
+        val depthMm = IntArray(width * height)
+        val confidence = IntArray(width * height) { 200 }
+        depthMm[0] = 1_000 // (x=0, y=0)
+        val (depth, conf) = buildPair(depthMm, confidence, width, height)
+
+        val packed = RawDepthCloud.buildCloud(
+            depthBytes = depth,
+            depthRowStrideBytes = width * 2,
+            confidenceBytes = conf,
+            confidenceRowStrideBytes = width,
+            width = width,
+            height = height,
+            stride = 1,
+            confidenceThreshold = 0,
+            rotationDegrees = 180,
+        )
+
+        assertEquals(1, RawDepthCloud.pointCount(packed))
+        assertEquals(width - 1, RawDepthCloud.x(packed, 0))
+        assertEquals(height - 1, RawDepthCloud.y(packed, 0))
+    }
+
+    @Test
+    fun `buildCloud rotates points 270 degrees`() {
+        val width = 4
+        val height = 2
+        val depthMm = IntArray(width * height)
+        val confidence = IntArray(width * height) { 200 }
+        depthMm[0 * width + 3] = 1_000 // (x=3, y=0)
+        val (depth, conf) = buildPair(depthMm, confidence, width, height)
+
+        val packed = RawDepthCloud.buildCloud(
+            depthBytes = depth,
+            depthRowStrideBytes = width * 2,
+            confidenceBytes = conf,
+            confidenceRowStrideBytes = width,
+            width = width,
+            height = height,
+            stride = 1,
+            confidenceThreshold = 0,
+            rotationDegrees = 270,
+        )
+
+        assertEquals(1, RawDepthCloud.pointCount(packed))
+        // outX = y = 0; outY = width - 1 - x = 4 - 1 - 3 = 0.
+        assertEquals(0, RawDepthCloud.x(packed, 0))
+        assertEquals(0, RawDepthCloud.y(packed, 0))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `buildCloud rejects a rotation that is not a multiple of 90`() {
+        val empty = ByteBuffer.allocate(8)
+        RawDepthCloud.buildCloud(empty, 8, empty, 4, 4, 1, rotationDegrees = 45)
+    }
+
+    @Test
     fun `defaults are within sane bounds`() {
         assertTrue(RawDepthCloud.DEFAULT_STRIDE >= 1)
         assertTrue(RawDepthCloud.DEFAULT_MAX_POINTS > 0)
