@@ -3,7 +3,7 @@ name: Render Tests
 on:
   # Two trigger tiers, split by what each one is allowed to cost (#3216):
   #
-  # `pull_request` — runs ONLY the `android-library-render` job, and only
+  # `pull_request` — runs the `android-library-render` job (and `web-render` on web changes), only
   # when the PR touches something `:sceneview:connectedDebugAndroidTest` can
   # see (the `paths:` list below). That job is the one blocking leg of this
   # workflow; before #3216 it had no pre-merge run at all, so a PR that added
@@ -37,6 +37,15 @@ on:
       - 'build.gradle*'
       - 'settings.gradle*'
       - 'gradle.properties'
+      # The web Playwright suite (`samples/web-demo`) is reachable from no
+      # other workflow, and `check-test-suites-reachable.sh` (#3201) reads a
+      # `pull_request` trigger whose `paths:` exclude the package as "runs
+      # its tests but never triggers on it". So web changes trigger this
+      # workflow too, and the `web-render` job runs on PRs (advisory, `||
+      # true`, ubuntu-only). Side effect accepted: a web-only PR also queues
+      # the `android-library-render` emulator job once.
+      - 'samples/web-demo/**'
+      - 'sceneview-web/**'
   push:
     branches: [main]
     paths:
@@ -531,8 +540,8 @@ jobs:
   # ── Web render tests ──────────────────────────────────────────────────────
   web-render:
     name: Web Playwright screenshot tests
-    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    if: github.event_name != 'pull_request'
+    # Advisory leg (`|| true`). Runs on PRs as well so the suite stays
+    # reachable from a PR-time workflow (see the `pull_request.paths` note).
     runs-on: ubuntu-latest
     # 30 min: the suite (53 tests, 1 worker) measures 13–17 min green on push
     # runs — 20 min left no headroom and the slower nightly runners timed the
