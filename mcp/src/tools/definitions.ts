@@ -271,7 +271,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     outputSchema: {
       type: "object",
-      properties: { previewUrl: { type: "string" }, modelUrl: { type: "string" }, hasCode: { type: "boolean" }, title: { type: "string" } },
+      properties: {
+        previewUrl: { type: "string" },
+        modelUrl: { type: "string" },
+        hasCode: { type: "boolean" },
+        title: { type: "string" },
+      },
       required: ["previewUrl", "modelUrl", "hasCode", "title"],
       additionalProperties: false,
     },
@@ -399,7 +404,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     outputSchema: {
       type: "object",
-      properties: { html: { type: "string" }, title: { type: "string" }, type: { type: "string", enum: ["model-viewer", "chart-3d", "scene", "product-360", "geometry"] } },
+      properties: {
+        html: { type: "string" },
+        title: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["model-viewer", "chart-3d", "scene", "product-360", "geometry"],
+        },
+      },
       required: ["html", "title", "type"],
       additionalProperties: false,
     },
@@ -521,11 +533,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           items: {
             type: "object",
             properties: {
-              platform: { type: "string" }, renderer: { type: "string" }, framework: { type: "string" },
-              status: { type: "string" }, version: { type: "string" }, dependency: { type: "string" },
+              platform: { type: "string" },
+              renderer: { type: "string" },
+              framework: { type: "string" },
+              status: { type: "string" },
+              version: { type: "string" },
+              dependency: { type: "string" },
               features: { type: "array", items: { type: "string" } },
             },
-            required: ["platform", "renderer", "framework", "status", "version", "dependency", "features"],
+            required: [
+              "platform",
+              "renderer",
+              "framework",
+              "status",
+              "version",
+              "dependency",
+              "features",
+            ],
             additionalProperties: false,
           },
         },
