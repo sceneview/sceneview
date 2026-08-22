@@ -119,6 +119,26 @@ describe("registry — getToolDefinition", () => {
 describe("registry — dispatch", () => {
   it("every declared outputSchema validates its handler's sample result", async () => {
     const samples: Record<string, Record<string, unknown>> = {
+      render_3d_preview: {
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+      },
+      create_3d_artifact: {
+        type: "model-viewer",
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+      },
+      list_platforms: {},
+      setup_rerun_project: { platform: "python" },
+      embed_web_viewer: { rrdUrl: "https://example.com/session.rrd" },
+      list_car_models: {},
+      validate_automotive_code: { code: "@Composable fun Car() {}" },
+      list_game_models: {},
+      validate_game_code: { code: "@Composable fun Game() {}" },
+      list_medical_models: {},
+      validate_medical_code: { code: "@Composable fun Anatomy() {}" },
+      list_furniture_models: {},
+      validate_interior_code: { code: "@Composable fun Room() {}" },
       view_3d_model: {
         modelUrl: "https://example.com/chair.glb",
         title: "Chair",
@@ -131,8 +151,8 @@ describe("registry — dispatch", () => {
     const validatorProvider = new AjvJsonSchemaValidator();
     const definitions = getAllTools().filter((tool) => tool.outputSchema);
 
-    expect(definitions.map((tool) => tool.name)).toEqual(
-      Object.keys(samples),
+    expect(definitions.map((tool) => tool.name).sort()).toEqual(
+      Object.keys(samples).sort(),
     );
     for (const definition of definitions) {
       const result = await dispatch(definition.name, samples[definition.name]);

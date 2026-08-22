@@ -146,7 +146,20 @@ describe("transport: tools/list", () => {
     const result = body.result as {
       tools: { name: string; outputSchema?: unknown }[];
     };
-    expect(result.tools.filter((tool) => tool.outputSchema).map((tool) => tool.name)).toEqual([
+    expect(result.tools.filter((tool) => tool.outputSchema).map((tool) => tool.name).sort()).toEqual([
+      "create_3d_artifact",
+      "embed_web_viewer",
+      "list_car_models",
+      "list_furniture_models",
+      "list_game_models",
+      "list_medical_models",
+      "list_platforms",
+      "render_3d_preview",
+      "setup_rerun_project",
+      "validate_automotive_code",
+      "validate_game_code",
+      "validate_interior_code",
+      "validate_medical_code",
       "view_3d_model",
     ]);
   });
