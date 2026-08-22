@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import {
   dispatch,
   getAllTools,
@@ -115,6 +117,38 @@ describe("registry — getToolDefinition", () => {
 });
 
 describe("registry — dispatch", () => {
+  it("every declared outputSchema validates its handler's sample result", async () => {
+    const samples: Record<string, Record<string, unknown>> = {
+      view_3d_model: {
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+        autoRotate: false,
+        ar: true,
+        alt: "A chair",
+        posterUrl: "https://example.com/chair.webp",
+      },
+    };
+    const validatorProvider = new AjvJsonSchemaValidator();
+    const definitions = getAllTools().filter((tool) => tool.outputSchema);
+
+    expect(definitions.map((tool) => tool.name)).toEqual(
+      Object.keys(samples),
+    );
+    for (const definition of definitions) {
+      const result = await dispatch(definition.name, samples[definition.name]);
+      expect(result.isError, definition.name).toBeFalsy();
+      expect(result.structuredContent, definition.name).toBeDefined();
+      const validate = validatorProvider.getValidator(
+        definition.outputSchema! as JsonSchemaType,
+      );
+      const validation = validate(result.structuredContent);
+      expect(
+        validation.valid,
+        `${definition.name}: ${validation.errorMessage}`,
+      ).toBe(true);
+    }
+  });
+
   it("routes a sceneview-mcp call to the sceneview library", async () => {
     const result = await dispatch("get_migration_guide", undefined);
     expect(result.isError).toBeFalsy();

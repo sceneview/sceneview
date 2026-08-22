@@ -68,6 +68,19 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["modelUrl"],
     },
+    outputSchema: {
+      type: "object",
+      properties: {
+        modelUrl: { type: "string" },
+        title: { type: "string" },
+        autoRotate: { type: "boolean" },
+        ar: { type: "boolean" },
+        alt: { type: "string" },
+        posterUrl: { type: "string" },
+      },
+      required: ["modelUrl", "title", "autoRotate", "ar", "alt"],
+      additionalProperties: false,
+    },
     annotations: {
       readOnlyHint: true,
       // The model URL is fetched by the user's browser inside the widget
@@ -134,9 +147,14 @@ export async function dispatchTool(
       // structuredContent is what the widget reads via the MCP Apps bridge.
       // Adding it as a custom field on ToolResult — non-breaking because
       // every consumer treats unknown ToolResult keys as opaque.
-      ...({
-        structuredContent: { modelUrl, title, autoRotate, ar, alt, posterUrl },
-      } as Record<string, unknown>),
+      structuredContent: {
+        modelUrl,
+        title,
+        autoRotate,
+        ar,
+        alt,
+        ...(posterUrl === undefined ? {} : { posterUrl }),
+      },
     };
   }
 

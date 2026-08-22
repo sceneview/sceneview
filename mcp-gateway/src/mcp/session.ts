@@ -1,7 +1,7 @@
 /**
  * MCP session management on top of Workers KV.
  *
- * The Streamable HTTP transport (spec 2025-03-26) assigns each logical
+ * The Streamable HTTP transport (spec 2025-06-18) assigns each logical
  * client session a server-generated identifier that is echoed back on
  * every subsequent request through the `Mcp-Session-Id` header. This
  * module provides the small surface needed by `transport.ts`:
@@ -25,6 +25,8 @@ export interface SessionState {
   id: string;
   /** Whether the client has completed the MCP `initialize` handshake. */
   initialized: boolean;
+  /** Protocol revision selected during `initialize`. */
+  protocolVersion?: string;
   /** Optional client info captured during `initialize`. */
   clientInfo?: {
     name?: string;
