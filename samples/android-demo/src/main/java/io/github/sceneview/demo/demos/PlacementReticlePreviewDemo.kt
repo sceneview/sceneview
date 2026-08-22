@@ -155,7 +155,7 @@ fun PlacementReticlePreviewDemo(onBack: () -> Unit) {
                     // A natural "standing, phone tilted at the floor" angle — the reticle / model
                     // is seen in perspective, sitting on the ground, as in real placement. Lower &
                     // closer in placed mode so the floor (and the contact shadow on it) is in view.
-                    orbitHomePosition = Position(0f, 0.45f, 0.55f),
+                    eyePosition = Position(0f, 0.45f, 0.55f),
                     targetPosition = Position(0f, 0.08f, 0f),
                 ),
             ) {

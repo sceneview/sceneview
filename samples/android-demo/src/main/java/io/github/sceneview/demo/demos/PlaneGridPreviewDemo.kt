@@ -182,7 +182,7 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
                 // ~47° downward look at the plane centre — a moderate AR-floor angle where the
                 // grid still resolves. Drag to orbit, or use the tilt slider to push toward the
                 // grazing angle that drives the #2224 fwidth saturation.
-                orbitHomePosition = Position(0f, 1.4f, 1.3f),
+                eyePosition = Position(0f, 1.4f, 1.3f),
                 targetPosition = Position(0f, 0f, 0f),
             ),
         ) {

@@ -715,7 +715,7 @@ private fun OcclusionSection(
                 // wall's edge (at world x = 0) projects to the screen centre — a clean
                 // vertical cut down the helmet's middle (#2304).
                 cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = Position(0f, 0.2f, 1.4f),
+                    eyePosition = Position(0f, 0.2f, 1.4f),
                     targetPosition = Position(0f, 0f, 0f),
                 ),
                 // The hand-authored helmet + plane positions are meaningful — keep them

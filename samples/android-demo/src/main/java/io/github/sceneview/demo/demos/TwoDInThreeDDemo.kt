@@ -184,7 +184,7 @@ private fun TextSection(
             materialLoader = materialLoader,
             onFrame = firstFrame.onFrame,
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0f, 1.5f),
+                eyePosition = Position(0f, 0f, 1.5f),
                 targetPosition = Position(0f, 0f, 0f),
             ),
         ) {
@@ -610,7 +610,7 @@ private class CinematicCameraManipulator(
     private fun ensureFallback() {
         if (fallback == null) {
             fallback = CameraGestureDetector.DefaultCameraManipulator(
-                orbitHomePosition = eyeProvider(),
+                eyePosition = eyeProvider(),
                 targetPosition = targetProvider(),
             ).also { it.setViewport(viewportW, viewportH) }
         }
@@ -773,7 +773,7 @@ private fun BillboardSection(
             engine = engine,
             materialLoader = materialLoader,
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0.55f, 1.5f),
+                eyePosition = Position(0f, 0.55f, 1.5f),
                 targetPosition = Position(0f, -0.05f, -0.8f),
             )
         ) {

@@ -659,7 +659,7 @@ private fun AnimationSection(
     val freeManipulator = remember(cameraMode) {
         if (cameraMode == CameraMode.FREE) {
             CameraGestureDetector.DefaultCameraManipulator(
-                orbitHomePosition = scriptedManipulator.currentEye(),
+                eyePosition = scriptedManipulator.currentEye(),
                 targetPosition = target,
             ).also { mgr ->
                 val (w, h) = scriptedManipulator.lastViewport()
@@ -1136,7 +1136,7 @@ private fun PhysicsSection(
                 cameraNode = cameraNode,
                 onFrame = firstFrame.onFrame,
                 cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = cameraNode.worldPosition
+                    eyePosition = cameraNode.worldPosition
                 )
             ) {
                 // Left-side counter-fill — same as v4.3.1, kept verbatim.

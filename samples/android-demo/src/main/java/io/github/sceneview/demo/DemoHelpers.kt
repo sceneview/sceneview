@@ -318,7 +318,7 @@ fun rememberFirstFrameState(): FirstFrameState {
  * Returns a [OrbitState] whose [yaw][OrbitState.yaw] advances from 0° to 360° in
  * [durationMillis] and resets. Converts to a `Position` on a circle of radius
  * [radius] at height [yHeight]. Wire this into a SceneView with
- * `cameraManipulator = rememberCameraManipulator(orbitHomePosition = state.toPosition())`
+ * `cameraManipulator = rememberCameraManipulator(eyePosition = state.toPosition())`
  * OR directly into a `CameraNode.position` via SideEffect.
  *
  * When [DemoSettings.qaMode] is `true` the orbit freezes at [staticYaw] so screenshot
@@ -519,7 +519,7 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * the model rotating through its own light setup.
  *
  * On first gesture the manipulator captures the current orbit pose as the new
- * [DefaultCameraManipulator.orbitHomePosition], so there's no snap — the user's first
+ * [DefaultCameraManipulator.eyePosition], so there's no snap — the user's first
  * drag continues from exactly where the idle orbit left off.
  *
  * ### Auto-orbit resume after idle (#2225)
@@ -576,7 +576,7 @@ class HeroOrbitCameraManipulator(
             // Capture the current orbit eye as the manipulator's home so the hand-off is
             // seamless — the first drag begins exactly where we stopped orbiting.
             fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
-                orbitHomePosition = currentEye(),
+                eyePosition = currentEye(),
                 targetPosition = target,
             ).also { it.setViewport(viewportW, viewportH) }
         }

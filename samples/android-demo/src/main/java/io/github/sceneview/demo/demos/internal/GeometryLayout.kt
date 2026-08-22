@@ -23,12 +23,12 @@ import kotlin.math.sqrt
  *     below — the old framing comment asserted "a comfortable 2.7 m" for a camera that
  *     measured 1.2 m away.
  *
- * ### Orbit distance is the LENGTH of `orbitHomePosition` (measured, #2873)
+ * ### Orbit distance is the LENGTH of `eyePosition` (measured, #2873)
  *
- * `rememberCameraManipulator(orbitHomePosition, targetPosition)` used to document
- * `orbitHomePosition` as "the camera's world position to return to on double-tap", which
- * reads as "the distance is `|orbitHomePosition − targetPosition|`". Measured on-device it
- * is **not**: the resulting orbit distance is `|orbitHomePosition|`.
+ * `rememberCameraManipulator(eyePosition, targetPosition)` — `orbitHomePosition` until #2932 —
+ * used to document that parameter as "the camera's world position to return to on double-tap", which
+ * reads as "the distance is `|eyePosition − targetPosition|`". Measured on-device it
+ * is **not**: the resulting orbit distance is `|eyePosition|`.
  *
  * The cause is *not* that the value is an offset from the target. Filament's
  * `OrbitManipulator` assigns it verbatim as the eye (`mEye = mProps.orbitHomePosition`) and
@@ -41,10 +41,10 @@ import kotlin.math.sqrt
  * why the difference goes unnoticed until a demo targets something else.
  *
  * **That precondition is load-bearing here:** with `autoCenterContent = false` the distance
- * becomes `|orbitHomePosition − contentCentre|` again and every constant below would need
+ * becomes `|eyePosition − contentCentre|` again and every constant below would need
  * re-deriving. This demo leaves it at the default.
  *
- * The old `orbitHomePosition = (0, 0.2, 1.2)` / `targetPosition = (0, 0, -1.5)` therefore
+ * The old `eyePosition = (0, 0.2, 1.2)` / `targetPosition = (0, 0, -1.5)` therefore
  * put the camera 1.22 m from the primitives, not the 2.7 m its comment claimed. Verified by
  * projecting known geometry back through the frustum at four distances, and independently on
  * the `shape` demo (whose triangle is clipped by the same misreading).
@@ -160,12 +160,12 @@ internal object GeometryLayout {
     private const val ELEVATION_RATIO = 0.07f
 
     /**
-     * Orbit offset to pass as `orbitHomePosition`, for a camera [distance] metres from the
+     * Orbit offset to pass as `eyePosition`, for a camera [distance] metres from the
      * cluster: a vector of length exactly [distance], lifted [ELEVATION_RATIO] above the
      * view axis.
      *
      * Returning a vector of the requested length is what makes the distance honest, given
-     * the `|orbitHomePosition|` semantics documented above — Filament uses it as the eye
+     * the `|eyePosition|` semantics documented above — Filament uses it as the eye
      * directly, and `autoCenterContent` has already put the cluster on the origin.
      *
      * @param distance Camera-to-cluster distance in metres. Must be `> 0`.

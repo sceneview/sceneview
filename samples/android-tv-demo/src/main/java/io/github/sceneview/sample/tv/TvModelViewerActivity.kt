@@ -204,7 +204,7 @@ private fun TvModelViewerScreen(updateManager: InAppUpdateManager? = null) {
             modelLoader = modelLoader,
             cameraNode = cameraNode,
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = cameraNode.worldPosition,
+                eyePosition = cameraNode.worldPosition,
                 targetPosition = centerNode.worldPosition
             ),
             environment = environment,

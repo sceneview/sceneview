@@ -186,7 +186,7 @@ private fun RayHitTestSection(
                 collisionSystem = collisionSystem,
                 autoCenterContent = false,
                 cameraManipulator = rememberCameraManipulator(
-                    orbitHomePosition = Position(0f, 0.2f, 1f),
+                    eyePosition = Position(0f, 0.2f, 1f),
                     targetPosition = Position(0f, 0.15f, -2f),
                 ),
                 onGestureListener = gestureListener

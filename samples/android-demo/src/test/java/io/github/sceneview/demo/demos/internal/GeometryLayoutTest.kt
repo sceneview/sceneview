@@ -89,7 +89,7 @@ class GeometryLayoutTest {
     fun `the four-wide row this layout replaced would have been clipped`() {
         // The regression this pins, expressed in its own terms: primitives at x = ±0.6 / ±0.2
         // (widest half-extent 0.6 + plane half-edge) seen from the 1.22 m the old
-        // orbitHomePosition actually resolved to.
+        // eyePosition actually resolved to.
         val oldHalfWidth = 0.6f + GeometryLayout.PLANE_EDGE * 0.5f
         val oldDistance = 1.22f
         val oldFill = oldHalfWidth / GeometryLayout.frameHalfWidth(

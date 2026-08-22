@@ -206,7 +206,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
             environment = activeEnvironment,
             cameraNode = cameraNode,
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = cameraNode.worldPosition,
+                eyePosition = cameraNode.worldPosition,
                 targetPosition = envelopeCenter,
             ),
         ) {

@@ -103,7 +103,7 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `rememberModelInstance(modelLoader, "asset.glb")` | `ModelInstance?` | **Nullable while loading** |
 | `rememberMainLightNode(engine) { … }` | `LightNode` | Default key light (use `null` to disable) |
 | `rememberFillLightNode(engine) { … }` | `LightNode` | Default fill (use `null` to disable) |
-| `rememberCameraManipulator(...)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller; `null` to lock |
+| `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `eyePosition = Position(…)` for an explicit eye (was `orbitHomePosition`, deprecated — no "home" gesture exists) |
 | `rememberOnGestureListener(onSingleTapConfirmed = …)` | `GestureDetector.OnGestureListener` | Wire AR taps |
 | `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions — ARCore **dataset** for deterministic replay (no args) |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Record the **rendered scene** to MP4 in-app (no MediaProjection). Pass to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then `startMirroring(surface)` / `stopMirroring(surface)` |

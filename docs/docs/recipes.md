@@ -309,54 +309,64 @@ fun BouncingModelScreen() {
 
 ## Camera
 
-### Orbit camera with custom home position
+### Orbit camera at a chosen distance
 
-Use `rememberCameraManipulator` with `orbitHomePosition` and `targetPosition`.
-The user can orbit, pan, and zoom.
+Use `rememberCameraManipulator` with `orbitRadius` — the camera starts that many metres from
+the target, along the default 3/4 viewing angle (`orbitRadius = 2.78f` is the stock
+framing). The user can orbit, pan, and zoom.
 
 ```kotlin
 SceneView(
     modifier = Modifier.fillMaxSize(),
     engine = engine,
     modelLoader = modelLoader,
-    cameraManipulator = rememberCameraManipulator(
-        // Absolute eye position. Targets the origin here, so |orbitHomePosition| ≈ 4.47 m
-        // is the distance the subject is framed from.
-        orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
-        targetPosition = Position(x = 0f, y = 0f, z = 0f)
-    )
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f)
 ) {
     // nodes here
 }
 ```
 
-!!! warning "`orbitHomePosition` is an absolute eye position, and its **length** is your framing distance"
+To place the eye yourself, pass `eyePosition` and `targetPosition` instead
+(`eyePosition` was `orbitHomePosition` before 4.32 — the old name still compiles with a
+deprecation warning; same behaviour, there was never a "home" gesture):
 
-    Filament's `OrbitManipulator` uses `orbitHomePosition` verbatim as the eye
+```kotlin
+cameraManipulator = rememberCameraManipulator(
+    // Absolute eye position. Targets the origin here, so |eyePosition| ≈ 4.47 m
+    // is the distance the subject is framed from.
+    eyePosition = Position(x = 0f, y = 2f, z = 4f),
+    targetPosition = Position(x = 0f, y = 0f, z = 0f)
+)
+```
+
+!!! warning "`eyePosition` is an absolute eye position, and its **length** is your framing distance"
+
+    Filament's `OrbitManipulator` uses `eyePosition` verbatim as the eye
     (`mEye = mProps.orbitHomePosition`, default `(0, 0, 1)`); it is never re-based on
     `targetPosition`, which only sets the orbit pivot and the initial look direction.
 
     On top of that, `SceneView`'s default `autoCenterContent = true` translates the DSL
     content so its bounding-box centre lands on the **world origin**. The distance your
-    subject is framed from is therefore `|orbitHomePosition|` — the coordinates you gave
+    subject is framed from is therefore `|eyePosition|` — the coordinates you gave
     your nodes do not survive, and `targetPosition` does not enter into it:
 
     ```kotlin
     // Frames from |(0, 0.2, 1.2)| ≈ 1.22 m — NOT the 2.7 m that
-    // |orbitHomePosition − targetPosition| suggests.
+    // |eyePosition − targetPosition| suggests.
     rememberCameraManipulator(
-        orbitHomePosition = Position(0f, 0.2f, 1.2f),
+        eyePosition = Position(0f, 0.2f, 1.2f),
         targetPosition = Position(0f, 0f, -1.5f)
     )
     ```
 
-    Pick the distance you want and pass a vector of that **length**, or set
+    Prefer `rememberCameraManipulator(orbitRadius = …)`, which takes the distance directly;
+    otherwise pass a vector of that **length**, or set
     `autoCenterContent = false` so authored world positions survive (the framing distance
-    then becomes `|orbitHomePosition − contentCentre|`). Both readings coincide when the
+    then becomes `|eyePosition − contentCentre|`). Both readings coincide when the
     target is the origin — which is why every example on this page looks fine and why the
     discrepancy went unnoticed until [#2873](https://github.com/sceneview/sceneview/issues/2873).
 
-    There is no built-in gesture that returns the camera to `orbitHomePosition`:
+    There is no built-in gesture that returns the camera to `eyePosition`:
     `onDoubleTap` is a plain callback `SceneView` forwards to your code, never wired to
     the camera.
 
@@ -415,7 +425,7 @@ SceneView(
     engine = engine,
     modelLoader = modelLoader,
     cameraManipulator = rememberCameraManipulator(
-        orbitHomePosition = Position(0f, 1f, 3f),
+        eyePosition = Position(0f, 1f, 3f),
         targetPosition = Position(0f, 0f, 0f)
     )
 ) {
@@ -969,7 +979,7 @@ fun ProductListScreen(products: List<Product>) {
                         engine = engine,
                         modelLoader = modelLoader,
                         cameraManipulator = rememberCameraManipulator(
-                            orbitHomePosition = Position(0f, 0.5f, 2f),
+                            eyePosition = Position(0f, 0.5f, 2f),
                             targetPosition = Position(0f)
                         )
                     ) {

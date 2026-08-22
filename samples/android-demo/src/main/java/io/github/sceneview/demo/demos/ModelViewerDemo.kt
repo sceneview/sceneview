@@ -730,7 +730,7 @@ private fun MultiModelSection(
                 createDefaultCameraManipulator(
                     // Straight-on, at the mid-height of the tallest model, looking at the
                     // formation centre — which IS the world origin, see `autoCenterContent`.
-                    orbitHomePosition = Position(0f, PARK_EYE_HEIGHT, orbitDistance),
+                    eyePosition = Position(0f, PARK_EYE_HEIGHT, orbitDistance),
                     targetPosition = Position(0f, 0f, 0f),
                 )
             }
