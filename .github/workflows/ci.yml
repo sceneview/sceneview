@@ -56,7 +56,8 @@ on:
         type: boolean
         default: false
 
-# Cancel only a genuinely superseded run, never an unrelated PR's CI (#2089).
+# Cancel only a genuinely superseded PR run, never a push to `main` (#2089,
+# #2925).
 #
 # The old `group: ci-${{ github.ref }}` keyed on `refs/pull/N/merge` for PRs.
 # Merging any PR to `main` makes GitHub recompute EVERY other open PR's merge
@@ -65,13 +66,15 @@ on:
 # cancelled check that left `CI Gate` red and blocked squash auto-merge
 # (bit #2062 and #1818).
 #
-# Keying on the PR HEAD sha instead means a run is cancelled ONLY when a new
-# commit is genuinely pushed to that same PR — a base-ref recompute keeps the
-# head sha unchanged, so other PRs' runs are left alone. `push`/`dispatch`
-# events have no `pull_request` context and fall back to `github.ref`.
+# Keying PRs on their HEAD sha means a run is cancelled ONLY when a new commit
+# is genuinely pushed to that same PR — a base-ref recompute keeps the head sha
+# unchanged, so other PRs' runs are left alone. Pushes to `main` instead use
+# their immutable commit sha and never cancel in progress: every pushed commit
+# must finish path detection against its own parent, even when merges land in
+# quick succession. Other events fall back to `github.ref`.
 concurrency:
-  group: ci-${{ github.event.pull_request.head.sha || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
@@ -169,10 +172,11 @@ jobs:
           # skipped-but-needed test. `sceneview-core/**` is shared KMP
           # logic, so it intentionally appears in `android`, `web` and
           # `kmp`. This workflow file is listed under every filter so a CI
-          # change always re-runs every job. `push` events (branch `main`)
-          # have no PR diff base — the action falls back to comparing
-          # against the previous commit; the workflow-level `paths-ignore`
-          # is the real gate there.
+          # change always re-runs every job. A `push` to `main` is compared
+          # explicitly with that event's `before` sha so rapid successive
+          # pushes cannot collapse into one diff. The all-zero `before` sha
+          # used when GitHub cannot name a parent falls back to `main`.
+          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
           filters: |
             shared: &shared
               - '.github/workflows/ci.yml'
@@ -275,12 +279,12 @@ jobs:
   # stores), and `workflow_call` from `nightly-ci.yml`.
   #
   # ⚠️ `!cancelled()`, NOT `always()`. `always()` also fires when the WORKFLOW
-  # RUN is cancelled, and a run is legitimately cancelled whenever a newer
-  # push supersedes it (`concurrency` above) — this job would then turn a
-  # correct supersede into a red. `!cancelled()` runs on success and on
-  # failure and skips a cancelled RUN, while a `changes` job that merely blew
-  # its own `timeout-minutes` does not cancel the run, so that case still
-  # lands here.
+  # RUN is cancelled. Superseded PR runs are legitimately cancelled by the
+  # concurrency policy above, and this job must not turn a correct supersede
+  # into a red. Push runs are never superseded, so each one reaches this
+  # required verdict. `!cancelled()` runs on success and on failure and skips
+  # a cancelled RUN, while a `changes` job that merely blew its own
+  # `timeout-minutes` does not cancel the run, so that case still lands here.
   changes-verdict:
     name: Path filter completed
     needs: changes
@@ -896,4 +900,3 @@ jobs:
           name: kmp-native-test-results
           path: sceneview-compose/build/test-results/
           if-no-files-found: ignore
-
