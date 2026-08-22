@@ -34,6 +34,25 @@
 #   verbatim from the `self-hosted-runner` skill, or from
 #   .github/workflows/bridge-ios-compile.yml, which holds the rationale.
 #
+# MACHINE HYGIENE (#3051) — what this script does and does not isolate
+#   The runner is a LaunchAgent in the login user's GUI domain, so a job runs
+#   as that user and inherits its filesystem. What the installer isolates:
+#     - GRADLE_USER_HOME points at ~/sceneview-runner/gradle-home, so CI and
+#       interactive builds never share a cache (a poisoned-cache red is then
+#       attributable to the run that wrote it).
+#   What it deliberately does NOT do, because each is a machine-level decision
+#   the maintainer takes once, outside any script:
+#     - run the runner under a dedicated non-admin macOS user (the installer
+#       needs `gh auth` to mint the registration token, but the *runner* does
+#       not — register from the admin account, then move the LaunchAgent);
+#     - keep `gh` logins and SSH keys out of that user's environment — a
+#       runner never needs to push;
+#     - audit what ~/sceneview-runner/ can read outside itself.
+#   Fork PRs never reach this machine regardless: the workflow expression
+#   routes them to a hosted runner, and the repository's fork-PR approval
+#   policy is `all_external_contributors` (verified 2026-08-22 via
+#   `gh api repos/sceneview/sceneview/actions/permissions/fork-pr-contributor-approval`).
+#
 # USAGE
 #   bash .claude/scripts/setup-self-hosted-runner.sh             # install
 #   bash .claude/scripts/setup-self-hosted-runner.sh --check     # status
@@ -46,6 +65,11 @@ REPO="sceneview/sceneview"
 RUNNER_VERSION="2.334.0"   # baseline; the runner auto-updates after first connect
 RUNNER_LABEL="sceneview-mac"
 RUNNER_HOME="${HOME}/sceneview-runner"
+# CI gets its own Gradle home (#3051): the runner shares the login user's filesystem, and
+# with the default ~/.gradle an interactive build and a CI build read and write the same
+# dependency/distribution cache. A poisoned or half-written cache then produces a red run
+# nothing in the PR explains. Costs one cold download per dependency, once.
+RUNNER_GRADLE_HOME="${RUNNER_HOME}/gradle-home"
 RUNNER_HOME_V2_LEGACY="${HOME}/Library/Application Support/sceneview-runner"
 RUNNER_NAME="sceneview-mac-$(hostname -s)"
 
@@ -255,6 +279,7 @@ cat > "${RUNNER_PLIST}" <<PLIST
   <dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key><string>${HOME}</string>
+    <key>GRADLE_USER_HOME</key><string>${RUNNER_GRADLE_HOME}</string>
   </dict>
 </dict>
 </plist>
