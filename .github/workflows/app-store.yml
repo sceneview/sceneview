@@ -42,7 +42,33 @@ jobs:
     outputs:
       ios_ready: ${{ steps.secrets.outputs.ios_ready }}
       macos_ready: ${{ steps.secrets.outputs.macos_ready }}
+      build_number: ${{ steps.build_number.outputs.build_number }}
     steps:
+      - name: Compute the App Store build number
+        id: build_number
+        # CFBundleVersion for BOTH upload streams of this run (#2443, #3081).
+        #
+        # A UTC timestamp `YYYYMMDDHHMM` (e.g. 202608221540): wall-clock only
+        # moves forward, so every archive is strictly newer than the last, and
+        # 2026… is far above every build number ever uploaded (the historical
+        # high-water mark was 366). It is a valid integer CFBundleVersion —
+        # 12 digits, under Apple's 18-digit cap.
+        #
+        # The previous scheme, `github.run_number + 1000` (~1288), worked but
+        # carried two latent Apple rejections the old comment itself named:
+        # the run counter resets if the workflow is ever renamed, and the
+        # +1000 offset is exhausted the day a historical build exceeds 1288.
+        # Both surface at archive time, not in CI. A timestamp has neither.
+        #
+        # Computed ONCE here and handed to the iOS and macOS legs through job
+        # outputs: those are separate jobs that start minutes apart, so
+        # calling `date` in each would give the two streams different
+        # numbers. One source keeps them in lockstep, and the submit step's
+        # `ASC_EXPECTED_BUILD` (#2893 W1) is the same value.
+        run: |
+          BUILD_NUMBER=$(date -u +%Y%m%d%H%M)
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "App Store build number (CFBundleVersion) for this run: $BUILD_NUMBER"
       - name: Check if secrets are configured
         id: secrets
         env:
@@ -191,18 +217,14 @@ jobs:
         # takes precedence over the project-file value, so this reliably
         # overrides the literal at archive time.
         #
-        # The +1000 offset clears the historical high-water mark: builds up to
-        # 366 were already uploaded under the old static literal, and this
-        # workflow's bare `github.run_number` was only ~288 — *below* 366, so
-        # Apple still rejected it. `github.run_number` is monotonic per
-        # workflow, so `run_number + 1000` is both strictly increasing and
-        # safely above every previously-uploaded build number (#2443 redeploy).
-        # The arithmetic is done in bash, NOT in a `${{ }}` expression —
-        # GitHub Actions expressions do not support the `+` operator.
+        # The value is the UTC `YYYYMMDDHHMM` timestamp computed once by the
+        # `check` job (see its `build_number` step for the rationale, #3081)
+        # and shared with the macOS leg through `needs.check.outputs`, so
+        # both upload streams carry the same CFBundleVersion.
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+          BUILD_NUMBER: ${{ needs.check.outputs.build_number }}
         run: |
-          BUILD_NUMBER=$(( ${{ github.run_number }} + 1000 ))
           echo "Archiving with CFBundleVersion (CURRENT_PROJECT_VERSION) = $BUILD_NUMBER"
           # Hand the number to the submit step (#2893 W1) so it can attach the
           # build THIS run uploaded instead of whichever iOS build happens to
@@ -436,16 +458,14 @@ jobs:
         # BUILD_NUMBER (below) — same #2443 fix as the iOS archive above. The
         # Mac App Store stream is what actually hit the
         # duplicate-CFBundleVersion rejection (build 366 reused), so the
-        # monotonic per-run build number is mandatory here. The +1000 offset is
-        # required: this workflow's bare run_number (~288) was below the
-        # already-uploaded 366, so Apple rejected it on the first redeploy. The
-        # arithmetic is done in bash, NOT in a `${{ }}` expression — GitHub
-        # Actions expressions do not support the `+` operator. Mirror the iOS
-        # leg so both upload streams stay in lockstep.
+        # strictly-increasing build number is mandatory here. It is the UTC
+        # `YYYYMMDDHHMM` timestamp the `check` job computed once for this run
+        # (#3081) — read from `needs.check.outputs` rather than recomputed, so
+        # this leg and the iOS leg carry the same number.
         env:
           SKETCHFAB_API_KEY: ${{ secrets.SKETCHFAB_API_KEY }}
+          BUILD_NUMBER: ${{ needs.check.outputs.build_number }}
         run: |
-          BUILD_NUMBER=$(( ${{ github.run_number }} + 1000 ))
           echo "Archiving with CFBundleVersion (CURRENT_PROJECT_VERSION) = $BUILD_NUMBER"
           xcodebuild archive \
             -project SceneViewDemo.xcodeproj \
