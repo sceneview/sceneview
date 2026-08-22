@@ -54,7 +54,8 @@ struct PhysicsDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(assetSource)
+            .assetSourcePill(assetSource,
+                         placeholder: selectedSlug?.fallbackRole == .placeholder)
             .demoSettingsSheet { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "physics")

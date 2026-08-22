@@ -16,14 +16,22 @@ import SwiftUI
 /// two demo apps read the same in screenshots and QA transcripts.
 struct AssetSourcePill: View {
     let state: AssetSourceState
+    /// `true` when the slug on screen declares `fallbackRole == .placeholder`
+    /// — its bundled stand-in is a different subject than the label (#2960).
+    /// Only changes the ``AssetSourceState/bundled`` wording: a streamed model
+    /// is never a placeholder, whatever its fallback would have been.
+    var isPlaceholder: Bool = false
 
-    private var label: String {
+    /// The pill copy. Static so the tests can pin it without SwiftUI.
+    static func label(state: AssetSourceState, isPlaceholder: Bool) -> String {
         switch state {
         case .streamed: return "Streamed (cached)"
         case .streaming: return "Streaming…"
-        case .bundled: return "Offline model"
+        case .bundled: return isPlaceholder ? "Offline placeholder" : "Offline model"
         }
     }
+
+    private var label: String { Self.label(state: state, isPlaceholder: isPlaceholder) }
 
     private var tint: Color {
         switch state {
@@ -75,10 +83,10 @@ extension View {
     /// taking the scene's `RealityView` with it. That is the same teardown
     /// `.contentID(_:)` exists to avoid, and it was measured re-creating the
     /// scene on exactly the first subject change and no other (#3008).
-    func assetSourcePill(_ state: AssetSourceState?) -> some View {
+    func assetSourcePill(_ state: AssetSourceState?, placeholder: Bool = false) -> some View {
         overlay(alignment: .topTrailing) {
             if let state {
-                AssetSourcePill(state: state)
+                AssetSourcePill(state: state, isPlaceholder: placeholder)
                     .padding(.top, 12)
                     .padding(.trailing, 16)
             }
@@ -91,6 +99,7 @@ extension View {
         AssetSourcePill(state: .streamed)
         AssetSourcePill(state: .streaming)
         AssetSourcePill(state: .bundled)
+        AssetSourcePill(state: .bundled, isPlaceholder: true)
     }
     .padding()
     .background(Color.black)
