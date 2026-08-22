@@ -141,11 +141,12 @@ open class StreetscapeGeometryNode(
             pose = streetscapeGeometry.meshPose
         }
     }
-
-    private companion object {
-        const val BUFFER_INDEX_POSITION = 0
-        const val BUFFER_INDEX_TANGENT = 1
-        const val BUFFER_INDEX_UV = 2
-        const val BUFFER_COUNT = 3
-    }
 }
+
+// Vertex buffer slots of a StreetscapeGeometryNode. File-private: a `const val` in a
+// `private companion object` still compiles to a public static field on the class and
+// trips apiCheck.
+private const val BUFFER_INDEX_POSITION = 0
+private const val BUFFER_INDEX_TANGENT = 1
+private const val BUFFER_INDEX_UV = 2
+private const val BUFFER_COUNT = 3
