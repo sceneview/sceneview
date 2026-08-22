@@ -288,9 +288,9 @@ struct AnimationDemo: View {
                 .foregroundStyle(.secondary)
 
             if let slug = selectedSubject.streamedSlug {
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Credits the model actually on screen — streamed author or the
+                // bundled fallback's own author and licence (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             }
         }
     }

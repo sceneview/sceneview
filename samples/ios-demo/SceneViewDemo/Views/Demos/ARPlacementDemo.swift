@@ -150,9 +150,11 @@ struct ARPlacementDemo: View {
         do {
             let url: URL
             let displayName: String
+            let scaleToUnits: Float
             if let slug = selectedSlug, let resolved = armedURL {
                 url = resolved
                 displayName = slug.displayName
+                scaleToUnits = slug.scaleToUnits
             } else {
                 // Bundled cycle — round-robin through the five bundled entries.
                 let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
@@ -171,7 +173,11 @@ struct ARPlacementDemo: View {
                 return
             }
             let node = try await ModelNode.load(contentsOf: url)
-            _ = node.scaleToUnits(0.3)
+            // The slug's real-world size hint is the point of the picker: a
+            // coffee mug at 0.10 m and a floor lamp at 1.55 m, not both at the
+            // bundled cycle's 0.3 m (#2966). Applies to the fallback too — it
+            // stands in at the size the label claims.
+            _ = node.scaleToUnits(scaleToUnits)
             _ = node.centerOrigin()
             let anchor = AnchorNode.world(position: worldPosition)
             anchor.add(node.entity)
@@ -242,9 +248,10 @@ struct ARPlacementDemo: View {
                         .font(.caption2)
                         .foregroundStyle(.green)
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Credits whatever is actually on screen — the fallback's own
+                // author and licence in keyless mode, never the streamed one
+                // next to a bundled stand-in (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             } else {
                 Text("Next tap places: \(Self.bundledCycle[cycleIndex % Self.bundledCycle.count].displayName)")
                     .font(.caption2)

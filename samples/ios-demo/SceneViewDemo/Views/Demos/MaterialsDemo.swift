@@ -152,9 +152,10 @@ struct MaterialsDemo: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.85))
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
+                // Credits the model actually on screen — streamed author or the
+                // bundled fallback's own author and licence (#2966).
+                AssetCreditLine(slug: slug, source: assetSource,
+                                style: AnyShapeStyle(.white.opacity(0.75)))
             }
         }
         .padding(.vertical, 12)
