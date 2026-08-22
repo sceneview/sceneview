@@ -16,6 +16,8 @@ object ArMlObjectLabelFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_ml_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Label,
+        order = 37,
+        tags = setOf("ar", "ml", "mlkit", "object-detection", "label", "hit-test"),
     )
 
     @Composable

@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_spatial_audio_title">Spatial Audio</string>
-    <string name="demo_spatial_audio_subtitle">3D positional sound that pans as you orbit</string>
+    <string name="demo_spatial_audio_subtitle">Positional sound that pans as you orbit</string>
     <string name="demo_spatial_audio_hint">A bell tone orbits the centre. Drag to orbit — the sound pans between your ears.</string>
     <string name="demo_spatial_audio_falloff_label">Distance falloff</string>
     <string name="demo_spatial_audio_inverse">Inverse</string>

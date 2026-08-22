@@ -4,6 +4,7 @@ package io.github.sceneview.demo.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,11 +28,11 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
@@ -66,16 +67,21 @@ import androidx.annotation.StringRes
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
-import io.github.sceneview.demo.DemoListScreen
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
+import io.github.sceneview.demo.ui.home.HomeScreen
 
 /**
- * Top-level UI scaffold. Hosts the four primary tabs (Explore, AR View,
- * Samples, About) under a single M3 [NavigationBar]. The Explore tab
- * (live Sketchfab catalog) is the default landing experience — it's the
- * highest-conversion surface for new users.
+ * Top-level UI scaffold. Hosts the three primary tabs (Showcase, AR View,
+ * About) under a single M3 [NavigationBar]. The Showcase tab — the home grid
+ * in [HomeScreen] — is the landing experience; the online model gallery
+ * ([ExploreTabScreen]) is reached from its closing "Browse online models"
+ * card rather than from a tab of its own.
+ *
+ * Home filter state (selected category + search query) and the gallery
+ * open/closed flag are hoisted here and `rememberSaveable`d so a tab switch,
+ * rotation or process death lands the user back where they were.
  *
  * Routing back into the existing per-demo screens is delegated to the
  * caller via [onDemoClick] — this composable does not own the NavHost so
@@ -83,7 +89,7 @@ import io.github.sceneview.demo.ui.explore.ExploreTabScreen
  */
 @Composable
 fun RootScreen(onDemoClick: (String) -> Unit) {
-    var selectedTab by rememberSaveable { mutableStateOf(RootTab.Explore) }
+    var selectedTab by rememberSaveable { mutableStateOf(RootTab.Showcase) }
     // Tracks whether the AR View tab is in a live camera session. When `true`
     // the bottom NavigationBar is hidden so the AR camera goes truly
     // fullscreen — pre-#2238 the nav bar always stayed visible and ate ~90 px
@@ -93,6 +99,10 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
     // change or process death should land the user back on the launcher
     // screen with the nav bar visible, not on an orphaned immersive shell.
     var arSessionActive by remember { mutableStateOf(false) }
+    // "" stands for "All" — a nullable String is not a Bundle-safe saveable.
+    var selectedCategory by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var galleryOpen by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
@@ -120,22 +130,26 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                 .padding(padding),
         ) {
             when (selectedTab) {
-                RootTab.Explore -> ExploreTabScreen(
-                    curatedSamples = curatedSamplesForExplore(),
-                    onSampleClick = { sample -> onDemoClick(sample.id) },
-                )
+                RootTab.Showcase -> if (galleryOpen) {
+                    BackHandler { galleryOpen = false }
+                    ExploreTabScreen(
+                        curatedSamples = curatedSamplesForExplore(),
+                        onSampleClick = { sample -> onDemoClick(sample.id) },
+                    )
+                } else {
+                    HomeScreen(
+                        demos = ALL_DEMOS,
+                        selectedCategory = selectedCategory.ifEmpty { null },
+                        onCategoryChange = { selectedCategory = it.orEmpty() },
+                        query = query,
+                        onQueryChange = { query = it },
+                        onDemoClick = onDemoClick,
+                        onBrowseOnlineClick = { galleryOpen = true },
+                    )
+                }
                 RootTab.ArView -> ArViewTabContent(
                     onDemoClick = onDemoClick,
                     onSessionActiveChange = { arSessionActive = it },
-                )
-                // `onAboutClick` has a default of `{}`, and for as long as this call
-                // site omitted it the (i) action in the Samples app bar was a dead
-                // button in the Play Store build — it announced "About" to TalkBack
-                // and did nothing at all. A defaulted lambda parameter fails silently;
-                // nothing in the type system or the tests noticed. Device QA did.
-                RootTab.Samples -> DemoListScreen(
-                    onDemoClick = onDemoClick,
-                    onAboutClick = { selectedTab = RootTab.About },
                 )
                 RootTab.About -> AboutTabContent()
             }
@@ -144,14 +158,13 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
 }
 
 enum class RootTab(@StringRes val labelRes: Int, val icon: ImageVector) {
-    Explore(R.string.tab_explore, Icons.Filled.Search),
+    Showcase(R.string.tab_showcase, Icons.Filled.GridView),
     ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr),
-    Samples(R.string.tab_samples, Icons.Filled.PlayArrow),
     About(R.string.tab_about, Icons.Filled.Info),
 }
 
 /**
- * Curated subset of [ALL_DEMOS] surfaced in the "Try a sample" carousel.
+ * Curated subset of [ALL_DEMOS] surfaced in the gallery's "Try a sample" carousel.
  * Hand-picked across categories so the carousel feels diverse on first
  * launch — same intent as the iOS `featuredModels` list.
  */

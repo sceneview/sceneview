@@ -16,6 +16,8 @@ object ArPoseFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_pose_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.MyLocation,
+        order = 36,
+        tags = setOf("ar", "pose", "transform", "gesture", "anchor"),
     )
 
     @Composable

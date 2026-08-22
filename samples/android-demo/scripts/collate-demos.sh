@@ -8,7 +8,7 @@
 #
 #   1. `GeneratedDemos.kt` — aggregates fragments into
 #        - `GeneratedDemos.all: List<DemoEntry>` — drives the central registry
-#          (`ALL_DEMOS`) and the demo grid in `DemoListScreen`.
+#          (`ALL_DEMOS`) and the home grid in `ui/home/HomeScreen.kt`.
 #        - `GeneratedDemos.route(id, onBack)` — drives the deep-link router
 #          (`DemoRouter`); returns a composable lambda or null.
 #
@@ -22,8 +22,11 @@
 # collator only touches root `llms.txt`. The docs mirror inherits the
 # up-to-date demos block automatically when the docs build copies the file.
 #
-# Fragments are sorted by demo id for a stable, conflict-free diff so two
-# parallel PRs adding two different demos never collide on this file.
+# Fragments are sorted by their editorial `order` (unique, asserted here and in
+# `DemoRegistryIntegrityTest`) so `GeneratedDemos.all` IS the home-grid order —
+# the home screen renders it flat, with no re-sort. The `llms.txt` block keeps
+# the same order within each category. The template id `my-demo` (from
+# `fragments/README.md`) is rejected so a copy-pasted template never ships.
 #
 # Idempotent: running this script twice produces byte-identical outputs.
 #
@@ -86,15 +89,16 @@ fi
 #           titleRes = R.string.<title_res>,
 #           subtitleRes = R.string.<subtitle_res>,
 #           category = DemoCategory.<CATEGORY_ENUM>,
+#           order = <Int>,
 #           ...
 #       )
 #       ...
 #   }
 #
-# We extract: id, object-name, titleRes, subtitleRes, category-enum-key.
+# We extract: id, object-name, titleRes, subtitleRes, category-enum-key, order.
 # Title and subtitle texts are resolved from strings.xml further below.
 #
-# TMP_META rows are TAB-separated: id\tobjName\ttitleRes\tsubtitleRes\tcategory
+# TMP_META rows are TAB-separated: id\tobjName\ttitleRes\tsubtitleRes\tcategory\torder
 TMP_META="$(mktemp)"
 trap 'rm -f "$TMP_META"' EXIT
 
@@ -134,7 +138,18 @@ for f in "$FRAG_DIR"/*Fragment.kt; do
         exit 1
     fi
 
-    printf '%s\t%s\t%s\t%s\t%s\n' "$demo_id" "$obj_name" "$title_res" "$subtitle_res" "$category" >> "$TMP_META"
+    if [ "$demo_id" = "my-demo" ]; then
+        echo "Error: $f registers the template id 'my-demo' (fragments/README.md) — rename it." >&2
+        exit 1
+    fi
+
+    order=$(grep -oE '^\s*order\s*=\s*[0-9]+' "$f" | head -n1 | grep -oE '[0-9]+$')
+    if [ -z "$order" ]; then
+        echo "Error: $f does not declare 'order = <Int>' on its DemoEntry." >&2
+        exit 1
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$demo_id" "$obj_name" "$title_res" "$subtitle_res" "$category" "$order" >> "$TMP_META"
     fragment_count=$((fragment_count + 1))
 done
 
@@ -152,10 +167,19 @@ if [ -n "$DUPES" ]; then
     exit 1
 fi
 
-# Sort by demo id (column 1) for a stable diff.
+# Two fragments with the same `order` would make the home grid order
+# ambiguous — fail here, before the integrity test does.
+DUPE_ORDERS=$(cut -f6 "$TMP_META" | sort -n | uniq -d)
+if [ -n "$DUPE_ORDERS" ]; then
+    echo "Error: duplicate demo 'order' values:" >&2
+    echo "$DUPE_ORDERS" >&2
+    exit 1
+fi
+
+# Sort by editorial order (column 6, numeric) — this IS the home-grid order.
 SORTED_META="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META"' EXIT
-sort -k1,1 "$TMP_META" > "$SORTED_META"
+sort -t $'\t' -k6,6n "$TMP_META" > "$SORTED_META"
 
 # ─── 2. Emit GeneratedDemos.kt ────────────────────────────────────────────
 NEW_KT="$(mktemp)"
@@ -170,8 +194,8 @@ trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT"' EXIT
 // add or remove a fragment file and re-run the collator; never edit this file
 // by hand.
 //
-// Fragments are sorted by demo id so two parallel PRs adding two different
-// demos never collide on this file (issue #1797).
+// Fragments are sorted by their editorial `DemoEntry.order` — the list below
+// is the home-grid order, rendered flat by `ui/home/HomeScreen.kt`.
 package io.github.sceneview.demo.fragments
 
 import androidx.compose.runtime.Composable
@@ -184,12 +208,12 @@ import io.github.sceneview.demo.DemoEntry
  * `samples/android-demo/scripts/collate-demos.sh`.
  */
 object GeneratedDemos {
-    /** All fragments, sorted by demo id. */
+    /** All fragments, sorted by editorial `DemoEntry.order`. */
     val fragments: List<DemoFragment> = listOf(
 HEADER
 
-    # Emit list entries, sorted by id.
-    while IFS=$'\t' read -r _id obj _t _s _c; do
+    # Emit list entries, sorted by order.
+    while IFS=$'\t' read -r _id obj _t _s _c _o; do
         printf '        %s,\n' "$obj"
     done < "$SORTED_META"
 
@@ -210,8 +234,8 @@ HEADER
         when (id) {
 MIDDLE
 
-    # Emit the `when` branches, also sorted by id for diff stability.
-    while IFS=$'\t' read -r demo_id obj _t _s _c; do
+    # Emit the `when` branches in the same order.
+    while IFS=$'\t' read -r demo_id obj _t _s _c _o; do
         printf '            "%s" -> %s.Screen(onBack)\n' "$demo_id" "$obj"
     done < "$SORTED_META"
 
@@ -293,8 +317,8 @@ category_display() {
 
 # ─── 4. Build the llms.txt "Sample app demos" block ───────────────────────
 #
-# Format: one bullet per demo, sorted alphabetically by id within each
-# category, categories in display order. Each bullet is:
+# Format: one bullet per demo, in editorial `order` within each category,
+# categories in display order. Each bullet is:
 #     - `<id>` — <title>. <subtitle>.
 #
 # That format is single-line / id-keyed so an AI agent reading llms.txt can
@@ -326,7 +350,7 @@ CATEGORY_ORDER="BASICS_3D LIGHTING_ENVIRONMENT CONTENT INTERACTION ADVANCED AUGM
         printf '### %s\n' "$cat_display"
         printf '\n'
 
-        while IFS=$'\t' read -r demo_id _obj title_res subtitle_res _cat; do
+        while IFS=$'\t' read -r demo_id _obj title_res subtitle_res _cat _order; do
             title=$(resolve_string "$title_res")
             subtitle=$(resolve_string "$subtitle_res")
             printf -- '- `%s` — %s. %s.\n' "$demo_id" "$title" "$subtitle"

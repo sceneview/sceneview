@@ -7,7 +7,7 @@ import io.github.sceneview.demo.fragments.GeneratedDemos
 /**
  * Runtime status of a demo as observed on the audited device matrix
  * (Pixel emulators + Pixel 9 hardware in `.claude/scripts/qa-android-demos.sh`).
- * Drives the badge rendered on the demo card in [DemoListScreen] so users
+ * Drives the badge rendered on the demo card on the home grid so users
  * see honest expectations rather than a uniformly green list that lies.
  */
 enum class DemoStatus {
@@ -46,7 +46,7 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
     get() = BuildConfig.DEBUG
 
 /**
- * One entry in the curated demo list shown on the Samples tab.
+ * One entry in the curated demo list shown on the Showcase (home) tab.
  *
  * String content is referenced through Android resources to keep literals
  * out of code and defined in a single place. The sample app is English-only
@@ -62,6 +62,15 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    see [categoryDisplayNameRes] for the display header label.
  * @param icon        Material icon used to give the card visual identity
  *                    in the absence of a captured 3D thumbnail.
+ * @param order       Editorial position on the home grid — unique, lower
+ *                    renders first. Foundational and visually impressive
+ *                    demos lead, AR follows, coming-soon / known-issue
+ *                    demos close the list. `collate-demos.sh` sorts on it
+ *                    and [io.github.sceneview.demo.DemoRegistryIntegrityTest]
+ *                    asserts uniqueness.
+ * @param tags        Capability keywords ("gltf", "hdr", "depth", …) matched
+ *                    by the home search field alongside title, subtitle and
+ *                    category. Never shown; never empty.
  * @param status      See [DemoStatus]. Defaults to [DemoStatus.Working].
  */
 data class DemoEntry(
@@ -70,6 +79,8 @@ data class DemoEntry(
     @StringRes val subtitleRes: Int,
     val category: String,
     val icon: ImageVector,
+    val order: Int,
+    val tags: Set<String>,
     val status: DemoStatus = DemoStatus.Working,
 )
 
@@ -87,7 +98,7 @@ object DemoCategory {
     const val AUGMENTED_REALITY = "Augmented Reality"
 }
 
-/** Ordered list of category keys — controls display order in the list. */
+/** Ordered list of category keys — controls the home filter-chip order. */
 val DEMO_CATEGORIES = listOf(
     DemoCategory.BASICS_3D,
     DemoCategory.LIGHTING_ENVIRONMENT,

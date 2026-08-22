@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_secondary_camera_title">Secondary Camera (PiP)</string>
-    <string name="demo_secondary_camera_subtitle">Picture-in-picture camera view</string>
+    <string name="demo_secondary_camera_subtitle">Picture-in-picture second camera view</string>
     <string name="demo_secondary_camera_chip_corner">Corner</string>
     <string name="demo_secondary_camera_chip_front">Front</string>
     <string name="demo_secondary_camera_chip_orbit">Orbit</string>

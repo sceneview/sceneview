@@ -27,17 +27,17 @@ class DeepLinkRouterTest {
     // looks at the id. We pass arbitrary R.string.* values to satisfy the
     // post-#1099 resource-ID typed fields without resolving them.
     private val knownRegistry = listOf(
-        DemoEntry("ar-rerun", R.string.demo_ar_rerun_title, R.string.demo_ar_rerun_subtitle, "Augmented Reality", Icons.Filled.ViewInAr),
-        DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, "3D Basics", Icons.Filled.ViewInAr),
+        DemoEntry("ar-rerun", R.string.demo_ar_rerun_title, R.string.demo_ar_rerun_subtitle, "Augmented Reality", Icons.Filled.ViewInAr, order = 1, tags = setOf("test")),
+        DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, "3D Basics", Icons.Filled.ViewInAr, order = 2, tags = setOf("test")),
     )
 
     // Registry holding the three #2239 Batch 1 consolidated demos that the
     // retired ids redirect to. The router only inspects `id`, so the title /
     // subtitle resources are arbitrary (see the note above).
     private val consolidatedRegistry = listOf(
-        DemoEntry("custom-geometry", R.string.demo_custom_geometry_title, R.string.demo_custom_geometry_subtitle, "Advanced", Icons.Filled.ViewInAr),
-        DemoEntry("picking-collision", R.string.demo_picking_collision_title, R.string.demo_picking_collision_subtitle, "Interaction", Icons.Filled.ViewInAr),
-        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr),
+        DemoEntry("custom-geometry", R.string.demo_custom_geometry_title, R.string.demo_custom_geometry_subtitle, "Advanced", Icons.Filled.ViewInAr, order = 3, tags = setOf("test")),
+        DemoEntry("picking-collision", R.string.demo_picking_collision_title, R.string.demo_picking_collision_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 4, tags = setOf("test")),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 5, tags = setOf("test")),
     )
 
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
@@ -240,6 +240,8 @@ class DeepLinkRouterTest {
                 R.string.demo_lighting_subtitle,
                 "Lighting & Environment",
                 Icons.Filled.ViewInAr,
+                order = 1,
+                tags = setOf("test"),
             ),
         )
         assertEquals("lighting", DeepLinkRouter.validate("movable-light", registry))

@@ -16,6 +16,8 @@ object FogFragment : DemoFragment {
         subtitleRes = R.string.demo_fog_subtitle,
         category = DemoCategory.LIGHTING_ENVIRONMENT,
         icon = Icons.Filled.Cloud,
+        order = 13,
+        tags = setOf("fog", "atmosphere", "height-fog", "environment"),
     )
 
     @Composable

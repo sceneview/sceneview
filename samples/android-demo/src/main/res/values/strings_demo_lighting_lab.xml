@@ -6,5 +6,5 @@
      `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_lighting_lab_title">Lighting Lab</string>
-    <string name="demo_lighting_lab_subtitle">Sky, environment, reflections, and post-FX</string>
+    <string name="demo_lighting_lab_subtitle">Sky, HDR environment, reflections, post-FX</string>
 </resources>

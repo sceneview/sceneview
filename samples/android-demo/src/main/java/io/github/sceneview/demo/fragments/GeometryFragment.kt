@@ -16,6 +16,8 @@ object GeometryFragment : DemoFragment {
         subtitleRes = R.string.demo_geometry_subtitle,
         category = DemoCategory.BASICS_3D,
         icon = Icons.Filled.Category,
+        order = 5,
+        tags = setOf("geometry", "cube", "sphere", "cylinder", "plane", "primitive"),
     )
 
     @Composable
