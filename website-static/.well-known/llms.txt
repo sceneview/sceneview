@@ -6,7 +6,7 @@ SceneView is a declarative 3D and AR SDK for Android (Jetpack Compose, Filament,
 - 3D only: `io.github.sceneview:sceneview:4.31.0`
 - AR + 3D: `io.github.sceneview:arsceneview:4.31.0`
 
-**Apple (iOS 17+ / macOS 14+ / visionOS 1+) — Swift Package:**
+**Apple (iOS 18+ / macOS 15+ / visionOS 2+) — Swift Package:**
 - `https://github.com/sceneview/sceneview.git` (from: "4.31.0"))
 
 **Min SDK:** 24 | **Target SDK:** 36 | **Kotlin:** 2.4.10 | **Compose BOM compatible**
@@ -2781,7 +2781,7 @@ All geometry shares the PBR material pipeline — supports `color` (base color f
 
 ## SceneViewSwift (iOS / macOS / visionOS)
 
-Renderer: **RealityKit**. Requires iOS 17+ / macOS 14+ / visionOS 1+.
+Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift

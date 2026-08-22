@@ -208,7 +208,7 @@ struct ARTapToPlaceSample: View {
 
 ### 3D samples
 
-3D samples run on iOS 18+, macOS 15+, and visionOS 1+. They work in both the Simulator and on physical devices.
+3D samples run on iOS 18+, macOS 15+, and visionOS 2+. They work in both the Simulator and on physical devices.
 
 ### AR samples
 

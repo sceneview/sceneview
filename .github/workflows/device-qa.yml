@@ -117,15 +117,25 @@ on:
   # the device-QA legs too — see #1324.
   workflow_call:
 
-# A Device QA run is ~50 min (emulator + Maestro). A `workflow_dispatch` run is
-# a deliberate release gate — keying its concurrency group on `github.run_id`
-# makes it unique so a later push to the same ref can never cancel it (#1665).
-# `push` (and the nightly `workflow_call`) runs share the `push` group, so a
-# stale push run is still auto-cancelled — desirable, no point burning a 50-min
-# emulator run on a superseded SHA.
+# A Device QA run is ~50 min (emulator + Maestro). Every run gets its own
+# concurrency group, keyed on `github.run_id`, so no run ever cancels another.
+#
+# #1665 did this for `workflow_dispatch` only (a deliberate release gate must
+# not be killed by a later push). `push` and the nightly `workflow_call` kept
+# sharing one `push` group with `cancel-in-progress: true`, on the theory that
+# a superseded SHA is not worth a 50-min emulator run. Measured (#2917): on a
+# busy main that theory cancelled ~half of all runs — 11 of 20 on 2026-07-27,
+# 7 of the last 30 at the time of this change — and a cancelled run reads as
+# "nothing happened", which is easy to mistake for "nothing was wrong". No
+# per-push Device QA had covered #2851 at all. There is no `pull_request`
+# trigger here, so nothing is left that benefits from cancellation; the
+# `device-qa.sh --ci` legs now queue per merge and each one reaches a
+# verdict. Cost: GitHub-hosted ubuntu minutes proportional to the merge rate
+# (the self-hosted Mac is only ever used by the `ios` leg, which never runs
+# on push).
 concurrency:
-  group: device-qa-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'push' }}
-  cancel-in-progress: true
+  group: device-qa-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

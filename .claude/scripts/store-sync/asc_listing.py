@@ -116,9 +116,9 @@ FIELDS = [
     ("supportUrl", "support_url.txt", 2048),
 ]
 
-# Repo screenshot dir → ASC screenshotDisplayType. The capture script
-# (capture-appstore-screenshots.sh) emits these two dirs; add a row here when
-# it grows a new device class. An unmapped dir is not just skipped from the
+# Repo screenshot dir → ASC screenshotDisplayType. The capture procedure
+# (samples/ios-demo/appstore-screenshots/README.md, "How to regenerate") fills
+# these two dirs; add a row here when it grows a new device class. An unmapped dir is not just skipped from the
 # drift diff — since Phase B it never reaches the App Store either, while the
 # run still reports success. test_asc_listing.py's
 # `test_committed_dirs_are_all_mapped` fails when a committed dir has no row

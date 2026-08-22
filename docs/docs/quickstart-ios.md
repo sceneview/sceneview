@@ -15,8 +15,8 @@ description: "Set up SceneViewSwift in your Xcode project in 10 minutes. Build a
 
 ## Prerequisites
 
-- **Xcode 15** or newer
-- An Apple device or simulator running **iOS 18+**, **macOS 15+**, or **visionOS 1+**
+- **Xcode 16** or newer
+- An Apple device or simulator running **iOS 18+**, **macOS 15+**, or **visionOS 2+**
 - Basic familiarity with Swift and SwiftUI
 
 ---

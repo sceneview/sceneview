@@ -92,7 +92,7 @@
     "url": "https://sceneview.github.io",
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "3D Rendering & Augmented Reality SDK",
-    "operatingSystem": "Android 7.0+ (API 24), iOS 17+",
+    "operatingSystem": "Android 7.0+ (API 24), iOS 18+",
     "softwareVersion": "4.31.0",
     "datePublished": "2021-06-01",
     "dateModified": "2026-03-27",
@@ -184,7 +184,7 @@
     "runtimePlatform": ["Android", "iOS", "macOS", "visionOS"],
     "softwareRequirements": [
       "Android SDK API 24+ (Android)",
-      "iOS 17+ (iOS)",
+      "iOS 18+ (iOS)",
       "Kotlin 2.1.21",
       "Jetpack Compose (Android)",
       "SwiftUI (iOS)",
@@ -279,7 +279,7 @@
         "name": "What platforms does SceneView support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView supports Android (API 24+) with Jetpack Compose, Filament, and ARCore, and iOS (17+) with SwiftUI, RealityKit, and ARKit. A shared Kotlin Multiplatform core (sceneview-core) provides cross-platform math, collision, animation, and geometry. SceneView also provides an MCP server for AI assistant integration."
+          "text": "SceneView supports Android (API 24+) with Jetpack Compose, Filament, and ARCore, and iOS (18+) with SwiftUI, RealityKit, and ARKit. A shared Kotlin Multiplatform core (sceneview-core) provides cross-platform math, collision, animation, and geometry. SceneView also provides an MCP server for AI assistant integration."
         }
       },
       {

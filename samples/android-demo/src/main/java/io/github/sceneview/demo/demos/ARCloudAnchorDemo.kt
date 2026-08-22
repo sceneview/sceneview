@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import android.content.pm.PackageManager
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -40,6 +39,9 @@ import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
+import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.rememberHasArcoreApiKey
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
@@ -77,14 +79,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     // or a developer who forgot to set ARCORE_API_KEY in local.properties),
     // host()/resolve() will silently come back with ERROR_NOT_AUTHORIZED — we
     // surface that upfront in the status banner so the user knows why.
-    val hasArcoreApiKey = remember {
-        runCatching {
-            val ai = context.packageManager.getApplicationInfo(
-                context.packageName, PackageManager.GET_META_DATA
-            )
-            !ai.metaData?.getString("com.google.android.ar.API_KEY").isNullOrBlank()
-        }.getOrDefault(false)
-    }
+    val hasArcoreApiKey = rememberHasArcoreApiKey()
 
     var localAnchor by remember { mutableStateOf<Anchor?>(null) }
     var cloudAnchorId by remember { mutableStateOf<String?>(null) }
@@ -100,8 +95,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             if (hasArcoreApiKey) {
                 "Tap a surface to place an anchor"
             } else {
-                "ARCore Cloud API key not configured — Host/Resolve will return " +
-                    "ERROR_NOT_AUTHORIZED. See samples/android-demo/ARCORE_CLOUD_SETUP.md"
+                ARCORE_API_KEY_MISSING_MESSAGE
             }
         )
     }
@@ -162,9 +156,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             } else {
                 statusMessage = when (state) {
                     Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
-                        "Resolve failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
-                            "API key is rejecting this APK. Check SHA-1 + billing " +
-                            "+ ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
+                        arcoreApiKeyRejectedMessage("Resolve")
                     else -> "Resolve failed: $state"
                 }
             }
@@ -370,9 +362,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                                 // for the runbook. Generic states still get the bare label.
                                 statusMessage = when (state) {
                                     Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
-                                        "Hosting failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud " +
-                                            "API key is rejecting this APK. Check SHA-1 + billing " +
-                                            "+ ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
+                                        arcoreApiKeyRejectedMessage("Hosting")
                                     else -> "Hosting failed: $state"
                                 }
                             }

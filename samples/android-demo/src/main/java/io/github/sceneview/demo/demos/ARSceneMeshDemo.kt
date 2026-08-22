@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.ar.core.Config
+import com.google.ar.core.Earth
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
@@ -53,6 +54,10 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
+import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.isArcoreApiKeyRejected
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
@@ -222,23 +227,21 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
     var noGeometryGuidance by remember { mutableStateOf(false) }
     var geospatialUnavailable by remember { mutableStateOf<String?>(null) }
     var sessionError by remember { mutableStateOf<String?>(null) }
+    // Geospatial has no failure callback: a rejected Cloud API key only shows up as
+    // `Earth.EarthState.ERROR_NOT_AUTHORIZED` on the session, so it is sampled on
+    // every frame and routed into the status banner (#3210).
+    var earthState by remember { mutableStateOf<Earth.EarthState?>(null) }
 
-    val hasArcoreApiKey = remember {
-        runCatching {
-            val ai = context.packageManager.getApplicationInfo(
-                context.packageName, PackageManager.GET_META_DATA
-            )
-            !ai.metaData?.getString("com.google.android.ar.API_KEY").isNullOrBlank()
-        }.getOrDefault(false)
-    }
+    val hasArcoreApiKey = rememberHasArcoreApiKey()
 
-    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, hasArcoreApiKey) {
+    val isArcoreApiKeyUsable = hasArcoreApiKey && !earthState.isArcoreApiKeyRejected
+    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, isArcoreApiKeyUsable) {
         noGeometryGuidance = false
         val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
-            hasArcoreApiKey
+            isArcoreApiKeyUsable
         if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
@@ -279,9 +282,9 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
                 val (statusText, statusTone) = when {
                     sessionError != null ->
                         "AR session error: $sessionError" to DemoStatusTone.Blocked
-                    !hasArcoreApiKey ->
-                        "ARCore Cloud API key not configured — see samples/android-demo/ARCORE_CLOUD_SETUP.md" to
-                            DemoStatusTone.Blocked
+                    !hasArcoreApiKey -> ARCORE_API_KEY_MISSING_MESSAGE to DemoStatusTone.Blocked
+                    earthState.isArcoreApiKeyRejected ->
+                        arcoreApiKeyRejectedMessage("Geospatial") to DemoStatusTone.Blocked
                     geospatialUnavailable != null ->
                         "${geospatialUnavailable!!} — needs outdoor area with Street View coverage + Cloud API key" to
                             DemoStatusTone.Blocked
@@ -344,9 +347,10 @@ fun ARSceneMeshDemo(onBack: () -> Unit) {
                     Log.e(TAG, "AR session failed", exception)
                     sessionError = exception.message ?: exception.javaClass.simpleName
                 },
-                onSessionUpdated = { _: Session, frame: Frame ->
+                onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    earthState = session.earth?.earthState
                     frame.getUpdatedTrackables(StreetscapeGeometry::class.java).forEach { geo ->
                         if (geo.trackingState == TrackingState.TRACKING) {
                             if (geometries.none { it == geo }) geometries.add(geo)

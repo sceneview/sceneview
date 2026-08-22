@@ -10,7 +10,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 - **JDK 17** (for Android/KMP modules)
 - **Android Studio** (latest stable recommended)
-- **Xcode 15+** (for SceneViewSwift / iOS work only)
+- **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor)
 - Optional but recommended: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
   for agent-driven QA. Bootstrap in one shot:
   ```bash
@@ -87,7 +87,9 @@ xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
 tears down node trees 40 times per test and asserts engine state returns to
 baseline. It runs headless — no SwapChain, no `readPixels` — so unlike the
 `render` package it really executes on the CI emulator instead of skipping.
-It lands in `render-tests.yml`'s `continue-on-error` job, so a red run is an
+It lands in `render-tests.yml`'s `android-library-render` job. On a pull request
+that job reports its own verdict (a red job on the PR), but it is not a required
+check; on `main` and nightly it is `continue-on-error`, so a red run there is an
 advisory signal in the Actions tab, not a merge block.
 
 ```bash
@@ -182,6 +184,17 @@ for full API context in any chat:
 5. **Keep commits clean.** Squash fixups before requesting review.
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
+
+### Changing the Apple platform floor
+
+`SceneViewSwift/Package.swift` is the only *enforced* statement of the iOS / macOS /
+visionOS minimum; the three podspecs, the root `Package.swift`, the README badges, the
+docs site, `llms.txt`, the MCP guides and the demo's About screen all repeat it as prose.
+When you move the floor, run
+[`.claude/scripts/check-ios-floor.sh`](.claude/scripts/check-ios-floor.sh) — it reads
+the manifest and lists every podspec and doc line that still names the old version
+(exit 1 on drift). It runs offline in under a second; nothing in CI runs it for you
+(#3046).
 
 ### Adding a demo to `samples/android-demo`
 
@@ -325,9 +338,13 @@ correct. Specifically:
   docs-only PR runs none of them. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
-- **`render-tests.yml`** never runs on *any* pull request — it is push-to-main
-  + `workflow_dispatch` only — so docs-only PRs skip it for that reason rather
-  than via a path filter.
+- **`render-tests.yml`** has its own `pull_request` path filter: only a PR
+  touching `sceneview/**`, `sceneview-core/**`, `arsceneview/src/**` or the
+  Gradle build files runs it, and then only its `android-library-render` job
+  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216). The demo
+  screenshot, iOS and web legs are push-to-main + nightly + `workflow_dispatch`
+  only. A docs-only PR matches none of the paths, so the workflow does not
+  run at all.
 - The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
   on every PR whatever it touches, and it is the required check: it resolves
   green once path detection has run. That is how a docs-only PR stays
@@ -338,6 +355,19 @@ markdown change has accidentally invalidated an example referenced from
 runtime code), trigger the gates manually from the Actions tab —
 `Run workflow` on `ci.yml` / `render-tests.yml` accepts your PR's branch as
 input.
+
+### Heavy suites on `main`: every merge reaches a verdict
+
+`render-tests.yml` and `device-qa.yml` run on every (path-matched) push to
+`main`, and since #2917 / #3216 a later merge no longer cancels the run of
+the one before it: each run has its own concurrency group, so runs queue
+instead of being killed. Before that change roughly half of the runs on a
+busy `main` ended `cancelled` — neither pass nor fail — and the commit they
+were testing was never covered. The one place cancellation is still allowed
+is a pull request on `render-tests.yml`, where a new push to the same PR
+supersedes the previous SHA. The cost is GitHub-hosted minutes proportional
+to the merge rate; if the queue becomes a problem, the lever is the `paths:`
+filter on each workflow, not `cancel-in-progress`.
 
 ### Code style
 
