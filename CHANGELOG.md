@@ -2,6 +2,235 @@
 
 ## Unreleased
 
+## v4.32.0 — 2026-08-22
+
+### Added
+
+- **sceneview**: `rememberCameraManipulator(orbitRadius = 2.5f)` — a distance-first overload (also on `createDefaultCameraManipulator` and `DefaultCameraManipulator`). The camera starts `orbitRadius` metres from `targetPosition` along the default 3/4 viewing angle, so with the default target the value *is* the camera-to-subject distance and the `autoCenterContent` vector-length trap (#2873) does not apply. Converges on the iOS `CameraControls.orbitRadius` vocabulary. The pure derivation is exposed as `orbitEyePosition(orbitRadius, targetPosition)` / `DEFAULT_ORBIT_DIRECTION` and unit-tested (#2932).
+The framing lever iOS gained with `.framingMargin(_:)` now exists at the same level on
+the other two platforms. Android's `SceneView` / `Scene` composable takes a
+`framingPadding: Float = DEFAULT_FRAMING_PADDING` parameter so `autoFitContent` leaves a
+per-scene amount of air — the same additive fraction `CameraNode.frameToContent(padding = …)`
+already used, and changing it re-arms the auto-fit pass. Web's `fitToModels()` accepts an
+optional `margin` multiplier (`1.0` keeps the previous `2.5 × radius` dolly, clamped to
+`0.2…10` like iOS), typed in `sceneview-web.d.ts`. The cross-platform note in `llms.txt`
+now names the Web lever and spells out at every call site that Android's `padding` is
+additive (`0.15`) while iOS and Web take a multiplier (`1.15`), so a snippet ported
+between platforms does not land at 2.15× the distance.
+The iOS and web demos now credit every bundled third-party asset where a user can see it,
+as the Android demo already did. `generate-credits.py` gained two JSON scopes next to the
+Markdown ones — `samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json` (41 assets)
+and `samples/web-demo/site/credits.json` (15 assets) — generated from `assets/catalog.json`
+and gated by the same `--check`, so a bundled file nobody declared fails the gate on every
+platform. The iOS About → Credits sheet lists the bundled models, HDR environments and media
+("by author — license", tap to open the source) above the streamed Sketchfab models it
+already showed; the web demo gets a Credits tab (`#credits` deep link) rendered from
+`credits.json` at runtime.
+
+### Changed
+
+- **sceneview**: **Deprecated** the `orbitHomePosition` parameter of `createDefaultCameraManipulator` / `DefaultCameraManipulator` in favour of `eyePosition`. The name promised a "home" gesture that never existed — it is the camera's *initial* absolute eye position, nothing returns the camera to it. Behaviour is unchanged; the old name still compiles with a `@Deprecated(WARNING)` + `ReplaceWith` quick-fix. The Composable `rememberCameraManipulator` keeps its original `orbitHomePosition` parameter name as-is (major version 4 forbids the binary break a rename would cause there); its KDoc now clarifies that `orbitHomePosition` is the eye position, and points at the new `orbitRadius` overload for the common case (#2932).
+Advertise MCP protocol revision 2025-06-18 and expose schema-validated structured output for gateway tools that return structured data.
+- **The demo app's animated home background now reads as 3D ([#3236](https://github.com/sceneview/sceneview/issues/3236)).** The cloud of flat unlit discs behind the Explore and Samples tabs is replaced by a real scene: lit PBR primitives (spheres, tori, cubes, capsules in the brand ramp) hovering over a ground plane with a perspective grid, casting shadows from an angled key light, staggered in depth so near objects render large and far ones small, fading into theme-coloured fog toward the horizon, with a slow lateral camera dolly for motion parallax. The scrim above it is re-tuned so headers keep their contrast while the scene is actually visible in both light and dark; SSAO and bloom are switched off on this view to keep the frame cost close to the old backdrop.
+- **Codex CLI can be delegated to as a second developer ([#3238](https://github.com/sceneview/sceneview/pull/3238)).** Contributors working with an AI assistant can hand bounded implementation, independent investigation and adversarial review to Codex through `.claude/scripts/codex-delegate.sh`, with the new root `AGENTS.md` carrying the conventions a delegated agent must respect. Write access is confined to an isolated worktree, and the wrapper refuses to run unless Codex is authenticated against a ChatGPT subscription rather than the pay-per-token API.
+The Android demo app now reads its spacing, radius, motion and layout constants from a
+single `SceneViewTokens` object that mirrors `DESIGN.md` token-for-token, instead of
+repeating the numbers as literals. Two Material shape roles move as a result, because
+`Shape.kt` claimed to follow `DESIGN.md` while using values it never defined: the `large`
+role goes from 28dp to 24dp (`radius-lg`) and `extraLarge` from 32dp to 28dp
+(`radius-xl`). Cards, bottom sheets, buttons and chips in the demo app render with
+slightly tighter corners; nothing outside the demo app changes.
+- **Redesigned the demo app Explore screen as a spatial gallery.** A full-bleed hero stage with a glass search pill replaces the old list header; trending models flow in an asymmetric media-first rail, sources move into a compact chip rail, and the search state now opens the keyboard immediately and shows a single, focused results layout. New glass/scrim design tokens back the treatment in light and dark.
+Removed the Claude Code harness layer from the repository: agent skills, subagent
+definitions, slash commands, hooks, the agentic CI workflows and the bulk of
+`.claude/scripts/`. What remains is verification (build, tests, emulator QA,
+release/store pipelines, licence compliance) and the installable SceneView skills
+under `agents/`, which are a product surface. `CLAUDE.md` is now 60 lines of
+non-obvious facts instead of 263 lines of process.
+- **The five ARCore Cloud demos share one "Cloud service unavailable" banner, always in the main AR view.** `ARCloudAnchorDemo` had no shared banner at all — its status pill was ad-hoc `Text`, and Host/Resolve stayed tappable even when the Cloud key was missing. `ARRooftopAnchorDemo` and `ARTerrainAnchorDemo` duplicated the missing/rejected-key branches banner-by-banner. None of the five told `ERROR_NOT_AUTHORIZED` apart from `ERROR_RESOURCE_EXHAUSTED` or a plain network outage — all three read as the same silent failure. A new `CloudServiceStatus` (`common/CloudServiceStatus.kt`) and its `CloudServiceStatusBanner` now cover all four causes plus "Geospatial hasn't localised yet" (no VPS lock), and Host/Resolve/Drop/Place controls disable for the whole time the service is unavailable instead of staying tappable. `ARCloudAnchorDemo` also now checks for network before attempting a Cloud call. `@Preview`s for every state, light and dark, live in `common/CloudServiceStatusBannerPreviews.kt`.
+- **`ArcoreCloudDemoGuardTest` now enforces the shared banner, not just the shared strings** — it fails if a Cloud demo stops computing `CloudServiceStatus` or stops rendering `CloudServiceStatusBanner`.
+- **android-demo**: the in-app bug-report sheet now dismisses itself and shows a confirmation snackbar after a report is sent, instead of staying open with no feedback; a failed send (no app to handle it) now keeps the sheet open with the error shown inline instead of a passing Toast. "Send to GitHub" is now the primary, default action ahead of "Share report". The description field also gets an optional microphone button that launches the system speech recognizer (device locale) and appends the dictated text — hidden automatically on devices with no recognizer available. No new permissions (#3263).
+The in-AR instructions overlay shared by every AR demo (`DemoStatusBanner`) is now a
+dark-scrim coaching pill — white 16 sp text, a leading spinner or severity icon, a
+hairline border and a soft lift — instead of a flat brand-coloured capsule with 14 sp
+text, which was hard to read over a live camera feed. Passing `null` or a blank string
+now animates the pill out, so a demo whose step is done hides it without extra code
+(#3265).
+
+### Fixed
+
+- Ensure every push to `main` evaluates CI path filters against its own parent commit.
+- **android-demo**: the *Shape Extrude* sub-mode of `custom-geometry` no longer clips its triangle, star and hexagon on a portrait phone. It paired `orbitHomePosition = (0, 0, 1.5)` with a target at `z = -1`, which reads as a 2.5 m camera but — with `autoCenterContent` putting the shape on the origin — framed from 1.5 m. The distance is now derived from the frustum in `ShapeFraming` and pinned by a JVM test, as #2923 did for the geometry demo (#2937).
+Demo app: the Multi-Model visibility chips and Gallery category chips now fade their overflowing edge, so a chip sitting off-screen reads as scrollable instead of invisible (#2944).
+- **android-demo**: the streamed-model leak fixed in the Materials demo by #2945 is now fixed in its two siblings too — the Model Viewer's Multi-Model section (which leaked four `Model`s per bundle-chip switch) and Gallery section, and the Orbital AR planets. The three private copies of `rememberFileModelInstance` are replaced by one shared helper in `demo/common`, so there is one copy of the load + dispose contract. The helper's doc, and the `rememberModelInstance` KDoc in `sceneview`, no longer claim the previous `Model` is destroyed *after* the consuming `ModelNode` detaches: that ordering only holds within one composition and the node lives in the Scaffold's subcomposition — it is safe in either order, and the disposal covers completed switches only (#2954).
+iOS demo: every curated Sketchfab slug now declares whether its bundled keyless fallback is
+the same subject as its label or a stand-in (`SketchfabSlug.fallbackRole`). The 16 slugs whose
+fallback is a different subject — no vase, mug, crate, table, sofa, camera, statue or plant is
+bundled — show "Offline placeholder" in the asset-source pill instead of "Offline model", so a
+keyless build no longer renders a confident wrong subject; a reviewed allowlist test pins every
+subject-match claim (#2960).
+iOS demo: the AR placement demos now place each streamed slug at its own `scaleToUnits`
+(a coffee mug at 0.10 m, a floor lamp at 1.55 m) instead of a hardcoded 0.3 m, and the
+attribution caption under every streamed-slug picker credits the model actually on screen —
+the bundled fallback's own name, author and licence on a keyless build (including CC-BY-NC
+fallbacks), the Sketchfab author only when the stream really loaded (#2966).
+The SceneViewSwift node count is no longer a hand-typed number that disagreed with itself:
+the MCP `platform-setup` tool said 16, the README, `MULTIPLATFORM.md` and the docs site
+said 19, and the tree holds 20 public `*Node` structs. `generate-version.js` now counts
+them from `SceneViewSwift/Sources` at build time (`IOS_NODE_TYPES` /
+`IOS_NODE_TYPE_COUNT`), the MCP guide and `list_platforms` use that value, the iOS setup
+table lists all 20 (it was missing `ShapeNode`, `ViewNode`, `SpatialAudioNode` and
+`AnchorNode`), and a test fails if the table and the Swift tree ever disagree. The prose
+surfaces that cannot read a generated value drop the number instead of restating it.
+- The iOS App Store screenshot docs stop claiming the iPad frames are byte-reproducible across days. Measured on the iPad Pro 13-inch simulator (iOS 26.3): `simctl status_bar override --time` accepts only the `…T09:41:00.000Z` ISO form, and that form sets the clock alone (converted to host-local time) without pinning the date, so the iPad status bar always carries the capture date. The README documents the measured limit, keeps the plain `"9:41"` override, and replaces its pointer to `capture-appstore-screenshots.sh` — removed in #3244 — with the manual capture procedure (#3004).
+**iOS demo app**: 17 more `SceneView` call sites stop re-creating the
+`RealityView` with SwiftUI's `.id(_:)` — the pattern that intermittently
+leaves the viewport black on iOS 26 Simulator (#3008). Each scene now stays
+mounted for its whole lifetime and swaps or rebuilds its content in place via
+`SceneView.contentID(_:)`: the Explore viewer and gallery (4 sites), Materials,
+Environment, Lighting, Fog, Dynamic Sky, Movable Light, Gesture Editing, Video
+Texture, Collision, Shape Extrude, Physics, Double Pendulum, the AR Placement
+Reticle preview and the Depth Collider simulator fallback. Continuous
+parameters — fog density, time of day, light intensity, marker visibility,
+auto-rotation, the HDR environment — are applied to the live scene instead of
+rebuilding it per slider tick. Materials and Environment also keep the scene
+mounted while their model loads (spinner in an overlay). The Video Texture
+demo's Loop toggle now actually replaces the previous quad and pauses its
+player. The three `ARSceneView` re-keys (AR tab, AR Lighting, AR Instant
+Placement) are left as they are: `ARSceneView` has no `contentID`, and there
+the re-key means "restart the AR session". (#3020)
+The Roborazzi goldens under `samples/android-demo/src/test/snapshots/` are now a
+declared input of the demo's test task, so `verifyRoborazziDebug` re-runs the
+comparison whenever a golden changes instead of coming back `UP-TO-DATE` having
+read nothing (#3029). CI drops the `--rerun` workaround, and `DEMO_TESTING.md`
+stops teaching the bare command as if it were safe without saying why it now is.
+Of the three surfaces named in #3034, only this one still exists: `impact-check.sh`
+and the `automation-map` skill were removed with the agent harness in #3244.
+Every statement of the Apple platform floor now matches `SceneViewSwift/Package.swift`
+(iOS 18 / macOS 15 / visionOS 2). The floor moved in #719 but `llms.txt` on the website,
+`docs.html`, `structured-data.json`, the Copilot instructions, the MCP setup guides, the
+demo's About screen and the visionOS badges kept promising iOS 17 / macOS 14 /
+visionOS 1, and two pages still asked for Xcode 15 although Swift 6 and the iOS 18 target
+need Xcode 16. The root `Package.swift` also declared `.visionOS(.v1)` for a target whose
+light and shadow APIs need visionOS 2. A new `.claude/scripts/check-ios-floor.sh` compares
+the podspecs, both manifests and the user-facing docs against the sub-manifest and exits 1
+on drift.
+A model created while its load was being cancelled no longer leaks. `ModelLoader.loadModel`
+and `loadInstancedModel` hop to the main thread to build the Filament asset, and
+`withContext` drops that result when the caller is cancelled mid-hop — which is exactly
+what `SceneViewer` does on every source swap. The asset is now destroyed on that path, and
+a model cancelled during resource loading is freed instead of sitting in the loader until
+`destroy()`. `SceneViewerError`'s constructor is public, so an app can unit-test its
+`onError` handler without a renderer. The self-hosted runner installer gives CI its own
+`GRADLE_USER_HOME`.
+iOS demo: `ReflectionProbesDemo` now loads the selected environment into its `ReflectionProbeNode` via `environmentTexture(_:)` and points the metallic sphere and cubes at the probe, so the probe actually carries an `ImageBasedLightComponent` and the Intensity slider visibly changes the reflections instead of rebuilding an identical scene (#3158).
+The MCP server no longer names Filament.js 1.70.2 anywhere. That version was a
+hand-copied string in the web rendering guide and in the artifact generator, and it was
+wrong on both counts: it never matched the runtime vendored for `sceneview.js`
+(`filamentWebsite`, 1.70.1) and it was never published on npm, so the jsDelivr URL the
+generated 3D artifacts loaded (`filament@1.70.2/filament.js`) did not resolve.
+`generate-version.js` now reads `filamentWeb` and `filamentWebsite` from
+`gradle/libs.versions.toml` at build time; the artifact CDN URL uses the npm pin and the
+guide names the website runtime, so the next Filament bump propagates without a manual
+edit.
+- **Point & Ask describes whatever you tap, including the prop you dropped ([#3187](https://github.com/sceneview/sceneview/issues/3187)).** The tap handler rejected any tap that hit a node, so once the shiba was placed — or an answer was pinned — tapping it did nothing: no ping, no capture, no answer. The node is ignored now and every tap asks. The default prompt is "Describe what I'm pointing at, in one short sentence." and the question field starts blank, instead of prefilling "Is there an animal in this room?".
+- **Point & Ask always shows its answer on screen ([#3188](https://github.com/sceneview/sceneview/issues/3188)).** Once a tap pinned a world-anchored card, the round was routed only to that in-scene card and the bottom card was forced idle — so an off-screen, edge-on or not-yet-textured card meant the answer was invisible, and so was a failure. The bottom card now shows every round (thinking, answer, failure) and the anchored card is the one that stays in the room. Two more blank-screen paths are closed: a `PixelCopy` that never calls back fails the round after 3 s instead of hiding the overlays forever, and the availability check reports "Checking Gemini Nano availability…" while it runs and falls through to the "unavailable" banner on an `Error` (e.g. a missing ML Kit class in a minified build), not only on an `Exception`.
+- **The Kotlin/JS test browser is configured to survive a CI runner, and to say what happened when it does not ([#3192](https://github.com/sceneview/sceneview/issues/3192)).** The blocking `Build web targets` leg died repeatedly with `Test running process exited unexpectedly` — zero test results and no Karma or Chrome output in the job log — on inputs Gradle reported byte-identical to `main`. `sceneview-core` was a bare `browser()`: no `--no-sandbox`, no `--disable-dev-shm-usage`, no activity timeout, no console capture. Both Kotlin/JS modules now carry a byte-identical `karma.config.d/browser-hardening.js` with a hardened launcher, timeouts sized for a loaded shared runner, and browser-console capture that CI uploads on failure. `retryLimit` re-attempts browser *capture* only — the suite is never retried, since a retried suite would hide the flake this exists to make visible.
+- **`karma.config.d/` is now an input of the Kotlin/JS test task, so a change to it re-runs the tests.** Those files are appended verbatim into the generated `karma.conf.js`, but Gradle tracked neither module's directory as an input: a broken launcher config gave `BUILD SUCCESSFUL` with `jsBrowserTest UP-TO-DATE` against a stale generated config. Local only — the task is not cacheable, so CI was never affected — but local Gradle is the only place a Karma config is ever verified.
+- **The hosted MCP gateway now declares its 3D-viewer widget in `tools/list`, not only on tool results ([#3192](https://github.com/sceneview/sceneview/issues/3192)).** `_meta.ui.resourceUri` rode on the result of `view_3d_model` alone, so a host deciding from the tool list whether a tool has a UI — the MCP Apps convention — never learned the widget existed. The declaration now carries the same `ui://widget/3d-viewer.html` pointer; non-widget tools gain no `_meta`.
+- **Four JS/TS test suites ran in no workflow at all ([#3201](https://github.com/sceneview/sceneview/issues/3201)).** `mcp-gateway/` — the paid Worker — carried 17 test files and 187 passing cases that no CI job ever executed, and one of them had silently inverted: it asserted a tool count the public dashboard had outgrown, so it stayed green while the page was wrong and only turned red once the page was corrected. The three vertical MCP packages with their own `package.json` were in the same state. A new `mcp-tests.yml` now runs all of them on every pull request that touches `mcp/` or `mcp-gateway/`.
+- **`mcp/`'s own suite was covered by accident, and nothing said so.** Until the local harness was removed in [#3244](https://github.com/sceneview/sceneview/pull/3244), `quality-gate.sh` ran it behind `[ -d "mcp/node_modules" ]` from ci.yml's `Quality gate (full)` job, and that directory existed only because `./.github/actions/setup-mcp` sat in the job for the other MCP work. Nothing declared the dependency, the guard's false branch printed nothing — so "did not run" and "passed" were the same output — and because the invocation went through a wrapper script, no reachability audit could see it. That job and that script are gone; `mcp-tests.yml` is now the only thing running the suite on a PR, invoked by name, on a declared trigger.
+- **The path filter for the gateway job covers `mcp/**` too.** `mcp-gateway/` imports `mcp/src/tiers.ts`, `mcp/src/tools/index.ts` and every `mcp/packages/*/src/tools.ts` as sources, so a change confined to `mcp/` can break its suite; filtering on `mcp-gateway/**` alone would have reproduced the original gap one directory over. Coverage follows the dependency, not the directory name.
+- **`check-test-suites-reachable.sh` makes the class of defect unrepeatable.** It runs as its own job in `mcp-tests.yml` (the `repo-hygiene` job it was first written for was removed in #3244), on every PR touching a workflow or a test file. It enumerates every versioned `*.test.*` / `*.spec.*` file from disk, folds each to its owning package, and must then say something about every one — so a package added tomorrow and forgotten cannot pass by being absent from a list, which is how a whitelist would have failed in exactly the original shape. It accepts `__tests__/` as well, a jest default matching neither infix: that arm finds nothing here today and exists because a suite the enumeration misses is the one failure the rest of the gate cannot report — it does not turn red, it leaves the listing, and "0 unreachable" quietly comes to mean "0 found". Reachable means both *invoked* by a workflow step and *triggered* when the package changes; a suite that runs but cannot block a merge (`|| true`, `continue-on-error`, or no `pull_request` trigger) is reported ADVISORY rather than counted as coverage. That third verdict caught the gate's own first false green: `release.yml` really does run `npm test`, but only on a `v*` tag, and with no path filter to fail it had made `mcp` read as covered.
+- **The gateway job needed `mcp/src/generated/*`, and the first CI run is what proved it.** `mcp/src/generated/{llms-txt,symbols}.ts` are deliberately not committed; `mcp/`'s own `prebuild`/`test` lifecycle regenerates them, which is why every other MCP job was unaffected. The gateway follows `../mcp/src/symbols.ts` into them, so on a fresh checkout `tsc` failed with TS2307 on two modules and 8 of the suite's 17 files could not import. Local verification had passed because those gitignored files existed on disk — the same false-green shape this fragment is about, one directory over, in the change that fixes it. The job now runs the three generators first (they import only `node:` builtins, so no `npm ci` in `mcp/`), and both failure modes were reproduced by moving the files aside before the fix and re-measured after.
+- **Nine fail-open holes in the gate's own parser, each closed with a fixture and a mutant.** Seven of them are one shape: a trigger filter the parser fails to read collapses to an empty glob list, and an empty list means "no filter, fires on everything" — so a path-scoped workflow reads as gating a merge it never runs on. Flow-style `paths: ['x/**']`, a quoted `'on':` key (YAML's Norway problem), `paths-ignore` dropped instead of inverted, and `paths:` merged across triggers instead of read from `pull_request:` alone each produced that list. The other three are neighbours: unordered `continue-on-error:`, a `run:` glob word-split against the repo root, and a runner matched as a bare substring, so `cat vitest.config.ts` counted as running tests. The eighth is the same shape in the function that decides whether a suite blocks at all: `fires_on_pr` grepped the whole file for a `pull_request:` line, which a JOB named `pull_request` satisfies — so a tag-only workflow read as gating merges. It is scoped to the `on:` block now, at trigger level, with both halves pinned: a job key outside the block, and a `workflow_call` input named `pull_request` inside it. The ninth is a filter read correctly and then evaluated wrong: `**/*.md` reduces to an empty literal prefix exactly as `**` does, and the prefix comparison waved both through as covering everything — but `*` never crosses `/`, so a markdown-only filter cannot fire on a `.test.ts` change. An empty prefix is now decided by matching the pattern against the suite's own test files, so `**` still answers yes by measurement instead of by assertion. None is reachable from any workflow in the repo today, which is exactly why each needed a fixture rather than a red run — the reasoning for each is in the script beside the code it guards.
+- **The bounds that remain are stated in the script's own `BOUNDS` block rather than left to be discovered**, including the exclusions and the one deliberate over-approximation; every run also prints the three most load-bearing of them and points at the block for the rest. Two are worth naming here: a suite launched through a wrapper script is reported MISSING (fail-*closed*, loud, fixed by naming it in an explicit step), and `|| true` stays an unanchored match where `continue-on-error:` could be anchored — one is a YAML key with a fixed position, the other is the exact shape being looked for, so the cost is a spurious ADVISORY and never a missed gap. Two other bounds were removed rather than written down: the bare-scalar `on: pull_request` trigger form, and colon-suffixed npm scripts (`npm run test:coverage`). Neither could produce a false OK — both are fail-closed — but both are ordinary YAML the gate would have judged wrongly, and a bound nobody can trip is cheaper removed than documented.
+- **29 cases and 24 mutants, and the mutation harness itself was rebuilt after it reported a vacuous catch.** Comparing exit codes let the `|| true` mutant "pass" while proving nothing, since its fixture exits 0 either way. Each mutant now names a marker that must be present before the mutation and gone after; a marker missing beforehand is `VACUOUS`, an absent literal `INVALID`, and one occurring twice `AMBIGUOUS` rather than silently mutating an arbitrary occurrence. All three verdicts have fired for real on this branch. The bugs they surfaced include a `printf | grep -q` that under `pipefail` answered "not found" precisely when it found something (SIGPIPE, 141) — twice, once in the gate and once in its own test.
+- **The Scene Mesh and Streetscape demos say why they are not working when the ARCore Cloud API key is missing or rejected ([#3210](https://github.com/sceneview/sceneview/issues/3210)).** Both detected a missing key and then showed nothing about it, and neither had any branch for a key ARCore rejects — so a fork without the secret, or a Play build whose key restriction names the upload SHA-1 instead of the App Signing one, looked like a demo that simply did not work. They now sample `Earth.EarthState` every frame and show the same error-toned banner the Cloud Anchor, Rooftop and Terrain demos already had: "key not configured" when it is absent, `ERROR_NOT_AUTHORIZED` with the SHA-1 + billing hint when it is present but rejected. The Streetscape pill moves onto the shared `DemoStatusBanner`, so it no longer reads "all good" in primary blue while blocked. The Rooftop and Terrain banners gain the same rejected-key branch instead of sitting on "Waiting for VPS lock".
+- **One source of truth for the ARCore Cloud API key wording.** The manifest probe and both messages were copied into five demos; they now live in `common/ArcoreCloudApiKey.kt`, and `ArcoreCloudDemoGuardTest` fails if a demo enables Geospatial or Cloud Anchors without using them.
+`StreetscapeGeometryNode` now derives per-vertex normals (as tangent quaternions) and a UV0 slot for the ARCore mesh, so lit materials such as `rememberMaterialInstance(color = …)` shade buildings and terrain by their real surface instead of a fallback normal, and Filament no longer logs `missing required attributes (0xb), declared=0x1` for every geometry (#3215).
+`render-tests.yml` now runs `:sceneview:connectedDebugAndroidTest` on a pull
+request, path-gated to `sceneview/**`, `sceneview-core/**`, `arsceneview/src/**`
+and the Gradle build files, so an instrumented test added or broken by a PR
+fails before the merge instead of on whichever push to `main` came next
+(#3216). The four advisory legs (demo screenshots, render goldens, AR playback,
+iOS, web) stay push-to-main + nightly only. On `main`, `render-tests.yml` and
+`device-qa.yml` no longer cancel the previous run on every merge — each run has
+its own concurrency group, so every merge reaches a verdict instead of the
+~50% that previously ended `cancelled` (#2917). Cancellation remains only for
+superseded pushes to the same pull request.
+- **Depth Collider balls are thrown in front of the user instead of dropped at their feet ([#3217](https://github.com/sceneview/sceneview/issues/3217)).** The spawn point was 50 cm along the camera's view ray plus 50 cm of world-up lift, so with the phone aimed at the floor (as the demo tells you to) the ball started above the user's own position and fell past them. Balls now start 75 cm along the view ray, never closer than 50 cm horizontally, and are thrown at 1.5 m/s along the camera's forward direction towards whatever is being aimed at. Physics and the depth collider are unchanged; `DepthColliderSpawnTest` pins the geometry on the JVM. The iOS demo still uses the older geometry.
+- `sync-versions.sh` no longer sweeps `website-static/index.html` with a blanket find-and-replace. Each version carrier (`softwareVersion`, the iOS `// Version:` snippet, the `sceneview-web@` CDN pin, Maven coordinates) is rewritten by its own anchored sed, the GA4 stream id check asserts the exact value `14357002837`, and a carrier-invariant guard aborts `--fix` (exit 2, file restored) if anything other than a version string changed in a synced page. The unescaped sweep had rewritten the analytics stream id on every release for 25 releases (#3234).
+- **The demo app's light mode no longer renders a dirty grey field ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** The animated particle backdrop cleared its render target to black and let a white scrim fade over it, which composites to a flat grey seamed against the status bar. It now clears to the theme surface colour.
+- **Demo screens keep their brand palette ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** Material You dynamic colour was on by default, so on Android 12+ the wallpaper palette replaced the SceneView blue everywhere and the brand scheme never ran.
+- **Every model credit is reachable again ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** The credits sheet listed 29 CC-BY entries in a non-scrolling column, so only the first 8 could be read — an attribution requirement, not a cosmetic one. It scrolls, and clears the navigation bar.
+- **Status pills, banners and HUDs no longer collide with the status bar, the app bar or each other ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** `DemoScaffold` gains a `topOverlay` slot that owns the top edge the way `bottomOverlay` already owned the bottom one, and 27 demos were migrated onto it. 3D and AR content still renders edge to edge.
+- **Particles no longer drift across the search field and the source chips in dark mode ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** The backdrop's scrim opened up at 30 % of the screen height, which is above the last control on both tabs, so a drifting particle field showed through the controls. The scrim now holds nearly solid down past the "Trending models" header.
+- **The (i) button in the Samples app bar works ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** It announced "About" to screen readers and did nothing at all: the callback defaulted to a no-op and the only call site never passed one. The argument is now required, so the same omission cannot compile.
+- **The status-bar strip uses the SceneView surface colour ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** `Scaffold` paints its container with `colorScheme.background`, and that was the one surface role the app's colour scheme never passed — so it fell through to the Material3 baseline (`#FEF7FF` light, `#141218` dark) against a `#F9F9FF` / `#111318` page and drew a line across the top of every screen. The XML theme was missing the same roles for the window it draws before the first Compose frame; both are bound now.
+- **Smaller demo-app fixes ([#3237](https://github.com/sceneview/sceneview/pull/3237)).** Sample subtitles ellipsise instead of being cut mid-word; the internal "In review" badge no longer ships in release builds; the samples top app bar is drawn instead of being invisible; the Geometry demo's plane no longer disappears every half turn; the Settings chip retracts after three seconds as its documentation always claimed; and the About footer has its missing space back.
+`DESIGN.md` no longer contradicts itself on `radius-lg`, which it gave as 24px in
+its token table and 28px in two prose sentences. The published token bundle had
+taken 24px and the Android demo app's shape theme had taken 28, so the two
+disagreed with each other through a source that agreed with neither. A new gate,
+`check-design-token-coherence.py`, refuses any inline token value in `DESIGN.md`
+that contradicts that token's table row.
+`codex-delegate.sh --new-worktree` now provisions a safe `local.properties` in the
+worktree it creates, so a delegated agent can configure an Android build without anyone
+copying the developer's own file across. Only `sdk.dir` is carried over; every other key
+keeps its name and loses its value, which is what Gradle needs to configure and what a
+secret must never be given.
+- **android-demo**: `ar-body-tracker` now actually detects a body. The CPU camera image ARCore
+  hands back is in raw sensor (landscape) orientation regardless of the device's display
+  orientation, but the demo's YUV→bitmap conversion never corrected for it — on a portrait
+  phone, MediaPipe's pose model was handed a person lying sideways and almost never found one.
+  `PoseLandmarker.detect` is now called with an `ImageProcessingOptions` rotation hint (the same
+  rotation-degrees mapping `ar-ml-object-label`'s ML Kit pipeline already used), so the model
+  sees an upright frame and the existing 2D skeleton overlay — plus the "point the camera at a
+  person" hint shown while nothing is tracked — now actually render the detection (#3266).
+- **android-demo**: `ar-ml-object-label` no longer crashes after a handful of detections. The
+  ML Kit success listener runs on the main thread while ARCore's `Session`/`Frame` belong to
+  the render thread — the listener was calling `frame.hitTest` on a `Frame` reference that was
+  already several updates stale by the time a ~30–80 ms detector pass completed, a cross-thread
+  access to ARCore's non-thread-safe native session. Anchor creation now happens back on the
+  render thread, in `onSessionUpdated`, against that frame's own current `Frame`. The demo also
+  now explains, once a label is anchored, that ML Kit's bundled detector classifies only five
+  broad categories (Home good, Fashion good, Food, Place, Plant) — so an indoor scene landing
+  almost entirely on "Home good" reads as expected behaviour, not a bug (#3268).
+- **`ar-orbital`'s off-screen arrow now stays up for every orbiting object, continuously, with its distance ([#3269](https://github.com/sceneview/sceneview/issues/3269)).** The directional indicator only ever tracked one of the eight planets (the chase target) and went permanently quiet — for that target and every other object — once a first-launch onboarding timeout elapsed or the user had turned toward it once. Off-screen state is now computed per planet every AR frame, so each currently off-screen object gets its own edge arrow, labelled with the live distance to it (metres, one decimal, locale-aware), for as long as — and only as long as — it stays outside the camera frustum. The world-to-screen-edge projection is now a pure function (`projectOffscreenTarget`) with unit coverage.
+**android-demo**: `ar-point-cloud` no longer renders a silent black screen when tracking
+fails or the cloud stays empty. Unlike its `ar-raw-depth-point-cloud` / `ar-scene-semantics`
+siblings, it had no `onTrackingFailureChanged` wiring at all — a lost-tracking session (or a
+cold-start still resolving its first feature points) rendered nothing, with no on-screen
+explanation, which read to users as "nothing rendered" (#3270). It now shows the same
+tracking-failure banner as the other AR demos, plus a "still scanning" hint once the cloud has
+sat at zero points, while tracking, for more than two seconds. The stuck-at-zero gate is a
+pure function pinned by a JVM test (`PointCloudFeedbackTest`).
+**android-demo**: `ar-raw-depth-point-cloud` no longer scatters its points across the wrong
+part of the screen in portrait. ARCore's raw-depth image is handed back in the camera-sensor
+frame, which does not follow the display — `RawDepthCloud.buildCloud` mapped `x`/`y` straight
+onto the screen-space `Canvas` overlay with no rotation correction, so in portrait the cloud
+landed 90° off and most points fell outside the visible view (reported as "rotation error...
+points are not visible enough", #3271). This is the same class of bug already fixed for the
+false-color depth visualization in #3184; `buildCloud` now takes a `rotationDegrees` parameter
+(derived from the live display rotation, same as `ARDepthVisualizationDemo`) and re-indexes
+each point into the rotated output frame. Pinned by four new JVM tests in
+`RawDepthCloudTest` (0°/90°/180°/270° plus the invalid-rotation guard).
+**android-demo**: `ar-scene-semantics` now explains itself when the scene classifies as
+almost entirely `UNLABELED` — ARCore's Scene Semantics model has no indoor training data, and
+the overlay shader paints `UNLABELED` fully transparent, so an indoor session silently showed
+the plain camera feed with zero on-screen indication of why (reported as "nothing...
+rendered", #3274). A guidance banner now appears whenever the frame's dominant label is
+`UNLABELED` at ≥90%, pointing the user outdoors. The gate is a pure function,
+`SemanticsOverlay.isOutdoorSceneUnclassified`, pinned by four new JVM tests.
+- **Point & Ask no longer sends Gemini a blank frame, and its in-scene answer stays readable from anywhere in the room ([#3276](https://github.com/sceneview/sceneview/issues/3276)).** The composited `PixelCopy` capture could report `SUCCESS` while a compositor quirk (already tracked for the bug-report screenshot, [#2654](https://github.com/sceneview/sceneview/issues/2654)) left the Filament `SurfaceView` — camera plus placed AR objects — out of the read-back: an `alpha == 0` hole exactly where the augmented scene should be, silently sent to Gemini as "the model sees nothing". The same transparent-hole guard now runs before every ask; a hole fails the round instead of asking about a blank image, and a warning is logged so a future report can be correlated with logcat. Separately, the world-anchored answer card kept the fixed orientation of the tap that pinned it, so it went edge-on — effectively unreadable — the moment the user moved around it; it now billboards toward the camera every frame and scales with distance (clamped) so the text stays legible whether you're standing close or across the room, over a `DESIGN.md` scrim instead of a theme-relative surface that could land low-contrast against an unpredictable camera background.
+42 npm audit findings resolved across `mcp/`, `mcp/packages/{gaming,interior,rerun}`, `mcp-gateway/` and `telemetry-worker/` (55 → 13); 7 more require a `react-native`/`wrangler` major bump and are left for a follow-up.
+
+### Tests
+
+- **`DemoScaffoldTopBandTest` pins the top band at three font scales**, and the demo overlay gate now refuses a hand-anchored overlay at either screen edge, in every Kotlin file of the demo app rather than in a list of directories — the app-wide update banner sits in `MainActivity.kt`, which no earlier version of the gate looked at.
+- **`DemoBackgroundRoleTest` pins `background` to `surface`** in both schemes, which is what actually keeps the status-bar seam away, and **`DemoXmlThemePaletteTest` pins the XML palette** that no static check could see: `colorSurface` and `android:windowBackground` must resolve to the SceneView tokens in both light and night, and specifically not to the Material3 baseline.
+
 ## v4.31.0 — The demo apps stop overlapping themselves (2026-08-17)
 
 Five days of work whose common thread is what you *see*. The sample apps had drifted

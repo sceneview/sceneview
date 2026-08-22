@@ -35,7 +35,7 @@ For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
 global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
     viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);
