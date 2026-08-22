@@ -99,6 +99,7 @@
 		C100000000000000000000F1 /* ARAugmentedFacesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */; };
 		C100000000000000000000F2 /* ARDepthOcclusionDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */; };
 		E500000000000000000000F3 /* qrcode.png in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F3 /* qrcode.png */; };
+		E500000000000000000000F4 /* BundledCredits.json in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F4 /* BundledCredits.json */; };
 		C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D0 /* ShapeExtrudeDemo.swift */; };
 		C100000000000000000000D1 /* ReflectionProbesDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* ReflectionProbesDemo.swift */; };
 		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
@@ -273,6 +274,7 @@
 		C200000000000000000000F6 /* ARPlaneNodeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPlaneNodeDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000F7 /* ARPointCloudDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPointCloudDemo.swift; sourceTree = "<group>"; };
 		E600000000000000000000F3 /* qrcode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = qrcode.png; sourceTree = "<group>"; };
+		E600000000000000000000F4 /* BundledCredits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BundledCredits.json; sourceTree = "<group>"; };
 		C200000000000000000000D0 /* ShapeExtrudeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeExtrudeDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D1 /* ReflectionProbesDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionProbesDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
@@ -644,6 +646,7 @@
 			isa = PBXGroup;
 			children = (
 				E600000000000000000000F3 /* qrcode.png */,
+				E600000000000000000000F4 /* BundledCredits.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -770,6 +773,7 @@
 				A10000010000000000000002 /* Assets.xcassets in Resources */,
 				F50000000000000000000001 /* bell.wav in Resources */,
 				E500000000000000000000F3 /* qrcode.png in Resources */,
+				E500000000000000000000F4 /* BundledCredits.json in Resources */,
 				E500000000000000000000D3 /* sample.mp4 in Resources */,
 				D10000000000000000000001 /* game_boy_classic.usdz in Resources */,
 				D10000000000000000000002 /* tree_scene.usdz in Resources */,
