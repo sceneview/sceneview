@@ -7,7 +7,7 @@
 <resources>
     <string name="demo_ar_ml_title">ML Kit Object Labels</string>
     <string name="demo_ar_ml_subtitle">ML Kit object detection with 3D labels anchored on real-world hits</string>
-    <string name="demo_ar_ml_explainer">Aim the device at a recognisable object (a chair, a plant, a book). ML Kit\'s bundled detector classifies the CPU camera image and we anchor a 3D label at the hit-tested world position.</string>
+    <string name="demo_ar_ml_explainer">ML Kit\'s bundled model classifies 5 broad categories (Home good, Fashion good, Food, Place, Plant) — indoors, most objects land on \"Home good\". That\'s expected, not a bug.</string>
     <string name="demo_ar_ml_status_warming">Warming up — waiting for camera image…</string>
     <string name="demo_ar_ml_status_aim">Aim at a recognisable object</string>
     <plurals name="demo_ar_ml_status_detected">

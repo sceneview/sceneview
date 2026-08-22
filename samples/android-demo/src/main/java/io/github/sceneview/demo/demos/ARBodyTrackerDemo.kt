@@ -40,6 +40,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import io.github.sceneview.ar.ARSceneView
@@ -50,6 +51,7 @@ import io.github.sceneview.ar.body.SKELETON_BONES
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.displayRotationDegrees
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
@@ -79,9 +81,23 @@ import java.io.ByteArrayOutputStream
  *  1. Each AR frame, pull the CPU camera image via [io.github.sceneview.ar.arcore.cameraImage].
  *  2. Throttle to ~6 fps (the landmarker costs ~30–60 ms/frame) and convert the YUV image to
  *     an ARGB [Bitmap].
- *  3. Run [PoseLandmarker.detect] (`RunningMode.IMAGE`), adapt the result into
- *     [BodyPose.RawLandmark]s and build a [BodyPose].
+ *  3. Run [PoseLandmarker.detect] (`RunningMode.IMAGE`) with an [ImageProcessingOptions]
+ *     rotation hint (#3266 — see below), adapt the result into [BodyPose.RawLandmark]s and
+ *     build a [BodyPose].
  *  4. Draw the [SKELETON_BONES] topology over the viewport with a Compose [Canvas].
+ *
+ * **Rotation (#3266).** [io.github.sceneview.ar.arcore.cameraImage] hands back the CPU image in
+ * ARCore's raw sensor orientation — landscape, regardless of the device's current display
+ * orientation (see that accessor's kdoc: "ML Kit: `InputImage.fromMediaImage(image,
+ * rotationDegrees)`", the same caveat applies here). [toBitmap] does a byte-for-byte YUV→ARGB
+ * conversion with no rotation applied, so on a portrait phone the bitmap handed to the
+ * landmarker showed a person lying sideways. MediaPipe's pose model is not rotation-invariant —
+ * fed a 90°-off frame it almost never found a body, which is why the demo "did nothing" no
+ * matter how a person stood in front of the camera. The fix passes the same
+ * [io.github.sceneview.demo.common.displayRotationDegrees] used by `ar-ml-object-label`'s ML
+ * Kit pipeline as an [ImageProcessingOptions] rotation hint to [PoseLandmarker.detect] — that
+ * lets MediaPipe correct for the rotation internally (landmarks come back already normalised to
+ * the upright, on-screen orientation) instead of physically rotating the bitmap.
  *
  * ### Model asset
  *
@@ -260,7 +276,14 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                         runCatching {
                             val bitmap = image.toBitmap()
                             val mpImage = BitmapImageBuilder(bitmap).build()
-                            val result = landmarker.detect(mpImage)
+                            // #3266: the bitmap is still in ARCore's raw sensor orientation —
+                            // tell MediaPipe how to rotate it internally so the pose model
+                            // sees an upright person instead of one lying sideways. See the
+                            // "Rotation (#3266)" note on the file kdoc.
+                            val imageProcessingOptions = ImageProcessingOptions.builder()
+                                .setRotationDegrees(displayRotationDegrees(context))
+                                .build()
+                            val result = landmarker.detect(mpImage, imageProcessingOptions)
                             // First (and only — numPoses=1) pose, adapted to the
                             // renderer-agnostic RawLandmark shape so BodyPose stays
                             // free of any MediaPipe dependency.
