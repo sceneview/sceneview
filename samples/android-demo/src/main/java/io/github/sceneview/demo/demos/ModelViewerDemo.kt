@@ -1,10 +1,13 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -35,6 +41,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -69,6 +79,7 @@ import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabService
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -677,13 +688,9 @@ private fun MultiModelSection(
             // registry decides what stands in each slot, so it decides the label
             // too. Horizontally scrolling for the same reason Gallery's row is:
             // catalogue names run long ("Skovfogedegen Oak") and four of them do not
-            // fit a portrait phone width without clipping.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            // fit a portrait phone width without clipping. `OverflowChipRow` fades
+            // the overflowing edge so the off-screen chip is discoverable (#2944).
+            OverflowChipRow {
                 slugs.forEachIndexed { index, slug ->
                     FilterChip(
                         selected = visible[index],
@@ -984,13 +991,9 @@ private fun GallerySection(
             // them as a horizontally scrolling row so the four labels never
             // wrap at portrait phone widths. Each chip's label is a hand-
             // curated English `displayName` from SampleAssets — these are
-            // catalogue identifiers, not localizable UI copy.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            // catalogue identifiers, not localizable UI copy. The overflowing edge
+            // fades so the row reads as scrollable (#2944).
+            OverflowChipRow {
                 slugs.forEachIndexed { index, slug ->
                     FilterChip(
                         selected = index == selectedIndex,
@@ -1082,4 +1085,78 @@ private sealed interface GalleryResolveState {
 
     /** Resolve failed — [message] is a short human-readable reason. */
     data class Error(val message: String) : GalleryResolveState
+}
+
+/**
+ * Horizontally scrolling chip row with an overflow affordance (#2944).
+ *
+ * A plain `Row.horizontalScroll` gives no hint that more chips exist past the edge —
+ * with registry labels like "Skovfogedegen Oak" the fourth Multi-Model chip sat
+ * entirely off-screen with nothing to say so. This row fades whichever edge still has
+ * content beyond it into the sheet's own container colour, so the clipped chip reads
+ * as "continues" rather than "ends". The fade is drawn over the row, tracks the scroll
+ * state live, and animates in / out on `duration-short`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OverflowChipRow(content: @Composable RowScope.() -> Unit) {
+    val scrollState = rememberScrollState()
+    // The controls live inside the scaffold's ModalBottomSheet — fade into exactly
+    // the colour the sheet paints behind the chips, light and dark alike.
+    val fadeColor = BottomSheetDefaults.ContainerColor
+    val fadeWidth = SceneViewTokens.Space.xl
+    val endAlpha by animateFloatAsState(
+        targetValue = if (scrollState.canScrollForward) 1f else 0f,
+        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
+        label = "chipRowEndFade",
+    )
+    val startAlpha by animateFloatAsState(
+        targetValue = if (scrollState.canScrollBackward) 1f else 0f,
+        animationSpec = tween(SceneViewTokens.Duration.shortMillis),
+        label = "chipRowStartFade",
+    )
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawWithContent {
+                    drawContent()
+                    val w = fadeWidth.toPx()
+                    if (endAlpha > 0f) {
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Color.Transparent, fadeColor),
+                                startX = size.width - w,
+                                endX = size.width,
+                            ),
+                            alpha = endAlpha,
+                        )
+                    }
+                    if (startAlpha > 0f) {
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(fadeColor, Color.Transparent),
+                                startX = 0f,
+                                endX = w,
+                            ),
+                            alpha = startAlpha,
+                        )
+                    }
+                }
+                .horizontalScroll(scrollState),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            content = content,
+        )
+        // A fade alone is easy to miss when the next chip barely peeks, so an explicit
+        // chevron rides the trailing fade while there is more to scroll. Decorative:
+        // the chips themselves are the accessible targets.
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .graphicsLayer { alpha = endAlpha },
+        )
+    }
 }
