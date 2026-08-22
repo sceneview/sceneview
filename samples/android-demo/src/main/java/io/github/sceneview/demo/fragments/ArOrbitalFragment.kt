@@ -16,6 +16,8 @@ object ArOrbitalFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_orbital_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Public,
+        order = 35,
+        tags = setOf("ar", "orbit", "animation", "model", "anchor"),
     )
 
     @Composable

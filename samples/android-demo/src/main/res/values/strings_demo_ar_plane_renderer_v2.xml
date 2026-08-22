@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_plane_renderer_v2_title">Plane Renderer V2</string>
-    <string name="demo_ar_plane_renderer_v2_subtitle">Depth + PBR + HDR + scan-in, with live V1 ↔ V2 toggle</string>
+    <string name="demo_ar_plane_renderer_v2_subtitle">Depth, PBR and HDR plane renderer, V1↔V2</string>
 </resources>

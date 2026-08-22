@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_raw_depth_cloud_title">Raw Depth Point Cloud</string>
-    <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered point cloud from raw depth</string>
+    <string name="demo_ar_raw_depth_cloud_subtitle">Confidence-filtered raw depth point cloud</string>
     <string name="demo_ar_raw_depth_cloud_move_hint">Move your device for raw depth to converge</string>
     <string name="demo_ar_raw_depth_cloud_move_hint_short">Move device — no points yet</string>
 </resources>

@@ -16,6 +16,8 @@ object ArPeopleOcclusionFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_people_occlusion_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Accessibility,
+        order = 33,
+        tags = setOf("ar", "occlusion", "people", "segmentation", "depth"),
     )
 
     @Composable

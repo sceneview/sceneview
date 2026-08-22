@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SceneView cube mark — the launcher cube without the viewport brackets, at
+     the 24 dp size the home header uses. Brand blue ramp per DESIGN.md:
+     shadow face #003A7D → lit face #005BC1 → top face #A4C1FF. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Left face — shadow side -->
+    <path
+        android:fillColor="#003A7D"
+        android:pathData="M12,12 L2,6.2 L2,17.8 L12,23.6 Z" />
+
+    <!-- Right face — lit side -->
+    <path
+        android:fillColor="#005BC1"
+        android:pathData="M12,12 L22,6.2 L22,17.8 L12,23.6 Z" />
+
+    <!-- Top face — direct light -->
+    <path
+        android:fillColor="#A4C1FF"
+        android:pathData="M12,0.4 L22,6.2 L12,12 L2,6.2 Z" />
+</vector>

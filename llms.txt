@@ -4923,75 +4923,75 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### 3D Basics
 
-- `animation-physics` — Animation & Physics. Skeletal animation playback and rigid-body simulation.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder, plane.
-- `model-viewer` — Models. Single model, multi-model scene, and gallery.
+- `model-viewer` — Models. Any glTF, HDR lighting, one tap to AR.
+- `animation-physics` — Animation & Physics. Skeletal clips plus rigid-body physics.
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
 
 ### Lighting & Environment
 
-- `contact-shadow-preview` — Contact Shadow Preview. Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator.
-- `fog` — Fog. Linear, exponential, and height fog.
-- `lighting` — Lighting. Light types, plus a movable orbiting light.
-- `lighting-lab` — Lighting Lab. Sky, environment, reflections, and post-FX.
+- `lighting` — Lighting. Light types with a movable orbiting light.
+- `lighting-lab` — Lighting Lab. Sky, HDR environment, reflections, post-FX.
+- `fog` — Fog. Linear, exponential and height fog.
+- `contact-shadow-preview` — Contact Shadow Preview. Procedural contact shadow, grounded vs floating.
 
 ### Content
 
-- `lines-paths` — Lines & Paths. Polylines, helix, grids, and circles.
-- `two-d-in-three-d` — 2D in 3D. Text, image, video, and billboard quads.
+- `two-d-in-three-d` — 2D in 3D. Text, image, video and billboard quads in 3D.
+- `lines-paths` — Lines & Paths. Polylines, helix, grids and circles.
 
 ### Interaction
 
-- `camera-gestures` — Camera & Gestures. Manipulator modes and per-node edit gestures.
-- `picking-collision` — Picking & Collision. Ray hit-test and ray-picked ViewNode overlays.
+- `camera-gestures` — Camera & Gestures. Orbit, pan, zoom and per-node edit gestures.
+- `picking-collision` — Picking & Collision. Ray hit-test with picked ViewNode overlays.
 
 ### Advanced
 
+- `materials` — Materials. PBR extensions and runtime material streaming.
 - `custom-geometry` — Custom Geometry. Composite meshes and shape extrusion.
-- `debug-overlay` — Debug Overlay. Performance stats overlay.
-- `double-pendulum` — Double Pendulum. Chaotic two-link physics, shared KMP simulation.
-- `materials` — Materials. PBR extension showcase, runtime material streaming, and occlusion material.
-- `secondary-camera` — Secondary Camera (PiP). Picture-in-picture camera view.
-- `spatial-audio` — Spatial Audio. 3D positional sound that pans as you orbit.
-- `splat-preview` — Gaussian Splatting. Render a 3D Gaussian Splat radiance-field cloud.
-- `video-recording` — Video Recording. Record the scene to MP4 in-app — no MediaProjection.
+- `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
+- `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
+- `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
+- `video-recording` — Video Recording. Record the scene to MP4 in-app.
+- `secondary-camera` — Secondary Camera (PiP). Picture-in-picture second camera view.
+- `debug-overlay` — Debug Overlay. Live FPS and render stats overlay.
 
 ### Augmented Reality
 
-- `ar-body-tracker` — AR Body Tracker. Live 2D skeleton overlay from MediaPipe Pose on the AR camera feed.
-- `ar-cloud-anchor` — Cloud Anchors. Persistent multi-user anchors.
-- `ar-collaborative` — Collaborative AR. Multi-user session sync over a pluggable transport.
-- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor / table (depth-driven physics).
-- `ar-depth-occlusion` — Depth Occlusion. Real-world depth masks virtual objects.
-- `ar-depth-of-field` — AR Depth of Field. Tap to focus — real-world bokeh blur.
-- `ar-depth-visualization` — Depth Visualization. False-color depth map with camera↔depth blend.
-- `ar-face` — Augmented Faces. Face mesh tracking and overlays.
-- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
-- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
+- `ar-placement` — Tap to Place. Tap a plane to place and move a model.
+- `placement-reticle-preview` — AR Placement Reticle Preview. AR placement reticle, no camera needed.
+- `placement-scene` — Placement Scene. One-line tap-to-place AR.
+- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
+- `ar-instant-placement` — Instant Placement. Place before plane detection converges.
 - `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-image-stabilization` — Image Stabilization (EIS). EIS for smoother AR camera feed.
-- `ar-instant-placement` — Instant Placement. Place models before plane detection converges.
-- `ar-measure` — Measure. Tap two points, read the distance in cm.
-- `ar-ml-object-label` — ML Kit Object Labels. ML Kit object detection with 3D labels anchored on real-world hits.
-- `ar-orbital` — Orbital AR. Models orbit around you in a personal solar system.
-- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects behind them.
-- `ar-placement` — Tap to Place. Place 3D models in AR.
-- `ar-plane-node` — Plane Lifecycle. PlaneNode + onAdded/onUpdated/onRemoved.
-- `ar-plane-renderer-v2` — Plane Renderer V2. Depth + PBR + HDR + scan-in, with live V1 ↔ V2 toggle.
-- `ar-point-cloud` — Point Cloud. World-space feature points via PointCloudNode.
-- `ar-pose` — Pose Placement. Free pose positioning.
-- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered point cloud from raw depth.
-- `ar-record-playback` — AR Recording. Record an AR session and replay it without a phone.
-- `ar-rerun` — Rerun Debug. Stream camera pose and planes to the Rerun viewer.
-- `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
-- `ar-scene-mesh` — Scene Mesh. Color-coded real-world geometry via ARCore Streetscape (terrain + buildings).
-- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling — HUD shows top-3 labels in view.
+- `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
+- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
+- `ar-plane-renderer-v2` — Plane Renderer V2. Depth, PBR and HDR plane renderer, V1↔V2.
+- `ar-plane-node` — Plane Lifecycle. PlaneNode lifecycle: added, updated, removed.
+- `ar-point-cloud` — Point Cloud. World-space feature points as a point cloud.
+- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
+- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered raw depth point cloud.
+- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
+- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
+- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+- `ar-orbital` — Orbital AR. Models orbit around you in AR.
+- `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
+- `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
+- `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.
+- `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
+- `ar-image-stabilization` — Image Stabilization (EIS). Electronic stabilization of the AR feed.
+- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
+- `ar-collaborative` — Collaborative AR. Multi-user session sync over any transport.
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
+- `ar-scene-mesh` — Scene Mesh. Color-coded Streetscape terrain and buildings.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
+- `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
+- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling HUD.
+- `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
+- `ar-rerun` — Rerun Debug. Stream pose and planes to the Rerun viewer.
+- `ar-measure` — Measure. Tap two points, read the distance.
+- `wall-placement` — Wall Placement. Mount a TV on a wall, floor-to-wall aligned.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
-- `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
-- `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
-- `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
-- `wall-placement` — Wall Placement. Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style.
 
 <!-- END GENERATED DEMOS -->
 

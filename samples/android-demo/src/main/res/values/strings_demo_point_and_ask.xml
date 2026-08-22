@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_point_and_ask_title">Point &amp; Ask</string>
-    <string name="demo_point_and_ask_subtitle">Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device</string>
+    <string name="demo_point_and_ask_subtitle">On-device Gemini Nano explains the AR scene</string>
 
     <!-- Top status pill -->
     <string name="demo_point_and_ask_status_checking">Checking Gemini Nano availability…</string>

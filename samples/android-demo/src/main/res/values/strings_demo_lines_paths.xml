@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_lines_paths_title">Lines &amp; Paths</string>
-    <string name="demo_lines_paths_subtitle">Polylines, helix, grids, and circles</string>
+    <string name="demo_lines_paths_subtitle">Polylines, helix, grids and circles</string>
 </resources>

@@ -10,9 +10,7 @@
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
     <string name="tab_ar">AR</string>
-    <string name="tab_samples">Samples</string>
     <string name="tab_about">About</string>
-    <string name="tab_explore">Explore</string>
     <string name="tab_ar_view">AR View</string>
 
     <!-- Explore screen -->
@@ -137,17 +135,13 @@
     <string name="featured_ar_pose_subtitle">Free pose positioning</string>
 
     <!-- Samples screen -->
-    <string name="samples_title">Samples</string>
     <string name="samples_feature_count">%d feature demos</string>
     <string name="samples_badge_live">LIVE</string>
     <string name="samples_badge_soon">SOON</string>
     <string name="samples_back">Back</string>
-    <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
     <string name="samples_chip_in_review">In review</string>
-    <string name="samples_footer_version">SceneView v%s</string>
-    <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 
     <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
          the release content itself is parsed at runtime from the bundled

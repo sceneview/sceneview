@@ -17,6 +17,8 @@ object ArSceneMeshFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_scene_mesh_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.GridOn,
+        order = 44,
+        tags = setOf("ar", "geospatial", "streetscape", "mesh", "terrain", "building"),
         // Requires outdoor location with Street View coverage + Cloud API key.
         status = DemoStatus.Working,
     )

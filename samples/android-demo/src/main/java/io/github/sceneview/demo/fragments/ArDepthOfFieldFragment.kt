@@ -16,6 +16,8 @@ object ArDepthOfFieldFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_of_field_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Lens,
+        order = 32,
+        tags = setOf("ar", "depth", "bokeh", "focus", "post-fx"),
     )
 
     @Composable

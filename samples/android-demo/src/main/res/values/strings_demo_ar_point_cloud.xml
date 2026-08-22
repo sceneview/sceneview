@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_point_cloud_title">Point Cloud</string>
-    <string name="demo_ar_point_cloud_subtitle">World-space feature points via PointCloudNode</string>
+    <string name="demo_ar_point_cloud_subtitle">World-space feature points as a point cloud</string>
     <string name="demo_ar_point_cloud_count">Tracking %1$d points</string>
     <string name="demo_ar_point_cloud_move_hint">Move your device to detect feature points</string>
 </resources>

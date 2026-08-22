@@ -149,6 +149,44 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
+    fun `every demo order is unique`() {
+        // `order` is the home-grid position; two demos sharing one would make
+        // the grid order depend on collator internals.
+        val duplicates = ALL_DEMOS.map { it.order }
+            .groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        assertTrue("Demos share an editorial order: $duplicates", duplicates.isEmpty())
+    }
+
+    @Test
+    fun `registry is already in editorial order`() {
+        // The collator sorts on `order` so HomeScreen renders ALL_DEMOS flat,
+        // with no re-sort. If this breaks, the home grid silently falls back to
+        // whatever order the fragments were discovered in.
+        assertEquals(
+            "ALL_DEMOS must be sorted by DemoEntry.order",
+            ALL_DEMOS.sortedBy { it.order }.map { it.id },
+            ALL_DEMOS.map { it.id },
+        )
+    }
+
+    @Test
+    fun `every demo carries at least one search tag`() {
+        for (demo in ALL_DEMOS) {
+            assertTrue("Demo '${demo.id}' has no tags — home search would never find it", demo.tags.isNotEmpty())
+            for (tag in demo.tags) {
+                assertTrue("Tag '$tag' on '${demo.id}' must be lowercase and non-blank", tag.isNotBlank() && tag == tag.lowercase())
+            }
+        }
+    }
+
+    @Test
+    fun `the fragment template id never ships`() {
+        // `fragments/README.md` documents a copy-paste template registered as
+        // `my-demo`; the collator rejects it and so does this.
+        assertFalse("'my-demo' is the template id and must not be registered", ALL_DEMOS.any { it.id == "my-demo" })
+    }
+
+    @Test
     fun `deep-link router rejects ids that are not in the registry`() {
         // Negative-space guard: an id that looks like a demo but isn't registered
         // must not route. Complements the per-demo positive check above.

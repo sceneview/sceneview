@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_scene_semantics_title">Scene Semantics</string>
-    <string name="demo_ar_scene_semantics_subtitle">12-class outdoor scene labeling — HUD shows top-3 labels in view</string>
+    <string name="demo_ar_scene_semantics_subtitle">12-class outdoor scene labeling HUD</string>
 </resources>

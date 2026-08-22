@@ -16,6 +16,8 @@ object SplatPreviewFragment : DemoFragment {
         subtitleRes = R.string.demo_splat_preview_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.ScatterPlot,
+        order = 15,
+        tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "ply"),
     )
 
     @Composable

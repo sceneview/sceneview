@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_placement_title">Tap to Place</string>
-    <string name="demo_ar_placement_subtitle">Place 3D models in AR</string>
+    <string name="demo_ar_placement_subtitle">Tap a plane to place and move a model</string>
     <string name="demo_ar_placement_picker_bundled">Bundled cycle</string>
     <string name="demo_ar_placement_picker_label">What to place</string>
     <string name="demo_ar_placement_picker_streamed">%1$s</string>

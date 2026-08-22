@@ -16,6 +16,8 @@ object PlacementSceneFragment : DemoFragment {
         subtitleRes = R.string.demo_placement_scene_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.AddLocationAlt,
+        order = 21,
+        tags = setOf("ar", "plane", "tap-to-place", "sceneform", "anchor"),
     )
 
     @Composable

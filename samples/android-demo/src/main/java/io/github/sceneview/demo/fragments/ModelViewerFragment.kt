@@ -16,6 +16,8 @@ object ModelViewerFragment : DemoFragment {
         subtitleRes = R.string.demo_model_viewer_subtitle,
         category = DemoCategory.BASICS_3D,
         icon = Icons.Filled.ViewInAr,
+        order = 1,
+        tags = setOf("gltf", "glb", "hdr", "ibl", "orbit", "ar", "viewer"),
     )
 
     @Composable

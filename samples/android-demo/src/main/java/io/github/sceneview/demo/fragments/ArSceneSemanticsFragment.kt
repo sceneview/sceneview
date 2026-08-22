@@ -16,6 +16,8 @@ object ArSceneSemanticsFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_scene_semantics_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Park,
+        order = 47,
+        tags = setOf("ar", "semantics", "segmentation", "labeling", "outdoor"),
     )
 
     @Composable

@@ -16,6 +16,8 @@ object ArPointCloudFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_point_cloud_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.BlurOn,
+        order = 29,
+        tags = setOf("ar", "point-cloud", "feature-points", "tracking"),
     )
 
     @Composable

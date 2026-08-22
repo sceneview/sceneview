@@ -5,5 +5,5 @@
      continue to deep-link through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_camera_and_gestures_title">Camera &amp; Gestures</string>
-    <string name="demo_camera_and_gestures_subtitle">Manipulator modes and per-node edit gestures</string>
+    <string name="demo_camera_and_gestures_subtitle">Orbit, pan, zoom and per-node edit gestures</string>
 </resources>

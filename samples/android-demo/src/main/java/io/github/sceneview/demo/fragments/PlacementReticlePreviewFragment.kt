@@ -16,6 +16,8 @@ object PlacementReticlePreviewFragment : DemoFragment {
         subtitleRes = R.string.demo_placement_reticle_preview_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.GpsFixed,
+        order = 20,
+        tags = setOf("ar", "reticle", "placement", "shadow", "preview", "no-camera"),
     )
 
     @Composable

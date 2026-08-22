@@ -16,6 +16,8 @@ object ArPlaneNodeFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Layers,
+        order = 28,
+        tags = setOf("ar", "plane", "planenode", "lifecycle", "callback"),
     )
 
     @Composable

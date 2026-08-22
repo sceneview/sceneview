@@ -21,6 +21,8 @@ object TwoDInThreeDFragment : DemoFragment {
         subtitleRes = R.string.demo_two_d_in_three_d_subtitle,
         category = DemoCategory.CONTENT,
         icon = Icons.Filled.Layers,
+        order = 11,
+        tags = setOf("2d", "text", "image", "video", "billboard", "quad", "viewnode"),
     )
 
     @Composable

@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_video_recording_title">Video Recording</string>
-    <string name="demo_video_recording_subtitle">Record the scene to MP4 in-app — no MediaProjection</string>
+    <string name="demo_video_recording_subtitle">Record the scene to MP4 in-app</string>
     <string name="demo_video_recording_loading">Loading model…</string>
     <string name="demo_video_recording_explainer">SurfaceMirrorer mirrors the rendered frames onto a MediaRecorder surface — no consent dialog, no foreground service, and the UI never appears in the video. Recordings land in the app files dir.</string>
     <string name="demo_video_recording_record">Record</string>

@@ -16,6 +16,8 @@ object ArCloudAnchorFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_cloud_anchor_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.CloudCircle,
+        order = 41,
+        tags = setOf("ar", "cloud-anchor", "multi-user", "persistence", "arcore"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )
 

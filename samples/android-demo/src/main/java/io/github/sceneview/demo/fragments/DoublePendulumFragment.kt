@@ -16,6 +16,8 @@ object DoublePendulumFragment : DemoFragment {
         subtitleRes = R.string.demo_double_pendulum_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Vibration,
+        order = 16,
+        tags = setOf("physics", "pendulum", "chaos", "simulation", "kmp"),
     )
 
     @Composable

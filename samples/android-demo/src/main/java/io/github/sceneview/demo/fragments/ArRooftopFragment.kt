@@ -16,6 +16,8 @@ object ArRooftopFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_rooftop_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Roofing,
+        order = 46,
+        tags = setOf("ar", "geospatial", "rooftop", "anchor"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )
 

@@ -17,6 +17,8 @@ object MaterialsFragment : DemoFragment {
         subtitleRes = R.string.demo_materials_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Palette,
+        order = 3,
+        tags = setOf("pbr", "material", "clearcoat", "sheen", "transmission", "occlusion", "streaming"),
         // The `materials` Sketchfab slugs are now real, validated, downloadable
         // models (#2095) — the demo streams them successfully and falls back to
         // bundled assets when offline. The #2088 known-issue chip is removed.

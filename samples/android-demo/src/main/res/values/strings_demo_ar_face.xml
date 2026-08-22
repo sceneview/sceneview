@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_face_title">Augmented Faces</string>
-    <string name="demo_ar_face_subtitle">Face mesh tracking and overlays</string>
+    <string name="demo_ar_face_subtitle">Face mesh tracking with 3D overlays</string>
     <!-- Bottom status pill. Kept to one line at bodyMedium. -->
     <string name="demo_ar_face_status_aim">Point the front camera at a face</string>
     <string name="demo_ar_face_status_tracking">Tracking %1$d face(s)</string>

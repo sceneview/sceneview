@@ -16,6 +16,8 @@ object ArDepthVisualizationFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_visualization_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Palette,
+        order = 30,
+        tags = setOf("ar", "depth", "visualization", "false-color", "depth-map"),
     )
 
     @Composable

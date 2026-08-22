@@ -17,6 +17,8 @@ object ArWallPlacementFragment : DemoFragment {
         subtitleRes = R.string.demo_wall_placement_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Tv,
+        order = 51,
+        tags = setOf("ar", "wall", "vertical-plane", "placement", "tv"),
         // In review: shipped for on-device validation (#2740) — flip to Working
         // once the wall flow is signed off on hardware.
         status = DemoStatus.InReview,

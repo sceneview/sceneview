@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_collaborative_title">Collaborative AR</string>
-    <string name="demo_ar_collaborative_subtitle">Multi-user session sync over a pluggable transport</string>
+    <string name="demo_ar_collaborative_subtitle">Multi-user session sync over any transport</string>
 </resources>

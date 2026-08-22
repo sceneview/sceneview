@@ -21,6 +21,8 @@ object CustomGeometryFragment : DemoFragment {
         subtitleRes = R.string.demo_custom_geometry_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Hexagon,
+        order = 10,
+        tags = setOf("geometry", "mesh", "extrusion", "composite", "procedural"),
     )
 
     @Composable

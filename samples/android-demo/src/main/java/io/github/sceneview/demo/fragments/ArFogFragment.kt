@@ -16,6 +16,8 @@ object ArFogFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_fog_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Cloud,
+        order = 34,
+        tags = setOf("ar", "fog", "depth", "atmosphere"),
     )
 
     @Composable

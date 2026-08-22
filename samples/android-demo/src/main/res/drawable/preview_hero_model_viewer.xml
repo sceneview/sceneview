@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TEMPORARY hero placeholder. The preview-image pipeline (design spec §5)
+     overwrites this with `drawable-nodpi/preview_hero_model_viewer.webp`
+     (1600×1000, real Model Viewer capture, subject centred-right, lower-left
+     40 % clear for text). Until then: the viewer stage field (#0B0F16, the
+     stage clear colour) with a soft brand-blue key light and the cube mark
+     sitting centre-right. Same name so no call site changes when the WebP lands. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="1600dp"
+    android:height="1000dp"
+    android:viewportWidth="1600"
+    android:viewportHeight="1000">
+
+    <!-- Stage field with a radial key light, upper-left per the art direction. -->
+    <path android:pathData="M0,0 H1600 V1000 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="1050"
+                android:centerY="380"
+                android:gradientRadius="900">
+                <item android:offset="0.0" android:color="#FF1E3A6E" />
+                <item android:offset="0.55" android:color="#FF0F1A2E" />
+                <item android:offset="1.0" android:color="#FF0B0F16" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Floor contact shadow under the cube -->
+    <path android:pathData="M1050,760 m-260,0 a260,60 0 1,0 520,0 a260,60 0 1,0 -520,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="1050"
+                android:centerY="760"
+                android:gradientRadius="260">
+                <item android:offset="0.0" android:color="#66000000" />
+                <item android:offset="1.0" android:color="#00000000" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Cube — left (shadow) face -->
+    <path
+        android:fillColor="#003A7D"
+        android:pathData="M1050,520 L830,393 L830,647 L1050,774 Z" />
+    <!-- Cube — right (lit) face -->
+    <path
+        android:fillColor="#3D7FD9"
+        android:pathData="M1050,520 L1270,393 L1270,647 L1050,774 Z" />
+    <!-- Cube — top face -->
+    <path
+        android:fillColor="#A4C1FF"
+        android:pathData="M1050,266 L1270,393 L1050,520 L830,393 Z" />
+    <!-- Top face highlight -->
+    <path
+        android:fillColor="#BDD3FF"
+        android:pathData="M1050,292 L1225,393 L1050,494 L875,393 Z" />
+    <!-- Rim light, back-right edge -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#80D2A8FF"
+        android:strokeWidth="5"
+        android:pathData="M1270,393 L1270,647" />
+</vector>
