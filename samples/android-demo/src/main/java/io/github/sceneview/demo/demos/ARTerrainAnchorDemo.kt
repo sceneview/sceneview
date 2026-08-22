@@ -41,6 +41,10 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
+import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.isArcoreApiKeyRejected
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.SceneAction
@@ -146,14 +150,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
     // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    val hasArcoreApiKey = remember {
-        runCatching {
-            val ai = context.packageManager.getApplicationInfo(
-                context.packageName, PackageManager.GET_META_DATA
-            )
-            !ai.metaData?.getString("com.google.android.ar.API_KEY").isNullOrBlank()
-        }.getOrDefault(false)
-    }
+    val hasArcoreApiKey = rememberHasArcoreApiKey()
 
     var arSession by remember { mutableStateOf<Session?>(null) }
     // Flipped true on the first onSessionUpdated — i.e. once ARCore has opened the
@@ -320,9 +317,11 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
             val (statusText, statusTone) = when {
                 // friendlyArSessionError already yields a complete, honest sentence (#2349).
                 sessionError != null -> sessionError!! to DemoStatusTone.Blocked
-                !hasArcoreApiKey ->
-                    ("ARCore Cloud API key not configured — see samples/android-demo/" +
-                        "ARCORE_CLOUD_SETUP.md") to DemoStatusTone.Blocked
+                !hasArcoreApiKey -> ARCORE_API_KEY_MISSING_MESSAGE to DemoStatusTone.Blocked
+                // Key present but rejected by ARCore: names the console-side cause
+                // instead of leaving the banner on "Waiting for VPS lock" (#3210).
+                earthState.isArcoreApiKeyRejected ->
+                    arcoreApiKeyRejectedMessage("Geospatial") to DemoStatusTone.Blocked
                 geospatialUnavailable != null ->
                     ("${geospatialUnavailable!!} — needs outdoor area with VPS coverage + " +
                         "Cloud API key") to DemoStatusTone.Blocked
