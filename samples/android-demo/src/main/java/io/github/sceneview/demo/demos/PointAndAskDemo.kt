@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.PixelCopy
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -66,6 +67,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
@@ -76,8 +78,10 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
+import io.github.sceneview.demo.feedback.hasTransparentHole
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberEngine
@@ -220,6 +224,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var askState by remember { mutableStateOf<AskState>(AskState.Idle) }
     var isTracking by remember { mutableStateOf(false) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // Camera world position, refreshed every AR frame — read by each anchored answer
+    // card's per-frame billboard (#3276). A plain holder, not Compose state: it is only
+    // read inside an `onFrame` node callback, never inside a composable body, so there is
+    // nothing here for Compose to observe.
+    val cameraPosition = remember { floatArrayOf(0f, 0f, 0f) }
 
     // Long-press placements — each drops the showcase model on the hit surface.
     val placedProps = remember { mutableStateListOf<PlacedProp>() }
@@ -331,10 +340,28 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 }
                 roundLive = false
                 hideOverlaysForCapture = false
-                if (result == PixelCopy.SUCCESS) {
+                // `PixelCopy.SUCCESS` alone does not prove the frame is usable (#3276). The
+                // same compositor quirk already tracked for the bug-report screenshot
+                // (`hasTransparentHole`, #2654) — a read-back that reports SUCCESS while the
+                // Filament `SurfaceView` layer (camera + placed AR objects) was left out of
+                // the composite, an `alpha == 0` hole exactly where the augmented scene
+                // should be — applies just as much here. Sending that hole to Gemini is
+                // literally "the model sees nothing": no exception, no failure banner, just
+                // an on-device answer about a blank/transparent image. Guard for it the same
+                // way the feedback screenshot does, and log so a future report of this can be
+                // correlated with logcat instead of re-diagnosed from scratch.
+                if (result == PixelCopy.SUCCESS && !hasTransparentHole(bitmap)) {
                     askState = AskState.Thinking
                     askJob = scope.askAboutBitmap(bitmap, askEngine, question, onResult)
                 } else {
+                    if (result == PixelCopy.SUCCESS) {
+                        Log.w(
+                            "PointAndAskDemo",
+                            "Composited capture came back with a transparent hole where the " +
+                                "AR viewport should be (PixelCopy reported SUCCESS) — refusing " +
+                                "to send a blank frame to Gemini (#3276).",
+                        )
+                    }
                     bitmap.recycle()
                     onResult(AskState.Failed)
                 }
@@ -570,6 +597,14 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 onSessionUpdated = { _, frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Keep the camera world position fresh so every anchored answer card can
+                    // billboard toward the viewer (#3276) — same pattern as `ARMLObjectLabelDemo`'s
+                    // `cameraPosition`. The pose translation is the camera eye position in world
+                    // space, all a billboard needs to orient toward.
+                    val camPose = frame.camera.pose.position
+                    cameraPosition[0] = camPose.x
+                    cameraPosition[1] = camPose.y
+                    cameraPosition[2] = camPose.z
                 },
                 onGestureListener = rememberOnGestureListener(
                     onSingleTapConfirmed = { e, _ ->
@@ -685,14 +720,45 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                 windowManager = viewNodeManager,
                                 unlit = true,
                                 position = Position(y = PANEL_LIFT_METERS),
-                                // No rotation: the anchor's own frame already faces the
-                                // device (ARCore hit pose, Z+ toward the user) and a
-                                // ViewNode's quad faces its +Z.
+                                // Initial rotation/scale before the first `onFrame` tick
+                                // below runs — that per-frame billboard immediately takes
+                                // over both (#3276).
                                 scale = Scale(PANEL_SCALE),
                                 // Unlike the props, the cards are UI, not scenery: keeping
                                 // them out of the capture stops the model from reading its
                                 // own earlier answers back as part of the next question.
                                 isVisible = !hideOverlaysForCapture,
+                                apply = {
+                                    // Billboard + distance-legible scale (#3276). The card
+                                    // used to keep the fixed orientation of the tap that
+                                    // pinned it — proving the anchor but going edge-on (and
+                                    // effectively unreadable) the moment the user moved
+                                    // around it. Every AR frame, rotate to face the live
+                                    // camera position and rescale so the text stays legible
+                                    // whether the user is standing close or across the room.
+                                    // `lookTowards` is the same world-space-safe primitive
+                                    // `BillboardNode` uses (it converts into this node's
+                                    // *local* rotation relative to the anchor automatically —
+                                    // see `Node.worldTransform`), so this inherits the fix for
+                                    // the mirrored/edge-on billboard bug from #2478 instead of
+                                    // re-deriving the rotation math from scratch.
+                                    onFrame = { _ ->
+                                        val pos = worldPosition
+                                        val dx = pos.x - cameraPosition[0]
+                                        val dy = pos.y - cameraPosition[1]
+                                        val dz = pos.z - cameraPosition[2]
+                                        val distanceSq = dx * dx + dy * dy + dz * dz
+                                        // Guards the zero-vector AND any NaN component
+                                        // (NaN comparisons are always false) — same
+                                        // reasoning as `BillboardNode`.
+                                        if (distanceSq > 1e-12f) {
+                                            lookTowards(lookDirection = Position(dx, dy, dz))
+                                            scale = Scale(
+                                                clampedPanelScale(kotlin.math.sqrt(distanceSq))
+                                            )
+                                        }
+                                    }
+                                },
                             ) {
                                 AnchoredAnswerCard(
                                     question = panel.question,
@@ -822,11 +888,53 @@ private const val QA_CAPTURE_TIMEOUT_MS = 5_000L
 private const val PANEL_LIFT_METERS = 0.12f
 
 /**
- * World scale of an anchored card's `ViewNode`. The node renders at `ViewNode.pxPerUnits`
- * (250 px/m), so a ~650 px card would span ~2.6 m at scale 1; 0.15 brings it to ~0.4 m —
- * readable at arm's length without walling off the room.
+ * World scale of an anchored card's `ViewNode`, AT [PANEL_REFERENCE_DISTANCE] — the node
+ * renders at `ViewNode.pxPerUnits` (250 px/m), so a ~650 px card would span ~2.6 m at
+ * scale 1; 0.15 brings it to ~0.4 m, readable at arm's length. [clampedPanelScale] scales
+ * this up/down from the live camera distance so the card stays legible across a room
+ * (#3276) — see its Kdoc.
  */
 private const val PANEL_SCALE = 0.15f
+
+/**
+ * Distance (metres) at which [PANEL_SCALE] was tuned to look right — "arm's length" per
+ * its own Kdoc. [clampedPanelScale] uses this as the 1:1 point of its scale ramp.
+ */
+private const val PANEL_REFERENCE_DISTANCE = 1.0f
+
+/**
+ * Below this distance the perspective-compensated scale would keep *shrinking* the card
+ * as the user leans in — which is backwards for legibility — so the ramp bottoms out
+ * here instead (#3276).
+ */
+private const val PANEL_MIN_READABLE_DISTANCE = 0.6f
+
+/**
+ * Beyond this distance the card is scaled as if it were still this close: past a few
+ * metres, a card sized to stay pixel-legible would loom absurdly large in the room, and
+ * the answer is better re-read by walking closer (#3276).
+ */
+private const val PANEL_MAX_READABLE_DISTANCE = 3.5f
+
+/**
+ * World scale for an anchored answer card at [distanceMeters] from the camera,
+ * compensating for perspective so the text stays legible whether the user is standing
+ * close or across the room (#3276) — a card sized only for [PANEL_REFERENCE_DISTANCE]
+ * shrinks to unreadable pixels a few metres out, which is exactly what the bug report
+ * described ("the text is not visible in AR").
+ *
+ * [distanceMeters] is clamped to [PANEL_MIN_READABLE_DISTANCE]..[PANEL_MAX_READABLE_DISTANCE]
+ * first: below the near clamp the raw ramp would shrink the card as the user leans in
+ * (backwards), and beyond the far clamp it would balloon the card to an unreasonable size
+ * instead of just asking the user to walk closer.
+ *
+ * Pure function — no ARCore/Filament types — so it is unit-testable on the JVM
+ * (`PanelScaleTest`).
+ */
+internal fun clampedPanelScale(distanceMeters: Float): Float {
+    val clamped = distanceMeters.coerceIn(PANEL_MIN_READABLE_DISTANCE, PANEL_MAX_READABLE_DISTANCE)
+    return PANEL_SCALE * (clamped / PANEL_REFERENCE_DISTANCE)
+}
 
 /** How many answers stay pinned before the oldest is retired. */
 private const val MAX_PANELS = 8
@@ -901,6 +1009,18 @@ private fun CoroutineScope.askAboutBitmap(
  * the screen-space card — spinner until the first delta, live text with a typing cursor
  * while streaming, question label above — at a width that stays legible once the node is
  * scaled down to [PANEL_SCALE].
+ *
+ * Uses `DESIGN.md`'s Spatial Gallery **scrim** treatment (`stage-scrim-end` /
+ * [SceneViewTokens.SpatialGalleryColor.stageScrimEnd]) instead of the M3 `surface` role
+ * (#3276): the card floats over a live camera feed of unpredictable brightness and colour,
+ * not over the app's own background, so a theme-relative surface can land near-white-on
+ * -white or low-contrast depending on the room and the user's light/dark setting. A ~90%
+ * opaque near-black scrim with plain white "on-scrim" text guarantees contrast regardless
+ * of what is behind it — the same reasoning the Spatial Gallery already applies to text
+ * over photo/video content. Text sizes are bumped a step up from the screen-space card's
+ * (`titleMedium`/`bodyMedium` instead of `bodyLarge`/`labelMedium`) because this card is
+ * additionally viewed through [clampedPanelScale] perspective scaling — legible-sized type
+ * at the outset means the perspective compensation has less shrinking to fight.
  */
 @Composable
 private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolean) {
@@ -908,6 +1028,7 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
     // demo's CompositionLocals — without re-applying the theme here, `MaterialTheme` would
     // resolve to M3 defaults and the in-scene card would not match the card it mirrors.
     SceneViewDemoTheme {
+        val onScrim = Color.White
         M3Surface(
             // Fixed height as well as width, and NOT for looks: every panel shares one
             // ViewNode WindowManager, whose single wrap-content FrameLayout sizes itself
@@ -918,7 +1039,8 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
             // while a sibling streams. Identical measurements keep the shared window
             // constant, so each card stays where it was pinned (#2918).
             modifier = Modifier.width(ANCHORED_CARD_WIDTH).height(ANCHORED_CARD_HEIGHT),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            color = SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+            contentColor = onScrim,
             tonalElevation = 6.dp,
             shape = MaterialTheme.shapes.large,
         ) {
@@ -928,10 +1050,11 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = onScrim)
                     Text(
                         text = stringResource(R.string.demo_point_and_ask_status_thinking),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = onScrim,
                         modifier = Modifier.padding(start = 12.dp),
                     )
                 }
@@ -940,8 +1063,9 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = question,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onScrim.copy(alpha = 0.80f),
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -949,7 +1073,8 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
                     // Nothing drives this scroll by touch — the rendered UI is a texture,
                     // not an interactive view — so it also clips gracefully.
                     text = renderMarkdownLite(if (streaming) "$text▌" else text),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = onScrim,
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             }

@@ -22,11 +22,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotateRad
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -51,17 +53,21 @@ import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Transform
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.io.File
+import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 
@@ -261,22 +267,29 @@ private const val PROJECTION_NEAR = 0.05f
 private const val PROJECTION_FAR = 30f
 
 /**
- * On-screen state for the directional indicator that points at the off-screen target
- * (issue #1482). `null` whenever the target is comfortably inside the camera frustum —
- * in that case no arrow is drawn and the user can simply see the model.
+ * On-screen state for the directional indicator that points at an off-screen target
+ * (issue #1482, #3269). `null` whenever the target is comfortably inside the camera
+ * frustum — in that case no arrow is drawn and the user can simply see the model.
  *
  * @param angleRad direction, in radians, from the screen centre toward the target,
  *   measured in Compose screen space (0 = +X / right, π/2 = +Y / down). Used both to
  *   place the arrow on the viewport edge and to rotate the arrow glyph.
+ * @param distanceMeters straight-line distance from the camera to the target, in
+ *   metres. Shown next to the arrow so the user knows how far to walk/turn (#3269).
  */
-private data class OffscreenTarget(val angleRad: Float)
+internal data class OffscreenTarget(val angleRad: Float, val distanceMeters: Float)
 
 /**
- * Projects [targetWorld] (an ARCore world-space position) to the camera and decides
- * whether it is off-screen. Returns an [OffscreenTarget] with the screen-space
- * direction toward it, or `null` when the target is inside the camera frustum.
+ * Pure projection of [targetWorld] into the camera described by [viewProjection] /
+ * [cameraPosition]. Returns an [OffscreenTarget] with the screen-space direction and
+ * distance toward it, or `null` when the target is inside the camera frustum.
  *
- * The projection is the standard `clip = projection · view · worldPoint`:
+ * No ARCore types involved — [viewProjection] is `projection · view` and
+ * [cameraPosition] is the camera's world-space translation — so this is plain JVM math,
+ * unit-testable without a device or an ARCore mock (#3269, see
+ * `OffscreenTargetProjectionTest`).
+ *
+ * The projection is the standard `clip = viewProjection · worldPoint`:
  *
  * - `clip.w <= 0` means the point is **behind** the camera. The perspective divide
  *   would mirror x/y, so we negate the clip x/y to recover the true direction and
@@ -287,26 +300,45 @@ private data class OffscreenTarget(val angleRad: Float)
  * The returned angle is in Compose screen space, where +Y points **down** — hence the
  * `-ndcY` (NDC / OpenGL Y points up).
  */
-private fun computeOffscreenTarget(frame: Frame, targetWorld: Position): OffscreenTarget? {
-    val camera = frame.camera
-    if (camera.trackingState != TrackingState.TRACKING) return null
-
-    val viewProjection =
-        camera.getProjectionTransform(PROJECTION_NEAR, PROJECTION_FAR) * camera.viewTransform
+internal fun projectOffscreenTarget(
+    viewProjection: Transform,
+    cameraPosition: Position,
+    targetWorld: Position,
+): OffscreenTarget? {
     val clip = viewProjection * Float4(targetWorld, w = 1.0f)
 
     val behindCamera = clip.w <= 0f
     // Guard against a near-zero w (target almost exactly on the camera plane) which
     // would blow the divide up — treat it as "behind" and use raw clip x/y direction.
-    val safeW = if (kotlin.math.abs(clip.w) < 1e-4f) 1e-4f else clip.w
+    val safeW = if (abs(clip.w) < 1e-4f) 1e-4f else clip.w
     val ndcX = if (behindCamera) -clip.x else clip.x / safeW
     val ndcY = if (behindCamera) -clip.y else clip.y / safeW
 
     val onScreen = !behindCamera && ndcX in -1f..1f && ndcY in -1f..1f
     if (onScreen) return null
 
+    val dx = targetWorld.x - cameraPosition.x
+    val dy = targetWorld.y - cameraPosition.y
+    val dz = targetWorld.z - cameraPosition.z
+    val distanceMeters = sqrt(dx * dx + dy * dy + dz * dz)
+
     // Compose screen Y points down, NDC Y points up — flip Y for the screen-space angle.
-    return OffscreenTarget(angleRad = atan2(-ndcY, ndcX))
+    return OffscreenTarget(angleRad = atan2(-ndcY, ndcX), distanceMeters = distanceMeters)
+}
+
+/**
+ * ARCore-facing wrapper around [projectOffscreenTarget]: pulls the view/projection
+ * matrix and camera position off [frame] and delegates the actual math.
+ */
+private fun computeOffscreenTarget(frame: Frame, targetWorld: Position): OffscreenTarget? {
+    val camera = frame.camera
+    if (camera.trackingState != TrackingState.TRACKING) return null
+
+    val viewProjection =
+        camera.getProjectionTransform(PROJECTION_NEAR, PROJECTION_FAR) * camera.viewTransform
+    val cameraPose = camera.pose
+    val cameraPosition = Position(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
+    return projectOffscreenTarget(viewProjection, cameraPosition, targetWorld)
 }
 
 @Composable
@@ -369,28 +401,34 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     }
     val orbitSeconds = orbitNanos / 1_000_000_000f
 
-    // Directional indicator state (#1482). Non-null whenever the chase target
-    // (the toy car, slot TARGET_PLANET_INDEX) is outside the camera frustum — the
-    // overlay then draws an edge arrow pointing the user toward it. Recomputed once
-    // per AR frame in onSessionUpdated.
-    var offscreenTarget by remember { mutableStateOf<OffscreenTarget?>(null) }
+    // Directional indicator state (#1482, #3269). Keyed by planet index — holds an
+    // entry for **every** planet currently outside the camera frustum, not just the
+    // chase target, so the overlay draws one edge arrow (with distance) per off-screen
+    // object and it stays up continuously until that specific object enters the
+    // viewport. Recomputed once per AR frame in onSessionUpdated.
+    var offscreenTargets by remember { mutableStateOf<Map<Int, OffscreenTarget>>(emptyMap()) }
     // Viewport size in pixels, captured from the Compose layout so the indicator can
     // be clamped to the real edge of the AR surface.
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Onboarding-dismiss state (#2481). The "Turn around — N models orbiting" banner
-    // and the directional edge-arrow are a *first-launch nudge*: they teach the user to
-    // turn and watch the formation pass by. Before this fix they never dismissed — the
-    // banner and arrow stayed up for the whole session, cluttering the view even once
-    // the user had clearly turned around and a model was on-screen (the QA tester:
-    // "là, il met encore la flèche alors qu'on est dessus"). `onboardingDismissed`
-    // flips true once the nudge has served its purpose and stays true (it's a
-    // rememberSaveable so a device rotation mid-session doesn't re-show it), at which
-    // point both the banner text and the arrow go quiet. It is set true when EITHER:
+    // Onboarding-dismiss state (#2481). The "Turn around — N models orbiting" **banner
+    // text only** is a first-launch nudge: it teaches the user to turn and watch the
+    // formation pass by, then gets out of the way once the user has clearly engaged
+    // (the QA tester: "là, il met encore la flèche alors qu'on est dessus"). `
+    // onboardingDismissed` flips true once the nudge has served its purpose and stays
+    // true (it's a rememberSaveable so a device rotation mid-session doesn't re-show
+    // it). It is set true when EITHER:
     //  - the orbit is live and the chase target has come on-screen at least once
     //    (the user successfully turned toward a model — see onSessionUpdated), or
     //  - the onboarding window below elapses (timeout fallback, so the nudge always
     //    eventually clears even in the rare frame where nothing has streamed in yet).
+    //
+    // IMPORTANT (#3269): this flag must NEVER gate the off-screen directional arrows
+    // themselves. The arrows are not onboarding — they are the only way to find an
+    // orbiting object that has drifted outside the frustum, and issue #3269 was exactly
+    // that: the arrow (and its distance) went quiet after this timeout even though
+    // objects were still off-screen. Arrow visibility is derived purely from
+    // `offscreenTargets`, one entry per off-screen object, independent of onboarding.
     var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
 
     // Timeout fallback for the onboarding nudge: once the world anchor is locked, give
@@ -507,42 +545,48 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                             session.createAnchor(Pose.IDENTITY)
                         }.getOrNull()
                     }
-                    // Off-screen target indicator (#1482). Project the chase target's
-                    // current world position into the camera and, when it falls outside
-                    // the frustum, surface the screen-space direction toward it so the
-                    // edge arrow can guide the user to turn and catch it.
+                    // Off-screen target indicator (#1482, #3269). Project **every**
+                    // planet's current world position into the camera and keep an entry
+                    // for each one that falls outside the frustum, so the overlay can
+                    // draw one edge arrow (with distance) per off-screen object — not
+                    // just the chase target — and it stays up continuously, per object,
+                    // until that object re-enters the viewport.
                     val anchor = userAnchor
-                    offscreenTarget = if (anchor != null && isTracking) {
-                        runCatching {
-                            val target = ORBITAL_PLANETS[TARGET_PLANET_INDEX]
-                            val targetAngle =
-                                (target.initialAngleRad + target.orbitSpeed * orbitSeconds) %
-                                    (2f * PI.toFloat())
-                            // Target position in the AnchorNode's local frame — identical
-                            // to the ModelNode `position` computed in the content block.
-                            val local = Position(
-                                x = cos(targetAngle) * ORBIT_RADIUS,
-                                y = target.height,
-                                z = sin(targetAngle) * ORBIT_RADIUS,
-                            )
-                            // Lift the local point into ARCore world space through the
-                            // anchor pose, then project + frustum-test it.
-                            val worldPoint = anchor.pose.transform *
-                                Float4(local, w = 1.0f)
-                            computeOffscreenTarget(
-                                frame,
-                                Position(worldPoint.x, worldPoint.y, worldPoint.z),
-                            )
-                        }.getOrNull()
+                    offscreenTargets = if (anchor != null && isTracking) {
+                        ORBITAL_PLANETS.indices.mapNotNull { index ->
+                            runCatching {
+                                val planet = ORBITAL_PLANETS[index]
+                                val targetAngle =
+                                    (planet.initialAngleRad + planet.orbitSpeed * orbitSeconds) %
+                                        (2f * PI.toFloat())
+                                // Target position in the AnchorNode's local frame —
+                                // identical to the ModelNode `position` computed in the
+                                // content block.
+                                val local = Position(
+                                    x = cos(targetAngle) * ORBIT_RADIUS,
+                                    y = planet.height,
+                                    z = sin(targetAngle) * ORBIT_RADIUS,
+                                )
+                                // Lift the local point into ARCore world space through
+                                // the anchor pose, then project + frustum-test it.
+                                val worldPoint = anchor.pose.transform *
+                                    Float4(local, w = 1.0f)
+                                computeOffscreenTarget(
+                                    frame,
+                                    Position(worldPoint.x, worldPoint.y, worldPoint.z),
+                                )?.let { index to it }
+                            }.getOrNull()
+                        }.toMap()
                     } else {
-                        null
+                        emptyMap()
                     }
-                    // Onboarding nudge dismisses for good the first time the user brings
-                    // the chase target on-screen (#2481). The orbit is live (anchor +
-                    // tracking) and `offscreenTarget == null` means the target now sits
-                    // inside the frustum — i.e. the user turned toward a model and saw
-                    // it, so the "Turn around" banner + arrow have served their purpose.
-                    if (anchor != null && isTracking && offscreenTarget == null) {
+                    // Onboarding nudge dismisses the "Turn around" **banner text** for
+                    // good the first time the user brings the chase target on-screen
+                    // (#2481). This must not affect arrow visibility (#3269) — see the
+                    // `onboardingDismissed` Kdoc above.
+                    if (anchor != null && isTracking &&
+                        !offscreenTargets.containsKey(TARGET_PLANET_INDEX)
+                    ) {
                         onboardingDismissed = true
                     }
                 }
@@ -609,18 +653,20 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(initializing = !cameraReady)
 
-            // Off-screen target indicator (#1482) — an edge arrow that points toward
-            // the chase target whenever it is outside the camera frustum, so the user
-            // knows which way to turn. A full-screen Canvas, so it belongs to the
-            // viewport and stays here, under the scaffold's top slot and its status pill.
-            // Suppressed once the onboarding nudge is dismissed
-            // (#2481): the arrow is a first-launch teach, not a permanent HUD, so it
-            // stops re-appearing as the target orbits off-screen after the user has
-            // already turned around and caught a model once.
-            val target = offscreenTarget
-            if (!onboardingDismissed && target != null && viewportSize != IntSize.Zero) {
-                OffscreenTargetArrow(
-                    angleRad = target.angleRad,
+            // Off-screen target indicator (#1482, #3269) — one edge arrow per
+            // off-screen planet, each labelled with the live distance to it, so the
+            // user knows which way to turn and how far. A full-screen Canvas, so it
+            // belongs to the viewport and stays here, under the scaffold's top slot and
+            // its status pill.
+            //
+            // NOT gated on `onboardingDismissed` (#3269): that flag only controls the
+            // "Turn around" banner text above. The arrows are the only way to locate an
+            // off-screen orbiting object at any point in the session, so every entry in
+            // `offscreenTargets` must keep drawing continuously — for as long as, and
+            // only for as long as, that specific object stays outside the frustum.
+            if (offscreenTargets.isNotEmpty() && viewportSize != IntSize.Zero) {
+                OffscreenTargetArrows(
+                    targets = offscreenTargets.values.toList(),
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -629,20 +675,23 @@ fun OrbitalARDemo(onBack: () -> Unit) {
 }
 
 /**
- * Full-screen [Canvas] overlay that draws a single directional arrow on the viewport
- * edge, pointing toward the off-screen chase target (issue #1482).
+ * Full-screen [Canvas] overlay that draws one directional arrow per entry in [targets]
+ * on the viewport edge, each pointing toward an off-screen orbiting object and labelled
+ * with the live distance to it (issue #1482, #3269).
  *
- * The arrow is placed by casting a ray from the screen centre in direction [angleRad]
- * (Compose screen space: 0 = right, π/2 = down) and clamping the hit point to a
- * rounded-rectangle inset from the viewport edge. The glyph is a filled triangle plus
- * a short stalk, rotated so it visually points along the same direction.
+ * Each arrow is placed by casting a ray from the screen centre in its target's
+ * direction (Compose screen space: 0 = right, π/2 = down) and clamping the hit point to
+ * a rounded-rectangle inset from the viewport edge. The glyph is a filled triangle plus
+ * a short stalk, rotated so it visually points along the same direction; the distance
+ * label sits just behind the tip, formatted with the device locale's decimal separator.
  *
- * @param angleRad direction from screen centre toward the target, in radians.
+ * @param targets one entry per currently off-screen object — arbitrary order, drawn
+ *   independently so overlapping targets never hide one another's arrow.
  * @param color arrow fill colour — the demo passes the Material primary colour.
  */
 @Composable
-private fun OffscreenTargetArrow(
-    angleRad: Float,
+private fun OffscreenTargetArrows(
+    targets: List<OffscreenTarget>,
     color: Color,
 ) {
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -652,42 +701,88 @@ private fun OffscreenTargetArrow(
 
         val centerX = width / 2f
         val centerY = height / 2f
-        val dirX = cos(angleRad)
-        val dirY = sin(angleRad)
 
-        // Keep the arrow fully inside the viewport: inset the clamp rectangle by enough
-        // to fit the glyph + a small margin, and never let the inset collapse past the
-        // centre on a very small surface.
+        // Keep every arrow fully inside the viewport: inset the clamp rectangle by
+        // enough to fit the glyph + a small margin, and never let the inset collapse
+        // past the centre on a very small surface.
         val margin = 48.dp.toPx()
         val halfW = max(1f, centerX - margin)
         val halfH = max(1f, centerY - margin)
 
-        // Distance along (dirX, dirY) until the ray first crosses the inset rectangle.
-        // Guard the divide for axis-aligned directions (dirX or dirY == 0).
-        val tX = if (dirX != 0f) halfW / kotlin.math.abs(dirX) else Float.MAX_VALUE
-        val tY = if (dirY != 0f) halfH / kotlin.math.abs(dirY) else Float.MAX_VALUE
-        val t = min(tX, tY)
+        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            // `this.` is load-bearing: bare `color = ...` here resolves against the
+            // Composable's own `color: Color` parameter (Compose's `Color`, not an
+            // `Int`) rather than this `Paint` receiver's `color: Int` property.
+            this.color = android.graphics.Color.WHITE
+            textSize = 13.sp.toPx()
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
+        }
 
-        val arrowX = centerX + dirX * t
-        val arrowY = centerY + dirY * t
-
-        // Triangle pointing along +X before rotation; rotateRad spins it to angleRad.
-        val tip = 22.dp.toPx()
-        val halfBase = 15.dp.toPx()
-        rotateRad(radians = angleRad, pivot = Offset(arrowX, arrowY)) {
-            // Soft drop shadow for contrast against bright camera frames.
-            val arrowPath = Path().apply {
-                moveTo(arrowX + tip, arrowY)
-                lineTo(arrowX - tip * 0.4f, arrowY - halfBase)
-                lineTo(arrowX - tip * 0.4f, arrowY + halfBase)
-                close()
-            }
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.35f),
-                radius = tip * 1.15f,
-                center = Offset(arrowX, arrowY),
+        for (target in targets) {
+            drawOffscreenTargetArrow(
+                target = target,
+                centerX = centerX,
+                centerY = centerY,
+                halfW = halfW,
+                halfH = halfH,
+                color = color,
+                labelPaint = labelPaint,
             )
-            drawPath(path = arrowPath, color = color)
         }
     }
+}
+
+/** Draws a single off-screen arrow + distance label. See [OffscreenTargetArrows]. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOffscreenTargetArrow(
+    target: OffscreenTarget,
+    centerX: Float,
+    centerY: Float,
+    halfW: Float,
+    halfH: Float,
+    color: Color,
+    labelPaint: android.graphics.Paint,
+) {
+    val angleRad = target.angleRad
+    val dirX = cos(angleRad)
+    val dirY = sin(angleRad)
+
+    // Distance along (dirX, dirY) until the ray first crosses the inset rectangle.
+    // Guard the divide for axis-aligned directions (dirX or dirY == 0).
+    val tX = if (dirX != 0f) halfW / kotlin.math.abs(dirX) else Float.MAX_VALUE
+    val tY = if (dirY != 0f) halfH / kotlin.math.abs(dirY) else Float.MAX_VALUE
+    val t = min(tX, tY)
+
+    val arrowX = centerX + dirX * t
+    val arrowY = centerY + dirY * t
+
+    // Triangle pointing along +X before rotation; rotateRad spins it to angleRad.
+    val tip = 22.dp.toPx()
+    val halfBase = 15.dp.toPx()
+    rotateRad(radians = angleRad, pivot = Offset(arrowX, arrowY)) {
+        // Soft drop shadow for contrast against bright camera frames.
+        val arrowPath = Path().apply {
+            moveTo(arrowX + tip, arrowY)
+            lineTo(arrowX - tip * 0.4f, arrowY - halfBase)
+            lineTo(arrowX - tip * 0.4f, arrowY + halfBase)
+            close()
+        }
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.35f),
+            radius = tip * 1.15f,
+            center = Offset(arrowX, arrowY),
+        )
+        drawPath(path = arrowPath, color = color)
+    }
+
+    // Distance label (#3269), locale-aware with one decimal — e.g. "3.2 m" or,
+    // under a comma-decimal locale, "3,2 m". Drawn upright (outside the rotateRad
+    // block) just behind the arrow tip, pulled toward the screen centre along the
+    // same direction so it stays clear of the glyph and inside the viewport.
+    val labelOffset = tip * 2.4f
+    val labelX = arrowX - dirX * labelOffset
+    val labelY = arrowY - dirY * labelOffset
+    val distanceText = String.format(Locale.getDefault(), "%.1f m", target.distanceMeters)
+    drawContext.canvas.nativeCanvas.drawText(distanceText, labelX, labelY, labelPaint)
 }
