@@ -4,7 +4,6 @@ import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import com.google.ar.core.Earth
 
 /**
  * The one place the demo app talks about the ARCore Cloud API key.
@@ -72,13 +71,9 @@ fun rememberHasArcoreApiKey(): Boolean {
     }
 }
 
-/**
- * `true` once Geospatial has reported that ARCore rejected the Cloud API key.
- *
- * [Earth.EarthState.ERROR_NOT_AUTHORIZED] is how the rejection reaches a Geospatial
- * demo: there is no callback, the state just sits there while the demo keeps
- * "looking for geometry". Read it from `session.earth?.earthState` on every
- * frame and route it into the status banner.
- */
-val Earth.EarthState?.isArcoreApiKeyRejected: Boolean
-    get() = this == Earth.EarthState.ERROR_NOT_AUTHORIZED
+// The `Earth.EarthState -> banner` mapping used to live here as a single
+// `isArcoreApiKeyRejected` boolean. It is now `CloudServiceStatus` and
+// `Earth.EarthState?.toCloudServiceStatus` in common/CloudServiceStatus.kt: the
+// boolean only ever answered "rejected or not", so `ERROR_RESOURCE_EXHAUSTED`
+// and "no network" both had nowhere to go and every demo grew its own copy of
+// the rest (#3262).

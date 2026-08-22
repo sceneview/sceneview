@@ -6,13 +6,19 @@ import java.io.File
 
 /**
  * Every demo that depends on the ARCore Cloud API key must tell the user when
- * that key is missing or rejected (#3210).
+ * that key is missing or rejected — and, since #3262, do it through the one
+ * shared `CloudServiceStatus` banner in the main AR view rather than a
+ * per-demo copy that can silently drift or end up settings-only.
  *
  * Two of the five Cloud demos detected a missing key and then said nothing about
  * it, so a fork without the secret — or a Play build whose key restriction
- * names the wrong SHA-1 (#3185) — presented as a demo that simply did not work.
- * The fix put the wording in one place, `common/ArcoreCloudApiKey.kt`; this test
- * keeps a sixth Cloud demo from shipping without it.
+ * names the wrong SHA-1 (#3185) — presented as a demo that simply did not work
+ * (#3210). A later pass found the fix itself had drifted: two demos only
+ * showed it in the Settings sheet, and none of the five distinguished a
+ * rejected key from an exhausted quota or a plain network outage (#3262). The
+ * wording and the state now live in one place, `common/CloudServiceStatus.kt`;
+ * this test keeps a sixth Cloud demo — or a regression in one of the five —
+ * from shipping without it.
  *
  * The set of Cloud demos is discovered, not listed: any demo source that turns
  * on `GeospatialMode.ENABLED` or `CloudAnchorMode.ENABLED` is one. Pinning the
@@ -27,11 +33,12 @@ class ArcoreCloudDemoGuardTest {
     )
 
     private val requiredGuards = listOf(
-        // Detects the missing key and names it on screen.
+        // Detects the missing key up front.
         "rememberHasArcoreApiKey()",
-        "ARCORE_API_KEY_MISSING_MESSAGE",
-        // Names the rejected key, with the SHA-1 + billing hint, on screen.
-        "arcoreApiKeyRejectedMessage(",
+        // Computes the shared "why can't this demo work right now" state...
+        "CloudServiceStatus",
+        // ...and renders it as the one shared banner, in the main AR view.
+        "CloudServiceStatusBanner(",
     )
 
     @Test
@@ -50,8 +57,8 @@ class ArcoreCloudDemoGuardTest {
             if (missing.isEmpty()) null else "${file.name} lacks ${missing.joinToString()}"
         }
         assertTrue(
-            "Cloud demos must surface the ARCore Cloud API key state via " +
-                "common/ArcoreCloudApiKey.kt (#3210):\n" + offenders.joinToString("\n"),
+            "Cloud demos must surface the ARCore Cloud service state via the shared " +
+                "common/CloudServiceStatus.kt banner (#3262):\n" + offenders.joinToString("\n"),
             offenders.isEmpty(),
         )
     }

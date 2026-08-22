@@ -2,12 +2,7 @@ package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,7 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -39,9 +33,13 @@ import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.ARCORE_API_KEY_MISSING_MESSAGE
-import io.github.sceneview.demo.common.arcoreApiKeyRejectedMessage
+import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.CloudServiceStatusBanner
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.rememberIsNetworkAvailable
+import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.SceneAction
@@ -80,6 +78,10 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     // host()/resolve() will silently come back with ERROR_NOT_AUTHORIZED — we
     // surface that upfront in the status banner so the user knows why.
     val hasArcoreApiKey = rememberHasArcoreApiKey()
+    // Preemptive network check (#3262): a Cloud Anchor host/resolve with no
+    // network otherwise looks identical to one ARCore silently swallowed, so
+    // this is checked up front rather than inferred from a failed call.
+    val isNetworkAvailable = rememberIsNetworkAvailable()
 
     var localAnchor by remember { mutableStateOf<Anchor?>(null) }
     var cloudAnchorId by remember { mutableStateOf<String?>(null) }
@@ -90,21 +92,28 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     var cameraReady by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var hostedId by remember { mutableStateOf<String?>(null) }
-    var statusMessage by remember {
-        mutableStateOf(
-            if (hasArcoreApiKey) {
-                "Tap a surface to place an anchor"
-            } else {
-                ARCORE_API_KEY_MISSING_MESSAGE
-            }
-        )
-    }
+    var statusMessage by remember { mutableStateOf("Tap a surface to place an anchor") }
+    // Set from the host()/resolve() result callback below when ARCore reports one of
+    // the shared Cloud-service failure reasons (#3262). Cleared whenever a new
+    // attempt starts, so a stale rejection doesn't linger past a successful retry.
+    var operationCloudStatus by remember { mutableStateOf<CloudServiceStatus?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var arSession by remember { mutableStateOf<Session?>(null) }
     // Ref to the CloudAnchorNode created inside the ARSceneView content — needed so the
     // Host button can call node.host(session) to actually upload the anchor. Without this
     // the Host button just updated the status text and nothing hit the Cloud Anchor API.
     var cloudNode by remember { mutableStateOf<CloudAnchorNodeImpl?>(null) }
+
+    // The one status this screen answers before anything else: can Cloud Anchor calls
+    // even be attempted right now? A missing key or no network are known up front; an
+    // API-key rejection or exhausted quota only shows up once host()/resolve() has been
+    // tried and is remembered in `operationCloudStatus` (#3262). Host / Resolve are
+    // disabled for the whole session while this is anything but `Available`.
+    val cloudStatus: CloudServiceStatus = when {
+        !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
+        !isNetworkAvailable -> CloudServiceStatus.NoNetwork
+        else -> operationCloudStatus ?: CloudServiceStatus.Available
+    }
 
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
 
@@ -116,8 +125,11 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         val node = cloudNode
         val session = arSession
         when {
-            // Host is always tappable (#2486) so it never reads as "no button";
-            // tapping before an anchor exists explains the next step on-screen.
+            // Host is always tappable while the cloud service is available (#2486)
+            // so it never reads as "no button"; tapping before an anchor exists
+            // explains the next step on-screen. It IS disabled below while
+            // `cloudStatus` is unavailable — that failure needs a fix off-screen,
+            // not another tap (#3262).
             localAnchor == null -> {
                 statusMessage = "Tap a surface to place an anchor first, then Host"
             }
@@ -125,6 +137,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 context, "AR session not ready", Toast.LENGTH_SHORT
             ).show()
             else -> {
+                operationCloudStatus = null
                 statusMessage = "Hosting anchor…"
                 node.host(session)
             }
@@ -133,8 +146,8 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     }
     // Resolve a cloud anchor id (typed into the on-screen ID field) back into a
     // local anchor. Also primary — on-screen alongside Host (#1964). Resolve is
-    // always tappable (#2486); a blank id explains what to do rather than being a
-    // dead, greyed-out button the user reads as "no button".
+    // always tappable while the cloud service is available (#2486); a blank id
+    // explains what to do rather than being a dead, greyed-out button.
     val onResolve = onResolve@{
         val session = arSession
         if (resolveId.isBlank()) {
@@ -147,6 +160,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             ).show()
             return@onResolve
         }
+        operationCloudStatus = null
         statusMessage = "Resolving $resolveId…"
         CloudAnchorNodeImpl.resolve(engine, session, resolveId) { state, node ->
             if (state == Anchor.CloudAnchorState.SUCCESS && node != null) {
@@ -154,10 +168,11 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 cloudAnchorId = resolveId
                 statusMessage = "Resolved $resolveId"
             } else {
-                statusMessage = when (state) {
-                    Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
-                        arcoreApiKeyRejectedMessage("Resolve")
-                    else -> "Resolve failed: $state"
+                val mapped = state.toCloudServiceStatus("Resolve")
+                if (mapped != null) {
+                    operationCloudStatus = mapped
+                } else {
+                    statusMessage = "Resolve failed: $state"
                 }
             }
         }
@@ -168,15 +183,15 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         onBack = onBack,
         // Host / Resolve are the demo's primary actions and live on-screen via
         // SceneActionBar (#1964 / #1614); the one-line instruction and the Cloud
-        // Anchor ID input now live ON-SCREEN too (#2486) so the host\u2192resolve
+        // Anchor ID input now live ON-SCREEN too (#2486) so the host→resolve
         // flow is discoverable without ever opening this sheet. The sheet keeps
-        // only the hosted-ID readout (to copy + share) and the QA debug menu \u2014
+        // only the hosted-ID readout (to copy + share) and the QA debug menu —
         // both genuinely secondary.
         controls = {
             Text(
                 text = "Place an anchor and tap Host to share it; paste a shared id " +
                     "in the on-screen field and tap Resolve. The hosted id appears " +
-                    "below once Host succeeds \u2014 copy it to resolve on another device.",
+                    "below once Host succeeds — copy it to resolve on another device.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -194,86 +209,30 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
-        // Status line + on-screen Cloud Anchor ID input, hosted by the scaffold's
-        // top slot (#2486 / #3237).
-        //
-        // They live at the top of the screen, not the bottom: the long
-        // ERROR_NOT_AUTHORIZED message used to wrap into — and be clipped by —
-        // the bottom Host / Resolve action bar.
-        //
-        // ForcedTrackingFailure.override shadows the real ARCore-reported
-        // reason when a developer picks one in the debug menu (#1881); the
-        // forced reason wins so QA can validate the tracking-failure
-        // mappings even while hosting/resolving.
+        // Cloud Anchor ID input ON-SCREEN (#2486): previously the only ID field
+        // lived inside the Settings sheet, so a user never saw how to resolve.
+        // Hosted by the scaffold's top slot so the long Cloud-service banner in
+        // `bottomOverlay` never wraps into — and gets clipped by — the bottom
+        // Host / Resolve action bar (#2486 / #3237).
         topOverlay = {
-            val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            val forcedMessage = ForcedTrackingFailure.override?.let {
-                trackingFailureMessage(effectiveReason)
-            }
             val isAnchorReady = hostedId != null || cloudAnchorId != null
-            // One concise, contextual line that makes the host→resolve flow
-            // self-explanatory instead of a static "Tap a surface" (#2486),
-            // mirroring the readiness-banner pattern in ARRooftopAnchorDemo.
-            val statusText = when {
-                forcedMessage != null -> forcedMessage
-                !hasArcoreApiKey -> statusMessage
-                !isTracking -> "Initializing camera — move slowly to find a surface"
-                localAnchor == null -> "Point at a surface and tap to place an anchor"
-                hostedId == null && cloudAnchorId == null ->
-                    "Anchor placed — tap Host to share it to the cloud"
-                else -> statusMessage
-            }
-            // Error-tint when the API key is missing or a host/resolve call came
-            // back with a failure, so the actionable banner reads as a warning
-            // rather than a normal status (#2486).
-            val isError = !hasArcoreApiKey ||
-                statusMessage.contains("failed", ignoreCase = true)
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
+            if (!isAnchorReady) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .widthIn(max = 340.dp),
+                ) {
+                    OutlinedTextField(
+                        value = resolveId,
+                        onValueChange = { resolveId = it },
+                        label = { Text("Cloud Anchor ID to resolve") },
+                        singleLine = true,
                         modifier = Modifier
-                            .widthIn(max = 340.dp)
-                            .background(
-                                color = if (isError) {
-                                    MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
-                                } else {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                                },
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                            .fillMaxWidth()
+                            .padding(8.dp),
                     )
-                }
-
-                // Cloud Anchor ID input ON-SCREEN (#2486): previously the only
-                // ID field lived inside the Settings sheet, so a user never saw
-                // how to resolve. Surfaced here (hidden once an anchor is hosted
-                // or resolved) so the Resolve button has something to act on
-                // without ever opening Settings.
-                if (!isAnchorReady) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .padding(top = 8.dp)
-                            .widthIn(max = 340.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = resolveId,
-                            onValueChange = { resolveId = it },
-                            label = { Text("Cloud Anchor ID to resolve") },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                        )
-                    }
                 }
             }
         },
@@ -281,23 +240,54 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
         // user to tap Host / Resolve, so both are on-screen buttons, never
         // buried in the Settings sheet. Hosted by the scaffold's bottom slot so
         // the bar is laid out against the Settings FAB instead of blindly
-        // beside it (#2779). Both stay TAPPABLE (#2486): a disabled M3 Button
-        // over the camera feed reads as faint grey text ("there are no
-        // buttons"), so instead of disabling on the not-yet-actionable states
-        // the handlers explain the next step on-screen. Only the
-        // genuinely-unavailable cases stay disabled: no Cloud API key at all,
-        // or Host after a successful host.
+        // beside it (#2779).
         bottomOverlay = {
+            // The one shared "Cloud service unavailable" banner (#3262): missing
+            // key, rejected key, exhausted quota or no network. Renders nothing
+            // once `cloudStatus` is `Available`.
+            CloudServiceStatusBanner(cloudStatus)
+
+            // Contextual guidance / progress — only shown once Cloud calls can
+            // actually be attempted; the banner above already explains why they
+            // can't otherwise.
+            if (!cloudStatus.isUnavailable) {
+                val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
+                val forcedMessage = ForcedTrackingFailure.override?.let {
+                    trackingFailureMessage(effectiveReason)
+                }
+                val isAnchorReady = hostedId != null || cloudAnchorId != null
+                val (guidanceText, guidanceTone) = when {
+                    forcedMessage != null -> forcedMessage to DemoStatusTone.Guidance
+                    !isTracking ->
+                        "Initializing camera — move slowly to find a surface" to
+                            DemoStatusTone.Progress
+                    localAnchor == null ->
+                        "Point at a surface and tap to place an anchor" to
+                            DemoStatusTone.Guidance
+                    !isAnchorReady ->
+                        "Anchor placed — tap Host to share it to the cloud" to
+                            DemoStatusTone.Guidance
+                    statusMessage.contains("failed", ignoreCase = true) ->
+                        statusMessage to DemoStatusTone.Blocked
+                    else -> statusMessage to DemoStatusTone.Progress
+                }
+                DemoStatusBanner(text = guidanceText, tone = guidanceTone)
+            }
+
             SceneActionBar(
                 SceneAction(
                     label = "Host",
                     onClick = onHost,
-                    enabled = hasArcoreApiKey && hostedId == null,
+                    // Disabled while the cloud service itself is unavailable
+                    // (#3262) — no amount of tapping fixes a missing key, a
+                    // rejected key or no network. Otherwise always tappable so
+                    // it never reads as "no button" (#2486).
+                    enabled = !cloudStatus.isUnavailable && hostedId == null,
                 ),
                 SceneAction(
                     label = "Resolve",
                     onClick = onResolve,
-                    enabled = hasArcoreApiKey,
+                    enabled = !cloudStatus.isUnavailable,
                 ),
             )
         }
@@ -340,7 +330,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                         }
                         if (hit != null) {
                             localAnchor = hit.createAnchor()
-                            statusMessage = "Anchor placed \u2014 tap Host to share"
+                            statusMessage = "Anchor placed — tap Host to share"
                         }
                     }
                 )
@@ -355,15 +345,18 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                                 cloudAnchorId = id
                                 statusMessage = "Hosted! ID: $id"
                             } else {
-                                // Surface ERROR_NOT_AUTHORIZED with actionable guidance: the
-                                // most common cause on a fresh Play Store deploy is that the
-                                // App Signing key SHA-1 (post-Play-resign) isn't whitelisted on
-                                // the Google Cloud API key. See samples/android-demo/ARCORE_CLOUD_SETUP.md
-                                // for the runbook. Generic states still get the bare label.
-                                statusMessage = when (state) {
-                                    Anchor.CloudAnchorState.ERROR_NOT_AUTHORIZED ->
-                                        arcoreApiKeyRejectedMessage("Hosting")
-                                    else -> "Hosting failed: $state"
+                                // Surface the shared Cloud-service reasons (missing/rejected
+                                // key, exhausted quota) with actionable guidance — the most
+                                // common cause on a fresh Play Store deploy is that the App
+                                // Signing key SHA-1 (post-Play-resign) isn't whitelisted on
+                                // the Google Cloud API key. See
+                                // samples/android-demo/ARCORE_CLOUD_SETUP.md. Generic states
+                                // still get the bare label (#3262).
+                                val mapped = state.toCloudServiceStatus("Hosting")
+                                if (mapped != null) {
+                                    operationCloudStatus = mapped
+                                } else {
+                                    statusMessage = "Hosting failed: $state"
                                 }
                             }
                         },
