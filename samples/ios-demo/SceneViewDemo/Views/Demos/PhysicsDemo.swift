@@ -72,7 +72,12 @@ struct PhysicsDemo: View {
             }
             .cameraControls(.orbit)
             .environment(.studio) // parity with android-demo IBL fix (#2114)
-            .id(sceneKey)
+            // Reset / Drop rebuild the floor and bodies under the same
+            // `RealityView` — removing the content root restarts the physics
+            // simulation without discarding the renderer, which a `.id(_:)`
+            // re-key did and which intermittently left the viewport black on
+            // iOS 26 Simulator (#3008).
+            .contentID(sceneKey)
             .ignoresSafeArea()
 
             VStack {

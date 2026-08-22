@@ -63,8 +63,16 @@ struct MaterialsDemo: View {
 
     @ViewBuilder
     private var sceneView: some View {
-        if let loadedNode {
+        ZStack {
+            // The scene stays mounted for the whole demo — never wrapped in
+            // `if let loadedNode` and never re-keyed with `.id(_:)`. Both
+            // discard the `RealityView`, and a re-created one intermittently
+            // renders nothing at all on iOS 26 Simulator (#3008).
+            // `.contentID(_:)` swaps the model inside the scene that is
+            // already rendering; the key is `nil` while loading so it also
+            // changes when the load lands (same shape as AnimationDemo).
             SceneView { root in
+                guard let loadedNode else { return }
                 loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
                 root.addChild(loadedNode.entity)
             }
@@ -78,25 +86,34 @@ struct MaterialsDemo: View {
             // curated models render as flat silhouettes — the demo hides its own
             // subject. Same `.studio` preset ModelViewerDemo uses (#2114).
             .environment(.studio)
+            .contentID(loadedContentKey)
             .ignoresSafeArea()
-            .id("materials-\(selectedSlug?.uid ?? "none")")
-        } else {
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(.white)
-                if let loadError {
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                } else {
-                    Text("Streaming material…")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
+
+            if loadedNode == nil {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                    if let loadError {
+                        Text(loadError)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    } else {
+                        Text("Streaming material…")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
             }
         }
+    }
+
+    /// What the content closure currently builds: `nil` while the selected
+    /// material is streaming, its slug once the model is in hand.
+    private var loadedContentKey: String? {
+        guard loadedNode != nil else { return nil }
+        return selectedSlug?.uid ?? "none"
     }
 
     private var controls: some View {

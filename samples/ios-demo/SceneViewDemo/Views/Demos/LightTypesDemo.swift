@@ -56,7 +56,10 @@ struct LightingDemo: View {
                 }
             }
             .cameraControls(.orbit)
-            .id("light-\(selectedLight)")
+            // Swap the light inside the scene that is already rendering. A
+            // SceneView re-created with `.id(_:)` intermittently comes back
+            // rendering nothing on iOS 26 Simulator, permanently (#3008).
+            .contentID(selectedLight)
             .ignoresSafeArea()
 
             VStack {
