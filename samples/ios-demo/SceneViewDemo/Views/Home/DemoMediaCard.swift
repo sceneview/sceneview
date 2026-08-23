@@ -22,6 +22,7 @@ struct DemoMediaCard: View {
             icon: demo.icon,
             accent: demo.category.accent,
             status: demo.status,
+            badgeIcon: nil,
             onTap: onTap
         )
         .accessibilityLabel(accessibilityLabel)
@@ -37,8 +38,9 @@ struct DemoMediaCard: View {
     }
 }
 
-/// The closing grid item — same anatomy as a demo card, static icon media —
-/// that opens the online model gallery (`ExploreTab`).
+/// The closing grid item — same anatomy as a demo card, with the Model Viewer
+/// hero artwork under a scrim and a globe badge — that opens the online model
+/// gallery (`ExploreTab`).
 struct BrowseOnlineModelsCard: View {
     let onTap: () -> Void
 
@@ -46,10 +48,11 @@ struct BrowseOnlineModelsCard: View {
         MediaCard(
             title: "Browse online models",
             subtitle: "Sketchfab, Icosa, Poly Haven",
-            previewName: nil,
+            previewName: "preview_hero_model_viewer",
             icon: "globe",
             accent: SceneViewTheme.primary,
             status: .working,
+            badgeIcon: "globe",
             onTap: onTap
         )
         .accessibilityLabel("Browse online models")
@@ -63,6 +66,9 @@ private struct MediaCard: View {
     let icon: String
     let accent: Color
     let status: DemoStatus
+    /// When set, the media gets the hero scrim and this SF Symbol as a glass
+    /// badge in the bottom-leading corner (the "Browse online models" card).
+    let badgeIcon: String?
     let onTap: () -> Void
 
     var body: some View {
@@ -70,6 +76,25 @@ private struct MediaCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     media
+                    if let badgeIcon {
+                        LinearGradient(
+                            stops: [
+                                .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                                      location: SceneViewTokens.Home.heroScrimStart),
+                                .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimEnd, location: 1),
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        Color.clear.overlay(alignment: .bottomLeading) {
+                            Image(systemName: badgeIcon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
+                                .frame(width: SceneViewTokens.Home.heroPillHeight - 8,
+                                       height: SceneViewTokens.Home.heroPillHeight - 8)
+                                .background(SceneViewTokens.HomeColor.heroPillBackground, in: Circle())
+                                .padding(SceneViewTokens.Space.sm)
+                        }
+                    }
                     if let label = status.badgeLabel {
                         StatusChip(label: label)
                             .padding(SceneViewTokens.Space.sm)

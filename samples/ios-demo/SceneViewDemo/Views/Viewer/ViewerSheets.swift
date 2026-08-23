@@ -160,10 +160,10 @@ struct EnvironmentSheet: View {
                     .padding(.horizontal, SceneViewTokens.Space.md)
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: SceneViewTokens.Space.sm) {
+                    HStack(alignment: .top, spacing: SceneViewTokens.Space.sm) {
                         ForEach(environments) { env in
                             Button { onSelect(env) } label: {
-                                VStack(spacing: SceneViewTokens.Space.xs) {
+                                VStack(alignment: .center, spacing: SceneViewTokens.Space.xs) {
                                     ZStack {
                                         SceneViewTokens.HomeColor.chipBackground
                                         if let thumb = env.thumbnailName {
@@ -180,11 +180,16 @@ struct EnvironmentSheet: View {
                                             .strokeBorder(SceneViewTheme.primary,
                                                           lineWidth: env == selected ? SceneViewTokens.Layout.selectedOutlineWidth : 0)
                                     )
+                                    // Two lines + a small scale floor so every bundled
+                                    // name ("Outdoor Cloudy", "Rooftop Night") reads fully.
                                     Text(env.displayName)
                                         .font(SceneViewTokens.TypeScale.captionRegular)
                                         .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .frame(width: SceneViewTokens.Layout.viewerEnvironmentTile + 8)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.85)
+                                        .frame(width: SceneViewTokens.Layout.viewerEnvironmentTile + 16)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                             .buttonStyle(PressScaleButtonStyle())

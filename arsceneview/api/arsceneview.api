@@ -1,3 +1,22 @@
+public final class io/github/sceneview/ar/ARCameraPermissionOverlayKt {
+	public static final fun ARCameraPermissionOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ARCameraPermissionState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionOverlayTags {
+	public static final field $stable I
+	public static final field ACTION Ljava/lang/String;
+	public static final field CARD Ljava/lang/String;
+	public static final field INSTANCE Lio/github/sceneview/ar/ARCameraPermissionOverlayTags;
+}
+
+public final class io/github/sceneview/ar/ARCameraPermissionState {
+	public static final field $stable I
+	public fun <init> (ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
+	public final fun getOpenSettings ()Lkotlin/jvm/functions/Function0;
+	public final fun getPermanentlyDenied ()Z
+	public final fun getRequest ()Lkotlin/jvm/functions/Function0;
+}
+
 public abstract class io/github/sceneview/ar/ARConfigDowngrade {
 	public static final field $stable I
 }
@@ -43,18 +62,25 @@ public final class io/github/sceneview/ar/ARCore {
 	public final fun getCheckCameraPermission ()Z
 	public final fun getFeatures ()Ljava/util/Set;
 	public final fun getOnArSessionFailed ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnCameraPermissionDenied ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSessionConfigChanged ()Lkotlin/jvm/functions/Function2;
 	public final fun getOnSessionCreated ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSessionPaused ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSessionResumed ()Lkotlin/jvm/functions/Function1;
 	public final fun getPermissionHandler ()Lio/github/sceneview/ar/ARPermissionHandler;
+	public final fun isCameraPermissionDenied ()Z
 	public final fun onException (Ljava/lang/Exception;)V
+	public final fun openAppSettings (Lio/github/sceneview/ar/ARPermissionHandler;)V
+	public static synthetic fun openAppSettings$default (Lio/github/sceneview/ar/ARCore;Lio/github/sceneview/ar/ARPermissionHandler;ILjava/lang/Object;)V
 	public final fun pause ()V
 	public final fun resume (Landroid/content/Context;)V
 	public final fun resume (Landroid/content/Context;Lio/github/sceneview/ar/ARPermissionHandler;)V
+	public final fun retryCameraPermission (Lio/github/sceneview/ar/ARPermissionHandler;)V
+	public static synthetic fun retryCameraPermission$default (Lio/github/sceneview/ar/ARCore;Lio/github/sceneview/ar/ARPermissionHandler;ILjava/lang/Object;)V
 	public final fun setCheckAvailability (Z)V
 	public final fun setCheckCameraPermission (Z)V
 	public final fun setFeatures (Ljava/util/Set;)V
+	public final fun setOnCameraPermissionDenied (Lkotlin/jvm/functions/Function1;)V
 	public final fun setPermissionHandler (Lio/github/sceneview/ar/ARPermissionHandler;)V
 }
 
@@ -93,7 +119,7 @@ public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
 
 public final class io/github/sceneview/ar/ARSceneKt {
 	public static final fun ARScene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
-	public static final fun ARSceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Landroid/net/Uri;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lcom/google/ar/core/Config$PlaneFindingMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$InstantPlacementMode;Lcom/google/ar/core/Config$GeospatialMode;Lcom/google/ar/core/Config$StreetscapeGeometryMode;Lcom/google/ar/core/Config$CloudAnchorMode;Lcom/google/ar/core/Config$AugmentedFaceMode;Lcom/google/ar/core/Config$ImageStabilizationMode;Lcom/google/ar/core/Config$SemanticMode;Lcom/google/ar/core/Config$UpdateMode;Lcom/google/ar/core/Config$FocusMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/scene/SceneUnderstanding;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIIIII)V
+	public static final fun ARSceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Landroid/net/Uri;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lcom/google/ar/core/Config$PlaneFindingMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$InstantPlacementMode;Lcom/google/ar/core/Config$GeospatialMode;Lcom/google/ar/core/Config$StreetscapeGeometryMode;Lcom/google/ar/core/Config$CloudAnchorMode;Lcom/google/ar/core/Config$AugmentedFaceMode;Lcom/google/ar/core/Config$ImageStabilizationMode;Lcom/google/ar/core/Config$SemanticMode;Lcom/google/ar/core/Config$UpdateMode;Lcom/google/ar/core/Config$FocusMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/scene/SceneUnderstanding;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIIIII)V
 	public static final fun frontCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
 	public static final fun highestResolutionCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
 	public static final fun rememberARCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/node/ARCameraNode;
@@ -560,6 +586,12 @@ public final class io/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt;
 	public fun <init> ()V
 	public final fun getLambda$-829785509$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+}
+
+public final class io/github/sceneview/ar/ComposableSingletons$ARSceneViewKt {
+	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneViewKt;
+	public fun <init> ()V
+	public final fun getLambda$2139196129$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function4;
 }
 
 public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt {

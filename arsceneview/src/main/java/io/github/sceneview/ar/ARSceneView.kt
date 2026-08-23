@@ -27,6 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -761,6 +766,17 @@ fun ARSceneView(
     },
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     /**
+     * What to draw over the scene while the camera permission is denied (#3308). Receives an
+     * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
+     * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
+     * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
+     * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
+     * handle the state yourself through [permissionHandler].
+     */
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
+        ARCameraPermissionOverlay(it)
+    },
+    /**
      * DSL block for declaring AR nodes via [ARSceneScope].
      */
     content: (@Composable ARSceneScope.() -> Unit)? = null
@@ -930,6 +946,9 @@ fun ARSceneView(
             "allowed — expected one of $PLAYBACK_DATASET_URI_ALLOWED_SCHEMES."
     }
 
+    // Camera permission denial (#3308): `null` while granted or not yet answered, otherwise
+    // whether the system has stopped asking. Cleared when a session finally comes up.
+    var cameraPermissionDenial by remember { mutableStateOf<Boolean?>(null) }
     val arCore = remember {
         // Snapshotted at first composition. ARCore requires setPlaybackDataset() to be called
         // BEFORE the first resume(), so we capture the param value once when the session is
@@ -940,6 +959,7 @@ fun ARSceneView(
         val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
+                cameraPermissionDenial = null
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately
@@ -1092,6 +1112,8 @@ fun ARSceneView(
             }
         )
     }
+
+    arCore.onCameraPermissionDenied = { permanently -> cameraPermissionDenial = permanently }
 
     DisposableEffect(lifecycle) {
         arCore.create(context, permissionHandler, sessionFeatures)
@@ -1507,26 +1529,42 @@ fun ARSceneView(
 
     // ── Surface view ──────────────────────────────────────────────────────────────────────────────
 
-    when (surfaceType) {
-        SurfaceType.Surface -> AndroidView(
-            modifier = modifier,
-            factory = { ctx ->
-                SurfaceView(ctx).also { sv ->
-                    sceneRenderer.attachToSurfaceView(sv, isOpaque, ctx, display, touchDispatcher)
-                }
-            },
-            update = {}
-        )
+    // The caller's `modifier` sizes this Box; the surface fills it exactly as it used to fill
+    // the bare AndroidView, and the permission overlay (#3308) can sit on top of it.
+    Box(modifier = modifier) {
+        when (surfaceType) {
+            SurfaceType.Surface -> AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    SurfaceView(ctx).also { sv ->
+                        sceneRenderer.attachToSurfaceView(sv, isOpaque, ctx, display, touchDispatcher)
+                    }
+                },
+                update = {}
+            )
 
-        SurfaceType.TextureSurface -> AndroidView(
-            modifier = modifier,
-            factory = { ctx ->
-                TextureView(ctx).also { tv ->
-                    sceneRenderer.attachToTextureView(tv, isOpaque, ctx, display, touchDispatcher)
-                }
-            },
-            update = {}
-        )
+            SurfaceType.TextureSurface -> AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    TextureView(ctx).also { tv ->
+                        sceneRenderer.attachToTextureView(tv, isOpaque, ctx, display, touchDispatcher)
+                    }
+                },
+                update = {}
+            )
+        }
+
+        val denial = cameraPermissionDenial
+        if (denial != null && cameraPermissionOverlay != null) {
+            val state = remember(denial, permissionHandler) {
+                ARCameraPermissionState(
+                    permanentlyDenied = denial,
+                    request = { arCore.retryCameraPermission(permissionHandler) },
+                    openSettings = { arCore.openAppSettings(permissionHandler) },
+                )
+            }
+            cameraPermissionOverlay(state)
+        }
     }
 
     // ── DSL content ───────────────────────────────────────────────────────────────────────────────

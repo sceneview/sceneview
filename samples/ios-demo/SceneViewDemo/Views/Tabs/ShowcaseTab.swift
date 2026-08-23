@@ -55,13 +55,17 @@ struct ShowcaseTab: View {
                     // the hero from starting underneath it.
                     Color.clear.frame(height: SceneViewTokens.Home.headerHeight + SceneViewTokens.Home.heroTopGap)
 
-                    HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                              : SceneViewTokens.Home.heroHeight) {
-                        open(sceneId: Self.heroDemoId)
+                    // While a query is active the hero steps aside so the results
+                    // sit right under the header (Android parity).
+                    if !searching {
+                        HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
+                                                  : SceneViewTokens.Home.heroHeight) {
+                            open(sceneId: Self.heroDemoId)
+                        }
                     }
 
                     CategoryChipRow(selected: $selectedCategory)
-                        .padding(.top, SceneViewTokens.Home.chipRowTopGap)
+                        .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
                         .padding(.bottom, SceneViewTokens.Home.gridTopGap)
 
                     if visible.isEmpty && searching {
@@ -78,6 +82,7 @@ struct ShowcaseTab: View {
                     }
                     .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
                 }
+                .animation(SceneViewTokens.Spring.fade, value: searching)
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                 .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
@@ -256,7 +261,11 @@ private struct SearchRow: View {
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("home-search-field")
-            Button(action: onClose) {
+            Button {
+                // One tap: drop focus (keyboard), clear the query, collapse the field.
+                focused = false
+                onClose()
+            } label: {
                 Image(systemName: "xmark")
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .frame(width: SceneViewTokens.Layout.touchTarget - 8, height: SceneViewTokens.Layout.touchTarget - 8)
@@ -285,6 +294,9 @@ private struct CategoryChipRow: View {
     @Binding var selected: DemoCategory?
 
     var body: some View {
+        // Bleeds to the screen edges (cancelling the page inset) and carries the
+        // side inset as leading *and* trailing content padding, so the last chip
+        // stops at the same margin as the cards.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: SceneViewTokens.Home.chipGap) {
                 ForEach(chipCategories, id: \.self) { category in
@@ -296,8 +308,9 @@ private struct CategoryChipRow: View {
                     }
                 }
             }
+            .padding(.horizontal, SceneViewTokens.Home.contentPadding)
         }
-        .scrollClipDisabled()
+        .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
     }
 }
 

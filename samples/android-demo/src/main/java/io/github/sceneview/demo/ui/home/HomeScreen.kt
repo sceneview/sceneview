@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -76,6 +77,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
@@ -94,6 +97,7 @@ object HomeTestTags {
     const val GRID = "home-grid"
     const val SEARCH_FIELD = "home-search-field"
     const val HERO = "home-hero"
+    const val SEARCH_CLOSE = "home-search-close"
 }
 
 /**
@@ -201,7 +205,9 @@ fun HomeScreen(
             item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
                 Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.gridGutter))
             }
-            item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
+            // While a query is typed the hero gives way so the results start under
+            // the header and stay visible above the keyboard (#3308).
+            if (!searching) item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
                 HomeHero(
                     height = if (expanded) home.heroHeightExpanded else home.heroHeight,
                     onClick = { onDemoClick(HERO_DEMO_ID) },
@@ -279,6 +285,7 @@ private fun HomeHeader(
 ) {
     val home = SceneViewTokens.Home
     var searchOpen by rememberSaveable { mutableStateOf(query.isNotEmpty()) }
+    val keyboard = LocalSoftwareKeyboardController.current
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
             MaterialTheme.colorScheme.surface.copy(alpha = SceneViewTokens.HomeColor.headerOverlayAlpha)
@@ -301,7 +308,11 @@ private fun HomeHeader(
                 SearchRow(
                     query = query,
                     onQueryChange = onQueryChange,
+                    // One tap closes search: query cleared, field collapsed, keyboard
+                    // hidden (#3308). Clearing the text alone is the field's own
+                    // trailing icon.
                     onClose = {
+                        keyboard?.hide()
                         onQueryChange("")
                         searchOpen = false
                     },
@@ -386,18 +397,18 @@ private fun SearchRow(
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { focus.requestFocus() }
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(home.headerHeight)
-            .padding(horizontal = home.contentPadding),
-        contentAlignment = Alignment.Center,
+            .padding(start = home.contentPadding, end = home.contentPadding - 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .height(home.searchFieldHeight)
                 .focusRequester(focus)
                 .testTag(HomeTestTags.SEARCH_FIELD),
@@ -408,12 +419,15 @@ private fun SearchRow(
                 )
             },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                IconButton(onClick = onClose) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.home_search_close),
-                    )
+            trailingIcon = if (query.isEmpty()) null else {
+                {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            Icons.Filled.Cancel,
+                            contentDescription = stringResource(R.string.home_clear),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             },
             singleLine = true,
@@ -426,6 +440,13 @@ private fun SearchRow(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
         )
+        IconButton(onClick = onClose, modifier = Modifier.testTag(HomeTestTags.SEARCH_CLOSE)) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = stringResource(R.string.home_search_close),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -447,8 +468,12 @@ private fun CategoryChipRow(
     modifier: Modifier = Modifier,
 ) {
     val home = SceneViewTokens.Home
+    // The row bleeds out of the grid's side inset and carries it as content
+    // padding instead, so chips scroll to the screen edge and the last one keeps
+    // the same gap on the right as the first one on the left (#3308).
     LazyRow(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.bleedHorizontal(home.contentPadding),
+        contentPadding = PaddingValues(horizontal = home.contentPadding),
         horizontalArrangement = Arrangement.spacedBy(home.chipGap),
     ) {
         rowItems(CHIP_CATEGORIES, key = { it.first ?: "all" }) { (category, labelRes) ->
@@ -459,6 +484,17 @@ private fun CategoryChipRow(
             )
         }
     }
+}
+
+/**
+ * Widens the node by [inset] on each side and shifts it so it lines up with
+ * the parent's outer edge — an edge-to-edge row inside a padded column.
+ */
+private fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable, constraints ->
+    val px = inset.roundToPx()
+    val width = constraints.maxWidth + 2 * px
+    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-px, 0) }
 }
 
 @Composable
