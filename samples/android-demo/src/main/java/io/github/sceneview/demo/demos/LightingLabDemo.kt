@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.View.AntiAliasing
 import com.google.android.filament.View.Dithering
@@ -118,7 +119,20 @@ private fun ModeSelector(
                 selected = m == current,
                 onClick = { onModeChange(m) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(m.label) },
+                // No selection icon: four segments ("Environment" / "Reflections" are the
+                // longest labels) already have to share a phone-width row, and the
+                // checkmark's reserved space was enough to wrap "Environment" onto two
+                // lines — selection is already shown by the segment's own color change
+                // (#3322). `maxLines`/`overflow` are the last-resort fallback for a
+                // narrower row than any label seen in QA, not the primary fix.
+                icon = {},
+                label = {
+                    Text(
+                        m.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
             )
         }
     }
