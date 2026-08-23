@@ -71,6 +71,14 @@ enum DemoStatus: Equatable {
 /// Represents a single scene entry in the Scenes tab.
 struct DemoItem: Identifiable {
     let id = UUID()
+    /// Stable deep-link slug (`// @sceneId`), also the key of the home-card
+    /// preview image (`preview_<sceneId with underscores>` in the asset catalog).
+    let sceneId: String
+    /// Editorial position on the Showcase home grid — mirrors Android's
+    /// `DemoEntry.order`. `999` when a Scene file declares no `// @order`.
+    let order: Int
+    /// Search keywords (`// @tags`) — mirrors Android's `DemoEntry.tags`.
+    let tags: [String]
     let title: String
     let icon: String
     let subtitle: String
@@ -96,11 +104,14 @@ struct DemoItem: Identifiable {
     /// definition and must go through the `comingSoonTitle:` initializer
     /// below instead.
     init<V: View>(
+        sceneId: String,
         title: String,
         icon: String,
         subtitle: String,
         category: DemoCategory,
         status: DemoStatus = .working,
+        order: Int = 999,
+        tags: [String] = [],
         @ViewBuilder destination: () -> V
     ) {
         precondition(
@@ -108,6 +119,9 @@ struct DemoItem: Identifiable {
             "DemoItem(title:...) requires an available status (.working/.knownIssue/.inReview) " +
             "— use the comingSoonTitle: initializer for .comingSoon"
         )
+        self.sceneId = sceneId
+        self.order = order
+        self.tags = tags
         self.title = title
         self.icon = icon
         self.subtitle = subtitle
@@ -127,12 +141,18 @@ struct DemoItem: Identifiable {
     ///   (no ARKit/RealityKit equivalent) — see the field doc above. `nil` (default) for the
     ///   ordinary "not ported yet" case.
     init(
+        sceneId: String,
         comingSoonTitle title: String,
         icon: String,
         subtitle: String,
+        order: Int = 999,
+        tags: [String] = [],
         category: DemoCategory,
         androidOnlyReason: String? = nil
     ) {
+        self.sceneId = sceneId
+        self.order = order
+        self.tags = tags
         self.title = title
         self.icon = icon
         self.subtitle = subtitle

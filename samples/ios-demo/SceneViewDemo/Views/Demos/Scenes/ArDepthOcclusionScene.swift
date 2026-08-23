@@ -5,6 +5,8 @@
 // @available   true
 // @icon        square.3.layers.3d.down.right
 // @iosOnly     true
+// @order       22
+// @tags        ar,depth,occlusion,arcore
 import SwiftUI
 
 enum ArDepthOcclusionScene: DemoScene {

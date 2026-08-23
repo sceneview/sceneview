@@ -4,6 +4,7 @@
 // @category    content
 // @available   true
 // @icon        circle.dotted.and.circle
+// @order       66
 import SwiftUI
 
 enum TextureStreamingScene: DemoScene {

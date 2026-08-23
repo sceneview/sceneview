@@ -4,6 +4,8 @@
 // @category    lighting
 // @available   true
 // @icon        sun.horizon.fill
+// @order       7
+// @tags        light,hdr,ibl,skybox,environment,reflection,bloom,post-fx
 import SwiftUI
 
 enum DynamicSkyScene: DemoScene {

@@ -48,7 +48,7 @@ struct ShapeExtrudeDemo: View {
                     .padding(.bottom, 12)
             }
         }
-        .demoSettingsSheet {
+        .demoChrome {
             settingsContent
         }
         .onChange(of: selectedPreset) { _, _ in sceneKey = UUID() }

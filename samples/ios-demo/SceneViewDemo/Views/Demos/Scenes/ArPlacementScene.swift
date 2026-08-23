@@ -5,6 +5,8 @@
 // @available   true
 // @icon        arkit
 // @iosOnly     true
+// @order       6
+// @tags        ar,plane,tap-to-place,anchor,gltf,model
 import SwiftUI
 
 enum ArPlacementScene: DemoScene {

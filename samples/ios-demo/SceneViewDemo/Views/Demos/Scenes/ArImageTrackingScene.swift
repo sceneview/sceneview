@@ -5,6 +5,8 @@
 // @available   true
 // @icon        viewfinder.circle.fill
 // @iosOnly     true
+// @order       24
+// @tags        ar,image,tracking,augmented-image,marker
 import SwiftUI
 
 enum ArImageTrackingScene: DemoScene {

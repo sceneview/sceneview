@@ -4,6 +4,7 @@
 // @category    advanced
 // @available   true
 // @icon        circle.lefthalf.filled
+// @order       69
 import SwiftUI
 
 enum OcclusionMaterialScene: DemoScene {

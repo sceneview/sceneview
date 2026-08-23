@@ -4,6 +4,7 @@
 // @category    lighting
 // @available   true
 // @icon        sun.haze.fill
+// @order       62
 import SwiftUI
 
 enum EnvironmentScene: DemoScene {

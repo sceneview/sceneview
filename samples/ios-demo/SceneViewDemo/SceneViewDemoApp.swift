@@ -108,13 +108,16 @@ struct ContentView: View {
     @State private var didConsumeLaunchArg = false
 
     var body: some View {
+        // Showcase · AR View · About — the same three destinations as the
+        // Android bottom bar. The online gallery (`ExploreTab`) lives behind
+        // the Showcase grid's "Browse online models" card.
         TabView(selection: $selectedTab) {
-            ExploreTab()
+            ShowcaseTab()
                 .tabItem {
-                    Label("Explore", systemImage: "cube.fill")
+                    Label("Showcase", systemImage: "square.grid.2x2.fill")
                 }
                 .tag(0)
-                .accessibilityLabel("3D Model Gallery")
+                .accessibilityLabel("Showcase")
 
             #if os(iOS)
             ARTab()
@@ -125,18 +128,11 @@ struct ContentView: View {
                 .accessibilityLabel("Augmented Reality Viewer")
             #endif
 
-            SamplesTab()
-                .tabItem {
-                    Label("Samples", systemImage: "square.grid.2x2.fill")
-                }
-                .tag(2)
-                .accessibilityLabel("Sample Presets")
-
             AboutTab()
                 .tabItem {
                     Label("About", systemImage: "info.circle.fill")
                 }
-                .tag(3)
+                .tag(2)
                 .accessibilityLabel("About This App")
         }
         .tint(SceneViewTheme.primary)
@@ -146,7 +142,7 @@ struct ContentView: View {
             // scene — no SpringBoard confirmation dialog.
             guard !didConsumeLaunchArg, let id = launchArgDemo else { return }
             didConsumeLaunchArg = true
-            selectedTab = 2
+            selectedTab = 0
             presentedDemo = DemoLink(id: id)
         }
         .onChange(of: pendingDeepLinkDemo) { _, newId in
@@ -154,7 +150,7 @@ struct ContentView: View {
             // Switch to the Samples tab so the deep-link surface feels
             // contextual; then present the demo above it as a modal so we
             // don't have to thread navigation through SamplesTab.
-            selectedTab = 2
+            selectedTab = 0
             presentedDemo = DemoLink(id: id)
             pendingDeepLinkDemo = nil
         }

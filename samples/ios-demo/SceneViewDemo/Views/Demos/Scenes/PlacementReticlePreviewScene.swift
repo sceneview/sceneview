@@ -6,6 +6,8 @@
 // @icon        scope
 // @iosOnly     true
 // @status      working
+// @order       20
+// @tags        ar,reticle,placement,shadow,preview,no-camera
 import SwiftUI
 import RealityKit
 import SceneViewSwift
@@ -88,7 +90,7 @@ struct PlacementReticlePreviewDemo: View {
             VStack {
                 Spacer()
                 coachingPill
-                    // Cleared well above `.demoSettingsSheet`'s bottom-trailing
+                    // Cleared well above `.demoChrome`'s bottom-trailing
                     // gear FAB + "Settings" peek chip (~16-70pt band) so the
                     // longest coaching string ("Surface found — tap to
                     // place") never runs under them — verified on-device,
@@ -96,7 +98,7 @@ struct PlacementReticlePreviewDemo: View {
                     .padding(.bottom, 90)
             }
         }
-        .demoSettingsSheet {
+        .demoChrome {
             settingsContent
         }
         .onChange(of: placed) { _, _ in sceneKey = UUID() }

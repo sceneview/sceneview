@@ -52,7 +52,7 @@ struct SpatialAudioDemo: View {
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
             .task {

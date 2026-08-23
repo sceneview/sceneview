@@ -5,6 +5,8 @@
 // @available   true
 // @icon        person.fill.viewfinder
 // @iosOnly     true
+// @order       33
+// @tags        ar,occlusion,people,segmentation,depth
 import SwiftUI
 
 enum ArPeopleOcclusionScene: DemoScene {

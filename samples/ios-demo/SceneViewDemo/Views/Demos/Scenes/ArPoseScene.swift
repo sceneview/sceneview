@@ -6,6 +6,8 @@
 // @status      working
 // @icon        move.3d
 // @iosOnly     true
+// @order       36
+// @tags        ar,pose,transform,gesture,anchor
 import SwiftUI
 
 /// Free pose placement — mirrors Android's `ARPoseDemo`
@@ -128,7 +130,7 @@ private struct ARPoseDemo: View {
             }
         }
         .background(Color.black)
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         .task { await loadLantern() }
     }
 

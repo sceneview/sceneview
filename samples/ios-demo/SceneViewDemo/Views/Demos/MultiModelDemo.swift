@@ -134,7 +134,7 @@ struct MultiModelDemo: View {
     var body: some View {
         sceneContent
             .assetSourcePill(assetSource)
-            .demoSettingsSheet { controlsSheet }
+            .demoChrome { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
             }
