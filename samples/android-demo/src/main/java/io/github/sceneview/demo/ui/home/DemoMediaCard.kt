@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
@@ -31,11 +33,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -84,8 +88,11 @@ fun DemoMediaCard(
 }
 
 /**
- * The closing grid item — same anatomy as a demo card, static icon media —
- * that opens the online model gallery (`ExploreTabScreen`).
+ * The closing grid item — same anatomy as a demo card — that opens the online
+ * model gallery (`ExploreTabScreen`). Its media is a 2 × 2 collage of the
+ * bundled model thumbnails under the hero's scrim, with a globe badge in the
+ * corner: it reads as "more models" next to the captured previews instead of a
+ * flat icon tile (#3308).
  */
 @Composable
 fun BrowseOnlineModelsCard(
@@ -101,7 +108,62 @@ fun BrowseOnlineModelsCard(
         status = DemoStatus.Working,
         onClick = onClick,
         modifier = modifier,
+        media = { BrowseOnlineCollage() },
     )
+}
+
+/** Four bundled model thumbnails, scrimmed like the hero, with a globe badge. */
+@Composable
+private fun BrowseOnlineCollage() {
+    val thumbs = listOf(
+        R.drawable.model_thumb_khronos_damaged_helmet,
+        R.drawable.model_thumb_khronos_toy_car,
+        R.drawable.model_thumb_shiba,
+        R.drawable.model_thumb_khronos_lantern,
+    )
+    Box(modifier = Modifier.fillMaxSize().background(SceneViewTokens.HomeColor.heroField)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            thumbs.chunked(2).forEach { row ->
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    row.forEach { res ->
+                        Image(
+                            painter = painterResource(res),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxSize(),
+                        )
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        SceneViewTokens.Home.heroScrimStart to SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                        1f to SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                    ),
+                ),
+        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
+                .size(SceneViewTokens.Home.browseBadgeSize),
+            shape = CircleShape,
+            color = SceneViewTokens.HomeColor.heroPillBackground,
+            contentColor = SceneViewTokens.HomeColor.heroPillText,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.Language,
+                    contentDescription = null,
+                    modifier = Modifier.size(SceneViewTokens.Home.browseBadgeGlyph),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -114,6 +176,8 @@ private fun MediaCard(
     status: DemoStatus,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Custom media; wins over [preview] and [icon]. */
+    media: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -148,7 +212,9 @@ private fun MediaCard(
                     .fillMaxWidth()
                     .aspectRatio(SceneViewTokens.Layout.mediaAspect),
             ) {
-                if (preview != null) {
+                if (media != null) {
+                    media()
+                } else if (preview != null) {
                     Image(
                         painter = preview,
                         contentDescription = null,

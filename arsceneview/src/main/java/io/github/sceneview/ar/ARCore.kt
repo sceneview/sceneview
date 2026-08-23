@@ -50,8 +50,27 @@ class ARCore(
     /** The permission handler used for camera and ARCore availability checks. */
     var permissionHandler: ARPermissionHandler? = null
 
+    /**
+     * Called on the main thread when the user denies the camera permission (#3308).
+     *
+     * `permanentlyDenied` is `true` when the system will no longer show the permission dialog
+     * ("Don't ask again" / second denial on Android 11+); the only way forward is then
+     * [openAppSettings]. Otherwise [retryCameraPermission] shows the dialog again.
+     *
+     * Nothing is opened automatically any more: before #3308 a denial jumped straight to the
+     * system App Info screen with a toast, backgrounding the activity with no explanation.
+     * [ARSceneView] wires this to its built-in `cameraPermissionOverlay`.
+     */
+    var onCameraPermissionDenied: ((permanentlyDenied: Boolean) -> Unit)? = null
+
+    /**
+     * `true` after the user denied the camera permission and until it is granted — while
+     * set, session creation is held back so `resume()` never throws for a missing camera.
+     */
+    var isCameraPermissionDenied: Boolean = false
+        private set
+
     private var cameraPermissionRequested = false
-    private var appSettingsRequested = false
     private var installRequested = false
 
     internal var session: ARSession? = null
@@ -126,15 +145,24 @@ class ARCore(
      */
     fun checkPermissionAndInstall(handler: ARPermissionHandler): Boolean {
         // Camera permission
-        if (checkCameraPermission && !cameraPermissionRequested && !handler.hasCameraPermission()) {
-            handler.requestCameraPermission { granted ->
-                if (!granted && handler.shouldShowPermissionRationale()) {
-                    appSettingsRequested = true
-                    handler.openAppSettings()
+        if (checkCameraPermission && !handler.hasCameraPermission()) {
+            if (!cameraPermissionRequested) {
+                cameraPermissionRequested = true
+                handler.requestCameraPermission { granted ->
+                    isCameraPermissionDenied = !granted
+                    if (!granted) {
+                        // `shouldShowPermissionRationale()` is historically inverted on this
+                        // interface: it answers `true` once the system stops asking.
+                        onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
+                    }
+                    // On grant the dialog's dismissal resumes the activity, and `resume()`
+                    // creates the session through the branch below.
                 }
             }
-            cameraPermissionRequested = true
-        } else if (!appSettingsRequested) {
+            // Denied (or still being asked): hold the session back instead of letting
+            // `Session()` throw `CameraNotAvailable` on the next resume.
+        } else {
+            isCameraPermissionDenied = false
             try {
                 if (checkAvailability && !installRequested &&
                     handler.checkARCoreAvailability() != Availability.SUPPORTED_INSTALLED
@@ -152,6 +180,26 @@ class ARCore(
             }
         }
         return false
+    }
+
+    /**
+     * Shows the camera permission dialog again after a denial reported through
+     * [onCameraPermissionDenied]. A grant resumes the activity, which creates the session.
+     *
+     * @param handler the permission handler; defaults to the one passed to [create].
+     */
+    fun retryCameraPermission(handler: ARPermissionHandler? = permissionHandler) {
+        handler ?: return
+        cameraPermissionRequested = false
+        checkPermissionAndInstall(handler)
+    }
+
+    /**
+     * Opens the app's system settings so the user can grant a permanently denied camera
+     * permission. Only ever call this from an explicit user action (#3308).
+     */
+    fun openAppSettings(handler: ARPermissionHandler? = permissionHandler) {
+        handler?.openAppSettings()
     }
 
     /**

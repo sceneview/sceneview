@@ -8,6 +8,12 @@
     <string name="sceneview_camera_unavailable_message">Another app is using the camera.\nTap on this app or try closing the other one.</string>
     <string name="sceneview_unknown_tracking_failure">Unknown tracking failure reason: %1$s</string>
     <string name="sceneview_camera_permission_required">Camera permission required</string>
+    <!-- ARCameraPermissionOverlay (#3308) — in-app explanation after a denial. -->
+    <string name="sceneview_camera_permission_title">Camera access needed</string>
+    <string name="sceneview_camera_permission_body">AR uses the camera to see the world around you. Nothing is recorded or uploaded.</string>
+    <string name="sceneview_camera_permission_body_settings">Camera access was turned off for this app. Turn it on in Settings to start AR.</string>
+    <string name="sceneview_camera_permission_grant">Grant camera access</string>
+    <string name="sceneview_camera_permission_settings">Open settings</string>
 
     <!-- PlaneDiscoveryGuide (#2241) — plane-discovery onboarding overlay.
          Lost-tracking copy reuses the sceneview_*_message strings above. -->

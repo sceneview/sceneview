@@ -150,6 +150,9 @@ object SceneViewTokens {
         val cardTextPaddingBottom = 14.dp
         val cardOutlineWidth = 1.dp
         val iconTileGlyph = 40.dp
+        /** Globe badge on the "Browse online models" collage — `hero-pill` colours. */
+        val browseBadgeSize = 32.dp
+        val browseBadgeGlyph = 18.dp
         /** Width from which the hero grows and the grid uses [gridMinCellExpanded]. */
         const val expandedWidthDp = 600
         const val heroScrimStart = 0.5f
