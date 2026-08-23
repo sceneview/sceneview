@@ -31,7 +31,7 @@ It is a *viewer subset*, published as a **separate, additive artifact**. Nothing
 |---|---|---|---|
 | Android | delegates to the existing `SceneView { }` composable | Filament | implemented |
 | iOS | `UIKitView` hosting an app-supplied `UIView` (`SceneViewerBridge` → `SceneViewerHostView`) | RealityKit | implemented — the app registers the factory |
-| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via Maven `filament-kmp` 0.3.1 (FFM, JDK 22+) | **implemented** — `SceneViewer` desktop actual |
+| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via Maven `filament-kmp` 0.4.0 (FFM, JDK 22+) | **implemented** — `SceneViewer` desktop actual |
 
 The point is that **one API does not imply one renderer.** RealityKit stays the Apple
 renderer — it is what ARKit and visionOS align with, and it is what the published App
@@ -303,7 +303,7 @@ Each one is independently shippable. No big bang.
    `SceneViewSwift` after all, as `SceneViewerHostView`; what changed is that nothing
    depends on it at build time — the app links it and hands it over. See
    [the iOS wrapper](#the-ios-uiview-wrapper) below.
-3. **Desktop actual** — shipped via Maven `filament-kmp` 0.3.1 (`implementation`, never
+3. **Desktop actual** — shipped via Maven `filament-kmp` 0.4.0 (`implementation`, never
    `api`), not a vendored tree. filament-kmp already owns the offscreen readback → Skia
    path; `SceneViewer.desktop.kt` is the façade. JDK 22+ and
    `--enable-native-access=ALL-UNNAMED` at run. The vendoring gates below remain the

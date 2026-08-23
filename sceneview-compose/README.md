@@ -178,7 +178,7 @@ there.
 ## Desktop (JVM)
 
 Filament through [filament-kmp](https://github.com/Erkko68/filament-kmp) on Maven
-(`filament-compose` 0.3.1, `implementation` — never on the public API). Offscreen
+(`filament-compose` 0.4.0, `implementation` — never on the public API). Offscreen
 readback → Skia, inside filament-kmp. **JDK 22+** (FFM). Consumers must run with
 `--enable-native-access=ALL-UNNAMED`.
 
@@ -188,7 +188,7 @@ from a Compose Multiplatform resource. Sample: [`samples/desktop-demo`](../sampl
 | | Android | Desktop |
 |---|---|---|
 | `onTap` / `ModelHit.position` | collision ray–surface | Filament color-pick unprojected through the view/projection matrices. A miss is `null`. If the pick lands before the camera has attached, the orbit target is used as a last resort |
-| `EnvironmentSource.Color` `alpha` / `Hdr(showSkybox = false)` | transparent surface (`isOpaque`) | skybox colour can be translucent; the **surface stays opaque** (filament-kmp 0.3.1 has no `transparent` flag) |
+| `EnvironmentSource.Color` `alpha` / `Hdr(showSkybox = false)` | transparent surface (`isOpaque`) | same — the surface goes transparent (`FilamentSceneView(transparent = …)`, PREMUL readback, filament-kmp 0.4.0) |
 | `Lighting.ambientIntensity` | always applied | applies only with `EnvironmentSource.Hdr` — Default/Color have no IBL |
 | `onFrame` | Filament frame callback | filament-kmp `OnFrame` (Compose frame clock that drives the offscreen readback). Not invoked when the callback is null |
 

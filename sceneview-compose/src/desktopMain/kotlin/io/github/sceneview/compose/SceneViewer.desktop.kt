@@ -99,6 +99,7 @@ public actual fun SceneViewer(
         skyboxState = desktopEnvironment.skyboxState,
         indirectLightState = desktopEnvironment.indirectLightState,
         shadows = if (lighting.castShadows) Shadows.Pcf else null,
+        transparent = !environment.isOpaque,
     ) {
         DirectionalLight(
             direction = Direction(lighting.direction.x, lighting.direction.y, lighting.direction.z),

@@ -8,7 +8,7 @@ now consumes `SceneViewer`.
 still stands; the *binding supply* decision does not.
 
 > **2026-08-19 update.** The desktop `SceneViewer` actual is implemented. It depends on
-> Maven `io.github.erkko68.filament:filament-compose:0.3.1` as `implementation` (never
+> Maven `io.github.erkko68.filament:filament-compose:0.4.0` as `implementation` (never
 > `api`) — filament-kmp already does the offscreen readback → Skia path. Not vendored.
 > Requires JDK 22+ and `--enable-native-access=ALL-UNNAMED` at run. See
 > [compose-multiplatform.md](compose-multiplatform.md). Issue

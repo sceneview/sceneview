@@ -78,8 +78,8 @@ filamentWeb = "1.52.3"
 filamentWebsite = "1.70.1"
 # Desktop Filament via filament-kmp on Maven. Independent of the three Filament
 # runtime pins above — this artifact vendors its own native Filament
-# (0.3.1 ships 1.74.1). Used only by sceneview-compose desktopMain.
-filamentKmp = "0.3.1"
+# (0.4.0 ships 1.75.0). Used only by sceneview-compose desktopMain.
+filamentKmp = "0.4.0"
 arCore = "1.54.0"
 
 # Networking
