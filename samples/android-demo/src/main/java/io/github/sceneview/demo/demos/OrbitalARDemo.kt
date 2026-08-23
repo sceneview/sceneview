@@ -18,10 +18,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotateRad
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +57,7 @@ import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Transform
@@ -665,10 +672,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             // `offscreenTargets` must keep drawing continuously — for as long as, and
             // only for as long as, that specific object stays outside the frustum.
             if (offscreenTargets.isNotEmpty() && viewportSize != IntSize.Zero) {
-                OffscreenTargetArrows(
-                    targets = offscreenTargets.values.toList(),
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                OffscreenTargetArrows(targets = offscreenTargets.values.toList())
             }
         }
     }
@@ -677,23 +681,31 @@ fun OrbitalARDemo(onBack: () -> Unit) {
 /**
  * Full-screen [Canvas] overlay that draws one directional arrow per entry in [targets]
  * on the viewport edge, each pointing toward an off-screen orbiting object and labelled
- * with the live distance to it (issue #1482, #3269).
+ * with the live distance to it (issue #1482, #3269, #3304).
  *
  * Each arrow is placed by casting a ray from the screen centre in its target's
  * direction (Compose screen space: 0 = right, π/2 = down) and clamping the hit point to
- * a rounded-rectangle inset from the viewport edge. The glyph is a filled triangle plus
- * a short stalk, rotated so it visually points along the same direction; the distance
- * label sits just behind the tip, formatted with the device locale's decimal separator.
+ * a rounded-rectangle inset from the viewport edge, then rotating the glyph to that same
+ * direction. The distance label sits behind the glyph, in its own scrim pill, formatted
+ * with the device locale's decimal separator.
+ *
+ * **The glyph's silhouette is the whole point** (#3304). It is a shaft + head arrow,
+ * ~2:1 long, so head and tail are told apart at a glance; every layer of it is
+ * shape-following, because the previous version drew the triangle inside a
+ * rotationally-symmetric translucent disc *wider than the triangle itself* — the disc
+ * won the silhouette and the indicator read as a dot, with no readable direction. Never
+ * put a symmetric shape behind a directional one.
+ *
+ * Colours come from `DESIGN.md`'s AR coaching overlay tokens, not from the Material
+ * scheme, and deliberately do **not** flip with the app theme: what this is read against
+ * is an arbitrary camera frame, never `surface`. `accentGuidance` is the token for
+ * "waiting on the user to move the phone", which is exactly what this arrow says.
  *
  * @param targets one entry per currently off-screen object — arbitrary order, drawn
  *   independently so overlapping targets never hide one another's arrow.
- * @param color arrow fill colour — the demo passes the Material primary colour.
  */
 @Composable
-private fun OffscreenTargetArrows(
-    targets: List<OffscreenTarget>,
-    color: Color,
-) {
+internal fun OffscreenTargetArrows(targets: List<OffscreenTarget>) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val width = size.width
         val height = size.height
@@ -705,19 +717,17 @@ private fun OffscreenTargetArrows(
         // Keep every arrow fully inside the viewport: inset the clamp rectangle by
         // enough to fit the glyph + a small margin, and never let the inset collapse
         // past the centre on a very small surface.
-        val margin = 48.dp.toPx()
+        val margin = SceneViewTokens.Space.x2l.toPx()
         val halfW = max(1f, centerX - margin)
         val halfH = max(1f, centerY - margin)
 
         val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            // `this.` is load-bearing: bare `color = ...` here resolves against the
-            // Composable's own `color: Color` parameter (Compose's `Color`, not an
-            // `Int`) rather than this `Paint` receiver's `color: Int` property.
-            this.color = android.graphics.Color.WHITE
-            textSize = 13.sp.toPx()
+            // `this.` is load-bearing: bare `color = ...` here resolves against a
+            // Compose `Color` in scope rather than this `Paint` receiver's `color: Int`.
+            this.color = SceneViewTokens.ArOverlay.onScrim.toArgb()
+            textSize = 14.sp.toPx()
             textAlign = android.graphics.Paint.Align.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
         }
 
         for (target in targets) {
@@ -727,7 +737,6 @@ private fun OffscreenTargetArrows(
                 centerY = centerY,
                 halfW = halfW,
                 halfH = halfH,
-                color = color,
                 labelPaint = labelPaint,
             )
         }
@@ -741,7 +750,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOffscreenTarget
     centerY: Float,
     halfW: Float,
     halfH: Float,
-    color: Color,
     labelPaint: android.graphics.Paint,
 ) {
     val angleRad = target.angleRad
@@ -754,35 +762,89 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawOffscreenTarget
     val tY = if (dirY != 0f) halfH / kotlin.math.abs(dirY) else Float.MAX_VALUE
     val t = min(tX, tY)
 
-    val arrowX = centerX + dirX * t
-    val arrowY = centerY + dirY * t
+    val anchorX = centerX + dirX * t
+    val anchorY = centerY + dirY * t
 
-    // Triangle pointing along +X before rotation; rotateRad spins it to angleRad.
-    val tip = 22.dp.toPx()
-    val halfBase = 15.dp.toPx()
-    rotateRad(radians = angleRad, pivot = Offset(arrowX, arrowY)) {
-        // Soft drop shadow for contrast against bright camera frames.
-        val arrowPath = Path().apply {
-            moveTo(arrowX + tip, arrowY)
-            lineTo(arrowX - tip * 0.4f, arrowY - halfBase)
-            lineTo(arrowX - tip * 0.4f, arrowY + halfBase)
-            close()
-        }
-        drawCircle(
-            color = Color.Black.copy(alpha = 0.35f),
-            radius = tip * 1.15f,
-            center = Offset(arrowX, arrowY),
-        )
-        drawPath(path = arrowPath, color = color)
+    // Glyph outline, drawn pointing along +X and spun to `angleRad` by `rotateRad`.
+    // Head is 22 dp long for 28 dp of base — a ~60° apex, pointed enough to read as a
+    // tip — and the shaft adds another 20 dp of unmistakable tail behind it.
+    val tipX = ARROW_TIP_DP.dp.toPx()
+    val headBackX = ARROW_HEAD_BACK_DP.dp.toPx()
+    val headHalfBase = ARROW_HEAD_HALF_BASE_DP.dp.toPx()
+    val tailX = ARROW_TAIL_DP.dp.toPx()
+    val shaftHalfWidth = ARROW_SHAFT_HALF_WIDTH_DP.dp.toPx()
+
+    val arrowPath = Path().apply {
+        moveTo(anchorX + tipX, anchorY)
+        lineTo(anchorX + headBackX, anchorY - headHalfBase)
+        lineTo(anchorX + headBackX, anchorY - shaftHalfWidth)
+        lineTo(anchorX + tailX, anchorY - shaftHalfWidth)
+        lineTo(anchorX + tailX, anchorY + shaftHalfWidth)
+        lineTo(anchorX + headBackX, anchorY + shaftHalfWidth)
+        lineTo(anchorX + headBackX, anchorY + headHalfBase)
+        close()
     }
 
-    // Distance label (#3269), locale-aware with one decimal — e.g. "3.2 m" or,
-    // under a comma-decimal locale, "3,2 m". Drawn upright (outside the rotateRad
-    // block) just behind the arrow tip, pulled toward the screen centre along the
-    // same direction so it stays clear of the glyph and inside the viewport.
-    val labelOffset = tip * 2.4f
-    val labelX = arrowX - dirX * labelOffset
-    val labelY = arrowY - dirY * labelOffset
+    rotateRad(radians = angleRad, pivot = Offset(anchorX, anchorY)) {
+        // Three shape-following layers, widest first — a halo and a keyline that hug
+        // the arrow instead of a disc that hides it (#3304). The halo lifts the glyph
+        // off a busy frame, the keyline keeps its edge crisp on a light one, and the
+        // bright fill carries it on a dark one. Rounded joins so the barbs read as
+        // barbs rather than as aliased spikes at this size.
+        drawPath(
+            path = arrowPath,
+            color = SceneViewTokens.ArOverlay.scrimDark,
+            style = Stroke(
+                width = ARROW_HALO_WIDTH_DP.dp.toPx(),
+                join = StrokeJoin.Round,
+                cap = StrokeCap.Round,
+            ),
+        )
+        drawPath(
+            path = arrowPath,
+            color = SceneViewTokens.ArOverlay.scrimLight,
+            style = Stroke(
+                width = ARROW_KEYLINE_WIDTH_DP.dp.toPx(),
+                join = StrokeJoin.Round,
+                cap = StrokeCap.Round,
+            ),
+        )
+        drawPath(path = arrowPath, color = SceneViewTokens.ArOverlay.accentGuidance)
+    }
+
+    // Distance label (#3269), locale-aware with one decimal — e.g. "3.2 m" or, under a
+    // comma-decimal locale, "3,2 m". Drawn upright (outside the `rotateRad` block, so it
+    // stays readable whichever way the arrow points) on its own AR-scrim pill, pulled
+    // toward the screen centre far enough to clear the tail.
+    val labelOffset = SceneViewTokens.Space.x3l.toPx()
+    val labelX = anchorX - dirX * labelOffset
+    val labelY = anchorY - dirY * labelOffset
     val distanceText = String.format(Locale.getDefault(), "%.1f m", target.distanceMeters)
-    drawContext.canvas.nativeCanvas.drawText(distanceText, labelX, labelY, labelPaint)
+
+    val metrics = labelPaint.fontMetrics
+    val pillHalfWidth =
+        labelPaint.measureText(distanceText) / 2f + SceneViewTokens.Space.sm.toPx()
+    val pillHalfHeight =
+        (metrics.descent - metrics.ascent) / 2f + SceneViewTokens.Space.xs.toPx()
+    drawRoundRect(
+        color = SceneViewTokens.ArOverlay.scrimLight,
+        topLeft = Offset(labelX - pillHalfWidth, labelY - pillHalfHeight),
+        size = Size(pillHalfWidth * 2f, pillHalfHeight * 2f),
+        cornerRadius = CornerRadius(pillHalfHeight),
+    )
+    // `drawText` takes a baseline, not a centre: shift by the mean of the font's
+    // ascent/descent to sit the glyphs' optical middle on `labelY`.
+    val baselineY = labelY - (metrics.ascent + metrics.descent) / 2f
+    drawContext.canvas.nativeCanvas.drawText(distanceText, labelX, baselineY, labelPaint)
 }
+
+// Off-screen arrow glyph, in dp along its pointing axis, origin at the anchor point on
+// the inset viewport rectangle. Kept together so the proportions that make the head
+// distinguishable from the tail are readable in one place (#3304).
+private const val ARROW_TIP_DP = 24f
+private const val ARROW_HEAD_BACK_DP = 2f
+private const val ARROW_HEAD_HALF_BASE_DP = 14f
+private const val ARROW_TAIL_DP = -20f
+private const val ARROW_SHAFT_HALF_WIDTH_DP = 6f
+private const val ARROW_HALO_WIDTH_DP = 10f
+private const val ARROW_KEYLINE_WIDTH_DP = 4f
