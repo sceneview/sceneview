@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
         // app on the device could flip it on once via `--ez qa_mode true` and leave the
         // showcase frozen until process death.
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
+        DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
         // (`/data/data/...`, photos, configs). The path is consumed once by
@@ -140,11 +141,19 @@ class MainActivity : ComponentActivity() {
         pendingDemoId.value = DeepLinkRouter.validate(intent.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent.data)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
+        DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
         DemoSettings.initialTab = resolveInitialTab(intent)
     }
+
+    /**
+     * `--ez qa_backdrop true|false` forces the QA camera backdrop on or off (#3308); absent,
+     * it follows `qa_mode`. Tracks the latest intent like `qa_mode` does.
+     */
+    private fun resolveQaBackdrop(intent: Intent?): Boolean? =
+        intent?.takeIf { it.hasExtra("qa_backdrop") }?.getBooleanExtra("qa_backdrop", false)
 
     /**
      * Resolves the optional initial tab a consolidated demo should pre-select from an

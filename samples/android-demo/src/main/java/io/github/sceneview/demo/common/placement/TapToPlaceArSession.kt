@@ -48,6 +48,11 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.subsumedBy
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.R
@@ -127,6 +132,8 @@ fun TapToPlaceArSession(
         TapToPlaceStatusOverlays(state = s, nextModelLabel = nextModelLabel)
     },
     extraSceneContent: (@Composable ARSceneScope.() -> Unit)? = null,
+    /** Picks the QA camera backdrop deterministically per demo (#3308). */
+    backdropSeed: String = "ar-placement",
 ) {
     // Viewport pixels (#1882). Captured via `onSizeChanged` on the outer Box.
     // `HitResultNode(xPx, yPx)` needs view-space pixel coordinates to continuously
@@ -141,16 +148,25 @@ fun TapToPlaceArSession(
     // placed (#2657 — the grid's own shadow receiver covers the pre-placement phase).
     var trackedPlanes by remember { mutableStateOf<List<Plane>>(emptyList()) }
 
+    // QA camera backdrop (#3308): translucent surface + room photo beneath it when the
+    // emulator delivers no camera frame. Inert on a device / when QA mode is off.
+    val cameraStream = rememberARCameraStream(materialLoader)
+    val qaBackdrop = rememberQaCameraBackdropActive(state.cameraReady)
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { viewportSize = it },
     ) {
+        if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
         ARSceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            isOpaque = !qaCameraBackdropEnabled(),
+            surfaceType = qaCameraBackdropSurfaceType(),
+            cameraStream = if (qaBackdrop) null else cameraStream,
             playbackDataset = playbackDataset,
             // #2657: fade the plane grid — and, crucially, the V1 plane renderer's OWN shadow
             // receiver (plane_renderer_shadow.filamat) that rides with it — once the first model
@@ -247,7 +263,9 @@ fun TapToPlaceArSession(
             // handler uses runs in the reticle predicate (the node's built-in filters
             // already cover tracking state and plane-in-polygon; the policy re-checks
             // them plus the 5 m cap).
-            if (viewportSize != IntSize.Zero && showReticle) {
+            // The reticle has no surface to sit on while the QA backdrop stands in for the
+            // camera: un-hit it parks at the camera and fills the frame with its disc (#3308).
+            if (viewportSize != IntSize.Zero && showReticle && !qaCameraBackdropEnabled()) {
                 PlacementReticle(
                     xPx = viewportSize.width / 2f,
                     yPx = viewportSize.height / 2f,

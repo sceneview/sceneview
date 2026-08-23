@@ -36,6 +36,13 @@ object DemoSettings {
     var qaMode: Boolean by mutableStateOf(false)
 
     /**
+     * QA-only synthetic camera backdrop for the AR demos (#3308). `null` (default) follows
+     * [qaMode]; `--ez qa_backdrop true|false` forces it. See
+     * [io.github.sceneview.demo.common.QaCameraBackdrop].
+     */
+    var qaBackdrop: Boolean? by mutableStateOf(null)
+
+    /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
      * when they start — i.e. a zoom level. When non-null, the shared hero-orbit camera
      * ([rememberHeroOrbitCameraManipulator]) uses this value as its orbit radius instead of
