@@ -397,15 +397,14 @@ private fun SingleModelSection(
 
     val firstFrame = rememberFirstFrameState()
     // The HDR decode is a `produceState` keyed on (asset, skybox): `key` forces a fresh slot
-    // per choice so a swap always re-decodes. The previous environment stays on screen until
-    // the new one is produced — falling back to the neutral default would flash the lighting.
+    // per choice so a swap always re-decodes. Leaving the slot destroys the previous
+    // environment's IndirectLight/Skybox, so it must never stay attached to the scene
+    // (SIGSEGV in libfilament-jni) — the neutral default covers the decode instead.
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val loadedEnvironment = key(requestedEnvironment.assetPath, showEnvironment) {
         rememberHDREnvironment(environmentLoader, requestedEnvironment.assetPath, createSkybox = showEnvironment)
     }
-    var lastEnvironment by remember { mutableStateOf<Environment?>(null) }
-    if (loadedEnvironment != null) lastEnvironment = loadedEnvironment
-    val viewerEnvironment = loadedEnvironment ?: lastEnvironment ?: fallbackEnvironment
+    val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
     }
