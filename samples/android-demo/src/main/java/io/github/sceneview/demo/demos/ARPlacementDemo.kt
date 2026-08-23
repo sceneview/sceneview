@@ -153,6 +153,12 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 } else {
                     slug.fallbackBundledPath
                 },
+                // Real-world size for the pinch read-out's 100 % (#3326). The registry
+                // already records each slug's expected post-load bounding-**sphere radius**
+                // in metres (it is what `boundsAreSane` validates a download against), so the
+                // object's extent is twice it. That is a measured number about the actual
+                // asset, which is exactly what a flat 0.3 m for every row was not.
+                realWorldSizeMeters = slug.scaleToUnits * 2f,
                 source = PlacementModelSource.Streamed,
                 pending = isArmed && armedFile == null,
             )

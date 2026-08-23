@@ -113,14 +113,16 @@
     <string name="ar_picker_source_streamed">Streamed</string>
     <string name="ar_picker_source_streaming">Streaming…</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
-    <string name="ar_status_tap_to_place">Tap a surface to place %s</string>
-    <string name="ar_status_one_placed">1 placed · tap to add</string>
-    <string name="ar_status_n_placed">%d placed · tap to add</string>
-    <!-- Gesture pill + aiming hint (TapToPlaceArSession.kt) — #2482 plan §3.5 -->
-    <string name="ar_gesture_moving">Moving</string>
-    <string name="ar_gesture_rotating">Rotating</string>
-    <string name="ar_gesture_scaling">Scaling</string>
-    <string name="ar_aim_at_surface">Aim at a surface…</string>
+    <!-- Placement coaching — ONE line at a time, Scene Viewer parity (#3326).
+         See PlacementInteraction.placementCoaching for which one shows when. -->
+    <string name="ar_coach_generic_model">this model</string>
+    <string name="ar_coach_unavailable">AR couldn\'t start — check that ARCore is available and try again</string>
+    <string name="ar_coach_point_at_surface">Point at a surface to place %1$s</string>
+    <string name="ar_coach_tap_to_place">Tap to place %1$s</string>
+    <string name="ar_coach_gesture_hint">Drag to move · two fingers to turn · pinch to resize</string>
+    <!-- Live pinch read-out, as a percentage of the object's real-world size (#3326). -->
+    <string name="ar_scale_percent">%1$d%%</string>
+    <string name="ar_scale_actual_size">100%% · actual size</string>
     <string name="ar_starting_session">Starting AR session…</string>
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>

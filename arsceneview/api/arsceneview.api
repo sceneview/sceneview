@@ -633,8 +633,12 @@ public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum
 }
 
 public final class io/github/sceneview/ar/PlacementReticleVisualKt {
-	public static final fun PlacementReticleVisual-uDo3WH8 (Lio/github/sceneview/NodeScope;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/ar/ReticlePhase;JLio/github/sceneview/ar/PlacementReticleStyle;Landroidx/compose/runtime/Composer;II)V
+	public static final field RETICLE_READY_ALPHA F
+	public static final field RETICLE_SEARCHING_ALPHA F
+	public static final fun PlacementReticleVisual-fWhpE4E (Lio/github/sceneview/NodeScope;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/ar/ReticlePhase;JLio/github/sceneview/ar/PlacementReticleStyle;FLandroidx/compose/runtime/Composer;II)V
 	public static final fun getRETICLE_TINT ()J
+	public static final fun reticleAlphaFor (Lio/github/sceneview/ar/ReticlePhase;)F
+	public static final fun reticlePhaseFor (Z)Lio/github/sceneview/ar/ReticlePhase;
 }
 
 public final class io/github/sceneview/ar/PlacementSceneKt {

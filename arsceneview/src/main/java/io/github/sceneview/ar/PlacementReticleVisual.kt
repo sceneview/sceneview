@@ -81,22 +81,27 @@ internal const val RING_MAJOR_SEGMENTS = 64
 /** Ring tessellation — segments around the tube. */
 internal const val RING_MINOR_SEGMENTS = 12
 
-/** Alpha applied to the ring while [ReticlePhase.SEARCHING] — visible but clearly "not yet". */
-internal const val RETICLE_SEARCHING_ALPHA = 0.35f
+/**
+ * Alpha applied to the ring while [ReticlePhase.SEARCHING] — visible but clearly "not yet".
+ *
+ * Public so a caller driving its own animated [PlacementReticleVisual] `alpha` can target the
+ * same two values the built-in phase step uses (#3326).
+ */
+const val RETICLE_SEARCHING_ALPHA = 0.35f
 
 /** Alpha applied to the ring while [ReticlePhase.READY] — bright, tap-me. */
-internal const val RETICLE_READY_ALPHA = 0.95f
+const val RETICLE_READY_ALPHA = 0.95f
 
 /**
  * Maps a centre-screen hit presence to the reticle phase: a non-null hit means a surface is
  * acquired ([ReticlePhase.READY]), a null hit means the ray finds nothing ([ReticlePhase.SEARCHING]).
  * Extracted so the mapping is unit-testable without Compose / ARCore.
  */
-internal fun reticlePhaseFor(hasHit: Boolean): ReticlePhase =
+fun reticlePhaseFor(hasHit: Boolean): ReticlePhase =
     if (hasHit) ReticlePhase.READY else ReticlePhase.SEARCHING
 
 /** The ring/dot opacity for [phase] — bright when READY, dimmed while SEARCHING. */
-internal fun reticleAlphaFor(phase: ReticlePhase): Float =
+fun reticleAlphaFor(phase: ReticlePhase): Float =
     if (phase == ReticlePhase.READY) RETICLE_READY_ALPHA else RETICLE_SEARCHING_ALPHA
 
 /**
@@ -117,6 +122,13 @@ internal fun reticleAlphaFor(phase: ReticlePhase): Float =
  * @param phase          the current searching / ready state.
  * @param tint           reticle hue; its alpha is overridden per [phase].
  * @param style          ring or disc geometry.
+ * @param alpha          reticle opacity. Defaults to the step value [phase] implies. Pass an
+ *                       **animated** value (e.g. Compose `animateFloatAsState`) to cross-fade
+ *                       the searching→ready transition instead of stepping it: a reticle that
+ *                       snaps between two opacities at 60 Hz on a jittery hit test reads as
+ *                       flicker, which is the opposite of the "you can place now" signal the
+ *                       phase change is supposed to give (#3326). Additive — every existing
+ *                       call site keeps the original stepped behaviour.
  */
 @Composable
 fun io.github.sceneview.NodeScope.PlacementReticleVisual(
@@ -124,9 +136,8 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     phase: ReticlePhase,
     tint: Color = RETICLE_TINT,
     style: PlacementReticleStyle = PlacementReticleStyle.RING,
+    alpha: Float = reticleAlphaFor(phase),
 ) {
-    val alpha = reticleAlphaFor(phase)
-
     // One material for the ring/disc body — recoloured in place per phase (no re-alloc).
     val bodyMaterial: MaterialInstance = remember(materialLoader, tint) {
         materialLoader.createUnlitColorInstance(tint.copy(alpha = alpha))
