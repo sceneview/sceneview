@@ -8,9 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ViewInAr
@@ -33,33 +32,40 @@ fun ModelPickerSheet(
     onSelect: (BundledViewerModel) -> Unit, onPark: () -> Unit,
     onSurprise: () -> Unit, onBrowse: () -> Unit, onDismiss: () -> Unit,
 ) {
-    // Fully expanded from the start: the partially-expanded stop cut the second grid row mid-card.
+    // Fully expanded from the start (`skipPartiallyExpanded`). The grid is a plain Column of
+    // Rows rather than a LazyVerticalGrid: a lazy grid inside a sheet needs a bounded height,
+    // and the `heightIn(max = …)` cap it had cut the second row's captions while the sheet
+    // itself was already at full height (QA round 3). Six bundled models are three rows — the
+    // whole sheet scrolls on short screens instead of the grid scrolling inside it.
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
     ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Text("Models", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxWidth().heightIn(max = SceneViewTokens.Layout.heroStageHeight),
-            contentPadding = PaddingValues(SceneViewTokens.Space.md),
-            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(SceneViewTokens.Space.md),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         ) {
-            items(models, key = { it.assetPath }) { model ->
-                val selected = model.assetPath == selectedPath
-                Column(
-                    Modifier.clip(RoundedCornerShape(SceneViewTokens.Radius.md))
-                        .then(if (selected) Modifier.border(BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary), RoundedCornerShape(SceneViewTokens.Radius.md)) else Modifier)
-                        .clickable { onSelect(model) }.padding(SceneViewTokens.Space.sm)
-                ) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceDim), contentAlignment = Alignment.Center) {
-                        ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }
-                            ?: Icon(Icons.Outlined.ViewInAr, null)
+            models.chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+                    row.forEach { model ->
+                        val selected = model.assetPath == selectedPath
+                        Column(
+                            Modifier.weight(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.md))
+                                .then(if (selected) Modifier.border(BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary), RoundedCornerShape(SceneViewTokens.Radius.md)) else Modifier)
+                                .clickable { onSelect(model) }.padding(SceneViewTokens.Space.sm)
+                        ) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceDim), contentAlignment = Alignment.Center) {
+                                ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }
+                                    ?: Icon(Icons.Outlined.ViewInAr, null)
+                            }
+                            Text(model.displayName, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = SceneViewTokens.Space.xs))
+                        }
                     }
-                    Text(model.displayName, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = SceneViewTokens.Space.xs))
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -67,6 +73,7 @@ fun ModelPickerSheet(
         if (surpriseAvailable) ViewerSheetRow("Surprise me", if (surpriseLoading) "Resolving…" else null, onSurprise, surpriseLoading)
         ViewerSheetRow("Browse online models…", null, onBrowse)
         Spacer(Modifier.navigationBarsPadding().height(SceneViewTokens.Space.sm))
+        }
     }
 }
 

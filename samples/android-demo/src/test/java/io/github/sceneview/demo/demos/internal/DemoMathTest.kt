@@ -21,9 +21,66 @@ import org.junit.Test
  * device, an emulator, or a screenshot baseline.
  */
 class DemoMathTest {
-    @Test fun `viewer framing reserves dock and applies margin`() {
-        assertEquals(0.625f, DemoMath.viewerViewportAspect(400f, 744f, 104f), 0.0001f)
-        assertEquals(2.8f, DemoMath.viewerFitRadius(2.5f), 0.0001f)
+    // ── viewerFraming ───────────────────────────────────────────────────────
+
+    private val halfTan = tan(Math.toRadians(DemoMath.DEFAULT_VERTICAL_FOV_DEGREES) / 2.0).toFloat()
+
+    /** Fraction of the full viewport height a model of [extentY] spans at [f]'s distance. */
+    private fun heightFraction(f: DemoMath.ViewerFraming, extentY: Float, extentZ: Float) =
+        extentY / (2f * (f.distance - extentZ * DemoMath.DEPTH_ALLOWANCE) * halfTan)
+
+    @Test fun `viewerFraming fills 65 percent of the visible band for a tall model`() {
+        // Portrait phone: 411 × 914 dp, 96 dp identity row, 104 dp dock + 24 dp nav bar.
+        val f = DemoMath.viewerFraming(1f, 2f, 0.5f, 411f, 914f, 96f, 128f)
+        val visible = (914f - 96f - 128f) / 914f
+        assertEquals(DemoMath.VIEWER_FILL, heightFraction(f, 2f, 0.5f) / visible, 0.001f)
+    }
+
+    @Test fun `viewerFraming fills 92 percent of the width for a wide model`() {
+        val f = DemoMath.viewerFraming(4f, 1f, 1f, 411f, 914f, 96f, 128f)
+        val widthFraction = 4f / (2f * (f.distance - 1f * DemoMath.DEPTH_ALLOWANCE) * halfTan * (411f / 914f))
+        assertEquals(DemoMath.VIEWER_HORIZONTAL_FILL, widthFraction, 0.001f)
+        assertTrue("wide model is constrained by width, so it spans less than 65 % of the height",
+            heightFraction(f, 1f, 1f) / ((914f - 96f - 128f) / 914f) < DemoMath.VIEWER_FILL)
+    }
+
+    @Test fun `viewerFraming backs off by a share of the depth for a deep model`() {
+        val shallow = DemoMath.viewerFraming(1f, 1f, 0f, 411f, 914f, 96f, 128f)
+        val deep = DemoMath.viewerFraming(1f, 1f, 3f, 411f, 914f, 96f, 128f)
+        assertEquals(shallow.distance + 3f * DemoMath.DEPTH_ALLOWANCE, deep.distance, 0.0001f)
+    }
+
+    @Test fun `viewerFraming looks from the front and slightly above`() {
+        val f = DemoMath.viewerFraming(1f, 1f, 1f, 411f, 914f, 0f, 0f)
+        val (_, eyeY, eyeZ) = f.eyeOffset
+        assertTrue("eye is in front (+Z)", eyeZ > 0f)
+        val elevation = Math.toDegrees(atan((eyeY / eyeZ).toDouble())).toFloat()
+        assertEquals(DemoMath.VIEWER_PITCH_DEGREES, elevation, 0.01f)
+        assertEquals(f.distance, hypot(eyeY, eyeZ), 0.001f)
+        assertEquals(0f, f.targetOffset.second, 0.0001f)
+    }
+
+    @Test fun `viewerFraming shifts the target so the model sits mid-band`() {
+        // Dock band taller than the identity row: the visible centre is ABOVE the viewport centre,
+        // so the target must sit BELOW the model (model drawn higher on screen).
+        val f = DemoMath.viewerFraming(1f, 1f, 1f, 411f, 914f, 96f, 128f)
+        assertTrue(f.targetOffset.second < 0f)
+        val halfTan = tan(Math.toRadians(DemoMath.DEFAULT_VERTICAL_FOV_DEGREES) / 2.0).toFloat()
+        val expectedShift = ((96f - 128f) / 2f) / (914f / 2f) * f.distance * halfTan
+        val shift = -hypot(f.targetOffset.second, f.targetOffset.third)
+        assertEquals(expectedShift, shift, 0.0001f)
+        // Symmetric insets: no shift at all.
+        assertEquals(0f, DemoMath.viewerFraming(1f, 1f, 1f, 411f, 914f, 100f, 100f).targetOffset.second, 0.0001f)
+    }
+
+    @Test fun `viewerFraming keeps the Khronos Fox inside the far plane and never collapses`() {
+        // The bundled Fox is ~155 glTF units long: it must frame far back but inside 1000 m.
+        val fox = DemoMath.viewerFraming(155f, 80f, 40f, 411f, 914f, 96f, 128f)
+        assertTrue(fox.distance in 100f..900f)
+        // Degenerate bounds and viewport: a finite, positive distance on the safe floor.
+        val empty = DemoMath.viewerFraming(0f, Float.NaN, -1f, 0f, 0f, 0f, 0f)
+        assertEquals(0.2f, empty.distance, 0.0001f)
+        assertTrue(empty.eyeOffset.toList().all { it.isFinite() })
     }
 
     private val eps = 0.001f

@@ -35,6 +35,7 @@ import androidx.activity.compose.BackHandler
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.demo.DemoPreviews
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -49,12 +50,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
-import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeTopInset
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.DemoSettings
@@ -149,6 +153,14 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
     }
 }
+
+/**
+ * Frames queued with a fully loaded model instance before the cover-releasing `flushAndWait`.
+ * Not 1: the scene parents DSL nodes through an async `snapshotFlow`, so the first frame after
+ * the instance lands can be drawn without the `ModelNode`; the flush must wait on a frame that
+ * includes it.
+ */
+private const val MODEL_COVER_FRAMES = 3
 
 private enum class ModelViewerMode(val label: String) {
     Single("Single Model"),
@@ -307,45 +319,40 @@ private fun SingleModelSection(
         }
     }
 
-    // Auto-fit camera framing (#1439): instead of a per-demo hand-tuned orbit
-    // radius, compute the distance at which the *current* model's bounding
-    // sphere exactly fills the viewport. A 5 cm bee and a 5 m crate both end
-    // up comfortably framed without touching `scaleToUnits` — the camera
-    // adapts to the model, not the other way round.
-    //
-    // The framing uses the library helper `fitDistanceForBounds`, fed with the
-    // model's intrinsic glTF bounds (`model.boundingBox`). The portrait phone
-    // aspect (~0.5) and the default 28 mm lens FOV match the stock SceneView
-    // camera the hero orbit drives. We also read the bounds' centre so the
-    // ModelNode can be translated to put that centre on the world origin the
-    // hero orbit pivots around — many glTF models have an off-origin pivot.
-    BoxWithConstraints(Modifier.fillMaxSize().background(SceneViewTokens.Stage.background)) {
-    val viewportAspect = DemoMath.viewerViewportAspect(maxWidth.value, maxHeight.value, SETTINGS_FAB_RESERVED_SPACE.value)
-    val framing = remember(activeModelInstance, viewportAspect) {
+    // Auto-fit camera framing (#1439, reworked after QA round 3). The model is rendered at its
+    // true glTF size and is never moved: `DemoMath.viewerFraming` places the CAMERA from the
+    // instance's real AABB so the model spans ~65 % of the band the chrome leaves visible
+    // (identity row → dock), centred on its bounding-box centre, seen from the front (+Z) and
+    // 12° above. The library's `autoCenterContent` is OFF for this scene — it would translate
+    // the content root to the origin while the camera aims at the measured centre, and that
+    // double offset is what put the Fox's tail in the lens.
+    Box(Modifier.fillMaxSize().background(SceneViewTokens.Stage.background)) {
+    // The bundled helmet ships face-down (+90° X from its Blender export). The AR demos' -90° X
+    // correction stands it upright — visor on -Z under this camera's +Z = front convention, so
+    // the viewer looks at that asset from -Z instead (`frontSign`). Rotating the node rotates
+    // its bounds, so the AABB gets the same -90° X before framing: (x, y, z) → (x, z, -y).
+    val uprightRotation = if (streamedModelInstance == null) DemoMath.placementRotationFor(selectedModel.assetPath) else Rotation()
+    val upright = uprightRotation.x == -90f
+    val frontSign = if (upright) -1f else 1f
+    val bounds = remember(activeModelInstance, upright) {
         val instance = activeModelInstance ?: return@remember null
-        val bounds = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
-        if (bounds == null || bounds.isEmpty) {
-            null
-        } else {
-            ModelFraming(
-                radius = fitDistanceForBounds(
-                    bounds = bounds,
-                    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
-                    aspect = viewportAspect.toDouble(),
-                ).let(DemoMath::viewerFitRadius),
-                center = bounds.center,
+        val aabb = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+            ?: return@remember null
+        if (upright) {
+            io.github.sceneview.Aabb(
+                center = Position(aabb.center.x, aabb.center.z, -aabb.center.y),
+                halfExtent = Position(aabb.halfExtent.x, aabb.halfExtent.z, aabb.halfExtent.y),
             )
-        }
+        } else aabb
     }
-
-    // Auto-fit orbit radius for the current model — falls back to 1.4 m while
-    // the bounds are not yet measurable. The "Camera distance" slider below
-    // lets the user override this; `null` slider state means "use auto-fit".
-    val autoFitRadius = framing?.radius ?: 1.4f
+    val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
+    // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
+    // "Camera distance" slider below can display it. 1.4 m until the bounds are measurable.
+    var autoFitRadius by remember { mutableStateOf(1.4f) }
     // Re-run the settle animation for every newly measured instance and on Recenter.
     val fitProgress = remember { Animatable(0f) }
-    LaunchedEffect(framing, recenterGeneration) {
-        if (framing == null) return@LaunchedEffect
+    LaunchedEffect(bounds, recenterGeneration) {
+        if (bounds == null) return@LaunchedEffect
         fitProgress.snapTo(0f)
         fitProgress.animateTo(1f, SceneViewTokens.Motion.spring())
     }
@@ -356,21 +363,9 @@ private fun SingleModelSection(
     // for the `--ef camera_distance <f>` / `?cameraDistance=<f>` deep-link hook
     // (#1571). So a deep link launches this demo at the requested zoom AND the
     // slider reflects it; dragging the slider drives the live camera distance.
-    // `null` ⇒ no override, the auto-fit `radius` is used. Maestro has no pinch
+    // `null` ⇒ no override, the auto-fit distance is used. Maestro has no pinch
     // gesture, so this slider is the only way QA flows can exercise zoom.
     val sliderDistance = DemoSettings.cameraDistance
-
-    // Camera orbits; model stays fixed. The orbit radius is auto-fit to the
-    // model's intrinsic size (see `framing` above) so every model — bundled
-    // helmet or streamed Sketchfab pick — is framed identically. A non-null
-    // `DemoSettings.cameraDistance` (slider or deep link) overrides it.
-    val cameraManipulator = remember(framing, recenterGeneration, sliderDistance) {
-        val center = framing?.center ?: Position(0f, 0f, 0f)
-        createDefaultCameraManipulator(
-            orbitHomePosition = Position(center.x, center.y, sliderDistance ?: autoFitRadius),
-            targetPosition = Position(center.x, center.y + autoFitRadius * 0.08f, center.z),
-        )
-    }
 
     // Per-demo offline indicator chip (#1152 Stage 3): hide while we're on
     // the bundled hero only (no Surprise tap yet). Once the user kicks a
@@ -396,6 +391,39 @@ private fun SingleModelSection(
     }
 
     val firstFrame = rememberFirstFrameState()
+    // The preview cover stays up until a Filament frame that actually SHOWS the model. Three
+    // signals fire too early: the first frame lands before the GLB is decoded;
+    // `rememberModelInstance` returns while gltfio is still uploading textures
+    // (`ModelLoader.progress < 1`); and even with the resources in, Choreographer keeps ticking
+    // at 60 Hz while Filament's backend thread is still linking the model's material programs —
+    // measured on the emulator: ticks resume at +0.5 s, the helmet is first presented at +3.5 s,
+    // black in between. So once the instance exists, the resources report complete and a couple
+    // of frames have queued the node's draw, `Engine.flushAndWait()` blocks until the backend
+    // has actually executed that frame, and only then is the cover released. The cover is a
+    // static image, so the wait is invisible (~100 ms on hardware, the full link time on a
+    // software GL). Latched — a later model swap must not bring the helmet preview back.
+    val modelFramesSeen = remember { mutableStateOf(0) }
+    val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    hasModelRef.set(activeModelInstance != null)
+    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, engine) {
+        { nanos ->
+            firstFrame.onFrame(nanos)
+            if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
+                runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
+            ) {
+                if (modelFramesSeen.value == MODEL_COVER_FRAMES - 1) runCatching { engine.flushAndWait() }
+                modelFramesSeen.value++
+            }
+        }
+    }
+    // The first HDR decode runs on the main thread through Filament and stalls the UI for a
+    // couple of seconds on a software GPU; releasing the cover before it lands leaves a black
+    // composite on screen for that whole stall. One-way latch: later swaps re-decode but must
+    // not bring the preview back.
+    var firstEnvironmentLoaded by remember { mutableStateOf(false) }
+    val firstModelFrame = remember {
+        derivedStateOf { firstFrame.rendered.value && firstEnvironmentLoaded && modelFramesSeen.value >= MODEL_COVER_FRAMES }
+    }
     // The HDR decode is a `produceState` keyed on (asset, skybox): `key` forces a fresh slot
     // per choice so a swap always re-decodes. Leaving the slot destroys the previous
     // environment's IndirectLight/Skybox, so it must never stay attached to the scene
@@ -405,6 +433,7 @@ private fun SingleModelSection(
         rememberHDREnvironment(environmentLoader, requestedEnvironment.assetPath, createSkybox = showEnvironment)
     }
     val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
+    if (loadedEnvironment != null) firstEnvironmentLoaded = true
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
     }
@@ -417,7 +446,7 @@ private fun SingleModelSection(
         title = stringResource(R.string.demo_model_viewer_screen_title),
         onBack = onBack,
         assetSource = assetSource,
-        firstFrameRendered = firstFrame.rendered,
+        firstFrameRendered = firstModelFrame,
         previewRes = DemoPreviews.resourceFor("model-viewer", dark = true),
         controls = {
             // Camera-distance slider — makes zoom discoverable without a pinch
@@ -457,35 +486,72 @@ private fun SingleModelSection(
         }, enabled = arSupported == true),
         chromeToggleOnTap = true,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        // The scene fills the viewport edge to edge; the chrome floats over it. Framing
+        // therefore needs the band the chrome leaves visible: the identity row at the top
+        // (provided by the scaffold) and the dock band plus the navigation bar at the bottom.
+        val topInset = LocalDemoChromeTopInset.current
+        val bottomInset = SETTINGS_FAB_RESERVED_SPACE +
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset) {
+                val extents = bounds?.extents ?: return@remember null
+                DemoMath.viewerFraming(
+                    extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+                    viewportWidth = maxWidth.value, viewportHeight = maxHeight.value,
+                    topInset = topInset.value, bottomInset = bottomInset.value,
+                    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+                )
+            }
+            LaunchedEffect(framing) { framing?.let { autoFitRadius = it.distance } }
+            // Camera orbits; model stays fixed at its glTF pose. Recenter rebuilds the same
+            // manipulator, which snaps the camera back to exactly this home pose. A non-null
+            // `DemoSettings.cameraDistance` (slider or deep link) scales the eye along the
+            // same view ray so the pitch and the band centring survive the override.
+            val cameraManipulator = remember(framing, modelCenter, frontSign, recenterGeneration, sliderDistance) {
+                val f = framing ?: return@remember createDefaultCameraManipulator(
+                    orbitHomePosition = Position(modelCenter.x, modelCenter.y, sliderDistance ?: 1.4f),
+                    targetPosition = modelCenter,
+                )
+                val (_, ty, tz0) = f.targetOffset
+                val (_, ey, ez0) = f.eyeOffset
+                val tz = tz0 * frontSign
+                val ez = ez0 * frontSign
+                val zoom = sliderDistance?.let { it / f.distance } ?: 1f
+                createDefaultCameraManipulator(
+                    orbitHomePosition = Position(
+                        modelCenter.x,
+                        modelCenter.y + ty + (ey - ty) * zoom,
+                        modelCenter.z + tz + (ez - tz) * zoom,
+                    ),
+                    targetPosition = Position(modelCenter.x, modelCenter.y + ty, modelCenter.z + tz),
+                )
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
+                onFrame = onFrame,
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
                 environment = viewerEnvironment,
+                // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
+                autoCenterContent = false,
                 cameraManipulator = cameraManipulator,
             ) {
                 activeModelInstance?.let { instance ->
+                    // "Spin scene" turns the model about its bounding-box centre, not the glTF
+                    // origin: counter-translate the pivot so the centre stays put under the camera.
+                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, -modelYaw)
                     ModelNode(
                         modelInstance = instance,
-                        // No `scaleToUnits` — the model renders at its true
-                        // glTF size. Auto-fit framing (#1439) adapts the orbit
-                        // radius to that intrinsic size instead, so a 5 m crate
-                        // and a 5 cm bee are both framed identically without
-                        // squashing every model to a fixed unit cube.
-                        //
-                        // Translate the model so its bounding-box centre lands
-                        // on the world origin the hero orbit pivots around —
-                        // glTF pivots are often off-centre. `framing.center` is
-                        // the bounds centre the same auto-fit pass measured.
-                        position = io.github.sceneview.math.Position(
-                            0f,
-                            -autoFitRadius * 0.12f * (1f - fitProgress.value),
-                            0f,
+                        // No `scaleToUnits` — the model renders at its true glTF size and the
+                        // camera adapts to it (#1439). The settle spring drops the model in
+                        // from slightly below its resting pose.
+                        position = Position(
+                            modelCenter.x - rx,
+                            -autoFitRadius * 0.06f * (1f - fitProgress.value),
+                            modelCenter.z - rz,
                         ),
-                        rotation = Rotation(y = modelYaw),
+                        rotation = Rotation(x = uprightRotation.x, y = modelYaw),
                     )
                 }
             }
@@ -513,20 +579,6 @@ private fun SingleModelSection(
     )
     }
 }
-
-/**
- * Auto-fit framing parameters for the currently displayed model (#1439).
- *
- * @property radius Orbit distance, in metres, at which the model's bounding sphere fills the
- *   viewport — computed by `io.github.sceneview.fitDistanceForBounds` from the model's intrinsic
- *   glTF bounds.
- * @property center Bounding-box centre of the model in its own local space. The `ModelNode` is
- *   translated by `-center` so the centre lands on the world origin the hero orbit pivots around.
- */
-private data class ModelFraming(
-    val radius: Float,
-    val center: io.github.sceneview.math.Position,
-)
 
 /**
  * Loads the streamed Sketchfab model for [streamedFileUrl], or returns `null`
