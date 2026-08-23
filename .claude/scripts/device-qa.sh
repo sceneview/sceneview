@@ -82,7 +82,7 @@
 #   2  bad invocation / disk gate tripped before any platform ran
 #
 # Disk hygiene:
-#   The runner calls disk-gated-spawn-check.sh before starting and cleans the
+#   The runner checks free disk (inline df gate below) before starting and cleans the
 #   previous platform's heavy build output before the next leg, so a full
 #   `--platform=all` pass on a constrained host never craters free disk.
 
@@ -250,7 +250,10 @@ case "$PLATFORM" in
   ios)        DISK_MIN_GB=10 ;;
 esac
 DISK_GATE_SKIP=false   # set below when an advisory-only --ci run trips the gate
-if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
+# Inline check: the former disk-gated-spawn-check.sh helper left with the
+# harness (#3244), which made this gate fail on every runner regardless of
+# free space and turned the blocking web leg red on every push.
+if [ "$(df -k / | awk 'NR==2 { print int($4 / 1024 / 1024) }')" -lt "$DISK_MIN_GB" ]; then
   warn "free disk is below the safe threshold — run cleanup before a full pass:"
   warn "  bash .claude/scripts/gradle-cache-cleanup.sh"
   warn "  bash .claude/scripts/worktree-auto-prune.sh --yes --keep \"\$(git rev-parse --show-toplevel)\""
