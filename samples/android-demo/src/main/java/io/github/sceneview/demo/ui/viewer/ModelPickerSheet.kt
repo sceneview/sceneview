@@ -33,8 +33,10 @@ fun ModelPickerSheet(
     onSelect: (BundledViewerModel) -> Unit, onPark: () -> Unit,
     onSurprise: () -> Unit, onBrowse: () -> Unit, onDismiss: () -> Unit,
 ) {
+    // Fully expanded from the start: the partially-expanded stop cut the second grid row mid-card.
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = SceneViewTokens.Radius.xl, topEnd = SceneViewTokens.Radius.xl),
     ) {

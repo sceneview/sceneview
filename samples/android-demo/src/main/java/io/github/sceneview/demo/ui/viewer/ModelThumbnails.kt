@@ -18,7 +18,10 @@ object ModelThumbnails {
     fun resourceFor(assetName: String): Int? = resources[assetName]
 }
 
-/** Same deferred-resource seam for bundled HDR environment thumbnails. */
+/**
+ * Same deferred-resource seam for bundled HDR environment thumbnails. Keyed by the asset stem
+ * minus its resolution suffix: `environments/sunset_2k.hdr` → `sunset`.
+ */
 object EnvironmentThumbnails {
     private val resources: Map<String, Int> = mapOf(
         "studio" to R.drawable.env_thumb_studio,
@@ -29,5 +32,5 @@ object EnvironmentThumbnails {
         "night_sky" to R.drawable.env_thumb_night_sky,
         "rooftop_night" to R.drawable.env_thumb_rooftop_night,
     )
-    fun resourceFor(assetName: String): Int? = resources[assetName]
+    fun resourceFor(assetName: String): Int? = resources[assetName.removeSuffix("_2k")]
 }

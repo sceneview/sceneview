@@ -10,6 +10,8 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_model_viewer">Models</string>
+    <!-- Title pill inside the viewer; the registry/home title above stays "Models" (androidTest taps it). -->
+    <string name="demo_model_viewer_screen_title">Model Viewer</string>
     <string name="demo_model_viewer_subtitle">Any glTF, HDR lighting, one tap to AR</string>
     <string name="demo_model_viewer_desc">Load and render glTF/GLB 3D models with orbit camera</string>
     <string name="demo_model_viewer_loading">Loading model…</string>

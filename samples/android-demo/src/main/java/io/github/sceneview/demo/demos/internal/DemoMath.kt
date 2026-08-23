@@ -28,9 +28,13 @@ internal object DemoMath {
         return (width / usableHeight).takeIf { it.isFinite() && it > 0f } ?: 1f
     }
 
-    /** Applies the viewer's breathing-room margin and safe camera bounds. */
+    /**
+     * Applies the viewer's breathing-room margin and safe camera bounds. The upper bound sits
+     * well inside the default 1000 m far plane: the bundled Khronos Fox is ~155 glTF units deep
+     * and fits at ~390 m; a 50 m cap put the camera inside the mesh (giant / empty viewport).
+     */
     fun viewerFitRadius(fitDistance: Float, margin: Float = 1.12f): Float =
-        (fitDistance * margin).coerceIn(0.2f, 50f)
+        (fitDistance * margin).coerceIn(0.2f, 900f)
 
     /**
      * Y-axis spin used by [io.github.sceneview.demo.demos.GeometryDemo]. Returns the

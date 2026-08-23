@@ -31,6 +31,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.compose.BackHandler
+import io.github.sceneview.environment.Environment
+import io.github.sceneview.demo.DemoPreviews
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -225,10 +228,8 @@ private fun SingleModelSection(
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
     ) }
     var requestedEnvironment by remember { mutableStateOf(viewerEnvironments.first()) }
-    var activeEnvironmentChoice by remember { mutableStateOf(viewerEnvironments.first()) }
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
-    LaunchedEffect(requestedEnvironment) { delay(180); activeEnvironmentChoice = requestedEnvironment }
     var recenterGeneration by remember { mutableStateOf(0) }
     var spinScene by remember { mutableStateOf(false) }
     var animationBarOpen by remember { mutableStateOf(false) }
@@ -341,9 +342,12 @@ private fun SingleModelSection(
     // the bounds are not yet measurable. The "Camera distance" slider below
     // lets the user override this; `null` slider state means "use auto-fit".
     val autoFitRadius = framing?.radius ?: 1.4f
-    val fitProgress = remember(activeModelInstance) { Animatable(0f) }
-    LaunchedEffect(framing) {
-        if (framing != null) fitProgress.animateTo(1f, SceneViewTokens.Motion.spring())
+    // Re-run the settle animation for every newly measured instance and on Recenter.
+    val fitProgress = remember { Animatable(0f) }
+    LaunchedEffect(framing, recenterGeneration) {
+        if (framing == null) return@LaunchedEffect
+        fitProgress.snapTo(0f)
+        fitProgress.animateTo(1f, SceneViewTokens.Motion.spring())
     }
     val modelYaw = rememberHeroYaw(trigger = spinScene && activeModelInstance != null, durationMillis = 20_000, staticYaw = 0f)
 
@@ -392,18 +396,30 @@ private fun SingleModelSection(
     }
 
     val firstFrame = rememberFirstFrameState()
-    val viewerEnvironment = key(activeEnvironmentChoice.assetPath, showEnvironment) {
-        rememberHDREnvironment(environmentLoader, activeEnvironmentChoice.assetPath, createSkybox = showEnvironment)
-    } ?: rememberEnvironment(environmentLoader)
+    // The HDR decode is a `produceState` keyed on (asset, skybox): `key` forces a fresh slot
+    // per choice so a swap always re-decodes. The previous environment stays on screen until
+    // the new one is produced — falling back to the neutral default would flash the lighting.
+    val fallbackEnvironment = rememberEnvironment(environmentLoader)
+    val loadedEnvironment = key(requestedEnvironment.assetPath, showEnvironment) {
+        rememberHDREnvironment(environmentLoader, requestedEnvironment.assetPath, createSkybox = showEnvironment)
+    }
+    var lastEnvironment by remember { mutableStateOf<Environment?>(null) }
+    if (loadedEnvironment != null) lastEnvironment = loadedEnvironment
+    val viewerEnvironment = loadedEnvironment ?: lastEnvironment ?: fallbackEnvironment
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
     }
+    // Back closes transient chrome before leaving the demo.
+    BackHandler(enabled = animationBarOpen || modelSheetOpen || environmentSheetOpen) {
+        animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
+    }
 
     DemoScaffold(
-        title = stringResource(R.string.demo_model_viewer),
+        title = stringResource(R.string.demo_model_viewer_screen_title),
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
+        previewRes = DemoPreviews.resourceFor("model-viewer", dark = true),
         controls = {
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
