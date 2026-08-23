@@ -17,11 +17,20 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up JDK ${{ inputs.java-version }}
+    # `:samples:desktop-demo` (filament-kmp desktop renderer, FFM-based, #2540)
+    # pins `jvmToolchain(22)`. Gradle configures every included subproject on
+    # any `./gradlew` invocation from root, so every job needs a JDK 22
+    # locally installed for toolchain auto-detection — auto-download isn't
+    # configured (no foojay resolver) and shouldn't be, to avoid a network
+    # dependency in CI. Installed first so `inputs.java-version` stays last
+    # and keeps owning JAVA_HOME (the JDK that actually runs Gradle).
+    - name: Set up JDK 22 + ${{ inputs.java-version }}
       uses: actions/setup-java@v5
       with:
         distribution: ${{ inputs.java-distribution }}
-        java-version: ${{ inputs.java-version }}
+        java-version: |
+          22
+          ${{ inputs.java-version }}
 
     # Build-cache-aware Gradle setup. Replaces the lightweight
     # `cache: gradle` shortcut on setup-java (wrapper + deps only) with the
