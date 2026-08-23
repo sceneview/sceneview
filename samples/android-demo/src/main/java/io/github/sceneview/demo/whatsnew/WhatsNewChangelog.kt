@@ -118,6 +118,15 @@ private val ISSUE_LINK_GROUP = Regex("""\s*\((?:\[#\d+]\([^)]*\)(?:,\s*)?)+\)"""
 private val MARKDOWN_LINK = Regex("""\[([^\]]*)]\([^)]*\)""")
 
 /**
+ * Single-asterisk emphasis: `*you*` → `you`. Bold is stripped as a plain `**`
+ * replacement, which leaves italics untouched — and a headline that reads
+ * "since the last build *you* signed off" ships those asterisks to the screen.
+ * Anchored on non-whitespace at both ends so arithmetic (`2 * 3`) is not
+ * mistaken for emphasis.
+ */
+private val EMPHASIS = Regex("""\*(?=\S)([^*]+?)(?<=\S)\*""")
+
+/**
  * Reads the bundled changelog asset and parses it. Blocking I/O — call from
  * a background dispatcher. Any failure (asset missing, unreadable) degrades
  * to an empty list: the What's new card simply does not render, it never
@@ -286,12 +295,24 @@ private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry?
     // Fragments lead with a bold headline (`**Headline.** long prose`) —
     // that is the at-a-glance text. Unbolded legacy bullets fall back to
     // their first sentence.
+    //
+    // The `**scope**: prose` shape is the exception, and it is common: dozens
+    // of bullets open with a bare module label (`**android-demo**:`,
+    // `**sceneview**:`). Taking the bold span alone there yields the LABEL as
+    // the headline, so the sheet rendered a column reading "android-demo" eight
+    // times over — and, since the id is a hash of that text, those entries
+    // collided on one id and crashed the list with a duplicate key. A bold span
+    // followed by a colon is a prefix, not a headline; the sentence after it is.
     val leading = if (raw.startsWith("**")) {
         val close = raw.indexOf("**", startIndex = 2)
-        if (close > 2) raw.substring(2, close) else raw
+        when {
+            close <= 2 -> raw
+            raw.getOrNull(close + 2) == ':' ->
+                raw.substring(2, close) + ": " + firstSentence(raw.substring(close + 3).trim())
+            else -> raw.substring(2, close)
+        }
     } else {
-        val sentenceEnd = raw.indexOf(". ")
-        if (sentenceEnd > 0) raw.substring(0, sentenceEnd + 1) else raw
+        firstSentence(raw)
     }
     // Code spans survive into `text` so the sheet can render them as code;
     // `plainText` drops them for the card, which has always shown them plain.
@@ -299,6 +320,7 @@ private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry?
         .replace(ISSUE_LINK_GROUP, "")
         .replace(MARKDOWN_LINK) { it.groupValues[1] }
         .replace("**", "")
+        .replace(EMPHASIS) { it.groupValues[1] }
         .trim()
         .trimEnd('.', ':')
         .trim()
@@ -320,12 +342,18 @@ private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry?
  * hash written to disk must be defined by this file, not by a JVM
  * implementation detail that a future runtime is free to change.
  */
+private fun firstSentence(text: String): String {
+    val end = text.indexOf(". ")
+    return if (end > 0) text.substring(0, end + 1) else text
+}
+
 internal fun whatsNewEntryId(text: String): String {
     val normalised = text
         .replace(ISSUE_LINK_GROUP, "")
         .replace(ISSUE_REF, "")
         .replace("`", "")
         .replace("**", "")
+        .replace(EMPHASIS) { it.groupValues[1] }
         .lowercase()
         .replace(Regex("""\s+"""), " ")
         .trim()

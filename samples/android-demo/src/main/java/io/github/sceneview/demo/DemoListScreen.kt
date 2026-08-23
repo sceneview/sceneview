@@ -41,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -66,9 +65,7 @@ import io.github.sceneview.demo.ui.ParticleBackground
 import io.github.sceneview.demo.whatsnew.WhatsNewCard
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
-import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
-import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
 import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -104,6 +101,15 @@ import kotlinx.coroutines.withContext
 fun DemoListScreen(
     onDemoClick: (String) -> Unit,
     onAboutClick: () -> Unit,
+    /**
+     * Whether the "since you last tested" list has pending entries. Owned by
+     * [io.github.sceneview.demo.ui.RootScreen] — this screen must not derive it
+     * again, or acknowledging in the sheet would leave a second stale copy of
+     * the marker driving this badge. Defaulted so previews and snapshot tests
+     * render the unbadged bar they already pinned.
+     */
+    hasUnseenWhatsNew: Boolean = false,
+    onWhatsNewClick: () -> Unit = {},
 ) {
     // `rememberTopAppBarState()` survives recomposition + rotation so the
     // collapse offset doesn't snap back to expanded after a state change.
@@ -150,32 +156,6 @@ fun DemoListScreen(
         )
     }
 
-    // "What's new SINCE YOU LAST TESTED" — the per-install surface, distinct
-    // from the card above it: the card is the product's recent history and is
-    // the same for everyone, this is the delta THIS install has not been shown.
-    // It opens itself once per app launch when something is pending, and
-    // otherwise waits behind the top-bar badge. Only the sheet's "Got it"
-    // button writes the marker — dismissing keeps the list pending, on purpose.
-    val whatsNewSince = rememberWhatsNewSince()
-    var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(whatsNewSince) {
-        if (whatsNewSince.consumeAutoOpen()) showWhatsNewSince = true
-    }
-    if (showWhatsNewSince) {
-        WhatsNewSinceSheet(
-            sections = whatsNewSince.unseen,
-            seenVersion = whatsNewSince.seenVersion,
-            onDemoClick = { id ->
-                showWhatsNewSince = false
-                onDemoClick(id)
-            },
-            onMarkSeen = {
-                whatsNewSince.markSeen()
-                showWhatsNewSince = false
-            },
-            onDismiss = { showWhatsNewSince = false },
-        )
-    }
 
     // Animated 3D particle backdrop (#1488) — a SceneView scene drawn as the
     // bottom layer of this Box, behind the demo grid. It only exists while the
@@ -198,8 +178,8 @@ fun DemoListScreen(
                     // list must stay reachable — so it retreats to a dot on
                     // this action, and the action disappears entirely once
                     // there is nothing pending.
-                    if (whatsNewSince.hasUnseen) {
-                        IconButton(onClick = { showWhatsNewSince = true }) {
+                    if (hasUnseenWhatsNew) {
+                        IconButton(onClick = onWhatsNewClick) {
                             BadgedBox(badge = { Badge() }) {
                                 Icon(
                                     Icons.Outlined.AutoAwesome,

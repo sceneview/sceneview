@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +48,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +73,8 @@ import io.github.sceneview.demo.DemoListScreen
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
+import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
+import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
 
 /**
  * Top-level UI scaffold. Hosts the four primary tabs (Explore, AR View,
@@ -94,6 +99,38 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
     // screen with the nav bar visible, not on an orphaned immersive shell.
     var arSessionActive by remember { mutableStateOf(false) }
 
+    // "What's new since you last tested" lives HERE, not inside the Samples
+    // tab, because the requirement is "on app open" and the app opens on
+    // Explore — owned by the tab, the surface only ever appeared once the user
+    // happened to walk into Samples, which is exactly the blind re-test this
+    // feature exists to end. Device QA caught it; nothing in the unit tests
+    // could have, since they never choose a start tab.
+    //
+    // Single ownership matters as much as placement: DemoListScreen renders the
+    // badged app-bar action from THIS state rather than calling
+    // rememberWhatsNewSince() itself, so acknowledging in the sheet clears the
+    // badge instead of leaving a second, stale copy of the marker on screen.
+    val whatsNewSince = rememberWhatsNewSince()
+    var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(whatsNewSince) {
+        if (whatsNewSince.consumeAutoOpen()) showWhatsNewSince = true
+    }
+    if (showWhatsNewSince) {
+        WhatsNewSinceSheet(
+            sections = whatsNewSince.unseen,
+            seenVersion = whatsNewSince.seenVersion,
+            onDemoClick = { id ->
+                showWhatsNewSince = false
+                onDemoClick(id)
+            },
+            onMarkSeen = {
+                whatsNewSince.markSeen()
+                showWhatsNewSince = false
+            },
+            onDismiss = { showWhatsNewSince = false },
+        )
+    }
+
     Scaffold(
         bottomBar = {
             // Conditional rendering rather than just `visible = !arSessionActive`
@@ -106,7 +143,18 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                         NavigationBarItem(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
-                            icon = { Icon(tab.icon, contentDescription = null) },
+                            // The badge rides the Samples tab so a list left
+                            // pending stays visible from every tab, not only
+                            // from the one that hosts its entry point.
+                            icon = {
+                                if (tab == RootTab.Samples && whatsNewSince.hasUnseen) {
+                                    BadgedBox(badge = { Badge() }) {
+                                        Icon(tab.icon, contentDescription = null)
+                                    }
+                                } else {
+                                    Icon(tab.icon, contentDescription = null)
+                                }
+                            },
                             label = { Text(stringResource(tab.labelRes)) },
                         )
                     }
@@ -136,6 +184,8 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                 RootTab.Samples -> DemoListScreen(
                     onDemoClick = onDemoClick,
                     onAboutClick = { selectedTab = RootTab.About },
+                    hasUnseenWhatsNew = whatsNewSince.hasUnseen,
+                    onWhatsNewClick = { showWhatsNewSince = true },
                 )
                 RootTab.About -> AboutTabContent()
             }

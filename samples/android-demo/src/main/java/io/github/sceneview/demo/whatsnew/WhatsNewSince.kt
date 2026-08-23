@@ -90,11 +90,18 @@ fun unseenSections(
     // initialised it (see WhatsNewSeenStore.initialise), so this is defensive:
     // showing nothing is the safe answer, never the whole history.
     if (seen == null) return emptyList()
+    // Ids already emitted higher up the list. The changelog genuinely repeats a
+    // sentence across sections (a bullet restated in a later release, a fragment
+    // whose wording matches one already shipped), and the same change listed
+    // twice is noise — newest-first means the first occurrence is the one worth
+    // keeping. This also removes a crash: identical text hashes to one id, and
+    // two rows sharing a key take a LazyColumn down.
+    val emitted = mutableSetOf<String>()
     return sections.mapNotNull { section ->
         val inScope = section.isUnreleased ||
             compareVersions(section.version.orEmpty(), seen.baseVersion) > 0
         if (!inScope) return@mapNotNull null
-        val fresh = section.entries.filterNot { it.id in seen.entryIds }
+        val fresh = section.entries.filter { it.id !in seen.entryIds && emitted.add(it.id) }
         if (fresh.isEmpty()) null else section.copy(entries = fresh)
     }
 }

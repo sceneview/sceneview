@@ -137,6 +137,90 @@ class WhatsNewSinceTest {
     }
 
     @Test
+    fun `a scope-prefixed bullet keeps its prose, not just the module label`() {
+        // Regression, found on device: `**android-demo**: real headline` used to
+        // reduce to "android-demo". Dozens of bullets carry that shape, so the
+        // sheet rendered the same word over and over — and because the id is a
+        // hash of the text, they collided on one id and crashed the LazyColumn.
+        val parsed = parseChangelogSections(
+            """
+            ## Unreleased
+
+            ### Fixed
+
+            - **android-demo**: the bug-report sheet now dismisses itself. Long prose after.
+            - **sceneview**: `orbitRadius` gained a distance-first overload. More prose.
+            """.trimIndent(),
+            maxReleases = 5,
+        )
+        val texts = parsed.single().entries.map { it.text }
+        assertEquals(
+            listOf(
+                "android-demo: the bug-report sheet now dismisses itself",
+                "sceneview: `orbitRadius` gained a distance-first overload",
+            ),
+            texts,
+        )
+        assertFalse(
+            "two scope-prefixed bullets must not collapse onto one id",
+            parsed.single().entries[0].id == parsed.single().entries[1].id,
+        )
+    }
+
+    @Test
+    fun `the same entry is never listed twice across sections`() {
+        // A bullet restated in a later release must appear once. Duplicate ids
+        // in one list are also a hard crash (duplicate LazyColumn key).
+        val sections = parseChangelogSections(
+            """
+            ## Unreleased
+
+            ### Fixed
+
+            - **A repeated headline.** Prose.
+
+            ## v4.31.0 — 2026-08-17
+
+            ### Fixed
+
+            - **A repeated headline.** Prose.
+            - **Something else.** Prose.
+            """.trimIndent(),
+            maxReleases = 5,
+        )
+        val unseen = unseenSections(sections, WhatsNewSeen(300, "4.28.0-main.a", emptySet()))
+        val ids = unseen.flatMap { section -> section.entries.map { it.id } }
+        assertEquals("no id may repeat across the rendered list", ids.size, ids.toSet().size)
+        // Newest-first: the unreleased occurrence is the one kept.
+        assertTrue(unseen.first().isUnreleased)
+        assertEquals(listOf("Something else"), unseen[1].entries.map { it.text })
+    }
+
+    @Test
+    fun `italic emphasis is stripped, arithmetic is not`() {
+        // Found on device: bold is removed by a plain `**` replacement, which
+        // leaves `*you*` intact and ships the asterisks to the screen.
+        val parsed = parseChangelogSections(
+            """
+            ## Unreleased
+
+            ### Added
+
+            - **A thing.** What changed since the last build *you* signed off.
+            - **Spacing 2 * 3 stays.** Prose.
+            """.trimIndent(),
+            maxReleases = 5,
+        )
+        assertEquals("A thing", parsed.single().entries[0].text)
+        assertEquals("Spacing 2 * 3 stays", parsed.single().entries[1].text)
+        assertEquals(
+            "emphasis must not change an entry's identity",
+            whatsNewEntryId("the last build you signed off"),
+            whatsNewEntryId("the last build *you* signed off"),
+        )
+    }
+
+    @Test
     fun `no marker shows nothing rather than the whole history`() {
         assertTrue(unseenSections(sections(), seen = null).isEmpty())
     }

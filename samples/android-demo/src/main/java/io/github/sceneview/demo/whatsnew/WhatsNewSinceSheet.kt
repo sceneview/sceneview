@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -121,11 +121,19 @@ fun WhatsNewSinceSheet(
                     stickyHeader(key = "header-${section.version ?: "unreleased"}") {
                         SectionHeader(section)
                     }
+                    val sectionKey = section.version ?: "unreleased"
                     section.entries.groupBy { it.category }.forEach { (category, entries) ->
-                        item(key = "cat-${section.version}-$category") {
+                        item(key = "cat-$sectionKey-$category") {
                             CategoryLabel(category)
                         }
-                        items(entries, key = { "entry-${it.id}" }) { entry ->
+                        // Key on position as well as id. Ids are deduplicated
+                        // upstream, but a list key that CAN collide is a crash,
+                        // and a rendering path must not be the thing that
+                        // enforces an invariant it does not own.
+                        itemsIndexed(
+                            entries,
+                            key = { index, entry -> "entry-$sectionKey-$category-$index-${entry.id}" },
+                        ) { _, entry ->
                             EntryRow(
                                 entry = entry,
                                 category = category,
@@ -285,12 +293,23 @@ private fun mentionedDemos(
     entry: WhatsNewEntry,
     titles: List<Pair<DemoEntry, String>>,
 ): List<DemoEntry> {
-    val haystack = entry.plainText.lowercase()
+    val haystack = entry.plainText
     return titles
-        .filter { (_, title) -> title.length >= MIN_TITLE_MATCH && haystack.contains(title.lowercase()) }
+        .filter { (_, title) -> title.length >= MIN_TITLE_MATCH && mentions(haystack, title) }
         .map { it.first }
         .take(MAX_CHIPS)
 }
+
+/**
+ * Whole-word, case-insensitive containment.
+ *
+ * A plain `contains` matched word fragments: the "Measure" demo attached its
+ * chip to a sentence about "three measur**ed** laws", offering to open a demo
+ * the entry never mentions. A chip that opens the wrong demo is worse than no
+ * chip, so the match is anchored on word boundaries.
+ */
+private fun mentions(haystack: String, title: String): Boolean =
+    Regex("\\b${Regex.escape(title)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(haystack)
 
 /** Registry titles resolved once, for [mentionedDemos]. */
 @Composable
