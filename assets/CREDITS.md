@@ -38,7 +38,7 @@ Total models: **75** (plus 16 pending metadata, 7 pending license review).
 - **[Choco Bunny](https://sketchfab.com/3d-models/choco-bunny-583deedf74ab4df4a3f102b123d3382e)** by Ergoni — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Car](https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0)** by 4d_Bob — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Character](https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51)** by Esk — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
-- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas (modified by SceneView — display plinth removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[D.S.S. Harbinger Battle Cruiser](https://sketchfab.com/3d-models/dss-harbinger-battle-cruiser-474f62d00ed54212b37f93ce91569c53)** by Mike Pan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[DJI Mavic 3 Cine](https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b)** by aurumjuda747 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Ferrari F40](https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70)** by Black Snow — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)

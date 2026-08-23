@@ -58,8 +58,22 @@ internal object RawDepthCloud {
      * @param stride                Sub-sample stride (>=1). Defaults to [DEFAULT_STRIDE].
      * @param confidenceThreshold   Minimum confidence (0..255) to keep a point.
      * @param maxPoints             Cap on emitted points so the Compose draw stays cheap.
+     * @param rotationDegrees       Clockwise rotation, a multiple of 90, applied to every emitted
+     *                              `(x, y)` so the cloud is upright on screen (#3271 — same fix as
+     *                              [DepthVisualization.depthBufferToArgb] / #3184). ARCore hands
+     *                              back the raw-depth image in the **camera sensor** frame, which
+     *                              does not follow the display: in portrait the image arrives 90°
+     *                              off, so mapping `x/width, y/height` straight onto the screen
+     *                              scatters points into the wrong region — reading as "almost
+     *                              nothing visible" rather than a clean rotation. Use
+     *                              [DepthVisualization.displayRotationToDegrees] to derive it from
+     *                              the current display rotation. `0` (the default) preserves the
+     *                              original, byte-for-byte behavior.
      *
-     * @return Packed array length = `nPoints * STRIDE_INTS`. Always returns a fresh array.
+     * @return Packed array length = `nPoints * STRIDE_INTS`. `x`/`y` are already rotated — the
+     *         caller must size its overlay to [DepthVisualization.rotatedWidth] /
+     *         [DepthVisualization.rotatedHeight] of ([width], [height], [rotationDegrees]), not to
+     *         the raw `width` / `height`, on a quarter turn.
      */
     @Suppress("NestedBlockDepth") // y→x→confidence→depth nested loops are the canonical depth-cloud pattern
     fun buildCloud(
@@ -72,6 +86,7 @@ internal object RawDepthCloud {
         stride: Int = DEFAULT_STRIDE,
         confidenceThreshold: Int = DEFAULT_CONFIDENCE_THRESHOLD,
         maxPoints: Int = DEFAULT_MAX_POINTS,
+        rotationDegrees: Int = 0,
     ): IntArray {
         require(width > 0 && height > 0) { "raw-depth image must be non-empty (got $width x $height)" }
         require(stride >= 1) { "stride must be >= 1, was $stride" }
@@ -82,6 +97,10 @@ internal object RawDepthCloud {
             "confidenceRowStrideBytes ($confidenceRowStrideBytes) must be >= width ($width)"
         }
         require(maxPoints >= 0) { "maxPoints must be >= 0, was $maxPoints" }
+        val rotation = ((rotationDegrees % 360) + 360) % 360
+        require(rotation % 90 == 0) {
+            "rotationDegrees ($rotationDegrees) must be a multiple of 90"
+        }
         val clampedThreshold = confidenceThreshold.coerceIn(0, 255)
 
         val prevDepthOrder = depthBytes.order()
@@ -110,9 +129,18 @@ internal object RawDepthCloud {
                         if (mm > 0) {
                             val t = DepthVisualization.normalize(mm) ?: 0f
                             val color = DepthVisualization.falseColorArgb(t)
+                            // Rotate (x, y) the same way DepthVisualization.depthBufferToArgb
+                            // re-indexes pixels while writing (#3271 / #3184): the destination
+                            // point lands in the *rotated* output frame, matching the display.
+                            val (outX, outY) = when (rotation) {
+                                90 -> (height - 1 - y) to x
+                                180 -> (width - 1 - x) to (height - 1 - y)
+                                270 -> y to (width - 1 - x)
+                                else -> x to y
+                            }
                             val base = n * STRIDE_INTS
-                            out[base] = x
-                            out[base + 1] = y
+                            out[base] = outX
+                            out[base + 1] = outY
                             out[base + 2] = mm
                             out[base + 3] = color
                             n++

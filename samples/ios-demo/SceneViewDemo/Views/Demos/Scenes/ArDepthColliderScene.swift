@@ -6,6 +6,8 @@
 // @icon        circle.grid.cross.fill
 // @iosOnly     true
 // @status      knownIssue
+// @order       26
+// @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 
 enum ArDepthColliderScene: DemoScene {
@@ -298,7 +300,9 @@ struct ARDepthColliderDemo: View {
         }
         .cameraControls(.orbit)
         .environment(.studio) // parity with android-demo IBL fix (#2114), mirrors PhysicsDemo
-        .id(simSceneKey)
+        // Drop / Reset rebuild the balls under the same `RealityView` instead
+        // of re-keying the view with `.id(_:)` (#3008, mirrors PhysicsDemo).
+        .contentID(simSceneKey)
         .background(Color.black)
     }
 

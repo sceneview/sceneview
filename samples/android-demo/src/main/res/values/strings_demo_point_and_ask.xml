@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_point_and_ask_title">Point &amp; Ask</string>
-    <string name="demo_point_and_ask_subtitle">Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device</string>
+    <string name="demo_point_and_ask_subtitle">On-device Gemini Nano explains the AR scene</string>
 
     <!-- Top status pill -->
     <string name="demo_point_and_ask_status_checking">Checking Gemini Nano availability…</string>
@@ -25,10 +25,15 @@
     <!-- Free-form question input (P3) -->
     <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>
 
-    <!-- The default prompt sent to the model — English on purpose (best on-device answer quality). -->
-    <string name="demo_point_and_ask_question" translatable="false">What am I looking at? Answer in one short sentence.</string>
+    <!-- The default prompt sent to the model when the question field is blank — English on
+         purpose (best on-device answer quality). A tap means "describe what I'm pointing at",
+         so the default asks exactly that (#3187). -->
+    <string name="demo_point_and_ask_question" translatable="false">Describe what I\'m pointing at, in one short sentence.</string>
 
-    <!-- Film-mode prefill — the "AI sees the augmented room" reveal question. Sent to the
-         model as-is, so English on purpose like demo_point_and_ask_question. -->
-    <string name="demo_point_and_ask_prefill_question" translatable="false">Is there an animal in this room?</string>
+    <!-- Voice input (#3083) -->
+    <string name="demo_point_and_ask_voice_cd">Ask by voice</string>
+    <string name="demo_point_and_ask_voice_prompt">Ask a question</string>
+
+    <!-- Drop-3D mode picker (#3083) -->
+    <string name="demo_point_and_ask_prop_picker_label">Long-press drops</string>
 </resources>

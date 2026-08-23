@@ -82,7 +82,7 @@
 #   2  bad invocation / disk gate tripped before any platform ran
 #
 # Disk hygiene:
-#   The runner calls disk-gated-spawn-check.sh before starting and cleans the
+#   The runner checks free disk (inline df gate below) before starting and cleans the
 #   previous platform's heavy build output before the next leg, so a full
 #   `--platform=all` pass on a constrained host never craters free disk.
 
@@ -250,7 +250,10 @@ case "$PLATFORM" in
   ios)        DISK_MIN_GB=10 ;;
 esac
 DISK_GATE_SKIP=false   # set below when an advisory-only --ci run trips the gate
-if ! bash "$SCRIPT_DIR/disk-gated-spawn-check.sh" --quiet --min-gb="$DISK_MIN_GB" >/dev/null 2>&1; then
+# Inline check: the former disk-gated-spawn-check.sh helper left with the
+# harness (#3244), which made this gate fail on every runner regardless of
+# free space and turned the blocking web leg red on every push.
+if [ "$(df -k / | awk 'NR==2 { print int($4 / 1024 / 1024) }')" -lt "$DISK_MIN_GB" ]; then
   warn "free disk is below the safe threshold — run cleanup before a full pass:"
   warn "  bash .claude/scripts/gradle-cache-cleanup.sh"
   warn "  bash .claude/scripts/worktree-auto-prune.sh --yes --keep \"\$(git rev-parse --show-toplevel)\""
@@ -363,6 +366,41 @@ record_key_subleg() {
   else
     record "$name" skipped "${parent} leg did not pass (${pstatus:-not run}) — ${path} not exercised" "" 0
   fi
+}
+
+# device_has_connectivity — probe the leased emulator's radio state (#2959).
+# setup-ar-emulator.sh's ensure_airplane_mode_disabled already repairs this
+# right after boot; this is the backstop for an emulator that was leased
+# already-running (never went through that repair) or where the repair
+# itself failed. Echoes "true"/"false"; empty ANDROID_SERIAL or an adb error
+# is treated as "unknown connectivity" — NOT as present, so a broken probe
+# fails closed into an honest skip rather than a silent false-pass.
+device_has_connectivity() {
+  local serial="${1:-${ANDROID_SERIAL:-}}"
+  [[ -n "$serial" ]] || { echo false; return; }
+  local mode
+  mode="$(adb -s "$serial" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r\n')"
+  [[ "$mode" == "0" ]] && echo true || echo false
+}
+
+# record_streamed_subleg — like record_key_subleg, but for a sub-leg whose
+# path is BOTH key-gated AND network-gated (#2959): a present key with the
+# emulator stuck in airplane mode silently resolves every streamed slug to
+# its bundled fallback (measured closing #2942 — see
+# ensure_airplane_mode_disabled in setup-ar-emulator.sh). Reports which of
+# the two gates was missing so a skip is actionable, not just advisory noise.
+record_streamed_subleg() {
+  local name="$1" parent="$2" key_present="$3" path="$4" serial="${5:-}"
+  if [[ "$key_present" != "true" ]]; then
+    record_key_subleg "$name" "$parent" "$key_present" "$path"
+    return
+  fi
+  local net; net="$(device_has_connectivity "$serial")"
+  if [[ "$net" != "true" ]]; then
+    record "$name" skipped "key present but no connectivity on the emulator (airplane mode, or unresolved) — ${path} would silently resolve to its bundled fallback (#2959), NOT tested" "" 0
+    return
+  fi
+  record_key_subleg "$name" "$parent" "$key_present" "$path"
 }
 
 # --- Pool emulator acquisition ---------------------------------------------
@@ -778,17 +816,20 @@ for leg in ${LEGS[@]+"${LEGS[@]}"}; do
     web)     run_web ;;
     android)
       run_android
-      # Key-gated sub-leg (#2343): whether the Explore/Sketchfab path was
-      # actually exercised. `skipped` (advisory) when SKETCHFAB_API_KEY is
-      # absent — never counted as part of the android pass.
-      record_key_subleg sketchfab android "${QA_SKETCHFAB_KEY_PRESENT:-false}" "Sketchfab Explore path"
+      # Key- AND connectivity-gated sub-leg (#2343, #2959): whether the
+      # Explore/Sketchfab path was actually exercised. `skipped` (advisory)
+      # when SKETCHFAB_API_KEY is absent OR the emulator has no connectivity
+      # (airplane mode silently swaps every streamed slug to its bundled
+      # fallback — never counted as part of the android pass either way.
+      record_streamed_subleg sketchfab android "${QA_SKETCHFAB_KEY_PRESENT:-false}" "Sketchfab Explore path"
       ;;
     ar)
       run_ar
-      # Key-gated sub-leg (#2343): whether the AR Cloud demos (Cloud Anchors /
-      # Geospatial / Streetscape) were actually exercised. `skipped` (advisory)
-      # when ARCORE_API_KEY is absent — never counted as part of the ar pass.
-      record_key_subleg arcore-cloud ar "${QA_ARCORE_KEY_PRESENT:-false}" "ARCore Cloud path"
+      # Key- AND connectivity-gated sub-leg (#2343, #2959): whether the AR
+      # Cloud demos (Cloud Anchors / Geospatial / Streetscape) were actually
+      # exercised. `skipped` (advisory) when ARCORE_API_KEY is absent or the
+      # emulator has no connectivity — never counted as part of the ar pass.
+      record_streamed_subleg arcore-cloud ar "${QA_ARCORE_KEY_PRESENT:-false}" "ARCore Cloud path"
       ;;
     ios)     run_ios ;;
   esac

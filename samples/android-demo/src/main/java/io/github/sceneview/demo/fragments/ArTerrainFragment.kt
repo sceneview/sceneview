@@ -16,6 +16,8 @@ object ArTerrainFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_terrain_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Landscape,
+        order = 45,
+        tags = setOf("ar", "geospatial", "terrain", "anchor"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )
 

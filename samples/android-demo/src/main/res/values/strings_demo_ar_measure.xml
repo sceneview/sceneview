@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_measure_title">Measure</string>
-    <string name="demo_ar_measure_subtitle">Tap two points, read the distance in cm</string>
+    <string name="demo_ar_measure_subtitle">Tap two points, read the distance</string>
 
     <string name="demo_ar_measure_hint_first">Tap a surface to drop the first point</string>
     <string name="demo_ar_measure_hint_second">Tap again to measure the distance</string>

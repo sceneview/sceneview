@@ -16,6 +16,8 @@ object ArImageFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_image_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Image,
+        order = 24,
+        tags = setOf("ar", "image", "tracking", "augmented-image", "marker"),
     )
 
     @Composable

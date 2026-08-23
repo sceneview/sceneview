@@ -30,11 +30,11 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.demos.internal.ShapeFraming
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberPausableHeroYaw
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Position2
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
@@ -42,9 +42,6 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * Unified "Custom Geometry" demo — consolidates the retired `custom-mesh` and
@@ -228,36 +225,6 @@ private fun ShapeSection(
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
-    val trianglePath = remember {
-        listOf(
-            Position2(0f, 0.5f),
-            Position2(-0.5f, -0.3f),
-            Position2(0.5f, -0.3f)
-        )
-    }
-
-    val starPath = remember {
-        buildList {
-            val outerR = 0.5f
-            val innerR = 0.2f
-            for (i in 0 until 10) {
-                val angle = (i * 36f - 90f) * (PI.toFloat() / 180f)
-                val r = if (i % 2 == 0) outerR else innerR
-                add(Position2(cos(angle) * r, sin(angle) * r))
-            }
-        }
-    }
-
-    val hexagonPath = remember {
-        buildList {
-            val r = 0.4f
-            for (i in 0 until 6) {
-                val angle = (i * 60f) * (PI.toFloat() / 180f)
-                add(Position2(cos(angle) * r, sin(angle) * r))
-            }
-        }
-    }
-
     val triangleMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Primary)
     val starMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Accent)
     val hexagonMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.TintLight)
@@ -266,11 +233,9 @@ private fun ShapeSection(
         "Star" to starMaterial,
         "Hexagon" to hexagonMaterial,
     )
-    val shapePaths = mapOf(
-        "Triangle" to trianglePath,
-        "Star" to starPath,
-        "Hexagon" to hexagonPath,
-    )
+    // Outlines live in ShapeFraming so the framing test measures the vertices actually
+    // extruded, not a copy of them (#2937).
+    val shapePaths = ShapeFraming.paths
 
     val firstFrame = rememberFirstFrameState()
 
@@ -300,16 +265,24 @@ private fun ShapeSection(
             onFrame = firstFrame.onFrame,
             engine = engine,
             materialLoader = materialLoader,
+            // The orbit distance is the LENGTH of `orbitHomePosition`, not its distance to
+            // `targetPosition`: `autoCenterContent = true` (the default, kept here) moves the
+            // shape onto the world origin and Filament takes the vector verbatim as the eye
+            // (#2930). The previous `(0, 0, 1.5)` / target `(0, 0, -1)` pairing therefore put
+            // the camera 1.5 m out — not the 2.5 m it read as — and clipped the 1 m-wide
+            // outlines on both sides of a portrait frame (#2937). ShapeFraming derives the
+            // distance from the frustum and a unit test pins the margin, as #2923 did for the
+            // geometry demo.
             cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0f, 1.5f),
-                targetPosition = Position(0f, 0f, -1f),
+                orbitHomePosition = ShapeFraming.orbitHomeOffset(ShapeFraming.CAMERA_DISTANCE),
+                targetPosition = Position(0f, 0f, ShapeFraming.TARGET_Z),
             ),
         ) {
             key(selectedShape) {
                 ShapeNode(
                     polygonPath = shapePaths.getValue(selectedShape),
                     materialInstance = shapeMaterials.getValue(selectedShape),
-                    position = Position(y = 0f, z = -1f)
+                    position = Position(y = 0f, z = ShapeFraming.TARGET_Z)
                 )
             }
         }

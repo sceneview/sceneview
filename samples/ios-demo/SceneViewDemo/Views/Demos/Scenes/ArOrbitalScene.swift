@@ -5,6 +5,8 @@
 // @available   true
 // @icon        circle.dotted
 // @iosOnly     true
+// @order       35
+// @tags        ar,orbit,animation,model,anchor
 import SwiftUI
 
 enum ArOrbitalScene: DemoScene {

@@ -95,6 +95,13 @@ refused to parse a buffer) for the suspending `loadModelInstance` (which returns
 the same input). Reporting only exceptions would have made every malformed model fail
 silently — a fix for one defect quietly creating another.
 
+`SceneViewerError` has a public constructor (#3051). The type reaches apps through
+`onError`, so an app must be able to build one to unit-test whatever it renders on
+failure — a retry button should not need a real renderer and a real failed load. The
+constructor was `internal` at merge to keep the door open for extra fields; that door
+stays open through defaulted parameters, which is the usual additive path and costs
+callers nothing.
+
 ## Hard guardrails
 
 These are load-bearing. Breaking one turns a bounded, reversible module into a

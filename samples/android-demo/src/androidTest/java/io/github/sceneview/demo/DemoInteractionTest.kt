@@ -520,7 +520,8 @@ class DemoInteractionTest {
         screenshot("27_models_single_default")
 
         // ── Multi-Model tab — themed "Park" scene + per-model visibility chips ─
-        tap("Multi-Model")
+        tap("Models")
+        tap("Park scene")
         screenshot("28_models_multi_default")
         // The visibility chips are labelled from the resolved `park` slug's
         // `displayName` (#2933) — "Oak Trees" is slot 1's registry entry, not a
@@ -532,7 +533,8 @@ class DemoInteractionTest {
         screenshot("28b_models_multi_hero_back")
 
         // ── Gallery tab — chip-picked themed Sketchfab model ──────────────────
-        tap("Gallery")
+        tap("Models")
+        tap("Browse online models…")
         screenshot("29_models_gallery_default")
     }
 

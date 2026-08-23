@@ -16,6 +16,8 @@ object ArBodyTrackerFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_body_tracker_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Accessibility,
+        order = 38,
+        tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml"),
     )
 
     @Composable

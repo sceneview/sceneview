@@ -49,7 +49,7 @@ import {
 import { formatGenerateResult, type GenerateQuality, generateModel } from "../generate-model.js";
 import { formatGeneratedScene, generateScene } from "../generate-scene.js";
 import { LLMS_TXT } from "../generated/llms-txt.js";
-import { LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
+import { IOS_NODE_TYPE_COUNT, LATEST_SCENEVIEW_RELEASE } from "../generated/version.js";
 import {
   AR_SETUP_GUIDE,
   BEST_PRACTICES,
@@ -466,7 +466,7 @@ export async function dispatchTool(
                 ``,
                 `### 2. Minimum Platform`,
                 ``,
-                `AR requires **iOS 17.0+** (ARKit + RealityKit). macOS and visionOS use different AR APIs.`,
+                `AR requires **iOS 18.0+** (ARKit + RealityKit). macOS and visionOS use different AR APIs.`,
                 ``,
                 `### 3. Info.plist — Camera Permission`,
                 ``,
@@ -658,7 +658,10 @@ export async function dispatchTool(
       const result = buildPreviewUrl({ modelUrl, codeSnippet, autoRotate, ar, title });
       const text = formatPreviewResponse(result);
 
-      return { content: withDisclaimer([{ type: "text", text }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text }]),
+        structuredContent: { ...result },
+      };
     }
 
     // ── create_3d_artifact ───────────────────────────────────────────────────
@@ -683,7 +686,10 @@ export async function dispatchTool(
 
       const result = generateArtifact(artifactInput);
       const text = formatArtifactResponse(result);
-      return { content: withDisclaimer([{ type: "text", text }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text }]),
+        structuredContent: { ...result },
+      };
     }
 
     // ── get_platform_setup ─────────────────────────────────────────────────
@@ -806,7 +812,7 @@ export async function dispatchTool(
           status: "Alpha",
           version: LATEST_SCENEVIEW_RELEASE,
           dependency: "SceneViewSwift (SPM)",
-          features: ["3D", "AR (ARKit)", "16 node types", "USDZ models"],
+          features: ["3D", "AR (ARKit)", `${IOS_NODE_TYPE_COUNT} node types`, "USDZ models"],
         },
         {
           platform: "macOS",
@@ -880,7 +886,10 @@ export async function dispatchTool(
         "KMP `sceneview-core` shares logic (math, collision, geometry, animations) across all platforms.",
       ];
 
-      return { content: withDisclaimer([{ type: "text", text: lines.join("\n") }]) };
+      return {
+        content: withDisclaimer([{ type: "text", text: lines.join("\n") }]),
+        structuredContent: { platforms },
+      };
     }
 
     // ── get_animation_guide ─────────────────────────────────────────────────

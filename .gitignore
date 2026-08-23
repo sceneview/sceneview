@@ -168,7 +168,9 @@ samples/ios-demo/SceneViewDemo/Views/Demos/GeneratedScenes.swift
 # ── MkDocs ────────────────────────────────────────────────
 docs/.cache/
 docs/site/
-site/
+# Anchored to the root: `samples/web-demo/site/` is a tracked source tree,
+# not a build output, and an unanchored `site/` hid new files there (#3214).
+/site/
 
 # `docs/docs/llms.txt` is a byte-for-byte mirror of the root `llms.txt`,
 # served by mkdocs at `/docs/llms.txt` (issue #899). Committing the mirror

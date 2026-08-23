@@ -7,6 +7,10 @@ struct DynamicSkyDemo: View {
     @State private var timeOfDay: Float = 12
     @State private var heroNode: ModelNode?
     @State private var heroLoadFailed = false
+    /// The sun currently in the scene. The time-of-day slider re-aims it in
+    /// place (`DynamicSkyNode.time(_:)` writes the new sun state onto the
+    /// same entity) instead of rebuilding the scene per slider tick.
+    @State private var skyNode: DynamicSkyNode?
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     /// Framing margin, mirroring `ModelViewerDemo`'s split for the same reason:
@@ -63,7 +67,7 @@ struct DynamicSkyDemo: View {
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
     }
@@ -102,6 +106,7 @@ struct DynamicSkyDemo: View {
                 // Dynamic sky light
                 let sky = DynamicSkyNode(timeOfDay: timeOfDay, turbidity: 3, sunIntensity: 1500)
                 root.addChild(sky.entity)
+                DispatchQueue.main.async { skyNode = sky }
             }
             .environment(skyEnvironment)
             .cameraControls(.orbit)
@@ -111,14 +116,21 @@ struct DynamicSkyDemo: View {
             // where the sky fills most of the frame (#2896).
             .cameraOrbit(elevation: .pi / 15)
             .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
-            // `heroNode != nil` is part of the key so a scene built before the
-            // async load lands picks the model up on the next rebuild — same
-            // idiom as `PlacementReticlePreviewScene` / `GestureEditingDemo`.
-            // Without it the first build wins and the helmet never appears.
-            .id("sky-\(Int(timeOfDay * 10))-\(skyEnvironment.name)-\(heroNode != nil)")
+            // The content is rebuilt exactly once, when the helmet lands: the
+            // key goes `nil` -> "hero" so a scene built before the async load
+            // picks the model up (same idiom as `GestureEditingDemo`). The
+            // time of day and the matching HDR are continuous parameters and
+            // are applied reactively — the sun below, the environment by
+            // `SceneView` itself. Keying the whole view on them with `.id(_:)`
+            // re-created the `RealityView` per slider tick and intermittently
+            // left it black on iOS 26 Simulator (#3008).
+            .contentID(heroNode == nil ? nil : "hero")
             .ignoresSafeArea()
         }
         .background(Color.black)
+        .onChange(of: timeOfDay) { _, newValue in
+            skyNode = skyNode?.time(newValue)
+        }
         // On the ZStack, not inside the SceneView modifier chain: `.task`
         // erases to `some View`, and `.environment` / `.cameraControls` /
         // `.cameraOrbit` are SceneView-specific, so inserting it mid-chain

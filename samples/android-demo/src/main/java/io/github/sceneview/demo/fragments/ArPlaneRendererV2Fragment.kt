@@ -16,6 +16,8 @@ object ArPlaneRendererV2Fragment : DemoFragment {
         subtitleRes = R.string.demo_ar_plane_renderer_v2_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.GridOn,
+        order = 27,
+        tags = setOf("ar", "plane", "renderer", "depth", "pbr", "hdr"),
     )
 
     @Composable

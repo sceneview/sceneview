@@ -10,7 +10,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 - **JDK 17** (for Android/KMP modules)
 - **Android Studio** (latest stable recommended)
-- **Xcode 15+** (for SceneViewSwift / iOS work only)
+- **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor)
 - Optional but recommended: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
   for agent-driven QA. Bootstrap in one shot:
   ```bash
@@ -87,7 +87,9 @@ xcodebuild archive ... SV_ALLOW_MISSING_SECRETS=1
 tears down node trees 40 times per test and asserts engine state returns to
 baseline. It runs headless — no SwapChain, no `readPixels` — so unlike the
 `render` package it really executes on the CI emulator instead of skipping.
-It lands in `render-tests.yml`'s `continue-on-error` job, so a red run is an
+It lands in `render-tests.yml`'s `android-library-render` job. On a pull request
+that job reports its own verdict (a red job on the PR), but it is not a required
+check; on `main` and nightly it is `continue-on-error`, so a red run there is an
 advisory signal in the Actions tab, not a merge block.
 
 ```bash
@@ -182,6 +184,17 @@ for full API context in any chat:
 5. **Keep commits clean.** Squash fixups before requesting review.
 
 Contributions to any part of the project are welcome — Android (`sceneview/`, `arsceneview/`), iOS (`SceneViewSwift/`), shared KMP core (`sceneview-core/`), samples, documentation, or the MCP server.
+
+### Changing the Apple platform floor
+
+`SceneViewSwift/Package.swift` is the only *enforced* statement of the iOS / macOS /
+visionOS minimum; the three podspecs, the root `Package.swift`, the README badges, the
+docs site, `llms.txt`, the MCP guides and the demo's About screen all repeat it as prose.
+When you move the floor, run
+[`.claude/scripts/check-ios-floor.sh`](.claude/scripts/check-ios-floor.sh) — it reads
+the manifest and lists every podspec and doc line that still names the old version
+(exit 1 on drift). It runs offline in under a second; nothing in CI runs it for you
+(#3046).
 
 ### Adding a demo to `samples/android-demo`
 
@@ -319,23 +332,42 @@ correct. Specifically:
 
 - **`ci.yml`** — the single consolidated PR workflow (`build`, `lint`,
   `unit-test`, `api-check`, `web-desktop`, `flutter-demo`, `compile-kmp`,
-  `repo-hygiene`, `quality-gate`) — carries a `paths-ignore` filter for those
-  paths, so it
-  does not trigger on a docs-only PR. (Before #1370 this was three separate
+  `kmp-native-test`). Its `paths-ignore` filter sits under the `push:`
+  trigger only — on a pull request the skipping is done by the `changes`
+  job, which detects the touched paths and gates every other job, so a
+  docs-only PR runs none of them. (Before #1370 this was three separate
   workflows — `ci.yml`, `pr-check.yml`, `quality-gate.yml` — each with its
   own `changes` job; they are now one workflow with one path-detection job.)
-- **`render-tests.yml`** never runs on *any* pull request — it is push-to-main
-  + `workflow_dispatch` only — so docs-only PRs skip it for that reason rather
-  than via a path filter.
-- The **`CI Gate`** aggregator (`ci-gate.yml`) still runs on every PR and
-  resolves green when the path-filtered jobs are skipped — that is how a
-  docs-only PR stays mergeable.
+- **`render-tests.yml`** has its own `pull_request` path filter: only a PR
+  touching `sceneview/**`, `sceneview-core/**`, `arsceneview/src/**` or the
+  Gradle build files runs it, and then only its `android-library-render` job
+  (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216). The demo
+  screenshot, iOS and web legs are push-to-main + nightly + `workflow_dispatch`
+  only. A docs-only PR matches none of the paths, so the workflow does not
+  run at all.
+- The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
+  on every PR whatever it touches, and it is the required check: it resolves
+  green once path detection has run. That is how a docs-only PR stays
+  mergeable without any job being "skipped → green for life".
 
 If your docs PR needs to force a full CI run (for example, you suspect a
 markdown change has accidentally invalidated an example referenced from
 runtime code), trigger the gates manually from the Actions tab —
 `Run workflow` on `ci.yml` / `render-tests.yml` accepts your PR's branch as
 input.
+
+### Heavy suites on `main`: every merge reaches a verdict
+
+`render-tests.yml` and `device-qa.yml` run on every (path-matched) push to
+`main`, and since #2917 / #3216 a later merge no longer cancels the run of
+the one before it: each run has its own concurrency group, so runs queue
+instead of being killed. Before that change roughly half of the runs on a
+busy `main` ended `cancelled` — neither pass nor fail — and the commit they
+were testing was never covered. The one place cancellation is still allowed
+is a pull request on `render-tests.yml`, where a new push to the same PR
+supersedes the previous SHA. The cost is GitHub-hosted minutes proportional
+to the merge rate; if the queue becomes a problem, the lever is the `paths:`
+filter on each workflow, not `cancel-in-progress`.
 
 ### Code style
 
@@ -395,9 +427,9 @@ bash tools/GenerateFilamat.sh --ci-tolerant   # treat a matc download failure as
 
 The `matc` binary is cached at `~/.cache/sceneview/matc-<version>/` (overridable via `$XDG_CACHE_HOME`); the first run downloads it, subsequent runs reuse it. `--ci-tolerant` exists for sandboxed CI runners with no network — it lets the check pass with a WARN instead of failing the build when `matc` cannot be fetched.
 
-**The drift gate.** `bash .claude/scripts/quality-gate.sh` runs `GenerateFilamat.sh --check` on every pre-push gate. Editing a `.mat` source **without** recompiling its `.filamat` blob now **blocks the PR** — the gate reports the drifted blob(s) and fails. This catches the v4.1.0-class mistake before it ships.
+**The drift check.** `bash tools/GenerateFilamat.sh --check` reports every `.filamat` blob that no longer matches its `.mat` source. Nothing runs it for you — run it yourself in the same sitting as any `.mat` edit. Shipping a `.mat` change without recompiling its blob is the v4.1.0-class mistake, and this is the check that catches it.
 
-**The runtime gate (#2783).** `--check` proves a blob matches its `.mat` *source*; it compiles with the pinned `matc`, so a blob wired to the wrong pin still passes. [`.claude/scripts/check-web-filamat-abi.sh`](.claude/scripts/check-web-filamat-abi.sh) closes that gap for the two web tracks: it reads each blob's `MATERIAL_VERSION` header and compares it to its own runtime pin, and sha256-pins the vendored `filament.js`/`.wasm` (via `website-static/js/filament/RUNTIME.json`) so the runtime cannot be swapped without moving the pin. It needs no `matc` and no network, so it is a hard gate leg.
+**The runtime check (#2783).** `--check` proves a blob matches its `.mat` *source*; it compiles with the pinned `matc`, so a blob wired to the wrong pin still passes. [`.claude/scripts/check-web-filamat-abi.sh`](.claude/scripts/check-web-filamat-abi.sh) closes that gap for the two web tracks: it reads each blob's `MATERIAL_VERSION` header and compares it to its own runtime pin, and sha256-pins the vendored `filament.js`/`.wasm` (via `website-static/js/filament/RUNTIME.json`) so the runtime cannot be swapped without moving the pin. It needs no `matc` and no network, so it runs anywhere in a second — pair it with the drift check above.
 
 **The five matc flag profiles.** The committed blobs were compiled with five distinct profiles (recorded in each blob's MRPC chunk). `GenerateFilamat.sh` reproduces each one — including flag *order*, since matc embeds the verbatim flag string:
 
@@ -417,7 +449,7 @@ When adding a new material, pick a profile by deployment target and add an entry
 2. Run `bash tools/GenerateFilamat.sh` — it downloads the matching `matc` and recompiles every `.filamat` from its `.mat` source.
 3. Commit **the runtime bump AND the recompiled `.filamat` files in the SAME PR**. Never split them across commits — that's the failure mode that broke v4.1.0.
 
-`GenerateFilamat.sh --check` (and the `quality-gate.sh` drift gate) will catch a runtime/blob mismatch before merge. If you somehow bypass the gate, the first signal is a runtime crash on whichever demo loads the affected material first.
+`GenerateFilamat.sh --check` and `check-web-filamat-abi.sh` catch a runtime/blob mismatch — but only if you run them. If you skip them, the first signal is a runtime crash on whichever demo loads the affected material first.
 
 #### Visual QA for material / shader changes (Mac-friendly)
 
@@ -432,55 +464,6 @@ A material change can compile, pass unit tests, and still render wrong (the v4.1
 **4 — Analyse the screen recording.** Pull it, then: contact-sheet the frames with ffmpeg's `tile` filter (`-vf "fps=1/3,scale=200:-1,tile=5x4"` — no ImageMagick needed) for a fast overview, then extract full-res frames at the interesting timestamps for the actual judgement. If the recording has narration, transcribe with Whisper **large-v3** (smaller models are not reliable for this). ⚠️ A transcript that is only `Sous-titrage ST'…` / `Merci` / `Amara.org` repeated is Whisper's **silence hallucination** — it means there was no speech, not a real transcript.
 
 **Two hard rules (born from the #2224 saga):** (a) **look at an actual rendered frame — and pixel-measure it — before claiming a visual fix works**; never infer "it looks better" from code. (b) **Verify any flag an LLM suggests against the real binary before trusting it** — e.g. the proposed ARCore replay property `debug.com.google.ar.core.camera_playback_autostart` was a confident hallucination (0 hits in 1 M strings extracted from the ARCore APK).
-
----
-
-## Maintenance scripts
-
-The `.claude/scripts/` directory holds the housekeeping scripts that
-keep parallel-orchestrator sessions tidy. Two are worth knowing about
-explicitly because the safety contract has gotten complex enough that
-you can't infer it from the source on first read.
-
-### `worktree-auto-prune.sh`
-
-Reclaims `.claude/worktrees/*` whose branch has merged. Safe-by-default:
-the only way it can lose work is via an explicit override flag.
-
-| Flag | Effect |
-|---|---|
-| `--dry-run` | Preview only. No worktree is removed. |
-| `--yes` | Non-interactive. Skip the confirmation prompt. |
-| `--keep <path>` | Repeatable. Never touch this worktree (the caller's own tree should always be `--keep`). |
-| `--allow-stale` | Proceed offline if `git fetch origin main` fails. `ahead=0` then additionally requires a merged-PR signal. |
-| `--no-check-active-sessions` | Disable the cwd scan that protects worktrees with a live process inside them. Almost never the right call. |
-| `--unlock-locked` | Override `git worktree lock`: prune locked-but-clean worktrees too. The dirty check still wins. |
-
-Skip ladder (a worktree must pass every layer to be reclaimed):
-
-1. Not in `--keep`.
-2. `git status --porcelain` is empty (no uncommitted changes).
-3. Not `locked` via `git worktree lock` (unless `--unlock-locked`).
-4. No process anywhere on the host has cwd inside the worktree
-   (gradle daemons, `python`, IDE indexers — all detected, not just
-   `node`/`claude`).
-5. Either `ahead-count == 0` vs `origin/main`, OR the branch's
-   associated GitHub PR is `MERGED`.
-
-Forensic trail: every evaluated worktree appends one JSON line to
-`~/.claude/logs/worktree-prune-YYYYMMDD.log` (daily-rotated, never
-auto-deleted). Cheap to write, priceless if an incident occurs.
-
-Pin: `.claude/scripts/test-worktree-auto-prune.sh` exercises 7 scenarios
-(merged, unmerged, dirty, locked, locked + `--unlock-locked`, active
-subprocess, `--keep`) and runs advisorily inside `quality-gate.sh`.
-
-### `cleanup-branches-worktrees.sh`
-
-Wrapper that runs `worktree-auto-prune.sh` AND deletes the corresponding
-merged `claude/*` branches (local + remote) in a single batched
-`git push --delete` to avoid bot-burst rate limits. Same flags, same
-safety contract; runs daily in `.github/workflows/maintenance.yml`.
 
 ---
 

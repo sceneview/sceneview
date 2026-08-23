@@ -8,7 +8,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
-import io.github.sceneview.demo.ui.ParticleBackground
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -289,14 +288,10 @@ fun ExploreTabScreen(
         )
     }
 
-    // Animated SceneView ParticleBackground behind the home — dogfoods the SDK
-    // on the entry screen and matches the Samples tab where Thomas validated
-    // "le design avec le background est top" (screen-record QA 2026-05-26).
-    // The body() above renders transparent cards/sections on top so the
-    // particles read through. Pre-#2236 Explore was a flat black surface.
+    // Flat `surface` page — the particle backdrop this gallery used to share
+    // with the old Samples tab was removed with the home redesign (design
+    // spec §2: no background scene, the render is the protagonist).
     Box(modifier = Modifier.fillMaxSize()) {
-        ParticleBackground(modifier = Modifier.fillMaxSize())
-
         // Every available source has live feeds to refresh (Icosa / Poly Haven
         // need no key), so pull-to-refresh is always wired. onRefresh just bumps
         // `refreshTick`; the LaunchedEffect above owns the single

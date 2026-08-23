@@ -116,9 +116,9 @@ FIELDS = [
     ("supportUrl", "support_url.txt", 2048),
 ]
 
-# Repo screenshot dir → ASC screenshotDisplayType. The capture script
-# (capture-appstore-screenshots.sh) emits these two dirs; add a row here when
-# it grows a new device class. An unmapped dir is not just skipped from the
+# Repo screenshot dir → ASC screenshotDisplayType. The capture procedure
+# (samples/ios-demo/appstore-screenshots/README.md, "How to regenerate") fills
+# these two dirs; add a row here when it grows a new device class. An unmapped dir is not just skipped from the
 # drift diff — since Phase B it never reaches the App Store either, while the
 # run still reports success. test_asc_listing.py's
 # `test_committed_dirs_are_all_mapped` fails when a committed dir has no row
@@ -355,8 +355,8 @@ def classify_live_checksums(live_sets, local_md5s=(), console_sourced=False):
     per_type, buckets, matched, matched_by_type = {}, {}, [], {}
     # Sort defensively: a live set whose screenshotDisplayType is missing keys
     # this dict on None, and None vs str is a TypeError that would take the
-    # whole read-only run down — reported, thanks to the partial-read guard in
-    # maintenance.yml, but still a probe that measures nothing.
+    # whole read-only run down — reported, thanks to the partial-read guard
+    # below, but still a probe that measures nothing.
     for dtype, checksums in sorted(live_sets.items(),
                                    key=lambda kv: (kv[0] is None, kv[0] or "")):
         kinds = [classify_checksum(c) for c in checksums]

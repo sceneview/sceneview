@@ -4,6 +4,8 @@
 // @category    interaction
 // @available   true
 // @icon        camera.fill
+// @order       8
+// @tags        camera,orbit,gesture,pan,zoom,manipulator,edit
 import SwiftUI
 
 enum CameraControlsScene: DemoScene {

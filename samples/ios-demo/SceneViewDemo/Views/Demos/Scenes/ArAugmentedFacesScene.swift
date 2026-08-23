@@ -5,6 +5,8 @@
 // @available   true
 // @icon        face.smiling.inverse
 // @iosOnly     true
+// @order       25
+// @tags        ar,face,mesh,tracking,augmented-faces
 import SwiftUI
 
 enum ArAugmentedFacesScene: DemoScene {

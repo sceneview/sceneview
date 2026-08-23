@@ -68,7 +68,7 @@ jobs:
       # ⛔ Do not "simplify" this to a single `simctl list`. Called at the top of
       # a job it lands squarely in the cold window, and a resolver that gave up
       # there would kill the whole job where today one step dies and the rest
-      # still runs. Pinned by .claude/scripts/test-ios-simulator.sh.
+      # still runs.
       - name: Resolve an iOS Simulator destination
         run: |
           set -euo pipefail

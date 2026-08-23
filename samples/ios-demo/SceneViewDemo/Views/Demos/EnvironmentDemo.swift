@@ -25,7 +25,7 @@ struct EnvironmentDemo: View {
 
     var body: some View {
         content
-            .demoSettingsSheet {
+            .demoChrome {
                 environmentPicker
             }
     }
@@ -33,21 +33,24 @@ struct EnvironmentDemo: View {
     @ViewBuilder
     private var content: some View {
         ZStack {
-            if let loadedNode {
-                SceneView { root in
-                    loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
-                    root.addChild(loadedNode.entity)
-                }
-                .environment(selectedEnvironment)
-                .cameraControls(.orbit)
-                .autoRotate(speed: 0.15)
-                .ignoresSafeArea()
-                // Re-mount the RealityView when the environment changes so the new
-                // EnvironmentResource is applied cleanly. A `.id` keyed on the
-                // environment name is simpler than patching ImageBasedLightComponent
-                // in place and avoids any cached-resource aliasing edge cases.
-                .id("environment-\(selectedEnvironment.name)")
-            } else {
+            // One `RealityView` for the whole demo. The environment switch is
+            // applied reactively by `SceneView` (it diffs the HDR resource
+            // against the one on screen), so the content only has to be built
+            // once the model lands — `.contentID(_:)` goes `nil` -> "loaded"
+            // then. Re-mounting the view with `.id(_:)` on every environment
+            // change intermittently left it black on iOS 26 Simulator (#3008).
+            SceneView { root in
+                guard let loadedNode else { return }
+                loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
+                root.addChild(loadedNode.entity)
+            }
+            .environment(selectedEnvironment)
+            .cameraControls(.orbit)
+            .autoRotate(speed: 0.15)
+            .contentID(loadedNode == nil ? nil : "loaded")
+            .ignoresSafeArea()
+
+            if loadedNode == nil {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(.white)

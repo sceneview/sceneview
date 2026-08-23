@@ -47,6 +47,10 @@ public final class io/github/sceneview/CameraFramingKt {
 	public static final fun verticalFovDegreesForFocalLength (D)D
 }
 
+public final class io/github/sceneview/CameraManipulatorKt {
+	public static final fun rememberCameraManipulator (FLdev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
+}
+
 public final class io/github/sceneview/CinematicCameraKt {
 	public static final fun applyCinematicOrbit (Lio/github/sceneview/node/CameraNode;FLio/github/sceneview/CinematicCameraProfile;F)V
 	public static synthetic fun applyCinematicOrbit$default (Lio/github/sceneview/node/CameraNode;FLio/github/sceneview/CinematicCameraProfile;FILjava/lang/Object;)V
@@ -250,8 +254,12 @@ public final class io/github/sceneview/SceneFactoriesKt {
 	public static final fun createARView (Lcom/google/android/filament/Engine;)Lcom/google/android/filament/View;
 	public static final fun createCameraNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/node/CameraNode;
 	public static final fun createCollisionSystem (Lcom/google/android/filament/View;)Lio/github/sceneview/collision/CollisionSystem;
+	public static final fun createDefaultCameraManipulator (FLdev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
 	public static final fun createDefaultCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
+	public static synthetic fun createDefaultCameraManipulator$default (FLdev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
 	public static synthetic fun createDefaultCameraManipulator$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
+	public static final fun createDefaultCameraManipulatorOrbitHome (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
+	public static synthetic fun createDefaultCameraManipulatorOrbitHome$default (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
 	public static final fun createEglContext ()Landroid/opengl/EGLContext;
 	public static final fun createEngine (Landroid/opengl/EGLContext;)Lcom/google/android/filament/Engine;
 	public static final fun createEnvironment (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;)Lio/github/sceneview/environment/Environment;
@@ -272,8 +280,8 @@ public final class io/github/sceneview/SceneFactoriesKt {
 }
 
 public final class io/github/sceneview/SceneKt {
-	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
-	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
+	public static final fun Scene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
+	public static final fun SceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Lcom/google/android/filament/View;ZZLio/github/sceneview/RenderQuality;ZZFLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Landroidx/activity/ComponentActivity;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIII)V
 	public static final fun rememberARView (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/View;
 	public static final fun rememberCameraManipulator (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
 	public static final fun rememberCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/CameraNode;
@@ -1439,6 +1447,11 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public static final field DEFAULT_PINCH_ZOOM_DAMPING F
 	public static final field DEFAULT_PINCH_ZOOM_SPEED F
 	public fun <init> ()V
+	public fun <init> (F)V
+	public fun <init> (FLdev/romainguy/kotlin/math/Float3;)V
+	public fun <init> (FLdev/romainguy/kotlin/math/Float3;F)V
+	public fun <init> (FLdev/romainguy/kotlin/math/Float3;FF)V
+	public synthetic fun <init> (FLdev/romainguy/kotlin/math/Float3;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;)V
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;F)V
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;FF)V
@@ -1466,7 +1479,10 @@ public final class io/github/sceneview/gesture/CameraGestureDetector$DefaultCame
 }
 
 public final class io/github/sceneview/gesture/CameraManipulatorKt {
+	public static final fun getDEFAULT_ORBIT_DIRECTION ()Ldev/romainguy/kotlin/math/Float3;
 	public static final fun getTransform (Lcom/google/android/filament/utils/Manipulator;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun orbitEyePosition (FLdev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+	public static synthetic fun orbitEyePosition$default (FLdev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun orbitHomePosition (Lcom/google/android/filament/utils/Manipulator$Builder;Ldev/romainguy/kotlin/math/Float3;)Lcom/google/android/filament/utils/Manipulator$Builder;
 	public static final fun targetPosition (Lcom/google/android/filament/utils/Manipulator$Builder;Ldev/romainguy/kotlin/math/Float3;)Lcom/google/android/filament/utils/Manipulator$Builder;
 }

@@ -10,27 +10,22 @@ name: Nightly full CI
 #   - `Deploy ... Play Store` — tag-only.
 # That is the right trade-off for the high-merge-rate cycle, but it means
 # NO single scheduled run exercises the full validation surface end-to-end.
-# `maintenance.yml` runs daily but only checks dependency versions — it does
-# not compile, test, or build APKs.
 #
 # This workflow closes that gap: once a night it runs the FULL heavy suite
 # against `main` HEAD (compile + KMP/web/flutter builds + unit tests +
-# JaCoCo + render tests + quality gate) so a path-gated-out regression that
-# slipped through still surfaces within 24h.
+# render tests) so a path-gated-out regression that slipped through still
+# surfaces within 24h.
 #
 # It REUSES the existing workflows via `workflow_call` instead of
 # duplicating their job bodies — `ci.yml` is invoked with `force-all: true`
-# so its per-job path filter is bypassed. Since #1370 consolidated
-# `ci.yml` + `pr-check.yml` + `quality-gate.yml` into a single `ci.yml`,
-# the forced `ci.yml` run already covers the full quality gate, KMP compile,
-# and repo-hygiene jobs — no separate `quality-gate.yml` call is needed.
+# so its per-job path filter is bypassed.
 #
-# It is deliberately NOT part of the `CI Gate` aggregator and is NOT a
-# required check — it is a scheduled safety net, not a PR gate.
+# It is deliberately NOT a required check — it is a scheduled safety net,
+# not a PR gate.
 
 on:
   schedule:
-    # 04:00 UTC daily — low-traffic, and distinct from maintenance.yml (07:00).
+    # 04:00 UTC daily — low-traffic window.
     - cron: '0 4 * * *'
   workflow_dispatch:
 
@@ -42,10 +37,9 @@ permissions:
   contents: read
 
 jobs:
-  # ── Full CI build/lint/test + quality gate (path filter bypassed) ─────────
-  # Since #1370 the consolidated ci.yml also runs the quality-gate,
-  # compile-kmp and repo-hygiene jobs, so `force-all: true` exercises the
-  # entire PR validation surface in one reusable-workflow call.
+  # ── Full CI build/lint/test (path filter bypassed) ────────────────────────
+  # `force-all: true` bypasses ci.yml's per-job path filter so the entire PR
+  # validation surface runs in one reusable-workflow call.
   full-ci:
     name: Full CI (forced)
     uses: ./.github/workflows/ci.yml

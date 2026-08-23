@@ -16,6 +16,8 @@ object SecondaryCameraFragment : DemoFragment {
         subtitleRes = R.string.demo_secondary_camera_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.PictureInPicture,
+        order = 18,
+        tags = setOf("camera", "pip", "multi-view", "render-target"),
     )
 
     @Composable

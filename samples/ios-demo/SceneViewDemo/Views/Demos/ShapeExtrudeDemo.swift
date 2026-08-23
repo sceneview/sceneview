@@ -37,7 +37,10 @@ struct ShapeExtrudeDemo: View {
             }
             .cameraControls(.orbit)
             .environment(.studio)
-            .id(sceneKey)
+            // Every control rebuilds the shape in place under the same
+            // `RealityView` — never re-key the view with `.id(_:)`, which
+            // intermittently leaves the scene black on iOS 26 Simulator (#3008).
+            .contentID(sceneKey)
             .ignoresSafeArea()
 
             VStack {
@@ -48,7 +51,7 @@ struct ShapeExtrudeDemo: View {
                     .padding(.bottom, 12)
             }
         }
-        .demoSettingsSheet {
+        .demoChrome {
             settingsContent
         }
         .onChange(of: selectedPreset) { _, _ in sceneKey = UUID() }

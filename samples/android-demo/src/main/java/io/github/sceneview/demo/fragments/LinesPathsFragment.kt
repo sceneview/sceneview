@@ -16,6 +16,8 @@ object LinesPathsFragment : DemoFragment {
         subtitleRes = R.string.demo_lines_paths_subtitle,
         category = DemoCategory.CONTENT,
         icon = Icons.Filled.Timeline,
+        order = 12,
+        tags = setOf("line", "polyline", "path", "helix", "grid", "circle"),
     )
 
     @Composable

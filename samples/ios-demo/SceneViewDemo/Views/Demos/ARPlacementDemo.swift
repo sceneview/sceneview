@@ -35,6 +35,11 @@ import SceneViewSwift
 ///   the iOS demo level — placed models are static once dropped. Tracked
 ///   separately if requested.
 struct ARPlacementDemo: View {
+    /// Bundle name (without `.usdz`) of the model every tap places when set —
+    /// the Model Viewer's "View in AR" handoff, mirroring Android's
+    /// `demo/ar-placement?model=` route. `nil` keeps the bundled cycle.
+    var initialModel: String? = nil
+
     /// Bundled cycle preserved from the previous iOS AR demos — gives a
     /// deterministic 5-model rotation when no Sketchfab key is configured.
     /// Each entry is the bundle name without `.usdz`.
@@ -106,7 +111,8 @@ struct ARPlacementDemo: View {
                 if let assetSource {
                     HStack {
                         Spacer()
-                        AssetSourcePill(state: assetSource)
+                        AssetSourcePill(state: assetSource,
+                                        isPlaceholder: selectedSlug?.fallbackRole == .placeholder)
                     }
                     .padding(.horizontal, 16)
                 }
@@ -117,7 +123,7 @@ struct ARPlacementDemo: View {
                 }
             }
         }
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }
@@ -150,14 +156,21 @@ struct ARPlacementDemo: View {
         do {
             let url: URL
             let displayName: String
+            let scaleToUnits: Float
             if let slug = selectedSlug, let resolved = armedURL {
                 url = resolved
                 displayName = slug.displayName
+                scaleToUnits = slug.scaleToUnits
             } else {
-                // Bundled cycle — round-robin through the five bundled entries.
-                let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
-                cycleIndex += 1
-                let node = try await ModelNode.load(entry.name)
+                // The handed-off viewer model, else the bundled round-robin cycle.
+                let assetName: String
+                if let initialModel {
+                    assetName = initialModel
+                } else {
+                    assetName = Self.bundledCycle[cycleIndex % Self.bundledCycle.count].name
+                    cycleIndex += 1
+                }
+                let node = try await ModelNode.load(assetName)
                 _ = node.scaleToUnits(0.3)
                 _ = node.centerOrigin()
                 let anchor = AnchorNode.world(position: worldPosition)
@@ -171,7 +184,11 @@ struct ARPlacementDemo: View {
                 return
             }
             let node = try await ModelNode.load(contentsOf: url)
-            _ = node.scaleToUnits(0.3)
+            // The slug's real-world size hint is the point of the picker: a
+            // coffee mug at 0.10 m and a floor lamp at 1.55 m, not both at the
+            // bundled cycle's 0.3 m (#2966). Applies to the fallback too — it
+            // stands in at the size the label claims.
+            _ = node.scaleToUnits(scaleToUnits)
             _ = node.centerOrigin()
             let anchor = AnchorNode.world(position: worldPosition)
             anchor.add(node.entity)
@@ -242,9 +259,10 @@ struct ARPlacementDemo: View {
                         .font(.caption2)
                         .foregroundStyle(.green)
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Credits whatever is actually on screen — the fallback's own
+                // author and licence in keyless mode, never the streamed one
+                // next to a bundled stand-in (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             } else {
                 Text("Next tap places: \(Self.bundledCycle[cycleIndex % Self.bundledCycle.count].displayName)")
                     .font(.caption2)

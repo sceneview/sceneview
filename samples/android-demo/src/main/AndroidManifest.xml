@@ -8,6 +8,11 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Normal permission, granted at install with no runtime prompt. Read by
+         `rememberIsNetworkAvailable` (common/CloudServiceStatus.kt) so the five
+         ARCore Cloud demos can tell "no network" apart from "Cloud rejected the
+         key" instead of both reading as the same silent failure (#3262). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Required by `SceneViewHaptic` (rememberHapticFeedback) — the sceneview
          library deliberately doesn't auto-merge this permission, the demo app
          opts in so the controls sheet, AR placement confirmations, and shutter
@@ -45,6 +50,16 @@
          POST_NOTIFICATIONS) was removed: the rebuilt reporter uses PixelCopy on
          the app's own window, the app's own logcat tail, and a user-driven share
          intent — zero foreground service, zero Play Console FGS declaration. -->
+
+    <!-- Package-visibility (API 30+): without this, resolveActivity() on the
+         speech-recognition intent below always returns null, even when a
+         recognizer is installed — the bug-report sheet's mic button would
+         hide itself unconditionally instead of only when genuinely absent. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"

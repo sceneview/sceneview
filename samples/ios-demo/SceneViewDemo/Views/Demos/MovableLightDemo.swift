@@ -27,9 +27,10 @@ struct MovableLightDemo: View {
     @State private var loadedModel: ModelNode?
     @State private var isLoading: Bool = true
     @State private var loadError: String?
-    // Hold references to the live entities so drag gestures can mutate their
-    // position directly (avoids `.id()`-based scene rebuild at every pixel of
-    // drag, which froze the rendering 200-400 ms per frame).
+    // Hold references to the live entities so drag gestures and the controls
+    // sheet can mutate them directly. The scene content is built once the
+    // model lands and never rebuilt afterwards: position, intensity and
+    // marker visibility are all in-place writes.
     @State private var lightEntityRef: Entity?
     @State private var markerEntityRef: Entity?
 
@@ -64,7 +65,7 @@ struct MovableLightDemo: View {
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
     }
@@ -109,24 +110,24 @@ struct MovableLightDemo: View {
                 DispatchQueue.main.async { lightEntityRef = userLight.entity }
 
                 // Yellow unlit marker sphere — unlit so it always reads as
-                // self-emissive regardless of where *the* light is.
-                if showLightSource {
-                    let marker = GeometryNode.sphere(
-                        radius: 0.05,
-                        material: .unlit(color: .yellow)
-                    )
-                    marker.entity.position = lightPosition
-                    root.addChild(marker.entity)
-                    DispatchQueue.main.async { markerEntityRef = marker.entity }
-                } else {
-                    DispatchQueue.main.async { markerEntityRef = nil }
-                }
+                // self-emissive regardless of where *the* light is. Always in
+                // the scene; the toggle flips `isEnabled` in place.
+                let marker = GeometryNode.sphere(
+                    radius: 0.05,
+                    material: .unlit(color: .yellow)
+                )
+                marker.entity.position = lightPosition
+                marker.entity.isEnabled = showLightSource
+                root.addChild(marker.entity)
+                DispatchQueue.main.async { markerEntityRef = marker.entity }
             }
-            // Identity only depends on inputs that need a real rebuild (model
-            // load, intensity, marker visibility). Azimuth/elevation drive a
-            // direct entity mutation below, so they MUST stay out of `.id`
-            // — including them caused a full SceneView teardown per drag pixel.
-            .id("movable-\(intensity)-\(showLightSource)-\(loadedModel != nil)")
+            // The only content change is the model landing: the key goes
+            // `nil` -> "loaded" and the closure re-runs under the same
+            // `RealityView`. Intensity and marker visibility are applied to
+            // the live entities below; they used to re-key the whole view
+            // with `.id(_:)`, which re-created the renderer per slider tick
+            // and intermittently left it black on iOS 26 Simulator (#3008).
+            .contentID(loadedModel == nil ? nil : "loaded")
             .ignoresSafeArea()
 
             // Transparent overlay that captures drag gestures *before* SceneView
@@ -194,6 +195,12 @@ struct MovableLightDemo: View {
         .background(Color.black)
         .task {
             await loadFerrari()
+        }
+        .onChange(of: intensity) { _, newValue in
+            lightEntityRef?.components[PointLightComponent.self]?.intensity = newValue
+        }
+        .onChange(of: showLightSource) { _, newValue in
+            markerEntityRef?.isEnabled = newValue
         }
     }
 

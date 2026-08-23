@@ -11,17 +11,16 @@ name: Site Metrics Refresh
 # are separate metric cards on the same page that this job deliberately does
 # NOT touch — out of scope here.
 #
-# WHY A PR INSTEAD OF A LITERAL DIRECT PUSH: `main` requires the "CI Gate"
-# status check (branch protection) and GitHub only allows a direct push once
-# a commit SHA already carries a passing required check — a brand-new commit
-# never does. That's why every other automated main-commit in this repo
-# (release-fast.yml, tag-release.yml) goes through `gh pr create` +
+# WHY A PR INSTEAD OF A LITERAL DIRECT PUSH: `main` requires status checks
+# (branch protection, ci.yml job names) and GitHub only allows a direct push
+# once a commit SHA already carries passing required checks — a brand-new
+# commit never does. That's why every other automated main-commit in this
+# repo (release-fast.yml, tag-release.yml) goes through `gh pr create` +
 # `gh pr merge --squash --auto` rather than `git push origin main`; this
 # workflow follows the same proven pattern. It resolves fast here because
-# ci.yml has `paths-ignore: website-static/**` — a metrics-only diff
-# registers no other check runs, so CI Gate's documented "docs-only bypass"
-# (ci-gate.yml) goes green after its ~2 min grace period instead of waiting
-# on a build.
+# ci.yml's `changes` job triages a metrics-only diff in seconds: the build
+# legs report `skipped` (which branch protection grades as passing) and
+# "Path filter completed" reports green.
 on:
   schedule:
     # Monday 07:00 UTC, weekly.
@@ -108,18 +107,18 @@ jobs:
           BRANCH="chore/site-metrics-${{ github.run_id }}"
           git checkout -b "$BRANCH"
           git add website-static/index.html
-          # NEVER put `[skip ci]` in this subject. `CI Gate` is the single
-          # required context on `main`, and a skipped run never reports it: the
-          # `--auto` merge below then waits forever on a check that cannot
-          # arrive. #3075 sat open for a day in exactly that state, with a PR
-          # body promising it would "merge itself once CI Gate reports green",
-          # and had to be merged with admin rights. One weekly CI run on a
-          # one-line docs diff is the price of the PR being able to merge at all.
+          # NEVER put `[skip ci]` in this subject. The required checks on
+          # `main` are ci.yml job names, and a skipped workflow run never
+          # reports them: the `--auto` merge below then waits forever on
+          # checks that cannot arrive. #3075 sat open for a day in exactly
+          # that state and had to be merged with admin rights. One fast triage
+          # run on a one-line docs diff is the price of the PR being able to
+          # merge at all.
           git commit -m "chore(site): refresh community metrics" \
             -m "Automated weekly refresh (site-metrics.yml) — stars/contributors/releases from the GitHub API, web downloads from api.npmjs.org. Replaces the retired Claude scheduled routine; zero AI quota spent."
           git push origin "$BRANCH"
 
           gh pr create --title "chore(site): refresh community metrics" \
-            --body "Automated weekly community-metrics refresh (site-metrics.yml). Docs-only diff (website-static/index.html) — merges itself once CI Gate reports green." \
+            --body "Automated weekly community-metrics refresh (site-metrics.yml). Docs-only diff (website-static/index.html) — merges itself once the required checks report green." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto

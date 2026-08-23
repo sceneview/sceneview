@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+Android demo app: `DemoScaffold` is now edge-to-edge with a glass chrome — no top app bar, a back / identity-pill / overflow row over the scene, a bottom `HorizontalFloatingToolbar` dock (`dock`, `dockAccent` params) that hosts the Controls item, a tap-to-hide chrome, and an optional `previewRes` loading cover with an explicit "Still loading…" card after 12 s. The settings FAB and peek chip are gone.

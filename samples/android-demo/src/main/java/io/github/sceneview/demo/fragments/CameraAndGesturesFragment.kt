@@ -21,6 +21,8 @@ object CameraAndGesturesFragment : DemoFragment {
         subtitleRes = R.string.demo_camera_and_gestures_subtitle,
         category = DemoCategory.INTERACTION,
         icon = Icons.Filled.PhotoCamera,
+        order = 8,
+        tags = setOf("camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit"),
     )
 
     @Composable

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Showcase (home) tab chrome — `ui/home/*`. Demo titles and subtitles live
+     in `strings_demo_<id>.xml`; only the home screen's own strings are here. -->
+<resources>
+    <string name="tab_showcase">Showcase</string>
+
+    <!-- Header -->
+    <string name="home_search">Search demos</string>
+    <string name="home_search_placeholder">Search demos</string>
+    <string name="home_search_close">Close search</string>
+    <string name="home_whats_new">What\'s new</string>
+
+    <!-- Hero — routes to demo/model-viewer -->
+    <string name="home_hero_title">Model Viewer</string>
+    <string name="home_hero_subtitle">Any glTF, HDR lighting, one tap to AR</string>
+    <string name="home_hero_open">Open</string>
+
+    <!-- Category filter chips (short labels) -->
+    <string name="category_short_all">All</string>
+    <string name="category_short_3d">3D</string>
+    <string name="category_short_lighting">Lighting</string>
+    <string name="category_short_content">Content</string>
+    <string name="category_short_interaction">Interaction</string>
+    <string name="category_short_advanced">Advanced</string>
+    <string name="category_short_ar">AR</string>
+
+    <!-- Grid -->
+    <string name="home_browse_title">Browse online models</string>
+    <string name="home_browse_subtitle">Sketchfab, Icosa and Poly Haven</string>
+    <string name="home_empty_query">No demo matches \'%1$s\'</string>
+    <string name="home_clear">Clear</string>
+</resources>

@@ -7,11 +7,11 @@
 #   with auto-merge ─▶ [tag-release.yml] tags the merge commit and dispatches
 #   release.yml on the tag ref.
 #
-# WHY PR-then-tag and not a direct push: main is protected by the required
-# "CI Gate" check with no push restrictions but no GITHUB_TOKEN bypass — a
-# workflow cannot push the bump commit directly (only human admins can, which
-# is exactly what the manual recipe did). The PR path keeps the required check
-# honest AND gives the bump diff a reviewable surface for free.
+# WHY PR-then-tag and not a direct push: main is protected by required status
+# checks (ci.yml job names) with no push restrictions but no GITHUB_TOKEN
+# bypass — a workflow cannot push the bump commit directly (only human admins
+# can, which is exactly what the manual recipe did). The PR path keeps the
+# required checks honest AND gives the bump diff a reviewable surface for free.
 #
 # WHY the companion tag workflow: a tag created here with GITHUB_TOKEN would
 # NOT trigger release.yml (GitHub suppresses workflow-to-workflow events for

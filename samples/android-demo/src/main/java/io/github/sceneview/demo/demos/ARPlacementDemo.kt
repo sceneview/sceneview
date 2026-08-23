@@ -1,15 +1,11 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -25,78 +21,66 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
-import io.github.sceneview.demo.common.placement.PlacementSpec
-import io.github.sceneview.demo.common.placement.TapToPlaceArSession
+import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
+import io.github.sceneview.demo.common.placement.PlacementModel
+import io.github.sceneview.demo.common.placement.PlacementModelBar
+import io.github.sceneview.demo.common.placement.PlacementModelSource
+import io.github.sceneview.demo.common.placement.TapToPlaceExperience
+import io.github.sceneview.demo.common.placement.armed
+import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import java.io.File
 
 /**
- * Interactive AR tap-to-place demo with a "Pick what to place" picker and a screen-center
- * placement reticle.
+ * `ar-placement` — the **feature-demo** host of the one canonical tap-to-place screen
+ * ([#2482](https://github.com/sceneview/sceneview/issues/2482)).
  *
- * This is the **feature-demo** host of the shared
- * [io.github.sceneview.demo.common.placement.TapToPlaceArSession] engine
- * ([#2482](https://github.com/sceneview/sceneview/issues/2482) Option A, PR 2/4): the demo
- * keeps its developer-facing chrome — the [DemoScaffold] top bar, the streamed/bundled chip
- * pickers, the Snap-to-plane / Show-reticle toggles, the Clear All button, the "Next tap
- * places:" preview and the [ForceTrackingFailureMenu] QA shim — and delegates the whole AR
- * session (plane visualisation, centre reticle, texture-settle gating, PAUSED-surviving
- * anchors, per-asset rotation correction, the editable placed models, the gesture pill, the
- * camera-init scrim and the plane-gated status vocabulary) to the shared session.
+ * The screen itself is [TapToPlaceExperience], the identical composable the AR View tab
+ * renders: same centre reticle, same status vocabulary, same top-start back arrow
+ * affordance (here supplied by [DemoScaffold]'s own app bar), same
+ * [PlacementModelBar] naming what the next tap will place, same picker sheet. This file
+ * contributes only what makes it a *demo* rather than a launcher:
  *
- * **Picker — Stage 2 ([#1152](https://github.com/sceneview/sceneview/issues/1152)).** The
- * controls sheet exposes a chip row sourced from [SampleAssets.byCategory]`["ar_placement"]`
- * — coffee mug / houseplant / wooden crate / side table / floor lamp / picture frame, all
- * streamed CC-BY models from Sketchfab via [SketchfabAssetResolver]. Tapping a chip arms
- * that slug as the next placed model; subsequent taps on a plane place a fresh instance.
+ *  - **A richer catalogue.** The five bundled models both surfaces offer
+ *    ([BUNDLED_PLACEMENT_MODELS]) plus the six streamed CC-BY Sketchfab models of
+ *    [SampleAssets.byCategory]`["ar_placement"]`
+ *    ([#1152](https://github.com/sceneview/sceneview/issues/1152)). The picker marks the
+ *    streamed rows; nothing else about them behaves differently.
+ *  - **Developer toggles** in the Settings sheet: Snap-to-plane (#1883) and Show reticle
+ *    (#1882), forwarded to the shared session as parameters.
+ *  - **The QA tracking-failure shim** ([ForceTrackingFailureMenu], #1881).
+ *  - **The asset-source chip**, which reports where the *armed* row's bytes came from.
  *
- * **Bundled model picker ([#1883](https://github.com/sceneview/sceneview/issues/1883)).** A
- * second chip row lets the user lock the bundled cycle to a single specific GLB (Soldier /
- * Fox / Lantern / Toy Car / Shiba) or keep the auto-cycle that rotates through all
- * five on every tap. Bundled-mode chips are mutually exclusive with the streamed picker
- * above — selecting a streamed slug overrides the bundled choice for that tap.
+ * ### What this file no longer contains, and why
  *
- * **Settings ([#1883](https://github.com/sceneview/sceneview/issues/1883)).** The sheet also
- * exposes a Snap-to-plane toggle (default ON — accept only detected plane hits) and a Show
- * reticle toggle (default ON — dev-only). The "Clear All" button wipes every placed model and
- * detaches the underlying ARCore anchors via [TapToPlaceState.clearAll].
+ * The two chip strips ("Bundled cycle" + "Auto-cycle"), the "Next tap places: …" caption
+ * and the "Clear All" button are gone. They were this demo's private answer to questions
+ * the canonical experience now answers once, in the same words, on both surfaces: the bar
+ * names the armed model, the pill counts what is placed, Reset clears the room.
  *
- * The 3-tier model resolution (resolved streamed slug → `file://` URI; else bundled lock;
- * else auto-cycle) runs inside `onPlaceModel`, which the shared session invokes at tap time —
- * so the picker can never go stale between composition and tap
- * ([#2476](https://github.com/sceneview/sceneview/issues/2476) invariant).
+ * The **auto-cycle** in particular is deliberately not carried over. It made every tap
+ * place a different model from the one the picker showed — which is, from the user's side,
+ * indistinguishable from the stale-picker defect
+ * ([#2476](https://github.com/sceneview/sceneview/issues/2476)) this whole consolidation
+ * exists to make impossible. One picker, one armed model, one answer.
+ *
+ * Model resolution still happens inside the shared session's `onPlaceModel`, at tap time
+ * on the main thread — the #2476 invariant, now with a single call site.
  */
-
-private data class CycleEntry(val assetPath: String, val displayName: String)
-
-// Curated list of bundled GLBs that look good as small AR objects on a plane.
-// Each has a distinct silhouette and material so the cycle visibly rotates through variety.
-// (Khronos Avocado dropped per audit #949 — 7.7 MB grey-green low-poly that read as
-// 2003-textbook quality next to the lantern brass-and-PBR neighbours.)
-// The floating Damaged Helmet was dropped per #2023 — every cycle entry is now a
-// grounded object (character / animal / household item) that reads as intentional
-// content sitting in the room, not a generic test payload hovering above the plane.
-private val MODEL_CYCLE = listOf(
-    CycleEntry("models/threejs_soldier.glb", "Soldier"),
-    CycleEntry("models/khronos_fox.glb", "Fox"),
-    CycleEntry("models/khronos_lantern.glb", "Lantern"),
-    CycleEntry("models/khronos_toy_car.glb", "Toy Car"),
-    CycleEntry("models/shiba.glb", "Shiba")
-)
-
 @Composable
 fun ARPlacementDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
@@ -105,46 +89,48 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     val context = LocalContext.current
 
     // The shared session owns the placed-model list, anchors and camera/plane/reticle
-    // signals. The demo reads it for Clear All; the session writes it on every tap/frame.
+    // signals. The demo reads it for Reset; the session writes it on every tap/frame.
     val state = rememberTapToPlaceState()
 
-    // Auto-cycle index. Kept in the host because it advances at tap time inside the
-    // `onPlaceModel` lambda below, and resets on Clear All.
-    var cycleIndex by remember { mutableStateOf(0) }
+    // Canonical picker selection, shared with the AR View tab's implementation.
+    // The Model Viewer's "View in AR" handoff passes the model it was showing as
+    // the `model` route argument (an asset path or its bare file stem); when it
+    // names a bundled row that row is armed instead of the catalogue's first.
+    val requestedModel = remember { DemoSettings.requestedModel.also { DemoSettings.requestedModel = null } }
+    val picker = rememberPlacementPickerState(
+        BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
+            model.assetLocation == requestedModel ||
+                model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == requestedModel
+        }?.id ?: BUNDLED_PLACEMENT_MODELS.first().id,
+    )
 
-    // Streamed `ar_placement` slugs from SampleAssets. selectedSlug == null
-    // means "Bundled cycle" (the v4.3.1 default behaviour). Selecting a slug
-    // arms it as the next tap's payload, replacing the cycle for that tap.
-    val placementSlugs = remember { SampleAssets.byCategory["ar_placement"].orEmpty() }
-    var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(null) }
-
-    // Bundled-model picker (#1883). Locks the cycle to a single GLB so the
-    // user can predict exactly what each tap places. `null` ⇒ keep the
-    // auto-cycle that rotates through all five on every tap (v4.3.1
-    // behaviour). Mutually exclusive with the streamed `selectedSlug`
-    // chip row above — if a streamed slug is selected and resolved, that
-    // wins regardless of `selectedBundledIndex`.
-    var selectedBundledIndex by remember { mutableStateOf<Int?>(null) }
-
-    // Settings toggles (#1883). Defaults preserve the previous strict
-    // plane-only behaviour. Show-reticle is forwarded to the session's
-    // `showReticle` param; dev users can disable it for screenshots.
+    // Settings toggles (#1883). Defaults preserve the strict plane-only behaviour.
+    // Show-reticle is forwarded to the session's `showReticle` param; dev users can
+    // disable it for screenshots.
     var snapToPlane by remember { mutableStateOf(true) }
     var showReticle by remember { mutableStateOf(true) }
 
-    // Warm the `ar_placement` cache so taps land instantly once the user picks
-    // a chip. The resolver dedupes concurrent calls, so when the per-tap
-    // resolve fires below it picks up the already-staged file.
+    // Streamed `ar_placement` slugs from SampleAssets (#1152 Stage 2).
+    val placementSlugs = remember { SampleAssets.byCategory["ar_placement"].orEmpty() }
+
+    // Warm the `ar_placement` cache so taps land instantly once the user picks a row. The
+    // resolver dedupes concurrent calls, so when the per-selection resolve fires below it
+    // picks up the already-staged file.
     LaunchedEffect(Unit) {
         runCatching {
             SketchfabAssetResolver.getInstance(context).prefetchAll("ar_placement")
         }
     }
 
-    // Resolve the currently-selected slug to a local file (null while
-    // downloading / staging the bundled fallback). When null, the next tap
-    // falls back to the bundled MODEL_CYCLE.
-    val selectedFile: File? = selectedSlug?.let { slug ->
+    // Which streamed slug (if any) the picker currently has armed.
+    val armedSlug: SketchfabSlug? = remember(placementSlugs, picker.selectedId) {
+        placementSlugs.firstOrNull { streamedModelId(it) == picker.selectedId }
+    }
+
+    // Resolve the armed slug to a local file — `null` while downloading / staging. Only
+    // the armed one is resolved: the other five have no bytes to fetch until they are
+    // picked, and prefetch above already warmed the cache for them.
+    val armedFile: File? = armedSlug?.let { slug ->
         produceState<File?>(initialValue = null, key1 = slug.uid) {
             value = runCatching {
                 SketchfabAssetResolver.getInstance(context).resolve(slug)
@@ -152,34 +138,45 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         }.value
     }
 
-    // Per-demo offline indicator chip (#1152 Stage 3). The chip reflects the
-    // selected slug's resolve state — `null` means no slug picked yet (cycle
-    // mode), so we surface "Offline model" (the cycle is 100% bundled).
+    // The catalogue the picker offers. A streamed row that has not landed yet carries its
+    // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
+    // places that slug's stand-in rather than nothing — and the row is flagged `pending`
+    // so the bar and the card both say "Streaming …" instead of lying about it.
+    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile) {
+        BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
+            val isArmed = slug.uid == armedSlug?.uid
+            PlacementModel(
+                id = streamedModelId(slug),
+                displayName = slug.displayName,
+                assetLocation = if (isArmed && armedFile != null) {
+                    "file://${armedFile.absolutePath}"
+                } else {
+                    slug.fallbackBundledPath
+                },
+                source = PlacementModelSource.Streamed,
+                pending = isArmed && armedFile == null,
+            )
+        }
+    }
+
+    // Per-demo offline indicator chip (#1152 Stage 3), reporting the ARMED row.
     //
-    // Once a slug IS picked the origin is MEASURED from the file the resolver handed
-    // back, never inferred from `SketchfabConfig.apiKey` (#2953): a key can be present
-    // and the resolve still land on the bundled fallback — no network, aeroplane mode, a
-    // 4xx, the WAF — and this chip then claimed "Streamed (cached)" over the stand-in
-    // the next tap would actually place. `loaded` is the FILE here, not a parsed
-    // `ModelInstance`: a tap places whatever `selectedFile` holds, so that is the moment
-    // the chip has something true to say. See [AssetSourceProbe].
-    val assetSource = if (selectedSlug == null) {
+    // For a streamed row the origin is MEASURED from the file the resolver handed back,
+    // never inferred from `SketchfabConfig.apiKey` (#2953): a key can be present and the
+    // resolve still land on the bundled fallback — no network, aeroplane mode, a 4xx, the
+    // WAF — and this chip would then claim "Streamed (cached)" over the stand-in the next
+    // tap actually places. `loaded` is the FILE here, not a parsed `ModelInstance`: a tap
+    // places whatever `armedFile` holds, so that is the moment the chip has something true
+    // to say. See [AssetSourceProbe].
+    val assetSource = if (armedSlug == null) {
         AssetSourceState.Bundled
     } else {
         AssetSourceProbe.of(
-            resolvedFile = selectedFile,
+            resolvedFile = armedFile,
             hasApiKey = SketchfabConfig.apiKey != null,
-            loaded = selectedFile != null,
+            loaded = armedFile != null,
         )
     }
-
-    // What the next tap will spawn — drives the "Next tap places:" preview and the
-    // shared session's status pill ("Tap a surface to place {label}").
-    val nextLabel = selectedSlug?.let { slug ->
-        if (selectedFile != null) slug.displayName
-        else stringResource(R.string.demo_ar_placement_picker_streaming, slug.displayName)
-    } ?: selectedBundledIndex?.let { MODEL_CYCLE[it].displayName }
-        ?: MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size].displayName
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_placement_title),
@@ -187,109 +184,30 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         assetSource = assetSource,
         controls = {
             Text(
-                text = "Aim the centre reticle at a surface, then tap to drop a model. Each model " +
-                    "is editable: drag to translate, pinch to scale, twist to rotate — the active " +
-                    "gesture is shown in the top-center pill.",
-                style = MaterialTheme.typography.bodyMedium
+                text = "Aim the centre reticle at a surface, then tap to drop the model " +
+                    "named on the bar. Each placed model is editable: drag to translate, " +
+                    "pinch to scale, twist to rotate — the active gesture is shown in the " +
+                    "top-center pill.",
+                style = MaterialTheme.typography.bodyMedium,
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                text = stringResource(R.string.demo_ar_placement_picker_label),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // "Bundled cycle" chip preserves the v4.3.1 behaviour — each
-                // tap rotates through MODEL_CYCLE so QA / offline screenshots
-                // stay deterministic.
-                FilterChip(
-                    selected = selectedSlug == null,
-                    onClick = { selectedSlug = null },
-                    label = {
-                        Text(stringResource(R.string.demo_ar_placement_picker_bundled))
-                    },
-                )
-                placementSlugs.forEach { slug ->
-                    FilterChip(
-                        selected = selectedSlug?.uid == slug.uid,
-                        onClick = { selectedSlug = slug },
-                        label = {
-                            Text(
-                                stringResource(
-                                    R.string.demo_ar_placement_picker_streamed,
-                                    slug.displayName,
-                                )
-                            )
-                        },
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.demo_ar_placement_picker_subtitle),
+                text = "Five models ship inside the APK; the rows marked Streamed are " +
+                    "CC-BY models fetched from Sketchfab the first time you arm them, " +
+                    "and fall back to a bundled stand-in until they land.",
                 style = MaterialTheme.typography.labelSmall,
             )
 
-            // Bundled-model picker (#1883). Lets the user lock the cycle to a
-            // single GLB so each tap places exactly what they picked.
-            // "Auto-cycle" is the v4.3.1 default. Bundled chips are ignored
-            // when a streamed slug above is selected and resolved.
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Bundled model",
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilterChip(
-                    selected = selectedBundledIndex == null,
-                    onClick = { selectedBundledIndex = null },
-                    label = { Text("Auto-cycle") },
-                )
-                MODEL_CYCLE.forEachIndexed { index, entry ->
-                    FilterChip(
-                        selected = selectedBundledIndex == index,
-                        onClick = { selectedBundledIndex = index },
-                        label = { Text(entry.displayName) },
-                    )
-                }
-            }
-
-            // Settings toggles (#1883). Snap-to-plane gates the session's hit
-            // policy: ON ⇒ only detected planes accept placements (v4.3.1
-            // behaviour); OFF ⇒ accept any tracked hit (points, depth).
-            Spacer(modifier = Modifier.height(12.dp))
+            // Settings toggles (#1883). Snap-to-plane gates the session's hit policy:
+            // ON ⇒ only detected planes accept placements; OFF ⇒ any tracked hit.
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             HorizontalDivider()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = "Snap to plane",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Switch(
-                    checked = snapToPlane,
-                    onCheckedChange = { snapToPlane = it },
-                )
-            }
+            LabeledToggle(
+                label = "Snap to plane",
+                checked = snapToPlane,
+                onCheckedChange = { snapToPlane = it },
+            )
             Text(
                 text = if (snapToPlane) {
                     "Only detected planes accept placements (recommended)."
@@ -299,91 +217,74 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 style = MaterialTheme.typography.labelSmall,
             )
 
-            // Show-reticle toggle (#1882 / #1883). Dev-only: hide the centre
-            // disc for screenshots without losing the underlying hit-test
-            // pipeline.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = "Show reticle (dev)",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Switch(
-                    checked = showReticle,
-                    onCheckedChange = { showReticle = it },
-                )
-            }
-
-            // Clear-all: prominent filled Button so it stands out from the
-            // chip rows and toggles (#1883). Solid container instead of an
-            // OutlinedButton — over the controls sheet the outline read as
-            // disabled at a glance. Delegates to the shared state holder, which
-            // detaches every ARCore anchor before clearing the placed list.
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = {
-                    state.clearAll()
-                    cycleIndex = 0
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Clear All")
-            }
-
-            // Up-next preview so the user knows what the next tap will spawn.
-            Text(
-                text = "Next tap places: $nextLabel",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(top = 8.dp)
+            // Show-reticle toggle (#1882 / #1883). Dev-only: hide the centre disc for
+            // screenshots without losing the underlying hit-test pipeline.
+            LabeledToggle(
+                label = "Show reticle (dev)",
+                checked = showReticle,
+                onCheckedChange = { showReticle = it },
             )
+
             // Developer-only debug toggle — visible when QA mode is on. Lets QA
-            // force-emit each TrackingFailureReason so the actionable-message
-            // overlay can be validated without staging a real failure. See
+            // force-emit each TrackingFailureReason so the actionable-message overlay can
+            // be validated without staging a real failure. See
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
-        }
+        },
+        // The SAME bar the AR View tab floats over the camera, handed to the scaffold's
+        // bottom band so it stacks clear of the Settings FAB instead of fighting it
+        // (#3237). The control is shared; only the container differs, because a demo
+        // screen HAS a container and a fullscreen tab does not.
+        bottomOverlay = {
+            PlacementModelBar(
+                model = models.armed(picker),
+                onPickModel = picker::openSheet,
+                onReset = { state.clearAll() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(SceneViewTokens.Space.md)
+                    .padding(end = settingsFabReservedSpace),
+            )
+        },
     ) {
-        TapToPlaceArSession(
-            nextModelLabel = nextLabel,
-            // Resolve the asset at tap time — the #2476 invariant. The session calls this
-            // exactly once per accepted placement, on the main thread, inside the tap
-            // handler, so the picker can never go stale between composition and tap.
-            // Priority order:
-            //   1. A selected streamed slug whose download has landed → its file URI.
-            //   2. A bundled-model lock chosen in Settings (#1883) → that specific GLB.
-            //   3. Fall back to the rotating MODEL_CYCLE (v4.3.1 behaviour).
-            // A streamed slug whose download is still in flight silently demotes to (2)
-            // or (3) so the tap is never lost.
-            onPlaceModel = {
-                val slug = selectedSlug
-                val pendingFile = selectedFile
-                val bundledLock = selectedBundledIndex
-                val (location, name) = when {
-                    slug != null && pendingFile != null ->
-                        "file://${pendingFile.absolutePath}" to slug.displayName
-                    bundledLock != null -> {
-                        val entry = MODEL_CYCLE[bundledLock]
-                        entry.assetPath to entry.displayName
-                    }
-                    else -> {
-                        val entry = MODEL_CYCLE[cycleIndex % MODEL_CYCLE.size]
-                        cycleIndex = (cycleIndex + 1) % MODEL_CYCLE.size
-                        entry.assetPath to entry.displayName
-                    }
-                }
-                PlacementSpec(assetLocation = location, displayName = name)
-            },
+        TapToPlaceExperience(
+            models = models,
+            picker = picker,
             state = state,
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            // DemoScaffold's app bar already carries the app-wide top-start back arrow,
+            // and the bar lives in the scaffold's bottom band — so the experience draws
+            // neither here. Everything else it renders is identical to the AR View tab.
+            onBack = null,
+            showModelBar = false,
             snapToPlane = snapToPlane,
             showReticle = showReticle,
         )
+    }
+}
+
+/**
+ * Picker id for a streamed slug. Prefixed so a Sketchfab uid can never collide with a
+ * bundled row's id, and stable across catalogue rebuilds.
+ */
+private fun streamedModelId(slug: SketchfabSlug): String = "streamed:${slug.uid}"
+
+@Composable
+private fun LabeledToggle(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = SceneViewTokens.Space.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

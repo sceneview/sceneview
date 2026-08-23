@@ -16,6 +16,8 @@ object DebugOverlayFragment : DemoFragment {
         subtitleRes = R.string.demo_debug_overlay_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Speed,
+        order = 19,
+        tags = setOf("debug", "fps", "stats", "performance", "overlay"),
     )
 
     @Composable

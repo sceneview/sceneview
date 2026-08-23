@@ -24,7 +24,7 @@ struct VideoTextureDemo: View {
             playPauseButton
         }
         .background(Color.black)
-        .demoSettingsSheet { settingsSheet }
+        .demoChrome { settingsSheet }
         .task { buildVideoNode() }
     }
 
@@ -48,7 +48,12 @@ struct VideoTextureDemo: View {
             }
         }
         .cameraControls(.orbit)
-        .id("video-\(videoNode != nil)")
+        // Keyed on the node instance, not on `videoNode != nil`: the Loop
+        // toggle builds a fresh `VideoNode`, and the content has to be rebuilt
+        // around the new one so the previous quad is removed. Rebuilt in place
+        // under the same `RealityView` — a `.id(_:)` re-key intermittently
+        // left the viewport black on iOS 26 Simulator (#3008).
+        .contentID(videoNode.map { ObjectIdentifier($0.entity) })
         .ignoresSafeArea()
     }
 
@@ -114,6 +119,9 @@ struct VideoTextureDemo: View {
     // MARK: - Helpers
 
     private func buildVideoNode() {
+        // The previous node is about to leave the scene — stop its player so
+        // it does not keep playing audio from a detached entity.
+        videoNode?.pause()
         let node = VideoNode.load("sample", width: 2.4, height: 1.35, loop: isLooping)
         node.entity.position = SIMD3(0, 0.3, -3)
         node.muted(isMuted)

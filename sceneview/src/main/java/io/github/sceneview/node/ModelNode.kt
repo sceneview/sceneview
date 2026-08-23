@@ -719,12 +719,15 @@ inline fun <reified T : MaterialInstance> List<T>.getOrNull(name: String): T? =
  * AABB [center] (not just the extents) makes the alignment correct for assets whose bounding
  * box is not authored centered on their pivot.
  *
- * Pure math, extracted so the formula is JVM-unit-testable without a Filament `Engine`
- * (see `ModelNodeCenterOriginFormulaTest`), mirroring the `resolveModelNodePosition` precedent.
+ * Delegates to the shared `sceneview-core` [io.github.sceneview.math.centerOriginTranslation] —
+ * `sceneview-web`'s `ModelNode.centerOrigin` calls the exact same KMP function (issue #2763), so
+ * Android and Web cannot numerically diverge: a formula bug here fails on both platforms'
+ * suites at once (`centerOriginGoldenVectors` in `sceneview-core` commonTest, plus this module's
+ * own `ModelNodeCenterOriginFormulaTest`, mirroring the `resolveModelNodePosition` precedent).
  */
 internal fun centerOriginTranslation(
     center: Float3,
     halfExtent: Float3,
     scale: Scale,
     origin: Position
-): Position = -(center + origin * halfExtent) * scale
+): Position = io.github.sceneview.math.centerOriginTranslation(center, halfExtent, scale, origin)

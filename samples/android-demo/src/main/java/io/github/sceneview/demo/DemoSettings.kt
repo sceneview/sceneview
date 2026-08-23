@@ -24,6 +24,11 @@ import androidx.compose.runtime.setValue
  * ```
  */
 object DemoSettings {
+    /** Optional bundled asset/slug handed from Model Viewer to AR Placement. */
+    var requestedModel: String? by mutableStateOf(null)
+
+    /** One-shot in-app route request used by demos that cannot own a NavController. */
+    var requestedRoute: String? by mutableStateOf(null)
     /**
      * `true` = deterministic mode (no auto-orbit, no idle camera drift, no implicit
      * motion). `false` = full "wow" showcase mode. Default `false`.

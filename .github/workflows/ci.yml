@@ -14,30 +14,21 @@ name: CI
 #
 # Jobs:
 #   - changes        path detection (one dorny/paths-filter run for the whole PR)
-#   - changes-verdict  non-PR only: reds the run when `changes` did not conclude,
-#                    so nine `skipped` legs cannot read as green (#3148)
+#   - changes-verdict  reds the run when `changes` did not conclude, so
+#                    `skipped` legs cannot read as green (#3148); required check
 #   - build          libraries + sample APKs        (gated on `android`)
 #   - lint           Android lint                   (gated on `android`)
 #   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
-#   - coverage       JaCoCo coverage (advisory, off the critical path) (gated on `android`)
 #   - web-desktop    Kotlin/JS + Compose Desktop     (gated on `web`)
 #   - flutter-demo   plugin analyze+test, demo APK  (gated on `flutter`)
 #   - compile-kmp    iOS Kotlin/Native targets       (gated on `kmp`)
-#   - repo-hygiene   grep/validate micro-gates       (always, when workflow runs)
-#   - quality-gate   full .claude/scripts/quality-gate.sh (gated on `quality_gate`)
-#
-# The `CI Gate` aggregator (ci-gate.yml) polls the Checks API for the PR head
-# SHA and treats `skipped` as passing, so it needs NO `needs:` edit when jobs
-# are added/removed here — a path-gated-out job simply reports `skipped`.
 
 on:
   push:
     branches: [main]
     # NOTE: intentionally a NARROW ignore list — only paths that no job here
-    # exercises. `mcp*/**`, `tools/**` and `.claude/**` are NOT ignored:
-    # `quality-gate` runs MCP unit tests and validates `.claude/scripts`, so
-    # the per-job `changes` filter (not a workflow-level ignore) decides
-    # whether each job runs for those paths.
+    # exercises. The per-job `changes` filter (not a workflow-level ignore)
+    # decides whether each job runs for everything else.
     paths-ignore:
       - 'website-static/**'
       - 'docs/**'
@@ -48,14 +39,9 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'website-static/**'
-      - 'docs/**'
-      - 'marketing/**'
-      - 'branding/**'
-      - '*.md'
-      - 'llms*.txt'
-      - 'LICENSE'
+    # No paths-ignore on PRs: the jobs below are the required checks on `main`,
+    # so the workflow must run (and report `skipped` legs) on every PR — the
+    # `changes` job does the path triage in seconds.
   workflow_dispatch:
   # Allows nightly-ci.yml to invoke this workflow as a reusable workflow so
   # the scheduled full-validation run reuses these job definitions instead
@@ -70,7 +56,8 @@ on:
         type: boolean
         default: false
 
-# Cancel only a genuinely superseded run, never an unrelated PR's CI (#2089).
+# Cancel only a genuinely superseded PR run, never a push to `main` (#2089,
+# #2925).
 #
 # The old `group: ci-${{ github.ref }}` keyed on `refs/pull/N/merge` for PRs.
 # Merging any PR to `main` makes GitHub recompute EVERY other open PR's merge
@@ -79,13 +66,15 @@ on:
 # cancelled check that left `CI Gate` red and blocked squash auto-merge
 # (bit #2062 and #1818).
 #
-# Keying on the PR HEAD sha instead means a run is cancelled ONLY when a new
-# commit is genuinely pushed to that same PR — a base-ref recompute keeps the
-# head sha unchanged, so other PRs' runs are left alone. `push`/`dispatch`
-# events have no `pull_request` context and fall back to `github.ref`.
+# Keying PRs on their HEAD sha means a run is cancelled ONLY when a new commit
+# is genuinely pushed to that same PR — a base-ref recompute keeps the head sha
+# unchanged, so other PRs' runs are left alone. Pushes to `main` instead use
+# their immutable commit sha and never cancel in progress: every pushed commit
+# must finish path detection against its own parent, even when merges land in
+# quick succession. Other events fall back to `github.ref`.
 concurrency:
-  group: ci-${{ github.event.pull_request.head.sha || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
@@ -102,9 +91,9 @@ jobs:
   # A job that gets `if:`-skipped reports the "skipped" conclusion, which
   # GitHub treats as success for branch-protection required checks — the
   # same guarantee the repo already relies on for the workflow-level `paths`
-  # filters in ios.yml / build-apks.yml / telemetry-ci.yml. No check is
-  # renamed, so branch protection (which requires only `CI Gate`) is
-  # unaffected.
+  # filters in ios.yml / build-apks.yml / telemetry-ci.yml. Branch protection
+  # requires the job names below directly, so a path-gated-out job reports
+  # `skipped` and still satisfies the required check.
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
@@ -140,10 +129,9 @@ jobs:
       # Every measured occurrence was a `pull_request` run (#3005 ×5, #3035 ×3,
       # #3052 ×2). The consequence was severe out of proportion to the cause: a
       # job that times out reports `cancelled`, not `failure`, the eight
-      # downstream jobs report `skipped`, and `Detect changed paths` is in
-      # `ci-gate.yml`'s REQUIRED_CHECKS — so the single required check on
-      # `main` went red on a run where nothing was measured, reading as "the
-      # path filter matched nothing".
+      # downstream jobs report `skipped`, and `Detect changed paths` was a
+      # required check at the time — so `main` went red on a run where
+      # nothing was measured, reading as "the path filter matched nothing".
       #
       # That fix left the `push` path — the one that DEPLOYS — still paying a
       # full checkout, and #3148 hit the same wall there twice (runs
@@ -184,10 +172,11 @@ jobs:
           # skipped-but-needed test. `sceneview-core/**` is shared KMP
           # logic, so it intentionally appears in `android`, `web` and
           # `kmp`. This workflow file is listed under every filter so a CI
-          # change always re-runs every job. `push` events (branch `main`)
-          # have no PR diff base — the action falls back to comparing
-          # against the previous commit; the workflow-level `paths-ignore`
-          # is the real gate there.
+          # change always re-runs every job. A `push` to `main` is compared
+          # explicitly with that event's `before` sha so rapid successive
+          # pushes cannot collapse into one diff. The all-zero `before` sha
+          # used when GitHub cannot name a parent falls back to `main`.
+          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
           filters: |
             shared: &shared
               - '.github/workflows/ci.yml'
@@ -204,9 +193,9 @@ jobs:
               - 'arsceneview/**'
               - 'sceneview-core/**'
               # Gates apiCheck + detekt. Omitting it would let a PR that only
-              # touches this module skip both — and the CI Gate aggregator
-              # scores a skipped job as passing, so a renderer type leaking
-              # into the public API would merge green.
+              # touches this module skip both — and branch protection grades
+              # a skipped job as passing, so a renderer type leaking into the
+              # public API would merge green.
               - 'sceneview-compose/**'
               - 'samples/android-demo/**'
               - 'samples/android-tv-demo/**'
@@ -278,42 +267,28 @@ jobs:
           done <<< "$VERDICTS"
           [ "$bad" -eq 0 ]
 
-  # ── Push-side verdict on `changes` itself ────────────────────────────────
-  # THE FALSE-GREEN THIS CLOSES (#3148). Everything above makes the `changes`
-  # job fast; none of it makes a `changes` job that DIDN'T finish visible. Those
-  # are different problems and only the second one deploys bad code.
-  #
-  # `changes` is a `needs:` of nine jobs. When it concludes anything other than
-  # `success` — its own `timeout-minutes` firing, a runner loss — all nine
-  # report `skipped`, and GitHub grades `skipped` as passing. On a PR that is
-  # caught: `ci-gate.yml` fails on a `cancelled` conclusion and `CI Gate` is the
-  # only required check on `main`. But `ci-gate.yml` is `on: pull_request` ONLY.
-  # A `push` to `main` therefore had NOTHING grading it: the commit lands, nine
-  # legs never execute, the run reads `cancelled`, and the repo deliberately
-  # treats `cancelled` as non-blocking (#1984). Both runs in #3148 are exactly
-  # that, on the branch that deploys to the stores.
-  #
-  # So say it out loud where a PR gate cannot: "the filters evaluated nothing"
-  # must not be spellable the same way as "the filters said nothing to build".
+  # ── Verdict on `changes` itself ──────────────────────────────────────────
+  # THE FALSE-GREEN THIS CLOSES (#3148). `changes` is a `needs:` of every
+  # downstream job. When it concludes anything other than `success` — its own
+  # `timeout-minutes` firing, a runner loss — all of them report `skipped`,
+  # and GitHub grades `skipped` as passing, including for branch-protection
+  # required checks. This job is the required check that says out loud what a
+  # skip cannot: "the filters evaluated nothing" must not be spellable the
+  # same way as "the filters said nothing to build". It runs on every event —
+  # PRs (required check), pushes to `main` (the branch that deploys to the
+  # stores), and `workflow_call` from `nightly-ci.yml`.
   #
   # ⚠️ `!cancelled()`, NOT `always()`. `always()` also fires when the WORKFLOW
-  # RUN is cancelled, and a `push` to `main` is legitimately cancelled whenever
-  # a second push supersedes it (`concurrency` above falls back to
-  # `github.ref` for pushes) — this job would then turn a correct supersede
-  # into a red `main`. `!cancelled()` runs on success and on failure and skips
+  # RUN is cancelled. Superseded PR runs are legitimately cancelled by the
+  # concurrency policy above, and this job must not turn a correct supersede
+  # into a red. Push runs are never superseded, so each one reaches this
+  # required verdict. `!cancelled()` runs on success and on failure and skips
   # a cancelled RUN, while a `changes` job that merely blew its own
   # `timeout-minutes` does not cancel the run, so that case still lands here.
-  #
-  # Scoped to non-`pull_request` on purpose: PRs already have `CI Gate`, and
-  # adding a check name that never appears on a PR would be a name `ci-gate.yml`
-  # could never wait for. `workflow_call` from `nightly-ci.yml` reports the
-  # caller's event (`schedule`), so the nightly is covered too — it needs this
-  # more than anyone, since `inputs.force-all` cannot save a job whose `needs:`
-  # was cancelled.
   changes-verdict:
     name: Path filter completed
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -336,8 +311,7 @@ jobs:
   # and share the same Gradle build cache (the `setup-gradle` composite action
   # is `cache-read-only` on non-push, so the cache is consistent across them).
   # Trades a few extra runner-minutes for ~3 min wall-clock. All three are
-  # picked up automatically by the `CI Gate` aggregator (#1314), which polls
-  # every check run for the head SHA rather than using a static `needs:` list.
+  # required checks on `main` by job name.
   build:
     name: Build libraries & samples
     needs: changes
@@ -424,9 +398,7 @@ jobs:
   # modules — fast and deterministic. JaCoCo coverage instrumentation +
   # report generation is deliberately NOT part of this job: it was the slow
   # pole that tipped the combined "Unit tests + coverage" job over its
-  # 45-min timeout on slow/contended runners (#1554 → #1955), producing a
-  # confusing double-red on the `CI Gate` aggregator. Coverage now lives in
-  # the separate, non-blocking `coverage` job below — see #1955.
+  # 45-min timeout on slow/contended runners (#1554 → #1955).
   unit-test:
     name: Unit tests
     needs: changes
@@ -445,7 +417,7 @@ jobs:
 
       - name: Unit tests
         # Plain `testDebugUnitTest` — the PR pass/fail signal, no coverage
-        # instrumentation. JaCoCo runs separately in the `coverage` job.
+        # instrumentation.
         #
         # `:samples:android-demo` runs `verifyRoborazziDebug` instead of
         # plain `testDebugUnitTest` (#2739). The two are NOT redundant work:
@@ -455,10 +427,7 @@ jobs:
         # `GeometryDemoControlsSnapshotTest`) when the `roborazzi.test.verify`
         # property is set for that test run — `verifyRoborazziDebug` sets it,
         # plain `testDebugUnitTest` does not, so a layout regression in the
-        # covered composables silently passed CI (goldens only bit for
-        # contributors who ran the local `pre-push-check.sh` gate, which has
-        # invoked `verifyRoborazziDebug` since it was added — see
-        # `.claude/scripts/pre-push-check.sh`). `verifyRoborazziDebug` is a
+        # covered composables silently passed CI. `verifyRoborazziDebug` is a
         # superset of `testDebugUnitTest`: it runs the SAME `debug` unit-test
         # source set (including `ARBundledRecordingsTest`, the
         # bundled-recording ftyp/avc1/mett contract suite from #1060/#1100),
@@ -493,16 +462,14 @@ jobs:
         # module was compiled on every relevant PR while its 5 tests were not.
         # Local run before wiring: 5 tests, 0 failures, 7s.
         run: |
-          # `:samples:android-demo:testDebugUnitTest --rerun` is NOT redundant
-          # with verifyRoborazziDebug above it. The goldens under
-          # samples/android-demo/src/test/snapshots/ are not declared inputs of
-          # any task, so with a restored Gradle cache the comparison comes back
-          # UP-TO-DATE having read no golden — measured locally 2026-08-06 on a
-          # golden mutated by 8000 red pixels: `verifyRoborazziDebug UP-TO-DATE`
-          # / `BUILD SUCCESSFUL in 1s`. A PR whose only change IS a golden PNG
-          # would go green on this, the leg that actually gates merge. `--rerun`
-          # binds to the task it follows, so it forces only the demo module's
-          # test task. See #3029 and .claude/scripts/lib/gradle-run.sh.
+          # The goldens under samples/android-demo/src/test/snapshots/ are a
+          # declared input of the demo's test task (`roborazziGoldens` in its
+          # build.gradle, #3034), so a PR whose only change is a golden PNG
+          # re-runs the comparison on its own. Before that declaration the
+          # comparison came back UP-TO-DATE having read no golden — measured
+          # 2026-08-06 on a golden mutated by 8000 red pixels (#3029) — and this
+          # step carried a `testDebugUnitTest --rerun` workaround. If that
+          # declaration is ever removed, the workaround must come back.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
@@ -510,7 +477,6 @@ jobs:
             :samples:common:testDebugUnitTest \
             :samples:android-tv-demo:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
-            :samples:android-demo:testDebugUnitTest --rerun \
             --stacktrace
 
       - name: Upload unit test reports
@@ -544,14 +510,13 @@ jobs:
   # sceneview-core, sceneview-compose) against their committed `.api` dumps
   # under `<module>/api/`.
   # A public signature added/removed/retyped without re-running `./gradlew
-  # apiDump` fails this check → the `CI Gate` aggregator (which polls every
-  # non-advisory check for the head SHA) goes red and blocks auto-merge. This
-  # is the binary-level guard for the exact signatures `llms.txt` promises.
+  # apiDump` fails this check and blocks the merge. This is the binary-level
+  # guard for the exact signatures `llms.txt` promises.
   #
   # Path-gated on `android` exactly like `unit-test` (the `android` filter
-  # includes `sceneview-core/**`), so it is deliberately NOT in ci-gate.yml's
-  # `REQUIRED_CHECKS` and a docs-only PR reports it `skipped` (→ green). It is
-  # NOT advisory: a red `apiCheck` must fail the PR.
+  # includes `sceneview-core/**`): a docs-only PR reports it `skipped`, which
+  # branch protection grades as passing. It is NOT advisory: a red `apiCheck`
+  # must fail the PR.
   api-check:
     name: API compatibility
     needs: changes
@@ -580,128 +545,6 @@ jobs:
           echo "::notice::public-API delta is reviewable in this PR. See"
           echo "::notice::CONTRIBUTING.md → 'Public API changes'."
 
-  # ── JaCoCo coverage (advisory — off the PR-critical path) ────────────────
-  # SEPARATE from the `unit-test` gate above (#1955). JaCoCo instrumentation
-  # + XML/HTML report generation is the slow pole that made the old combined
-  # "Unit tests + coverage" job structurally exceed its timeout on slow
-  # runners (#1554 band-aid was insufficient). Coverage does NOT need to gate
-  # every PR, so it runs here on its own runner with `continue-on-error:
-  # true` — a coverage hiccup is logged and surfaced in the step summary but
-  # never flips the job (and therefore never flips the `CI Gate` aggregator)
-  # red. The job is path-gated on `android` exactly like `unit-test`, so it
-  # is NOT one of ci-gate.yml's `REQUIRED_CHECKS` core checks and a docs-only
-  # PR simply reports it `skipped`.
-  #
-  # `jacocoTestReport` depends on `testDebugUnitTest`, so this job re-runs
-  # the library test suite under instrumentation on its own runner. That is
-  # intentional: the duplicate run is OFF the critical path and the Gradle
-  # build cache (org.gradle.caching=true, configuration-cache enabled, shared
-  # by setup-gradle@v6) keeps it cheap.
-  coverage:
-    name: Coverage (advisory)
-    needs: changes
-    if: inputs.force-all || needs.changes.outputs.android == 'true'
-    runs-on: ubuntu-latest
-    # `continue-on-error` so a coverage failure never blocks a PR — see #1955.
-    continue-on-error: true
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/setup-gradle
-
-      - name: JaCoCo coverage
-        # `jacocoTestReport` depends on `testDebugUnitTest` so Gradle runs
-        # the library tests under instrumentation, drops the exec file under
-        # `outputs/unit_test_code_coverage/`, then generates XML + HTML
-        # reports. See #964.
-        run: |
-          ./gradlew \
-            :sceneview:jacocoTestReport \
-            :arsceneview:jacocoTestReport \
-            --stacktrace
-
-      - name: Coverage summary
-        if: always()
-        # One-line headline per module (line coverage). Doesn't fail the
-        # build on low coverage — establishing a baseline is a follow-up.
-        run: |
-          python3 - <<'PY'
-          import os, sys, xml.etree.ElementTree as ET
-          rows = []
-          for mod in ("sceneview", "arsceneview"):
-              path = f"{mod}/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml"
-              if not os.path.exists(path):
-                  rows.append(f"{mod}: NO REPORT (jacocoTestReport failed?)")
-                  continue
-              root = ET.parse(path).getroot()
-              for c in root.findall("counter"):
-                  if c.get("type") == "LINE":
-                      covered = int(c.get("covered"))
-                      missed = int(c.get("missed"))
-                      total = covered + missed
-                      pct = 100 * covered / total if total else 0
-                      rows.append(f"{mod}: {pct:.1f}% line ({covered}/{total})")
-                      break
-          print("## JaCoCo coverage")
-          for r in rows:
-              print(f"- {r}")
-          # Also write a step summary so the CI run page surfaces it.
-          summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary:
-              with open(summary, "a") as f:
-                  f.write("## JaCoCo coverage\n")
-                  for r in rows:
-                      f.write(f"- {r}\n")
-          PY
-
-      - name: Coverage delta gate
-        if: always()
-        # Compares this PR's line coverage against the committed baseline in
-        # `.claude/data/jacoco-baseline.txt` and reports whether any module
-        # dropped more than `threshold_pp` (0.5pp default). See #973.
-        #
-        # `continue-on-error: true` keeps it INFORMATIONAL for now — a real
-        # regression is logged loudly and surfaced in the job step summary.
-        # The enclosing `coverage` job is also `continue-on-error: true`
-        # (#1955), so coverage never gates a PR regardless; promote this to a
-        # hard gate by giving the `coverage` job its own required check once
-        # the delta numbers have been green for two consecutive weeks (the
-        # #973 follow-up ratchet step).
-        continue-on-error: true
-        run: |
-          set +e
-          bash .claude/scripts/jacoco-delta-check.sh 2>&1 | tee /tmp/jacoco-delta.log
-          status=${PIPESTATUS[0]}
-          {
-            echo "## JaCoCo coverage delta gate"
-            echo ""
-            echo '```'
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/jacoco-delta.log
-            echo '```'
-            if [ "$status" -ne 0 ]; then
-              echo ""
-              echo "> :warning: Coverage regressed beyond the allowed threshold."
-              echo "> This check is currently **informational** (non-blocking)."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Upload coverage reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: jacoco-coverage
-          path: |
-            sceneview/build/reports/jacoco/jacocoTestReport/
-            arsceneview/build/reports/jacoco/jacocoTestReport/
-          if-no-files-found: warn
-
-  # ── Web & Desktop modules (Kotlin/JS + Compose Desktop) ──────────────────
-  # Job id kept as `web-desktop` for check-run history continuity; it now
-  # builds the web targets only (the desktop-demo placeholder step was
-  # dropped in #1396).
   web-desktop:
     name: Build web targets
     needs: changes
@@ -751,6 +594,24 @@ jobs:
       # i.e. Karma/ChromeHeadless does work on ubuntu-latest here.
       - name: JS tests
         run: ./gradlew :sceneview-core:jsTest :sceneview-web:jsTest --stacktrace
+
+      # This leg has gone red with `Test running process exited unexpectedly`,
+      # zero test results and nothing in the job log to diagnose — the browser
+      # died and nobody wrote down what it said. `karma.config.d/
+      # browser-hardening.js` now captures the browser console to a file under
+      # build/; this upload keeps it when the runner is torn down (#3192).
+      # `if: failure()`: a green run has nothing to explain. `ignore` because a
+      # failure before Karma starts (compile error) legitimately has no log.
+      - name: Upload Karma browser logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: karma-browser-logs
+          path: |
+            **/build/js/packages/*/karma-browser.log
+            **/build/reports/tests/**
+            **/build/test-results/**
+          if-no-files-found: ignore
 
       # In-browser smoke test of the COMPILED Kotlin/JS bundle (the artifact
       # published to npm/CDN), against the real Filament WASM module. The
@@ -974,8 +835,8 @@ jobs:
     # rationale for both halves of the condition; keep the three copies
     # (here, bridge-ios-compile.yml, device-qa.yml) identical.
     runs-on: ${{ (vars.SELF_HOSTED_MACOS_ONLINE == 'true' && (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && 'sceneview-mac' || 'macos-15' }}
-    # Kept at/below the other blocking jobs (30 min) so the CI Gate's 50-min
-    # internal deadline keeps its margin. The cold Kotlin/Native link is the
+    # Kept at/below the other blocking jobs (30 min). The cold Kotlin/Native
+    # link is the
     # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,
     # and 33 s to re-link and re-run after a one-file change. The 30 min is
     # headroom for a slower hosted runner, not an expected duration.
@@ -1039,935 +900,3 @@ jobs:
           name: kmp-native-test-results
           path: sceneview-compose/build/test-results/
           if-no-files-found: ignore
-
-  # ── Repo hygiene checks ─────────────────────────────────────────────────
-  # One job consolidating the 5 micro grep/validate gates that used to each
-  # surface as their own top-level status check (see #1305). Each gate runs
-  # as a sequential step; `if: always()` on the later steps means a PR
-  # author sees EVERY violation in a single run instead of fixing them one
-  # check at a time. The job still fails red if any gate fails because each
-  # step's non-zero exit propagates to the job result.
-  #
-  # Not path-gated: these are sub-second greps that validate cross-cutting
-  # invariants (deprecated API names, agent-skill drift, dead SPM URLs,
-  # workflow shell blocks, demo asset refs). Running them on every CI
-  # invocation is cheap insurance. Formerly `pr-check.yml:repo-hygiene`.
-  #
-  # Don't write deprecated composable names verbatim in these comments —
-  # check-deprecated-api.sh greps source files and would flag the comment
-  # itself, as it did on commit ae433620.
-  #
-  # Every gate carries `always() && steps.checkout.outcome == 'success'`, never
-  # a bare `always()`. `always()` alone also fires when the CHECKOUT never
-  # completed, and then every gate measures an empty directory and reports
-  # `failure` at once. Measured on run 31516160366 (PR #3114): checkout hung,
-  # ate the 10-minute timeout, was cancelled — and the run showed 40 red gates
-  # ("agent skill out of sync", "asset credits out of sync", …) that had
-  # measured nothing. The job's own conclusion was right and `CI Gate` refused
-  # the merge, so this costs diagnosis time rather than correctness: the single
-  # real cause was visible only by listing the steps and noticing the first said
-  # `cancelled` while the rest said `failure`. Guarded, a lost checkout skips
-  # them all and leaves exactly one red step — the one that actually broke.
-  #
-  # The guard must stay `always() && …` and never become `success() && …`:
-  # `success()` is false once ANY earlier step failed, which is precisely the
-  # sequential-stop behaviour `always()` is here to prevent. Both halves are
-  # pinned by check-hygiene-checkout-guard.py, which evaluates the real `if:`
-  # expressions of this job under simulated step outcomes.
-  repo-hygiene:
-    name: Repo hygiene checks
-    runs-on: ubuntu-latest
-    # 20, not 10, and the reason is the CHECKOUT, not the checks. Measured on
-    # run 31607603142 (job 94150475933): `actions/checkout@v7` took 8m36s of a
-    # 10m31s job, and all ~55 gates below ran in ~1m50s after it. The job had
-    # been failing on `timeout-minutes` with every step green — a red that says
-    # nothing about the tree. Not `fetch-depth: 1`: several gates here compute
-    # a merge-base, and a shallow clone gives them a wrong one silently.
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        id: checkout
-
-      # Deprecated API regression detector — sub-second guard against AI
-      # sessions reintroducing the pre-v3.6 composable names (renamed in
-      # commit e6a26a06).
-      #
-      # Carries the same guard as every gate below even though it sits first,
-      # where the implicit `success()` would already skip on a lost checkout.
-      # Uniform is the point: the day a step is inserted between checkout and
-      # here, an implicit `success()` would start swallowing this gate on that
-      # step's failure — the sequential-stop bug, reintroduced silently.
-      - name: Check for deprecated SceneView API refs
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-deprecated-api.sh --all
-
-      # SceneView agent skill drift detector — catches hallucinated APIs in
-      # agents/sceneview/ (e.g. `rememberARSession` or `AnchorNode.image()`)
-      # BEFORE merge — see PR #1072 for the kind of drift this prevents.
-      - name: Check SceneView agent skill is in sync with source
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-sceneview-skill.sh
-
-      # Refuses to BUILD a vendored tree whose build-logic downloads archives
-      # without verifying them and unpacks symlinks without validating their
-      # targets. `third_party/filament-kmp/` was removed from main in #3015, so
-      # today this exits 0 on "nothing vendored". It arms itself the instant the
-      # tree comes back AND something builds it (#2540) — which is the moment a
-      # reviewer is thinking about CMake and jextract, not about tar entries.
-      - name: Check vendored download chain is hardened before it is built
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-vendored-download-safety.sh
-
-      # The gate above is dormant on the current tree — with nothing vendored it
-      # exits 0 without exercising either probe, and will stay that way until the
-      # desktop spike restores the copy. This self-test drives its FAILING path
-      # on synthetic trees so a loosened probe is caught now, rather than in the
-      # PR it was meant to stop.
-      - name: Self-test the vendored-download gate
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-vendored-download-safety.sh
-
-      # Self-hosted macOS routing. Three workflows share one `runs-on`
-      # expression; until this gate existed, "keep the three copies identical"
-      # was a comment. It evaluates the real expression under simulated events:
-      # fork PRs must land on a disposable hosted runner, and push / dispatch /
-      # schedule must keep the Mac we already own. Both directions fail
-      # silently — one leaks reach onto a persistent machine, the other just
-      # quietly spends hosted minutes.
-      #
-      # This job is deliberately NOT path-gated, so a workflow-only PR still
-      # runs it. A gate that skips itself on the very diff it polices is green
-      # for life (#2988).
-      - name: Check self-hosted runner routing
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/check-self-hosted-runner-routing.py
-
-      # Drives the gate's FAILING path on synthetic trees — including the old
-      # two-term expression it was written to catch. Without this, a loosened
-      # probe reports green on a repo that happens to be correct.
-      - name: Self-test the self-hosted routing gate
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-self-hosted-runner-routing.sh
-
-      # Demo design system. The samples had no shared UI vocabulary, so each demo grew its
-      # own: 37 hand-rolled sliders across 21 files, and the per-category accent palette
-      # copied into three screens — one copy annotated "keep these in sync by hand", another
-      # with no dark variant at all, so in dark mode it rendered the light hues the dark
-      # palette exists to avoid. None of it was carelessness; a control typed inline is the
-      # shortest path when writing one demo on its own, which is exactly why the check has to
-      # be mechanical rather than a convention someone re-reads for.
-      #
-      # Not path-gated, for the same reason as the pair above: a gate that skips itself on
-      # the diff it polices is green for life (#2988).
-      - name: Check the demo design system
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/check-demo-design-system.py
-
-      # Drives the gate's FAILING path on synthetic trees — including the label that nests
-      # quotes inside a string template, which is where a flat regex silently stops looking.
-      - name: Self-test the demo design-system gate
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-demo-design-system.sh
-
-      # Demo overlay anchors, BOTH edges. Several things compete for the strips of pixels
-      # at the top and bottom of every demo screen — the Settings FAB at bottom-end,
-      # `SceneActionBar` at bottom-start, the asset-source chip at top-end, and the demo's
-      # own status banners in the middle of both. `DemoScaffold` owns all four edges via
-      # `topOverlay` / `bottomOverlay`, aligned Columns that stack their children and apply
-      # `WindowInsets.safeDrawing` once, so this refuses edge anchoring anywhere else.
-      #
-      # This gate covered only the BOTTOM edge of `demos/` until #3231, and its docstring
-      # said so — "deliberately leaves alone: Alignment.Top*, and anything outside the demos
-      # directory". Behind that sentence, the top edge of those same files collected 35
-      # uncoordinated anchors across three incompatible inset conventions (`systemBars`, a
-      # magic `padding(top = 8.dp)`, nothing at all) inside the same Box; `safeDrawing`
-      # appeared zero times in the repository; and the app-wide update banner sat unchecked
-      # in `MainActivity.kt`. A guard that polices one edge of one folder is how that
-      # happens — so this one has no folder allowlist at all. It scans every Kotlin file in
-      # the demo app and names its two exemptions by path.
-      #
-      # A doc cannot be the enforcement here: `SceneActionBar`'s KDoc used to promise those
-      # pills "never collide with this bottom-start bar", which is precisely why the drift was
-      # systematic. A banner's height follows its string, its wrap and the font scale, so no
-      # constant a demo author picks survives a longer sentence in a future locale.
-      #
-      # Not path-gated, same reason as every gate above it (#2988).
-      - name: Check demo overlay anchors
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/check-demo-overlay-anchors.py
-
-      # Drives the gate's FAILING path on synthetic trees. It hinges on a brace matcher, and
-      # both directions are one line away from silent: a brace inside a Kotlin string template
-      # closes the slot early and fails a correctly-migrated demo, while an unterminated
-      # construct swallows the file and reports clean for life. It also pins the two
-      # judgement calls the gate has to make — a badge inside a card is not a screen-edge
-      # anchor, and a `BoxScope` extension shared by a scaffolded and an unscaffolded host
-      # is judged on its inset frame rather than on a slot it may not have.
-      - name: Self-test the demo overlay-anchor gate
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-demo-overlay-anchors.sh
-
-      # This job's own `if:` guards. Self-test first, same discipline as the
-      # pair above — and here it is the whole point, because the gate's subject
-      # is the file it is running from: reading the YAML is exactly what this is
-      # meant to replace. The fixtures are synthetic workflows, so a green run
-      # says "the guard checker works", not "today's ci.yml happens to be right".
-      - name: Self-test the repo-hygiene checkout guard
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-hygiene-checkout-guard.sh
-
-      # Evaluates every `if:` in THIS job under simulated step outcomes. Two
-      # directions, both silent: a bare `always()` makes a lost checkout report
-      # 40 gate failures that measured nothing (run 31516160366), and a
-      # `success()`-based guard would stop the gates at the first failure, which
-      # is the behaviour `always()` is here to prevent. A third, worse than
-      # either: rename the checkout's `id:` and every gate skips while the job
-      # reports GREEN. Pure text + arithmetic, sub-second, no network.
-      - name: Check repo-hygiene gates are guarded on the checkout
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/check-hygiene-checkout-guard.py
-
-      # Self-test first, same discipline as the pairs above. The gate has two
-      # passes pulling opposite ways — everything outside the allowlist fails,
-      # while the two WHOLESALE-allowlisted changelog surfaces must be free to
-      # NAME the retired mirror and must never ship a PIN to it. A gate that
-      # only says no blocks legitimate release notes; one that only says yes
-      # is prose. Mutation-tested on all three: dropping the second pass,
-      # dropping changelog.d/ from the allowlist, and widening the pin regex
-      # to `.*` each break the suite (#3068).
-      - name: Self-test check-sceneview-swift-urls.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-sceneview-swift-urls.sh
-
-      # Archived SPM mirror URL guard — the `sceneview/sceneview-swift` SPM
-      # mirror was archived in PR #1215; SceneViewSwift now resolves from the
-      # monorepo root Package.swift. Any NEW reference to the dead mirror URL
-      # points users at a dead resolution path. Closes #1237.
-      - name: Forbid archived sceneview-swift mirror URLs
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-sceneview-swift-urls.sh
-
-      # Workflow shell-block validation — pre-validates `script:` blocks in
-      # every .github/workflows/*.yml against `dash` so we catch bashisms
-      # before they ship to CI. Closes #1114.
-      - name: Install dash + shellcheck
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: |
-          # Both ship in ubuntu-latest, but pin explicitly so the job is
-          # self-contained on any runner image refresh.
-          if ! command -v dash >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq dash
-          fi
-          if ! command -v shellcheck >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq shellcheck
-          fi
-          # PyYAML — already in the runner image, but assert.
-          # Fallback deps live in a requirements file so Dependabot tracks them (#1286).
-          python3 -c "import yaml" || pip install --quiet -r .github/workflows/requirements/ci.txt
-
-      - name: Validate workflow shell blocks (dash + shellcheck)
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-workflow-scripts.sh
-
-      # Release-publisher contracts (#3011, #3021). Both self-tests first,
-      # same discipline as the pairs above, and here it is load-bearing twice
-      # over: the gate's subject is an ABSENCE (no step spent the id-token, so
-      # three releases published nothing while the job read as correct), and
-      # the runtime verifier is the only thing standing between a green
-      # publish step and a release that shipped nothing. Writing this pair
-      # produced two false greens of its own — a gate satisfied by a comment
-      # mentioning the command it was checking for, and a suite printing
-      # 12/12 while six cases never ran — so neither is run unmeasured.
-      # No network: the verifier's suite stubs npm and curl on PATH.
-      - name: Self-test verify-published-version.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-verify-published-version.sh
-
-      - name: Self-test check-release-publish-verification.py
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-release-publish-verification.sh
-
-      - name: Check every release publisher verifies against its registry
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/check-release-publish-verification.py
-
-      # CI Gate aggregation regression suite — pins the advisory-exclusion
-      # rule so a concurrency-CANCELLED advisory check can never red-light
-      # the `CI Gate` aggregator again (#1984, found unsticking PR #1889).
-      - name: Test CI Gate aggregation logic
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .github/scripts/test-ci-gate-aggregation.sh
-
-      # CI Gate observation-ledger regression suite — pins the rule that a
-      # check observed once for a SHA can never leave the gated set just
-      # because one Checks API read did not return it. #3018: a partial read
-      # during a run-attempt rebuild let `CI Gate` pass green over a
-      # `Compile KMP core` that had concluded `cancelled`.
-      - name: Test CI Gate observation ledger
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .github/scripts/test-ci-gate-observations.sh
-
-      # CI Gate LOOP-level regression suite — the two suites above test the
-      # helper scripts; this one extracts ci-gate.yml's own poll loop and runs
-      # it end to end against scripted Checks API reads, with `gh`, `sleep` and
-      # `date` stubbed. #3047: the #3018 suites stayed 21/21 green with the
-      # fix's own wiring deleted from ci-gate.yml, because nothing tested the
-      # workflow. Every scenario here is proven by mutation.
-      - name: Test CI Gate poll loop
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .github/scripts/test-ci-gate-loop.sh
-
-      # Demo app asset integrity — catches broken model/HDR references in
-      # any samples/* demo app, both for bundled file paths and CDN URLs.
-      # Self-test first so a regressed validator can't report a false PASS.
-      - name: Self-test validate-demo-assets.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-validate-demo-assets.sh
-
-      - name: Validate demo app asset references
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/validate-demo-assets.sh
-
-      # Doc-drift detector self-test — a regressed detector that silently
-      # PASSes is worse than none, so pin its contract before trusting it.
-      - name: Self-test check-doc-drift.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-doc-drift.sh
-
-      # sceneview-web.d.ts drift gate (#2736) — the npm typings are
-      # hand-written (#946); this asserts the `sceneview` namespace registry
-      # and the exported class surfaces match the d.ts bidirectionally.
-      # Self-test first, same rationale as the doc-drift pair above.
-      - name: Self-test check-web-dts.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-web-dts.sh
-
-      - name: Check sceneview-web.d.ts drift
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-web-dts.sh
-
-      # Filament-on-a-background-thread detector behind `quality-gate.sh`. It is
-      # a self-test only — the check itself reads `git diff HEAD`, which is empty
-      # on a CI checkout, so CI can never exercise it on real content. That is
-      # precisely how it stayed broken: the inline grep it replaced reported a
-      # THREADING VIOLATION on every clean LOCAL diff and matched nothing on the
-      # multi-line `withContext(Dispatchers.IO) { … }` shape, while this job
-      # stayed green because the whole block was skipped here.
-      - name: Self-test detect-filament-bg-thread.py
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-detect-filament-bg-thread.sh
-
-      # `grep -c` prints `0` and exits 1 on no match, so `$(grep -c … || echo 0)`
-      # yields the two-line value `0\n0`. lib/as-count.sh normalises it. This is
-      # the same CI blind spot as the step above and needs its own guard for a
-      # different reason: the detector was one consumer, the counting helper is
-      # the shape EVERY consumer goes through, and it failed two distinct ways at
-      # once — a comparison that dies takes the FAIL branch of `A && x || y` (a
-      # false red), while a `$((TOTAL + N))` that dies under `set -e` kills the
-      # enclosing block and prints NO check line at all. The second one is worse:
-      # nothing on screen says a check went missing. Pure string work, no repo.
-      - name: Self-test lib/as-count.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-as-count.sh
-
-      # Same family, the other failure mode: a grep that matches nothing exits 1,
-      # `pipefail` promotes it to the command substitution and `set -e` kills
-      # quality-gate.sh mid-run — before the Summary, so it exits 1 having printed
-      # no verdict at all and the caller can only call it a blocker. Measured on a
-      # KDoc-only diff touching sceneview/src/ (#3129 follow-up). CI cannot catch
-      # it by running the gate — there `git diff HEAD` is empty and the block is
-      # skipped — so the rule is pinned statically here instead. Pure string work.
-      - name: Self-test quality-gate pipefail guards
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-quality-gate-pipefail.sh
-
-      # Third member of the same family, and the only one whose wrong answer is
-      # INTERMITTENT: `grep -q` exits on its first match and closes the pipe, the
-      # producer takes EPIPE, and `pipefail` fails the pipeline *because the match
-      # succeeded*. Measured 2026-08-14 (#3180) — validate-demo-assets.sh reported
-      # a catalogued CC-BY asset as undeclared on one run of pre-push-check.sh and
-      # was clean on the next five. The same shape sits in front of a branch
-      # deletion in cleanup-branches-worktrees.sh, where the lost race means a
-      # branch WITH an open PR is not classified OPEN. Pins the call-site form
-      # (deterministic, mutation-tested); the race itself is measured and printed
-      # as evidence, never asserted. Pure string work, no network.
-      - name: Self-test pipefail membership tests
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-pipefail-membership.sh
-
-      # Store-preflight grader self-test — same rationale (#2612 P1). Exercises
-      # the ASC blocker grading / gate / JSON offline via the FAKE seam and the
-      # openssl ES256 JWT builder; needs no App Store Connect secret.
-      - name: Self-test store-preflight.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-store-preflight.sh
-
-      # Store-sync scripts self-test (#2612 P2 Phase A) — play-store.yml's
-      # sync-listing job now delegates to store-sync/play_listing.py; this
-      # byte-compiles both scripts, runs their offline unit tests, asserts
-      # credential-less runs SKIP honestly, and pins the workflow↔script seam
-      # (a workflow that silently stops calling the script must go red here).
-      - name: Self-test store-sync scripts
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-store-sync.sh
-
-      # release-checklist.sh §4 doc-version checks. The checklist graded an
-      # ABSENT `io.github.sceneview:sceneview:` coordinate in CLAUDE.md as a
-      # FAIL, i.e. a release blocker nobody could clear — CLAUDE.md carries no
-      # dependency snippet and is held short by test-context-budget.sh, and
-      # sync-versions.sh grades that same input SKIP. Nothing ran this script
-      # in CI, so the two gates disagreed for as long as it took a release to
-      # hit it. This runs the blocks as shipped and mutation-proves the guard.
-      - name: Self-test release-checklist version checks
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-release-checklist-version-checks.sh
-
-      # app-store.yml submit-step self-test (#2893). That step is a large Python
-      # program sitting between a green tag build and an App Store submission,
-      # and it had NO test seam: the only way to exercise it was to dispatch the
-      # workflow, which archives, signs and uploads a real TestFlight build — so
-      # every fix to it was validated in production, on a release, after it
-      # broke one (#2731, #2885, #2893). This runs the real program (never a
-      # copy, so it cannot drift) against a stubbed App Store Connect. Stdlib
-      # only — no network, no secrets, no Apple call.
-      #
-      # The program lives in .github/scripts/app_store_submit.py since #3146;
-      # it was a heredoc inside app-store.yml before, which the test had to
-      # regex-carve back out. Reading a file instead removed that coupling, so
-      # the suite now asserts up front that the workflow still INVOKES the file
-      # — otherwise a dropped step would leave it green over nothing.
-      - name: Self-test app-store.yml submit step
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/test-app-store-submit.py
-
-      # sync-versions.sh Kotlin-toolchain `--fix` rewriter self-test. The
-      # rewriter only fires on a Kotlin bump (gradle/libs.versions.toml drifting
-      # from the `**Kotlin:** X.Y.Z` prose), which quality-gate's in-tree run
-      # almost never hits — #2790 bumped the toml with no handler and reddened
-      # pre-push-check leg 7 (relived #2876). Pins the handler hermetically.
-      - name: Self-test sync-versions.sh Kotlin rewriter
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-sync-versions-kotlin.sh
-
-      # sync-versions.sh bridge-README self-test — same blind spot as the
-      # Kotlin one above: the RN handler only fires on drifted README prose, so
-      # the in-tree run (everything already at VERSION_NAME) never executes it
-      # and a broken sed stays green until a release bump. Pins the negative
-      # halves too: the Flutter pub.dev caret range must NOT be swept (pub.dev
-      # lags VERSION_NAME, and `^<unpublished>` fails `flutter pub get`), and
-      # the dated versions sharing those files — the `v4.3.0` feature notes,
-      # the #2735 "at tags vX.Y.Z and earlier" rename fact — must survive, or a
-      # true sentence becomes a false one.
-      - name: Self-test sync-versions.sh bridge READMEs
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-sync-versions-bridge-readmes.sh
-
-      # Emulator-pool lease contract self-test (#2862). The pool's mutual
-      # exclusion is what stops two sessions from driving one AVD, and it is
-      # invisible to every other check: no emulator runs in `repo-hygiene`, and
-      # a broken lease still "works" for a single session. Hermetic (stub adb +
-      # scratch lease dir), so it pins the contract anywhere.
-      - name: Self-test emulator pool leases
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-emulator-lease.sh
-
-      # Maestro per-flow budget + the `timeout` verdict (#3141). No device runs
-      # in repo-hygiene, and the failure this pins is invisible everywhere else:
-      # the nightly device-qa runs `--fast` (one category), so only the
-      # release-checkpoint path — the non-`--fast` catalog — hit the wall, and
-      # it hit it as `failed`, indistinguishable from a demo crash. Hermetic
-      # (stub Maestro, no JDK/device), ~9 s.
-      - name: Self-test Maestro per-flow timeout verdict
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-maestro-flow-timeout.sh
-
-      # iOS Simulator destination resolver (#3174). The bug it guards is a
-      # CoreSimulator cold-start race: on run 31807717171 the same job failed on
-      # `iPhone 16 Pro` at 14:07:45 with no concrete simulator listed, then
-      # resolved that exact device at 14:08:01. So the resolver must WAIT, and
-      # must still fail closed when nothing ever appears — a version with no
-      # wait would turn a survivable one-step failure into a dead job, and one
-      # that degraded would hand back an empty `-destination`. Both halves are
-      # mutation-tested inside the suite. Hermetic (stub `xcrun`), runs on Linux.
-      - name: Self-test iOS Simulator resolver
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-ios-simulator.sh
-
-      # Sibling of the check above, one layer out: the pool honours leases, but
-      # raw `adb` typed by a session bypassed the pool entirely and wiped another
-      # session's QA run (2026-07-27). hook-dispatch.sh now refuses that command;
-      # this pins the refusal, including the escape hatches and the cases that
-      # must stay frictionless (read-only adb, another serial, expired lease).
-      # A guard that silently stops firing is worse than no guard at all.
-      - name: Self-test hook emulator-lease guard
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-hook-lease-guard.sh
-
-      # PR-review merge gate (pr-review.yml). The reviewers FIND, this script
-      # DECIDES — and its whole value is that it fails CLOSED: a crashed fan-out
-      # writes no findings, which is indistinguishable from a clean review
-      # unless something asserts the difference. Includes a mutation test, so a
-      # regression that drops the reviewer-count check turns this step red
-      # instead of quietly greenlighting half-reviewed PRs.
-      - name: Self-test PR-review merge gate
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-grade-pr-review.sh
-
-      # PR-review contamination net (assert-review-tree-clean.sh). It has to
-      # hold two opposite things true: the `.claude/` revert that
-      # claude-code-action performs on every PR-head checkout must PASS, and a
-      # reviewer editing that same directory must FAIL. The version it replaced
-      # could not tell those apart and blamed the reviewers for the action's own
-      # write — 11 of 14 sampled failing runs on 2026-08-07. Real git fixtures,
-      # plus a mutation test proving the suite goes red if the assertion is ever
-      # softened into a path exclusion, and a wiring check that the workflow
-      # still calls it.
-      - name: Self-test PR-review contamination net
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-assert-review-tree-clean.sh
-
-      # PR-head config hardening on the DISPATCH path. `claude-code-action` only
-      # restores `.claude/`, `.mcp.json` & co. under a PR context, so on
-      # `workflow_dispatch` — the documented rescue path for FORK PRs, which
-      # checks out `refs/pull/N/head` WITH the token in the environment — it
-      # restores nothing and the CLI reads the PR head's own hooks and
-      # permission mode. `pr-review.yml` does that restore itself there. This
-      # suite extracts that step's shipped `run:` block from the YAML and runs it
-      # against real git fixtures, because CI otherwise only ever exercises it
-      # during a real dispatch — i.e. never, until it matters.
-      - name: Self-test PR-review dispatch config restore
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-dispatch-config-restore.sh
-
-      # The self-modification guard in the same workflow, for the same reason:
-      # it is inline shell that only a real GitHub run executes, and only a PR
-      # that edits `pr-review.yml` reaches its interesting branch. It asked
-      # "does the checkout differ from the base tip?" while reporting "this PR
-      # edits the review workflow", and refused two PRs that did not (#3038,
-      # #2976). This suite runs the shipped block against git fixtures and
-      # mutates the comparison back to prove it still has teeth.
-      - name: Self-test PR-review self-modification guard
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-selfmod-guard.sh
-
-      # claim.sh's open-PR collision report (#2998). `gh … --json` emits its
-      # whole array on ONE line, so the line-oriented grep that read it returned
-      # every open PR as soon as any one matched: the message that is supposed
-      # to name who holds an issue named the entire backlog. Detection was
-      # right, attribution was noise — and a guard nobody can act on is a guard
-      # every session learns to `--force`, which is the #2300 dup-implementation
-      # race it exists to stop. Nothing else exercises this: claim.sh only talks
-      # to `gh` on a real machine, so CI never runs the parsing until it matters.
-      # The suite extracts the shipped function out of claim.sh (never a copy)
-      # and keeps the pre-fix grep as a mutant.
-      - name: Self-test claim.sh collision report
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-claim-collision-report.sh
-
-      # Agent-cost measurement (agent-cost-report.sh). It reads local session
-      # transcripts, so CI can never exercise it on real data — but its one
-      # silent failure mode is arithmetic: a transcript emits several records
-      # per API call with the SAME usage block, and keying on anything but
-      # `requestId` overstates output tokens by ~95%. An inflated number is
-      # worse than none, because it drives throttling decisions. Fixture-based
-      # and hermetic (fake $HOME), with a mutation test on the dedup key.
-      - name: Self-test agent-cost report
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-agent-cost-report.sh
-
-      # Per-session context budget (CLAUDE.md + .claude/skills/). CLAUDE.md is
-      # re-sent on every turn of every session, so its size is a cost every
-      # agent in this repo pays forever. It reached 1126 lines / 72.7 Ko before
-      # being split into lazy skills, and nothing here would have noticed: an
-      # oversized CLAUDE.md breaks no build and fails no test, it just costs
-      # more. The split also introduces a NEW silent failure — a skill that is
-      # not in CLAUDE.md's index table is a file no session will think to open,
-      # which is strictly worse than the inline text it replaced. Both
-      # directions are checked, and the suite mutation-tests its own ceiling.
-      - name: Self-test context budget
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-context-budget.sh
-
-      # Gradle failure classification (lib/gradle-run.sh). The gate scripts used
-      # to run `./gradlew <task> --quiet 2>/dev/null` and translate ANY non-zero
-      # exit into one hard-coded diagnosis, with the stderr that would have
-      # contradicted it thrown away. Measured 2026-08-06: "Android screenshot
-      # regression detected" when Gradle had actually died of daemon contention,
-      # reproduced identically on a pristine clone of main. The classifier now
-      # decides, and it can fail in BOTH directions — too narrow and the
-      # false-red comes back, too broad and a genuine compile break is waved
-      # through as "infrastructure". Fixture-based (synthetic Gradle logs, no
-      # Gradle), with a mutation test on the pattern table.
-      - name: Self-test Gradle failure classification
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-gradle-run.sh
-
-      # Node resolution (#3202). The gate ran `which node` from a non-interactive
-      # shell, which never sources nvm.sh, so an nvm-only host reported "node not
-      # found" and downgraded two legs to NOT COVERED — including the one that
-      # guards the generated gpt/knowledge-*.md against drift. Both legs were
-      # runnable throughout; measured four times in a day. Fixtures are fake nvm
-      # trees, never this host's, so the suite pins the same thing on a runner
-      # that has no nvm at all.
-      - name: Self-test node resolution
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-node-resolve.sh
-
-      # CI ↔ gate task parity. pre-push-check.sh opens with "if a CI check
-      # appears in NEITHER [the legs nor the not-covered list], nobody has
-      # audited it — that is a gap, not a decision", and nothing enforced it:
-      # three of the `unit-test` job's seven gradle tasks ran in CI and nowhere
-      # locally, unnamed on both lists. One of them arrived the day before via
-      # #3193 — a fix for a suite no workflow invoked, which wired CI and left
-      # the local gate behind. This suite is what makes that sentence hold: any
-      # task added to `unit-test` must be run by the gate, covered by a module's
-      # aggregate `:m:test`, or excused by a written CI-PARITY-EXCLUDE line.
-      - name: Self-test CI/gate gradle-task parity
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-ci-parity-gradle-tasks.sh
-
-      # The reviewers' diff. Same failure shape one layer up: on run
-      # 31370116851 a `--depth=1` fetch grafted `.git/shallow` onto the
-      # `fetch-depth: 0` checkout, `origin/main...HEAD` stopped resolving, and
-      # pr-review.yml fell back to a two-dot diff — so four reviewers read
-      # everything main had gained since the branch point, reversed, and filed
-      # two BLOCKING errors against files the PR never touched. Hermetic: real
-      # temp git repos, no network, with a mutant carrying the old fallback to
-      # prove the assertions discriminate.
-      - name: Self-test the reviewers' diff computation
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-pr-diff.sh
-
-      # android_cli_install_and_launch (#2990). The helper used to `return $?`
-      # from `android run`. On a real emulator that command printed two
-      # success-shaped lines, installed NOTHING, and left a build eight hours
-      # old on the device — so a QA run measured the previous binary and would
-      # have reported a verified fix that never shipped, had the change been
-      # subtler than a visibly-wrong pill. Exit codes are not evidence; the
-      # device's lastUpdateTime is. Stub adb/android, no emulator, no lease —
-      # the failure is logic, and a test needing a device would never run.
-      - name: Self-test android-cli install proof
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-android-cli-install.sh
-
-      # Content gate, deliberately separate from the logic test above. Google's
-      # `android run` has a measured install no-op and has been rediscovered
-      # THREE times (#2796, #2854, #2990) because each fix landed in one call
-      # site while the docs went on recommending it. Documenting the trap is
-      # fine; recommending it is not.
-      - name: No file teaches `android run` for installing
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-android-run-not-taught.sh
-
-      # Changelog collation (collate-changelog.sh). It runs ONCE per release and
-      # DELETES the fragments it consumed, so a bullet filed under the wrong
-      # heading is found after the release notes are public, with the source
-      # already gone. Measured failure: a fragment carrying two
-      # `<!-- category: -->` tags shipped all of its Fixed bullets under
-      # `### Tests`, because the parser buffered the whole file and wrote it once
-      # under the LAST tag seen. Hermetic (fake repo root), with a mutation test
-      # on the per-tag flush — drop it and the multi-tag assertions must go red.
-      #
-      # Second contract, same reason (#3037): every OTHER HTML comment in a
-      # fragment is maintainer-only. The parser used to append them verbatim, so
-      # a nine-line `<!-- RELEASE NOTE: ... -->` block — sign-off plus
-      # publish-rn/GITHUB_REF_NAME mechanics — was one release away from being
-      # published as user-facing notes. A second mutation test neutralises the
-      # stripper and asserts all six fixture note lines come back.
-      - name: Self-test changelog collator
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-collate-changelog.sh
-
-      # Breaking-change vs patch-level tag (check-breaking-change-bump.sh,
-      # #3037). release.yml's `publish-rn` derives the npm version straight from
-      # the git tag (`VERSION=${GITHUB_REF_NAME#v}`), so tagging `v4.26.1` would
-      # publish a source-breaking `.d.ts` change to @sceneview-sdk/react-native
-      # as a semver PATCH — the class every consumer's caret range takes without
-      # review. The policy (breaking ships MINOR, major 4 frozen) previously
-      # existed only as prose, including inside the very fragment that needed it.
-      #
-      # The guard itself runs at RELEASE time, where the version is known; it
-      # fires only on a patch tag with a breaking fragment pending, which may not
-      # happen for months. That is the shape of gate that rots green (#2988), so
-      # the self-test is what keeps it honest — both directions (real #3037 prose
-      # must refuse; "non-breaking" and "groundbreaking", both taken from real
-      # fragments, must not) plus four mutation tests. Since #3061 it also pins
-      # the `--from-changelog` mode release.yml runs in, and the invariant that
-      # the same text gets the same verdict before and after collation.
-      - name: Self-test breaking-change/patch guard
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-breaking-change-bump.sh
-
-      # Doc↔API drift (ADVISORY, #docs). Warns when this PR changed a public
-      # API surface without updating llms.txt / KDoc / docs/docs / recipes.
-      # AI-first SDK: stale prose makes AI emit stale user code. Non-blocking
-      # by design (heuristic → false positives would erode trust); the weekly
-      # `doc-audit.yml` agent does the deep semantic pass + proposes patches.
-      - name: Doc-drift check (advisory)
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-doc-drift.sh
-
-      # GPT knowledge-base drift (BLOCKING, #2724). The `gpt/knowledge-*.md`
-      # files uploaded to the "SceneView 3D & AR Assistant" Custom GPT are
-      # GENERATED from `llms.txt` by `tools/generate-gpt-knowledge.js`. Unlike
-      # the heuristic doc-drift check above, this is a deterministic
-      # regenerate-and-compare, so it is a hard gate (same class as the
-      # committed-generated-file invariants): if `llms.txt` changed without
-      # regenerating the knowledge files, the AI-facing GPT surface goes stale
-      # and CI must fail. Fix locally with `node tools/generate-gpt-knowledge.js`.
-      - name: GPT knowledge base in sync with llms.txt
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: node tools/generate-gpt-knowledge.js --check
-
-      # Asset-credits generator self-test — a compliance gate that silently
-      # PASSes is worse than none, and this one already did: it checked
-      # `assets/CREDITS.md` while four other CREDITS.md files shipped
-      # unchecked (#2941). Mutation-based, so a regression that stops the
-      # generator writing the bundled copies turns this red instead of leaving
-      # the gate below green on one file. Self-test first, same discipline as
-      # every pair in this job.
-      - name: Self-test generate-credits.py
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-generate-credits.sh
-
-      # Asset-credits drift (BLOCKING). Every CREDITS.md the project ships is
-      # GENERATED (or byte-mirrored) by `.claude/scripts/generate-credits.py`
-      # from `assets/catalog.json` plus the contents of each bundled assets
-      # folder, and they are what discharge the attribution clause of every
-      # model's license (CC-BY 4.0 §3a). A model added to the catalog and
-      # shipped in the sample apps without regenerating CREDITS.md is an
-      # uncredited model in a published release — a licence-compliance gap, not
-      # a cosmetic one. Same deterministic regenerate-and-compare as the GPT
-      # gate above (no false-positive risk), so it blocks. This drift went
-      # unnoticed twice: five Khronos models shipped uncredited until a manual
-      # re-run caught it, and the copy inside the Play Store APK ran two months
-      # and six bundled files behind because nothing generated or checked it
-      # (#2941). The check also fails on a bundled asset with no attribution
-      # anywhere — add it to catalog.json or declare it in the script.
-      # Fix locally with `python3 .claude/scripts/generate-credits.py`.
-      - name: Asset credits in sync with catalog.json
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: python3 .claude/scripts/generate-credits.py --check
-
-      # Stale demo-class / demo-id reference guard self-test — pin the guard's
-      # contract (catches deletions, ignores live iOS .swift refs + plain-prose
-      # phrases) before trusting it. Same self-test-first discipline as above.
-      - name: Self-test check-demo-class-refs.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-demo-class-refs.sh
-
-      # Stale demo-class / demo-id refs in AI-facing prose (ADVISORY, #docs,
-      # #2316). A demo deleted/merged (the #2239 consolidation) leaves its
-      # Kotlin class name / retired deep-link id in hand-written prose outside
-      # the collator-generated block — teaching an AI to reference a file/id
-      # that no longer exists. Advisory like check-doc-drift.sh: surfaces the
-      # finding, never blocks (a false positive would erode trust).
-      - name: Stale demo-class reference check (advisory)
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-demo-class-refs.sh
-
-      # impact-check.sh self-test — pin its lean/sparse-clone contract (#2370):
-      # a partial node-source checkout SKIPs (never FALSE-FAILs), a complete
-      # checkout still flags a real count mismatch, and missing HEAD~1 (shallow
-      # history) never crashes it. Same self-test-first discipline as above.
-      - name: Self-test impact-check.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-impact-check.sh
-
-      # Android <-> iOS demo-catalog parity gate (BLOCKING, #2801, tracker
-      # #2798). Self-test first, same discipline as the pairs above. Diffs
-      # Android's canonical demo ids (read from *Fragment.kt, the same field
-      # collate-demos.sh itself parses) against iOS's live registry
-      # (GeneratedScenes.allowedIds + DemoDeepLinkRegistry's legacyAliases /
-      # residualIds) and the committed parity-manifest.yml. Unlike the
-      # advisory doc-drift checks above, this is BLOCKING: it fails the
-      # moment a new Android demo ships without a matching iOS registry
-      # entry or manifest row — the exact silent-drift class behind #2769
-      # (12 ids that diverged unnoticed for months). Pure bash/awk/python
-      # against source text — no Xcode, no Gradle, zero macOS cost.
-      - name: Self-test check-demo-id-parity.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-check-demo-id-parity.sh
-
-      - name: Check Android <-> iOS demo id parity
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/check-demo-id-parity.sh
-
-      # pre-push-check.sh leg 19 DERIVES its self-test list from this very job
-      # and then executes what it finds, so the extractor must be incapable of
-      # emitting a shell metacharacter or a path outside the tree. That
-      # property is pinned here against hostile workflow fixtures — never
-      # against this file, so a green run says "the extractor is safe", not
-      # "today's ci.yml happens to be tame". Pure bash, sub-second.
-      - name: Self-test extract-gate-selftests.sh
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-extract-gate-selftests.sh
-
-      # The other half of that leg: the list it executes is written to a scratch
-      # directory that used to be one path for the whole machine, while this repo
-      # runs many worktrees in parallel. A neighbour truncating selftests.txt under
-      # the loop's open descriptor printed a pass count over a loop that ran fewer
-      # (#3074/#3131/#3137). The case that matters replays that interleaving and
-      # keeps a control that reproduces the old collapse, so a green line here means
-      # the isolation holds — not that the replay stopped exercising anything.
-      - name: Self-test pre-push log-dir isolation
-        if: always() && steps.checkout.outcome == 'success'
-        shell: bash
-        run: bash .claude/scripts/test-pre-push-log-dir.sh
-
-  # ── Full quality gate ────────────────────────────────────────────────────
-  # Runs the same .claude/scripts/quality-gate.sh that contributors run
-  # locally before pushing. Includes:
-  #   - Version sync across all modules
-  #   - Security checks (no secrets, no tracked local.properties)
-  #   - Deprecated SceneView API detector
-  #   - Demo app asset integrity (bundled refs + CDN URLs)
-  #   - MCP unit tests
-  #   - Website asset rules (no Google Fonts, Three.js, model-viewer, CDNs)
-  # The Android assembleDebug + unit tests are skipped here
-  # (QUALITY_GATE_SKIP_ANDROID=1) because the `build` / `unit-test` jobs
-  # above already run them in parallel. Formerly `quality-gate.yml` (#1370).
-  #
-  # Not path-gated: the former quality-gate.yml had only a workflow-level
-  # `paths-ignore` (no per-job filter), so it ran on every non-docs PR.
-  # The workflow-level `paths-ignore` above already drops docs PRs, so this
-  # job runs whenever the workflow runs — same scope as before. The `push`
-  # trigger preserves the `Quality gate (full)` check on `main` pushes.
-  quality-gate:
-    name: Quality gate (full)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        # Gap #10 (#1311): the default shallow checkout (fetch-depth: 1) is
-        # sufficient. quality-gate.sh only runs `git diff HEAD`,
-        # `git diff --cached`, `git ls-files` and `git branch --show-current`
-        # — all of which resolve against the working tree / HEAD, never an
-        # older commit. sync-versions.sh compares files with plain `diff`, no
-        # git history.
-        uses: actions/checkout@v7
-
-      # Shared composite: JDK 21 + Gradle cache + gradle-wrapper.jar SHA
-      # validation + chmod +x ./gradlew. Replaces the formerly hand-rolled
-      # setup-java / setup-gradle / chmod steps so this job also gets the
-      # wrapper-validation supply-chain guard every other Gradle job has (#1708).
-      - uses: ./.github/actions/setup-gradle
-
-      - uses: ./.github/actions/setup-mcp
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Write local.properties
-        # quality-gate.sh invokes ./gradlew, which needs sdk.dir on Linux runners.
-        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Run quality gate
-        shell: bash
-        env:
-          # Optional. Demo runtime disables Geospatial when unset.
-          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
-          # The `build` / `unit-test` / `coverage` jobs already run
-          # `assembleDebug` + the same unit-test set + JaCoCo coverage in
-          # parallel with this gate. Skipping the duplicate Android
-          # build/test work here keeps the gate focused on what it owns
-          # uniquely: version sync, security scans, asset CDN integrity,
-          # website rules, MCP tests, agent skill drift.
-          QUALITY_GATE_SKIP_ANDROID: "1"
-        run: bash .claude/scripts/quality-gate.sh
-
-      - name: Upload validate-demo-assets log
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: validate-demo-assets-log
-          path: /tmp/validate-demo-assets.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload check-deprecated-api log
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: check-deprecated-api-log
-          path: /tmp/check-deprecated-api.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload check-sceneview-skill log
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: check-sceneview-skill-log
-          path: /tmp/check-sceneview-skill.log
-          if-no-files-found: ignore
-          retention-days: 7

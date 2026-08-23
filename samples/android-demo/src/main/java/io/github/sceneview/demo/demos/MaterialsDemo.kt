@@ -17,7 +17,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
@@ -49,7 +49,6 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 // `ModelInstance` is a typealias for Filament's `FilamentInstance`; `.model` is an
 // extension property (ModelInstance.kt) and needs its own import to resolve.
-import io.github.sceneview.model.model
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -779,52 +778,3 @@ private sealed interface MaterialResolveState {
     data class Error(val message: String) : MaterialResolveState
 }
 
-/**
- * Load a [io.github.sceneview.model.ModelInstance] from a nullable local [File],
- * returning `null` until the file is ready.
- *
- * The resolver always hands back a real on-disk [File] (streamed GLB or staged
- * bundled fallback), so the model must be loaded through
- * [io.github.sceneview.loaders.ModelLoader.loadModelInstance], which understands
- * `file://` URIs. The two-argument `rememberModelInstance(modelLoader, String)`
- * call is **not** usable here: Kotlin overload resolution binds it to the
- * asset-path overload (the one without a defaulted `resourceResolver`), which
- * feeds the `file://` string straight to `AssetManager.open` — that throws, the
- * instance stays `null`, and the PBR section hangs forever on the
- * "Streaming material…" scrim (#2302). Mirrors `rememberFileModelInstance` in
- * ModelViewerDemo (the Multi-Model fix, #1422); loading via `produceState` +
- * `loadModelInstance` keeps the Filament JNI work on the loader's own Main hop.
- */
-@Composable
-private fun rememberFileModelInstance(
-    modelLoader: io.github.sceneview.loaders.ModelLoader,
-    file: File?,
-): io.github.sceneview.model.ModelInstance? {
-    val instance = produceState<io.github.sceneview.model.ModelInstance?>(
-        initialValue = null,
-        key1 = modelLoader,
-        key2 = file?.absolutePath,
-    ) {
-        // The null check lives INSIDE produceState, not as an early `return null`
-        // above it: a null file now means "nothing streamed is selected" on every
-        // bundled-chip selection, and an early return would add / remove the
-        // `produceState` slot on each chip switch (#1464).
-        value = file?.let {
-            runCatching { modelLoader.loadModelInstance("file://${it.absolutePath}") }.getOrNull()
-        }
-    }.value
-    // Same disposal contract as the library's `rememberModelInstance`
-    // (SceneView.kt) — `produceState` cancels its producer on a key change but
-    // never destroys the model it already produced, so without this every chip
-    // switch abandoned the previous streamed `Model` GPU-resident in
-    // `ModelLoader.models` until the section's engine was torn down (#2459).
-    // Keying on the produced value fires `onDispose` for the PREVIOUS instance;
-    // registered here — before the consuming `ModelNode`, which the caller
-    // declares later — so on a swap the node detaches first and the buffers are
-    // freed after, respecting #2424's render-loop ordering. `onDispose` runs on
-    // the composition (main) thread, satisfying the Filament JNI contract.
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
-    }
-    return instance
-}

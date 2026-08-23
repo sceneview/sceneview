@@ -124,7 +124,7 @@ Android + iOS code):
 ## Priority order
 
 1. **Android** — Complete, production-ready (current)
-2. **iOS / macOS / visionOS** — SceneViewSwift, 19 node types, RealityKit backend (alpha)
+2. **iOS / macOS / visionOS** — SceneViewSwift, RealityKit backend (alpha)
 3. **Web** — sceneview-web on npm (Filament.js WASM), 3D + WebXR (AR + VR)
 4. **Flutter / React Native** — PlatformView / Fabric bridges to Android + iOS native renderers
 5. **Desktop** — `SceneViewer` via filament-kmp (JDK 22+)

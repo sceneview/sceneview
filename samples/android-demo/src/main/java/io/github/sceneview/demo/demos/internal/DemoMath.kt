@@ -4,6 +4,7 @@ import io.github.sceneview.math.Rotation
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.tan
@@ -22,6 +23,109 @@ import kotlin.math.tan
  * non-AR demo regression-detection roadmap.
  */
 internal object DemoMath {
+    /**
+     * Camera placement that frames a model in the Model Viewer (#1439, QA round 3).
+     *
+     * Offsets are relative to the model's **bounding-box centre** in world space, so the caller
+     * adds them to the measured centre — the model is never moved, the camera is.
+     *
+     * @property distance Eye-to-target distance, metres.
+     * @property targetOffset Look-at point relative to the bbox centre. Non-zero when the visible
+     *   band (between the top chrome and the dock) is not centred on the viewport: aiming the
+     *   camera past the model puts the model in the middle of the band.
+     * @property eyeOffset Eye position relative to the bbox centre — in front of the model (+Z,
+     *   the glTF "front" convention) and pitched above it.
+     */
+    data class ViewerFraming(
+        val distance: Float,
+        val targetOffset: Triple<Float, Float, Float>,
+        val eyeOffset: Triple<Float, Float, Float>,
+    )
+
+    /**
+     * Frames a model of the given AABB [extentX] × [extentY] × [extentZ] so that it spans [fill]
+     * of the **visible** viewport band — the area between [topInset] (identity row) and
+     * [bottomInset] (dock band + navigation bar) — seen from the front, [pitchDegrees] above.
+     *
+     * Filament derives the vertical FOV from the focal length against a fixed sensor height, so
+     * the vertical framing is aspect-invariant and the horizontal extent follows `aspect`:
+     * - `dVertical   = (projectedHeight / 2) / (tan(vfov/2) · fill · visibleHeight / height)`
+     * - `dHorizontal = (extentX / 2) / (tan(vfov/2) · aspect · horizontalFill)`
+     *
+     * The larger wins (fit, not cover). The distance is measured to the bbox centre and the
+     * height is the plain Y extent: an AABB is already looser than the silhouette, and folding
+     * the depth into the height (`ey·cos p + ez·sin p`) shrank deep models like the Fox to a
+     * third of the band; a [DEPTH_ALLOWANCE] share of the depth is added instead.
+     *
+     * The look-at target is shifted along the camera's up vector by the visible band's offset
+     * from the viewport centre, expressed at the target distance — a band whose centre sits
+     * above the viewport centre needs a target *below* the model so the model appears higher.
+     *
+     * Degenerate inputs (non-finite / non-positive extents or sizes) fall back to safe values;
+     * the distance is clamped to `[0.2, 900]` — the bundled Khronos Fox is ~155 glTF units and
+     * must stay inside the default 1000 m far plane.
+     */
+    fun viewerFraming(
+        extentX: Float,
+        extentY: Float,
+        extentZ: Float,
+        viewportWidth: Float,
+        viewportHeight: Float,
+        topInset: Float,
+        bottomInset: Float,
+        verticalFovDegrees: Double = DEFAULT_VERTICAL_FOV_DEGREES,
+        fill: Float = VIEWER_FILL,
+        horizontalFill: Float = VIEWER_HORIZONTAL_FILL,
+        pitchDegrees: Float = VIEWER_PITCH_DEGREES,
+    ): ViewerFraming {
+        fun safe(v: Float) = if (v.isFinite() && v > 0f) v else 0f
+        val ex = safe(extentX); val ey = safe(extentY); val ez = safe(extentZ)
+        val width = safe(viewportWidth).takeIf { it > 0f } ?: 1f
+        val height = safe(viewportHeight).takeIf { it > 0f } ?: 1f
+        val top = safe(topInset); val bottom = safe(bottomInset)
+        val visibleHeight = (height - top - bottom).coerceAtLeast(height * 0.25f)
+        val safeFill = if (fill.isFinite() && fill > 0f) fill else VIEWER_FILL
+        val safeHorizontalFill = if (horizontalFill.isFinite() && horizontalFill > 0f) horizontalFill else VIEWER_HORIZONTAL_FILL
+        val fovDegrees = verticalFovDegrees.takeIf { it.isFinite() }?.coerceIn(1.0, 179.0)
+            ?: DEFAULT_VERTICAL_FOV_DEGREES
+        val halfTan = tan(Math.toRadians(fovDegrees) / 2.0).toFloat()
+        val pitch = Math.toRadians(pitchDegrees.toDouble())
+        val cosP = cos(pitch).toFloat(); val sinP = sin(pitch).toFloat()
+
+        val fillVertical = safeFill * visibleHeight / height
+        val dVertical = if (ey > 0f) (ey / 2f) / (halfTan * fillVertical) else 0f
+        val dHorizontal = if (ex > 0f) (ex / 2f) / (halfTan * (width / height) * safeHorizontalFill) else 0f
+        // Deep models (the Fox is ~155 units long) carry their tallest part near the front
+        // face, which perspective enlarges: a third of the depth on top of the fit distance
+        // lands them on the target fill on device (a full half over-corrected, none
+        // under-corrected). It also keeps the eye outside the box.
+        val distance = (max(dVertical, dHorizontal) + ez * DEPTH_ALLOWANCE).coerceIn(0.2f, 900f)
+
+        // Visible-band centre relative to the viewport centre, in half-viewport units; screen Y
+        // grows downwards, so a band centred above the middle yields a negative value.
+        val bandOffset = ((top - bottom) / 2f) / (height / 2f)
+        val shift = bandOffset * distance * halfTan
+        // Camera up vector for an eye pitched `p` above the target, looking down at it.
+        val targetOffset = Triple(0f, shift * cosP, -shift * sinP)
+        val eyeOffset = Triple(0f, targetOffset.second + distance * sinP, targetOffset.third + distance * cosP)
+        return ViewerFraming(distance, targetOffset, eyeOffset)
+    }
+
+    /** Fraction of the visible band the framed model spans (QA target: 60–70 %). */
+    const val VIEWER_FILL = 0.65f
+
+    /**
+     * Fraction of the viewport WIDTH a model may span. Looser than [VIEWER_FILL]: on a portrait
+     * phone 65 % of the visible height is wider than the screen, so a compact model (the helmet)
+     * is width-limited — this keeps it from shrinking to a third of the band.
+     */
+    const val VIEWER_HORIZONTAL_FILL = 0.92f
+
+    /** Share of the model's depth added to the fit distance — see [viewerFraming]. */
+    const val DEPTH_ALLOWANCE = 1f / 3f
+
+    /** Elevation of the viewer camera above the model's horizontal plane, degrees. */
+    const val VIEWER_PITCH_DEGREES = 12f
 
     /**
      * Y-axis spin used by [io.github.sceneview.demo.demos.GeometryDemo]. Returns the
@@ -198,7 +302,7 @@ internal object DemoMath {
      * SceneView's default 28 mm lens against a 24 mm sensor height ⇒ ≈46.4° vertical FOV. Used only
      * as the fallback when [coverDistance] is handed a non-finite FOV.
      */
-    private const val DEFAULT_VERTICAL_FOV_DEGREES = 46.4
+    const val DEFAULT_VERTICAL_FOV_DEGREES = 46.4
 
     // ── AnimationDemo cinematic-camera choreography ──────────────────────────
 

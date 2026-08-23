@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_body_tracker_title">AR Body Tracker</string>
-    <string name="demo_ar_body_tracker_subtitle">Live 2D skeleton overlay from MediaPipe Pose on the AR camera feed</string>
+    <string name="demo_ar_body_tracker_subtitle">Live MediaPipe pose skeleton on the AR feed</string>
     <string name="demo_ar_body_tracker_explainer">Point the camera at a person. MediaPipe Pose Landmarker runs on-device on the AR camera image and SceneView projects the landmarks onto a 17-joint ARKit-parity skeleton. Note: ARCore has no native body tracking — this is an image-space pose overlay, not a world-anchored 3D skeleton like ARKit.</string>
     <string name="demo_ar_body_tracker_status_aim">Aim the camera at a person</string>
     <string name="demo_ar_body_tracker_status_tracked">Body tracked — %1$d joints</string>

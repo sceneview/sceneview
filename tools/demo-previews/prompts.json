@@ -1,0 +1,13 @@
+{
+ "style": "Product-quality render for a mobile app thumbnail. 3/4 front view, about 20 degrees elevation, subject fills roughly 70% of the shorter side, centred with breathing room. One soft key light upper-left, a rim light from back-right, gentle floor contact shadow. No lens flare, no glow, no bokeh props, no text, no UI, no device frame, no watermark. Faithful to the attached reference: keep the real model shapes and materials; clean up, relight and recompose only.",
+ "items": {
+  "lighting": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) lit by three coloured point lights — warm orange from the left, cool blue from the right, a white key above — with visible light falloff on the floor around it. Demonstrates runtime light types.", "ref": "hero.webp"},
+  "lighting-lab": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) under a dramatic golden sunset HDR environment, long soft shadow, warm rim light, the environment visible as a soft blurred backdrop. Demonstrates image-based lighting.", "ref": "hero.webp"},
+  "fog": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) with a dense grey volumetric fog: the near half is crisp, the far side fades into the fog, the floor disappears into haze. Demonstrates distance fog.", "ref": "hero.webp"},
+  "camera-gestures": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) with a thin translucent orbit ring around it and a subtle two-finger pinch gesture hint as faint circles, suggesting orbit, pan and zoom camera controls.", "ref": "hero.webp"},
+  "materials": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) next to a row of five small PBR test spheres showing clearcoat, metal, rough plastic, glass and anisotropic brushed metal. Demonstrates material extensions.", "ref": "hero.webp"},
+  "debug-overlay": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) with a thin wireframe overlay on half of it and a green bounding box, plus faint axis gizmo lines at the origin. Demonstrates debug visualization.", "ref": "hero.webp"},
+  "video-recording": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) slowly turning, with a small red recording dot and a thin white frame corner marks suggesting a video capture in progress. No text.", "ref": "hero.webp"},
+  "secondary-camera": {"prompt": "The Khronos Damaged Helmet model (exactly as in the attached reference) viewed from the front, with a small rounded picture-in-picture inset in the top-left corner showing the same helmet from above. Demonstrates a second camera view.", "ref": "hero.webp"}
+ }
+}

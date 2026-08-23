@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -104,11 +103,8 @@ class ActivityARPermissionHandler(
         )
 
     override fun openAppSettings() {
-        Toast.makeText(
-            activity,
-            activity.getString(R.string.sceneview_camera_permission_required),
-            Toast.LENGTH_LONG
-        ).show()
+        // No toast (#3308): this is only reached from an explicit "Open settings" tap on an
+        // in-app explanation, which already says why the user is being sent there.
         appSettingsLauncher.launch(Intent().apply {
             action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
             data = Uri.fromParts("package", activity.packageName, null)

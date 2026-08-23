@@ -3,17 +3,23 @@ package io.github.sceneview.demo.demos
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognizerIntent
+import android.util.Log
 import android.view.PixelCopy
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +33,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
@@ -66,6 +77,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
@@ -76,8 +88,10 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
+import io.github.sceneview.demo.feedback.hasTransparentHole
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.rememberEngine
@@ -96,6 +110,7 @@ import kotlinx.coroutines.launch
 object PointAndAskTestTags {
     const val ANSWER_CARD = "point_and_ask_answer_card"
     const val QUESTION_FIELD = "point_and_ask_question_field"
+    const val PROP_PICKER = "point_and_ask_prop_picker"
 }
 
 /** Lifecycle of one "ask" round-trip, driving the bottom card. */
@@ -119,8 +134,26 @@ private sealed interface AskState {
     data object Failed : AskState
 }
 
-/** One long-press placement: a real-world anchor carrying the showcase model. */
-private data class PlacedProp(val id: Int, val anchor: Anchor)
+/**
+ * One bundled showcase model offered by Drop-3D mode's picker (#3083). All three ship in
+ * the APK already (used elsewhere in the demo app), so adding the picker costs zero new
+ * assets — [scaleUnits] matches the value already tuned for that asset in `ArViewTab`.
+ */
+private data class PropSpec(val asset: String, val label: String, val scaleUnits: Float)
+
+/** Drop-3D mode's picker options, in display order. Shiba stays first — the prior default. */
+private val DROP_PROPS = listOf(
+    PropSpec(asset = "models/shiba.glb", label = "Shiba", scaleUnits = 0.45f),
+    PropSpec(asset = "models/khronos_fox.glb", label = "Fox", scaleUnits = 0.3f),
+    PropSpec(asset = "models/khronos_toy_car.glb", label = "Toy Car", scaleUnits = 0.3f),
+)
+
+/**
+ * One long-press placement: a real-world anchor carrying whichever [PropSpec] was selected
+ * in the Drop-3D picker at placement time (#3083). Frozen at placement so a later change of
+ * the picker never rewrites a prop already dropped in the room.
+ */
+private data class PlacedProp(val id: Int, val anchor: Anchor, val prop: PropSpec)
 
 /**
  * One world-anchored answer (P2): the tapped surface's ARCore [Anchor] plus the streamed
@@ -180,9 +213,9 @@ private class AnswerPanel(
  * is shown in an overlay card. Fully offline — the frame never leaves the device.
  *
  * Long-press a surface to drop a virtual prop into the room: because the capture is the
- * composited window (PixelCopy), the on-device model *sees the augmented scene* — ask
- * "Is there an animal in this room?" after placing the shiba and Nano answers about a
- * dog that only exists in AR. That is the demo's whole point.
+ * composited window (PixelCopy), the on-device model *sees the augmented scene* — tap the
+ * shiba you just placed and Nano describes a dog that only exists in AR. That is the
+ * demo's whole point, which is why a tap on a node is never swallowed (#3187).
  *
  *  - Availability is gated honestly: AICore devices (Pixel 8+, recent flagships) get the
  *    real engine; a `DOWNLOADABLE` model gets a download CTA with progress; unsupported
@@ -196,8 +229,25 @@ private class AnswerPanel(
  * overlays, offline badge, auto-dismissing answer card. P2 anchors the answer **in world
  * space**: the tap is hit-tested against the latest frame and a hit on a tracked surface
  * pins an [AnswerPanel] (`AnchorNode` + `ViewNode`) that holds its place in the room while
- * the camera orbits it. Panels accumulate — one per successful tap — until Reset; a tap
- * that hits nothing trackable keeps the screen-space card.
+ * the camera orbits it. Panels accumulate — one per successful tap — until Reset. The
+ * screen-space card shows every round regardless (thinking, answer, failure) — it is the
+ * surface the user can always see, the anchored card is the one that stays in the room
+ * (#3188).
+ *
+ * Two more pieces of #2648 landed later, re-implemented against this file's current shape
+ * rather than reapplied from the original branch — that branch (`claude/point-and-ask-voice`,
+ * tip `bc3ed0170`) forked 200+ commits back with no reachable merge-base by the time it was
+ * revisited (#3083):
+ *  - **Voice input** — an optional mic button on the question field launches the system
+ *    speech recognizer (`ACTION_RECOGNIZE_SPEECH`) and appends the dictated text, the same
+ *    zero-permission pattern `BugReportSheet` already shipped for its own dictation shortcut
+ *    (#3292) — chosen over the original branch's raw `SpeechRecognizer` + runtime
+ *    `RECORD_AUDIO` grant for less permission friction and one fewer failure mode to QA.
+ *  - **Drop-3D mode** — long-press now drops whichever [PropSpec] is selected in the picker
+ *    (`DROP_PROPS`), not always the shiba. Re-scoped to the three GLBs already bundled in the
+ *    APK (shiba, fox, toy car) instead of the original branch's two new ~7 MB binary assets
+ *    (`animated_trex.glb`, `monstera_plant.glb`) — same "pick a model, drop it, ask about it"
+ *    experience with zero new assets or `CREDITS.md` licensing entries to land.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
@@ -218,10 +268,18 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var askState by remember { mutableStateOf<AskState>(AskState.Idle) }
     var isTracking by remember { mutableStateOf(false) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // Camera world position, refreshed every AR frame — read by each anchored answer
+    // card's per-frame billboard (#3276). A plain holder, not Compose state: it is only
+    // read inside an `onFrame` node callback, never inside a composable body, so there is
+    // nothing here for Compose to observe.
+    val cameraPosition = remember { floatArrayOf(0f, 0f, 0f) }
 
-    // Long-press placements — each drops the showcase model on the hit surface.
+    // Long-press placements — each drops the picker's currently selected model on the hit
+    // surface. Drop-3D mode (#3083): which model is a `controls`-sheet picker, not a fixed
+    // constant — see `DROP_PROPS`.
     val placedProps = remember { mutableStateListOf<PlacedProp>() }
     var nextPropId by remember { mutableStateOf(0) }
+    var selectedProp by remember { mutableStateOf(DROP_PROPS[0]) }
 
     // World-anchored answers (P2) — one per tap that lands on a tracked surface, until
     // Reset. `pendingPanel` is the one the in-flight round streams into; `null` means the
@@ -271,15 +329,38 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // composite is a clean viewfinder (no pill, no card baked into the AI's input).
     var hideOverlaysForCapture by remember { mutableStateOf(false) }
 
-    // Free-form question (P3): blank = the default English prompt (best Nano quality).
-    // Saveable so a rotation mid-session keeps the user's custom question. Film mode
-    // prefills the "AI sees the augmented room" reveal question.
+    // Free-form question (P3): blank = the default English prompt (best Nano quality),
+    // which asks the model to describe what the tap pointed at. The field starts blank so
+    // the placeholder shows that default instead of a canned question that has nothing to
+    // do with what the user tapped (#3187). Saveable so a rotation mid-session keeps the
+    // user's custom question.
     val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
-    val prefillQuestion = stringResource(R.string.demo_point_and_ask_prefill_question)
-    var questionText by rememberSaveable { mutableStateOf(prefillQuestion) }
+    var questionText by rememberSaveable { mutableStateOf("") }
     val question = questionText.trim().ifBlank { defaultQuestion }
     // Resolved at composition — anchored panels route results from non-composable callbacks.
     val failedText = stringResource(R.string.demo_point_and_ask_error)
+
+    // Voice input (#3083): the question field's optional mic button. Same zero-permission
+    // `ACTION_RECOGNIZE_SPEECH` intent `BugReportSheet` already ships for its own dictation
+    // shortcut (#3292) — the system recognizer app does the listening, this demo only reads
+    // back its result, so there is no RECORD_AUDIO grant to request or lose across rotation.
+    val speechAvailable = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
+    }
+    val voicePrompt = stringResource(R.string.demo_point_and_ask_voice_prompt)
+    val speechLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+            if (spoken != null) {
+                questionText = spoken
+            }
+        }
+    }
 
     // Composited capture (film mode): PixelCopy on the window sees camera + virtual
     // props exactly as the user does. qaMode keeps the synthetic-frame fallback so the
@@ -313,21 +394,55 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         hideOverlaysForCapture = true
         delay(CAPTURE_OVERLAY_SETTLE_MS)
         val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+        // If PixelCopy never calls back, nothing else would ever leave `Capturing`: the
+        // overlays stay hidden, `busy` stays true and every later tap is dropped — a
+        // permanent blank viewfinder (#3188). The round is failed after a timeout instead;
+        // `roundLive` keeps a late callback from resurrecting it.
+        var roundLive = true
         PixelCopy.request(
             activity.window,
             bitmap,
             { result ->
+                if (!roundLive) {
+                    bitmap.recycle()
+                    return@request
+                }
+                roundLive = false
                 hideOverlaysForCapture = false
-                if (result == PixelCopy.SUCCESS) {
+                // `PixelCopy.SUCCESS` alone does not prove the frame is usable (#3276). The
+                // same compositor quirk already tracked for the bug-report screenshot
+                // (`hasTransparentHole`, #2654) — a read-back that reports SUCCESS while the
+                // Filament `SurfaceView` layer (camera + placed AR objects) was left out of
+                // the composite, an `alpha == 0` hole exactly where the augmented scene
+                // should be — applies just as much here. Sending that hole to Gemini is
+                // literally "the model sees nothing": no exception, no failure banner, just
+                // an on-device answer about a blank/transparent image. Guard for it the same
+                // way the feedback screenshot does, and log so a future report of this can be
+                // correlated with logcat instead of re-diagnosed from scratch.
+                if (result == PixelCopy.SUCCESS && !hasTransparentHole(bitmap)) {
                     askState = AskState.Thinking
                     askJob = scope.askAboutBitmap(bitmap, askEngine, question, onResult)
                 } else {
+                    if (result == PixelCopy.SUCCESS) {
+                        Log.w(
+                            "PointAndAskDemo",
+                            "Composited capture came back with a transparent hole where the " +
+                                "AR viewport should be (PixelCopy reported SUCCESS) — refusing " +
+                                "to send a blank frame to Gemini (#3276).",
+                        )
+                    }
                     bitmap.recycle()
                     onResult(AskState.Failed)
                 }
             },
             Handler(Looper.getMainLooper()),
         )
+        delay(CAPTURE_TIMEOUT_MS)
+        if (roundLive) {
+            roundLive = false
+            hideOverlaysForCapture = false
+            onResult(AskState.Failed)
+        }
     }
 
     // Auto-dismiss a completed answer so nothing lingers over the viewfinder.
@@ -351,20 +466,76 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             panels.forEach { runCatching { it.anchor.detach() } }
             panels.clear()
         },
-        onResetSettings = { questionText = "" },
+        onResetSettings = {
+            questionText = ""
+            selectedProp = DROP_PROPS[0]
+        },
         controls = {
             // Free-form question (P3) — blank falls back to the default prompt, which the
             // placeholder shows. The next tap asks THIS question about the composited frame.
+            // Voice input (#3083): the trailing mic launches the system speech recognizer and
+            // replaces the field with what it heard — hidden when the device has no recognizer
+            // to hand the intent to, same guard `BugReportSheet` uses (#3292).
             OutlinedTextField(
                 value = questionText,
                 onValueChange = { questionText = it },
                 label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
                 placeholder = { Text(defaultQuestion) },
                 singleLine = true,
+                trailingIcon = if (speechAvailable) {
+                    {
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(
+                                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                    )
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                }
+                                runCatching { speechLauncher.launch(intent) }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Outlined.Mic,
+                                contentDescription =
+                                    stringResource(R.string.demo_point_and_ask_voice_cd),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(PointAndAskTestTags.QUESTION_FIELD),
             )
+
+            // Drop-3D mode (#3083): which bundled model the next long-press drops. All three
+            // ship in the APK already (see `DROP_PROPS`), so switching is instant — no download,
+            // no new asset.
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.demo_point_and_ask_prop_picker_label),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag(PointAndAskTestTags.PROP_PICKER),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DROP_PROPS.forEach { prop ->
+                    FilterChip(
+                        selected = selectedProp == prop,
+                        onClick = { selectedProp = prop },
+                        label = { Text(prop.label) },
+                    )
+                }
+            }
+
             if (DemoSettings.qaMode) {
                 ForceTrackingFailureMenu()
             }
@@ -419,7 +590,18 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     .padding(end = settingsFabReservedSpace),
             ) {
                 when (val status = engineStatus) {
-                    null -> Unit
+                    // Say so in words while the availability check runs: a blank bottom
+                    // edge here was indistinguishable from a broken demo (#3188).
+                    null -> BottomCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                            Text(
+                                text = stringResource(R.string.demo_point_and_ask_status_checking),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                    }
 
                     AskEngineStatus.Unavailable -> BottomCard {
                         Text(
@@ -540,12 +722,25 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 onSessionUpdated = { _, frame ->
                     latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    // Keep the camera world position fresh so every anchored answer card can
+                    // billboard toward the viewer (#3276) — same pattern as `ARMLObjectLabelDemo`'s
+                    // `cameraPosition`. The pose translation is the camera eye position in world
+                    // space, all a billboard needs to orient toward.
+                    val camPose = frame.camera.pose.position
+                    cameraPosition[0] = camPose.x
+                    cameraPosition[1] = camPose.y
+                    cameraPosition[2] = camPose.z
                 },
                 onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { e, node ->
+                    onSingleTapConfirmed = { e, _ ->
                         // `busy` is hoisted to the demo scope so the status pill above
                         // shares it — see its declaration for why askState is not enough.
-                        if (node == null && engineStatus == AskEngineStatus.Ready && !busy) {
+                        //
+                        // The hit node is deliberately ignored: "tap anything" includes the
+                        // prop you just dropped and an answer already pinned. A `node ==
+                        // null` guard here swallowed every tap on the object the user most
+                        // wanted described — no ping, no capture, no answer (#3187).
+                        if (engineStatus == AskEngineStatus.Ready && !busy) {
                             ping = Offset(e.x, e.y) to System.nanoTime()
                             // P2 — pin the answer where the user pointed. The hit-test runs
                             // on the latest frame, the same one the capture is about to
@@ -596,8 +791,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             askState = AskState.Capturing
                         }
                     },
-                    // Long-press drops the showcase prop on the hit surface — the object
-                    // Nano will later describe even though it only exists in AR.
+                    // Long-press drops the Drop-3D picker's currently selected model (#3083)
+                    // on the hit surface — the object Nano will later describe even though it
+                    // only exists in AR.
                     onLongPress = { e, node ->
                         if (node == null && isTracking) {
                             latestFrame?.hitTest(e)?.firstOrNull { result ->
@@ -606,7 +802,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                     trackable.trackingState == TrackingState.TRACKING &&
                                     trackable.isPoseInPolygon(result.hitPose)
                             }?.let { hit ->
-                                placedProps.add(PlacedProp(nextPropId++, hit.createAnchor()))
+                                placedProps.add(
+                                    PlacedProp(nextPropId++, hit.createAnchor(), selectedProp),
+                                )
                             }
                         }
                     },
@@ -620,14 +818,14 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         ) {
                             val instance = rememberModelInstance(
                                 modelLoader,
-                                fileLocation = PROP_ASSET,
+                                fileLocation = placed.prop.asset,
                             )
                             val textured = rememberTexturesSettled(ready = instance != null)
                             instance?.let {
                                 ModelNode(
                                     modelInstance = it,
-                                    scaleToUnits = PROP_SCALE_UNITS,
-                                    rotation = DemoMath.placementRotationFor(PROP_ASSET),
+                                    scaleToUnits = placed.prop.scaleUnits,
+                                    rotation = DemoMath.placementRotationFor(placed.prop.asset),
                                     isVisible = textured,
                                     isEditable = true,
                                 )
@@ -650,14 +848,45 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                 windowManager = viewNodeManager,
                                 unlit = true,
                                 position = Position(y = PANEL_LIFT_METERS),
-                                // No rotation: the anchor's own frame already faces the
-                                // device (ARCore hit pose, Z+ toward the user) and a
-                                // ViewNode's quad faces its +Z.
+                                // Initial rotation/scale before the first `onFrame` tick
+                                // below runs — that per-frame billboard immediately takes
+                                // over both (#3276).
                                 scale = Scale(PANEL_SCALE),
                                 // Unlike the props, the cards are UI, not scenery: keeping
                                 // them out of the capture stops the model from reading its
                                 // own earlier answers back as part of the next question.
                                 isVisible = !hideOverlaysForCapture,
+                                apply = {
+                                    // Billboard + distance-legible scale (#3276). The card
+                                    // used to keep the fixed orientation of the tap that
+                                    // pinned it — proving the anchor but going edge-on (and
+                                    // effectively unreadable) the moment the user moved
+                                    // around it. Every AR frame, rotate to face the live
+                                    // camera position and rescale so the text stays legible
+                                    // whether the user is standing close or across the room.
+                                    // `lookTowards` is the same world-space-safe primitive
+                                    // `BillboardNode` uses (it converts into this node's
+                                    // *local* rotation relative to the anchor automatically —
+                                    // see `Node.worldTransform`), so this inherits the fix for
+                                    // the mirrored/edge-on billboard bug from #2478 instead of
+                                    // re-deriving the rotation math from scratch.
+                                    onFrame = { _ ->
+                                        val pos = worldPosition
+                                        val dx = pos.x - cameraPosition[0]
+                                        val dy = pos.y - cameraPosition[1]
+                                        val dz = pos.z - cameraPosition[2]
+                                        val distanceSq = dx * dx + dy * dy + dz * dz
+                                        // Guards the zero-vector AND any NaN component
+                                        // (NaN comparisons are always false) — same
+                                        // reasoning as `BillboardNode`.
+                                        if (distanceSq > 1e-12f) {
+                                            lookTowards(lookDirection = Position(dx, dy, dz))
+                                            scale = Scale(
+                                                clampedPanelScale(kotlin.math.sqrt(distanceSq))
+                                            )
+                                        }
+                                    }
+                                },
                             ) {
                                 AnchoredAnswerCard(
                                     question = panel.question,
@@ -760,12 +989,11 @@ private fun renderMarkdownLite(text: String): AnnotatedString = buildAnnotatedSt
     }
 }
 
-/** Long-press showcase prop and its placement size. */
-private const val PROP_ASSET = "models/shiba.glb"
-private const val PROP_SCALE_UNITS = 0.45f
-
 /** Frames-settle delay between hiding overlays and the PixelCopy. */
 private const val CAPTURE_OVERLAY_SETTLE_MS = 120L
+
+/** A PixelCopy that has not called back by then fails the round instead of wedging it. */
+private const val CAPTURE_TIMEOUT_MS = 3_000L
 
 /** A finished answer stays on screen this long, then clears the viewfinder. */
 private const val ANSWER_AUTO_DISMISS_MS = 12_000L
@@ -784,31 +1012,78 @@ private const val QA_CAPTURE_TIMEOUT_MS = 5_000L
 private const val PANEL_LIFT_METERS = 0.12f
 
 /**
- * World scale of an anchored card's `ViewNode`. The node renders at `ViewNode.pxPerUnits`
- * (250 px/m), so a ~650 px card would span ~2.6 m at scale 1; 0.15 brings it to ~0.4 m —
- * readable at arm's length without walling off the room.
+ * World scale of an anchored card's `ViewNode`, AT [PANEL_REFERENCE_DISTANCE] — the node
+ * renders at `ViewNode.pxPerUnits` (250 px/m), so a ~650 px card would span ~2.6 m at
+ * scale 1; 0.15 brings it to ~0.4 m, readable at arm's length. [clampedPanelScale] scales
+ * this up/down from the live camera distance so the card stays legible across a room
+ * (#3276) — see its Kdoc.
  */
 private const val PANEL_SCALE = 0.15f
+
+/**
+ * Distance (metres) at which [PANEL_SCALE] was tuned to look right — "arm's length" per
+ * its own Kdoc. [clampedPanelScale] uses this as the 1:1 point of its scale ramp.
+ */
+private const val PANEL_REFERENCE_DISTANCE = 1.0f
+
+/**
+ * Below this distance the perspective-compensated scale would keep *shrinking* the card
+ * as the user leans in — which is backwards for legibility — so the ramp bottoms out
+ * here instead (#3276).
+ */
+private const val PANEL_MIN_READABLE_DISTANCE = 0.6f
+
+/**
+ * Beyond this distance the card is scaled as if it were still this close: past a few
+ * metres, a card sized to stay pixel-legible would loom absurdly large in the room, and
+ * the answer is better re-read by walking closer (#3276).
+ */
+private const val PANEL_MAX_READABLE_DISTANCE = 3.5f
+
+/**
+ * World scale for an anchored answer card at [distanceMeters] from the camera,
+ * compensating for perspective so the text stays legible whether the user is standing
+ * close or across the room (#3276) — a card sized only for [PANEL_REFERENCE_DISTANCE]
+ * shrinks to unreadable pixels a few metres out, which is exactly what the bug report
+ * described ("the text is not visible in AR").
+ *
+ * [distanceMeters] is clamped to [PANEL_MIN_READABLE_DISTANCE]..[PANEL_MAX_READABLE_DISTANCE]
+ * first: below the near clamp the raw ramp would shrink the card as the user leans in
+ * (backwards), and beyond the far clamp it would balloon the card to an unreasonable size
+ * instead of just asking the user to walk closer.
+ *
+ * Pure function — no ARCore/Filament types — so it is unit-testable on the JVM
+ * (`PanelScaleTest`).
+ */
+internal fun clampedPanelScale(distanceMeters: Float): Float {
+    val clamped = distanceMeters.coerceIn(PANEL_MIN_READABLE_DISTANCE, PANEL_MAX_READABLE_DISTANCE)
+    return PANEL_SCALE * (clamped / PANEL_REFERENCE_DISTANCE)
+}
 
 /** How many answers stay pinned before the oldest is retired. */
 private const val MAX_PANELS = 8
 
 /**
- * Routes one ask round's results: into [panel] when the tap pinned one (P2), otherwise to
- * [fallback], the screen-space card. With a panel, [fallback] is also driven back to
- * [AskState.Idle] so the bottom sheet hands the round over instead of showing the same
- * answer twice.
+ * Routes one ask round's results: always to [screenCard] (the bottom card), and ALSO into
+ * [panel] when the tap pinned one (P2).
+ *
+ * The screen card is never handed off. An earlier version drove it back to [AskState.Idle]
+ * once a panel existed, so an anchored round drew zero screen chrome — no card, no pill, no
+ * failure text — and when the in-scene card was off-screen, edge-on or its texture had not
+ * come up, the answer was simply invisible (#3188). The bottom card is the guaranteed
+ * surface; the anchored card is the bonus that stays in the room after the bottom card
+ * auto-dismisses.
  */
 private fun answerSink(
     panel: AnswerPanel?,
     failedText: String,
-    fallback: (AskState) -> Unit,
+    screenCard: (AskState) -> Unit,
 ): (AskState) -> Unit = if (panel == null) {
-    fallback
+    screenCard
 } else {
     { state ->
         panel.accept(state, failedText)
-        fallback(AskState.Idle)
+        screenCard(state)
     }
 }
 
@@ -858,6 +1133,18 @@ private fun CoroutineScope.askAboutBitmap(
  * the screen-space card — spinner until the first delta, live text with a typing cursor
  * while streaming, question label above — at a width that stays legible once the node is
  * scaled down to [PANEL_SCALE].
+ *
+ * Uses `DESIGN.md`'s Spatial Gallery **scrim** treatment (`stage-scrim-end` /
+ * [SceneViewTokens.SpatialGalleryColor.stageScrimEnd]) instead of the M3 `surface` role
+ * (#3276): the card floats over a live camera feed of unpredictable brightness and colour,
+ * not over the app's own background, so a theme-relative surface can land near-white-on
+ * -white or low-contrast depending on the room and the user's light/dark setting. A ~90%
+ * opaque near-black scrim with plain white "on-scrim" text guarantees contrast regardless
+ * of what is behind it — the same reasoning the Spatial Gallery already applies to text
+ * over photo/video content. Text sizes are bumped a step up from the screen-space card's
+ * (`titleMedium`/`bodyMedium` instead of `bodyLarge`/`labelMedium`) because this card is
+ * additionally viewed through [clampedPanelScale] perspective scaling — legible-sized type
+ * at the outset means the perspective compensation has less shrinking to fight.
  */
 @Composable
 private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolean) {
@@ -865,6 +1152,7 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
     // demo's CompositionLocals — without re-applying the theme here, `MaterialTheme` would
     // resolve to M3 defaults and the in-scene card would not match the card it mirrors.
     SceneViewDemoTheme {
+        val onScrim = Color.White
         M3Surface(
             // Fixed height as well as width, and NOT for looks: every panel shares one
             // ViewNode WindowManager, whose single wrap-content FrameLayout sizes itself
@@ -875,7 +1163,8 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
             // while a sibling streams. Identical measurements keep the shared window
             // constant, so each card stays where it was pinned (#2918).
             modifier = Modifier.width(ANCHORED_CARD_WIDTH).height(ANCHORED_CARD_HEIGHT),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            color = SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+            contentColor = onScrim,
             tonalElevation = 6.dp,
             shape = MaterialTheme.shapes.large,
         ) {
@@ -885,10 +1174,11 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = onScrim)
                     Text(
                         text = stringResource(R.string.demo_point_and_ask_status_thinking),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = onScrim,
                         modifier = Modifier.padding(start = 12.dp),
                     )
                 }
@@ -897,8 +1187,9 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = question,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onScrim.copy(alpha = 0.80f),
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -906,7 +1197,8 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
                     // Nothing drives this scroll by touch — the rendered UI is a texture,
                     // not an interactive view — so it also clips gracefully.
                     text = renderMarkdownLite(if (streaming) "$text▌" else text),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = onScrim,
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             }

@@ -10,9 +10,7 @@
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
     <string name="tab_ar">AR</string>
-    <string name="tab_samples">Samples</string>
     <string name="tab_about">About</string>
-    <string name="tab_explore">Explore</string>
     <string name="tab_ar_view">AR View</string>
 
     <!-- Explore screen -->
@@ -108,6 +106,12 @@
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <string name="ar_picker_model_label">Model</string>
+    <!-- Canonical tap-to-place picker (PlacementModelPicker.kt) — shared by the AR View
+         tab and the `ar-placement` demo (#2482). -->
+    <string name="ar_picker_streaming">Streaming %1$s…</string>
+    <string name="ar_picker_no_model">No model</string>
+    <string name="ar_picker_source_streamed">Streamed</string>
+    <string name="ar_picker_source_streaming">Streaming…</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
     <string name="ar_status_tap_to_place">Tap a surface to place %s</string>
     <string name="ar_status_one_placed">1 placed · tap to add</string>
@@ -137,17 +141,13 @@
     <string name="featured_ar_pose_subtitle">Free pose positioning</string>
 
     <!-- Samples screen -->
-    <string name="samples_title">Samples</string>
     <string name="samples_feature_count">%d feature demos</string>
     <string name="samples_badge_live">LIVE</string>
     <string name="samples_badge_soon">SOON</string>
     <string name="samples_back">Back</string>
-    <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
     <string name="samples_chip_in_review">In review</string>
-    <string name="samples_footer_version">SceneView v%s</string>
-    <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 
     <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
          the release content itself is parsed at runtime from the bundled
@@ -162,6 +162,21 @@
     <string name="whats_new_category_changed">Changed</string>
     <string name="whats_new_category_performance">Performance</string>
     <string name="whats_new_category_removed">Removed</string>
+
+    <!-- "What's new since you last tested" — the per-install surface. The
+         marker it reads is written only by the Got it button; see
+         WhatsNewSince.kt. -->
+    <string name="whats_new_since_title">What\'s new since you last tested</string>
+    <plurals name="whats_new_since_subtitle">
+        <item quantity="one">%1$d change since the build you marked as seen (v%2$s)</item>
+        <item quantity="other">%1$d changes since the build you marked as seen (v%2$s)</item>
+    </plurals>
+    <string name="whats_new_since_subtitle_unknown">Everything that landed since your last session</string>
+    <string name="whats_new_since_unreleased">Not yet released</string>
+    <string name="whats_new_since_mark_seen">Got it</string>
+    <string name="whats_new_since_mark_seen_hint">Closing without tapping Got it keeps this list waiting behind the top-bar badge.</string>
+    <string name="whats_new_since_open_demo">Open %s</string>
+    <string name="whats_new_since_action">What\'s new since you last tested</string>
 
     <!-- Sample categories (legacy keys kept for accessibility / cross-platform docs) -->
     <string name="category_3d">3D</string>
@@ -265,6 +280,16 @@
     <string name="demo_chip_bundled">Offline model</string>
 
     <!-- DemoScaffold v2 bottom-sheet settings (#1154) -->
+    <!-- Identity-pill asset-source suffix (DemoScaffold top row). -->
+    <string name="demo_source_streamed">Streamed</string>
+    <string name="demo_source_streaming">Streaming</string>
+    <string name="demo_source_bundled">Offline</string>
+    <!-- Overflow menu + stalled-load card (DemoScaffold). -->
+    <string name="demo_menu_cd">More options</string>
+    <string name="demo_menu_qa_mode">QA mode</string>
+    <string name="demo_loading_stalled_title">Still loading…</string>
+    <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
+    <string name="demo_loading_retry">Retry</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>
@@ -334,7 +359,11 @@
     <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
     <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording.</string>
     <string name="feedback_report_share">Share report</string>
-    <string name="feedback_report_open_github">Open a GitHub issue</string>
+    <string name="feedback_report_open_github">Send to GitHub</string>
     <string name="feedback_report_share_chooser">Share bug report</string>
     <string name="feedback_report_no_app">No app available to send the report</string>
+    <string name="feedback_report_sent_github">GitHub opened — finish and submit there. Thanks!</string>
+    <string name="feedback_report_sent_share">Report shared — thanks!</string>
+    <string name="feedback_report_voice_cd">Dictate description</string>
+    <string name="feedback_report_voice_prompt">Describe the issue</string>
 </resources>

@@ -4,6 +4,7 @@
 // @category    content
 // @available   true
 // @icon        video.fill
+// @order       67
 import SwiftUI
 
 enum VideoTextureScene: DemoScene {

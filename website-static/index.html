@@ -116,7 +116,7 @@
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
-    "softwareVersion": "4.31.0",
+    "softwareVersion": "4.32.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
@@ -137,7 +137,7 @@
         "name": "How do I add 3D to my Android Jetpack Compose app?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.31.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 46+ node types, and adds only ~5MB to your APK."
+          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.32.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 46+ node types, and adds only ~5MB to your APK."
         }
       },
       {
@@ -145,7 +145,7 @@
         "name": "What is the best AR SDK for Android with Jetpack Compose?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.31.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
+          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.32.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
         }
       },
       {
@@ -463,9 +463,9 @@
             <pre class="code-block"><code><span class="syn-green">// build.gradle.kts</span>
 <span class="syn-purple">dependencies</span> {
     <span class="syn-green">// 3D only</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.31.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.32.0"</span>)
     <span class="syn-green">// 3D + AR</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.31.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.32.0"</span>)
 }</code></pre>
           </div>
           <div class="tabs__panel" data-panel="ios">
@@ -473,13 +473,13 @@
 <span class="syn-green">// Add in Xcode: File &rarr; Add Package Dependencies</span>
 
 <span class="syn-green-light">"https://github.com/sceneview/sceneview"</span>
-<span class="syn-green">// Version: 4.31.0</span>
+<span class="syn-green">// Version: 4.32.0</span>
 
 <span class="syn-purple">import</span> SceneViewSwift</code></pre>
           </div>
           <div class="tabs__panel" data-panel="web">
             <pre class="code-block"><code><span class="syn-green">// One line in your HTML:</span>
-<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
+<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
 
 <span class="syn-green">// Then use the API:</span>
 <span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>)</code></pre>
@@ -1116,21 +1116,21 @@
           <div class="metric-card__icon-wrap metric-card__icon-wrap--npm2">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="web-downloads">983</div>
+          <div class="metric-card__value" data-metric="web-downloads">1.5K</div>
           <div class="metric-card__label">npm downloads (Web, 30&nbsp;d)</div>
         </a>
         <a href="https://github.com/sceneview/sceneview/graphs/contributors" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Contributors to sceneview/sceneview">
           <div class="metric-card__icon-wrap metric-card__icon-wrap--contributors">
             <span class="material-symbols-outlined">group</span>
           </div>
-          <div class="metric-card__value" data-metric="contributors">45</div>
+          <div class="metric-card__value" data-metric="contributors">46</div>
           <div class="metric-card__label">Contributors</div>
         </a>
         <a href="https://central.sonatype.com/artifact/io.github.sceneview/sceneview/versions" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Released versions on Maven Central">
           <div class="metric-card__icon-wrap metric-card__icon-wrap--maven">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="releases">129</div>
+          <div class="metric-card__value" data-metric="releases">133</div>
           <div class="metric-card__label">Releases on Maven&nbsp;Central</div>
         </a>
       </div>

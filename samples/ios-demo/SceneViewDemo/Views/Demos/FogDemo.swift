@@ -10,13 +10,17 @@ import SceneViewSwift
 struct FogDemo: View {
     @State private var fogMode: Int = 0
     @State private var density: Float = 0.3
+    /// The fog volume currently in the scene. The density slider writes to it
+    /// directly (`FogNode.density` rebuilds the material in place) instead of
+    /// rebuilding the forest on every slider tick.
+    @State private var fogNode: FogNode?
 
     private let modeNames = ["Linear", "Exponential"]
     private let modeIcons = ["line.diagonal", "waveform"]
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
     }
@@ -58,12 +62,22 @@ struct FogDemo: View {
                 }
                 fog.entity.position = .init(x: 0, y: 0, z: -2)
                 root.addChild(fog.entity)
+                DispatchQueue.main.async { fogNode = fog }
             }
             .cameraControls(.orbit)
-            .id("fog-\(fogMode)-\(Int(density * 100))")
+            // Only the mode rebuilds the content (a linear and an exponential
+            // fog are different nodes), under the same `RealityView`. Density
+            // is a continuous parameter and is applied reactively below — it
+            // used to be part of a `.id(_:)` key, which re-created the whole
+            // view per slider tick and intermittently left it black on iOS 26
+            // Simulator (#3008).
+            .contentID(fogMode)
             .ignoresSafeArea()
         }
         .background(Color.black)
+        .onChange(of: density) { _, newValue in
+            fogNode?.density = newValue
+        }
     }
 
     @ViewBuilder

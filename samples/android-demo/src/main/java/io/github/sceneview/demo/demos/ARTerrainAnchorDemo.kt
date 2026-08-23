@@ -41,6 +41,12 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.CloudServiceStatusBanner
+import io.github.sceneview.demo.common.message
+import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.rememberIsNetworkAvailable
+import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.SceneAction
@@ -146,14 +152,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
     // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    val hasArcoreApiKey = remember {
-        runCatching {
-            val ai = context.packageManager.getApplicationInfo(
-                context.packageName, PackageManager.GET_META_DATA
-            )
-            !ai.metaData?.getString("com.google.android.ar.API_KEY").isNullOrBlank()
-        }.getOrDefault(false)
-    }
+    val hasArcoreApiKey = rememberHasArcoreApiKey()
 
     var arSession by remember { mutableStateOf<Session?>(null) }
     // Flipped true on the first onSessionUpdated — i.e. once ARCore has opened the
@@ -173,6 +172,23 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
     var horizontalAccuracy by remember { mutableStateOf<Double?>(null) }
     var geospatialUnavailable by remember { mutableStateOf<String?>(null) }
     var sessionError by remember { mutableStateOf<String?>(null) }
+    // Preemptive network check (#3262): Geospatial silently returns no data with no
+    // network, which otherwise reads identically to a rejected API key.
+    val isNetworkAvailable = rememberIsNetworkAvailable()
+
+    // The one shared "why can't this demo work right now" answer (#3262): a missing
+    // or rejected key, an exhausted Cloud quota, no network, or Geospatial not yet
+    // localised (no VPS lock, so no usable lat/lng to resolve against).
+    val cloudStatus: CloudServiceStatus = when {
+        !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
+        !isNetworkAvailable -> CloudServiceStatus.NoNetwork
+        else -> earthState.toCloudServiceStatus("Geospatial")
+            ?: if (isTracking && geospatialUnavailable == null && !earthTracking) {
+                CloudServiceStatus.EarthLocalizing
+            } else {
+                CloudServiceStatus.Available
+            }
+    }
 
     val placedAnchors = remember { mutableStateListOf<PlacedTerrainAnchor>() }
     var nextId by remember { mutableStateOf(0) }
@@ -257,8 +273,10 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
             // the button might fail (no VPS lock = no usable lat/lng).
             Text(
                 text = when {
-                    !hasArcoreApiKey ->
-                        "ARCore Cloud API key missing — set ARCORE_API_KEY in local.properties"
+                    // Mirrors the shared `bottomOverlay` banner below (#3262) so the
+                    // sheet never disagrees with the main AR view about why Drop is
+                    // disabled.
+                    cloudStatus.isUnavailable -> cloudStatus.message()
                     geospatialUnavailable != null -> geospatialUnavailable!!
                     // Friendly, complete sentence from friendlyArSessionError (#2349).
                     sessionError != null -> sessionError!!
@@ -313,38 +331,37 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
         // "no ARCore Cloud API key" banner ran under both the "Drop here" button
         // and the Settings FAB.
         bottomOverlay = {
-            // Reuses ARStreetscapeDemo's wording for the missing-API-key + no-VPS-coverage
-            // cases so the empire-wide UX stays consistent. The tone is derived from the
-            // same branches as the text: a missing key / dead session is Blocked, a
-            // transient wait is Progress, and a "do this now" sentence is Guidance.
-            val (statusText, statusTone) = when {
+            when {
                 // friendlyArSessionError already yields a complete, honest sentence (#2349).
-                sessionError != null -> sessionError!! to DemoStatusTone.Blocked
-                !hasArcoreApiKey ->
-                    ("ARCore Cloud API key not configured — see samples/android-demo/" +
-                        "ARCORE_CLOUD_SETUP.md") to DemoStatusTone.Blocked
+                sessionError != null ->
+                    DemoStatusBanner(sessionError!!, tone = DemoStatusTone.Blocked)
+                // The one shared "Cloud service unavailable" banner (#3262): missing or
+                // rejected key, exhausted quota, no network, or no VPS lock yet. Lives
+                // in the main AR view, never only in Settings.
+                cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
                 geospatialUnavailable != null ->
-                    ("${geospatialUnavailable!!} — needs outdoor area with VPS coverage + " +
-                        "Cloud API key") to DemoStatusTone.Blocked
-                !isTracking -> "Initializing camera…" to DemoStatusTone.Progress
-                !earthTracking ->
-                    "Waiting for VPS lock — go outside, look around" to DemoStatusTone.Progress
+                    DemoStatusBanner(
+                        "${geospatialUnavailable!!} — needs outdoor area with VPS coverage + Cloud API key",
+                        tone = DemoStatusTone.Blocked,
+                    )
+                !isTracking -> DemoStatusBanner("Initializing camera…", tone = DemoStatusTone.Progress)
                 else ->
-                    "Ready — point at the ground and tap \"Drop here\"" to
-                        DemoStatusTone.Guidance
+                    DemoStatusBanner(
+                        "Ready — point at the ground and tap \"Drop here\"",
+                        tone = DemoStatusTone.Guidance,
+                    )
             }
-            DemoStatusBanner(text = statusText, tone = statusTone)
 
             // Primary actions on-screen (#1964) — the banner tells the user to
             // tap "Drop here", so it (and the Clear All reset) must be on-screen
-            // buttons. Same enabled gates as the previous in-sheet buttons;
-            // Clear All only appears once something is placed.
+            // buttons. Disabled for the whole `cloudStatus.isUnavailable` window,
+            // not just a missing key (#3262) — no VPS lock and no network both
+            // mean the resolve call cannot succeed either.
             SceneActionBar(
                 SceneAction(
                     label = "Drop here",
                     onClick = onDrop,
-                    enabled = hasArcoreApiKey &&
-                        earthTracking &&
+                    enabled = !cloudStatus.isUnavailable &&
                         earthState == Earth.EarthState.ENABLED &&
                         cameraLat != null,
                 ),

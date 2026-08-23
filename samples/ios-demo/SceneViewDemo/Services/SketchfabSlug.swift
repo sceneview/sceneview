@@ -22,6 +22,29 @@ import Foundation
 /// Mirrors the Android scaffold (`SketchfabSlug.kt`) — keep both in sync when
 /// adding fields.
 struct SketchfabSlug: Hashable, Sendable {
+    /// What the bundled fallback IS relative to the label it renders under
+    /// (#2960).
+    ///
+    /// The defect #2940 named is "a fallback whose subject is semantically
+    /// incompatible with the label it renders under" — a book under
+    /// "Wine Barrel", a piano under "Coffee Mug". The bundled set has no vase,
+    /// mug, crate, table, sofa or statue, so most of those cannot be re-pointed
+    /// without shipping a new binary. Until then the demo must *say* it is
+    /// showing a placeholder rather than pretend: the asset-source pill reads
+    /// "Offline placeholder" instead of "Offline model" for a ``placeholder``
+    /// slug. `BundledAssetPrimBudgetTests` pins every ``subjectMatch`` claim to
+    /// a reviewed allowlist, so a new slug cannot claim a match by default.
+    enum FallbackRole: Hashable, Sendable {
+        /// The fallback is the same kind of thing as the label — a fox for a
+        /// fox, a lantern for a lamp, a butterfly for a butterfly, an animated
+        /// humanoid for a walking robot.
+        case subjectMatch
+        /// The fallback is a different subject that only keeps the demo's
+        /// *mechanism* working (something to place, drop, light, animate).
+        /// The UI must label it as a placeholder.
+        case placeholder
+    }
+
     /// The Sketchfab model uid (matches the path segment in
     /// `sketchfab.com/3d-models/<slug>-<uid>`). Always the unique identifier
     /// — never trust the `<slug>` portion which authors can edit.
@@ -43,6 +66,10 @@ struct SketchfabSlug: Hashable, Sendable {
     /// Bundle-relative path to the offline fallback (`Models/<file>.usdz`).
     /// Used by `SketchfabAssetResolver.fallbackBundle(for:)`.
     let fallbackBundledPath: String
+
+    /// Whether `fallbackBundledPath` is the same subject as the label or a
+    /// declared stand-in. See ``FallbackRole``.
+    let fallbackRole: FallbackRole
 
     /// Expected post-load bounding-sphere radius in metres. Out-of-range
     /// values trigger the resolver's fallback.
@@ -78,6 +105,7 @@ struct SketchfabSlug: Hashable, Sendable {
         author: String,
         licenseURL: URL,
         fallbackBundledPath: String,
+        fallbackRole: FallbackRole = .subjectMatch,
         scaleToUnits: Float,
         hasBakedAnimation: Bool,
         category: String,
@@ -108,6 +136,7 @@ struct SketchfabSlug: Hashable, Sendable {
         self.author = author
         self.licenseURL = licenseURL
         self.fallbackBundledPath = fallbackBundledPath
+        self.fallbackRole = fallbackRole
         self.scaleToUnits = scaleToUnits
         self.hasBakedAnimation = hasBakedAnimation
         self.category = category

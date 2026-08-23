@@ -21,6 +21,8 @@ object PickingAndCollisionFragment : DemoFragment {
         subtitleRes = R.string.demo_picking_collision_subtitle,
         category = DemoCategory.INTERACTION,
         icon = Icons.Filled.CenterFocusStrong,
+        order = 9,
+        tags = setOf("picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
     )
 
     @Composable

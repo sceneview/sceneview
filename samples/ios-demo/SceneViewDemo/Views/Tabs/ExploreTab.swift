@@ -265,8 +265,21 @@ struct ExploreTab: View {
         return ids.compactMap { id in ModelItem.all.first { $0.id == id } }
     }
 
+    /// `true` when pushed onto another `NavigationStack` (the Showcase tab's
+    /// "Browse online models" card): the gallery then reuses that stack
+    /// instead of nesting its own. `false` (default) for the standalone tab /
+    /// sheet form, which owns a stack.
+    var embedded: Bool = false
+
     var body: some View {
-        NavigationStack {
+        if embedded {
+            content
+        } else {
+            NavigationStack { content }
+        }
+    }
+
+    private var content: some View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     // Source picker (#2645 / #2700) — stays visible even mid-search.
@@ -386,7 +399,6 @@ struct ExploreTab: View {
             } message: {
                 Text("The Sketchfab API key was rejected (revoked, wrong scope, or a rate-limit burst), so its Trending, Staff Picks and Recently Added carousels are unavailable right now.\n\nSwitch to Icosa Gallery or Poly Haven from the source picker — those Creative-Commons catalogs are always available and need no key.")
             }
-        }
     }
 
     // MARK: - Task keys
@@ -1350,31 +1362,24 @@ struct ModelViewerScreen: View {
 
     // MARK: - Scene
 
-    @ViewBuilder
     private var sceneView: some View {
-        // qa_mode freezes auto-rotation for deterministic QA screenshots.
-        if autoRotate && !qaMode {
-            SceneView { root in
-                if let loadedModel {
-                    loadedModel.entity.position = .zero
-                    root.addChild(loadedModel.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .autoRotate(speed: 0.4)
-            .id("viewer-auto-\(loadedModel != nil)-\(selectedEnvironment.name)")
-        } else {
-            SceneView { root in
-                if let loadedModel {
-                    loadedModel.entity.position = .zero
-                    root.addChild(loadedModel.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .id("viewer-manual-\(loadedModel != nil)-\(selectedEnvironment.name)")
+        // One `SceneView` for the viewer's lifetime. The model is swapped in
+        // with `.contentID(_:)` once it lands, the environment and the
+        // auto-rotation are reactive modifiers — `SceneView` diffs them in
+        // place. The previous `if autoRotate { ... } else { ... }` plus
+        // `.id(_:)` keys re-created the `RealityView` on every change, which
+        // intermittently leaves it black on iOS 26 Simulator (#3008).
+        // qa_mode freezes auto-rotation for deterministic QA screenshots
+        // (speed 0 starts no rotation loop at all).
+        SceneView { root in
+            guard let loadedModel else { return }
+            loadedModel.entity.position = .zero
+            root.addChild(loadedModel.entity)
         }
+        .environment(selectedEnvironment)
+        .cameraControls(.orbit)
+        .autoRotate(speed: autoRotate && !qaMode ? 0.4 : 0)
+        .contentID(loadedModel == nil ? nil : "loaded")
     }
 
     // MARK: - Controls
@@ -1778,30 +1783,19 @@ struct GalleryModelViewerScreen: View {
         isLoading = false
     }
 
-    @ViewBuilder
     private var sceneView: some View {
-        if autoRotate && !qaMode {
-            SceneView { root in
-                if let loadedNode {
-                    loadedNode.entity.position = .zero
-                    root.addChild(loadedNode.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .autoRotate(speed: 0.4)
-            .id("gallery-auto-\(loadedNode != nil)-\(selectedEnvironment.name)")
-        } else {
-            SceneView { root in
-                if let loadedNode {
-                    loadedNode.entity.position = .zero
-                    root.addChild(loadedNode.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .id("gallery-manual-\(loadedNode != nil)-\(selectedEnvironment.name)")
+        // Same shape as the bundled viewer above: one `SceneView`, the model
+        // swapped in via `.contentID(_:)`, environment and auto-rotation
+        // applied reactively instead of re-keying the view (#3008).
+        SceneView { root in
+            guard let loadedNode else { return }
+            loadedNode.entity.position = .zero
+            root.addChild(loadedNode.entity)
         }
+        .environment(selectedEnvironment)
+        .cameraControls(.orbit)
+        .autoRotate(speed: autoRotate && !qaMode ? 0.4 : 0)
+        .contentID(loadedNode == nil ? nil : "loaded")
     }
 
     /// Cinematic vignette — costs ~0 GPU and lifts the model in the centre.

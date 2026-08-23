@@ -15,7 +15,7 @@
  * into the generated file.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,6 +76,56 @@ if (!pubMatch) {
 }
 const flutterPubVersion = pubMatch[1];
 
+// The two WEB Filament runtimes, read from `gradle/libs.versions.toml` — the
+// single pin table CLAUDE.md designates for every Filament track. Both strings
+// used to be a hand-copied "1.70.2" in `artifact.ts` and `extra-guides.ts`, a
+// version that (a) was never published on npm, so the artifact CDN URL
+// 404'd, and (b) never matched the runtime vendored for the website. See #3173.
+//
+//   filamentWeb     — the npm `filament` package (sceneview-web / Kotlin-JS and
+//                     the jsDelivr CDN the generated artifacts load).
+//   filamentWebsite — the runtime vendored at website-static/js/filament/
+//                     that sceneview.js runs on.
+const versionsToml = readFileSync(resolve(mcpRoot, "..", "gradle", "libs.versions.toml"), "utf8");
+function readPin(name) {
+  const m = versionsToml.match(new RegExp(`^\\s*${name}\\s*=\\s*"([^"]+)"`, "m"));
+  if (!m) {
+    console.error(`[generate-version] FATAL: ${name} not found in ../gradle/libs.versions.toml`);
+    process.exit(1);
+  }
+  return m[1];
+}
+const filamentWebVersion = readPin("filamentWeb");
+const filamentWebsiteVersion = readPin("filamentWebsite");
+
+// SceneViewSwift node inventory, counted from the Swift sources so the MCP
+// never states a hand-typed number again (#2999: mcp/ said 16, README said 19,
+// the tree held 21 files). The rule: a node type is a `public struct` whose
+// name ends in `Node` anywhere under SceneViewSwift/Sources. `public enum`
+// namespaces that merely group static helpers (`CloudAnchorNode`,
+// `SceneReconstructionNode`) are not scene nodes and are excluded; `AnchorNode`
+// lives in ARSceneView.swift rather than its own file and is included.
+const swiftRoot = resolve(mcpRoot, "..", "SceneViewSwift", "Sources");
+function walkSwift(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = resolve(dir, entry);
+    if (statSync(full).isDirectory()) walkSwift(full, out);
+    else if (entry.endsWith(".swift")) out.push(full);
+  }
+  return out;
+}
+const iosNodeTypes = [];
+for (const file of walkSwift(swiftRoot)) {
+  for (const m of readFileSync(file, "utf8").matchAll(/^public struct ([A-Za-z0-9]+Node)\b/gm)) {
+    iosNodeTypes.push(m[1]);
+  }
+}
+iosNodeTypes.sort();
+if (iosNodeTypes.length === 0) {
+  console.error(`[generate-version] FATAL: no \`public struct *Node\` found under ${swiftRoot}`);
+  process.exit(1);
+}
+
 const outDir = resolve(mcpRoot, "src/generated");
 mkdirSync(outDir, { recursive: true });
 
@@ -92,14 +142,25 @@ const content =
   `// The pub.dev coordinate for \`flutter_sceneview\`, read from the plugin's\n` +
   `// README. Deliberately NOT LATEST_SCENEVIEW_RELEASE: pub.dev lags the SDK,\n` +
   `// and a caret range against an unpublished version cannot be resolved.\n` +
-  `export const LATEST_FLUTTER_PUB_RELEASE = "${flutterPubVersion}" as const;\n`;
+  `export const LATEST_FLUTTER_PUB_RELEASE = "${flutterPubVersion}" as const;\n` +
+  `// Web Filament runtimes, from ../gradle/libs.versions.toml (#3173).\n` +
+  `// FILAMENT_WEB_NPM_VERSION is the npm \`filament\` pin (CDN artifacts, Kotlin/JS);\n` +
+  `// FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.\n` +
+  `export const FILAMENT_WEB_NPM_VERSION = "${filamentWebVersion}" as const;\n` +
+  `export const FILAMENT_WEBSITE_VERSION = "${filamentWebsiteVersion}" as const;\n` +
+  `// SceneViewSwift node types: every \`public struct *Node\` under\n` +
+  `// SceneViewSwift/Sources (#2999). Enum namespaces are not nodes.\n` +
+  `export const IOS_NODE_TYPES = ${JSON.stringify(iosNodeTypes)} as const;\n` +
+  `export const IOS_NODE_TYPE_COUNT = ${iosNodeTypes.length} as const;\n`;
 
 writeFileSync(outPath, content, "utf8");
 // Log to stderr so we don't pollute stdout (npm pack --dry-run --json
 // pipes stdout through, and the package-files test parses that JSON).
 console.error(
   `[generate-version] wrote ${outPath} ` +
-    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion})`
+    `(mcp=${version}, sdk=${sdkVersion}, flutter-pub=${flutterPubVersion}, ` +
+    `filament-web-npm=${filamentWebVersion}, filament-website=${filamentWebsiteVersion}, ` +
+    `ios-nodes=${iosNodeTypes.length})`
 );
 
 // Keep the `android-ok` test fixture's SceneView pin in sync with the SDK
