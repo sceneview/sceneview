@@ -410,10 +410,14 @@ abstract class BundleChangelogAsset extends DefaultTask {
     abstract DirectoryProperty getOutputDir()
 
     // Collator order (collate-changelog.sh). `Changed` is the fallback bucket.
-    private static final List<String> CATEGORIES =
+    static final List<String> CATEGORIES =
             ['Added', 'Changed', 'Fixed', 'Performance', 'Removed', 'Tests', 'Docs']
 
-    private static String canonicalCategory(String raw) {
+    // These helpers are deliberately NOT private. Gradle decorates the task
+    // class at runtime, and a Groovy closure dispatching onto the decorated
+    // instance cannot see the superclass's private methods — the loops below
+    // are plain `for` statements for the same reason.
+    static String canonicalCategory(String raw) {
         switch (raw.toLowerCase().trim()) {
             case ['added', 'new']: return 'Added'
             case ['fixed', 'fix', 'bugfix']: return 'Fixed'
@@ -425,14 +429,14 @@ abstract class BundleChangelogAsset extends DefaultTask {
         }
     }
 
-    private static final java.util.regex.Pattern CATEGORY_TAG =
+    static final java.util.regex.Pattern CATEGORY_TAG =
             ~/^\s*<!--\s*category:\s*([A-Za-z]+)\s*-->\s*$/
 
     /**
      * Removes every HTML-comment span from one line. `state.inComment` carries
      * across lines. Returns the comment-free text.
      */
-    private static String stripComments(String line, Map state) {
+    static String stripComments(String line, Map state) {
         def rest = line
         def out = new StringBuilder()
         while (rest) {
@@ -470,52 +474,64 @@ abstract class BundleChangelogAsset extends DefaultTask {
         return out.toString()
     }
 
+    /**
+     * Splits a fragment block into bullets. A fragment may be prose rather than
+     * a list (no leading `- `); it becomes one bullet so it renders as an entry
+     * instead of vanishing into a section with no list. Wrapped continuation
+     * lines fold into the bullet above them.
+     */
+    static List<String> bulletsOf(String text) {
+        def out = []
+        for (String raw : text.readLines()) {
+            def line = raw.trim()
+            if (!line) continue
+            if (line.startsWith('- ')) out << line
+            else if (!out.isEmpty()) out[out.size() - 1] = out[out.size() - 1] + ' ' + line
+            else out << '- ' + line
+        }
+        return out
+    }
+
     /** Groups every fragment's bullets by canonical category. */
-    private Map<String, List<String>> readFragments() {
-        def buckets = [:].withDefault { [] }
-        fragments.files.sort { it.name }.each { file ->
-            if (file.name == 'README.md' || !file.isFile()) return
+    Map<String, List<String>> readFragments() {
+        def buckets = [:]
+        def files = new ArrayList<File>(fragments.files)
+        Collections.sort(files, { a, b -> a.name <=> b.name } as Comparator)
+
+        for (File file : files) {
+            if (file.name == 'README.md' || !file.isFile()) continue
             def state = [inComment: false]
             def category = 'Changed'
             def body = new StringBuilder()
 
-            def flush = {
-                def text = body.toString().trim()
-                body.setLength(0)
-                if (!text) return
-                // A fragment may be prose rather than bullets (no leading `- `).
-                // Emit it as one bullet so it renders as an entry rather than
-                // vanishing into a section with no list.
-                text.readLines()
-                        .collect { it.trim() }
-                        .inject([]) { acc, l ->
-                            if (l.startsWith('- ')) acc << l
-                            else if (l && acc && !acc.isEmpty()) acc[-1] = acc[-1] + ' ' + l
-                            else if (l) acc << '- ' + l
-                            acc
-                        }
-                        .each { buckets[category] << it }
-            }
-
-            file.eachLine('UTF-8') { line ->
+            for (String line : file.readLines('UTF-8')) {
                 def tag = CATEGORY_TAG.matcher(line)
                 if (!state.inComment && tag.matches()) {
                     // Close the preceding block BEFORE switching bucket — a
                     // fragment may carry several tags and each owns what follows.
-                    flush()
+                    for (String bullet : bulletsOf(body.toString().trim())) {
+                        buckets.get(category, []) << bullet
+                    }
+                    body.setLength(0)
                     category = canonicalCategory(tag.group(1))
-                    return
+                    continue
                 }
                 def stripped = stripComments(line, state)
-                if (!stripped.trim() && line.trim()) return
+                // Drop a line that contributed only comment; a genuinely blank
+                // line is what separates bullets and is kept.
+                if (!stripped.trim() && line.trim()) continue
                 body.append(stripped).append('\n')
             }
             if (state.inComment) {
+                // Failing loudly is the only honest option: the alternative is a
+                // screen silently missing entries.
                 throw new GradleException(
                         "changelog.d/${file.name} has an unterminated '<!--' — every bullet after " +
                         "it would be silently dropped from the in-app What's new screen.")
             }
-            flush()
+            for (String bullet : bulletsOf(body.toString().trim())) {
+                buckets.get(category, []) << bullet
+            }
         }
         return buckets
     }
@@ -527,11 +543,11 @@ abstract class BundleChangelogAsset extends DefaultTask {
 
         def buckets = readFragments()
         def unreleased = new StringBuilder()
-        CATEGORIES.each { category ->
+        for (String category : CATEGORIES) {
             def bullets = buckets[category]
-            if (!bullets) return
+            if (!bullets) continue
             unreleased.append('\n### ').append(category).append('\n\n')
-            bullets.each { unreleased.append(it).append('\n') }
+            for (String bullet : bullets) unreleased.append(bullet).append('\n')
         }
 
         // Splice the synthesised body into the committed `## Unreleased`

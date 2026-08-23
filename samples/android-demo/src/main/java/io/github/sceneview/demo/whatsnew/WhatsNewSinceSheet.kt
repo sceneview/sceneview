@@ -1,4 +1,8 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class,
+)
 
 package io.github.sceneview.demo.whatsnew
 
@@ -9,14 +13,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.stickyHeader
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -40,6 +45,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +81,7 @@ fun WhatsNewSinceSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val entryCount = remember(sections) { sections.sumOf { it.entries.size } }
+    val demoTitles = rememberDemoTitles()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -108,7 +115,7 @@ fun WhatsNewSinceSheet(
                 // `fill = false` so a one-entry list keeps the sheet short
                 // instead of stretching it to full height.
                 modifier = Modifier.weight(1f, fill = false),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 sections.forEach { section ->
                     stickyHeader(key = "header-${section.version ?: "unreleased"}") {
@@ -123,6 +130,7 @@ fun WhatsNewSinceSheet(
                                 entry = entry,
                                 category = category,
                                 onDemoClick = onDemoClick,
+                                demoTitles = demoTitles,
                             )
                         }
                     }
@@ -199,9 +207,10 @@ private fun EntryRow(
     entry: WhatsNewEntry,
     category: WhatsNewCategory,
     onDemoClick: (String) -> Unit,
+    demoTitles: List<Pair<DemoEntry, String>> = emptyList(),
 ) {
     val accent = categoryAccentColor(category)
-    val demos = rememberMentionedDemos(entry)
+    val demos = remember(entry.id, demoTitles) { mentionedDemos(entry, demoTitles) }
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 5.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
@@ -267,18 +276,26 @@ private fun DemoChip(demo: DemoEntry, onClick: () -> Unit) {
  * chip, anything vaguer gets none. Fuzzy matching here would produce chips that
  * open the wrong demo, which is worse than no chip at all — and titles shorter
  * than [MIN_TITLE_MATCH] characters are skipped for the same reason, since a
- * two-word generic title would match half the changelog.
+ * short generic title would match half the changelog.
+ *
+ * Pure, and fed a title list resolved once per sheet: resolving ~40 string
+ * resources per row would otherwise run on every row of a scrolling list.
  */
-@Composable
-private fun rememberMentionedDemos(entry: WhatsNewEntry): List<DemoEntry> {
-    val titles = ALL_DEMOS.map { it to stringResource(it.titleRes) }
-    return remember(entry.id, titles.size) {
-        val haystack = entry.plainText.lowercase()
-        titles.filter { (_, title) ->
-            title.length >= MIN_TITLE_MATCH && haystack.contains(title.lowercase())
-        }.map { it.first }.take(MAX_CHIPS)
-    }
+private fun mentionedDemos(
+    entry: WhatsNewEntry,
+    titles: List<Pair<DemoEntry, String>>,
+): List<DemoEntry> {
+    val haystack = entry.plainText.lowercase()
+    return titles
+        .filter { (_, title) -> title.length >= MIN_TITLE_MATCH && haystack.contains(title.lowercase()) }
+        .map { it.first }
+        .take(MAX_CHIPS)
 }
+
+/** Registry titles resolved once, for [mentionedDemos]. */
+@Composable
+private fun rememberDemoTitles(): List<Pair<DemoEntry, String>> =
+    ALL_DEMOS.map { it to stringResource(it.titleRes) }
 
 private const val MIN_TITLE_MATCH = 6
 private const val MAX_CHIPS = 2
