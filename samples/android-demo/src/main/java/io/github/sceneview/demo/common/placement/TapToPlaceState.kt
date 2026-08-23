@@ -32,8 +32,12 @@ data class PlacementSpec(
     val assetLocation: String,
     /** User-facing name — drives "Tap a surface to place {name}". */
     val displayName: String,
-    /** Passed to `ModelNode(scaleToUnits = …)`. Both surfaces use 0.3f today. */
-    val scaleToUnits: Float = 0.3f,
+    /**
+     * The object's real-world size in metres, passed to `ModelNode(scaleToUnits = …)`.
+     * This is what 100 % means on the pinch readout — see
+     * [PlacementModel.realWorldSizeMeters] (#3326).
+     */
+    val realWorldSizeMeters: Float = 0.3f,
     /**
      * Optional per-asset rotation override. `null` ⇒ the session applies
      * [io.github.sceneview.demo.demos.internal.DemoMath.placementRotationFor]
@@ -107,6 +111,31 @@ class TapToPlaceState internal constructor() {
     var activeGesture: PlacementGesture? by mutableStateOf(null)
         internal set
 
+    /**
+     * Percentage of real-world size the model under the live pinch currently sits at, or
+     * `null` when no pinch is in flight (#3326).
+     *
+     * Scene Viewer's readout: the number is only on screen while the user is resizing, and
+     * `100` is the value the gesture snaps to — see [PlacementScale].
+     */
+    var scalePercent: Int? by mutableStateOf(null)
+        internal set
+
+    /**
+     * `true` while the live pinch sits exactly at real-world size, so the readout can
+     * emphasise the detent it just snapped into.
+     */
+    var isRealWorldSize: Boolean by mutableStateOf(false)
+        internal set
+
+    /**
+     * Timestamp (`SystemClock.uptimeMillis`) of the most recent placement, or `0` when
+     * nothing has been placed. Opens the one-shot "drag / twist / pinch" hint window —
+     * see [PLACEMENT_GESTURE_HINT_MS].
+     */
+    var lastPlacedAtMillis: Long by mutableStateOf(0L)
+        internal set
+
     internal val placedModels = mutableStateListOf<PlacedModel>()
     internal var nextId: Int = 0
     val placedCount: Int get() = placedModels.size
@@ -130,6 +159,13 @@ class TapToPlaceState internal constructor() {
     fun clearAll() {
         placedModels.forEach { runCatching { it.anchor.detach() } }
         placedModels.clear()
+        // Reset the interaction read-outs too: a cleared scene has no live pinch and no
+        // "you just placed something" window, and leaving either latched would keep a
+        // stale "100 %" or a stale gesture hint on an empty room (#3326).
+        activeGesture = null
+        scalePercent = null
+        isRealWorldSize = false
+        lastPlacedAtMillis = 0L
     }
 }
 
