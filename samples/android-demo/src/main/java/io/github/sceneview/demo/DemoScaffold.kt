@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -559,6 +560,13 @@ private fun BoxScope.DemoIdentityRow(
  * raises [io.github.sceneview.demo.feedback.FeedbackOpenRequest] exactly as the
  * former top-bar action did (#1930); Reset keeps `RESET_ACTION` (#1966). The
  * QA-mode toggle moved here from the long-press on the deleted peek chip.
+ *
+ * `wrapContentSize(Alignment.TopEnd)` on the anchor [Box] is the documented
+ * Compose fix for a menu anchored to a button flush against the trailing edge
+ * of the screen (AndroidX b/168594123, "DropdownMenu is positioned strangely
+ * for toggles up against the edge of the screen") — exactly this button's
+ * position, last in the identity row on every demo screen. Without it the
+ * `DropdownMenu` opened detached from the glass button it belongs to (#3323).
  */
 @Composable
 private fun DemoOverflowMenu(
@@ -567,7 +575,7 @@ private fun DemoOverflowMenu(
     haptic: SceneViewHaptic,
 ) {
     var open by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
         GlassIconButton(
             icon = Icons.Filled.MoreVert,
             contentDescription = stringResource(R.string.demo_menu_cd),
