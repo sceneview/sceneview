@@ -116,6 +116,7 @@
     <!-- Placement coaching — ONE line at a time, Scene Viewer parity (#3326).
          See PlacementInteraction.placementCoaching for which one shows when. -->
     <string name="ar_coach_generic_model">this model</string>
+    <string name="ar_coach_unavailable">AR couldn\'t start — check that ARCore is available and try again</string>
     <string name="ar_coach_point_at_surface">Point at a surface to place %1$s</string>
     <string name="ar_coach_tap_to_place">Tap to place %1$s</string>
     <string name="ar_coach_gesture_hint">Drag to move · two fingers to turn · pinch to resize</string>

@@ -442,6 +442,22 @@ fun BoxScope.TapToPlaceStatusOverlays(
         gestureHintVisible = false
     }
 
+    // Did AR simply never start? `ARCameraInitScrim` covers the wait, then dismisses
+    // itself on a timeout whether or not a frame arrived — so past that point INITIALIZING
+    // has no affordance at all unless this one speaks. Keyed on the state, so leaving
+    // INITIALIZING cancels the timer and clears the flag; a session that starts late can
+    // never leave a stale "couldn't start" line behind it (#3326).
+    val initializing = state.uxState == TapToPlaceUxState.INITIALIZING
+    var startupStalled by remember { mutableStateOf(false) }
+    LaunchedEffect(initializing) {
+        if (!initializing) {
+            startupStalled = false
+            return@LaunchedEffect
+        }
+        delay(PLACEMENT_STARTUP_STALL_MS)
+        startupStalled = true
+    }
+
     // Surface discovery, tracking loss and the first-run coaching are the guide's job.
     //
     // The bottom padding is not decoration: the guide anchors its pill 40 dp off the bottom
@@ -462,9 +478,13 @@ fun BoxScope.TapToPlaceStatusOverlays(
         uxState = state.uxState,
         placedCount = state.placedCount,
         gestureHintVisible = gestureHintVisible,
+        startupStalled = startupStalled,
     )
     val modelLabel = nextModelLabel ?: stringResource(R.string.ar_coach_generic_model)
     val coachingText = when (coaching) {
+        PlacementCoachingMessage.AR_UNAVAILABLE ->
+            stringResource(R.string.ar_coach_unavailable)
+
         PlacementCoachingMessage.POINT_AT_SURFACE ->
             stringResource(R.string.ar_coach_point_at_surface, modelLabel)
 
@@ -502,7 +522,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
         // `text` animates the pill out, so "say nothing" needs no wrapper here.
         DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
             text = coachingText,
-            tone = DemoStatusTone.Guidance,
+            tone = coachingTone(coaching),
             icon = coachingIcon(coaching),
         )
 
@@ -515,17 +535,30 @@ fun BoxScope.TapToPlaceStatusOverlays(
 }
 
 /**
+ * The severity of a coaching line.
+ *
+ * `Guidance` for everything the user can act on with their hands — the tone means "working,
+ * but waiting on you to do something physical". [PlacementCoachingMessage.AR_UNAVAILABLE]
+ * is the one `Blocked` line: nothing the user does with the phone will fix a session that
+ * failed to create, which is exactly what that tone is reserved for in `DESIGN.md`.
+ */
+private fun coachingTone(message: PlacementCoachingMessage?): DemoStatusTone = when (message) {
+    PlacementCoachingMessage.AR_UNAVAILABLE -> DemoStatusTone.Blocked
+    else -> DemoStatusTone.Guidance
+}
+
+/**
  * The leading indicator for a coaching line.
  *
- * `Guidance` is the tone throughout — the user is being asked to do something physical —
- * so the icon carries the difference between "point somewhere else", "you can tap now" and
- * "here is what your fingers can do".
+ * The tone is `Guidance` for all but one of these, so the icon carries the difference
+ * between "point somewhere else", "you can tap now" and "here is what your fingers can do".
+ * `AR_UNAVAILABLE` passes `null` and inherits its tone's own error glyph.
  */
 private fun coachingIcon(message: PlacementCoachingMessage?): ImageVector? = when (message) {
     PlacementCoachingMessage.POINT_AT_SURFACE -> Icons.Rounded.CenterFocusWeak
     PlacementCoachingMessage.TAP_TO_PLACE -> Icons.Rounded.TouchApp
     PlacementCoachingMessage.GESTURE_HINT -> Icons.Rounded.OpenWith
-    null -> null
+    PlacementCoachingMessage.AR_UNAVAILABLE, null -> null
 }
 
 /**

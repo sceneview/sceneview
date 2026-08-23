@@ -227,7 +227,16 @@ fun ARCameraInitScrim(
  * frame normally arrives in ~1–3 s; 8 s is comfortably past that, so the timeout only
  * trips when the session is genuinely stuck (no camera, hard session failure).
  */
-private const val AR_CAMERA_INIT_SCRIM_TIMEOUT_MS = 8_000L
+/**
+ * How long [ARCameraInitScrim] covers a still-black AR viewport before giving up and
+ * dismissing itself, milliseconds (#2484).
+ *
+ * `internal` rather than private since #3326: the placement screen's coaching layer has to
+ * start speaking exactly where this stops, and a second hardcoded `8_000` over there would
+ * be arithmetic that goes stale the first time this one is tuned. See
+ * `PLACEMENT_STARTUP_STALL_MS`.
+ */
+internal const val AR_CAMERA_INIT_SCRIM_TIMEOUT_MS = 8_000L
 
 /**
  * Resolves the ARCore playback dataset an AR demo should replay, or `null` for a normal

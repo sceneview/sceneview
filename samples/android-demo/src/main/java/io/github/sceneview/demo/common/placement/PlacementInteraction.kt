@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.common.placement
 
+import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -152,6 +153,19 @@ object PlacementEntrance {
  * `strings.xml` where it can be translated.
  */
 enum class PlacementCoachingMessage {
+    /**
+     * ARCore never started: the flow is still in
+     * [TapToPlaceUxState.INITIALIZING] long after [ARCameraInitScrim]
+     * [gave up][AR_CAMERA_INIT_SCRIM_TIMEOUT_MS] and dismissed itself.
+     *
+     * Without this the screen is a dead end — a black viewport with no words on it,
+     * because the scrim that was explaining the wait has removed itself and every other
+     * coaching state is gated on a session that will never arrive. Saying so is not an
+     * error surface; it is the coaching line telling the truth about the phase it is
+     * already responsible for.
+     */
+    AR_UNAVAILABLE,
+
     /** Camera is up, a surface is tracked, but the reticle is not on one. */
     POINT_AT_SURFACE,
 
@@ -161,6 +175,16 @@ enum class PlacementCoachingMessage {
     /** Just placed — the one-shot "drag / twist / pinch" hint. */
     GESTURE_HINT,
 }
+
+/**
+ * How long the flow may sit in [TapToPlaceUxState.INITIALIZING] before the coaching line
+ * concedes that AR is not going to start, milliseconds.
+ *
+ * Derived from the init scrim's own timeout rather than restated, so the two surfaces can
+ * never both be talking (or both be silent) after someone tunes one of them: the scrim owns
+ * the wait, this owns the second after it gives up.
+ */
+const val PLACEMENT_STARTUP_STALL_MS = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS + 1_000L
 
 /**
  * How long the post-placement gesture hint stays on screen, milliseconds. Long enough to
@@ -180,18 +204,34 @@ const val PLACEMENT_GESTURE_HINT_MS = 3_500L
  * to `PlaneDiscoveryGuide` (the ARCore-Elements onboarding, with its animated hand hint),
  * and duplicating them in a second pill is the collision this function exists to end.
  *
+ * The initialising phase belongs to `ARCameraInitScrim` on the same terms — with one
+ * exception, which is [PlacementCoachingMessage.AR_UNAVAILABLE]. That scrim dismisses
+ * itself after [AR_CAMERA_INIT_SCRIM_TIMEOUT_MS] whether or not a frame ever arrived, so on
+ * a device where ARCore cannot start (session creation fails, ARCore missing or too old)
+ * the screen would otherwise be left as a black viewport with nothing on it and no phase
+ * willing to claim it. Delegation only works while the delegate is still on screen.
+ *
  * @param uxState the camera/plane/reticle state machine value.
  * @param placedCount how many models are in the scene.
  * @param gestureHintVisible whether the post-placement hint window is still open.
+ * @param startupStalled whether the flow has been stuck in
+ *   [TapToPlaceUxState.INITIALIZING] for [PLACEMENT_STARTUP_STALL_MS]. Only consulted in
+ *   that state, so a stale `true` can never surface once a session has started — the state
+ *   machine leaves `INITIALIZING` on the first camera frame and never returns.
  */
 fun placementCoaching(
     uxState: TapToPlaceUxState,
     placedCount: Int,
     gestureHintVisible: Boolean,
+    startupStalled: Boolean = false,
 ): PlacementCoachingMessage? = when {
-    // PlaneDiscoveryGuide owns everything before a surface exists.
-    uxState == TapToPlaceUxState.INITIALIZING ||
-        uxState == TapToPlaceUxState.TRACKING_LOST ||
+    // Nothing has started yet. The init scrim explains the wait; we only speak if it has
+    // given up and the wait turned out to be permanent.
+    uxState == TapToPlaceUxState.INITIALIZING ->
+        if (startupStalled) PlacementCoachingMessage.AR_UNAVAILABLE else null
+
+    // PlaneDiscoveryGuide owns the rest of the pre-surface phases.
+    uxState == TapToPlaceUxState.TRACKING_LOST ||
         uxState == TapToPlaceUxState.SCANNING -> null
 
     gestureHintVisible -> PlacementCoachingMessage.GESTURE_HINT

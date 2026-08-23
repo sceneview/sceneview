@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.common.placement
 
+import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -179,6 +180,113 @@ class PlacementInteractionTest {
             PlacementCoachingMessage.GESTURE_HINT,
             placementCoaching(TapToPlaceUxState.AIMING, placedCount = 1, gestureHintVisible = true),
         )
+    }
+
+    // -- Coaching: the "AR never started" fallback ---------------------------
+
+    @Test
+    fun `the init scrim owns the wait, so a fresh INITIALIZING says nothing`() {
+        // While the scrim is still up it is showing a spinner and "Starting camera…".
+        // A second line saying the same thing is the duplication this whole layer removed.
+        assertNull(
+            placementCoaching(
+                TapToPlaceUxState.INITIALIZING,
+                placedCount = 0,
+                gestureHintVisible = false,
+                startupStalled = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `a stalled INITIALIZING says AR could not start`() {
+        // Past the scrim's own timeout it has dismissed itself, and without this the screen
+        // is a black viewport with no words on it and no phase willing to claim it.
+        assertEquals(
+            PlacementCoachingMessage.AR_UNAVAILABLE,
+            placementCoaching(
+                TapToPlaceUxState.INITIALIZING,
+                placedCount = 0,
+                gestureHintVisible = false,
+                startupStalled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `the fallback defaults to off, so it is opt-in per call site`() {
+        assertNull(
+            placementCoaching(
+                TapToPlaceUxState.INITIALIZING,
+                placedCount = 0,
+                gestureHintVisible = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `a stalled flag can never surface once a session has started`() {
+        // The load-bearing invariant. The state machine leaves INITIALIZING on the first
+        // camera frame and never returns, so a stale `true` must be unreachable from every
+        // other state — exhaustively, and under every combination of the other two inputs,
+        // because the alternative is telling a user whose AR is working that it isn't.
+        val started = TapToPlaceUxState.entries.filter { it != TapToPlaceUxState.INITIALIZING }
+        started.forEach { uxState ->
+            listOf(0, 1, 5).forEach { placedCount ->
+                listOf(false, true).forEach { hintVisible ->
+                    assertNotEquals(
+                        "$uxState must never claim AR failed to start",
+                        PlacementCoachingMessage.AR_UNAVAILABLE,
+                        placementCoaching(
+                            uxState = uxState,
+                            placedCount = placedCount,
+                            gestureHintVisible = hintVisible,
+                            startupStalled = true,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a stalled flag does not disturb the states that follow a started session`() {
+        // Same inputs as the happy-path tests above, with the stale flag set: the answers
+        // must be identical, or the fallback has leaked into the normal vocabulary.
+        assertEquals(
+            PlacementCoachingMessage.POINT_AT_SURFACE,
+            placementCoaching(
+                TapToPlaceUxState.AIMING,
+                placedCount = 0,
+                gestureHintVisible = false,
+                startupStalled = true,
+            ),
+        )
+        assertEquals(
+            PlacementCoachingMessage.TAP_TO_PLACE,
+            placementCoaching(
+                TapToPlaceUxState.READY,
+                placedCount = 0,
+                gestureHintVisible = false,
+                startupStalled = true,
+            ),
+        )
+        assertNull(
+            placementCoaching(
+                TapToPlaceUxState.SCANNING,
+                placedCount = 0,
+                gestureHintVisible = false,
+                startupStalled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `the fallback waits until after the init scrim has given up`() {
+        // Derived, not restated: if the two were equal the scrim's exit and this line's
+        // entrance would race on the same frame, and if this were the smaller number they
+        // would be on screen together saying different things about the same phase.
+        assertTrue(PLACEMENT_STARTUP_STALL_MS > AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
     }
 
     @Test
