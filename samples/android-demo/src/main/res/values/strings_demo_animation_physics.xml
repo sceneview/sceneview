@@ -6,7 +6,7 @@
      still referenced by the Physics sub-mode, so they migrate here verbatim. -->
 <resources>
     <string name="demo_animation_physics_title">Animation &amp; Physics</string>
-    <string name="demo_animation_physics_subtitle">Skeletal animation playback and rigid-body simulation</string>
+    <string name="demo_animation_physics_subtitle">Skeletal clips plus rigid-body physics</string>
     <string name="demo_physics_picker_label">What to drop</string>
     <string name="demo_physics_picker_spheres">Bundled spheres</string>
     <string name="demo_physics_picker_subtitle">Crash-test bodies are CC-BY models from Sketchfab. Switching the picker resets the scene so the new shape is what falls.</string>

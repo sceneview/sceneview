@@ -4,6 +4,7 @@
 // @category    advanced
 // @available   true
 // @icon        figure.walk
+// @order       70
 import SwiftUI
 
 enum PhysicsScene: DemoScene {

@@ -16,6 +16,8 @@ object VideoRecordingFragment : DemoFragment {
         subtitleRes = R.string.demo_video_recording_subtitle,
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Videocam,
+        order = 17,
+        tags = setOf("video", "recording", "mp4", "capture", "encoder"),
     )
 
     @Composable

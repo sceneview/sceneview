@@ -16,6 +16,8 @@ object PointAndAskFragment : DemoFragment {
         subtitleRes = R.string.demo_point_and_ask_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Psychology,
+        order = 39,
+        tags = setOf("ar", "ai", "gemini", "on-device", "llm", "vision"),
     )
 
     @Composable

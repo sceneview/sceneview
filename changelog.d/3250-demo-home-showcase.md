@@ -1,0 +1,3 @@
+<!-- category: Changed -->
+
+Android demo app: the home is now a showcase — a hero card, category filter chips and a grid of media cards, with the online gallery reached from a closing "Browse online models" card instead of a tab (tabs are Showcase · AR View · About). Every demo ships a generated 800×640 light + dark preview image in `res/drawable-nodpi/` (Gemini image-to-image from real captures), shown on the home card and as the scene's loading cover. `DESIGN.md` gains the app type scale, home chip/hero tokens, stage colour, glass-over-media, dock and motion tokens, and a preview-image art-direction section.

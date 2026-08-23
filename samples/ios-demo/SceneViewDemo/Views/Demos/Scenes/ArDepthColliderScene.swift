@@ -6,6 +6,8 @@
 // @icon        circle.grid.cross.fill
 // @iosOnly     true
 // @status      knownIssue
+// @order       26
+// @tags        ar,depth,physics,collision,rigid-body
 import SwiftUI
 
 enum ArDepthColliderScene: DemoScene {

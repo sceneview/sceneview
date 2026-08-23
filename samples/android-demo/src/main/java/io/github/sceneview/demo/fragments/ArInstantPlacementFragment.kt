@@ -16,6 +16,8 @@ object ArInstantPlacementFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_instant_placement_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Bolt,
+        order = 23,
+        tags = setOf("ar", "instant-placement", "plane", "anchor", "arcore"),
     )
 
     @Composable

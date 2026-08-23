@@ -5,6 +5,8 @@
 // @available   true
 // @icon        camera.metering.spot
 // @iosOnly     true
+// @order       29
+// @tags        ar,point-cloud,feature-points,tracking
 import SwiftUI
 
 enum ArPointCloudScene: DemoScene {

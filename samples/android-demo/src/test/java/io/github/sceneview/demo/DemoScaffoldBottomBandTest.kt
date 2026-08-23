@@ -1,6 +1,7 @@
 package io.github.sceneview.demo
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -10,6 +11,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -26,32 +29,20 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The `bottomOverlay` slot must clear the Settings FAB cluster **at every font
- * scale** — measured, not eyeballed.
+ * The `bottomOverlay` slot must sit **above the dock** at every font scale —
+ * measured, not eyeballed.
  *
- * ## The regression this pins (#3229)
+ * ## The regression this pins (#3229, carried over to the dock)
  *
- * [SETTINGS_FAB_RESERVED_SPACE] was a constant, `104.dp`, derived from a peek
- * chip measured at ≈ 79 dp — with the English word "Settings", at font scale
- * 1.0. The chip is *text*. At font scale 1.3 it grows past the band reserved
- * for it, and an overlay that faithfully followed the documented idiom
- * (`padding(end = settingsFabReservedSpace)`) ends up **underneath** the FAB
- * anyway. Device-QA on the Pixel_7a emulator hit it on two demos at once:
- * `ar-terrain-anchor`'s first-launch banner and `ar-measure`'s "Clear" button.
- * Both were clean at 1.0.
- *
- * That is the whole difficulty. A constant clearance fails only in the
- * configurations nobody screenshots — a larger font scale, a longer
- * translation, a demo passing a wordier `peekHeader` — so no amount of looking
- * at the app in English at 1.0x can find it, and the overlap when it does
- * happen is ~4 dp, which a Roborazzi golden diff shows as a smudge a human is
- * meant to notice. Hence an arithmetic assertion on real measured bounds: it
- * either clears or it does not, and CI can tell.
- *
- * The fix is to measure the cluster instead of predicting it, so these tests
- * deliberately assert the *invariant* ("the overlay's end edge never reaches
- * the chip's start edge"), not the constant — a future chip redesign should
- * keep them green without a re-record.
+ * [SETTINGS_FAB_RESERVED_SPACE] used to be a constant derived from a peek chip
+ * measured at font scale 1.0 — and at 1.3 the chip outgrew it, putting two
+ * demos' bottom overlays under the FAB. The chip is gone and the dock is a
+ * bottom-centre floating toolbar, but the shape of the defect is the same: a
+ * clearance that is predicted rather than measured fails only in the
+ * configurations nobody screenshots. So the scaffold measures the dock band and
+ * stacks the overlay above it, and these tests assert the *invariant* ("the
+ * overlay's bottom edge never reaches the dock's top edge") on real bounds, not
+ * the constant — a future dock redesign should keep them green.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
@@ -62,75 +53,115 @@ class DemoScaffoldBottomBandTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun bottomOverlay_clearsTheSettingsChip_atDefaultFontScale() {
-        assertOverlayClearsChip(fontScale = 1.0f)
+    fun bottomOverlay_clearsTheDock_atDefaultFontScale() {
+        assertOverlayClearsDock(fontScale = 1.0f)
     }
 
     @Test
-    fun bottomOverlay_clearsTheSettingsChip_atLargeFontScale() {
-        // 1.3 is the scale device-QA found the overlap at. 1.0 passing is not
-        // evidence for this one: the whole defect is that they disagree.
-        assertOverlayClearsChip(fontScale = 1.3f)
+    fun bottomOverlay_clearsTheDock_atLargeFontScale() {
+        // 1.3 is the scale device-QA found the historical overlap at. 1.0 passing
+        // is not evidence for this one: the whole defect is that they disagree.
+        assertOverlayClearsDock(fontScale = 1.3f)
     }
 
     @Test
-    fun bottomOverlay_clearsTheSettingsChip_atMaximumFontScale() {
-        // Android's accessibility slider goes to 2.0. A band sized for 1.3
-        // would be the same bug one notch further out.
-        assertOverlayClearsChip(fontScale = 2.0f)
+    fun bottomOverlay_clearsTheDock_atMaximumFontScale() {
+        // Android's accessibility slider goes to 2.0.
+        assertOverlayClearsDock(fontScale = 2.0f)
     }
 
     @Test
-    fun bottomOverlay_clearsAWordyPeekHeader() {
-        // `peekHeader` puts a demo-authored string on the chip in place of
-        // "Settings" (#1152 Stage 3), so a demo can widen the cluster without
-        // touching the scaffold at all. `ARStreetscapeDemo`-length text at a
-        // large scale is the worst realistic case.
-        assertOverlayClearsChip(
-            fontScale = 1.3f,
-            peekHeader = "12 anchors placed · streaming",
-        )
-    }
-
-    @Test
-    fun bottomOverlay_keepsUsableWidth_besideAWordyChip() {
-        // The opposite failure, and the reason the peek chip is now capped and
-        // the inset is end-only: a reserve that clears the chip by *starving*
-        // the overlay is not a fix. Both halves were needed. Uncapped, the chip
-        // takes 230 dp of a 411 dp screen; under the symmetric inset this idiom
-        // used to prescribe, the reserve is spent twice and the centred pill
-        // comes out negative. `DemoStatusBanner` now insets the end only, so
-        // what is left is `411 - reserve` rather than `411 - 2 × reserve`.
-        // Anything at or below half the screen means the chip has stopped
-        // peeking and started occupying.
+    fun statusPill_stacksAboveTheDock_andKeepsUsableWidth() {
+        // `peekHeader` is now a glass status pill at the top of the bottom band.
+        // It must stack with the overlay above the dock, and a wordy header must
+        // not starve the overlay beside it of width — the overlay still spans the
+        // screen, because nothing sits in a bottom corner any more.
         val overlay = measureOverlay(
             fontScale = 1.3f,
             // `ar-measure`'s real first-launch header, verbatim — 38 characters.
             peekHeader = "Tap a surface to drop the first point",
         )
+        val pill = composeRule.onNodeWithTag(DemoScaffoldTestTags.STATUS_PILL)
+            .getUnclippedBoundsInRoot()
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK)
+            .getUnclippedBoundsInRoot()
+
+        assertTrue(
+            "the status pill ends at ${pill.bottom} but the overlay probe starts at " +
+                "${overlay.top} — the band is a Column, its children must stack.",
+            pill.bottom <= overlay.top,
+        )
+        assertTrue(
+            "the overlay probe ends at ${overlay.bottom} but the dock starts at ${dock.top}.",
+            overlay.bottom <= dock.top,
+        )
         val usable = overlay.right - overlay.left
         assertTrue(
-            "a wordy peek header left the bottom overlay $usable wide on a $SCREEN_WIDTH " +
-                "screen. Either the chip stopped being bounded, or the reserve it forces " +
-                "has eaten the overlay it was supposed to sit beside — a banner that " +
-                "cannot hold a sentence is not a fixed banner.",
+            "the bottom overlay is only $usable wide on a $SCREEN_WIDTH screen; with the " +
+                "dock centred below it, the overlay should span the full width.",
             usable > SCREEN_WIDTH / 2,
         )
     }
 
-    private fun assertOverlayClearsChip(fontScale: Float, peekHeader: String? = null) {
-        val overlay = measureOverlay(fontScale, peekHeader)
-        val chip = composeRule
-            .onNodeWithTag(DemoScaffoldTestTags.SETTINGS_PEEK)
+    @Test
+    fun bottomOverlay_usesTheWholeBottomEdge_whenThereIsNoDock() {
+        // No `controls`, no `dock`, no accent → no dock is composed at all, and the
+        // overlay must reach the bottom of the scene area instead of reserving a
+        // band for chrome that does not exist.
+        composeRule.setContent {
+            ScaledDensity(1.0f) {
+                SceneViewDemoTheme(darkTheme = false) {
+                    DemoScaffold(
+                        title = "Band",
+                        onBack = {},
+                        bottomOverlay = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag(OVERLAY_PROBE),
+                            )
+                        },
+                    ) {
+                        Box(Modifier.fillMaxSize().testTag(SCENE_PROBE))
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).assertDoesNotExist()
+        val overlay = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
+        val scene = composeRule.onNodeWithTag(SCENE_PROBE).getUnclippedBoundsInRoot()
+        assertTrue(
+            "without a dock the overlay ends at ${overlay.bottom} while the scene ends at " +
+                "${scene.bottom} — a band is being reserved for chrome that is not there.",
+            overlay.bottom >= scene.bottom - 1.dp,
+        )
+    }
+
+    @Test
+    fun dock_carriesTheControlsItem_withTheHistoricalTagAndLabel() {
+        // `DemoInteractionTest` (androidTest) opens the controls sheet through
+        // `By.res("demo-settings-fab")` or `By.desc("Demo settings")`. Both must
+        // survive the move from a FAB to a dock item.
+        measureOverlay(fontScale = 1.0f)
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB)
+            .assertIsDisplayed()
+            .assertContentDescriptionEquals("Demo settings")
+    }
+
+    private fun assertOverlayClearsDock(fontScale: Float) {
+        val overlay = measureOverlay(fontScale)
+        val dock = composeRule
+            .onNodeWithTag(DemoScaffoldTestTags.DOCK)
             .getUnclippedBoundsInRoot()
 
         assertTrue(
-            "at fontScale $fontScale the bottom overlay ends at ${overlay.right} but the " +
-                "Settings peek chip starts at ${chip.left} — they overlap by " +
-                "${overlay.right - chip.left}. The reserve is measured from the real " +
-                "cluster; if this fails, something stopped feeding that measurement " +
-                "back into DemoBottomOverlayScope.settingsFabReservedSpace.",
-            overlay.right <= chip.left,
+            "at fontScale $fontScale the bottom overlay ends at ${overlay.bottom} but the " +
+                "dock starts at ${dock.top} — they overlap by ${overlay.bottom - dock.top}. " +
+                "The reserve is measured from the real dock band; if this fails, something " +
+                "stopped feeding that measurement into the bottomOverlay slot.",
+            overlay.bottom <= dock.top,
         )
     }
 
@@ -142,14 +173,12 @@ class DemoScaffoldBottomBandTest {
                         title = "Band",
                         onBack = {},
                         peekHeader = peekHeader,
-                        // Non-null `controls` is what makes the FAB — and
+                        // Non-null `controls` is what makes the dock — and
                         // therefore the reserve — exist at all.
                         controls = { Text("a setting") },
                         bottomOverlay = {
-                            // The documented full-width idiom, verbatim. Its
-                            // end edge lands exactly at
-                            // `width - settingsFabReservedSpace`, which makes
-                            // the assertion below an exact read of the reserve.
+                            // The documented full-width idiom, verbatim. The
+                            // end inset is now a no-op; the clearance is vertical.
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -177,6 +206,7 @@ class DemoScaffoldBottomBandTest {
 
     private companion object {
         const val OVERLAY_PROBE = "bottom-overlay-probe"
+        const val SCENE_PROBE = "scene-probe"
 
         /** Matches the `w411dp` Robolectric qualifier on this class. */
         val SCREEN_WIDTH = 411.dp

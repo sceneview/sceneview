@@ -5,6 +5,7 @@
 // @available   true
 // @icon        lightbulb.max.fill
 // @iosOnly     true
+// @order       73
 import SwiftUI
 
 enum ArLightingScene: DemoScene {

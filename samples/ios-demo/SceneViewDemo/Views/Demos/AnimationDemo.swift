@@ -114,7 +114,7 @@ struct AnimationDemo: View {
         sceneContent
             .assetSourcePill(assetSource,
                              placeholder: selectedSubject.streamedSlug?.fallbackRole == .placeholder)
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
             .task {

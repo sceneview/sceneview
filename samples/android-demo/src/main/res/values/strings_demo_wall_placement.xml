@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_wall_placement_title">Wall Placement</string>
-    <string name="demo_wall_placement_subtitle">Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style</string>
+    <string name="demo_wall_placement_subtitle">Mount a TV on a wall, floor-to-wall aligned</string>
 
     <!-- Onboarding phases, mirroring WallPlacementPhase. -->
     <string name="wall_phase_finding_floor">Point at the floor and move slowly to scan it</string>

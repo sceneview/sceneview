@@ -4,5 +4,5 @@
      `R.string.demo_ar_depth_of_field_title` etc. remains globally resolvable. -->
 <resources>
     <string name="demo_ar_depth_of_field_title">AR Depth of Field</string>
-    <string name="demo_ar_depth_of_field_subtitle">Tap to focus — real-world bokeh blur</string>
+    <string name="demo_ar_depth_of_field_subtitle">Tap to focus, real-world bokeh blur</string>
 </resources>

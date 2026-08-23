@@ -21,6 +21,8 @@ object AnimationPhysicsFragment : DemoFragment {
         subtitleRes = R.string.demo_animation_physics_subtitle,
         category = DemoCategory.BASICS_3D,
         icon = Icons.Filled.RotateRight,
+        order = 4,
+        tags = setOf("animation", "skeletal", "physics", "rigid-body", "collision", "gltf"),
     )
 
     @Composable

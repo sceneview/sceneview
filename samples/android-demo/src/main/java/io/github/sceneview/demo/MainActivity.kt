@@ -18,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -232,6 +234,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
     val navController = rememberNavController()
+    val requestedRoute = DemoSettings.requestedRoute
+    LaunchedEffect(requestedRoute) {
+        requestedRoute?.let {
+            DemoSettings.requestedRoute = null
+            navController.navigate(it)
+        }
+    }
 
     // Watch for deep-link intents. On a non-null id we either navigate
     // directly (the demo list is the start destination, so navigate adds
@@ -277,8 +286,15 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // demo <id>`) and the in-app update banner remain wired up.
                 RootScreen(onDemoClick = { id -> navController.navigate("demo/$id") })
             }
-            composable("demo/{id}") { backStackEntry ->
+            composable(
+                route = "demo/{id}?model={model}",
+                arguments = listOf(
+                    navArgument("id") { type = NavType.StringType },
+                    navArgument("model") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
+                DemoSettings.requestedModel = backStackEntry.arguments?.getString("model")
                 val onBack: () -> Unit = { navController.popBackStack() }
                 DemoRouter(id = id, onBack = onBack)
             }

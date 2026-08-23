@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
-    <string name="demo_contact_shadow_preview_subtitle">Grounded vs floating, side by side — one box bounces and lands (anchored by a procedural contact shadow), its twin levitates high with none, plus a wall-mounted TV no shadow map can serve. Non-AR, runs on any emulator</string>
+    <string name="demo_contact_shadow_preview_subtitle">Procedural contact shadow, grounded vs floating</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
     <!-- Split from a single "Shadow intensity: %d%%" string when the demos moved to the shared

@@ -16,6 +16,8 @@ object ArCollaborativeFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_collaborative_subtitle,
         category = DemoCategory.AUGMENTED_REALITY,
         icon = Icons.Filled.Groups,
+        order = 42,
+        tags = setOf("ar", "multi-user", "sync", "collaboration", "transport"),
     )
 
     @Composable

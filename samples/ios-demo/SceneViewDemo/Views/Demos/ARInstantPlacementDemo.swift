@@ -118,7 +118,7 @@ struct ARInstantPlacementDemo: View {
                 Spacer()
             }
         }
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }

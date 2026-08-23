@@ -6,6 +6,6 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_fog">Fog</string>
-    <string name="demo_fog_subtitle">Linear, exponential, and height fog</string>
+    <string name="demo_fog_subtitle">Linear, exponential and height fog</string>
     <string name="demo_fog_desc">Height-based atmospheric volumetric fog</string>
 </resources>

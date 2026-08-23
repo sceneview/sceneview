@@ -4,6 +4,7 @@
 // @category    basics3D
 // @available   true
 // @icon        tree.fill
+// @order       60
 import SwiftUI
 
 enum MultiModelScene: DemoScene {

@@ -16,6 +16,8 @@ object LightingFragment : DemoFragment {
         subtitleRes = R.string.demo_lighting_subtitle,
         category = DemoCategory.LIGHTING_ENVIRONMENT,
         icon = Icons.Filled.Lightbulb,
+        order = 2,
+        tags = setOf("light", "directional", "point", "spot", "shadow", "pbr"),
     )
 
     @Composable

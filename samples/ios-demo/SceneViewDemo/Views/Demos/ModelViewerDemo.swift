@@ -1,79 +1,122 @@
 import SwiftUI
 import RealityKit
 import SceneViewSwift
+#if os(iOS)
+import ARKit
+#endif
 
-/// Full-screen 3D model viewer — bundled hero with a "Surprise me" picker.
+/// Full-screen 3D model viewer — the iOS twin of Android's `ModelViewerDemo.kt`
+/// after the showcase redesign.
 ///
-/// Mirrors the Android `ModelViewerDemo` (`samples/android-demo/.../ModelViewerDemo.kt`).
+/// **Stage.** A `#0B0F16` stage (`SceneViewTokens.Stage.background`), no
+/// auto-rotate: the model sits still on its fitted framing (12 % margin,
+/// `framingMargin(1.12)`) until the user orbits it. Under `qa_mode` the
+/// authored three-quarter pose is what a capture lands on.
 ///
-/// **Default state.** Loads the bundled `cyberpunk_hovercar.usdz` (the iOS analogue
-/// of Android's `khronos_damaged_helmet.glb`) so the demo renders identically with
-/// or without a Sketchfab API key — the first frame the user sees is the same hero
-/// shot. The camera orbits the model so lights and reflections hit the same surface
-/// every frame.
+/// **Dock.** Recenter · Environment · Models · Animate (only when the loaded
+/// entity has animation clips) · accent "View in AR", enabled when ARKit world
+/// tracking is available, which presents the existing `ARPlacementDemo` armed
+/// with the selected bundled model.
 ///
-/// **"Surprise me" button.** When the user taps the extended button at the
-/// bottom-trailing edge, the demo searches Sketchfab's catalogue for a
-/// downloadable CC-BY model and streams it through ``SketchfabAssetResolver``,
-/// then loads it into RealityKit. The streamed pick replaces the bundled hero
-/// for the rest of the session (or until the next tap). When no API key is
-/// configured (App Store builds), the button is hidden — there is no plausible
-/// "Surprise me" without the Sketchfab catalogue.
+/// **Sheets.** Models — the bundled USDZ grid (1:1 `model_thumb_*` tiles copied
+/// from Android) plus the "Surprise me" Sketchfab row (hidden without an API
+/// key) and "Browse online models"; Environment — the bundled HDRs with their
+/// `env_thumb_*` tiles, an IBL intensity slider and a skybox toggle.
 ///
-/// Honours the umbrella's hard rules:
-///   - **No Sketchfab WebView / external link.** Local file URLs only.
-///   - **No network required to render something useful.** Cold cache → the
-///     bundled hero remains visible.
-///   - **No broken affordance when offline.** Surprise button hidden when no
-///     API key is configured.
+/// Honours the umbrella's hard rules: no Sketchfab WebView, local file URLs
+/// only, something useful renders offline (the bundled hero).
 struct ModelViewerDemo: View {
-    /// Bundled hero shown on first frame and as the offline default.
-    private static let bundledHero = "cyberpunk_hovercar"
+    /// Bundled models offered in the Models sheet. The Khronos set mirrors
+    /// Android's grid; the hovercar is the iOS store hero.
+    private static let bundledModels: [BundledViewerModel] = [
+        BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
+        BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
+        BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
+        BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car"),
+        BundledViewerModel(assetName: "cyberpunk_hovercar", displayName: "Cyberpunk Hovercar"),
+        BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly"),
+    ]
 
-    /// Photo-studio IBL — a lit backdrop, not a room.
-    ///
-    /// `.studio` (the preset Android's model viewer uses, #2114) is a
-    /// *photographed living room*: with the skybox finally rendering (#2896)
-    /// it framed the hero as an interior snapshot with a small car in it.
-    /// Hiding its skybox instead left a dark-grey car on black — the exact
-    /// "dim, dark-on-black" frame #2896 was filed about. `.warm` is an actual
-    /// photo studio (seamless cyclorama, softboxes), so it reads as a product
-    /// shot: bright backdrop, hard highlights down the bodywork, and the
-    /// silhouette separating from the background at every orbit angle.
-    private static let heroEnvironment: SceneEnvironment = .warm
+    /// Bundled HDRs offered in the Environment sheet, in Android's order.
+    private static let environments: [ViewerEnvironment] = [
+        ViewerEnvironment(assetName: "studio", displayName: "Studio"),
+        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm"),
+        ViewerEnvironment(assetName: "sunset", displayName: "Sunset"),
+        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy"),
+        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky"),
+        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night"),
+    ]
 
-    /// Framing margin used only under `qa_mode`, where the orbit is frozen on
-    /// the authored three-quarter pose. Measured on both store device classes
-    /// — see the `.framingMargin` call site for why it differs from the
-    /// interactive value.
+    /// Fitted framing: the bounding sphere plus 12 % of air, which clears the
+    /// dock band at the bottom of the viewport.
+    private static let framingMargin: Float = 1.12
+    /// Under `qa_mode` the pose is frozen, so the store capture fills the frame.
     private static let captureFramingMargin: Float = 0.62
 
+    private enum ViewerSheet: Identifiable {
+        case models, environment
+        var id: Self { self }
+    }
+
+    @State private var selectedModel: BundledViewerModel = ModelViewerDemo.bundledModels[0]
     @State private var loadedNode: ModelNode?
     @State private var loadError: String?
-    @State private var surpriseInFlight: Bool = false
-    /// Transient banner shown when a "Surprise me" roll fails (network error,
-    /// empty search result). Mirrors ``ARPlacementDemo``'s `lastError` capsule.
+    @State private var loadCount = 0
+    @State private var recenterGeneration = 0
+    @State private var sheet: ViewerSheet?
+    @State private var showExplore = false
+    @State private var showAR = false
+
+    @State private var environment: ViewerEnvironment = ModelViewerDemo.environments[0]
+    @State private var iblIntensity: Float = 1
+    @State private var showSkybox = false
+
+    @State private var animationNames: [String] = []
+    @State private var animationBarOpen = false
+    @State private var selectedAnimation = 0
+    @State private var animationPlaying = true
+    @State private var animationProgress: Float = 0
+    @State private var playback: AnimationPlaybackController?
+
+    @State private var surpriseInFlight = false
     @State private var surpriseError: String?
-    /// When non-nil, the demo is rendering a streamed pick instead of the
-    /// bundled hero. We surface the title in the status pill so the user can
-    /// tell which model is on screen right now.
     @State private var streamedDisplayName: String?
-    /// Monotonic count of models loaded into the scene, and the only reliable
-    /// half of the `.contentID(_:)` key. The display name is not: two
-    /// consecutive "Surprise me" rolls can land on models with the *same*
-    /// title, and a key that does not change is a swap that silently does not
-    /// happen. Bumped on every successful load, so the id changes even when
-    /// the name repeats.
-    @State private var loadCount: Int = 0
 
     private let hasSketchfabKey: Bool = SketchfabConfig.apiKey != nil
 
-    /// `-qa_mode 1` / `?qa_mode=1` — freezes the orbit sweep so a capture lands
-    /// on the pose below every time. `DeepLinkRouter` has promised this since
-    /// it was added, but no demo actually read it, so every store capture shot
-    /// whatever azimuth the auto-rotation happened to be at: two runs of the
-    /// same demo produced different poses AND different HDRI backdrops (#2896).
+    /// `-qa_mode 1` / `?qa_mode=1` — keeps the authored pose for captures.
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+
+    private var arSupported: Bool {
+        #if os(iOS) && !targetEnvironment(simulator)
+        return ARWorldTrackingConfiguration.isSupported
+        #else
+        return false
+        #endif
+    }
+
+    private var sceneEnvironment: SceneEnvironment {
+        SceneEnvironment.custom(
+            name: environment.displayName,
+            hdrFile: "\(environment.assetName).hdr",
+            intensity: iblIntensity,
+            showSkybox: showSkybox
+        )
+    }
+
+    private var dock: [DockItem] {
+        var items = [
+            DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 },
+            DockItem(icon: "sun.max", label: "Environment") { sheet = .environment },
+            DockItem(icon: "cube.transparent", label: "Models") { sheet = .models },
+        ]
+        if !animationNames.isEmpty {
+            items.append(DockItem(icon: "play.circle", label: "Animate", selected: animationBarOpen) {
+                withAnimation(SceneViewTokens.Spring.animation) { animationBarOpen.toggle() }
+            })
+        }
+        return items
+    }
 
     /// Raw `-camera_distance <float>` launch-arg override, written by
     /// `SceneViewDemoApp` into `UserDefaults` (#2785). `0` is the "unset"
@@ -96,173 +139,230 @@ struct ModelViewerDemo: View {
 
     var body: some View {
         ZStack {
+            SceneViewTokens.Stage.background.ignoresSafeArea()
             sceneView
             VStack {
                 Spacer()
                 if let surpriseError {
                     errorBanner(surpriseError)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, SceneViewTokens.Space.sm)
                 }
                 if let name = streamedDisplayName {
-                    sourcePill(text: "Streamed: \(name)")
-                        .padding(.bottom, 8)
+                    GlassPill {
+                        Text("Streamed: \(name)")
+                            .font(SceneViewTokens.TypeScale.caption)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                            .lineLimit(1)
+                    }
+                    .padding(.bottom, SceneViewTokens.Space.sm)
                 }
-                if hasSketchfabKey {
-                    surpriseButton
-                        .padding(.bottom, 24)
+                if animationBarOpen && !animationNames.isEmpty {
+                    AnimationBar(
+                        clipNames: animationNames,
+                        selectedClip: $selectedAnimation,
+                        playing: $animationPlaying,
+                        progress: $animationProgress,
+                        onScrub: scrub
+                    )
+                    .padding(.horizontal, SceneViewTokens.Space.md)
+                    .transition(.opacity)
                 }
             }
+            // Stack above the dock band.
+            .padding(.bottom, SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md * 2)
         }
-        .background(Color.black)
+        .demoChrome(
+            title: "Model Viewer",
+            dock: dock,
+            accent: DockItem(icon: "arkit", label: "View in AR", enabled: arSupported) { showAR = true },
+            onReset: resetAll
+        )
+        .sheet(item: $sheet) { which in
+            Group {
+                switch which {
+                case .models:
+                    ModelPickerSheet(
+                        models: Self.bundledModels,
+                        selected: selectedModel,
+                        surpriseAvailable: hasSketchfabKey,
+                        surpriseLoading: surpriseInFlight,
+                        onSelect: { model in
+                            sheet = nil
+                            selectedModel = model
+                            Task { await loadBundled(model) }
+                        },
+                        onSurprise: {
+                            sheet = nil
+                            Task { await rollSurpriseModel() }
+                        },
+                        onBrowse: {
+                            sheet = nil
+                            showExplore = true
+                        }
+                    )
+                case .environment:
+                    EnvironmentSheet(
+                        environments: Self.environments,
+                        selected: environment,
+                        intensity: $iblIntensity,
+                        showSkybox: $showSkybox,
+                        onSelect: { environment = $0 },
+                        onReset: {
+                            environment = Self.environments[0]
+                            iblIntensity = 1
+                            showSkybox = false
+                        }
+                    )
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            #if os(iOS)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationBackground(.regularMaterial)
+            .presentationCornerRadius(SceneViewTokens.Radius.xl)
+            #endif
+        }
+        .sheet(isPresented: $showExplore) {
+            ExploreTab()
+        }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showAR) {
+            NavigationStack {
+                ARPlacementDemo(initialModel: selectedModel.assetName)
+                    .navigationTitle("Tap to Place")
+                    .navigationBarTitleInline()
+            }
+            .environment(\.demoTitle, "Tap to Place")
+        }
+        #endif
         .task {
-            await loadBundledHero()
+            await loadBundled(selectedModel)
+        }
+        .onChange(of: selectedAnimation) { _, index in
+            play(clip: index)
+        }
+        .onChange(of: animationPlaying) { _, playing in
+            if playing { playback?.resume() } else { playback?.pause() }
         }
     }
 
     @ViewBuilder
     private var sceneView: some View {
         ZStack {
-            // Mounted for the demo's whole lifetime, and never re-keyed with
-            // `.id(_:)` — both throw the `RealityView` away and build a new one,
-            // which on iOS 26 Simulator intermittently comes back rendering
-            // nothing at all, no model and no skybox, permanently (#3008).
-            // `.contentID(_:)` swaps the model inside the live scene. The key
-            // is `loadCount`, not the model's title — see its declaration: two
-            // "Surprise me" rolls can return the same title, and an unchanged
-            // key is a swap that silently does not happen. Optional so it also
-            // changes when the first model lands.
+            // Mounted once and never re-keyed with `.id(_:)` — see #3008.
+            // `.contentID(_:)` swaps the model inside the live scene and re-arms
+            // the fit-to-bounds pass, which is also what "Recenter" relies on.
             SceneView { root in
                 guard let loadedNode else { return }
-                loadedNode.entity.position = .init(x: 0, y: 0, z: -1.5)
                 root.addChild(loadedNode.entity)
             }
             .cameraControls(.orbit)
-            .autoRotate(speed: qaMode ? 0 : 0.3)
-            // Three-quarter hero pose. Auto-rotation sweeps away from it a
-            // moment later for a normal user; under `qa_mode` it is what the
-            // screenshot lands on.
             .cameraOrbit(azimuth: .pi / 5)
-            .environment(Self.heroEnvironment)
-            // Fit the hero to the frame instead of leaving 15 % of air around
-            // its bounding sphere.
-            //
-            // Two values, because the two situations have different risks. For
-            // a normal user the scene auto-rotates through every azimuth, so
-            // the margin has to clear the model's BROADSIDE silhouette — below
-            // ~0.95 it clips there. Under `qa_mode` the pose is frozen at the
-            // three-quarter angle above, that risk is gone, and the looser
-            // value was the reason the store frame read as a small subject
-            // adrift in empty backdrop: the hero's bounding sphere is set by
-            // its display plinth, not by the car (#2896).
-            //
+            .environment(sceneEnvironment)
             // `cameraDistanceOverride` — the `-camera_distance <float>` launch
             // arg (#2785) — wins over both when present, same as Android's
             // `DemoSettings.cameraDistance` beating its own `radius` default.
-            .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : 0.95))
-            .contentID(loadedNode == nil ? nil : loadCount)
+            .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
+            .contentID(loadedNode == nil ? nil : "\(loadCount)-\(recenterGeneration)")
             .ignoresSafeArea()
 
             if loadedNode == nil {
-                VStack(spacing: 12) {
-                    ProgressView()
-                        .tint(.white)
+                VStack(spacing: SceneViewTokens.Space.sm + 4) {
+                    ProgressView().tint(.white)
                     if let loadError {
                         Text(loadError)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
+                            .font(SceneViewTokens.TypeScale.captionRegular)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    } else {
-                        Text("Loading model…")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.7))
+                            .padding(.horizontal, SceneViewTokens.Space.xl)
                     }
                 }
             }
         }
     }
 
-    private func sourcePill(text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            .foregroundStyle(.primary)
-    }
-
-    private func errorBanner(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Color.red.opacity(0.85), in: Capsule())
-            .foregroundStyle(.white)
-    }
-
-    private var surpriseButton: some View {
-        Button {
-            guard !surpriseInFlight else { return }
-            Task { await rollSurpriseModel() }
-            #if os(iOS)
-            SceneViewHaptic.shared.medium()
-            #endif
-        } label: {
-            HStack(spacing: 8) {
-                if surpriseInFlight {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.bold))
-                }
-                Text(surpriseInFlight ? "Loading…" : "Surprise me")
-                    .font(.subheadline.weight(.semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [Color.purple, Color.blue],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ))
-                    .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(surpriseInFlight ? "Loading next model" : "Roll a surprise streamed model")
-        .disabled(surpriseInFlight)
+    private func errorBanner(_ message: String) -> some View {
+        Text(message)
+            .font(SceneViewTokens.TypeScale.captionRegular)
+            .foregroundStyle(SceneViewTokens.Glass.onGlass)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, SceneViewTokens.Space.md)
+            .padding(.vertical, SceneViewTokens.Space.sm)
+            .background(glassBackground(in: Capsule()))
+            .padding(.horizontal, SceneViewTokens.Space.lg)
     }
 
     // MARK: - Loading
 
     @MainActor
-    private func loadBundledHero() async {
+    private func loadBundled(_ model: BundledViewerModel) async {
         loadError = nil
+        streamedDisplayName = nil
         do {
-            let node = try await ModelNode.load(Self.bundledHero)
-            _ = node.scaleToUnits(0.6)
-            _ = node.centerOrigin()
-            loadedNode = node
-            loadCount += 1
+            let node = try await ModelNode.load(model.assetName)
+            install(node)
         } catch {
-            loadError = "Could not load bundled hero: \(error.localizedDescription)"
+            loadError = "Could not load \(model.displayName): \(error.localizedDescription)"
         }
     }
 
-    /// Pick a random downloadable CC-BY slug from the curated registry and try
-    /// to resolve it. Honours the hard rule "no Sketchfab WebView" — the search
-    /// happens server-side via ``SketchfabService.search`` and the result is
-    /// downloaded as a USDZ that RealityKit can load directly.
-    ///
-    /// The Android demo searches a broad PBR query (`pbr`, `modern`, `scan`) for
-    /// variety. iOS does the equivalent through ``SketchfabService.search`` —
-    /// we keep the search lightweight so an empty result just leaves the hero
-    /// on screen.
+    /// Puts a freshly loaded node on stage: normalised to 0.6 units and
+    /// centred (auto-fit framing then adapts the orbit radius), animation
+    /// state rebuilt from the entity's clips.
+    @MainActor
+    private func install(_ node: ModelNode) {
+        _ = node.scaleToUnits(0.6)
+        _ = node.centerOrigin()
+        playback = nil
+        loadedNode = node
+        loadCount += 1
+        animationNames = node.entity.availableAnimations.enumerated().map { index, clip in
+            clip.name ?? "Clip \(index + 1)"
+        }
+        selectedAnimation = 0
+        animationProgress = 0
+        animationPlaying = !qaMode
+        if !animationNames.isEmpty {
+            play(clip: 0)
+        } else {
+            animationBarOpen = false
+        }
+    }
+
+    private func resetAll() {
+        recenterGeneration += 1
+        environment = Self.environments[0]
+        iblIntensity = 1
+        showSkybox = false
+        selectedModel = Self.bundledModels[0]
+        Task { await loadBundled(selectedModel) }
+    }
+
+    // MARK: - Animation
+
+    @MainActor
+    private func play(clip index: Int) {
+        guard let entity = loadedNode?.entity, entity.availableAnimations.indices.contains(index) else { return }
+        entity.stopAllAnimations()
+        let controller = entity.playAnimation(entity.availableAnimations[index].repeat(), transitionDuration: 0.2)
+        if !animationPlaying { controller.pause() }
+        playback = controller
+        animationProgress = 0
+    }
+
+    @MainActor
+    private func scrub(_ value: Float) {
+        animationProgress = value
+        guard let playback else { return }
+        playback.time = Double(value) * playback.duration
+    }
+
+    // MARK: - Surprise me
+
+    /// Picks a random downloadable CC-BY model via ``SketchfabService.search``
+    /// and loads the downloaded USDZ from its local cache URL.
     @MainActor
     private func rollSurpriseModel() async {
         surpriseInFlight = true
@@ -270,20 +370,11 @@ struct ModelViewerDemo: View {
         defer { surpriseInFlight = false }
 
         do {
-            // Try server-side search across a few PBR-friendly queries. Each
-            // hit must be downloadable + sub-50k-poly so we don't stall on a
-            // multi-megabyte scan.
             let queries = ["pbr", "modern", "scan"]
             var picked: (uid: String, name: String)?
             for query in queries {
-                let results = try await SketchfabService.shared.search(
-                    query: query,
-                    downloadable: true,
-                    limit: 24
-                )
-                let viable = results.filter { result in
-                    result.downloadable && (1..<200_000).contains(result.faceCount)
-                }
+                let results = try await SketchfabService.shared.search(query: query, downloadable: true, limit: 24)
+                let viable = results.filter { $0.downloadable && (1..<200_000).contains($0.faceCount) }
                 if let hit = viable.randomElement() {
                     picked = (hit.uid, hit.name)
                     break
@@ -293,28 +384,15 @@ struct ModelViewerDemo: View {
                 surfaceTransientError("No surprise model available right now — try again.")
                 return
             }
-
-            // Download via the same service the resolver uses. We bypass the
-            // resolver here because the result isn't in our curated
-            // ``SampleAssets`` registry (this is true "surprise me" content).
-            // The hard rule "local file URL only" still holds — the service
-            // returns a `Caches/` URL that RealityKit loads via the file:// API.
             let downloaded = try await SketchfabService.shared.downloadModel(uid: pick.uid)
             let node = try await ModelNode.load(contentsOf: downloaded)
-            _ = node.scaleToUnits(0.6)
-            _ = node.centerOrigin()
-            loadedNode = node
-            loadCount += 1
+            install(node)
             streamedDisplayName = pick.name
         } catch {
-            // Keep the current hero on screen, but surface a transient banner so
-            // a network failure isn't completely silent. The button is re-enabled
-            // by the `defer` block above so the user can try again.
             surfaceTransientError("Couldn't roll a model: \(error.localizedDescription)")
         }
     }
 
-    /// Shows a transient error banner that auto-dismisses after a few seconds.
     @MainActor
     private func surfaceTransientError(_ message: String) {
         surpriseError = message

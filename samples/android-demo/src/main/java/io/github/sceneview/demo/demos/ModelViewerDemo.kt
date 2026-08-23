@@ -13,11 +13,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -31,7 +37,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.compose.BackHandler
+import io.github.sceneview.environment.Environment
+import io.github.sceneview.demo.DemoPreviews
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -50,18 +60,29 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
-import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeTopInset
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import io.github.sceneview.demo.DockItem
+import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.ErrorScrim
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.viewer.BundledViewerModel
+import io.github.sceneview.demo.ui.viewer.AnimationBar
+import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
+import io.github.sceneview.demo.ui.viewer.ModelPickerSheet
+import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
 import io.github.sceneview.demo.demos.internal.PARK_FALLBACK_ASPECT
@@ -79,7 +100,6 @@ import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabConfig
 import io.github.sceneview.demo.sketchfab.SketchfabService
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
-import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -92,6 +112,10 @@ import io.github.sceneview.rememberModelLoader
 import java.util.Locale
 import kotlinx.coroutines.launch
 import java.io.File
+import com.google.ar.core.ArCoreApk
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.animation.core.Animatable
 
 /**
  * Unified "Models" demo — consolidates the retired `multi-model` and
@@ -140,6 +164,14 @@ fun ModelViewerDemo(onBack: () -> Unit) {
         ModelViewerMode.Gallery -> GallerySection(onBack, mode, onModeChange)
     }
 }
+
+/**
+ * Frames queued with a fully loaded model instance before the cover-releasing `flushAndWait`.
+ * Not 1: the scene parents DSL nodes through an async `snapshotFlow`, so the first frame after
+ * the instance lands can be drawn without the `ModelNode`; the flush must wait on a frame that
+ * includes it.
+ */
+private const val MODEL_COVER_FRAMES = 3
 
 private enum class ModelViewerMode(val label: String) {
     Single("Single Model"),
@@ -198,6 +230,35 @@ private fun SingleModelSection(
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
+    val bundledModels = remember { listOf(
+        BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
+        BundledViewerModel("models/khronos_fox.glb", "Fox"),
+        BundledViewerModel("models/khronos_lantern.glb", "Lantern"),
+        BundledViewerModel("models/khronos_toy_car.glb", "Toy Car"),
+        BundledViewerModel("models/shiba.glb", "Shiba"),
+        BundledViewerModel("models/threejs_soldier.glb", "Soldier"),
+    ) }
+    var selectedModel by remember { mutableStateOf(bundledModels.first()) }
+    var modelSheetOpen by remember { mutableStateOf(false) }
+    var environmentSheetOpen by remember { mutableStateOf(false) }
+    val viewerEnvironments = remember { listOf(
+        ViewerEnvironment("environments/studio_2k.hdr", "Studio"),
+        ViewerEnvironment("environments/studio_warm_2k.hdr", "Studio Warm"),
+        ViewerEnvironment("environments/sunset_2k.hdr", "Sunset"),
+        ViewerEnvironment("environments/chinese_garden_2k.hdr", "Chinese Garden"),
+        ViewerEnvironment("environments/outdoor_cloudy_2k.hdr", "Outdoor Cloudy"),
+        ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
+        ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
+    ) }
+    var requestedEnvironment by remember { mutableStateOf(viewerEnvironments.first()) }
+    var iblIntensity by remember { mutableStateOf(1f) }
+    var showEnvironment by remember { mutableStateOf(false) }
+    var recenterGeneration by remember { mutableStateOf(0) }
+    var spinScene by remember { mutableStateOf(false) }
+    var animationBarOpen by remember { mutableStateOf(false) }
+    var animationPlaying by remember { mutableStateOf(true) }
+    var selectedAnimation by remember { mutableStateOf(0) }
+    var animationProgress by remember { mutableStateOf(0f) }
 
     // Source of truth for the currently-viewed model:
     //  - null            → render the bundled hero helmet (default state).
@@ -212,6 +273,17 @@ private fun SingleModelSection(
     var surpriseInFlight by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val arSupported by produceState<Boolean?>(initialValue = null, context) {
+        var availability = ArCoreApk.getInstance().checkAvailability(context)
+        repeat(20) {
+            if (availability != ArCoreApk.Availability.UNKNOWN_CHECKING) return@repeat
+            delay(100)
+            availability = ArCoreApk.getInstance().checkAvailability(context)
+        }
+        value = availability == ArCoreApk.Availability.SUPPORTED_INSTALLED ||
+            availability == ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED ||
+            availability == ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD
+    }
     val scope = rememberCoroutineScope()
     val service = remember(context) { SketchfabService.getInstance(context) }
     val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
@@ -230,67 +302,71 @@ private fun SingleModelSection(
         rememberStreamedModelInstance(modelLoader, streamedFileUrl)
     // The bundled hero — assets/models/khronos_damaged_helmet.glb. Loaded
     // eagerly so the first frame after launch shows the hero shot.
-    val bundledModelInstance =
-        rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+    val bundledModelInstance = rememberModelInstance(modelLoader, selectedModel.assetPath)
 
     // The instance actually rendered this frame. Falls back to the bundled
     // helmet whenever the streamed instance is null (no Surprise tap yet,
     // streamed load still in flight, or streamed load failed).
     val activeModelInstance = streamedModelInstance ?: bundledModelInstance
-
-    // Auto-fit camera framing (#1439): instead of a per-demo hand-tuned orbit
-    // radius, compute the distance at which the *current* model's bounding
-    // sphere exactly fills the viewport. A 5 cm bee and a 5 m crate both end
-    // up comfortably framed without touching `scaleToUnits` — the camera
-    // adapts to the model, not the other way round.
-    //
-    // The framing uses the library helper `fitDistanceForBounds`, fed with the
-    // model's intrinsic glTF bounds (`model.boundingBox`). The portrait phone
-    // aspect (~0.5) and the default 28 mm lens FOV match the stock SceneView
-    // camera the hero orbit drives. We also read the bounds' centre so the
-    // ModelNode can be translated to put that centre on the world origin the
-    // hero orbit pivots around — many glTF models have an off-origin pivot.
-    val framing = remember(activeModelInstance) {
-        val instance = activeModelInstance ?: return@remember null
-        val bounds = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()
-        if (bounds == null || bounds.isEmpty) {
-            null
-        } else {
-            ModelFraming(
-                radius = fitDistanceForBounds(
-                    bounds = bounds,
-                    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
-                    aspect = 0.5,
-                ).coerceIn(0.2f, 50f),
-                center = bounds.center,
-            )
+    val animationNames = remember(activeModelInstance) {
+        val animator = activeModelInstance?.animator ?: return@remember emptyList()
+        (0 until animator.animationCount).map { animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}" }
+    }
+    LaunchedEffect(activeModelInstance, selectedAnimation, animationPlaying) {
+        val animator = activeModelInstance?.animator ?: return@LaunchedEffect
+        // gltfio's Animator has no bounds check: querying a clip on a model
+        // without animations is a native null dereference, not an exception.
+        if (selectedAnimation !in 0 until animator.animationCount) return@LaunchedEffect
+        val duration = animator.getAnimationDuration(selectedAnimation).takeIf { it > 0f } ?: return@LaunchedEffect
+        var start = 0L
+        while (animationPlaying) {
+            withFrameNanos { now ->
+                if (start == 0L) start = now - (animationProgress * duration * 1_000_000_000L).toLong()
+                val seconds = (now - start) / 1_000_000_000f
+                animationProgress = (seconds % duration) / duration
+                animator.applyAnimation(selectedAnimation, animationProgress * duration)
+                animator.updateBoneMatrices()
+            }
         }
     }
 
-    // Auto-fit orbit radius for the current model — falls back to 1.4 m while
-    // the bounds are not yet measurable. The "Camera distance" slider below
-    // lets the user override this; `null` slider state means "use auto-fit".
-    val autoFitRadius = framing?.radius ?: 1.4f
+    // Auto-fit camera framing (#1439, reworked after QA round 3). The model is rendered at its
+    // true glTF size and is never moved: `DemoMath.viewerFraming` places the CAMERA from the
+    // instance's real AABB so the model spans ~65 % of the band the chrome leaves visible
+    // (identity row → dock), centred on its bounding-box centre, seen from the front (+Z) and
+    // 12° above. The library's `autoCenterContent` is OFF for this scene — it would translate
+    // the content root to the origin while the camera aims at the measured centre, and that
+    // double offset is what put the Fox's tail in the lens.
+    Box(Modifier.fillMaxSize().background(SceneViewTokens.Stage.background)) {
+    // Every bundled model — the Damaged Helmet included — is framed at its loaded glTF pose.
+    // The helmet's root node already carries the +90° X quaternion that stands it upright under
+    // glTF +Y-up/+Z-front, so its world AABB is right as loaded; an extra -90° X here tipped it
+    // crown-forward. The camera always looks from +Z, 12° above (the Khronos sample-viewer home).
+    val bounds = remember(activeModelInstance) {
+        val instance = activeModelInstance ?: return@remember null
+        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+    }
+    val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
+    // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
+    // "Camera distance" slider below can display it. 1.4 m until the bounds are measurable.
+    var autoFitRadius by remember { mutableStateOf(1.4f) }
+    // Re-run the settle animation for every newly measured instance and on Recenter.
+    val fitProgress = remember { Animatable(0f) }
+    LaunchedEffect(bounds, recenterGeneration) {
+        if (bounds == null) return@LaunchedEffect
+        fitProgress.snapTo(0f)
+        fitProgress.animateTo(1f, SceneViewTokens.Motion.spring())
+    }
+    val modelYaw = rememberHeroYaw(trigger = spinScene && activeModelInstance != null, durationMillis = 20_000, staticYaw = 0f)
 
     // Camera-distance slider state. Wired directly to [DemoSettings.cameraDistance]
     // — the SAME global override that `rememberHeroOrbitCameraManipulator` reads
     // for the `--ef camera_distance <f>` / `?cameraDistance=<f>` deep-link hook
     // (#1571). So a deep link launches this demo at the requested zoom AND the
     // slider reflects it; dragging the slider drives the live camera distance.
-    // `null` ⇒ no override, the auto-fit `radius` is used. Maestro has no pinch
+    // `null` ⇒ no override, the auto-fit distance is used. Maestro has no pinch
     // gesture, so this slider is the only way QA flows can exercise zoom.
     val sliderDistance = DemoSettings.cameraDistance
-
-    // Camera orbits; model stays fixed. The orbit radius is auto-fit to the
-    // model's intrinsic size (see `framing` above) so every model — bundled
-    // helmet or streamed Sketchfab pick — is framed identically. A non-null
-    // `DemoSettings.cameraDistance` (slider or deep link) overrides it.
-    val cameraManipulator = rememberHeroOrbitCameraManipulator(
-        trigger = activeModelInstance != null,
-        radius = autoFitRadius,
-        yHeight = 0f,
-        durationMillis = 20_000,
-    )
 
     // Per-demo offline indicator chip (#1152 Stage 3): hide while we're on
     // the bundled hero only (no Surprise tap yet). Once the user kicks a
@@ -316,14 +392,64 @@ private fun SingleModelSection(
     }
 
     val firstFrame = rememberFirstFrameState()
+    // The preview cover stays up until a Filament frame that actually SHOWS the model. Three
+    // signals fire too early: the first frame lands before the GLB is decoded;
+    // `rememberModelInstance` returns while gltfio is still uploading textures
+    // (`ModelLoader.progress < 1`); and even with the resources in, Choreographer keeps ticking
+    // at 60 Hz while Filament's backend thread is still linking the model's material programs —
+    // measured on the emulator: ticks resume at +0.5 s, the helmet is first presented at +3.5 s,
+    // black in between. So once the instance exists, the resources report complete and a couple
+    // of frames have queued the node's draw, `Engine.flushAndWait()` blocks until the backend
+    // has actually executed that frame, and only then is the cover released. The cover is a
+    // static image, so the wait is invisible (~100 ms on hardware, the full link time on a
+    // software GL). Latched — a later model swap must not bring the helmet preview back.
+    val modelFramesSeen = remember { mutableStateOf(0) }
+    val hasModelRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    hasModelRef.set(activeModelInstance != null)
+    val onFrame: (Long) -> Unit = remember(firstFrame, modelLoader, engine) {
+        { nanos ->
+            firstFrame.onFrame(nanos)
+            if (hasModelRef.get() && modelFramesSeen.value < MODEL_COVER_FRAMES &&
+                runCatching { modelLoader.progress >= 1f }.getOrDefault(true)
+            ) {
+                if (modelFramesSeen.value == MODEL_COVER_FRAMES - 1) runCatching { engine.flushAndWait() }
+                modelFramesSeen.value++
+            }
+        }
+    }
+    // The first HDR decode runs on the main thread through Filament and stalls the UI for a
+    // couple of seconds on a software GPU; releasing the cover before it lands leaves a black
+    // composite on screen for that whole stall. One-way latch: later swaps re-decode but must
+    // not bring the preview back.
+    var firstEnvironmentLoaded by remember { mutableStateOf(false) }
+    val firstModelFrame = remember {
+        derivedStateOf { firstFrame.rendered.value && firstEnvironmentLoaded && modelFramesSeen.value >= MODEL_COVER_FRAMES }
+    }
+    // The HDR decode is a `produceState` keyed on (asset, skybox): `key` forces a fresh slot
+    // per choice so a swap always re-decodes. Leaving the slot destroys the previous
+    // environment's IndirectLight/Skybox, so it must never stay attached to the scene
+    // (SIGSEGV in libfilament-jni) — the neutral default covers the decode instead.
+    val fallbackEnvironment = rememberEnvironment(environmentLoader)
+    val loadedEnvironment = key(requestedEnvironment.assetPath, showEnvironment) {
+        rememberHDREnvironment(environmentLoader, requestedEnvironment.assetPath, createSkybox = showEnvironment)
+    }
+    val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
+    if (loadedEnvironment != null) firstEnvironmentLoaded = true
+    LaunchedEffect(viewerEnvironment, iblIntensity) {
+        viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
+    }
+    // Back closes transient chrome before leaving the demo.
+    BackHandler(enabled = animationBarOpen || modelSheetOpen || environmentSheetOpen) {
+        animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
+    }
 
     DemoScaffold(
-        title = stringResource(R.string.demo_model_viewer),
+        title = stringResource(R.string.demo_model_viewer_screen_title),
         onBack = onBack,
         assetSource = assetSource,
-        firstFrameRendered = firstFrame.rendered,
+        firstFrameRendered = firstModelFrame,
+        previewRes = DemoPreviews.resourceFor("model-viewer", dark = true),
         controls = {
-            ModeSelector(mode, onModeChange)
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
@@ -334,80 +460,97 @@ private fun SingleModelSection(
                 valueRange = 0.5f..10f,
                 valueText = "%.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
             )
+            Row(Modifier.fillMaxWidth().toggleable(spinScene) { spinScene = it }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Spin scene")
+                Switch(spinScene, null)
+            }
         },
-        bottomOverlay = {
-            // Surprise FAB lives only when the user has a Sketchfab API key —
-            // tapping it without a key would silently fall back to the same
-            // bundled helmet, which is worse than no button at all.
-            //
-            // Hosted by the scaffold's bottom slot (#2779). The Settings FAB / peek
-            // chip is pinned to the bottom-END corner, so this one keeps the START
-            // edge and the scaffold — not a constant picked here — owns the gutter
-            // and the system-bar inset, which is what stops the round Settings
-            // control from landing on top of the extended FAB and clipping its
-            // "Surprise me" label to "Surprise…" (#2350).
-            if (hasSketchfabKey) {
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        if (surpriseInFlight) return@ExtendedFloatingActionButton
-                        surpriseInFlight = true
-                        scope.launch {
-                            val picked = runCatching {
-                                pickRandomDownloadableModel(service, resolver)
-                            }.getOrNull()
-                            // Even on failure we exit the in-flight state so
-                            // the user can retry. The helmet stays put.
-                            streamedFileUrl = picked
-                            surpriseInFlight = false
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = if (surpriseInFlight) {
-                                stringResource(R.string.demo_model_viewer_surprise_loading)
-                            } else {
-                                stringResource(R.string.demo_model_viewer_surprise)
-                            },
-                        )
-                    },
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(16.dp),
+        dock = listOf(
+            DockItem(Icons.Outlined.CenterFocusStrong, "Recenter", { recenterGeneration++ }),
+            DockItem(Icons.Outlined.WbSunny, "Environment", { environmentSheetOpen = true }),
+            DockItem(Icons.Outlined.ViewInAr, "Models", { modelSheetOpen = true }),
+        ) + if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.PlayCircle, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList(),
+        bottomOverlay = if (animationBarOpen && animationNames.isNotEmpty()) {{
+            AnimationBar(animationNames, selectedAnimation, animationPlaying, animationProgress,
+                onPlayingChange = { animationPlaying = it },
+                onClipChange = { selectedAnimation = it; animationProgress = 0f },
+                onProgressChange = {
+                    animationProgress = it
+                    activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }?.let { animator ->
+                        animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))
+                        animator.updateBoneMatrices()
+                    }
+                })
+        }} else null,
+        dockAccent = DockItem(Icons.Filled.ViewInAr, "View in AR", {
+            DemoSettings.requestedRoute = "demo/ar-placement?model=${selectedModel.assetPath}"
+        }, enabled = arSupported == true),
+        chromeToggleOnTap = true,
+    ) {
+        // The scene fills the viewport edge to edge; the chrome floats over it. Framing
+        // therefore needs the band the chrome leaves visible: the identity row at the top
+        // (provided by the scaffold) and the dock band plus the navigation bar at the bottom.
+        val topInset = LocalDemoChromeTopInset.current
+        val bottomInset = SETTINGS_FAB_RESERVED_SPACE +
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset) {
+                val extents = bounds?.extents ?: return@remember null
+                DemoMath.viewerFraming(
+                    extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+                    viewportWidth = maxWidth.value, viewportHeight = maxHeight.value,
+                    topInset = topInset.value, bottomInset = bottomInset.value,
+                    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
                 )
             }
-        }
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+            LaunchedEffect(framing) { framing?.let { autoFitRadius = it.distance } }
+            // Camera orbits; model stays fixed at its glTF pose. Recenter rebuilds the same
+            // manipulator, which snaps the camera back to exactly this home pose. A non-null
+            // `DemoSettings.cameraDistance` (slider or deep link) scales the eye along the
+            // same view ray so the pitch and the band centring survive the override.
+            val cameraManipulator = remember(framing, modelCenter, recenterGeneration, sliderDistance) {
+                val f = framing ?: return@remember createDefaultCameraManipulator(
+                    orbitHomePosition = Position(modelCenter.x, modelCenter.y, sliderDistance ?: 1.4f),
+                    targetPosition = modelCenter,
+                )
+                val (_, ty, tz) = f.targetOffset
+                val (_, ey, ez) = f.eyeOffset
+                val zoom = sliderDistance?.let { it / f.distance } ?: 1f
+                createDefaultCameraManipulator(
+                    orbitHomePosition = Position(
+                        modelCenter.x,
+                        modelCenter.y + ty + (ey - ty) * zoom,
+                        modelCenter.z + tz + (ez - tz) * zoom,
+                    ),
+                    targetPosition = Position(modelCenter.x, modelCenter.y + ty, modelCenter.z + tz),
+                )
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
+                onFrame = onFrame,
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
-                environment = rememberModelDemoEnvironment(environmentLoader),
+                environment = viewerEnvironment,
+                // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
+                autoCenterContent = false,
                 cameraManipulator = cameraManipulator,
             ) {
                 activeModelInstance?.let { instance ->
+                    // "Spin scene" turns the model about its bounding-box centre, not the glTF
+                    // origin: counter-translate the pivot so the centre stays put under the camera.
+                    val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, -modelYaw)
                     ModelNode(
                         modelInstance = instance,
-                        // No `scaleToUnits` — the model renders at its true
-                        // glTF size. Auto-fit framing (#1439) adapts the orbit
-                        // radius to that intrinsic size instead, so a 5 m crate
-                        // and a 5 cm bee are both framed identically without
-                        // squashing every model to a fixed unit cube.
-                        //
-                        // Translate the model so its bounding-box centre lands
-                        // on the world origin the hero orbit pivots around —
-                        // glTF pivots are often off-centre. `framing.center` is
-                        // the bounds centre the same auto-fit pass measured.
-                        position = framing?.let { -it.center }
-                            ?: io.github.sceneview.math.Position(0f, 0f, 0f),
+                        // No `scaleToUnits` — the model renders at its true glTF size and the
+                        // camera adapts to it (#1439). The settle spring drops the model in
+                        // from slightly below its resting pose.
+                        position = Position(
+                            modelCenter.x - rx,
+                            -autoFitRadius * 0.06f * (1f - fitProgress.value),
+                            modelCenter.z - rz,
+                        ),
+                        rotation = Rotation(y = modelYaw),
                     )
                 }
             }
@@ -418,21 +561,23 @@ private fun SingleModelSection(
             )
         }
     }
+    if (modelSheetOpen) ModelPickerSheet(
+        bundledModels, selectedModel.assetPath, hasSketchfabKey, surpriseInFlight,
+        onSelect = { selectedModel = it; streamedFileUrl = null; modelSheetOpen = false },
+        onPark = { modelSheetOpen = false; onModeChange(ModelViewerMode.Multi) },
+        onSurprise = { if (!surpriseInFlight) { surpriseInFlight = true; scope.launch { streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull(); surpriseInFlight = false; modelSheetOpen = false } } },
+        onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
+        onDismiss = { modelSheetOpen = false },
+    )
+    if (environmentSheetOpen) EnvironmentSheet(
+        environments = viewerEnvironments,
+        selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
+        onSelect = { requestedEnvironment = it }, onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
+        onReset = { requestedEnvironment = viewerEnvironments.first(); iblIntensity = 1f; showEnvironment = false },
+        onDismiss = { environmentSheetOpen = false },
+    )
+    }
 }
-
-/**
- * Auto-fit framing parameters for the currently displayed model (#1439).
- *
- * @property radius Orbit distance, in metres, at which the model's bounding sphere fills the
- *   viewport — computed by `io.github.sceneview.fitDistanceForBounds` from the model's intrinsic
- *   glTF bounds.
- * @property center Bounding-box centre of the model in its own local space. The `ModelNode` is
- *   translated by `-center` so the centre lands on the world origin the hero orbit pivots around.
- */
-private data class ModelFraming(
-    val radius: Float,
-    val center: io.github.sceneview.math.Position,
-)
 
 /**
  * Loads the streamed Sketchfab model for [streamedFileUrl], or returns `null`
@@ -562,6 +707,7 @@ private fun MultiModelSection(
     mode: ModelViewerMode,
     onModeChange: (ModelViewerMode) -> Unit,
 ) {
+    var modelSheetOpen by remember { mutableStateOf(false) }
     // One flag per SLOT, not per species — index i pairs with PARK_SLOTS[i] and
     // slugs[i]. A SnapshotStateList keeps the four flags in one stable `remember`
     // slot, so toggling a chip recomposes the scene content without re-running the
@@ -680,8 +826,8 @@ private fun MultiModelSection(
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
+        dock = listOf(DockItem(Icons.Outlined.ViewInAr, "Models", { modelSheetOpen = true })),
         controls = {
-            ModeSelector(mode, onModeChange)
             Text("Visibility", style = MaterialTheme.typography.labelLarge)
             // Labels come from the resolved slug's curated-English `displayName`
             // (same source as the Gallery chips), never from a hardcoded noun — the
@@ -822,6 +968,14 @@ private fun MultiModelSection(
             LoadingScrim(loading = !allLoaded, label = "Loading ${PARK_SLOTS.size} models…")
         }
     }
+    if (modelSheetOpen) ModelPickerSheet(
+        models = listOf(BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet")),
+        selectedPath = "", surpriseAvailable = false, surpriseLoading = false,
+        onSelect = { modelSheetOpen = false; onModeChange(ModelViewerMode.Single) },
+        onPark = { modelSheetOpen = false }, onSurprise = {},
+        onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
+        onDismiss = { modelSheetOpen = false },
+    )
 }
 
 /**
@@ -986,7 +1140,6 @@ private fun GallerySection(
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
         controls = {
-            ModeSelector(mode, onModeChange)
             // Category chips along the top of the controls sheet. We expose
             // them as a horizontally scrolling row so the four labels never
             // wrap at portrait phone widths. Each chip's label is a hand-

@@ -265,8 +265,21 @@ struct ExploreTab: View {
         return ids.compactMap { id in ModelItem.all.first { $0.id == id } }
     }
 
+    /// `true` when pushed onto another `NavigationStack` (the Showcase tab's
+    /// "Browse online models" card): the gallery then reuses that stack
+    /// instead of nesting its own. `false` (default) for the standalone tab /
+    /// sheet form, which owns a stack.
+    var embedded: Bool = false
+
     var body: some View {
-        NavigationStack {
+        if embedded {
+            content
+        } else {
+            NavigationStack { content }
+        }
+    }
+
+    private var content: some View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     // Source picker (#2645 / #2700) — stays visible even mid-search.
@@ -386,7 +399,6 @@ struct ExploreTab: View {
             } message: {
                 Text("The Sketchfab API key was rejected (revoked, wrong scope, or a rate-limit burst), so its Trending, Staff Picks and Recently Added carousels are unavailable right now.\n\nSwitch to Icosa Gallery or Poly Haven from the source picker — those Creative-Commons catalogs are always available and need no key.")
             }
-        }
     }
 
     // MARK: - Task keys

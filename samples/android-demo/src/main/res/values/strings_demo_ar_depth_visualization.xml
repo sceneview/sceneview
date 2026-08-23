@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
-    <string name="demo_ar_depth_visualization_subtitle">False-color depth map with camera↔depth blend</string>
+    <string name="demo_ar_depth_visualization_subtitle">False-color depth map blended with camera</string>
 </resources>

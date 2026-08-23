@@ -139,7 +139,7 @@ struct MultiModelDemo: View {
                 // whole-scene verdict says so.
                 placeholder: Self.slots.compactMap(\.slug).contains { $0.fallbackRole == .placeholder }
             )
-            .demoSettingsSheet { controlsSheet }
+            .demoChrome { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "park")
             }

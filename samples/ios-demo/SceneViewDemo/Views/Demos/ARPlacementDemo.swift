@@ -35,6 +35,11 @@ import SceneViewSwift
 ///   the iOS demo level — placed models are static once dropped. Tracked
 ///   separately if requested.
 struct ARPlacementDemo: View {
+    /// Bundle name (without `.usdz`) of the model every tap places when set —
+    /// the Model Viewer's "View in AR" handoff, mirroring Android's
+    /// `demo/ar-placement?model=` route. `nil` keeps the bundled cycle.
+    var initialModel: String? = nil
+
     /// Bundled cycle preserved from the previous iOS AR demos — gives a
     /// deterministic 5-model rotation when no Sketchfab key is configured.
     /// Each entry is the bundle name without `.usdz`.
@@ -118,7 +123,7 @@ struct ARPlacementDemo: View {
                 }
             }
         }
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         .task {
             _ = await SketchfabAssetResolver.shared.prefetchAll(category: "ar_placement")
         }
@@ -157,10 +162,15 @@ struct ARPlacementDemo: View {
                 displayName = slug.displayName
                 scaleToUnits = slug.scaleToUnits
             } else {
-                // Bundled cycle — round-robin through the five bundled entries.
-                let entry = Self.bundledCycle[cycleIndex % Self.bundledCycle.count]
-                cycleIndex += 1
-                let node = try await ModelNode.load(entry.name)
+                // The handed-off viewer model, else the bundled round-robin cycle.
+                let assetName: String
+                if let initialModel {
+                    assetName = initialModel
+                } else {
+                    assetName = Self.bundledCycle[cycleIndex % Self.bundledCycle.count].name
+                    cycleIndex += 1
+                }
+                let node = try await ModelNode.load(assetName)
                 _ = node.scaleToUnits(0.3)
                 _ = node.centerOrigin()
                 let anchor = AnchorNode.world(position: worldPosition)

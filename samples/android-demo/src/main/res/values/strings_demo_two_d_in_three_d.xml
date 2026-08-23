@@ -5,5 +5,5 @@
      deep-link through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_two_d_in_three_d_title">2D in 3D</string>
-    <string name="demo_two_d_in_three_d_subtitle">Text, image, video, and billboard quads</string>
+    <string name="demo_two_d_in_three_d_subtitle">Text, image, video and billboard quads in 3D</string>
 </resources>

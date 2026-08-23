@@ -67,7 +67,7 @@ struct DynamicSkyDemo: View {
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
     }

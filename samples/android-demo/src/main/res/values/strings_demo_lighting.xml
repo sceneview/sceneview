@@ -9,7 +9,7 @@
      demos behind an in-demo mode switch (issue #1444). -->
 <resources>
     <string name="demo_lighting_title">Lighting</string>
-    <string name="demo_lighting_subtitle">Light types, plus a movable orbiting light</string>
+    <string name="demo_lighting_subtitle">Light types with a movable orbiting light</string>
     <string name="demo_lighting">Lighting</string>
     <string name="demo_lighting_desc">Point, directional, and spot lights with shadows</string>
     <string name="demo_lighting_mode_types">Light Types</string>

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
@@ -92,7 +93,16 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     val state = rememberTapToPlaceState()
 
     // Canonical picker selection, shared with the AR View tab's implementation.
-    val picker = rememberPlacementPickerState(BUNDLED_PLACEMENT_MODELS.first().id)
+    // The Model Viewer's "View in AR" handoff passes the model it was showing as
+    // the `model` route argument (an asset path or its bare file stem); when it
+    // names a bundled row that row is armed instead of the catalogue's first.
+    val requestedModel = remember { DemoSettings.requestedModel.also { DemoSettings.requestedModel = null } }
+    val picker = rememberPlacementPickerState(
+        BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
+            model.assetLocation == requestedModel ||
+                model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == requestedModel
+        }?.id ?: BUNDLED_PLACEMENT_MODELS.first().id,
+    )
 
     // Settings toggles (#1883). Defaults preserve the strict plane-only behaviour.
     // Show-reticle is forwarded to the session's `showReticle` param; dev users can

@@ -10,9 +10,7 @@
     <!-- Navigation -->
     <string name="tab_3d">3D</string>
     <string name="tab_ar">AR</string>
-    <string name="tab_samples">Samples</string>
     <string name="tab_about">About</string>
-    <string name="tab_explore">Explore</string>
     <string name="tab_ar_view">AR View</string>
 
     <!-- Explore screen -->
@@ -143,17 +141,13 @@
     <string name="featured_ar_pose_subtitle">Free pose positioning</string>
 
     <!-- Samples screen -->
-    <string name="samples_title">Samples</string>
     <string name="samples_feature_count">%d feature demos</string>
     <string name="samples_badge_live">LIVE</string>
     <string name="samples_badge_soon">SOON</string>
     <string name="samples_back">Back</string>
-    <string name="samples_back_about">About</string>
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
     <string name="samples_chip_in_review">In review</string>
-    <string name="samples_footer_version">SceneView v%s</string>
-    <string name="samples_footer_repo">github.com/sceneview/sceneview</string>
 
     <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
          the release content itself is parsed at runtime from the bundled
@@ -286,6 +280,16 @@
     <string name="demo_chip_bundled">Offline model</string>
 
     <!-- DemoScaffold v2 bottom-sheet settings (#1154) -->
+    <!-- Identity-pill asset-source suffix (DemoScaffold top row). -->
+    <string name="demo_source_streamed">Streamed</string>
+    <string name="demo_source_streaming">Streaming</string>
+    <string name="demo_source_bundled">Offline</string>
+    <!-- Overflow menu + stalled-load card (DemoScaffold). -->
+    <string name="demo_menu_cd">More options</string>
+    <string name="demo_menu_qa_mode">QA mode</string>
+    <string name="demo_loading_stalled_title">Still loading…</string>
+    <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
+    <string name="demo_loading_retry">Retry</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>
