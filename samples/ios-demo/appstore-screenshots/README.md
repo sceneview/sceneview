@@ -167,13 +167,15 @@ slice of HDRI behind it changed every run.
 >   `dynamic-sky` with no sky at all. `SceneEnvironment.load()` now falls back to
 >   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
 >   console means this regressed.
-> - iOS has no `camera_distance` launch argument (Android's framing lever,
->   tracked for iOS in #2785). The scenes instead carry their own framing via
->   `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`. `model-viewer`
->   frames tighter under `qa_mode` than it does interactively: its bounding
->   sphere is set by the hero's display plinth rather than by the car, and the
->   looser interactive value — needed so an auto-rotating model does not clip at
->   its broadside — left the subject small in a mostly-empty frame.
+> - `model-viewer` frames tighter under `qa_mode` than it does interactively:
+>   its bounding sphere is set by the hero's display plinth rather than by the
+>   car, and the looser interactive value — needed so an auto-rotating model
+>   does not clip at its broadside — left the subject small in a mostly-empty
+>   frame. Since #2785, iOS also accepts a `-camera_distance <float>` launch
+>   argument (Android's framing lever, `DeepLinkRouter.validateCameraDistance`
+>   range `0.05...100`) that overrides both `.framingMargin(_:)` defaults on
+>   `model-viewer` — pass it explicitly for an even tighter store frame instead
+>   of relying on the `qa_mode` capture-margin constant.
 
 ## How to regenerate
 
