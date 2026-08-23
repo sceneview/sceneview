@@ -107,24 +107,44 @@ private enum class LightingLabMode(val label: String) {
     PostFx("Post-FX"),
 }
 
+/**
+ * Two 2-up rows instead of one 4-up row (#3322). A single row split the phone-width sheet
+ * evenly across all four modes, and "Environment" — this row's widest label, by rendered
+ * glyph width rather than character count ("m"/"n"/"o" run wider than "Reflections"'s
+ * "i"/"l"/"t" despite both being 11 characters) — didn't fit even after dropping the
+ * selection icon and shrinking the label style, confirmed truncating to "Environme…" on an
+ * on-device Pixel 9 emulator pass. Pairing two modes per row instead doubles each segment's
+ * share of the width, which is what actually clears the label at normal size rather than
+ * trading one degraded fallback (wrap) for another (ellipsis).
+ */
 @Composable
 private fun ModeSelector(
     current: LightingLabMode,
     onModeChange: (LightingLabMode) -> Unit,
 ) {
     val modes = LightingLabMode.entries
+    ModeSelectorRow(modes.subList(0, 2), current, onModeChange)
+    Spacer(modifier = Modifier.height(8.dp))
+    ModeSelectorRow(modes.subList(2, modes.size), current, onModeChange)
+    Spacer(modifier = Modifier.height(12.dp))
+}
+
+@Composable
+private fun ModeSelectorRow(
+    modes: List<LightingLabMode>,
+    current: LightingLabMode,
+    onModeChange: (LightingLabMode) -> Unit,
+) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         modes.forEachIndexed { index, m ->
             SegmentedButton(
                 selected = m == current,
                 onClick = { onModeChange(m) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                // No selection icon: four segments ("Environment" / "Reflections" are the
-                // longest labels) already have to share a phone-width row, and the
-                // checkmark's reserved space was enough to wrap "Environment" onto two
-                // lines — selection is already shown by the segment's own color change
-                // (#3322). `maxLines`/`overflow` are the last-resort fallback for a
-                // narrower row than any label seen in QA, not the primary fix.
+                // No selection icon: selection already reads from the segment's own color
+                // change, so the checkmark's reserved width was pure waste. `maxLines`/
+                // `overflow` stay as a last-resort fallback for a row narrower than
+                // anything seen in QA, not the primary fix (that's the 2-up split above).
                 icon = {},
                 label = {
                     Text(
@@ -136,7 +156,6 @@ private fun ModeSelector(
             )
         }
     }
-    Spacer(modifier = Modifier.height(12.dp))
 }
 
 // ─── Sky section ─────────────────────────────────────────────────────────────
