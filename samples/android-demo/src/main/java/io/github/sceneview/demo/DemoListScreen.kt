@@ -26,7 +26,10 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -62,7 +66,9 @@ import io.github.sceneview.demo.ui.ParticleBackground
 import io.github.sceneview.demo.whatsnew.WhatsNewCard
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
+import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
+import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
 import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -144,6 +150,33 @@ fun DemoListScreen(
         )
     }
 
+    // "What's new SINCE YOU LAST TESTED" — the per-install surface, distinct
+    // from the card above it: the card is the product's recent history and is
+    // the same for everyone, this is the delta THIS install has not been shown.
+    // It opens itself once per app launch when something is pending, and
+    // otherwise waits behind the top-bar badge. Only the sheet's "Got it"
+    // button writes the marker — dismissing keeps the list pending, on purpose.
+    val whatsNewSince = rememberWhatsNewSince()
+    var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(whatsNewSince) {
+        if (whatsNewSince.consumeAutoOpen()) showWhatsNewSince = true
+    }
+    if (showWhatsNewSince) {
+        WhatsNewSinceSheet(
+            sections = whatsNewSince.unseen,
+            seenVersion = whatsNewSince.seenVersion,
+            onDemoClick = { id ->
+                showWhatsNewSince = false
+                onDemoClick(id)
+            },
+            onMarkSeen = {
+                whatsNewSince.markSeen()
+                showWhatsNewSince = false
+            },
+            onDismiss = { showWhatsNewSince = false },
+        )
+    }
+
     // Animated 3D particle backdrop (#1488) — a SceneView scene drawn as the
     // bottom layer of this Box, behind the demo grid. It only exists while the
     // Samples tab is selected (RootScreen swaps tab content), so the SceneView
@@ -160,6 +193,22 @@ fun DemoListScreen(
             LargeTopAppBar(
                 title = { Text(stringResource(R.string.samples_title)) },
                 actions = {
+                    // The discreet re-proposal. A sheet dismissed without
+                    // acknowledging must not re-open on every resume, but the
+                    // list must stay reachable — so it retreats to a dot on
+                    // this action, and the action disappears entirely once
+                    // there is nothing pending.
+                    if (whatsNewSince.hasUnseen) {
+                        IconButton(onClick = { showWhatsNewSince = true }) {
+                            BadgedBox(badge = { Badge() }) {
+                                Icon(
+                                    Icons.Outlined.AutoAwesome,
+                                    contentDescription =
+                                        stringResource(R.string.whats_new_since_action),
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = onAboutClick) {
                         Icon(
                             Icons.Outlined.Info,

@@ -379,27 +379,178 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 // consumer has to be named by hand — and the one nobody thinks of,
 // `lintVitalAnalyzeRelease`, only exists in release, which is why it broke the
 // Play deploy instead of PR CI.
+// The `## Unreleased` section is SYNTHESISED here from the `changelog.d/`
+// fragments, because that section is empty in the committed CHANGELOG.md by
+// construction — fragments only become a versioned section at release time.
+// Without this, an installed build could never show work merged since the last
+// release, which is precisely the window "What's new since you last tested"
+// exists to cover: releases are rare, and between two of them every merged PR
+// would otherwise be invisible in the app.
+//
+// EVERY HTML COMMENT IS STRIPPED, and that is a correctness requirement, not
+// tidiness. `<!-- category: X -->` is the only comment with meaning; every
+// other one is a maintainer-only note (#3037 shipped a nine-line internal
+// sign-off block one release away from the public notes). This task renders
+// fragments to a USER-FACING surface, so the same rule applies here — see
+// .claude/scripts/lib/changelog-fragment.sh, whose semantics this mirrors:
+// state carried across lines (a comment may span several), tags recognised on
+// the RAW line before stripping, and code spans treated as literal text so a
+// fragment that DOCUMENTS `<!--` does not open a comment that eats the rest of
+// the file.
 abstract class BundleChangelogAsset extends DefaultTask {
     @InputFile
     abstract RegularFileProperty getChangelog()
 
+    /** `changelog.d/*.md` — the not-yet-released fragments. */
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getFragments()
+
     @OutputDirectory
     abstract DirectoryProperty getOutputDir()
+
+    // Collator order (collate-changelog.sh). `Changed` is the fallback bucket.
+    private static final List<String> CATEGORIES =
+            ['Added', 'Changed', 'Fixed', 'Performance', 'Removed', 'Tests', 'Docs']
+
+    private static String canonicalCategory(String raw) {
+        switch (raw.toLowerCase().trim()) {
+            case ['added', 'new']: return 'Added'
+            case ['fixed', 'fix', 'bugfix']: return 'Fixed'
+            case ['performance', 'perf']: return 'Performance'
+            case ['removed', 'remove']: return 'Removed'
+            case ['tests', 'test']: return 'Tests'
+            case ['docs', 'doc', 'documentation']: return 'Docs'
+            default: return 'Changed'
+        }
+    }
+
+    private static final java.util.regex.Pattern CATEGORY_TAG =
+            ~/^\s*<!--\s*category:\s*([A-Za-z]+)\s*-->\s*$/
+
+    /**
+     * Removes every HTML-comment span from one line. `state.inComment` carries
+     * across lines. Returns the comment-free text.
+     */
+    private static String stripComments(String line, Map state) {
+        def rest = line
+        def out = new StringBuilder()
+        while (rest) {
+            if (state.inComment) {
+                int close = rest.indexOf('-->')
+                if (close < 0) { rest = ''; break }
+                rest = rest.substring(close + 3)
+                state.inComment = false
+                continue
+            }
+            int open = rest.indexOf('<!--')
+            int tick = rest.indexOf('`')
+            if (open < 0 && tick < 0) { out.append(rest); break }
+            if (open >= 0 && (tick < 0 || open < tick)) {
+                out.append(rest.substring(0, open))
+                rest = rest.substring(open + 4)
+                state.inComment = true
+                continue
+            }
+            // A code span opens with a run of N backticks and closes on the next
+            // run of the same length; an unclosed run is literal text.
+            out.append(rest.substring(0, tick))
+            def tail = rest.substring(tick)
+            int runLen = 0
+            while (runLen < tail.length() && tail.charAt(runLen) == '`' as char) runLen++
+            def run = '`' * runLen
+            def after = tail.substring(runLen)
+            int close = after.indexOf(run)
+            if (close < 0) { out.append(run); rest = after }
+            else {
+                out.append(run).append(after.substring(0, close)).append(run)
+                rest = after.substring(close + runLen)
+            }
+        }
+        return out.toString()
+    }
+
+    /** Groups every fragment's bullets by canonical category. */
+    private Map<String, List<String>> readFragments() {
+        def buckets = [:].withDefault { [] }
+        fragments.files.sort { it.name }.each { file ->
+            if (file.name == 'README.md' || !file.isFile()) return
+            def state = [inComment: false]
+            def category = 'Changed'
+            def body = new StringBuilder()
+
+            def flush = {
+                def text = body.toString().trim()
+                body.setLength(0)
+                if (!text) return
+                // A fragment may be prose rather than bullets (no leading `- `).
+                // Emit it as one bullet so it renders as an entry rather than
+                // vanishing into a section with no list.
+                text.readLines()
+                        .collect { it.trim() }
+                        .inject([]) { acc, l ->
+                            if (l.startsWith('- ')) acc << l
+                            else if (l && acc && !acc.isEmpty()) acc[-1] = acc[-1] + ' ' + l
+                            else if (l) acc << '- ' + l
+                            acc
+                        }
+                        .each { buckets[category] << it }
+            }
+
+            file.eachLine('UTF-8') { line ->
+                def tag = CATEGORY_TAG.matcher(line)
+                if (!state.inComment && tag.matches()) {
+                    // Close the preceding block BEFORE switching bucket — a
+                    // fragment may carry several tags and each owns what follows.
+                    flush()
+                    category = canonicalCategory(tag.group(1))
+                    return
+                }
+                def stripped = stripComments(line, state)
+                if (!stripped.trim() && line.trim()) return
+                body.append(stripped).append('\n')
+            }
+            if (state.inComment) {
+                throw new GradleException(
+                        "changelog.d/${file.name} has an unterminated '<!--' — every bullet after " +
+                        "it would be silently dropped from the in-app What's new screen.")
+            }
+            flush()
+        }
+        return buckets
+    }
 
     @TaskAction
     void bundle() {
         def target = outputDir.get().file("CHANGELOG.md").asFile
         target.parentFile.mkdirs()
-        target.text = changelog.get().asFile.text
+
+        def buckets = readFragments()
+        def unreleased = new StringBuilder()
+        CATEGORIES.each { category ->
+            def bullets = buckets[category]
+            if (!bullets) return
+            unreleased.append('\n### ').append(category).append('\n\n')
+            bullets.each { unreleased.append(it).append('\n') }
+        }
+
+        // Splice the synthesised body into the committed `## Unreleased`
+        // placeholder rather than appending a second one — the runtime parser
+        // reads the FIRST section, and two would make the file's own shape a lie.
+        def source = changelog.get().asFile.text
+        def body = unreleased.toString()
+        target.text = body.isEmpty() ? source
+                : source.replaceFirst(/(?m)^## Unreleased[ \t]*$/, "## Unreleased\n${java.util.regex.Matcher.quoteReplacement(body)}")
     }
 }
 androidComponents {
     onVariants(selector().all()) { variant ->
         def bundleChangelogAsset = tasks.register(
                 "bundle${variant.name.capitalize()}ChangelogAsset", BundleChangelogAsset) {
-            it.description = "Copies the repo-root CHANGELOG.md into the ${variant.name} assets for the What's new screen."
+            it.description = "Bundles CHANGELOG.md + the changelog.d fragments into the ${variant.name} assets for the What's new screen."
             it.group = "build"
             it.changelog.set(rootProject.file("CHANGELOG.md"))
+            it.fragments.from(rootProject.fileTree("changelog.d") { include '*.md' })
         }
         variant.sources.assets.addGeneratedSourceDirectory(bundleChangelogAsset) { it.outputDir }
     }

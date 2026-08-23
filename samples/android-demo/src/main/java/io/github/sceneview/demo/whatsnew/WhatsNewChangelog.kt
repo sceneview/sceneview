@@ -52,11 +52,61 @@ data class WhatsNewRelease(
     val highlights: List<WhatsNewHighlight>,
 )
 
+/**
+ * One changelog bullet, carrying the identity the "since you last tested"
+ * surface needs on top of what the card needs.
+ *
+ * **[id] is why this type exists.** It is a hash of the entry's *normalised
+ * text*, deliberately not of its position or its section. An entry is written
+ * once as a `changelog.d/` fragment, shows up under `## Unreleased`, and later
+ * moves verbatim into a `## vX.Y.Z` section when the release is collated — the
+ * same sentence in two different places over its life. Hashing the text means
+ * an entry acknowledged while unreleased stays acknowledged after it ships,
+ * instead of being presented a second time under its new version heading.
+ */
+data class WhatsNewEntry(
+    val id: String,
+    val category: WhatsNewCategory,
+    /**
+     * The headline with inline code spans preserved, for rendering. Bold
+     * markers are already resolved (the whole headline is bold by convention,
+     * so keeping them would just render every entry bold).
+     */
+    val text: String,
+    /** First `[#N]` issue/PR reference found in the bullet, if any. */
+    val issueNumber: Int? = null,
+) {
+    /** [text] with markdown stripped entirely — for matching and previews. */
+    val plainText: String get() = text.replace("`", "")
+}
+
+/**
+ * One `##` section of the changelog: a released version, or the synthesised
+ * `## Unreleased` block the demo build fills from `changelog.d/`.
+ */
+data class WhatsNewSection(
+    /** Version without the leading `v`, or `null` for `## Unreleased`. */
+    val version: String?,
+    val date: String?,
+    val title: String?,
+    val entries: List<WhatsNewEntry>,
+) {
+    val isUnreleased: Boolean get() = version == null
+}
+
 /** Asset name the demo build copies the repo-root `CHANGELOG.md` to. */
 const val WHATS_NEW_ASSET = "CHANGELOG.md"
 
 /** How many releases the What's new sheet shows. */
 const val WHATS_NEW_MAX_RELEASES = 3
+
+/**
+ * Ceiling on how many released sections the "since you last tested" surface
+ * will read back. A tester who skipped more than this many releases is being
+ * shown a summary either way; the cap keeps a ~1 MB file from being parsed in
+ * full on a cold start.
+ */
+const val WHATS_NEW_MAX_SINCE_RELEASES = 20
 
 private val VERSION = Regex("""\d+(\.\d+)*""")
 private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
@@ -81,6 +131,18 @@ fun loadWhatsNew(
 }.map { parseWhatsNew(it, maxReleases) }.getOrDefault(emptyList())
 
 /**
+ * Reads the bundled changelog asset and parses it into sections, unreleased
+ * block included. Same failure contract as [loadWhatsNew]: blocking I/O, and
+ * any failure degrades to an empty list rather than crashing the app.
+ */
+fun loadWhatsNewSections(
+    assets: AssetManager,
+    maxReleases: Int = WHATS_NEW_MAX_SINCE_RELEASES,
+): List<WhatsNewSection> = runCatching {
+    assets.open(WHATS_NEW_ASSET).bufferedReader().use { it.readText() }
+}.map { parseChangelogSections(it, maxReleases) }.getOrDefault(emptyList())
+
+/**
  * Parses [markdown] (the collated `CHANGELOG.md`) into at most [maxReleases]
  * releases, newest first (the file is already newest-first). Stops reading as
  * soon as enough releases are complete — the file is ~1 MB and only its head
@@ -89,22 +151,56 @@ fun loadWhatsNew(
 fun parseWhatsNew(
     markdown: String,
     maxReleases: Int = WHATS_NEW_MAX_RELEASES,
-): List<WhatsNewRelease> {
-    val releases = mutableListOf<WhatsNewRelease>()
+): List<WhatsNewRelease> = parseChangelogSections(markdown, maxReleases)
+    .filterNot { it.isUnreleased }
+    .take(maxReleases)
+    .map { section ->
+        WhatsNewRelease(
+            version = section.version.orEmpty(),
+            date = section.date,
+            title = section.title,
+            highlights = section.entries.map {
+                WhatsNewHighlight(it.category, it.plainText, it.issueNumber)
+            },
+        )
+    }
 
+/**
+ * Parses [markdown] into its `##` sections, newest first, keeping the
+ * `## Unreleased` block (which the demo build fills from `changelog.d/` — see
+ * `BundleChangelogAsset`) when it carries entries.
+ *
+ * [maxReleases] caps *released* sections only; the unreleased block is always
+ * free. Parsing stops as soon as the cap is reached — the file is ~1 MB and
+ * only its head is ever needed.
+ */
+fun parseChangelogSections(
+    markdown: String,
+    maxReleases: Int = WHATS_NEW_MAX_RELEASES,
+): List<WhatsNewSection> {
+    val sections = mutableListOf<WhatsNewSection>()
+    var releaseCount = 0
+
+    var open = false
     var version: String? = null
     var date: String? = null
     var title: String? = null
-    var highlights = mutableListOf<WhatsNewHighlight>()
+    var entries = mutableListOf<WhatsNewEntry>()
     var category: WhatsNewCategory? = null
 
     fun flush() {
-        val v = version ?: return
-        releases += WhatsNewRelease(v, date, title, highlights.toList())
+        // An empty `## Unreleased` is the committed placeholder — nothing to
+        // show. A released section with no user-facing bullets is still a real
+        // release and keeps its heading, as it always has.
+        if (open && !(version == null && entries.isEmpty())) {
+            sections += WhatsNewSection(version, date, title, entries.toList())
+            if (version != null) releaseCount++
+        }
+        open = false
         version = null
         date = null
         title = null
-        highlights = mutableListOf()
+        entries = mutableListOf()
         category = null
     }
 
@@ -112,18 +208,22 @@ fun parseWhatsNew(
         when {
             line.startsWith("## ") -> {
                 flush()
-                if (releases.size >= maxReleases) break
+                if (releaseCount >= maxReleases) break
                 val header = parseReleaseHeader(line)
-                if (header != null) {
-                    version = header.version
-                    date = header.date
-                    title = header.title
+                when {
+                    header != null -> {
+                        open = true
+                        version = header.version
+                        date = header.date
+                        title = header.title
+                    }
+                    line.removePrefix("## ").trim().equals("unreleased", ignoreCase = true) ->
+                        open = true // version stays null — the unreleased block.
+                    // else: a non-release prose section; skip to the next header.
                 }
-                // else: `## Unreleased` or a non-release section — `version`
-                // stays null and every line until the next header is skipped.
             }
 
-            version == null -> continue
+            !open -> continue
 
             line.startsWith("### ") ->
                 category = when (line.removePrefix("### ").trim().lowercase()) {
@@ -139,12 +239,12 @@ fun parseWhatsNew(
             // Top-level bullets only: continuation lines are indented and
             // never carry the headline.
             line.startsWith("- ") -> category?.let { cat ->
-                parseHighlight(line, cat)?.let { highlights += it }
+                parseEntry(line, cat)?.let { entries += it }
             }
         }
     }
     flush()
-    return releases.take(maxReleases)
+    return sections
 }
 
 private data class ReleaseHeader(val version: String, val date: String?, val title: String?)
@@ -177,7 +277,7 @@ private fun parseReleaseHeader(line: String): ReleaseHeader? {
     )
 }
 
-private fun parseHighlight(line: String, category: WhatsNewCategory): WhatsNewHighlight? {
+private fun parseEntry(line: String, category: WhatsNewCategory): WhatsNewEntry? {
     val raw = line.removePrefix("- ").trim()
     if (raw.isEmpty()) return null
 
@@ -193,15 +293,46 @@ private fun parseHighlight(line: String, category: WhatsNewCategory): WhatsNewHi
         val sentenceEnd = raw.indexOf(". ")
         if (sentenceEnd > 0) raw.substring(0, sentenceEnd + 1) else raw
     }
-    val headline = leading
+    // Code spans survive into `text` so the sheet can render them as code;
+    // `plainText` drops them for the card, which has always shown them plain.
+    val text = leading
         .replace(ISSUE_LINK_GROUP, "")
         .replace(MARKDOWN_LINK) { it.groupValues[1] }
         .replace("**", "")
-        .replace("`", "")
         .trim()
         .trimEnd('.', ':')
         .trim()
 
-    return headline.takeIf { it.isNotEmpty() }
-        ?.let { WhatsNewHighlight(category, it, issueNumber) }
+    return text.takeIf { it.isNotEmpty() }
+        ?.let { WhatsNewEntry(whatsNewEntryId(it), category, it, issueNumber) }
+}
+
+/**
+ * Stable identity for a changelog entry, derived from its text alone.
+ *
+ * Text is the only thing an entry keeps when it moves from a `changelog.d/`
+ * fragment into a released section, so it is the only thing the id can be
+ * built from if "already acknowledged" is to survive a release. Normalisation
+ * absorbs the cosmetic differences that move does introduce — case, collapsed
+ * whitespace, and the `([#123](…))` reference the collator may attach.
+ *
+ * FNV-1a rather than [String.hashCode] because this value is *persisted*: a
+ * hash written to disk must be defined by this file, not by a JVM
+ * implementation detail that a future runtime is free to change.
+ */
+internal fun whatsNewEntryId(text: String): String {
+    val normalised = text
+        .replace(ISSUE_LINK_GROUP, "")
+        .replace(ISSUE_REF, "")
+        .replace("`", "")
+        .replace("**", "")
+        .lowercase()
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+    var hash = -0x340d631b7bdddcdbL // FNV-1a 64-bit offset basis
+    for (char in normalised) {
+        hash = hash xor char.code.toLong()
+        hash *= 0x100000001b3L // FNV-1a 64-bit prime
+    }
+    return hash.toULong().toString(16)
 }
