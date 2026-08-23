@@ -66,6 +66,15 @@ export interface NodeHandle {
   /** Uniform local scale on all three axes — the common case. */
   setScaleUniform(s: number): void;
 
+  /** Align the AABB point selected by a **normalized** origin with the node
+   *  origin — Android `ModelNode.centerOrigin(Position)` parity (#2763).
+   *  `0` = bounding-box center, `±1` = bounding-box faces, per axis;
+   *  `(0, -1, 0)` bottom-aligns, `(0, 1, 0)` hangs the model from the origin.
+   *  Composes additively with the current position. A no-op for a handle
+   *  that does not wrap a model node, or whose model hasn't finished
+   *  loading yet. */
+  centerOrigin(originX: number, originY: number, originZ: number): void;
+
   /** Show/hide the node's renderable content. For a model/geometry node this
    *  adds/removes its asset entities from the scene, so it actually
    *  disappears/reappears. An empty pivot node only flips the stored flag. */

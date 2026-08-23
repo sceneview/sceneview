@@ -543,5 +543,85 @@ final class ModelNodeTests: XCTestCase {
             .centerOrigin(normalized: SIMD3(0, -1, 0))
         XCTAssertNotNil(node.entity.model)
     }
+
+    // MARK: - Cross-platform golden-vector table (#2763)
+    //
+    // Same expected translations as Kotlin `centerOriginGoldenVectors`
+    // (`sceneview-core/src/commonTest/kotlin/io/github/sceneview/math/CenterOriginGoldenVectorsTest.kt`,
+    // shared by Android and Web since both compile that KMP module) — the
+    // Rerun-precedent pattern (`RerunWireFormatTest.kt` /
+    // `RerunWireFormatTests.swift`): identical expected values duplicated in
+    // each platform's own suite so a numeric divergence fails locally, on
+    // its own platform, with no shared runtime dependency.
+    //
+    // This overload has no separate `scale` parameter — RealityKit's
+    // `visualBounds` already reports SCALED world-space extents (see the
+    // `centerOrigin(normalized:)` doc comment above) — so a Kotlin vector's
+    // `(center, halfExtent, scale)` is folded into this overload's
+    // `(center: center*scale, extents: 2*halfExtent*scale)` before calling.
+    // The resulting `expected` translations are unchanged by that folding
+    // (verified algebraically: `-(c*s + o*h*s) == -(c*s + o*(2*h*s)/2)`),
+    // so the numbers below are literally the same as the Kotlin table's.
+
+    func testGoldenVectorCenteredPullsOffPivotAabbCenterOntoOrigin() {
+        // Kotlin: center=(1,2,1), halfExtent=(1,2,1), scale=0.5, origin=(0,0,0).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(0.5, 1, 0.5), extents: SIMD3(1, 2, 1), origin: .zero
+        )
+        XCTAssertEqual(t.x, -0.5, accuracy: 1e-6)
+        XCTAssertEqual(t.y, -1, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -0.5, accuracy: 1e-6)
+    }
+
+    func testGoldenVectorBottomAlignedSitsModelOnNodeOrigin() {
+        // Kotlin: center=(1,2,1), halfExtent=(1,2,1), scale=0.5, origin=(0,-1,0).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(0.5, 1, 0.5), extents: SIMD3(1, 2, 1), origin: SIMD3(0, -1, 0)
+        )
+        XCTAssertEqual(t.x, -0.5, accuracy: 1e-6)
+        XCTAssertEqual(t.y, 0, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -0.5, accuracy: 1e-6)
+    }
+
+    func testGoldenVectorTopAlignedHangsModelFromNodeOrigin() {
+        // Kotlin: center=(1,2,1), halfExtent=(1,2,1), scale=0.5, origin=(0,1,0).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(0.5, 1, 0.5), extents: SIMD3(1, 2, 1), origin: SIMD3(0, 1, 0)
+        )
+        XCTAssertEqual(t.x, -0.5, accuracy: 1e-6)
+        XCTAssertEqual(t.y, -2, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -0.5, accuracy: 1e-6)
+    }
+
+    func testGoldenVectorLeftTopAligned() {
+        // Kotlin: center=(1,2,1), halfExtent=(1,2,1), scale=0.5, origin=(-1,1,0).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(0.5, 1, 0.5), extents: SIMD3(1, 2, 1), origin: SIMD3(-1, 1, 0)
+        )
+        XCTAssertEqual(t.x, 0, accuracy: 1e-6)
+        XCTAssertEqual(t.y, -2, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -0.5, accuracy: 1e-6)
+    }
+
+    func testGoldenVectorOffCenterAabbUnitScaleGeneralOrigin() {
+        // Kotlin: center=(-2,0.5,3), halfExtent=(0.5,1.5,2), scale=1, origin=(1,-1,-1).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(-2, 0.5, 3), extents: SIMD3(1, 3, 4), origin: SIMD3(1, -1, -1)
+        )
+        XCTAssertEqual(t.x, 1.5, accuracy: 1e-6)
+        XCTAssertEqual(t.y, 1, accuracy: 1e-6)
+        XCTAssertEqual(t.z, -1, accuracy: 1e-6)
+    }
+
+    func testGoldenVectorCenteredAabbNonUniformScaleGeneralOrigin() {
+        // Kotlin: center=(0,0,0), halfExtent=(2,3,4), scale=(2,0.5,1), origin=(1,1,-1).
+        // swift_center = center*scale = (0,0,0); swift_extents = 2*halfExtent*scale = (8,3,8).
+        let t = ModelNode.centerOriginTranslation(
+            center: SIMD3(0, 0, 0), extents: SIMD3(8, 3, 8), origin: SIMD3(1, 1, -1)
+        )
+        XCTAssertEqual(t.x, -4, accuracy: 1e-6)
+        XCTAssertEqual(t.y, -1.5, accuracy: 1e-6)
+        XCTAssertEqual(t.z, 4, accuracy: 1e-6)
+    }
 }
 #endif
