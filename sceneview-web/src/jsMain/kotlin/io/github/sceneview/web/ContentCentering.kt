@@ -96,6 +96,33 @@ internal object ContentCentering {
     }
 
     /**
+     * Default orbit distance, in bounding-sphere radii, that `fitToModels()`
+     * dollies to: `2.5 × radius`, the value the fit has always used.
+     */
+    const val FIT_DISTANCE_RADII: Double = 2.5
+
+    /** Lower bound of the `fitToModels(margin)` multiplier — same floor as iOS `framingMargin`. */
+    const val MIN_FIT_MARGIN: Double = 0.2
+
+    /** Upper bound of the `fitToModels(margin)` multiplier — same ceiling as iOS `framingMargin`. */
+    const val MAX_FIT_MARGIN: Double = 10.0
+
+    /**
+     * The orbit distance `fitToModels(margin)` dollies to for a content
+     * bounding sphere of [radius]: the default `2.5 × radius` scaled by
+     * [margin], a *multiplier* in the iOS `framingMargin` convention —
+     * `1.0` keeps the historical fit, `< 1` frames tighter, `> 1` leaves more
+     * air (#2946). [margin] is clamped to `[MIN_FIT_MARGIN, MAX_FIT_MARGIN]`
+     * like iOS; a non-finite margin falls back to `1.0`. Returns `0.0` for a
+     * non-positive radius so callers can skip a degenerate fit.
+     */
+    fun fitDistance(radius: Double, margin: Double = 1.0): Double {
+        if (!(radius > 0.0)) return 0.0
+        val m = if (margin.isFinite()) margin.coerceIn(MIN_FIT_MARGIN, MAX_FIT_MARGIN) else 1.0
+        return radius * FIT_DISTANCE_RADII * m
+    }
+
+    /**
      * Whether [box]'s extents are finite and large enough to be considered
      * loaded content worth centring.
      *

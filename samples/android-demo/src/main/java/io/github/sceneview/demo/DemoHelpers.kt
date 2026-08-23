@@ -519,7 +519,7 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * the model rotating through its own light setup.
  *
  * On first gesture the manipulator captures the current orbit pose as the new
- * [DefaultCameraManipulator.orbitHomePosition], so there's no snap — the user's first
+ * [DefaultCameraManipulator.eyePosition], so there's no snap — the user's first
  * drag continues from exactly where the idle orbit left off.
  *
  * ### Auto-orbit resume after idle (#2225)
@@ -576,7 +576,7 @@ class HeroOrbitCameraManipulator(
             // Capture the current orbit eye as the manipulator's home so the hand-off is
             // seamless — the first drag begins exactly where we stopped orbiting.
             fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
-                orbitHomePosition = currentEye(),
+                eyePosition = currentEye(),
                 targetPosition = target,
             ).also { it.setViewport(viewportW, viewportH) }
         }

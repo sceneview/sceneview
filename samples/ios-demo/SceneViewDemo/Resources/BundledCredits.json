@@ -1,0 +1,435 @@
+{
+  "_comment": "GENERATED FILE — DO NOT EDIT BY HAND. Generated from assets/catalog.json and the contents of samples/ios-demo/SceneViewDemo by .claude/scripts/generate-credits.py; `--check` fails on drift.",
+  "scope": "ios-demo",
+  "title": "Bundled Asset Credits — SceneView iOS demo",
+  "artefact": "the App Store build",
+  "source": "assets/catalog.json",
+  "total": 41,
+  "sections": [
+    {
+      "title": "3D models",
+      "assets": [
+        {
+          "file": "Models/animated_butterfly.usdz",
+          "name": "Animated Flying Fluttering Butterfly Loop",
+          "author": "LasquetiSpice",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/animated-flying-fluttering-butterfly-loop-80f8d9a6dadc411e89ca366cb0cfb0d9",
+          "size": 3228959,
+          "note": ""
+        },
+        {
+          "file": "Models/audi_tt.usdz",
+          "name": "2007 Audi TT Coupe",
+          "author": "Ddiaz Design",
+          "license": "CC-BY-NC-SA-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/2007-audi-tt-coupe-b548ef872a8b4164a700e5b8cdb85a14",
+          "size": 6817323,
+          "note": ""
+        },
+        {
+          "file": "Models/black_dragon.usdz",
+          "name": "Black Dragon with Idle Animation",
+          "author": "Arturs J",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36",
+          "size": 16031277,
+          "note": ""
+        },
+        {
+          "file": "Models/bmw_m3_e30.usdz",
+          "name": "BMW M3 Coupe (E30) 1986",
+          "author": "Lexyc16",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
+          "size": 9669385,
+          "note": ""
+        },
+        {
+          "file": "Models/cyberpunk_car.usdz",
+          "name": "Cyberpunk Car",
+          "author": "4d_Bob",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0",
+          "size": 2928603,
+          "note": ""
+        },
+        {
+          "file": "Models/cyberpunk_character.usdz",
+          "name": "Cyberpunk Character",
+          "author": "Esk",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51",
+          "size": 8152320,
+          "note": ""
+        },
+        {
+          "file": "Models/cyberpunk_hovercar.usdz",
+          "name": "Cyberpunk Hovercar",
+          "author": "Karol Miklas",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c",
+          "size": 3699910,
+          "note": ""
+        },
+        {
+          "file": "Models/earthquake_california.usdz",
+          "name": "August 7, 2024 M5.2 Earthquake in California",
+          "author": "Kyle",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/august-7-2024-m52-earthquake-in-california-9c38a08933154e128bb550246285f9e4",
+          "size": 25335648,
+          "note": ""
+        },
+        {
+          "file": "Models/fantasy_book.usdz",
+          "name": "Medieval Fantasy Book",
+          "author": "Pixel",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a",
+          "size": 3214600,
+          "note": ""
+        },
+        {
+          "file": "Models/ferrari_f40.usdz",
+          "name": "Ferrari F40",
+          "author": "Black Snow",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70",
+          "size": 4264019,
+          "note": ""
+        },
+        {
+          "file": "Models/fiat_punto.usdz",
+          "name": "1995 Fiat Punto GT",
+          "author": "Karol Miklas",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/free-1995-fiat-punto-gt-48db6facb4b64e99b60f36b8c01185e1",
+          "size": 3028932,
+          "note": ""
+        },
+        {
+          "file": "Models/game_boy_classic.usdz",
+          "name": "Game Boy Classic",
+          "author": "JonhyOliver",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
+          "size": 5431874,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_damaged_helmet.usdz",
+          "name": "Damaged Helmet",
+          "author": "KhronosGroup (theblueturtle_)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
+          "size": 4191290,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_fox.usdz",
+          "name": "Fox",
+          "author": "PixelMannen (model), tomkranis (rigging & animation)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox",
+          "size": 139880,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_lantern.usdz",
+          "name": "Lantern",
+          "author": "Microsoft",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern",
+          "size": 9356255,
+          "note": ""
+        },
+        {
+          "file": "Models/khronos_toy_car.usdz",
+          "name": "Toy Car",
+          "author": "KhronosGroup",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
+          "size": 9171863,
+          "note": ""
+        },
+        {
+          "file": "Models/lamborghini_countach.usdz",
+          "name": "2021 Lamborghini Countach LPI 800-4",
+          "author": "Lexyc16",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/2021-lamborghini-countach-lpi-800-4-d76b94884432422b966d1a7f8815afb5",
+          "size": 8965293,
+          "note": ""
+        },
+        {
+          "file": "Models/mercedes_a45_amg.usdz",
+          "name": "Mercedes-Benz A45 AMG 2018",
+          "author": "Lexyc16",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/mercedes-benz-a45-amg-2018-9482f251f9c34a6e91d7777db5934cfc",
+          "size": 9050162,
+          "note": ""
+        },
+        {
+          "file": "Models/mosquito_amber.usdz",
+          "name": "Mosquito in Amber",
+          "author": "Loïc Norgeot",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078",
+          "size": 3683955,
+          "note": ""
+        },
+        {
+          "file": "Models/nike_air_jordan.usdz",
+          "name": "Nike Air Jordan",
+          "author": "Ar41k",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf",
+          "size": 10820512,
+          "note": ""
+        },
+        {
+          "file": "Models/nintendo_switch.usdz",
+          "name": "Nintendo Switch Diorama",
+          "author": "Mikkel Garde Blaase",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
+          "size": 846974,
+          "note": ""
+        },
+        {
+          "file": "Models/phoenix_bird.usdz",
+          "name": "Phoenix Bird",
+          "author": "NORBERTO-3D",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
+          "size": 1162886,
+          "note": ""
+        },
+        {
+          "file": "Models/porsche_911.usdz",
+          "name": "FREE 1975 Porsche 911 (930) Turbo",
+          "author": "Karol Miklas",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
+          "size": 12351092,
+          "note": ""
+        },
+        {
+          "file": "Models/porsche_911_turbo.usdz",
+          "name": "1975 Porsche 911 (930) Turbo",
+          "author": "Lionsharp Studios",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e",
+          "size": 12351092,
+          "note": ""
+        },
+        {
+          "file": "Models/ps5_dualsense.usdz",
+          "name": "PlayStation 5 DualSense",
+          "author": "AHarmlessPotato",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936",
+          "size": 3297630,
+          "note": ""
+        },
+        {
+          "file": "Models/red_car.usdz",
+          "name": "A Red Car",
+          "author": "SerjogaSan",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239",
+          "size": 241457,
+          "note": ""
+        },
+        {
+          "file": "Models/retro_piano.usdz",
+          "name": "Retro Piano",
+          "author": "DailyArt",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
+          "size": 1926166,
+          "note": ""
+        },
+        {
+          "file": "Models/shelby_cobra.usdz",
+          "name": "1965 AC Shelby Cobra 427",
+          "author": "vecarz",
+          "license": "CC-BY-NC-SA-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/1965-ac-shelby-cobra-427-wwwvecarzcom-3e9c994c428b44f087d64e738428886c",
+          "size": 5121065,
+          "note": ""
+        },
+        {
+          "file": "Models/ship_in_clouds.usdz",
+          "name": "Ship in Clouds",
+          "author": "Bastien Genbrugge",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/ship-in-clouds-c475323dc7f24e26ba2009c08c8e1941",
+          "size": 6727605,
+          "note": ""
+        },
+        {
+          "file": "Models/tesla_cybertruck.usdz",
+          "name": "Tesla Cybertruck",
+          "author": "hashikemu",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb",
+          "size": 4343008,
+          "note": ""
+        },
+        {
+          "file": "Models/tree_scene.usdz",
+          "name": "Low Poly Tree Scene",
+          "author": "mateustorresg (modified by SceneView — grass-tuft prims removed)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd",
+          "size": 14146523,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "title": "HDR environments",
+      "assets": [
+        {
+          "file": "Environments/autumn_field.hdr",
+          "name": "Autumn Field",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 4374736,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/night_sky.hdr",
+          "name": "Night Sky (Dikhololo Night)",
+          "author": "Greg Zaal",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/dikhololo_night",
+          "size": 7050455,
+          "note": ""
+        },
+        {
+          "file": "Environments/outdoor_cloudy.hdr",
+          "name": "Outdoor Cloudy",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 6480797,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/rooftop_night.hdr",
+          "name": "Rooftop Night",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 6509158,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/studio.hdr",
+          "name": "Studio",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 6470014,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/studio_warm.hdr",
+          "name": "Studio Warm",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 5930381,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        },
+        {
+          "file": "Environments/sunset.hdr",
+          "name": "Sunset",
+          "author": "Poly Haven",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://polyhaven.com/license",
+          "sourceUrl": "https://polyhaven.com",
+          "size": 4344656,
+          "note": "Poly Haven publishes its whole library under CC0-1.0"
+        }
+      ]
+    },
+    {
+      "title": "Other bundled assets",
+      "assets": [
+        {
+          "file": "Audio/bell.wav",
+          "name": "bell.wav",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 26538,
+          "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`"
+        },
+        {
+          "file": "Resources/qrcode.png",
+          "name": "qrcode.png",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 2006,
+          "note": "QR-like reference pattern drawn for `ARImageDemo`"
+        },
+        {
+          "file": "Videos/sample.mp4",
+          "name": "sample.mp4",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 529360,
+          "note": "Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`"
+        }
+      ]
+    }
+  ]
+}

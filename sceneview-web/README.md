@@ -35,7 +35,7 @@ For browser usage without Kotlin, load the `sceneview-web.js` bundle and use the
 global `sceneview` object it registers on `window`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer("scene-canvas", "model.glb").then((viewer) => {
     viewer.setBackgroundColor(0.05, 0.05, 0.08, 1);
@@ -74,7 +74,7 @@ Every factory returns a `Promise<SceneViewer>`.
 | `viewer.setBackgroundColor(r, g, b, a)` | Set clear color (components `0..1`) |
 | `viewer.startRendering()` / `viewer.stopRendering()` | Start/stop the render loop |
 | `viewer.resize(width, height)` | Resize the underlying canvas |
-| `viewer.fitToModels()` | Frame the camera so every loaded model is visible |
+| `viewer.fitToModels(margin?)` | Frame the camera so every loaded model is visible; optional `margin` multiplies the fit distance (`1` default, `< 1` tighter, `> 1` more air, clamped `0.2…10`) |
 | `viewer.dispose()` | Release Filament resources |
 
 ## Features

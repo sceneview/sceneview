@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import {
+  IOS_NODE_TYPE_COUNT,
+  IOS_NODE_TYPES,
+  LATEST_FLUTTER_PUB_RELEASE,
+  LATEST_SCENEVIEW_RELEASE,
+} from "./generated/version.js";
 import {
   getPlatformSetup,
   listPlatforms,
@@ -18,6 +23,19 @@ describe("PLATFORM_IDS", () => {
     expect(PLATFORM_IDS).toContain("react-native");
     expect(PLATFORM_IDS).toContain("desktop");
     expect(PLATFORM_IDS).toContain("tv");
+  });
+});
+
+describe("iOS node inventory (#2999)", () => {
+  it("states the generated node count and lists every Swift node type", () => {
+    const result = getPlatformSetup("ios", "3d");
+    expect(result).toContain(`SceneViewSwift provides ${IOS_NODE_TYPE_COUNT} node types:`);
+    for (const node of IOS_NODE_TYPES) {
+      expect(result).toContain(`| \`${node}\` |`);
+    }
+    // No extra rows either: the table and the Swift tree are the same set.
+    const rows = result.match(/^\| `[A-Za-z0-9]+Node` \|/gm) ?? [];
+    expect(rows).toHaveLength(IOS_NODE_TYPE_COUNT);
   });
 });
 

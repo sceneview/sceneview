@@ -24,6 +24,7 @@ export interface ToolTextContent {
 /** Result returned by every SceneView MCP tool handler. */
 export interface ToolResult {
   content: ToolTextContent[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
@@ -45,6 +46,13 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: {
+    type: "object";
+    properties?: Record<string, unknown>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+  /** JSON Schema for the machine-readable `structuredContent` result. */
+  outputSchema?: {
     type: "object";
     properties?: Record<string, unknown>;
     required?: string[];

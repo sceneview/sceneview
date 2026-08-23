@@ -6,8 +6,8 @@ composeMultiplatform = "1.11.1"
 
 # AndroidX Core
 coreKtx = "1.18.0"
-appcompat = "1.7.1"
-fragmentKtx = "1.8.9"
+appcompat = "1.8.0"
+fragmentKtx = "1.9.0"
 
 # Compose
 composeBom = "2026.06.01"
@@ -26,7 +26,7 @@ kotlinMath = "1.8.0"
 # Wired as `compileOnly` in arsceneview/ so phone-only apps pay nothing
 # at runtime. See arsceneview/docs/JETPACK-XR-INTEGRATION.md for the
 # integration approach and slicing plan (issue #1738).
-jetpackXrArCore = "1.0.0-beta01"
+jetpackXrArCore = "1.0.0-beta02"
 
 # Filament 1.72.1 — must match the material-binary version (MATERIAL_VERSION 72)
 # of the .filamat files committed under sceneview/src/main/assets/materials/ and
@@ -136,7 +136,7 @@ androidxTestRules = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestUiAutomator = "2.4.0"
 robolectric = "4.16.1"
-roborazzi = "1.71.0"
+roborazzi = "1.72.0"
 
 # Code Quality
 # detekt 2.0.0-alpha.0 (Sep 2025) is the first release built against Kotlin 2.x

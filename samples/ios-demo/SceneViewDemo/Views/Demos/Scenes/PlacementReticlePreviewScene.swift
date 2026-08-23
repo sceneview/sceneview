@@ -36,7 +36,7 @@ import SceneViewSwift
 /// hoisted into its own `Demos/` file later with a pure file move.
 ///
 /// ### Known iOS/RealityKit deltas from the Android original
-/// - **Camera framing**: Android hand-tunes a fixed `orbitHomePosition` /
+/// - **Camera framing**: Android hand-tunes a fixed `eyePosition` /
 ///   `targetPosition` and disables auto-centering. `SceneViewSwift.SceneView`
 ///   has no public API to set an initial camera position, so this port
 ///   relies on the library's own fit-to-bounds auto-centering
@@ -73,8 +73,13 @@ struct PlacementReticlePreviewDemo: View {
 
     var body: some View {
         ZStack {
+            // `.contentID(_:)` rebuilds the reticle / placed diorama under the
+            // same `RealityView`; a `.id(_:)` re-key discarded the renderer and
+            // intermittently left it black on iOS 26 Simulator (#3008). The
+            // `.environment` / `.renderQuality` changes that ride on `placed`
+            // are applied reactively by `SceneView` itself.
             configuredSceneView
-                .id(sceneKey)
+                .contentID(sceneKey)
                 .background(placed ? Color.black : Self.reticleBackdrop)
                 .ignoresSafeArea()
 
@@ -214,8 +219,8 @@ struct PlacementReticlePreviewDemo: View {
     /// `placed` toggle only needs to reference it afterwards, no reload per
     /// toggle. Bumps `sceneKey` on completion so a scene built before the
     /// load finished (user flips to "placed" before the async load lands)
-    /// picks the model up on the next rebuild — same idiom as
-    /// `GestureEditingDemo`'s `.id("gesture-\(loadedModel != nil)")`.
+    /// picks the model up on the next content rebuild — same idiom as
+    /// `GestureEditingDemo`'s `.contentID(loadedModel == nil ? nil : "loaded")`.
     @MainActor
     private func loadHelmetIfNeeded() async {
         guard helmetNode == nil, !helmetLoadFailed else { return }

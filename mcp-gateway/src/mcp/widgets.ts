@@ -8,9 +8,10 @@
  *    (e.g. `ui://widget/3d-viewer.html`) and the canonical mime type
  *    `text/html;profile=mcp-app`. ChatGPT fetches it via `resources/read`
  *    when a tool result references the URI.
- * 2. A tool result attaches `_meta.ui.resourceUri` pointing at the widget
- *    URI plus a `structuredContent` JSON payload that the widget reads
- *    from the MCP Apps bridge (postMessage).
+ * 2. The tool declaration in `tools/list` AND each tool result attach
+ *    `_meta.ui.resourceUri` pointing at the widget URI; the result adds a
+ *    `structuredContent` JSON payload that the widget reads from the MCP
+ *    Apps bridge (postMessage).
  * 3. The widget runs inside the iframe, reads `window.openai?.structuredContent`
  *    (set by the host), and renders accordingly.
  *

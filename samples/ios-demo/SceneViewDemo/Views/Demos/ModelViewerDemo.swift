@@ -118,6 +118,25 @@ struct ModelViewerDemo: View {
         return items
     }
 
+    /// Raw `-camera_distance <float>` launch-arg override, written by
+    /// `SceneViewDemoApp` into `UserDefaults` (#2785). `0` is the "unset"
+    /// sentinel — see `DeepLinkRouter.cameraDistanceDefaultsKey`.
+    @AppStorage(DeepLinkRouter.cameraDistanceDefaultsKey) private var cameraDistanceRaw: Double = 0
+
+    /// Validated `-camera_distance` override, or `nil` when absent — mirrors
+    /// Android's nullable `DemoSettings.cameraDistance`. Threaded into
+    /// ``sceneView``'s `.framingMargin(_:)` in place of the demo's own
+    /// interactive / `qa_mode` defaults, the same "explicit override wins
+    /// over auto-fit" precedence Android's `rememberHeroOrbitCameraManipulator`
+    /// applies to `radius` (`DemoHelpers.kt`, #1571). Note `.framingMargin(_:)`
+    /// itself clamps to `0.2...10` (`SceneView.swift`) — narrower than
+    /// `DeepLinkRouter`'s accepted `0.05...100`, since it is a fit-margin
+    /// multiplier, not the absolute-metre distance Android's `radius` is;
+    /// callers targeting a store-tight frame want small values (< 1) anyway.
+    private var cameraDistanceOverride: Float? {
+        cameraDistanceRaw > 0 ? Float(cameraDistanceRaw) : nil
+    }
+
     var body: some View {
         ZStack {
             SceneViewTokens.Stage.background.ignoresSafeArea()
@@ -241,7 +260,10 @@ struct ModelViewerDemo: View {
             .cameraControls(.orbit)
             .cameraOrbit(azimuth: .pi / 5)
             .environment(sceneEnvironment)
-            .framingMargin(qaMode ? Self.captureFramingMargin : Self.framingMargin)
+            // `cameraDistanceOverride` — the `-camera_distance <float>` launch
+            // arg (#2785) — wins over both when present, same as Android's
+            // `DemoSettings.cameraDistance` beating its own `radius` default.
+            .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
             .contentID(loadedNode == nil ? nil : "\(loadCount)-\(recenterGeneration)")
             .ignoresSafeArea()
 

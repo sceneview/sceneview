@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -120,6 +122,15 @@ fun HomeScreen(
     onDemoClick: (String) -> Unit,
     onBrowseOnlineClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Whether the "since you last tested" list has pending entries. Owned by
+     * [io.github.sceneview.demo.ui.RootScreen] — this screen must not derive it
+     * again, or acknowledging in the sheet would leave a second stale copy of
+     * the marker driving the badge. Defaulted so previews and snapshot tests
+     * render the unbadged header they already pinned.
+     */
+    hasUnseenWhatsNew: Boolean = false,
+    onWhatsNewSinceClick: () -> Unit = {},
 ) {
     val home = SceneViewTokens.Home
     val gridState = rememberLazyGridState()
@@ -239,8 +250,15 @@ fun HomeScreen(
             scrolled = scrolled,
             query = query,
             onQueryChange = onQueryChange,
-            showWhatsNew = whatsNew.isNotEmpty(),
-            onWhatsNewClick = { showWhatsNew = true },
+            // The discreet re-proposal: a "since" list dismissed without
+            // acknowledging retreats to a dot on this action and takes the
+            // tap until it is marked seen; afterwards the action falls back
+            // to the release-notes sheet.
+            showWhatsNew = hasUnseenWhatsNew || whatsNew.isNotEmpty(),
+            whatsNewBadged = hasUnseenWhatsNew,
+            onWhatsNewClick = {
+                if (hasUnseenWhatsNew) onWhatsNewSinceClick() else showWhatsNew = true
+            },
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -255,6 +273,7 @@ private fun HomeHeader(
     query: String,
     onQueryChange: (String) -> Unit,
     showWhatsNew: Boolean,
+    whatsNewBadged: Boolean,
     onWhatsNewClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -290,6 +309,7 @@ private fun HomeHeader(
             } else {
                 TitleRow(
                     showWhatsNew = showWhatsNew,
+                    whatsNewBadged = whatsNewBadged,
                     onWhatsNewClick = onWhatsNewClick,
                     onSearchClick = { searchOpen = true },
                 )
@@ -308,6 +328,7 @@ private fun HomeHeader(
 @Composable
 private fun TitleRow(
     showWhatsNew: Boolean,
+    whatsNewBadged: Boolean,
     onWhatsNewClick: () -> Unit,
     onSearchClick: () -> Unit,
 ) {
@@ -333,11 +354,16 @@ private fun TitleRow(
         Spacer(Modifier.weight(1f))
         if (showWhatsNew) {
             IconButton(onClick = onWhatsNewClick) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = stringResource(R.string.home_whats_new),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                val icon = @Composable {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = stringResource(
+                            if (whatsNewBadged) R.string.whats_new_since_action else R.string.home_whats_new,
+                        ),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (whatsNewBadged) BadgedBox(badge = { Badge() }) { icon() } else icon()
             }
         }
         IconButton(onClick = onSearchClick, modifier = Modifier.offset(x = 12.dp)) {

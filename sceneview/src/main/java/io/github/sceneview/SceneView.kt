@@ -154,6 +154,13 @@ import io.github.sceneview.node.findActivity
  *                              so subsequent user zoom / pan is never fought. Default `false` so
  *                              callers that position [cameraNode] explicitly keep full control;
  *                              opt in for model-viewer style scenes.
+ * @param framingPadding        Extra air the [autoFitContent] pass leaves around the content, as a
+ *                              *fraction* of the fit distance — `0.15` (the default,
+ *                              [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames the
+ *                              bounds exactly tangent. Clamped to `>= 0`. Per-scene counterpart of
+ *                              `CameraNode.frameToContent(padding = …)` (#2946). Not the iOS
+ *                              `framingMargin` *multiplier*: `margin == 1 + padding`, so iOS
+ *                              `1.15` is `0.15` here. No effect when [autoFitContent] is `false`.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -287,6 +294,15 @@ fun SceneView(
      */
     autoFitContent: Boolean = false,
     /**
+     * Extra air the [autoFitContent] pass leaves around the content, as a *fraction* of the fit
+     * distance: `0.15` (the default, [DEFAULT_FRAMING_PADDING]) adds 15% of distance, `0` frames
+     * the bounds exactly tangent. Clamped to `>= 0`. Same unit as
+     * `CameraNode.frameToContent(padding = …)` — and **not** the iOS `framingMargin` multiplier
+     * (`margin == 1 + padding`, so iOS `1.15` is `0.15` here) (#2946). Ignored unless
+     * [autoFitContent] is `true`.
+     */
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
      */
@@ -323,7 +339,7 @@ fun SceneView(
      * Helper that enables camera interaction similar to sketchfab or Google Maps.
      */
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     /**
      * Used for [SceneScope.ViewNode] composables — manages the off-screen window attachment.
@@ -729,6 +745,10 @@ fun SceneView(
     // Same for `autoFitContent` — the auto-fit pass is read through this ref so toggling the
     // parameter at runtime is picked up by the frame loop without restarting it.
     val currentAutoFitContent = rememberUpdatedState(autoFitContent)
+    // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
+    // instead of staying latched on the previous framing.
+    val currentFramingPadding = rememberUpdatedState(framingPadding)
+    LaunchedEffect(framingPadding) { autoFitState.reset() }
 
     // The loop's real wake condition: the caller wants frames, *or* the current surface is still
     // owed one. Derived state so the park below observes both through a single snapshot read.
@@ -785,9 +805,14 @@ fun SceneView(
                         // when a deferred async model grows the union (#1596).
                         if (currentAutoFitContent.value && currentCameraManipulator.value == null) {
                             if (currentAutoCenterContent.value) {
-                                autoFitState.maybeFit(cameraNode, contentRoot)
+                                autoFitState.maybeFit(
+                                    cameraNode, contentRoot, padding = currentFramingPadding.value
+                                )
                             } else {
-                                autoFitState.maybeFit(cameraNode, childNodesRef.get())
+                                autoFitState.maybeFit(
+                                    cameraNode, childNodesRef.get(),
+                                    padding = currentFramingPadding.value
+                                )
                             }
                         }
 
@@ -884,9 +909,15 @@ fun SceneView(
  * glTF [Model] — a bundle of Filament textures, vertex/index buffers and materials). When
  * [assetFileLocation] changes, the previously produced instance's `Model` is destroyed
  * (`modelLoader.destroyModel(it.model)`) and the new asset is loaded; the old `Model` is also
- * destroyed when this composable leaves the composition. Disposal runs **after** any consuming
- * [SceneScope.ModelNode] has detached its renderable entities from the scene (Compose disposes the
- * later-declared node effect first), so the renderables are never left dangling. The [ModelLoader]
+ * destroyed when this composable leaves the composition. Disposal order relative to a consuming
+ * [SceneScope.ModelNode] is **not** guaranteed: Compose forgets effects in reverse registration
+ * order only within one composition, and a node declared in a child composition (a
+ * `SubcomposeLayout` slot such as Material3's `Scaffold`, the common case) may detach *after* the
+ * `Model` is destroyed. Either order is safe — `Node.destroy()` only touches entity ids and
+ * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
+ * Only a model that finished loading is disposed here: a load cancelled by a key change after
+ * `ModelLoader` registered the `Model` but before it was produced stays resident until the
+ * loader is cleared. The [ModelLoader]
  * does **not** dedupe by path — each call creates a fresh, independent `Model`; re-loading the same
  * path is a new GPU allocation, not a cache hit. For a model you manage imperatively (outside this
  * composable's keyed lifecycle), use [ModelLoader.loadModelInstanceAsync] and call
@@ -917,11 +948,12 @@ fun rememberModelInstance(
     // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
     // (GPU-resident) until the whole loader is torn down (#2459). Keying a [DisposableEffect] on the
     // produced value fires `onDispose` for the *previous* instance on a key swap and on
-    // leave-composition. The disposal is registered before any consuming `ModelNode` (declared
-    // later in the caller), so on a swap the node's `NodeLifecycle.onDispose` (detach + node.destroy)
-    // runs first and this `destroyModel` runs after — the renderables are off the scene before the
-    // `Model`'s buffers are freed, respecting #2424's render-loop ordering. `onDispose` runs on the
-    // composition (main) thread, satisfying the Filament JNI contract.
+    // leave-composition. No ordering with the consuming `ModelNode`'s `NodeLifecycle.onDispose` is
+    // relied on: reverse-registration forgetting holds within ONE composition, and the node usually
+    // lives in a child one (a `SubcomposeLayout` slot), so it may detach after `destroyModel` ran.
+    // Safe either way — `Node.destroy()` is entity-id arithmetic and `safeDestroyModel` is
+    // `runCatching`-guarded (#2954). `onDispose` runs on the composition (main) thread, satisfying
+    // the Filament JNI contract.
     DisposableEffect(instance) {
         onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
     }
@@ -941,8 +973,9 @@ fun rememberModelInstance(
  *
  * **Lifecycle & ownership.** Like the asset overload, this composable owns the produced
  * [ModelInstance] and its backing [Model]: the previous model is destroyed when [fileLocation]
- * changes and on leave-composition, after any consuming [SceneScope.ModelNode] has detached its
- * renderables. The [ModelLoader] does not dedupe by path — each distinct [fileLocation] is a fresh
+ * changes and on leave-composition, in no guaranteed order relative to a consuming
+ * [SceneScope.ModelNode] — safe either way. The [ModelLoader] does not dedupe by path — each
+ * distinct [fileLocation] is a fresh
  * GPU allocation. See the asset-path overload for details.
  *
  * @param modelLoader  The [ModelLoader] to use.
@@ -1622,6 +1655,12 @@ fun rememberOnGestureListener(
  *
  * Pass `null` to `SceneView(cameraManipulator = null)` to disable camera interaction entirely.
  *
+ * `orbitHomePosition` is the camera's **eye position** — not a "home" it returns to: no built-in
+ * gesture does that, `onDoubleTap` is a plain callback `SceneView` forwards to your code and
+ * never wires to the camera. For the common case of framing a subject from a known distance,
+ * prefer [rememberCameraManipulator] with `orbitRadius` instead — it sidesteps the vector-length
+ * reasoning below entirely.
+ *
  * ```kotlin
  * val cameraManipulator = rememberCameraManipulator(
  *     // Eye 2.5 m from an auto-centred subject — it is the LENGTH of this vector that frames.
@@ -1657,7 +1696,8 @@ fun rememberOnGestureListener(
  * which is why every doc example looks fine and why this cost issue #2873 its diagnosis (the demo
  * was framed from 1.22 m while its own comment claimed 2.7 m). Pass `autoCenterContent = false`
  * to `SceneView` when authored world positions should survive; the framing distance is then
- * `|orbitHomePosition − contentCentre|`.
+ * `|orbitHomePosition − contentCentre|`. The `orbitRadius` overload sidesteps all of this for the
+ * common case: with the default (origin) target its value *is* the subject distance (#2932).
  *
  * @param orbitHomePosition Camera's initial eye position in **world space** (optional). Its
  *                          *length* is the framing distance under the default
@@ -1803,6 +1843,7 @@ fun Scene(
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
+    framingPadding: Float = DEFAULT_FRAMING_PADDING,
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -1811,7 +1852,7 @@ fun Scene(
     cameraNode: CameraNode = rememberCameraNode(engine),
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(
-        cameraNode.worldPosition
+        orbitHomePosition = cameraNode.worldPosition
     ),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
@@ -1833,6 +1874,7 @@ fun Scene(
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
+    framingPadding = framingPadding,
     renderer = renderer,
     scene = scene,
     environment = environment,

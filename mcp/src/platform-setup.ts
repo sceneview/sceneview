@@ -5,7 +5,11 @@
  * Consolidates Android, iOS, Web, Flutter, React Native, Desktop, and TV.
  */
 
-import { LATEST_FLUTTER_PUB_RELEASE, LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
+import {
+  IOS_NODE_TYPE_COUNT,
+  LATEST_FLUTTER_PUB_RELEASE,
+  LATEST_SCENEVIEW_RELEASE,
+} from "./generated/version.js";
 
 export type Platform = "android" | "ios" | "web" | "flutter" | "react-native" | "desktop" | "tv";
 export type SetupType = "3d" | "ar";
@@ -272,7 +276,7 @@ struct ContentView: View {
 
 ### 5. Available Node Types
 
-SceneViewSwift provides 16 node types:
+SceneViewSwift provides ${IOS_NODE_TYPE_COUNT} node types:
 
 | Node | Purpose |
 |------|---------|
@@ -286,11 +290,15 @@ SceneViewSwift provides 16 node types:
 | \`LineNode\` | Line segments between 3D points |
 | \`PathNode\` | Connected line paths through multiple points |
 | \`MeshNode\` | Custom mesh geometry with vertex data |
+| \`ShapeNode\` | 2D polygon shapes, flat or extruded |
+| \`ViewNode\` | Placeholder plane for embedding a SwiftUI view (content not rendered yet) |
+| \`SpatialAudioNode\` | Positional 3D audio source |
 | \`PhysicsNode\` | Rigid-body physics (dynamic, static, kinematic) |
 | \`DynamicSkyNode\` | Time-of-day sun simulation |
 | \`FogNode\` | Atmospheric fog effects |
 | \`ReflectionProbeNode\` | Local environment reflection captures |
 | \`CameraNode\` | Programmatic camera control |
+| \`AnchorNode\` | AR world / plane anchor for placing content |
 | \`AugmentedImageNode\` | AR image detection and tracking (iOS only) |`;
 
 const IOS_AR = `## SceneViewSwift — iOS AR Setup

@@ -85,7 +85,7 @@ import kotlin.math.tan
  * v2 fixes (from Pixel 9 review):
  *  1. **Single-sphere framing** — count=1 was invisible because the auto-fit clamp gave
  *     a distance < the sphere radius. Now: explicit single-sphere distance ([SINGLE_SPHERE_DISTANCE])
- *     and the camera manipulator is re-keyed via `orbitHomePosition` so the home actually
+ *     and the camera manipulator is re-keyed via `eyePosition` so the home actually
  *     applies (the previous `SideEffect`-only assignment was overridden by the manipulator
  *     each frame).
  *  2. **Smooth dolly between presets** — distance is animated through an [Animatable]
@@ -159,7 +159,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     // ourselves makes the rebuild contract obvious (one rebuild per 5 cm of dolly).
     val cameraManipulator = remember(snappedDistance) {
         createDefaultCameraManipulator(
-            orbitHomePosition = Position(z = snappedDistance),
+            eyePosition = Position(z = snappedDistance),
             targetPosition = Position(0f),
         )
     }

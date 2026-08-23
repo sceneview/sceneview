@@ -4,7 +4,7 @@
 
 ![iOS 18+](https://img.shields.io/badge/iOS-18%2B-blue)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
-![visionOS 1+](https://img.shields.io/badge/visionOS-1%2B-blue)
+![visionOS 2+](https://img.shields.io/badge/visionOS-2%2B-blue)
 
 ## Installation
 
@@ -21,7 +21,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.31.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.32.0")
 ]
 ```
 
@@ -146,6 +146,8 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 | `DynamicSkyNode` | Time-of-day sun positioning with atmospheric color model |
 | `FogNode` | Atmospheric fog (linear, exponential, height-based) |
 | `ReflectionProbeNode` | Local cubemap reflections for realistic surfaces |
+| `SpatialAudioNode` | Positional 3D audio source attached to the scene graph |
+| `ViewNode` | Placeholder plane for a SwiftUI view (content not rendered yet) |
 | `AnchorNode` | AR world/plane anchor |
 | `AugmentedImageNode` | Detect real-world images and place 3D content (iOS only) |
 

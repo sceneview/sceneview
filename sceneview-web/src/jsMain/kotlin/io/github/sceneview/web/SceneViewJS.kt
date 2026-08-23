@@ -199,10 +199,16 @@ class SceneViewJS {
 
     /**
      * Fit the camera to frame all loaded models.
+     *
+     * @param margin Optional multiplier on the fit distance — the Web
+     *   counterpart of iOS `.framingMargin(_:)` (#2946). `1.0` (default) keeps
+     *   the historical fit, `< 1` frames tighter, `> 1` leaves more air.
+     *   Clamped to `0.2…10`. Unlike Android's additive `padding` fraction
+     *   (`margin == 1 + padding`).
      */
     @JsName("fitToModels")
-    fun fitToModels() {
-        _sceneView?.fitToModels()
+    fun fitToModels(margin: Double = 1.0) {
+        _sceneView?.fitToModels(margin)
     }
 
     /**
@@ -408,4 +414,4 @@ class SceneViewJS {
  * Gradle `buildConfig` plugin, so this literal is the single source of truth for the JS surface.
  * Bump it together with every other version location (see CLAUDE.md "Version Location Map").
  */
-const val SCENEVIEW_VERSION = "4.31.0"
+const val SCENEVIEW_VERSION = "4.32.0"

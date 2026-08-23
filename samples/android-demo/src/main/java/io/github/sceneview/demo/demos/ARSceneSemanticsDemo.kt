@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -126,6 +128,14 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // True once we've seen at least one frame with semantic data. Drives a "warming up"
     // overlay so the user knows the model is initialising rather than broken.
     var semanticsEverReceived by remember { mutableStateOf(false) }
+
+    // #3274: the Scene Semantics model has no indoor training data — pointed at a
+    // living-room wall it classifies almost every pixel UNLABELED, which the overlay
+    // shader paints fully transparent. Without this flag the demo then shows exactly the
+    // plain camera feed with zero on-screen explanation, which read to a user as "nothing
+    // ...rendered" even though the pipeline was working end to end. Derived from `topLabels`
+    // below via the pure [SemanticsOverlay.isOutdoorSceneUnclassified] gate.
+    var sceneUnclassified by remember { mutableStateOf(false) }
 
     var isTracking by remember { mutableStateOf(false) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -268,6 +278,29 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 }
             }
 
+            // #3274 — the scene has been classified but almost every pixel came back
+            // UNLABELED (typically: an indoor scene — the model has no indoor training
+            // data). The overlay shader paints UNLABELED fully transparent, so without this
+            // the demo silently shows the plain camera feed and reads as broken.
+            AnimatedVisibility(
+                visible = semanticsSupported == true && semanticsEverReceived && sceneUnclassified,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text(
+                        text = "Nothing classified yet — Scene Semantics is outdoor-only. " +
+                            "Try a street, park or back yard.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             // Tracking-failure overlay — same vocabulary as the other AR demos.
             // ForcedTrackingFailure.override shadows the real ARCore-reported reason
             // when a developer has picked one in the debug menu (#1881). Read it here
@@ -350,6 +383,14 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                         if (snapshot.any { it.fraction > 0f }) {
                             semanticsEverReceived = true
                         }
+                        // #3274 — a dominant UNLABELED top label means the model has
+                        // classified essentially nothing this frame (typically: indoors).
+                        sceneUnclassified = snapshot.firstOrNull()?.let {
+                            SemanticsOverlay.isOutdoorSceneUnclassified(
+                                topOrdinal = it.label.ordinal,
+                                topFraction = it.fraction,
+                            )
+                        } ?: false
 
                         // Per-pixel raster overlay — acquire the R8 semantic image, upload it
                         // into the Filament texture, (re)build the camera-parented overlay quad
@@ -553,7 +594,18 @@ private fun LabelRow(label: SemanticLabel, fraction: Float) {
  * Bottom color legend — one tiny swatch + class name per ARCore semantic label, so the
  * segmentation overlay is readable. Colors come from [SemanticsOverlay.PALETTE_ARGB], which
  * mirrors the palette baked into `semantics_overlay.mat`.
+ *
+ * Uses [FlowRow] rather than a hand-chunked 4-items-per-row [Row]: the old fixed grouping
+ * assumed every row of four labels fits the reserved band, which held for "Sky Building Tree
+ * Road" and "Vehicle Person Water" but not for "Sidewalk Terrain Structure Object" — the widest
+ * row. A bounded, non-wrapping [Row] doesn't overflow visibly when its children run out of
+ * room; it squeezes the last child's max-width constraint down instead, so "Object" wrapped
+ * one character per line on a real device (Pixel 4a device QA, #3295 follow-up) even though
+ * nothing was clipped or crashed. [FlowRow] measures each swatch+label pair as one unit and
+ * wraps whole units to the next line, so a label is never split mid-word regardless of screen
+ * width, density or the Settings FAB's reserved band.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SemanticLegend(modifier: Modifier = Modifier) {
     Surface(
@@ -562,29 +614,28 @@ private fun SemanticLegend(modifier: Modifier = Modifier) {
         contentColor = Color.White,
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        FlowRow(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             // UNLABELED (last entry) is intentionally omitted — it renders transparent.
-            for (rowStart in 0 until SemanticsOverlay.UNLABELED_ORDINAL step 4) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for (ordinal in rowStart until minOf(rowStart + 4, SemanticsOverlay.UNLABELED_ORDINAL)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color(SemanticsOverlay.PALETTE_ARGB[ordinal]))
-                            )
-                            Text(
-                                text = SemanticsOverlay.LABEL_NAMES[ordinal],
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
+            for (ordinal in 0 until SemanticsOverlay.UNLABELED_ORDINAL) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(SemanticsOverlay.PALETTE_ARGB[ordinal]))
+                    )
+                    Text(
+                        text = SemanticsOverlay.LABEL_NAMES[ordinal],
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
-                Spacer(Modifier.height(4.dp))
             }
         }
     }

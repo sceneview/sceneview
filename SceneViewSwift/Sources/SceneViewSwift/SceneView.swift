@@ -920,6 +920,16 @@ private struct SceneViewRepresentation: View {
     /// portrait ratio while unknown.
     @State private var viewportAspect: Float? = nil
 
+    #if !os(visionOS)
+    /// Live viewport size in points, captured by the same `GeometryReader` as
+    /// ``viewportAspect``. `tapGesture` needs the absolute size, not just the
+    /// ratio, to turn a 2D tap location into normalized device coordinates for
+    /// its manual screen-to-world raycast (#3045) — unavailable on visionOS,
+    /// where `targetedToAnyEntity()` already resolves correctly and this
+    /// fallback does not apply.
+    @State private var viewportSize: CGSize? = nil
+    #endif
+
     // Reactive light-slot caches — compared in `update:` closure to detect when the
     // caller mutated `.mainLight(_:)` / `.fillLight(_:)` so the corresponding entity
     // can be swapped in-place without a full RealityView teardown. Closes #1017.
@@ -1247,6 +1257,9 @@ private struct SceneViewRepresentation: View {
         let aspect = Float(size.width / size.height)
         let previous = viewportAspect
         viewportAspect = aspect
+        #if !os(visionOS)
+        viewportSize = size
+        #endif
         // A rotation / resize after the initial fit invalidates the framing.
         // Re-arm the one-shot pass so the next frame re-fits to the new
         // frustum. Threshold avoids re-framing on sub-pixel layout jitter.
@@ -2207,14 +2220,16 @@ private struct SceneViewRepresentation: View {
     }
 
     private var tapGesture: some Gesture {
-        // Wire real entity hit-testing via SwiftUI's `targetedToAnyEntity()` — the
-        // SpatialTapGesture's `value.entity` is the actual RealityKit entity at the
-        // tap location, not the scene root. Closes part of #928 (this used to pass
-        // `entities.root` unconditionally regardless of where the user tapped, which
-        // made the callback useless for picking objects in the scene).
+        // Wire real entity hit-testing.
         //
         // Requires iOS 17+ / macOS 14+ / visionOS 1+ (RealityKit 2.x). All current
         // SceneViewSwift platforms already require those baselines.
+        #if os(visionOS)
+        // SwiftUI's `targetedToAnyEntity()` — the SpatialTapGesture's `value.entity`
+        // is the actual RealityKit entity at the tap location, not the scene root.
+        // Closes part of #928 (this used to pass `entities.root` unconditionally
+        // regardless of where the user tapped, which made the callback useless for
+        // picking objects in the scene).
         SpatialTapGesture()
             .targetedToAnyEntity()
             .onEnded { value in
@@ -2227,6 +2242,91 @@ private struct SceneViewRepresentation: View {
                 // rather than papering over it.
                 onEntityTappedHit?(SceneTapHit(entity: value.entity))
             }
+        #else
+        // A manual screen-to-world raycast from a plain, UNTARGETED
+        // `SpatialTapGesture`, not `targetedToAnyEntity()` (#3045).
+        //
+        // Embedded inside a Flutter `FlutterPlatformView`, `targetedToAnyEntity()`
+        // never invoked this handler — measured directly by instrumenting both it
+        // and a bare untargeted `SpatialTapGesture()` side by side: the untargeted
+        // gesture fired on every tap with the correct local location, the targeted
+        // one fired on none, on the same taps, in the same run. That is a known
+        // Flutter iOS integration gap, not a SceneViewSwift or RealityKit one:
+        // `targetedToAnyEntity()` layers its own screen-space hit test on top of
+        // the location SwiftUI already reports, and that hit test — like
+        // `RealityViewCameraContent.entities(at:in:)`, measured returning zero
+        // hits from the same host with the same location, entity count non-zero
+        // — comes back empty specifically when the RealityKit surface is
+        // presented through Flutter's platform-view compositing, in a way a
+        // gesture-blocking-policy fix alone (this bridge now registers `.eager`,
+        // not Flutter's default `.waitUntilTouchesEnded`, which separately
+        // blocked *every* discrete UIGestureRecognizer on the platform view from
+        // completing recognition at all) does not reach.
+        //
+        // A world-space raycast sidesteps screen-space picking entirely: `Scene
+        // .raycast(origin:direction:)` is a CPU geometry test against collision
+        // shapes, with no dependency on reading back whatever Flutter's
+        // compositor did to the rendered frame. The ray is built by hand from
+        // what `SceneView` already tracks for its own camera — `perspCamera`'s
+        // world position/orientation and field of view, `viewportSize` from the
+        // `GeometryReader` wrapping this view — unprojecting the untargeted
+        // gesture's 2D location the same way a GPU vertex shader would.
+        //
+        // KNOWN RESIDUAL RISK, not yet re-verified on-device: `.none` / `.tilt` /
+        // `.dolly` delegate the camera to Apple's own `realityViewCameraControls(_:)`
+        // (see `cameraInteractionView`), which does not necessarily keep
+        // `entities.perspCamera`'s transform current — this raycast could mis-hit
+        // for a native SwiftUI caller in one of those three modes. Neither Flutter
+        // nor React Native ever requests them (`sceneViewerCameraControlMode`
+        // normalizes anything else to `.orbit`), so the bridges this fix targets are
+        // unaffected either way. A `cameraControlMode`-gated version that keeps
+        // `targetedToAnyEntity()` for those three was written and removed
+        // unverified — the host this fix was built and measured on hit the
+        // project's 6 GiB disk floor before that version could be compiled — rather
+        // than land code nobody watched build. Re-add the gate (`git log` / PR
+        // #3045 has the removed diff) once there is room to verify it.
+        SpatialTapGesture()
+            .onEnded { value in
+                guard let viewportSize, viewportSize.width > 0, viewportSize.height > 0,
+                      let scene = entities.perspCamera.scene
+                else { return }
+
+                // Screen point -> normalized device coordinates. Y flips: SwiftUI's
+                // `location` grows downward from the top-left, NDC and world Y grow
+                // upward.
+                let ndcX = Float(2 * value.location.x / viewportSize.width - 1)
+                let ndcY = Float(1 - 2 * value.location.y / viewportSize.height)
+
+                // `fieldOfViewInDegrees` is vertical (`setupScene` never overrides
+                // `fieldOfViewOrientation`, whose default is `.vertical`) — derive the
+                // horizontal half-angle from the viewport aspect rather than assume it.
+                let fovYRadians = entities.perspCamera.camera.fieldOfViewInDegrees * .pi / 180
+                let tanHalfFovY = tan(fovYRadians / 2)
+                let aspect = Float(viewportSize.width / viewportSize.height)
+                let tanHalfFovX = tanHalfFovY * aspect
+
+                // Camera looks down its local -Z (same convention `LightNode
+                // .lookAt` documents for a directional light's forward axis).
+                let localDirection = simd_normalize(
+                    SIMD3<Float>(ndcX * tanHalfFovX, ndcY * tanHalfFovY, -1)
+                )
+                let cameraPosition = entities.perspCamera.position(relativeTo: nil)
+                let cameraOrientation = entities.perspCamera.orientation(relativeTo: nil)
+                let worldDirection = cameraOrientation.act(localDirection)
+
+                // `length` comfortably exceeds any distance this bridge's cameras
+                // operate at (`cameraDistance` on the Flutter/RN/compose façade is a
+                // handful of units; auto-centering fits to the loaded model).
+                guard let hit = scene.raycast(
+                    origin: cameraPosition,
+                    direction: worldDirection,
+                    length: 10_000
+                ).first else { return }
+
+                onEntityTapped?(hit.entity)
+                onEntityTappedHit?(SceneTapHit(entity: hit.entity))
+            }
+        #endif
     }
 
     // MARK: - Per-entity gestures (NodeGesture dispatch)

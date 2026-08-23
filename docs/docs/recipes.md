@@ -309,25 +309,35 @@ fun BouncingModelScreen() {
 
 ## Camera
 
-### Orbit camera with custom home position
+### Orbit camera at a chosen distance
 
-Use `rememberCameraManipulator` with `orbitHomePosition` and `targetPosition`.
-The user can orbit, pan, and zoom.
+Use `rememberCameraManipulator` with `orbitRadius` — the camera starts that many metres from
+the target, along the default 3/4 viewing angle (`orbitRadius = 2.78f` is the stock
+framing). The user can orbit, pan, and zoom.
 
 ```kotlin
 SceneView(
     modifier = Modifier.fillMaxSize(),
     engine = engine,
     modelLoader = modelLoader,
-    cameraManipulator = rememberCameraManipulator(
-        // Absolute eye position. Targets the origin here, so |orbitHomePosition| ≈ 4.47 m
-        // is the distance the subject is framed from.
-        orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
-        targetPosition = Position(x = 0f, y = 0f, z = 0f)
-    )
+    cameraManipulator = rememberCameraManipulator(orbitRadius = 4.5f)
 ) {
     // nodes here
 }
+```
+
+To place the eye yourself, pass `orbitHomePosition` and `targetPosition` instead
+(same behaviour as before 4.32; the name is kept as-is rather than renamed to `eyePosition`,
+since major version 4 forbids the binary break a rename of this Composable parameter would
+cause — there was never a "home" gesture):
+
+```kotlin
+cameraManipulator = rememberCameraManipulator(
+    // Absolute eye position. Targets the origin here, so |orbitHomePosition| ≈ 4.47 m
+    // is the distance the subject is framed from.
+    orbitHomePosition = Position(x = 0f, y = 2f, z = 4f),
+    targetPosition = Position(x = 0f, y = 0f, z = 0f)
+)
 ```
 
 !!! warning "`orbitHomePosition` is an absolute eye position, and its **length** is your framing distance"
@@ -350,7 +360,8 @@ SceneView(
     )
     ```
 
-    Pick the distance you want and pass a vector of that **length**, or set
+    Prefer `rememberCameraManipulator(orbitRadius = …)`, which takes the distance directly;
+    otherwise pass a vector of that **length**, or set
     `autoCenterContent = false` so authored world positions survive (the framing distance
     then becomes `|orbitHomePosition − contentCentre|`). Both readings coincide when the
     target is the origin — which is why every example on this page looks fine and why the

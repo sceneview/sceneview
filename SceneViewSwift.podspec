@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'SceneViewSwift'
-  s.version          = '4.31.0'
+  s.version          = '4.32.0'
   s.summary          = '3D and AR as declarative SwiftUI — RealityKit renderer.'
   s.description      = <<-DESC
   SceneView for Apple platforms: `SceneView` and `ARSceneView` SwiftUI views

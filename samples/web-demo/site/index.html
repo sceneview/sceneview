@@ -647,9 +647,57 @@
             color: var(--sv-blue-light);
         }
 
+        /* Credits panel (#3214) — rendered from credits.json, generated from assets/catalog.json */
+        .credits-panel {
+            left: 20px; top: 110px; bottom: 80px;
+            width: 360px;
+            flex-direction: column; gap: 10px;
+            overflow-y: auto;
+        }
+        .credits-intro {
+            font-size: 12px; line-height: 1.5;
+            color: var(--sv-text-dim);
+            background: var(--sv-glass);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--sv-border);
+            border-radius: var(--sv-radius);
+            padding: 12px 14px;
+        }
+        .credits-intro a { color: var(--sv-blue-light); text-decoration: none; font-weight: 500; }
+        .credits-intro a:hover { text-decoration: underline; }
+        .credits-section-title {
+            font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--sv-text-faint);
+            margin: 6px 4px 0;
+        }
+        .credit-card {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--sv-glass);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--sv-border);
+            border-radius: var(--sv-radius);
+            padding: 10px 12px;
+            color: inherit; text-decoration: none;
+            transition: border-color 0.2s;
+        }
+        a.credit-card:hover { border-color: var(--sv-border-hover); }
+        .credit-icon {
+            flex: 0 0 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: var(--sv-radius-sm);
+            background: rgba(0, 91, 193, 0.2);
+            color: var(--sv-blue-light);
+            font-size: 16px;
+        }
+        .credit-body { min-width: 0; flex: 1; }
+        .credit-title { font-size: 13px; font-weight: 600; color: var(--sv-text); }
+        .credit-meta { font-size: 11.5px; color: var(--sv-text-dim); margin-top: 2px; }
+        .credit-meta .credit-license { color: var(--sv-green-light); }
+        .credit-ext { color: var(--sv-text-faint); font-size: 12px; flex: 0 0 auto; }
+
         /* ---- Responsive ---- */
         @media (max-width: 768px) {
-            .search-panel, .geometry-panel {
+            .search-panel, .geometry-panel, .credits-panel {
                 left: 10px; right: 10px; top: auto; bottom: 70px;
                 width: auto; max-height: 45vh;
             }
@@ -692,7 +740,7 @@
         <a href="https://sceneview.github.io" target="_blank" class="logo" title="SceneView — 3D and AR for Compose and SwiftUI">
             <div class="logo-icon">S</div>
             <span class="logo-text">SceneView Web Demo</span>
-            <span class="logo-version">v4.31.0</span>
+            <span class="logo-version">v4.32.0</span>
         </a>
         <div class="top-right">
             <button id="auto-rotate-toggle" class="auto-rotate-btn active" title="Toggle auto-rotation">Auto-rotate</button>
@@ -713,6 +761,7 @@
         <button class="tab-btn" data-tab="physics">Physics</button>
         <button class="tab-btn" data-tab="audio">Spatial Audio</button>
         <button class="tab-btn" data-tab="settings">Settings</button>
+        <button class="tab-btn" data-tab="credits">Credits</button>
     </nav>
 
     <!-- Models panel -->
@@ -957,6 +1006,18 @@
         </p>
     </div>
 
+    <!-- Credits panel (#3214) — every bundled third-party asset with its author
+         and license. Rendered at runtime from `credits.json`, which is GENERATED
+         from `assets/catalog.json` by `.claude/scripts/generate-credits.py`. -->
+    <div id="panel-credits" class="panel credits-panel">
+        <div class="credits-intro">
+            SceneView is Apache 2.0. The 3D models, environments and media bundled in this
+            demo keep the license granted by their authors — click a card to open the
+            original page. <a href="https://github.com/sceneview/sceneview/blob/main/assets/catalog.json" target="_blank" rel="noopener">Generated from assets/catalog.json</a>.
+        </div>
+        <div id="credits-list"></div>
+    </div>
+
     <!-- Settings panel -->
     <div id="panel-settings" class="panel env-panel">
         <div class="env-card">
@@ -1122,10 +1183,14 @@
         var hash = (location.hash || '').replace('#', '').toLowerCase();
         if (hash === 'double-pendulum' || hash === 'physics') {
           pendingDeepLink = 'physics';
+        } else if (hash === 'credits') {
+          // #3214 — linkable attribution page (README, store listings).
+          pendingDeepLink = 'credits';
         }
         window.addEventListener('hashchange', function() {
           var h = (location.hash || '').replace('#', '').toLowerCase();
           if (h === 'double-pendulum' || h === 'physics') switchTab('physics');
+          if (h === 'credits') switchTab('credits');
         });
       }
 
@@ -1162,7 +1227,7 @@
             instance.setAutoRotate(autoRotate);
             instance.setQuality('medium');
             loadingOverlay.classList.add('hidden');
-            console.log('SceneView Web Demo initialized — v4.31.0');
+            console.log('SceneView Web Demo initialized — v4.32.0');
             // Engine init complete — surface any update snackbar deferred
             // while the loading overlay was still covering the viewport.
             flushPendingUpdateSnackbar();
@@ -1208,6 +1273,96 @@
           });
       }
 
+      // ---- Credits (#3214) ----
+      // `credits.json` sits next to this file and is generated from
+      // `assets/catalog.json`; fetched once, on first visit to the tab.
+
+      var creditsLoaded = false;
+
+      function creditIcon(sectionTitle) {
+        if (sectionTitle === '3D models') return '\u25A3';        // ▣ model
+        if (sectionTitle === 'HDR environments') return '\u2600'; // ☀ lighting
+        return '\u2691';                                          // ⚑ other
+      }
+
+      function sectionLabel(title) {
+        if (title === '3D models') return '3D Models';
+        if (title === 'HDR environments') return 'HDR Environments';
+        return title;
+      }
+
+      function renderCredits(doc) {
+        var list = document.getElementById('credits-list');
+        list.textContent = '';
+        var frag = document.createDocumentFragment();
+        (doc.sections || []).forEach(function(section) {
+          var h = document.createElement('div');
+          h.className = 'credits-section-title';
+          h.textContent = sectionLabel(section.title) + ' (' + section.assets.length + ')';
+          frag.appendChild(h);
+          section.assets.forEach(function(asset) {
+            var card = document.createElement(asset.sourceUrl ? 'a' : 'div');
+            card.className = 'credit-card';
+            if (asset.sourceUrl) {
+              card.href = asset.sourceUrl;
+              card.target = '_blank';
+              card.rel = 'noopener';
+              card.title = asset.file;
+            }
+            var icon = document.createElement('span');
+            icon.className = 'credit-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = creditIcon(section.title);
+            var body = document.createElement('div');
+            body.className = 'credit-body';
+            var title = document.createElement('div');
+            title.className = 'credit-title';
+            title.textContent = asset.name;
+            var meta = document.createElement('div');
+            meta.className = 'credit-meta';
+            meta.appendChild(document.createTextNode('by ' + asset.author + ' \u2014 '));
+            var lic = document.createElement('span');
+            lic.className = 'credit-license';
+            lic.textContent = asset.license;
+            meta.appendChild(lic);
+            body.appendChild(title);
+            body.appendChild(meta);
+            card.appendChild(icon);
+            card.appendChild(body);
+            if (asset.sourceUrl) {
+              var ext = document.createElement('span');
+              ext.className = 'credit-ext';
+              ext.setAttribute('aria-hidden', 'true');
+              ext.textContent = '\u2197';
+              card.appendChild(ext);
+            }
+            frag.appendChild(card);
+          });
+        });
+        list.appendChild(frag);
+      }
+
+      function loadCredits() {
+        if (creditsLoaded) return;
+        creditsLoaded = true;
+        fetch('credits.json', { cache: 'no-cache' })
+          .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(renderCredits)
+          .catch(function(err) {
+            creditsLoaded = false;
+            var list = document.getElementById('credits-list');
+            list.textContent = '';
+            var msg = document.createElement('div');
+            msg.className = 'credits-intro';
+            msg.textContent = 'Credits could not be loaded (' + err.message + '). The full list lives in assets/CREDITS.md on GitHub.';
+            list.appendChild(msg);
+            console.warn('credits.json unavailable:', err);
+          });
+      }
+
       // ---- Tab navigation ----
 
       function setupTabs() {
@@ -1229,7 +1384,7 @@
           var btn = buttons[i];
           btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
         }
-        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'audio', 'settings'];
+        var panels = ['models', 'geometry', 'lighting', 'animation', 'text', 'environment', 'physics', 'audio', 'settings', 'credits'];
         panels.forEach(function(p) {
           var panel = document.getElementById('panel-' + p);
           if (panel) {
@@ -1243,8 +1398,9 @@
         // Adjust controls-info position — left-anchored panels push it right.
         var sidePanel = (tab === 'models' || tab === 'geometry' || tab === 'physics' ||
                          tab === 'lighting' || tab === 'animation' || tab === 'text' ||
-                         tab === 'audio');
+                         tab === 'audio' || tab === 'credits');
         controlsInfo.style.left = sidePanel ? '380px' : '20px';
+        if (tab === 'credits') loadCredits();
         // The Double Pendulum runs its own physics scene; entering or leaving
         // the Physics tab swaps the scene in/out so it never lingers behind
         // the model viewer.
@@ -2487,7 +2643,7 @@
       // No-op if version.json is missing (dev mode, no deploy yet, fetch
       // blocked by an ad-blocker, …) — the snackbar just stays hidden.
 
-      var BUILD_VERSION = '4.31.0';
+      var BUILD_VERSION = '4.32.0';
       var VERSION_URL = '/version.json';
       var UPDATE_THROTTLE_MS = 12 * 60 * 60 * 1000;     // 12 hours
       var UPDATE_LAST_CHECK_KEY = 'sceneview.update.lastCheckAt';

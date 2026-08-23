@@ -54,7 +54,8 @@ struct PhysicsDemo: View {
 
     var body: some View {
         sceneContent
-            .assetSourcePill(assetSource)
+            .assetSourcePill(assetSource,
+                             placeholder: selectedSlug?.fallbackRole == .placeholder)
             .demoChrome { controlsSheet }
             .task {
                 _ = await SketchfabAssetResolver.shared.prefetchAll(category: "physics")
@@ -72,7 +73,12 @@ struct PhysicsDemo: View {
             }
             .cameraControls(.orbit)
             .environment(.studio) // parity with android-demo IBL fix (#2114)
-            .id(sceneKey)
+            // Reset / Drop rebuild the floor and bodies under the same
+            // `RealityView` — removing the content root restarts the physics
+            // simulation without discarding the renderer, which a `.id(_:)`
+            // re-key did and which intermittently left the viewport black on
+            // iOS 26 Simulator (#3008).
+            .contentID(sceneKey)
             .ignoresSafeArea()
 
             VStack {
@@ -246,9 +252,9 @@ struct PhysicsDemo: View {
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
-                Text("by \(slug.author) · CC-BY 4.0")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                // Credits the model actually on screen — streamed author or the
+                // bundled fallback's own author and licence (#2966).
+                AssetCreditLine(slug: slug, source: assetSource ?? .streaming)
             } else {
                 Text("Drop count capped at 20 on RealityKit — beyond that the simulation lags.")
                     .font(.caption2)

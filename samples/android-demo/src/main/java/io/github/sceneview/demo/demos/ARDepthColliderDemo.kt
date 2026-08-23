@@ -47,8 +47,10 @@ import io.github.sceneview.sample.rememberMaterialInstance
  *
  * The demo is the SceneView port of Google's
  * [arcore-depth-lab](https://github.com/googlesamples/arcore-depth-lab) "Collider" scene. Each
- * ball is a small coloured sphere (radius 5 cm) launched ~50 cm in front of the **live** camera
- * pose and slightly above it, so it always drops into view; gravity does the rest. When the
+ * ball is a small coloured sphere (radius 5 cm) released ~75 cm in front of the **live** camera
+ * pose (never closer than 50 cm horizontally, even when aiming at the floor) and thrown along
+ * the view direction, so it always travels away from the user and into view; gravity does the
+ * rest (see [depthColliderSpawn], #3217). When the
  * device's depth subsystem is unavailable (no ARCore,
  * no `DepthMode.AUTOMATIC` support, or running on the SwiftShader emulator without depth
  * hardware) the ball falls through to a static `floorY = -1f` so the demo still shows a fallback
@@ -241,44 +243,30 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 val spawnAnchor = spawnAnchorRef.value
 
                 for (i in 0 until ballCount) {
-                    // Spawn offsets, kept separate by axis on purpose (#1874):
-                    //  • zOffset  — distance straight AHEAD of the camera (forward), with a small
-                    //    per-row stagger so consecutive drops don't pile up at the same depth.
-                    //    Composed THROUGH the camera pose (-Z is forward) so it tracks the camera's
-                    //    facing direction.
-                    //  • xOffset  — a small horizontal scatter so the balls in a "Drop 5" don't
-                    //    stack on one X. Applied in WORLD space.
-                    //  • startY   — the drop HEIGHT above the spawn point. Applied in WORLD +Y so
-                    //    the balls always start above and fall straight DOWN under gravity
-                    //    (PhysicsNode integrates gravity along world -Y).
-                    val xOffset = (i % 5 - 2) * 0.05f
-                    val zOffset = -0.5f - ((i / 5) * 0.05f)
-                    val startY = 0.5f + (i / 5) * 0.05f
-
-                    val startPosition = remember(i, spawnAnchor) {
+                    // Where the ball starts and how it is thrown, both derived from the camera
+                    // pose captured when Drop was tapped (#3217). The pure math lives in
+                    // [depthColliderSpawn] so a JVM test can pin the geometry without ARCore.
+                    val spawn = remember(i, spawnAnchor) {
                         if (spawnAnchor != null) {
-                            // Decouple "in front of the camera" (camera frame) from "above, so it
-                            // falls into view" (world frame). The previous fix (PR #1880) bundled
-                            // xOffset/startY/zOffset into a SINGLE transformPoint, which rotated
-                            // the drop HEIGHT by the camera's pitch/roll: when the user aimed at
-                            // the floor (as the header hint instructs) the balls landed off in a
-                            // screen corner at the wrong height instead of in view (#1874, #2466).
-                            //
-                            // Step 1 — project ONLY the forward offset through the camera pose to
-                            // get a point straight ahead of the camera in world space. A pure -Z
-                            // offset stays "forward" regardless of how the user is holding the
-                            // phone. Same primitive as ARPoseDemo (transformPoint of (0,0,-d)).
-                            val ahead = spawnAnchor.transformPoint(
-                                floatArrayOf(0f, 0f, zOffset),
+                            // ARCore camera pose: -Z is the view direction, +Y is the top of
+                            // the phone. Both come out as world-space unit vectors.
+                            val zAxis = spawnAnchor.zAxis
+                            depthColliderSpawn(
+                                index = i,
+                                cameraPosition = spawnAnchor.translation,
+                                cameraForward = floatArrayOf(-zAxis[0], -zAxis[1], -zAxis[2]),
+                                cameraUp = spawnAnchor.yAxis,
                             )
-                            // Step 2 — add the horizontal scatter and the drop height in WORLD
-                            // space (world +Y is up), so balls always start above the in-front
-                            // point and fall straight down into the camera view.
-                            Position(ahead[0] + xOffset, ahead[1] + startY, ahead[2])
                         } else {
-                            // First-frame / pre-tracking fallback: spawn at scene origin so
-                            // something visible appears, matching the previous demo behaviour.
-                            Position(x = xOffset, y = startY, z = zOffset)
+                            // First-frame / pre-tracking fallback: no camera pose yet, so use
+                            // the session origin looking down -Z (ARCore's initial camera
+                            // orientation) — something visible is better than nothing.
+                            depthColliderSpawn(
+                                index = i,
+                                cameraPosition = floatArrayOf(0f, 0f, 0f),
+                                cameraForward = floatArrayOf(0f, 0f, -1f),
+                                cameraUp = floatArrayOf(0f, 1f, 0f),
+                            )
                         }
                     }
 
@@ -286,7 +274,7 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                     SphereNode(
                         radius = 0.05f,
                         materialInstance = ballMaterial,
-                        position = startPosition,
+                        position = spawn.position,
                         apply = {
                             nodeRef = this
                             // Write into our per-slot ref array. The slot is keyed by `i` so
@@ -302,6 +290,10 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                             node = node,
                             restitution = 0.7f,
                             radius = 0.05f,
+                            // Thrown along the camera's view direction rather than released at
+                            // rest, so the ball travels AWAY from the user (#3217). Gravity then
+                            // pulls it onto whatever the camera is aimed at.
+                            linearVelocity = spawn.velocity,
                             // Fallback if depth is unavailable — still bounces off something so
                             // the demo never shows a body falling forever into the void.
                             floorY = -1f,
@@ -316,6 +308,101 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
         ARCameraInitScrim(initializing = !cameraReady)
       }
     }
+}
+
+/** Where a ball starts and the velocity it is thrown with, both in world space (metres, m/s). */
+internal data class DepthColliderSpawn(val position: Position, val velocity: Position)
+
+/** Distance in front of the camera, along the view ray, at which a ball is released. */
+internal const val SPAWN_AHEAD_M = 0.75f
+
+/**
+ * Minimum HORIZONTAL distance between the user and the spawn point. When the camera is pitched
+ * steeply at the floor the view ray barely moves away from the user, so the ball is pushed out
+ * along the camera's horizontal heading until it is at least this far in front (#3217).
+ */
+internal const val SPAWN_MIN_HORIZONTAL_M = 0.5f
+
+/** Lift above the in-front point so the ball visibly drops into the scene rather than starting on it. */
+internal const val SPAWN_LIFT_M = 0.15f
+
+/** Throw speed along the camera's view direction. */
+internal const val THROW_SPEED_M_S = 1.5f
+
+/**
+ * Computes the spawn position and throw velocity of ball [index] relative to the live camera
+ * pose captured when Drop was tapped (#3217).
+ *
+ * Geometry, all in world space (world +Y is up):
+ *  1. The ball starts [SPAWN_AHEAD_M] along the camera's view ray ([cameraForward]), plus a
+ *     small per-row stagger so consecutive "Drop 5" rows don't pile up at the same depth.
+ *  2. If that point is less than [SPAWN_MIN_HORIZONTAL_M] in front of the user *horizontally*
+ *     (the camera is aimed steeply at the floor, as the on-screen hint instructs), it is pushed
+ *     out along the camera's horizontal heading. Before this fix the balls ended up directly
+ *     above the user's own feet and simply fell past them.
+ *  3. A lateral scatter of ±10 cm along the camera's right vector spreads a "Drop 5" row, and
+ *     [SPAWN_LIFT_M] of world-up lift makes the drop visible.
+ *  4. The ball is thrown at [THROW_SPEED_M_S] along [cameraForward], so it travels away from
+ *     the user towards whatever the camera is aimed at; gravity does the rest.
+ *
+ * Pure function (no ARCore types) so `DepthColliderSpawnTest` can pin the geometry on the JVM.
+ *
+ * @param cameraPosition Camera translation, `(x, y, z)`.
+ * @param cameraForward  Camera view direction, `(x, y, z)` — ARCore's `-Z` axis. Normalised here.
+ * @param cameraUp       Camera up vector (top of the phone), `(x, y, z)` — ARCore's `+Y` axis.
+ *                       Only used to recover a horizontal heading when the camera points straight
+ *                       down or up.
+ */
+internal fun depthColliderSpawn(
+    index: Int,
+    cameraPosition: FloatArray,
+    cameraForward: FloatArray,
+    cameraUp: FloatArray,
+): DepthColliderSpawn {
+    val fwd = normalised(cameraForward[0], cameraForward[1], cameraForward[2])
+        ?: floatArrayOf(0f, 0f, -1f)
+
+    // Horizontal heading: the view direction projected on the ground plane. When the camera
+    // looks straight down (or up) that projection vanishes, so fall back to where the top of the
+    // phone points — which is "ahead" for a user holding the phone over the floor.
+    val heading = normalised(fwd[0], 0f, fwd[2])
+        ?: normalised(cameraUp[0], 0f, cameraUp[2])
+        ?: floatArrayOf(0f, 0f, -1f)
+    // Right-hand vector of the heading on the ground plane (heading × up).
+    val rightX = -heading[2]
+    val rightZ = heading[0]
+
+    val row = index / 5
+    val lateral = (index % 5 - 2) * 0.05f
+    val ahead = SPAWN_AHEAD_M + row * 0.05f
+
+    var x = cameraPosition[0] + fwd[0] * ahead
+    var y = cameraPosition[1] + fwd[1] * ahead
+    var z = cameraPosition[2] + fwd[2] * ahead
+
+    // Enforce the minimum horizontal clearance from the user.
+    val horizontal = kotlin.math.sqrt(fwd[0] * fwd[0] + fwd[2] * fwd[2]) * ahead
+    val minHorizontal = SPAWN_MIN_HORIZONTAL_M + row * 0.05f
+    if (horizontal < minHorizontal) {
+        val push = minHorizontal - horizontal
+        x += heading[0] * push
+        z += heading[2] * push
+    }
+
+    x += rightX * lateral
+    z += rightZ * lateral
+    y += SPAWN_LIFT_M
+
+    return DepthColliderSpawn(
+        position = Position(x, y, z),
+        velocity = Position(fwd[0] * THROW_SPEED_M_S, fwd[1] * THROW_SPEED_M_S, fwd[2] * THROW_SPEED_M_S),
+    )
+}
+
+private fun normalised(x: Float, y: Float, z: Float): FloatArray? {
+    val len = kotlin.math.sqrt(x * x + y * y + z * z)
+    if (len < 1e-4f) return null
+    return floatArrayOf(x / len, y / len, z / len)
 }
 
 /**

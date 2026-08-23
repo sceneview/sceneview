@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,5 +114,55 @@ class SemanticsOverlayTest {
         assertEquals(0.5f, SemanticsOverlay.clampUnit(0.5f), 1e-6f)
         assertTrue(SemanticsOverlay.clampUnit(0f) == 0f)
         assertTrue(SemanticsOverlay.clampUnit(1f) == 1f)
+    }
+
+    // ── isOutdoorSceneUnclassified (#3274) ────────────────────────────────
+
+    @Test
+    fun `dominant unlabeled fraction is reported as unclassified`() {
+        assertTrue(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticsOverlay.UNLABELED_ORDINAL,
+                topFraction = 0.97f,
+            )
+        )
+    }
+
+    @Test
+    fun `unlabeled fraction under the threshold is not reported as unclassified`() {
+        assertFalse(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticsOverlay.UNLABELED_ORDINAL,
+                topFraction = 0.5f,
+            )
+        )
+    }
+
+    @Test
+    fun `a real top label is never reported as unclassified, however high its fraction`() {
+        assertFalse(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = 0, // SKY
+                topFraction = 1.0f,
+            )
+        )
+    }
+
+    @Test
+    fun `threshold is exact at the boundary`() {
+        assertTrue(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticsOverlay.UNLABELED_ORDINAL,
+                topFraction = 0.9f,
+                threshold = 0.9f,
+            )
+        )
+        assertFalse(
+            SemanticsOverlay.isOutdoorSceneUnclassified(
+                topOrdinal = SemanticsOverlay.UNLABELED_ORDINAL,
+                topFraction = 0.899f,
+                threshold = 0.9f,
+            )
+        )
     }
 }

@@ -40,7 +40,7 @@ KMP shares **logic**, not **rendering**. Each platform uses its native renderer.
 
 ## Apple — Alpha (SceneViewSwift)
 
-- **3D + AR** in SwiftUI via RealityKit — iOS 17+ / macOS 14+ / visionOS 1+
+- **3D + AR** in SwiftUI via RealityKit — iOS 18+ / macOS 15+ / visionOS 2+
 - Node types: ModelNode, AnchorNode, GeometryNode, LightNode, CameraNode, ImageNode, VideoNode, PhysicsNode, AugmentedImageNode
 - PBR material system with textures
 - Swift Package Manager distribution
@@ -331,7 +331,7 @@ export const TROUBLESHOOTING_GUIDE = `# SceneView Troubleshooting Guide
 
 ### SPM Package Resolution Fails
 **Fix:**
-- Ensure Xcode 15.0+ (required for iOS 17 / visionOS targets).
+- Ensure Xcode 16.0+ (required for the iOS 18 / visionOS 2 targets and Swift 6).
 - Clean derived data: Xcode → Product → Clean Build Folder, then File → Packages → Reset Package Caches.
 - Check the URL is exactly: \`https://github.com/sceneview/sceneview\`
 
@@ -366,7 +366,7 @@ Without this entry, the app will crash on camera access.
 
 ## 3. Minimum Platform
 
-AR requires **iOS 17.0+**. ARKit is not available on macOS or visionOS via \`ARSceneView\` (visionOS uses \`ARKitSession\` directly).
+AR requires **iOS 18.0+**. ARKit is not available on macOS or visionOS via \`ARSceneView\` (visionOS uses \`ARKitSession\` directly).
 
 ## 4. Basic AR Template
 

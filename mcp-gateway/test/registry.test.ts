@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import {
   dispatch,
   getAllTools,
@@ -115,6 +117,58 @@ describe("registry — getToolDefinition", () => {
 });
 
 describe("registry — dispatch", () => {
+  it("every declared outputSchema validates its handler's sample result", async () => {
+    const samples: Record<string, Record<string, unknown>> = {
+      render_3d_preview: {
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+      },
+      create_3d_artifact: {
+        type: "model-viewer",
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+      },
+      list_platforms: {},
+      setup_rerun_project: { platform: "python" },
+      embed_web_viewer: { rrdUrl: "https://example.com/session.rrd" },
+      list_car_models: {},
+      validate_automotive_code: { code: "@Composable fun Car() {}" },
+      list_game_models: {},
+      validate_game_code: { code: "@Composable fun Game() {}" },
+      list_medical_models: {},
+      validate_medical_code: { code: "@Composable fun Anatomy() {}" },
+      list_furniture_models: {},
+      validate_interior_code: { code: "@Composable fun Room() {}" },
+      view_3d_model: {
+        modelUrl: "https://example.com/chair.glb",
+        title: "Chair",
+        autoRotate: false,
+        ar: true,
+        alt: "A chair",
+        posterUrl: "https://example.com/chair.webp",
+      },
+    };
+    const validatorProvider = new AjvJsonSchemaValidator();
+    const definitions = getAllTools().filter((tool) => tool.outputSchema);
+
+    expect(definitions.map((tool) => tool.name).sort()).toEqual(
+      Object.keys(samples).sort(),
+    );
+    for (const definition of definitions) {
+      const result = await dispatch(definition.name, samples[definition.name]);
+      expect(result.isError, definition.name).toBeFalsy();
+      expect(result.structuredContent, definition.name).toBeDefined();
+      const validate = validatorProvider.getValidator(
+        definition.outputSchema! as JsonSchemaType,
+      );
+      const validation = validate(result.structuredContent);
+      expect(
+        validation.valid,
+        `${definition.name}: ${validation.errorMessage}`,
+      ).toBe(true);
+    }
+  });
+
   it("routes a sceneview-mcp call to the sceneview library", async () => {
     const result = await dispatch("get_migration_guide", undefined);
     expect(result.isError).toBeFalsy();

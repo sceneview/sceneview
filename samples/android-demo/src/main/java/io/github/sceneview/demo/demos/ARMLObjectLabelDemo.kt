@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,6 +42,7 @@ import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.displayRotationDegrees
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
@@ -151,6 +153,24 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // per frame (saves ~2–4 ms of canvas work per detector pass).
     val labelBitmaps = remember { mutableMapOf<String, Bitmap>() }
 
+    // Result of the most recent completed ML Kit pass, waiting to be turned into anchors.
+    // `onSessionUpdated` runs on the render thread that owns the ARCore session (see
+    // ARRecordInterpreter's kdoc); `detector.process`'s listeners run on the main thread
+    // (the Play Services Tasks default when no Executor is given). Anchor creation needs
+    // `frame.hitTest`, an ARCore `Frame`/`Session` call — and ARCore's session state is not
+    // thread-safe, nor is a `Frame` reference still valid once the render thread has moved on
+    // to later frames, which it always has by the time a ~30–80 ms TFLite pass completes. Doing
+    // the hit-test from the async listener against the `Frame` captured at dispatch time was a
+    // cross-thread, stale-frame access to ARCore's native session — the root cause of the
+    // reported post-launch crash (#3268): it surfaced once enough detector passes had run for
+    // the timing skew between "frame captured" and "hit-test executed" to hit the race.
+    // The fix: the listener only stashes the raw ML Kit results here; the actual hit-test runs
+    // below, back on the render thread, against that frame's own *current* `frame` — always
+    // fresh, always on the right thread.
+    val pendingDetection = remember {
+        java.util.concurrent.atomic.AtomicReference<PendingDetection?>(null)
+    }
+
     // Status banner text — "Warming up…" / "Aim at an object" / detection count.
     // trackingFailureMessage returns String? — fall back to the status-banner res if
     // the reason resolves to no specific message.
@@ -179,12 +199,28 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 color = Color.Black.copy(alpha = 0.4f),
                 modifier = Modifier.padding(horizontal = 16.dp),
             ) {
-                Text(
-                    text = statusText,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
+                Column(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                ) {
+                    Text(
+                        text = statusText,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    // The bundled ML Kit detector classifies five broad categories (Home
+                    // good, Fashion good, Food, Place, Plant) rather than specific object
+                    // names — indoor scenes land on "Home good" for almost everything, which
+                    // reads as "the demo only ever detects one thing" if unexplained (#3268).
+                    // Shown only once something is anchored so the warm-up / aim prompts stay
+                    // uncluttered.
+                    if (detections.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.demo_ar_ml_explainer),
+                            color = Color.White.copy(alpha = 0.75f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
             }
         },
     ) {
@@ -213,6 +249,19 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     cameraPosition[0] = camPose.x
                     cameraPosition[1] = camPose.y
                     cameraPosition[2] = camPose.z
+
+                    // Turn the previous detector pass's results into anchors now, on the
+                    // render thread, against *this* frame — see `pendingDetection` above.
+                    pendingDetection.getAndSet(null)?.let { pending ->
+                        updateAnchorsFromDetections(
+                            frame = frame,
+                            results = pending.results,
+                            imageW = pending.imageW,
+                            imageH = pending.imageH,
+                            detections = detections,
+                            labelBitmaps = labelBitmaps,
+                        )
+                    }
 
                     if (!isTracking) return@ARSceneView
 
@@ -257,25 +306,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // prevent, because nothing in the UI would say so.
                     var dispatched = false
                     try {
-                        // `Context.display` was added in API 30; fall back to the
-                        // deprecated `WindowManager.defaultDisplay` on API 28–29.
-                        val displayRotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                            context.display.rotation
-                        } else {
-                            @Suppress("DEPRECATION")
-                            (context.getSystemService(android.content.Context.WINDOW_SERVICE)
-                                    as android.view.WindowManager).defaultDisplay.rotation
-                        }
-                        val rotationDegrees = when (displayRotation) {
-                            // ARCore CPU image is delivered with the device's natural-orientation
-                            // axis. ML Kit needs degrees of rotation from upright. ARCore's
-                            // back-camera sensor orientation on Android phones is 90° → match.
-                            android.view.Surface.ROTATION_0 -> 90
-                            android.view.Surface.ROTATION_90 -> 0
-                            android.view.Surface.ROTATION_180 -> 270
-                            android.view.Surface.ROTATION_270 -> 180
-                            else -> 90
-                        }
+                        val rotationDegrees = displayRotationDegrees(context)
 
                         // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a
                         // reference until the task completes, so we close `cameraImage` in
@@ -289,13 +320,11 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                         detector.process(input)
                             .addOnSuccessListener { results ->
                                 try {
-                                    updateAnchorsFromDetections(
-                                        frame = frame,
-                                        results = results,
-                                        imageW = imageW,
-                                        imageH = imageH,
-                                        detections = detections,
-                                        labelBitmaps = labelBitmaps,
+                                    // Stash for `onSessionUpdated` to turn into anchors against
+                                    // the *next* current frame — never hit-test here (see
+                                    // `pendingDetection` above for why).
+                                    pendingDetection.set(
+                                        PendingDetection(results, imageW, imageH)
                                     )
                                     // Once anything is anchored, the status text switches to
                                     // the live "N objects detected" count (see `statusText`
@@ -400,11 +429,22 @@ private data class DetectionAnchor(
 )
 
 /**
+ * One completed-but-not-yet-anchored ML Kit detector pass, captured off the render thread.
+ * `imageW`/`imageH` travel with the results because they describe the CPU image *that pass*
+ * ran against, not necessarily the current frame's.
+ */
+private data class PendingDetection(
+    val results: List<DetectedObject>,
+    val imageW: Int,
+    val imageH: Int,
+)
+
+/**
  * Buckets a 0..1 ML Kit confidence into a stable percentage step so the label-bitmap cache
  * key changes only every [step] percent. Without bucketing, every sub-percent confidence
  * jitter between detector passes would invalidate the cache and re-rasterise the bitmap.
  */
-private fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
+internal fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
     val pct = (confidence.coerceIn(0f, 1f) * 100f).toInt()
     return (pct / step) * step
 }

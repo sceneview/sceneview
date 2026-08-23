@@ -14,7 +14,26 @@ kotlin {
 
     // Web target (JS/Browser, consumed by the sceneview-web module)
     js(IR) {
-        browser()
+        browser {
+            testTask {
+                // `karma.config.d/` is appended verbatim into the karma.conf.js
+                // this task generates, so it changes what the run does — but
+                // Gradle does not track it as an input on its own. Without this
+                // line a broken launcher config gave `BUILD SUCCESSFUL` with
+                // `jsBrowserTest UP-TO-DATE` against a stale generated config
+                // (local only: the task is not cacheable, so CI is unaffected).
+                inputs.dir(layout.projectDirectory.dir("karma.config.d"))
+                    .withPropertyName("karmaConfigD")
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
+                // Pulls in karma-chrome-launcher, which
+                // `karma.config.d/browser-hardening.js` extends with the
+                // `--no-sandbox` / `--disable-dev-shm-usage` launcher and the
+                // timeouts a shared CI runner needs (#3192).
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
         binaries.library()
     }
 

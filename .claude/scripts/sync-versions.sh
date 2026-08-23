@@ -49,6 +49,45 @@ else
     _sed_inplace() { local script="$1"; shift; sed -i '' "$script" "$@"; }
 fi
 
+# ─── Helper: carrier-invariant guard (#3234) ─────────────────────────────
+# A version bump may change version strings and NOTHING else. Every other
+# digit run in a synced file (analytics ids, SVG path data, third-party pins
+# like the Filament `v1.70.1` comment) is a carrier the bump must leave byte-
+# identical. `_mask_versions` blanks every semver-shaped token so two
+# snapshots of a file compare equal iff only version strings moved;
+# `_assert_carrier_invariant` diffs the masked before/after, and on any drift
+# restores the pre-fix copy and aborts with exit 2 — a corrupted carrier must
+# never reach a release commit again (the GA4 stream id did, 25 times).
+_mask_versions() {
+    sed -E 's/[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?/<VERSION>/g' "$1"
+}
+_snapshot_carriers() {
+    # Usage: _snapshot_carriers path/to/file  -> prints the backup path
+    local file="$1" bak
+    bak=$(mktemp "${TMPDIR:-/tmp}/sync-versions.XXXXXX")
+    cp "$file" "$bak"
+    echo "$bak"
+}
+_assert_carrier_invariant() {
+    # Usage: _assert_carrier_invariant path/to/file backup_path
+    local file="$1" bak="$2" drift
+    drift=$(diff <(_mask_versions "$bak") <(_mask_versions "$file") || true)
+    if [ -n "$drift" ]; then
+        cp "$bak" "$file"
+        rm -f "$bak"
+        echo -e "${RED}FATAL: version sweep changed non-version bytes in ${file#$REPO_ROOT/} — file restored, nothing written (#3234)${NC}"
+        echo "$drift"
+        exit 2
+    fi
+    rm -f "$bak"
+}
+
+# The homepage GA4 data-stream id. Opaque, purely numeric, and NOT a version:
+# it is pinned here so the check can assert the exact carrier value instead of
+# merely "no dot inside" (a sweep that rewrote digits without inserting a dot
+# would have slipped through the shape check).
+GA4_STREAM_ID="14357002837"
+
 # ─── Helper: check a version ─────────────────────────────────────────────
 declare -a LOCATIONS=()
 declare -a VERSIONS=()
@@ -595,11 +634,14 @@ fi
 # `14.6.002837`; from that point the comment held a literal version string, so
 # 25 later releases faithfully re-bumped it up to `14.31.0`. Escaping the dots
 # fixed the entry door and did nothing for the corruption already inside.
-STREAM_ID_CORRUPTED=$(grep -rhoE 'Stream ID: [0-9]+\.[0-9.]*' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null || true)
-if [ -n "$STREAM_ID_CORRUPTED" ]; then
-    add_check "website-static GA4 stream id (dotted: $(echo "$STREAM_ID_CORRUPTED" | tr '\n' ' '))" "CORRUPTED"
+# The check pins the exact id ($GA4_STREAM_ID): any other value, dotted or
+# not, is a corrupted carrier. Matching `Stream ID: <value>` with a trailing
+# space/`-->` boundary means a bump that only appended digits fails too.
+STREAM_ID_FOUND=$(grep -rhoE 'Stream ID: [0-9][0-9.]*' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null | sed 's/^Stream ID: //' | sort -u || true)
+if [ "$STREAM_ID_FOUND" = "$GA4_STREAM_ID" ]; then
+    add_check "website-static GA4 stream id ($GA4_STREAM_ID, carrier intact)" "$SOURCE_VERSION"
 else
-    add_check "website-static GA4 stream id (numeric, no version injected)" "$SOURCE_VERSION"
+    add_check "website-static GA4 stream id (expected $GA4_STREAM_ID, found: $(echo "$STREAM_ID_FOUND" | tr '\n' ' '))" "CORRUPTED"
 fi
 
 # Website surfaces that drifted in #2564 — now pinned so they can't rot again.
@@ -1141,6 +1183,15 @@ echo ""
 
 # ─── Fix mode ──────────────────────────────────────────────────────────
 if [ "$FIX_MODE" = "--fix" ] && [ "$ERRORS" -gt 0 ]; then
+    # Carrier-invariant guard (#3234): snapshot every website-static page the
+    # fix block touches; after all fixes, only version strings may differ.
+    declare -a GUARDED_FILES=() GUARDED_BAKS=()
+    for GF in "$WEBSITE_INDEX" "$WEBSITE_WEB" "$WEBSITE_PLAYGROUND"; do
+        [ -f "$GF" ] || continue
+        GUARDED_FILES+=("$GF")
+        GUARDED_BAKS+=("$(_snapshot_carriers "$GF")")
+    done
+
     echo -e "${YELLOW}Applying fixes...${NC}"
 
     # Fix module gradle.properties
@@ -1387,25 +1438,30 @@ if changed:
         fi
     done
 
-    # Fix website-static/index.html version refs. This is the ONLY unanchored
-    # blanket version sweep, so OLD_V's dots MUST be escaped before it is used
-    # as a regex by grep and sed: an unescaped `4.3.0` is the BRE `4`+any+`3`+
-    # any+`0`, which matched the SVG-logo coordinate substring `4 390` and
-    # rewrote `390,194 390,340` to `390,194.17.0,340`, corrupting the markup.
-    # Escaping restricts the match to a literal version string.
+    # Fix website-static/index.html version refs (#2562, #3234). This used to
+    # be the ONLY unanchored blanket sweep in the script — `s/OLD/NEW/g` over
+    # the whole file. Escaping OLD's dots stopped `4.5.0` from wildcard-
+    # matching `43570` inside `Stream ID: 14357002837` (and `4 390` inside the
+    # SVG logo path), but escaping is necessary and not sufficient: once a
+    # legitimate digit run had been corrupted into a literal version string,
+    # the escaped sweep re-bumped it faithfully for 25 releases
+    # (`14.6.002837` -> `14.31.002837`).
     #
-    # Escaping is necessary and not sufficient (#3234): once a *legitimate*
-    # digit run has been corrupted into something containing a real version,
-    # the escaped replace re-bumps it forever. The GA4 stream id lived that
-    # for 25 releases. Lines carrying an opaque identifier are therefore
-    # excluded from the sweep by address — they never hold a version to sync.
+    # The sweep is therefore gone. Each version carrier in index.html is
+    # rewritten by its own anchored sed, scoped to the exact line shape; the
+    # Maven `io.github.sceneview:<artifact>:X` refs are handled by the
+    # artifact-refs loop above. A bare digit run that is not one of these
+    # shapes is never a sync target, whatever it happens to contain. The
+    # carrier-invariant guard around the whole --fix block (see
+    # `_assert_carrier_invariant`) is the backstop if a future edit reintroduces
+    # a blanket replace.
     if [ -f "$WEBSITE_INDEX" ]; then
         for OLD_V in $OLD_VERSIONS; do
             [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
             OLD_V_RE="${OLD_V//./\\.}"
-            if grep -qE "$OLD_V_RE" "$WEBSITE_INDEX" 2>/dev/null; then
-                _sed_inplace "/Stream ID:/!s/$OLD_V_RE/$SOURCE_VERSION/g" "$WEBSITE_INDEX"
-                echo -e "  Fixed: website-static/index.html ($OLD_V -> $SOURCE_VERSION)"
+            if grep -qE "(\"softwareVersion\": \"$OLD_V_RE\"|// Version: $OLD_V_RE|sceneview-web@$OLD_V_RE)" "$WEBSITE_INDEX" 2>/dev/null; then
+                _sed_inplace "s/\"softwareVersion\": \"$OLD_V_RE\"/\"softwareVersion\": \"$SOURCE_VERSION\"/g; s|// Version: $OLD_V_RE|// Version: $SOURCE_VERSION|g; s|sceneview-web@$OLD_V_RE|sceneview-web@$SOURCE_VERSION|g" "$WEBSITE_INDEX"
+                echo -e "  Fixed: website-static/index.html (softwareVersion / iOS snippet / CDN pin $OLD_V -> $SOURCE_VERSION)"
             fi
         done
     fi
@@ -1891,6 +1947,10 @@ if changed:
             echo -e "  ${YELLOW}WARN: mcp version.ts regeneration failed — run 'node mcp/scripts/generate-version.js' manually${NC}"
         fi
     fi
+
+    for i in "${!GUARDED_FILES[@]}"; do
+        _assert_carrier_invariant "${GUARDED_FILES[$i]}" "${GUARDED_BAKS[$i]}"
+    done
 
     echo ""
     echo -e "${GREEN}Fixes applied. Re-run without --fix to verify.${NC}"
