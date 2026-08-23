@@ -290,6 +290,9 @@ private fun SingleModelSection(
     }
     LaunchedEffect(activeModelInstance, selectedAnimation, animationPlaying) {
         val animator = activeModelInstance?.animator ?: return@LaunchedEffect
+        // gltfio's Animator has no bounds check: querying a clip on a model
+        // without animations is a native null dereference, not an exception.
+        if (selectedAnimation !in 0 until animator.animationCount) return@LaunchedEffect
         val duration = animator.getAnimationDuration(selectedAnimation).takeIf { it > 0f } ?: return@LaunchedEffect
         var start = 0L
         while (animationPlaying) {
@@ -428,7 +431,7 @@ private fun SingleModelSection(
                 onClipChange = { selectedAnimation = it; animationProgress = 0f },
                 onProgressChange = {
                     animationProgress = it
-                    activeModelInstance?.animator?.let { animator ->
+                    activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }?.let { animator ->
                         animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))
                         animator.updateBoneMatrices()
                     }

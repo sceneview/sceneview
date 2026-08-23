@@ -88,7 +88,7 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
-| `header-overlay` | `surface` at 94% | `surface` at 94% | Sticky home header over the scrolling grid |
+| `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid |
 | `outline-subtle` | #ebedf0 | #1f2937 | 1dp card and header hairline (see Borders) |
 
 ### Text

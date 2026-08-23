@@ -411,7 +411,8 @@ fun BoxScope.TapToPlaceStatusOverlays(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top
                 )
             )
-            .padding(top = 8.dp),
+            // Below the scaffold's glass identity row when there is one (#3250).
+            .padding(top = 8.dp + io.github.sceneview.demo.LocalDemoChromeTopInset.current),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

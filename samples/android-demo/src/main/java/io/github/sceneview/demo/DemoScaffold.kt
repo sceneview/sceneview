@@ -199,6 +199,15 @@ data class DockItem(
  * the scene by the measured bottom band so the hero object can never descend
  * under it (#2957).
  */
+
+/**
+ * Height of the glass identity row (back button + title pill) plus its gutter,
+ * provided to the `scene` slot so demos that draw their own top-centre status
+ * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome. Zero
+ * outside a [DemoScaffold] — `ArViewTab` draws the same pill in a plain tab.
+ */
+val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
 @Composable
 fun DemoScaffold(
     title: String,
@@ -280,7 +289,11 @@ fun DemoScaffold(
                     .sceneTapToggle(enabled = chromeToggleOnTap && !touchExploration) {
                         chromeToggled = !chromeToggled
                     },
-                content = scene,
+                content = {
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
+                    ) { scene() }
+                },
             )
 
             if (firstFrameRendered != null) {
@@ -758,7 +771,9 @@ private fun BoxScope.FirstFrameCover(
             modifier = Modifier
                 .fillMaxSize()
                 .alpha(alpha)
-                .background(MaterialTheme.colorScheme.surface)
+                // The viewport is media: the cover is the stage colour in both
+                // themes so the white glass chrome stays readable over it.
+                .background(SceneViewTokens.Stage.background)
                 // Swallow touches while the cover is opaque so a stray tap can't
                 // reach the (not-yet-rendered) scene; lets them through once fading.
                 .then(

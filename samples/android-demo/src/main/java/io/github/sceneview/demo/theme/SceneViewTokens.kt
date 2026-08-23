@@ -119,7 +119,7 @@ object SceneViewTokens {
         val outlineSubtleLight = Color(0xFFEBEDF0)
         val outlineSubtleDark = Color(0xFF1F2937)
 
-        const val headerOverlayAlpha = 0.94f
+        const val headerOverlayAlpha = 1f
     }
 
     /** Home screen geometry (design spec §2) — `home-*` tokens. */
