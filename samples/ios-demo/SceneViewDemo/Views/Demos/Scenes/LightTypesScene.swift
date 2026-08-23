@@ -4,6 +4,8 @@
 // @category    lighting
 // @available   true
 // @icon        lightbulb.fill
+// @order       2
+// @tags        light,directional,point,spot,shadow,pbr
 import SwiftUI
 
 enum LightTypesScene: DemoScene {

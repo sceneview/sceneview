@@ -25,7 +25,7 @@ struct EnvironmentDemo: View {
 
     var body: some View {
         content
-            .demoSettingsSheet {
+            .demoChrome {
                 environmentPicker
             }
     }

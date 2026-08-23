@@ -4,6 +4,8 @@
 // @category    advanced
 // @available   true
 // @icon        chart.line.uptrend.xyaxis
+// @order       19
+// @tags        debug,fps,stats,performance,overlay
 import SwiftUI
 
 enum DebugOverlayScene: DemoScene {

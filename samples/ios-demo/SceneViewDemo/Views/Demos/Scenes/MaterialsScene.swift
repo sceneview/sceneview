@@ -4,6 +4,8 @@
 // @category    advanced
 // @available   true
 // @icon        paintpalette.fill
+// @order       3
+// @tags        pbr,material,clearcoat,sheen,transmission,occlusion,streaming
 import SwiftUI
 
 enum MaterialsScene: DemoScene {

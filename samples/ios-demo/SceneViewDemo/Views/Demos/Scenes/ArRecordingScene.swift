@@ -5,6 +5,8 @@
 // @available   true
 // @icon        record.circle
 // @iosOnly     true
+// @order       48
+// @tags        ar,recording,playback,session,mp4,replay
 import SwiftUI
 
 enum ArRecordingScene: DemoScene {

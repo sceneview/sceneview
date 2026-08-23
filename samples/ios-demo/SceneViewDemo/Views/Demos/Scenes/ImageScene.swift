@@ -4,6 +4,7 @@
 // @category    content
 // @available   true
 // @icon        photo.fill
+// @order       65
 import SwiftUI
 
 enum ImageScene: DemoScene {

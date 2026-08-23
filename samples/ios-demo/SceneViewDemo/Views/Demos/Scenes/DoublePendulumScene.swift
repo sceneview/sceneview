@@ -4,6 +4,8 @@
 // @category    advanced
 // @available   true
 // @icon        waveform.path
+// @order       16
+// @tags        physics,pendulum,chaos,simulation,kmp
 import SwiftUI
 
 enum DoublePendulumScene: DemoScene {

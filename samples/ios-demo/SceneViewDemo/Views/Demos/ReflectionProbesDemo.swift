@@ -29,7 +29,7 @@ struct ReflectionProbesDemo: View {
                     .padding(.bottom, 12)
             }
         }
-        .demoSettingsSheet {
+        .demoChrome {
             settingsContent
         }
     }

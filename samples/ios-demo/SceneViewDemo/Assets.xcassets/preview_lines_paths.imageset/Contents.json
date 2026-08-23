@@ -1,0 +1,22 @@
+{
+  "images": [
+    {
+      "filename": "preview_lines_paths.jpg",
+      "idiom": "universal"
+    },
+    {
+      "filename": "preview_lines_paths_dark.jpg",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

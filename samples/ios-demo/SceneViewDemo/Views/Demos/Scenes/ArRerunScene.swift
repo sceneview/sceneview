@@ -5,6 +5,8 @@
 // @available   true
 // @icon        antenna.radiowaves.left.and.right
 // @iosOnly     true
+// @order       49
+// @tags        ar,rerun,streaming,pose,plane,debug
 import SwiftUI
 
 enum ArRerunScene: DemoScene {

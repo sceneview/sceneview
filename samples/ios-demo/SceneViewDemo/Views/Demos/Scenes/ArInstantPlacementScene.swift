@@ -5,6 +5,8 @@
 // @available   true
 // @icon        bolt.fill
 // @iosOnly     true
+// @order       23
+// @tags        ar,instant-placement,plane,anchor,arcore
 import SwiftUI
 
 enum ArInstantPlacementScene: DemoScene {

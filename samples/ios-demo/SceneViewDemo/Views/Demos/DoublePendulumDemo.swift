@@ -162,7 +162,7 @@ struct DoublePendulumDemo: View {
 
     var body: some View {
         sceneContent
-            .demoSettingsSheet { controlsSheet }
+            .demoChrome { controlsSheet }
             .onDisappear { coordinator.stop() }
     }
 

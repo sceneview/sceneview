@@ -4,6 +4,7 @@
 // @category    interaction
 // @available   true
 // @icon        hand.pinch.fill
+// @order       68
 import SwiftUI
 
 enum GestureEditingScene: DemoScene {

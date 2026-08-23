@@ -47,7 +47,7 @@ struct GestureEditingDemo: View {
 
     var body: some View {
         sceneWithOverlays
-            .demoSettingsSheet { settingsSheet }
+            .demoChrome { settingsSheet }
     }
 
     // MARK: - Scene

@@ -113,7 +113,7 @@ struct AnimationDemo: View {
     var body: some View {
         sceneContent
             .assetSourcePill(assetSource)
-            .demoSettingsSheet {
+            .demoChrome {
                 controlsSheet
             }
             .task {

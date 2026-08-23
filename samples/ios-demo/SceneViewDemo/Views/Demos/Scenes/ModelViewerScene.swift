@@ -4,6 +4,8 @@
 // @category    basics3D
 // @available   true
 // @icon        cube.transparent.fill
+// @order       1
+// @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
 import SwiftUI
 
 enum ModelViewerScene: DemoScene {

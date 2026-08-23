@@ -4,6 +4,7 @@
 // @category    advanced
 // @available   true
 // @icon        circle.lefthalf.filled
+// @order       71
 import SwiftUI
 
 enum ReflectionProbesScene: DemoScene {

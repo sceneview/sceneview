@@ -24,7 +24,7 @@ struct VideoTextureDemo: View {
             playPauseButton
         }
         .background(Color.black)
-        .demoSettingsSheet { settingsSheet }
+        .demoChrome { settingsSheet }
         .task { buildVideoNode() }
     }
 

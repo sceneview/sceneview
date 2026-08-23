@@ -4,6 +4,8 @@
 // @category    basics3D
 // @available   true
 // @icon        cube.fill
+// @order       5
+// @tags        geometry,cube,sphere,cylinder,plane,primitive
 import SwiftUI
 
 enum GeometryScene: DemoScene {

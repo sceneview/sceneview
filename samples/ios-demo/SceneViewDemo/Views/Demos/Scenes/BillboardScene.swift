@@ -4,6 +4,7 @@
 // @category    content
 // @available   true
 // @icon        person.fill.viewfinder
+// @order       64
 import SwiftUI
 
 enum BillboardScene: DemoScene {

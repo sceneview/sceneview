@@ -4,6 +4,7 @@
 // @category    lighting
 // @available   true
 // @icon        sun.dust.fill
+// @order       63
 import SwiftUI
 
 enum MovableLightScene: DemoScene {

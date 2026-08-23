@@ -4,6 +4,8 @@
 // @category    advanced
 // @available   true
 // @icon        diamond.fill
+// @order       10
+// @tags        geometry,mesh,extrusion,composite,procedural
 import SwiftUI
 
 enum CustomMeshScene: DemoScene {

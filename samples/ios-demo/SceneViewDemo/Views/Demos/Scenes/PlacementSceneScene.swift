@@ -6,6 +6,8 @@
 // @icon        mappin.and.ellipse
 // @iosOnly     true
 // @status      working
+// @order       21
+// @tags        ar,plane,tap-to-place,sceneform,anchor
 import SwiftUI
 
 /// One-line tap-to-place AR demo — the RealityKit counterpart of Android's
@@ -140,7 +142,7 @@ private struct PlacementSceneDemoView: View {
                 Spacer()
             }
         }
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
     }
 
     // MARK: - AR scene

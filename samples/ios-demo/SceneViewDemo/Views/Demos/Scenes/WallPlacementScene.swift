@@ -6,6 +6,8 @@
 // @icon        tv.fill
 // @iosOnly     true
 // @status      inReview
+// @order       51
+// @tags        ar,wall,vertical-plane,placement,tv
 import SwiftUI
 #if os(iOS)
 import ARKit
@@ -303,7 +305,7 @@ struct WallPlacementDemoView: View {
                     .padding(.bottom, 180)
             }
         }
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         // The error capsule is this port's own addition (Android shows no such
         // banner), so it also owns dismissing itself: a user who taps a
         // non-wall once and then walks away must not be left with a red

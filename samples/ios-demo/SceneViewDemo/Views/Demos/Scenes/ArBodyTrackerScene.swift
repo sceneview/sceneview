@@ -5,6 +5,8 @@
 // @available   true
 // @icon        figure.walk.motion
 // @iosOnly     true
+// @order       38
+// @tags        ar,body,pose,mediapipe,skeleton,ml
 import SwiftUI
 
 enum ArBodyTrackerScene: DemoScene {

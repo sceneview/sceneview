@@ -1,0 +1,22 @@
+{
+  "images": [
+    {
+      "filename": "preview_ar_depth_collider.jpg",
+      "idiom": "universal"
+    },
+    {
+      "filename": "preview_ar_depth_collider_dark.jpg",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

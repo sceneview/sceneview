@@ -6,6 +6,8 @@
 // @status      knownIssue
 // @icon        icloud.fill
 // @iosOnly     true
+// @order       41
+// @tags        ar,cloud-anchor,multi-user,persistence,arcore
 import SwiftUI
 
 /// Cloud Anchor persistence — mirrors Android's `ARCloudAnchorDemo`
@@ -241,7 +243,7 @@ private struct ARCloudAnchorDemo: View {
             .padding()
         }
         .background(Color.black)
-        .demoSettingsSheet { controlsSheet }
+        .demoChrome { controlsSheet }
         .task { await loadLantern() }
         .onDisappear {
             // Android: DisposableEffect(node) { onDispose { future.cancel() } }.
