@@ -88,7 +88,9 @@ public actual fun SceneViewer(
             viewState = viewState,
             onTap = currentOnTap.value,
             dispatchTap = { hit ->
-                scope.launch(Dispatchers.Main.immediate) { currentOnTap.value?.invoke(hit) }
+                // scope is Compose's main context (rememberCoroutineScope); no explicit
+                // dispatcher, so desktop does not require kotlinx-coroutines-swing.
+                scope.launch { currentOnTap.value?.invoke(hit) }
             },
         ),
         engine = engine,
