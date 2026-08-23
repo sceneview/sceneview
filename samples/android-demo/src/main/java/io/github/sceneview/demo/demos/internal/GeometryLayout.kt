@@ -25,10 +25,10 @@ import kotlin.math.sqrt
  *
  * ### Orbit distance is the LENGTH of `orbitHomePosition` (measured, #2873)
  *
- * `rememberCameraManipulator(orbitHomePosition, targetPosition)` used to document
- * `orbitHomePosition` as "the camera's world position to return to on double-tap", which
- * reads as "the distance is `|orbitHomePosition − targetPosition|`". Measured on-device it
- * is **not**: the resulting orbit distance is `|orbitHomePosition|`.
+ * `rememberCameraManipulator(orbitHomePosition, targetPosition)`'s KDoc used to document that
+ * parameter as "the camera's world position to return to on double-tap", which reads as "the
+ * distance is `|orbitHomePosition − targetPosition|`". Measured on-device it is **not**: the
+ * resulting orbit distance is `|orbitHomePosition|`.
  *
  * The cause is *not* that the value is an offset from the target. Filament's
  * `OrbitManipulator` assigns it verbatim as the eye (`mEye = mProps.orbitHomePosition`) and

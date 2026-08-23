@@ -1,19 +1,51 @@
 name: Render Tests
 
 on:
-  # Render tests no longer run on PRs — they are non-blocking
-  # (`continue-on-error: true`), spin up a KVM-accelerated emulator
-  # + an iOS Simulator + Playwright web, and the screenshots they produce
-  # were rarely consulted by PR reviewers. The signal is still captured
-  # on every push to main, so post-merge regressions surface in the
-  # Actions tab without burning ~30 min × multiple PRs per day. Trigger
-  # manually via workflow_dispatch when you want to vet a feature branch.
+  # Two trigger tiers, split by what each one is allowed to cost (#3216):
   #
-  # Strictly path-gated (#1311, #1321): runs only when render-affecting
-  # source actually changes. SKIPPED on doc-only, CI-only (`.github/**`),
-  # and `mcp/`-only merges — none of those can change a rendered frame.
-  # squash-merge means `main` HEAD differs from every PR commit, so this
-  # main-push run still catches integration regressions a PR build can't.
+  # `pull_request` — runs the `android-library-render` job (and `web-render` on web changes), only
+  # when the PR touches something `:sceneview:connectedDebugAndroidTest` can
+  # see (the `paths:` list below). That job is the one blocking leg of this
+  # workflow; before #3216 it had no pre-merge run at all, so a PR that added
+  # or broke an androidTest merged on a green that never executed it, and the
+  # red surfaced on `main` attributed to whichever push came next. The demo
+  # screenshot, iOS and web jobs stay off PRs: they are advisory by design
+  # (`|| true` / `continue-on-error`), spin up a second emulator, a macOS
+  # Simulator and Playwright, and their screenshots were rarely consulted by
+  # reviewers. Each of those jobs carries `if: github.event_name !=
+  # 'pull_request'`. Fork PRs get no secrets, which is fine — the one PR job
+  # needs none.
+  #
+  # `push` to main — the full five-job run, strictly path-gated (#1311,
+  # #1321): runs only when render-affecting source actually changes. SKIPPED
+  # on doc-only, CI-only (`.github/**`), and `mcp/`-only merges — none of
+  # those can change a rendered frame. squash-merge means `main` HEAD differs
+  # from every PR commit, so this main-push run still catches integration
+  # regressions a PR build can't.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sceneview/**'
+      - 'sceneview-core/**'
+      - 'arsceneview/src/**'
+      - '.github/workflows/render-tests.yml'
+      - '.github/actions/setup-gradle/**'
+      # Same reasoning as the push list below: a dependency bump or a
+      # renderer-affecting module config change can break an instrumented
+      # test as surely as `src/**` can.
+      - 'gradle/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle.properties'
+      # The web Playwright suite (`samples/web-demo`) is reachable from no
+      # other workflow, and `check-test-suites-reachable.sh` (#3201) reads a
+      # `pull_request` trigger whose `paths:` exclude the package as "runs
+      # its tests but never triggers on it". So web changes trigger this
+      # workflow too, and the `web-render` job runs on PRs (advisory, `||
+      # true`, ubuntu-only). Side effect accepted: a web-only PR also queues
+      # the `android-library-render` emulator job once.
+      - 'samples/web-demo/**'
+      - 'sceneview-web/**'
   push:
     branches: [main]
     paths:
@@ -35,9 +67,23 @@ on:
   # this render-test definition rather than duplicating it. See #1324.
   workflow_call:
 
+# Cancellation is allowed on pull requests only (#2917, #3216).
+#
+# On a PR the group is the PR ref, so a new push to the same PR supersedes
+# the previous run — the old SHA is never going to merge, no point finishing
+# it. Everywhere else (push to main, workflow_dispatch, the nightly
+# workflow_call) the group is `github.run_id`, which is unique per run, so
+# nothing ever cancels. The previous `group: render-tests-${{ github.ref }}`
+# + `cancel-in-progress: true` put EVERY push to main in one group: each
+# merge killed the run of the one before it, and over the last 30 main runs
+# 15 ended `cancelled` — the commit they were testing went untested and
+# nothing said so. Per-merge runs on main now queue instead of cancelling;
+# the cost is GitHub-hosted minutes proportional to the merge rate (the
+# jobs below are ubuntu-latest + one macos-latest leg, no self-hosted
+# runner), the gain is that every merge reaches a verdict.
 concurrency:
-  group: render-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: render-tests-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -48,11 +94,15 @@ jobs:
     name: Android library render tests (emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # SwiftShader emulator render tests are inherently flaky (JNI teardown
-    # races, GPU emulation timing).  Mark non-blocking so a spurious red X
-    # doesn't scare contributors — the workflow is already NOT a required
-    # status check.  Individual job status still visible in the Actions tab.
-    continue-on-error: true
+    # Non-blocking on push/nightly: SwiftShader emulator render tests are
+    # inherently flaky (JNI teardown races, GPU emulation timing), so a
+    # spurious red X on main is kept advisory — the workflow is NOT a required
+    # status check. On a pull request the job DOES report its own verdict
+    # (#3216): it is the only leg of this workflow that runs there, it is the
+    # one whose gradle invocation has no `|| true`, and it is the pre-merge
+    # run the PR author came for — a red it cannot show is a red nobody sees.
+    # Still not a required check, so a flake does not block a merge by itself.
+    continue-on-error: ${{ github.event_name != 'pull_request' }}
 
     # The 3-shard emulator matrix (#1119, PR #1145) was REVERTED to a single
     # job: the 5 render-test classes cleanly `assumeTrue`-skip on SwiftShader
@@ -119,6 +169,8 @@ jobs:
   # ── Android demo app screenshot capture ───────────────────────────────────
   android-demo-screenshots:
     name: Android demo app screenshots (emulator)
+    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -231,6 +283,8 @@ jobs:
   # harvestable artifact instead).
   demo-render-goldens:
     name: Unified-demo render goldens (emulator)
+    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     continue-on-error: true
@@ -293,6 +347,8 @@ jobs:
   # job becomes a real regression gate. See that dir's README for the flow.
   ar-demo-playback-screenshots:
     name: AR demo playback screenshots (emulator)
+    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # AR emulator playback is inherently flaky (ARCore service init races,
@@ -377,6 +433,8 @@ jobs:
   # (main-push + nightly, non-blocking).
   ios-render:
     name: iOS screenshot tests (Simulator)
+    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 40
 
@@ -482,6 +540,8 @@ jobs:
   # ── Web render tests ──────────────────────────────────────────────────────
   web-render:
     name: Web Playwright screenshot tests
+    # Advisory leg (`|| true`). Runs on PRs as well so the suite stays
+    # reachable from a PR-time workflow (see the `pull_request.paths` note).
     runs-on: ubuntu-latest
     # 30 min: the suite (53 tests, 1 worker) measures 13–17 min green on push
     # runs — 20 min left no headroom and the slower nightly runners timed the

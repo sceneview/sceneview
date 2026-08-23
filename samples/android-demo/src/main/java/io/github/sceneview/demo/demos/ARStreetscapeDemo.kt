@@ -5,9 +5,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.ar.core.Config
+import com.google.ar.core.Earth
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
@@ -49,6 +47,13 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.CloudServiceStatus
+import io.github.sceneview.demo.common.CloudServiceStatusBanner
+import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.rememberIsNetworkAvailable
+import io.github.sceneview.demo.common.toCloudServiceStatus
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -239,6 +244,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     // attempting to set the mode would throw on `session.configure()`.
     var geospatialUnavailable by remember { mutableStateOf<String?>(null) }
     var sessionError by remember { mutableStateOf<String?>(null) }
+    // Geospatial has no failure callback: a rejected Cloud API key only shows up as
+    // `Earth.EarthState.ERROR_NOT_AUTHORIZED` on the session, so it is sampled on
+    // every frame and routed into the status banner (#3210).
+    var earthState by remember { mutableStateOf<Earth.EarthState?>(null) }
 
     // Detect at runtime whether the build wired an ARCore Cloud API key into the
     // manifest (com.google.android.ar.API_KEY meta-data). When absent — fork
@@ -246,13 +255,19 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     // local.properties — Geospatial endpoints silently return no data. We pre-fill
     // the banner so the user sees "Looking for streetscape geometry…" forever
     // turned into a clear "API key not configured" diagnostic instead.
-    val hasArcoreApiKey = remember {
-        runCatching {
-            val ai = context.packageManager.getApplicationInfo(
-                context.packageName, PackageManager.GET_META_DATA
-            )
-            !ai.metaData?.getString("com.google.android.ar.API_KEY").isNullOrBlank()
-        }.getOrDefault(false)
+    val hasArcoreApiKey = rememberHasArcoreApiKey()
+    // Preemptive network check (#3262): Geospatial silently returns no data with no
+    // network, which otherwise reads identically to a rejected API key.
+    val isNetworkAvailable = rememberIsNetworkAvailable()
+
+    // The one shared "why can't this demo work right now" answer (#3262): a missing
+    // or rejected key, an exhausted Cloud quota, or no network. `earthState` only
+    // reports the ARCore-side rejection/quota reasons — the key-missing and
+    // no-network checks are known up front.
+    val cloudStatus: CloudServiceStatus = when {
+        !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
+        !isNetworkAvailable -> CloudServiceStatus.NoNetwork
+        else -> earthState.toCloudServiceStatus("Geospatial") ?: CloudServiceStatus.Available
     }
 
     // Semi-transparent material for streetscape geometry overlays — SceneView TintLight at
@@ -267,18 +282,19 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     )
 
     // Timeout-based outdoor guidance (#1615). When the camera is tracking, Geospatial
-    // is supported (no `geospatialUnavailable`) and no fatal error occurred, but no
-    // streetscape geometry has shown up after `NO_GEOMETRY_HINT_DELAY_MS`, the user
-    // is almost certainly indoors or outside VPS coverage. Surface a clear hint
-    // instead of the perpetual "Looking for streetscape geometry…" spinner. Keyed on
-    // the inputs so the timer re-arms whenever tracking drops or geometry appears.
-    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, hasArcoreApiKey) {
+    // is supported (no `geospatialUnavailable`), the cloud service is usable, and no
+    // fatal error occurred, but no streetscape geometry has shown up after
+    // `NO_GEOMETRY_HINT_DELAY_MS`, the user is almost certainly indoors or outside VPS
+    // coverage. Surface a clear hint instead of the perpetual "Looking for streetscape
+    // geometry…" spinner. Keyed on the inputs so the timer re-arms whenever tracking
+    // drops or geometry appears.
+    LaunchedEffect(isTracking, geometryCount, geospatialUnavailable, sessionError, cloudStatus) {
         noGeometryGuidance = false
         val shouldShowNoGeometryHint = isTracking &&
             geometryCount == 0 &&
             geospatialUnavailable == null &&
             sessionError == null &&
-            hasArcoreApiKey
+            !cloudStatus.isUnavailable
         if (shouldShowNoGeometryHint) {
             kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
             noGeometryGuidance = true
@@ -316,52 +332,49 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
             // when a developer has picked one in the debug menu (#1881). Read it here
             // so flipping the override re-renders the overlay immediately.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                val statusText = when {
-                    // friendlyArSessionError already yields a complete, honest sentence (#2349).
-                    sessionError != null -> sessionError!!
-                    !hasArcoreApiKey ->
-                        "ARCore Cloud API key not configured \u2014 see samples/android-demo/ARCORE_CLOUD_SETUP.md"
-                    geospatialUnavailable != null ->
-                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"
-                    ForcedTrackingFailure.override != null ->
-                        trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026"
-                    geometryCount > 0 -> "Rendering $geometryCount structure(s)"
-                    !isTracking -> trackingFailureMessage(effectiveReason)
-                        ?: "Scanning environment\u2026"
-                    // Supported device, no VPS coverage / indoors (#1615): after a
-                    // timeout the perpetual spinner is replaced with explicit
-                    // guidance to step outside and point at buildings.
-                    noGeometryGuidance ->
-                        stringResource(R.string.demo_ar_streetscape_no_geometry_hint)
-                    else -> "Looking for streetscape geometry\u2026"
-                }
-                // Content-width pill, centred in the band left free by the Settings
-                // FAB. End-only inset, not the symmetric one this used to apply: the
-                // reserve now tracks the real peek chip, and spending it on both edges
-                // to protect one corner left the pill too narrow for its own four-line
-                // status text (#3229).
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp, end = settingsFabReservedSpace),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier
-                            .background(
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .padding(horizontal = 24.dp, vertical = 12.dp)
+            when {
+                // friendlyArSessionError already yields a complete, honest sentence (#2349).
+                sessionError != null ->
+                    DemoStatusBanner(sessionError!!, tone = DemoStatusTone.Blocked)
+                // The one shared "Cloud service unavailable" banner (#3262): missing or
+                // rejected key, exhausted quota, no network. Lives in the main AR view,
+                // never only in Settings.
+                cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
+                geospatialUnavailable != null ->
+                    DemoStatusBanner(
+                        "${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key",
+                        tone = DemoStatusTone.Blocked,
                     )
+                else -> {
+                    // The tone is derived from the same branches as the text: a tracking
+                    // failure asks the user to move the phone (Guidance), everything else
+                    // is a normal transient state.
+                    val (statusText, statusTone) = when {
+                        ForcedTrackingFailure.override != null ->
+                            (trackingFailureMessage(effectiveReason) ?: "Scanning environment\u2026") to
+                                DemoStatusTone.Guidance
+                        geometryCount > 0 ->
+                            "Rendering $geometryCount structure(s)" to DemoStatusTone.Progress
+                        !isTracking -> {
+                            val failure = trackingFailureMessage(effectiveReason)
+                            if (failure != null) {
+                                failure to DemoStatusTone.Guidance
+                            } else {
+                                "Scanning environment\u2026" to DemoStatusTone.Progress
+                            }
+                        }
+                        // Supported device, no VPS coverage / indoors (#1615): after a
+                        // timeout the perpetual spinner is replaced with explicit
+                        // guidance to step outside and point at buildings.
+                        noGeometryGuidance ->
+                            stringResource(R.string.demo_ar_streetscape_no_geometry_hint) to
+                                DemoStatusTone.Guidance
+                        else -> "Looking for streetscape geometry\u2026" to DemoStatusTone.Progress
+                    }
+                    // The shared banner owns the pill geometry — the end-only Settings FAB
+                    // inset (#3229), the colour per tone — so this demo no longer reads as
+                    // "all good" in primary blue while the Cloud API key is unusable (#3210).
+                    DemoStatusBanner(statusText, tone = statusTone)
                 }
             }
         },
@@ -418,9 +431,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     // "FatalException" class name to the user.
                     sessionError = friendlyArSessionError(exception)
                 },
-                onSessionUpdated = { _: Session, frame: Frame ->
+                onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                    earthState = session.earth?.earthState
                     frame.getUpdatedTrackables(StreetscapeGeometry::class.java).forEach { geo ->
                         if (geo.trackingState == TrackingState.TRACKING) {
                             if (geometries.none { it == geo }) {

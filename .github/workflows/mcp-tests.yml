@@ -1,0 +1,197 @@
+name: MCP tests
+
+# Runs the vitest suites of the MCP surface: the `mcp/` npm package, the five
+# vertical packages under `mcp/packages/`, and the `mcp-gateway/` Worker.
+#
+# WHY A NEW WORKFLOW AND NOT A STEP SOMEWHERE (#3201)
+# ---------------------------------------------------
+# None of these suites ran anywhere. `mcp-gateway/` — the paid Worker — held
+# 17 test files and 187 cases that no workflow touched; one of them had
+# inverted, asserting a tool count the dashboard had outgrown, so it was green
+# while the page was wrong and only went red once the page was fixed. Nothing
+# reported that for months.
+#
+# `mcp/`'s own suite was covered only by accident. Until #3244 removed the
+# local harness, `.claude/scripts/quality-gate.sh` ran it behind
+# `[ -d "mcp/node_modules" ]` from ci.yml's `Quality gate (full)` job, and the
+# directory existed there only because `./.github/actions/setup-mcp` happened
+# to sit in that job for the other MCP work. Nothing declared that dependency,
+# the guard's false branch printed nothing, and the invocation went through a
+# wrapper script no reachability audit could see. That job and that script are
+# gone now; this workflow is the only thing that runs the suite on a PR.
+#
+# Accidental coverage that no reader can verify is what this workflow replaces:
+# the same suite, invoked by name, on a declared trigger.
+#
+# `release.yml` and `mcp-publish.yml` do run `npm test`, but only on a `v*`
+# tag — by then the code is on `main`. Publish-time tests are not merge gates.
+#
+# PATHS INCLUDE `mcp/**` FOR THE GATEWAY JOB TOO
+# ----------------------------------------------
+# `mcp-gateway/` imports `mcp/src/tiers.ts`, `mcp/src/tools/index.ts` and every
+# `mcp/packages/*/src/tools.ts` directly, so a change confined to `mcp/` can
+# break the gateway's suite. Filtering the gateway on `mcp-gateway/**` alone
+# would reproduce the original gap one directory over: coverage has to follow
+# the dependency, not the directory name.
+
+on:
+  push:
+    # `branches: [main]` is required — `paths:` alone does NOT scope the push
+    # trigger to a branch, so without it this runs on every push to every
+    # `claude/*` worktree branch. PR coverage comes from the trigger below.
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - 'mcp-gateway/**'
+      - '.github/workflows/mcp-tests.yml'
+  pull_request:
+    paths:
+      - 'mcp/**'
+      - 'mcp-gateway/**'
+      - '.github/workflows/mcp-tests.yml'
+      # The reachability job below reads every workflow and every versioned
+      # test file, so the PRs that must trigger it are the ones that touch
+      # either — a PR that only deletes a workflow is exactly the PR it is for.
+      - '.github/workflows/**'
+      - '**/*.test.*'
+      - '**/*.spec.*'
+      - '**/__tests__/**'
+      - '**/package.json'
+      - '.claude/scripts/check-test-suites-reachable.sh'
+      - '.claude/scripts/test-check-test-suites-reachable.sh'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    name: MCP package + vertical packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Pinned to 20 to match every other Node-using workflow
+          # (ci.yml, release.yml, mcp-ts-check.yml, telemetry-ci.yml) — #1602.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mcp
+        run: npm ci
+
+      - name: Test
+        working-directory: mcp
+        run: npm test
+
+      # The five vertical packages are run EXPLICITLY, one step each, even
+      # though the `npm test` above already sweeps them: vitest with no config
+      # picks up everything under `mcp/`, which is coverage by default rather
+      # than by declaration. A `vitest.config.ts` added to `mcp/` tomorrow with
+      # a narrowed `include` would drop all five without a word — and it is the
+      # reachability gate, reading this YAML, that has to be able to see them.
+      # Two of them (automotive, healthcare) have no package.json of their own,
+      # so they borrow this job's toolchain; that is also how they are consumed.
+      - name: Test automotive package
+        working-directory: mcp
+        run: npx vitest run --root packages/automotive
+
+      - name: Test gaming package
+        working-directory: mcp
+        run: npx vitest run --root packages/gaming
+
+      - name: Test healthcare package
+        working-directory: mcp
+        run: npx vitest run --root packages/healthcare
+
+      - name: Test interior package
+        working-directory: mcp
+        run: npx vitest run --root packages/interior
+
+      - name: Test rerun package
+        working-directory: mcp
+        run: npx vitest run --root packages/rerun
+
+  mcp-gateway:
+    name: MCP gateway (Worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp-gateway/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mcp-gateway
+        run: npm ci
+
+      # `mcp/src/generated/{llms-txt,symbols}.ts` are GITIGNORED — generated
+      # from `llms.txt` and the committed `.api` dumps, deliberately not
+      # committed (see .gitignore). The gateway follows `../mcp/src/symbols.ts`
+      # and `../mcp/src/tools/handler.ts` into them, so on a fresh checkout both
+      # steps below fail: `tsc` with TS2307 on two modules, and vitest with 8 of
+      # its 17 files unable to import. `mcp/`'s own lifecycle scripts
+      # (`prebuild`/`test`) run these three generators, which is why every other
+      # MCP job is unaffected and why this job was the one that broke.
+      #
+      # They import nothing but `node:` builtins, so they need no `npm ci` in
+      # `mcp/`. The version generator is included even though `version.ts` IS
+      # committed: running the lifecycle exactly as declared beats a hand-picked
+      # subset that drifts. Verified byte-identical — regenerating leaves the
+      # tree clean.
+      - name: Generate mcp/src/generated (gitignored, imported by the gateway)
+        working-directory: mcp
+        run: |
+          node scripts/generate-llms-txt.js
+          node scripts/generate-version.js
+          node scripts/generate-symbols.js
+
+      - name: Typecheck
+        working-directory: mcp-gateway
+        run: npx tsc --noEmit
+
+      # The gateway's suite imports `mcp/src` and `mcp/packages/*/src` as
+      # TypeScript sources, which vitest transpiles itself — verified by running
+      # it with `mcp/node_modules` moved aside: 17 files, 187 passed. So this
+      # job deliberately does NOT install `mcp/`'s dependencies; if that ever
+      # stops being true, it fails here rather than silently skipping. That
+      # check covered node_modules only, which is exactly how the generated-file
+      # dependency above got past it.
+      - name: Test
+        working-directory: mcp-gateway
+        run: npx vitest run
+
+  # Every JS/TS package carrying tests must be reachable from a workflow
+  # (#3201): invoked by a step AND triggered when the package changes. This
+  # used to be a step of ci.yml's `repo-hygiene` job; #3244 removed that job
+  # with the rest of the local harness, so the gate lives here, next to the
+  # suites it was written for. Self-test first: the gate's subject is the file
+  # it is declared in, so the fixtures are synthetic repos and a green run says
+  # "the reachability check works", not "today's workflows happen to line up".
+  test-suite-reachability:
+    name: Test suites reachable from a workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Self-test the test-suite reachability gate
+        run: bash .claude/scripts/test-check-test-suites-reachable.sh
+
+      - name: Check every test suite is reachable from a workflow
+        run: bash .claude/scripts/check-test-suites-reachable.sh

@@ -111,4 +111,38 @@ internal object SemanticsOverlay {
         value > 1f -> 1f
         else -> value
     }
+
+    /**
+     * Default fraction above which an [UNLABELED_ORDINAL]-dominant frame counts as "the scene
+     * has nothing classified", not just ordinary edge noise.
+     */
+    const val DEFAULT_UNCLASSIFIED_THRESHOLD: Float = 0.9f
+
+    /**
+     * `true` when the current frame's single most-common label is [UNLABELED_ORDINAL] at or
+     * above [threshold] — i.e. ARCore's Scene Semantics model classified almost nothing (#3274).
+     *
+     * The Scene Semantics model has **no indoor training data**: pointed at a living-room wall
+     * it returns UNLABELED for almost every pixel, which the overlay shader paints fully
+     * transparent (see `semantics_overlay.mat`) — so the demo shows exactly the plain camera
+     * feed, with no on-screen indication of *why*. A user filed that as "nothing...rendered"
+     * (#3274) even though the pipeline itself was working correctly end to end; the fix isn't a
+     * code bug in the classification path, it's the missing feedback the #1617 principle
+     * ("never leave the user staring at a screen that looks broken without saying why") demands
+     * everywhere else in this codebase.
+     *
+     * Extracted as a pure, ARCore-free function (`topOrdinal` instead of `SemanticLabel`, so no
+     * ARCore type is needed on the test classpath) so the gate can be pinned by a JVM unit test.
+     * See `SemanticsOverlayTest`.
+     *
+     * @param topOrdinal  Ordinal (`0..11`) of the frame's highest-fraction label.
+     * @param topFraction That label's fraction, in `[0, 1]`.
+     * @param threshold   Minimum fraction to call it "dominant". Defaults to
+     *                    [DEFAULT_UNCLASSIFIED_THRESHOLD].
+     */
+    fun isOutdoorSceneUnclassified(
+        topOrdinal: Int,
+        topFraction: Float,
+        threshold: Float = DEFAULT_UNCLASSIFIED_THRESHOLD,
+    ): Boolean = topOrdinal == UNLABELED_ORDINAL && topFraction >= threshold
 }

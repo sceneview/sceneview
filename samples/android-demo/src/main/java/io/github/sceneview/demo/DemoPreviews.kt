@@ -67,7 +67,6 @@ object DemoPreviews {
         "materials" to PreviewPair(R.drawable.preview_materials_light, R.drawable.preview_materials_dark),
         "model-viewer" to PreviewPair(R.drawable.preview_model_viewer_light, R.drawable.preview_model_viewer_dark),
         "picking-collision" to PreviewPair(R.drawable.preview_picking_collision_light, R.drawable.preview_picking_collision_dark),
-        "placement-reticle-preview" to PreviewPair(R.drawable.preview_placement_reticle_preview_light, R.drawable.preview_placement_reticle_preview_dark),
         "placement-scene" to PreviewPair(R.drawable.preview_placement_scene_light, R.drawable.preview_placement_scene_dark),
         "point-and-ask" to PreviewPair(R.drawable.preview_point_and_ask_light, R.drawable.preview_point_and_ask_dark),
         "secondary-camera" to PreviewPair(R.drawable.preview_secondary_camera_light, R.drawable.preview_secondary_camera_dark),

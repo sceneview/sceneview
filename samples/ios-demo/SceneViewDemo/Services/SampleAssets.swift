@@ -30,8 +30,11 @@ import Foundation
 ///  3. Eyeball a realistic `scaleToUnits` — the bounds sanity check in
 ///     `SketchfabAssetResolver.boundsAreSane(_:slug:)` rejects values outside
 ///     `[0.05 m, 5 m]`.
-///  4. Pick an existing bundled fallback that visually resembles the streamed
-///     model.
+///  4. Pick an existing bundled fallback that IS the same kind of thing as the
+///     streamed model, or declare `fallbackRole: .placeholder` so the pill says
+///     "Offline placeholder" instead of pretending (#2960). Every
+///     `.subjectMatch` must be added to the reviewed allowlist in
+///     `BundledAssetPrimBudgetTests.testEveryFallbackIsASubjectMatchOrADeclaredPlaceholder`.
 enum SampleAssets {
 
     /// All curated entries flattened into a single list.
@@ -89,6 +92,8 @@ enum SampleAssets {
             author: "rigsters",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/retro_piano.usdz",
+            // Offline placeholder (#2960): no statue is bundled; a piano keeps the gallery picker working.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.85,
             hasBakedAnimation: false,
             category: "gallery",
@@ -134,6 +139,8 @@ enum SampleAssets {
             author: "MartijnVaes",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
+            // Offline placeholder (#2960): a Game Boy is a retro gadget, not a camera.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.20,
             hasBakedAnimation: false,
             category: "gallery",
@@ -220,6 +227,8 @@ enum SampleAssets {
             // tree_scene islands instead of a scene (#2355). A small furniture-
             // like prop (1.8 MB retro_piano) reads as the foreground bench.
             fallbackBundledPath: "Models/retro_piano.usdz",
+            // Offline placeholder (#2960): deliberate bench-slot stand-in, see above — still not a tree.
+            fallbackRole: .placeholder,
             scaleToUnits: 1.80,
             hasBakedAnimation: false,
             category: "park",
@@ -234,6 +243,8 @@ enum SampleAssets {
             // slot — a small animated creature (3.1 MB animated_butterfly).
             // Distinct silhouette from the tree backdrop (#2355).
             fallbackBundledPath: "Models/animated_butterfly.usdz",
+            // Offline placeholder (#2960): deliberate dog-slot stand-in — a butterfly is not a tree.
+            fallbackRole: .placeholder,
             scaleToUnits: 2.60,
             hasBakedAnimation: false,
             category: "park",
@@ -251,6 +262,8 @@ enum SampleAssets {
             // loaded the same heavy 14 MB tree_scene). Distinct silhouette
             // (#2355).
             fallbackBundledPath: "Models/phoenix_bird.usdz",
+            // Offline placeholder (#2960): deliberate bird-slot stand-in — a phoenix is not a tree.
+            fallbackRole: .placeholder,
             scaleToUnits: 2.30,
             hasBakedAnimation: false,
             category: "park",
@@ -264,6 +277,8 @@ enum SampleAssets {
             author: "FrenchBaguette",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/retro_piano.usdz",
+            // Offline placeholder (#2960): no mug is bundled; the piano only keeps something placeable.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.10,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -278,6 +293,8 @@ enum SampleAssets {
             // object stands in rather than a mislabelled real object; the
             // previous tree_scene read as an actual potted plant (#2940).
             fallbackBundledPath: "Models/khronos_damaged_helmet.usdz",
+            // Offline placeholder (#2960): no plant is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -289,6 +306,8 @@ enum SampleAssets {
             author: "jeandiz",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/game_boy_classic.usdz",
+            // Offline placeholder (#2960): no crate is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -306,6 +325,8 @@ enum SampleAssets {
             // NB: both placement demos place at a hardcoded `scaleToUnits(0.3)`
             // and never read the value below, so pick for silhouette, not size.
             fallbackBundledPath: "Models/khronos_toy_car.usdz",
+            // Offline placeholder (#2960): no table is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.60,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -338,6 +359,8 @@ enum SampleAssets {
             // bundled, so the last unclaimed Khronos reference object stands in
             // rather than a mislabelled real object (#2355).
             fallbackBundledPath: "Models/khronos_fox.usdz",
+            // Offline placeholder (#2960): no frame is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.40,
             hasBakedAnimation: false,
             category: "ar_placement",
@@ -351,6 +374,8 @@ enum SampleAssets {
             author: "apariciosilva3D",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Offline placeholder (#2960): no pottery is bundled; the book keeps a rigid body to drop.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.30,
             hasBakedAnimation: false,
             category: "physics",
@@ -362,6 +387,8 @@ enum SampleAssets {
             author: "niver_mk",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Offline placeholder (#2960): no barrel is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.50,
             hasBakedAnimation: false,
             category: "physics",
@@ -373,6 +400,8 @@ enum SampleAssets {
             author: "local.yany",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Offline placeholder (#2960): no pottery is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.45,
             hasBakedAnimation: false,
             category: "physics",
@@ -384,6 +413,8 @@ enum SampleAssets {
             author: "skodvirr",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/fantasy_book.usdz",
+            // Offline placeholder (#2960): no pottery is bundled.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.35,
             hasBakedAnimation: false,
             category: "physics",
@@ -408,6 +439,8 @@ enum SampleAssets {
             author: "Antrea",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
+            // Offline placeholder (#2960): amber is translucent, but it is not a decanter.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.35,
             hasBakedAnimation: false,
             category: "materials",
@@ -419,6 +452,8 @@ enum SampleAssets {
             author: "klava88",
             licenseURL: URL(string: "https://creativecommons.org/licenses/by/4.0/")!,
             fallbackBundledPath: "Models/mosquito_amber.usdz",
+            // Offline placeholder (#2960): no furniture is bundled; a mosquito in amber is not a sofa.
+            fallbackRole: .placeholder,
             scaleToUnits: 0.90,
             hasBakedAnimation: false,
             category: "materials",

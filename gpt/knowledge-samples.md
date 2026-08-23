@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.31.0)
+  Source of truth: /llms.txt  (SceneView 4.32.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.31.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.32.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -626,7 +626,6 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
 - `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
-- `placement-reticle-preview` — AR Placement Reticle Preview. Non-AR preview of AR placement — reticle (searching/ready, ring/disc) and a placed model with a contact shadow.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR (Sceneform ArFragment parity).
 - `point-and-ask` — Point & Ask. Drop 3D props, tap the augmented scene — Gemini Nano explains what it sees, fully on-device.
 - `wall-placement` — Wall Placement. Mount a TV on a wall — floor↔wall edge alignment, Amazon AR-View style.

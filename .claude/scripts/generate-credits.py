@@ -28,6 +28,9 @@ and fails on any this script does not name.
 
   assets/CREDITS.md                                GENERATED (full catalog)
   samples/android-demo/src/main/assets/CREDITS.md  GENERATED (bundled scope)
+  samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json
+                                                   GENERATED (bundled scope, JSON, #3214)
+  samples/web-demo/site/credits.json               GENERATED (bundled scope, JSON, #3214)
   assets/audio/CREDITS.md                          SOURCE    (hand-written)
   samples/ios-demo/SceneViewDemo/Audio/CREDITS.md  MIRROR    (of the above)
   samples/web-demo/site/audio/CREDITS.md           MIRROR    (of the above)
@@ -127,6 +130,37 @@ BUNDLED_SCOPES = [
         # the generated CREDITS.md itself lives here and would otherwise
         # demand a credit line for itself.
         "ignore_suffixes": (".md",),
+        "format": "markdown",
+    },
+    # ── JSON scopes (#3214) ──────────────────────────────────────────────────
+    # The iOS and web demos cannot show a Markdown file to a user, so their
+    # credits are a machine-readable JSON rendered by the app at runtime:
+    # `CreditsSheet.swift` (About → Credits) and the web demo's Credits tab.
+    # Same catalogue, same classification, same gate — a bundled file nobody
+    # declared fails here exactly as it does for the APK.
+    #
+    # `subdirs` restricts the scan to the folders that are actually copied
+    # into the artefact: `SceneViewDemo/` also holds Swift sources, xcassets
+    # and xcconfig files, `site/` holds index.html and the Kotlin/JS bundle.
+    {
+        "id": "ios-demo",
+        "assets_dir": "samples/ios-demo/SceneViewDemo",
+        "subdirs": ("Models", "Environments", "Audio", "Resources", "Videos"),
+        "out": "samples/ios-demo/SceneViewDemo/Resources/BundledCredits.json",
+        "title": "Bundled Asset Credits — SceneView iOS demo",
+        "artefact": "the App Store build",
+        "ignore_suffixes": (".md", ".json"),
+        "format": "json",
+    },
+    {
+        "id": "web-demo",
+        "assets_dir": "samples/web-demo/site",
+        "subdirs": ("models", "environments", "audio"),
+        "out": "samples/web-demo/site/credits.json",
+        "title": "Bundled Asset Credits — SceneView web demo",
+        "artefact": "the sceneview.github.io/web-demo deploy",
+        "ignore_suffixes": (".md", ".json"),
+        "format": "json",
     },
 ]
 
@@ -150,49 +184,58 @@ MIRRORS = {
 # ships to a user and therefore needs a line in the CREDITS they receive.
 # Declaring them here (rather than staying silent) is what lets the coverage
 # check below treat "a bundled file I have never heard of" as an error.
-# Keys are paths relative to the scope's assets_dir.
+# Keys are basenames, not scope-relative paths: the same `bell.wav` ships as
+# `audio/bell.wav` in the APK, `Audio/bell.wav` in the .app and `audio/bell.wav`
+# on the web, and one declaration must cover all three (#3214).
 NON_CATALOG_BUNDLED = {
-    "audio/bell.wav": {
+    "bell.wav": {
         "name": "bell.wav",
         "author": "SceneView project",
         "license": "CC0-1.0",
         "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`",
     },
-    "augmented_images/qrcode.png": {
+    "qrcode.png": {
         "name": "qrcode.png",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "QR-like reference pattern drawn for `ARImageDemo`",
     },
-    "textures/sceneview_logo.png": {
+    "sceneview_logo.png": {
         "name": "sceneview_logo.png",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "SceneView brand mark, exported from `branding/exports/logo/logo-1024.png`",
     },
-    "videos/sample.mp4": {
+    "sample.mp4": {
         "name": "sample.mp4",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`",
     },
-    "splats/rainbow_sphere.ply": {
+    "rainbow_sphere.ply": {
         "name": "rainbow_sphere.ply",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Generated procedurally by `tools/generate-splat-sphere.py`",
     },
-    "mediapipe/pose_landmarker_lite.task": {
+    "pose_landmarker_lite.task": {
         "name": "MediaPipe Pose Landmarker (lite)",
         "author": "Google LLC",
         "license": "Apache-2.0",
         "sourceUrl": "https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker",
         "note": "On-device pose model bundle used by `ARBodyTrackerDemo`",
+    },
+    "neutral_ibl.ktx": {
+        "name": "Neutral IBL (Filament default environment)",
+        "author": "Google LLC — Filament",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/google/filament/tree/main/third_party/environments",
+        "note": "Prefiltered KTX environment shipped with Filament, used by the web demo as its default lighting",
     },
 }
 
@@ -212,21 +255,12 @@ SOURCE_BLANKET_LICENSE = {
     },
 }
 
-# ─── Deliberately NOT handled here, and why ───────────────────────────────────
-# Named so that a reader does not have to guess whether the omission is a
-# decision or an oversight.
-#
-#   samples/ios-demo  — bundles 31 catalogue assets (24 CC-BY .usdz models) and
-#   samples/web-demo    12 respectively, and NEITHER ships a bundled-model
-#                       CREDITS file at all; each has only the audio mirror
-#                       above. Generating one is not the missing piece — the
-#                       iOS copy would also need adding to the Xcode Resources
-#                       build phase (`project.pbxproj` lists Audio/CREDITS.md
-#                       as a file reference only, so it is not in the .app),
-#                       and the web copy needs a link from `site/index.html`.
-#                       That is a shipped-surface change, not a gate change.
-#                       Measured and filed separately rather than smuggled in
-#                       here. See #2941 for the numbers.
+# ─── Scopes that used to be missing ──────────────────────────────────────────
+# Until #3214 the iOS and web demos shipped 31 and 12 catalogue assets with no
+# bundled-model credits at all (only the audio mirror above). They are now the
+# two JSON scopes in BUNDLED_SCOPES: the iOS copy is in the Xcode Resources
+# build phase and rendered by `CreditsSheet.swift`; the web copy sits next to
+# `site/index.html` and feeds the Credits tab.
 
 
 def repo_relative(p: Path) -> str:
@@ -275,6 +309,11 @@ def catalog_by_basename() -> dict[str, dict]:
         f = e.get("file")
         if f:
             index.setdefault(Path(f).name, e)
+            # The iOS demo bundles the same Poly Haven maps under their
+            # catalogue id (`studio.hdr`), without the `_2k` resolution
+            # suffix the catalogue file carries (`studio_2k.hdr`) — #3214.
+            if e.get("id"):
+                index.setdefault(f"{e['id']}{Path(f).suffix}", e)
     return index
 
 
@@ -433,14 +472,16 @@ def scan_bundled(scope: dict) -> list[Path]:
     base = ROOT / scope["assets_dir"]
     if not base.is_dir():
         return []
+    roots = [base / d for d in scope.get("subdirs", ())] or [base]
+    out_abs = ROOT / scope["out"]
     out: list[Path] = []
-    for p in sorted(base.rglob("*")):
+    for p in sorted(q for r in roots if r.is_dir() for q in r.rglob("*")):
         if not p.is_file():
             continue
         rel = p.relative_to(base).as_posix()
         if any(part.startswith(".") for part in rel.split("/")):
             continue
-        if rel == Path(scope["out"]).name:
+        if p == out_abs:
             continue
         if p.suffix in scope["ignore_suffixes"]:
             continue
@@ -465,7 +506,7 @@ def classify_bundled(scope: dict, index: dict[str, dict]) -> tuple[list, list, l
     for p in scan_bundled(scope):
         rel = p.relative_to(base).as_posix()
         size = p.stat().st_size
-        declared = NON_CATALOG_BUNDLED.get(rel)
+        declared = NON_CATALOG_BUNDLED.get(p.name)
         if declared is not None:
             credited.append((rel, declared, size))
             continue
@@ -578,6 +619,66 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     return "\n".join(lines) + "\n", uncredited
 
 
+def render_bundled_credits_json(scope: dict, index: dict[str, dict]) -> tuple[str, list[str]]:
+    """Machine-readable twin of `render_bundled_credits` (#3214).
+
+    Consumed at runtime by the iOS demo (`CreditsSheet.swift`) and the web
+    demo (Credits tab). Sections follow KIND_ORDER; blanket-licensed assets are
+    folded into their kind with the source's published license and site URL,
+    so a client needs no knowledge of SOURCE_BLANKET_LICENSE to show a
+    complete "by author — license" line. Keys are stable API: renaming one
+    breaks a shipped app, so add, never rename.
+    """
+    credited, blanket, uncredited = classify_bundled(scope, index)
+
+    by_kind: dict[str, list[dict]] = defaultdict(list)
+    for rel, entry, size in credited:
+        lic = (entry.get("license") or "").strip()
+        by_kind[_kind(rel)].append({
+            "file": rel,
+            "name": entry.get("name") or entry.get("id") or Path(rel).name,
+            "author": (entry.get("author") or "").strip(),
+            "license": lic,
+            "licenseUrl": license_url(lic),
+            "sourceUrl": (entry.get("sourceUrl") or "").strip(),
+            "size": size,
+            "note": (entry.get("note") or "").strip(),
+        })
+    for rel, entry, size in blanket:
+        meta = SOURCE_BLANKET_LICENSE[(entry.get("source") or "").lower()]
+        by_kind[_kind(rel)].append({
+            "file": rel,
+            "name": entry.get("name") or entry.get("id") or Path(rel).name,
+            "author": (entry.get("author") or "").strip() or meta["label"],
+            "license": meta["license"],
+            "licenseUrl": meta["licenseUrl"],
+            "sourceUrl": meta["siteUrl"],
+            "size": size,
+            "note": f"{meta['label']} publishes its whole library under {meta['license']}",
+        })
+
+    sections = []
+    for kind in KIND_ORDER:
+        items = sorted(by_kind.get(kind, []), key=lambda a: a["file"])
+        if items:
+            sections.append({"title": kind, "assets": items})
+
+    doc = {
+        "_comment": (
+            "GENERATED FILE — DO NOT EDIT BY HAND. Generated from assets/catalog.json "
+            f"and the contents of {scope['assets_dir']} by "
+            ".claude/scripts/generate-credits.py; `--check` fails on drift."
+        ),
+        "scope": scope["id"],
+        "title": scope["title"],
+        "artefact": scope["artefact"],
+        "source": "assets/catalog.json",
+        "total": len(credited) + len(blanket),
+        "sections": sections,
+    }
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n", uncredited
+
+
 def main() -> int:
     # Reject unknown arguments instead of falling through to the write path.
     # `--chekc` must NOT silently regenerate the file and exit 0: that turns
@@ -603,7 +704,10 @@ def main() -> int:
 
     uncredited_all: list[tuple[str, list[str]]] = []
     for scope in BUNDLED_SCOPES:
-        content, uncredited = render_bundled_credits(scope, index)
+        if scope.get("format") == "json":
+            content, uncredited = render_bundled_credits_json(scope, index)
+        else:
+            content, uncredited = render_bundled_credits(scope, index)
         outputs.append((ROOT / scope["out"], content))
         if uncredited:
             uncredited_all.append((scope["id"], uncredited))

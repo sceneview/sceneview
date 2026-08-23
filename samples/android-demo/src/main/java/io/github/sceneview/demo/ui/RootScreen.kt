@@ -35,6 +35,8 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +49,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +74,8 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
+import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
+import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
 
 /**
  * Top-level UI scaffold. Hosts the three primary tabs (Showcase, AR View,
@@ -104,6 +109,35 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var galleryOpen by rememberSaveable { mutableStateOf(false) }
 
+    // "What's new since you last tested" lives HERE, not inside the Showcase
+    // tab, because the requirement is "on app open": the auto-open must fire
+    // whichever tab the user lands on, and the sheet must outlive a tab switch.
+    //
+    // Single ownership matters as much as placement: HomeScreen renders the
+    // badged header action from THIS state rather than calling
+    // rememberWhatsNewSince() itself, so acknowledging in the sheet clears the
+    // badge instead of leaving a second, stale copy of the marker on screen.
+    val whatsNewSince = rememberWhatsNewSince()
+    var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(whatsNewSince) {
+        if (whatsNewSince.consumeAutoOpen()) showWhatsNewSince = true
+    }
+    if (showWhatsNewSince) {
+        WhatsNewSinceSheet(
+            sections = whatsNewSince.unseen,
+            seenVersion = whatsNewSince.seenVersion,
+            onDemoClick = { id ->
+                showWhatsNewSince = false
+                onDemoClick(id)
+            },
+            onMarkSeen = {
+                whatsNewSince.markSeen()
+                showWhatsNewSince = false
+            },
+            onDismiss = { showWhatsNewSince = false },
+        )
+    }
+
     Scaffold(
         bottomBar = {
             // Conditional rendering rather than just `visible = !arSessionActive`
@@ -116,7 +150,18 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                         NavigationBarItem(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
-                            icon = { Icon(tab.icon, contentDescription = null) },
+                            // The badge rides the Showcase tab so a list left
+                            // pending stays visible from every tab, not only
+                            // from the one that hosts its entry point.
+                            icon = {
+                                if (tab == RootTab.Showcase && whatsNewSince.hasUnseen) {
+                                    BadgedBox(badge = { Badge() }) {
+                                        Icon(tab.icon, contentDescription = null)
+                                    }
+                                } else {
+                                    Icon(tab.icon, contentDescription = null)
+                                }
+                            },
                             label = { Text(stringResource(tab.labelRes)) },
                         )
                     }
@@ -145,6 +190,8 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                         onQueryChange = { query = it },
                         onDemoClick = onDemoClick,
                         onBrowseOnlineClick = { galleryOpen = true },
+                        hasUnseenWhatsNew = whatsNewSince.hasUnseen,
+                        onWhatsNewSinceClick = { showWhatsNewSince = true },
                     )
                 }
                 RootTab.ArView -> ArViewTabContent(

@@ -35,14 +35,22 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** Base radius (metres) of every stroke bead — built once, then driven by [Scale]. */
-private const val BEAD_BASE_RADIUS = 0.012f
+private const val BEAD_BASE_RADIUS = 0.010f
 
 /**
- * Maximum uniform scale applied to a bead at full Stroke Width slider. At `1.0` the line
- * reads as a continuous thick tube (~0.05 m visual radius); the default slider value of
- * 0.5 gives a balanced medium stroke that no longer dwarfs the scene.
+ * Uniform bead scale at Stroke Width `0`. Previously the slider mapped `0..1` straight onto
+ * `0..BEAD_MAX_SCALE`, so roughly the bottom third of the drag produced a sub-pixel scale —
+ * indistinguishable from doing nothing, which read as "the slider has no effect" (#1432). A
+ * non-zero floor means every point on the track changes something visible.
  */
-private const val BEAD_MAX_SCALE = 4f
+private const val BEAD_MIN_SCALE = 0.6f
+
+/**
+ * Uniform bead scale at Stroke Width `1`. Was `4f` (~0.05 m visual radius), which device QA
+ * called "far too large" — a chain of balls that dwarfed the line itself. Lowered so the
+ * thickest setting still reads as a stroke, not a string of beads (#1432).
+ */
+private const val BEAD_MAX_SCALE = 2.4f
 
 /**
  * Demonstrates LineNode (single segment) and PathNode (polyline through points).
@@ -58,10 +66,11 @@ fun LinesPathsDemo(onBack: () -> Unit) {
     // Filament's LINES primitive is hardware-capped at 1 GPU pixel on most backends, so a line
     // "width" slider cannot drive the native line width. Instead we render per-point sphere beads
     // and drive their *scale* — not their geometry radius — from this slider. Scale is a pure
-    // transform that `SphereNode`'s `SideEffect` re-applies unconditionally on every
-    // recomposition, so the beads track the slider every frame with no vertex-buffer rebuild;
-    // a radius-driven geometry update only ran on inequality and rebuilt ~600 verts per bead.
-    // Set to 0 to disable the beads entirely.
+    // transform that `SceneScope.SphereNode` pushes via a `DisposableEffect` keyed on
+    // `scale.x/y/z`, so it re-applies whenever the *value* changes (not on every bare
+    // recomposition — that would clobber a frame-loop driver on other demos), and the beads
+    // track the slider every frame with no vertex-buffer rebuild; a radius-driven geometry
+    // update only ran on inequality and rebuilt ~600 verts per bead.
     var lineWidth by remember { mutableFloatStateOf(0.5f) }
 
     val engine = rememberEngine()
@@ -116,14 +125,16 @@ fun LinesPathsDemo(onBack: () -> Unit) {
             val pathMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Accent)
 
             // The bead sphere is built once at BEAD_BASE_RADIUS; the slider drives its uniform
-            // `scale` (0..1 → 0..BEAD_MAX_SCALE) so moving the slider visibly rebalances every
-            // bead every frame. At full slider the line reads as a continuous thick stroke
-            // rather than a string of oversized balls.
-            val beadScale = lineWidth * BEAD_MAX_SCALE
+            // `scale`, lerped `0..1 → BEAD_MIN_SCALE..BEAD_MAX_SCALE` so every position on the
+            // track changes the on-screen radius by a visible amount — no near-zero dead zone
+            // at the bottom, no oversized balls at the top (#1432).
+            val beadScale = BEAD_MIN_SCALE + lineWidth * (BEAD_MAX_SCALE - BEAD_MIN_SCALE)
 
             // Single line segment — 1 px on most GPUs, so we also draw a row of spheres along
             // the segment (scaled by the Stroke Width slider) to give the line a visible
-            // thickness. The bead count is high enough that they overlap into a smooth tube.
+            // thickness. The bead count is high enough that they overlap into a smooth tube in
+            // the upper half of the slider range; the lower half reads as a beaded line, which
+            // is still a clearly visible response to the slider rather than no response at all.
             if (showLine) {
                 val lineStart = Position(x = -1.0f, y = -0.5f, z = 0f)
                 val lineEnd = Position(x = 1.0f, y = 0.5f, z = 0f)
@@ -134,23 +145,22 @@ fun LinesPathsDemo(onBack: () -> Unit) {
                     materialInstance = lineMaterial,
                     position = lineOrigin
                 )
-                if (lineWidth > 0f) {
-                    // Interpolate beads along the segment — dense enough that adjacent beads
-                    // overlap into a continuous thick stroke instead of a dotted line.
-                    val beadCount = 28
-                    for (i in 0..beadCount) {
-                        val t = i.toFloat() / beadCount
-                        SphereNode(
-                            radius = BEAD_BASE_RADIUS,
-                            materialInstance = lineMaterial,
-                            scale = Scale(beadScale),
-                            position = Position(
-                                x = lineOrigin.x + lineStart.x + (lineEnd.x - lineStart.x) * t,
-                                y = lineOrigin.y + lineStart.y + (lineEnd.y - lineStart.y) * t,
-                                z = lineOrigin.z + lineStart.z + (lineEnd.z - lineStart.z) * t
-                            )
+                // Interpolate beads along the segment. Denser than the geometric minimum needed
+                // at BEAD_MAX_SCALE so overlap into a continuous stroke starts well before the
+                // slider tops out, instead of only at the very last notch.
+                val beadCount = 64
+                for (i in 0..beadCount) {
+                    val t = i.toFloat() / beadCount
+                    SphereNode(
+                        radius = BEAD_BASE_RADIUS,
+                        materialInstance = lineMaterial,
+                        scale = Scale(beadScale),
+                        position = Position(
+                            x = lineOrigin.x + lineStart.x + (lineEnd.x - lineStart.x) * t,
+                            y = lineOrigin.y + lineStart.y + (lineEnd.y - lineStart.y) * t,
+                            z = lineOrigin.z + lineStart.z + (lineEnd.z - lineStart.z) * t
                         )
-                    }
+                    )
                 }
             }
 
@@ -178,22 +188,20 @@ fun LinesPathsDemo(onBack: () -> Unit) {
                     materialInstance = pathMaterial,
                     position = pathOrigin
                 )
-                if (lineWidth > 0f) {
-                    // Thick-path representation: one sphere bead at each path point, uniformly
-                    // scaled by the Stroke Width slider. Gives the path a visible stroke width
-                    // independent of GPU line-rasterisation limits.
-                    pathPoints.forEach { p ->
-                        SphereNode(
-                            radius = BEAD_BASE_RADIUS,
-                            materialInstance = pathMaterial,
-                            scale = Scale(beadScale),
-                            position = Position(
-                                x = pathOrigin.x + p.x,
-                                y = pathOrigin.y + p.y,
-                                z = pathOrigin.z + p.z
-                            )
+                // Thick-path representation: one sphere bead at each path point, uniformly
+                // scaled by the Stroke Width slider. Gives the path a visible stroke width
+                // independent of GPU line-rasterisation limits.
+                pathPoints.forEach { p ->
+                    SphereNode(
+                        radius = BEAD_BASE_RADIUS,
+                        materialInstance = pathMaterial,
+                        scale = Scale(beadScale),
+                        position = Position(
+                            x = pathOrigin.x + p.x,
+                            y = pathOrigin.y + p.y,
+                            z = pathOrigin.z + p.z
                         )
-                    }
+                    )
                 }
             }
         }

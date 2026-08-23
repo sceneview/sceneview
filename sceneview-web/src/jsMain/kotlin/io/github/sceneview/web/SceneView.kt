@@ -1116,12 +1116,17 @@ class SceneView private constructor(
     }
 
     /**
-     * Auto-fit the camera to frame all loaded models.
-     * Computes the bounding box of all assets and adjusts the orbit controller distance.
+     * Fit the camera to frame all loaded models.
+     *
+     * @param margin Multiplier on the fit distance, iOS `framingMargin`
+     *   convention: `1.0` (default) keeps the historical `2.5 × radius` fit,
+     *   `< 1` frames tighter, `> 1` leaves more air. Clamped to `0.2…10`
+     *   (#2946). **Not** Android's additive `padding` fraction —
+     *   `margin == 1 + padding`.
      */
-    fun fitToModels() {
+        fun fitToModels(margin: Double = 1.0) {
         if (models.isEmpty()) return
-        fitToBounds(ContentCentering.union(contentBoxes()))
+        fitToBounds(ContentCentering.union(contentBoxes()), margin)
         // The camera dolly/target moved — repaint (#2332). The orbit controller
         // also detects the move on its next tick, but request explicitly so a
         // fit on an otherwise-idle scene paints immediately.
@@ -1185,7 +1190,7 @@ class SceneView private constructor(
      * auto-centre path ([refreshContentCentering]) share one implementation
      * and one union-AABB read.
      */
-    private fun fitToBounds(bounds: ContentCentering.Aabb?) {
+    private fun fitToBounds(bounds: ContentCentering.Aabb?, margin: Double = 1.0) {
         if (bounds == null) return
         val controller = cameraController ?: return
         val center = ContentCentering.center(bounds)
@@ -1193,7 +1198,9 @@ class SceneView private constructor(
         if (radius <= 0.0) return
 
         controller.target(center[0], center[1], center[2])
-        controller.distance = radius * 2.5
+        // `margin` is the iOS `framingMargin` multiplier (1.0 = the historical
+        // 2.5 × radius fit) — see ContentCentering.fitDistance (#2946).
+        controller.distance = ContentCentering.fitDistance(radius, margin)
         controller.minDistance = radius * 0.5
         controller.maxDistance = radius * 10.0
     }

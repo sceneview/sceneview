@@ -5,7 +5,9 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,9 +26,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -54,21 +58,54 @@ import io.github.sceneview.demo.R
  * The lightweight "Report a bug" bottom sheet (#2188 successor).
  *
  * Zero permissions, zero services: a screenshot preview with an
- * include/exclude toggle, an optional description, and two exits —
- * the system share sheet (text + screenshot attachment; the user picks
- * Gmail / GitHub / anything) or a pre-filled GitHub issue in the browser
- * (text only — a URL cannot carry the image, and the UI says so).
+ * include/exclude toggle, an optional description (with an optional voice
+ * dictation shortcut, #3263), and two exits — a pre-filled GitHub issue in
+ * the browser (the primary, default action) or the system share sheet
+ * (text + screenshot attachment; the user picks Gmail / GitHub / anything —
+ * text only for the GitHub path, since a URL cannot carry the image, and the
+ * UI says so).
+ *
+ * On a successful hand-off the sheet dismisses itself and [onSent] fires
+ * with a short confirmation message for the host to surface (e.g. a
+ * snackbar) — there is no server-side GitHub API call here (no auth token
+ * on device), so "success" means the browser/share intent launched, not
+ * that an issue was actually filed; the confirmation copy reflects that.
+ * When no app can handle the intent, the sheet stays open and shows the
+ * error inline instead (#3263).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BugReportSheet(
     report: PendingBugReport,
     onDismiss: () -> Unit,
+    onSent: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var note by remember { mutableStateOf("") }
     var includeScreenshot by remember { mutableStateOf(report.screenshot != null) }
+    var sendError by remember { mutableStateOf<String?>(null) }
+
+    val speechAvailable = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
+    }
+    val voicePrompt = stringResource(R.string.feedback_report_voice_prompt)
+    val sentGitHubMessage = stringResource(R.string.feedback_report_sent_github)
+    val sentShareMessage = stringResource(R.string.feedback_report_sent_share)
+    val noAppError = stringResource(R.string.feedback_report_no_app)
+    val speechLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+            if (spoken != null) {
+                note = if (note.isBlank()) spoken else "$note $spoken"
+            }
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -125,20 +162,45 @@ fun BugReportSheet(
                 placeholder = { Text(stringResource(R.string.feedback_report_note_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
+                trailingIcon = if (speechAvailable) {
+                    {
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(
+                                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                    )
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                }
+                                runCatching { speechLauncher.launch(intent) }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Outlined.Mic,
+                                contentDescription = stringResource(R.string.feedback_report_voice_cd),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
             )
 
             Spacer(Modifier.height(12.dp))
             PrivacyHint()
 
             Spacer(Modifier.height(16.dp))
+            // GitHub first (#3263) — the primary, default destination.
             Button(
                 onClick = {
-                    shareReport(
-                        context = context,
-                        report = report,
-                        note = note,
-                        includeScreenshot = includeScreenshot,
-                    )
+                    if (openGitHubIssue(context, report.info, note)) {
+                        sendError = null
+                        onSent(sentGitHubMessage)
+                        onDismiss()
+                    } else {
+                        sendError = noAppError
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -146,15 +208,36 @@ fun BugReportSheet(
                 shape = RoundedCornerShape(percent = 50),
             ) {
                 Text(
-                    stringResource(R.string.feedback_report_share),
+                    stringResource(R.string.feedback_report_open_github),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
             TextButton(
-                onClick = { openGitHubIssue(context, report.info, note) },
+                onClick = {
+                    if (shareReport(context, report, note, includeScreenshot)) {
+                        sendError = null
+                        onSent(sentShareMessage)
+                        onDismiss()
+                    } else {
+                        sendError = noAppError
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.feedback_report_open_github))
+                Text(stringResource(R.string.feedback_report_share))
+            }
+            if (sendError != null) {
+                // Failure keeps the sheet open (#3263) — the error surfaces
+                // here instead of a Toast so it stays visible until the user
+                // tries again or dismisses.
+                Text(
+                    sendError.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                )
             }
             if (report.screenshot != null) {
                 // The GitHub path is text-only — a URL cannot embed an image.
@@ -259,13 +342,17 @@ private fun PrivacyHint() {
  * `EXTRA_TEXT`, the screenshot (when included) as an `EXTRA_STREAM`
  * FileProvider attachment. The user picks the destination — nothing is
  * sent by the app itself.
+ *
+ * Returns `true` once the chooser has launched (the caller then dismisses
+ * the sheet and shows a confirmation), `false` when no app can handle it
+ * (the caller keeps the sheet open and shows the error inline, #3263).
  */
 private fun shareReport(
     context: Context,
     report: PendingBugReport,
     note: String,
     includeScreenshot: Boolean,
-) {
+): Boolean {
     val text = formatShareText(report.info, note)
     val title = formatReportTitle(report.info, note)
     val screenshotUri = report.screenshot
@@ -286,24 +373,25 @@ private fun shareReport(
             type = "text/plain"
         }
     }
-    runCatching {
+    return runCatching {
         context.startActivity(
             Intent.createChooser(
                 send,
                 context.getString(R.string.feedback_report_share_chooser),
             ),
         )
-    }.onFailure {
-        Toast.makeText(context, R.string.feedback_report_no_app, Toast.LENGTH_LONG).show()
-    }
+    }.isSuccess
 }
 
-/** Open `issues/new` pre-filled with the report (title + markdown body). */
-private fun openGitHubIssue(context: Context, info: BugReportInfo, note: String) {
+/**
+ * Open `issues/new` pre-filled with the report (title + markdown body).
+ *
+ * Returns `true` once the browser/GitHub app has launched, `false` when no
+ * app can handle it — see [shareReport] for how the caller uses the result.
+ */
+private fun openGitHubIssue(context: Context, info: BugReportInfo, note: String): Boolean {
     val url = buildGitHubIssueUrl(info, note)
-    runCatching {
+    return runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    }.onFailure {
-        Toast.makeText(context, R.string.feedback_report_no_app, Toast.LENGTH_LONG).show()
-    }
+    }.isSuccess
 }

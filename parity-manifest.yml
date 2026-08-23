@@ -65,15 +65,20 @@
 #   python3 -c "import yaml,collections; print(collections.Counter(
 #     r['iosStatus'] for r in yaml.safe_load(open('parity-manifest.yml'))['demos']))"
 #
-# Measured 2026-08-17, after #3231 deleted every coming-soon card from the iOS
-# demo. Previous reading: 2026-08-10, after `ar-measure` landed on Android
-# (#531) — 54 Android ids, 34 working / 19 stub / 1 android-only.
-#   - Android: 54 fragments — 44 Working / 5 KnownIssue / 2 ComingSoon / 3 InReview.
+# Measured 2026-08-23, after #3275 retired the `placement-reticle-preview` card
+# from the Android catalogue (a non-AR developer preview of the placement
+# visuals, absorbed by the canonical tap-to-place experience — #2482). The iOS
+# scene still exists and still opens, so iOS is now one card ahead here; that is
+# an iOS-side retirement, tracked separately, not a parity regression to "fix"
+# by putting the Android card back. Previous reading: 2026-08-17, after #3231
+# deleted every coming-soon card from the iOS demo — 54 Android ids,
+# 34 working / 0 stub / 20 android-only.
+#   - Android: 53 fragments — 43 Working / 5 KnownIssue / 2 ComingSoon / 3 InReview.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 56 (48 generated ∪ 8 legacy/
 #     umbrella aliases ∪ 0 residual ids). Every one of the 56 opens a real
 #     screen — the catalogue no longer carries an id that resolves to a
 #     "Coming soon" card.
-#   - Of the 54 Android ids: 34 working, 0 stub, 20 android-only.
+#   - Of the 53 Android ids: 33 working, 0 stub, 20 android-only.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -111,7 +116,7 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (34) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -205,9 +210,6 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: picking-collision
-    androidStatus: Working
-    iosStatus: working
-  - id: placement-reticle-preview
     androidStatus: Working
     iosStatus: working
   - id: placement-scene
@@ -364,7 +366,9 @@ demos:
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — blocked on an iOS SplatNode renderer (#2768). Its
+      No iOS screen — blocked on an iOS SplatNode renderer, tracked as
+      item 2 of #2646 (#2768 documents the gap but explicitly parks the
+      port as a maintainer decision, not an implementation owner). Its
       coming-soon Scene stub was deleted in #3231.
   - id: video-recording
     androidStatus: Working

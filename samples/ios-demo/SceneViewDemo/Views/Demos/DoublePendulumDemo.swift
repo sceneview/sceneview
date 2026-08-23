@@ -174,7 +174,10 @@ struct DoublePendulumDemo: View {
             }
             .environment(.studio)
             .cameraControls(.orbit)
-            .id(generation)
+            // Reset rebuilds the links in place and restarts the tick on the
+            // new entities; the `RealityView` itself is never re-created
+            // (a `.id(_:)` re-key intermittently left it black, #3008).
+            .contentID(generation)
             .ignoresSafeArea()
 
             VStack {

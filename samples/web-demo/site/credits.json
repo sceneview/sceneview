@@ -1,0 +1,175 @@
+{
+  "_comment": "GENERATED FILE — DO NOT EDIT BY HAND. Generated from assets/catalog.json and the contents of samples/web-demo/site by .claude/scripts/generate-credits.py; `--check` fails on drift.",
+  "scope": "web-demo",
+  "title": "Bundled Asset Credits — SceneView web demo",
+  "artefact": "the sceneview.github.io/web-demo deploy",
+  "source": "assets/catalog.json",
+  "total": 15,
+  "sections": [
+    {
+      "title": "3D models",
+      "assets": [
+        {
+          "file": "models/animated_butterfly.glb",
+          "name": "Animated Flying Fluttering Butterfly Loop",
+          "author": "LasquetiSpice",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/animated-flying-fluttering-butterfly-loop-80f8d9a6dadc411e89ca366cb0cfb0d9",
+          "size": 4062652,
+          "note": ""
+        },
+        {
+          "file": "models/animated_dragon.glb",
+          "name": "Animated Dragon Three Motion Loops",
+          "author": "LasquetiSpice",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/animated-dragon-three-motion-loops-eca98cf6cd084c1596cecf716e110c29",
+          "size": 8377076,
+          "note": ""
+        },
+        {
+          "file": "models/bmw_m3_e30.glb",
+          "name": "BMW M3 Coupe (E30) 1986",
+          "author": "Lexyc16",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/bmw-m3-coupe-e30-1986-8fa21fe97a6042a2a09e0b09fd546b91",
+          "size": 10306960,
+          "note": ""
+        },
+        {
+          "file": "models/chronograph_watch.glb",
+          "name": "Chronograph Watch (web demo)",
+          "author": "KhronosGroup",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ChronographWatch",
+          "size": 7446368,
+          "note": ""
+        },
+        {
+          "file": "models/cyberpunk_character.glb",
+          "name": "Cyberpunk Character",
+          "author": "Esk",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51",
+          "size": 7685048,
+          "note": ""
+        },
+        {
+          "file": "models/ferrari_f40.glb",
+          "name": "Ferrari F40",
+          "author": "Black Snow",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70",
+          "size": 8058920,
+          "note": ""
+        },
+        {
+          "file": "models/game_boy_classic.glb",
+          "name": "Game Boy Classic",
+          "author": "JonhyOliver",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f",
+          "size": 2866976,
+          "note": ""
+        },
+        {
+          "file": "models/khronos_damaged_helmet.glb",
+          "name": "Damaged Helmet",
+          "author": "KhronosGroup (theblueturtle_)",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
+          "size": 3773916,
+          "note": ""
+        },
+        {
+          "file": "models/nintendo_switch.glb",
+          "name": "Nintendo Switch Diorama",
+          "author": "Mikkel Garde Blaase",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
+          "size": 769040,
+          "note": ""
+        },
+        {
+          "file": "models/phoenix_bird.glb",
+          "name": "Phoenix Bird",
+          "author": "NORBERTO-3D",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042",
+          "size": 1630364,
+          "note": ""
+        },
+        {
+          "file": "models/retro_piano.glb",
+          "name": "Retro Piano",
+          "author": "DailyArt",
+          "license": "CC-BY-NC-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/retro-piano-fd4971cd71564319aa2132266d208185",
+          "size": 4184316,
+          "note": ""
+        },
+        {
+          "file": "models/sheen_chair.glb",
+          "name": "Sheen Chair (web demo)",
+          "author": "KhronosGroup",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
+          "size": 4125648,
+          "note": ""
+        },
+        {
+          "file": "models/splats/rainbow_sphere.ply",
+          "name": "rainbow_sphere.ply",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 448451,
+          "note": "Generated procedurally by `tools/generate-splat-sphere.py`"
+        }
+      ]
+    },
+    {
+      "title": "HDR environments",
+      "assets": [
+        {
+          "file": "environments/neutral_ibl.ktx",
+          "name": "Neutral IBL (Filament default environment)",
+          "author": "Google LLC — Filament",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/google/filament/tree/main/third_party/environments",
+          "size": 2095464,
+          "note": "Prefiltered KTX environment shipped with Filament, used by the web demo as its default lighting"
+        }
+      ]
+    },
+    {
+      "title": "Other bundled assets",
+      "assets": [
+        {
+          "file": "audio/bell.wav",
+          "name": "bell.wav",
+          "author": "SceneView project",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "size": 26538,
+          "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`"
+        }
+      ]
+    }
+  ]
+}

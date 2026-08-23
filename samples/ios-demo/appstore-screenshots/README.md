@@ -26,14 +26,20 @@ app — real iOS-simulator captures of rendered 3D content.
 > twice, leaving the helmet at about a sixth of the frame height and visibly
 > intersecting it. Android's shot of this subject has no plane either.
 >
-> ⚠️ **The iPad frames leak their capture date.** `simctl status_bar override
-> --time "9:41"` pins the clock, but iPadOS renders a date beside it that the
-> override does not cover: the committed frames read `09:41 Tue 28 Jul` and the
-> 2026-08-03 re-capture reads `09:41 Mon 3 Aug`. That both dates a public store
-> listing and defeats the byte-reproducibility this script otherwise has, since
-> two runs on different days can never match.
+> ⚠️ **The iPad frames carry their capture date, and `simctl` cannot pin it
+> (#3004).** `simctl status_bar override --time "9:41"` fixes the clock, but
+> iPadOS draws the date beside it: the committed frames read `09:41 Mon 3 Aug`.
+> The documented escape hatch does not work — measured on the iPad Pro 13-inch
+> (M4) simulator, iOS 26.3: `--time` rejects every ISO form except the
+> milliseconds one (`2007-01-09T09:41:00.000Z`), and that form sets **only the
+> clock**, converted to a local time (the status bar read `10:41 Sat 22 Aug`
+> — the override had moved the clock off 09:41 and left the real date). `simctl status_bar list` confirms it: one
+> `Time:` field, no date. There is no `simctl` clock setter either. So keep the
+> plain `"9:41"` form, and read the iPad class as **reproducible within a
+> capture day, not across days** — the iPhone class has no date and stays
+> byte-reproducible.
 >
-> Nothing enforces any of this — the dispatch is manual and `asc_listing.py`
+> Nothing enforces any of this — the upload is manual and `asc_listing.py`
 > compares checksums, not pixels — so it is a note, not a gate. Look at the
 > mosaic before you upload.
 
@@ -143,10 +149,12 @@ on the listing.
 
 The set is captured under `-qa_mode 1`, which freezes each demo's orbit
 auto-rotation on its authored pose. That is what makes a re-capture comparable
-to the committed one: two independent runs of this script produce byte-identical
-frames (measured, 0 differing pixels). Without it the shot landed on whatever
-azimuth the sweep had reached, so both the subject's pose and the slice of HDRI
-behind it changed every run.
+to the committed one: two independent captures produce byte-identical iPhone
+frames (measured, 0 differing pixels), and byte-identical iPad frames on the
+same day — the iPad status-bar date is the one thing that cannot be pinned
+(#3004, see the note at the top). Without `-qa_mode 1` the shot landed on
+whatever azimuth the sweep had reached, so both the subject's pose and the
+slice of HDRI behind it changed every run.
 
 > **Two things that had to be fixed in the app before this set could ship
 > (#2896)**, worth knowing if a future capture looks wrong again:
@@ -159,60 +167,66 @@ behind it changed every run.
 >   `dynamic-sky` with no sky at all. `SceneEnvironment.load()` now falls back to
 >   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
 >   console means this regressed.
-> - iOS has no `camera_distance` launch argument (Android's framing lever,
->   tracked for iOS in #2785). The scenes instead carry their own framing via
->   `.framingMargin(_:)` / `.cameraOrbit(azimuth:elevation:)`. `model-viewer`
->   frames tighter under `qa_mode` than it does interactively: its bounding
->   sphere is set by the hero's display plinth rather than by the car, and the
->   looser interactive value — needed so an auto-rotating model does not clip at
->   its broadside — left the subject small in a mostly-empty frame.
+> - `model-viewer` frames tighter under `qa_mode` than it does interactively:
+>   its bounding sphere is set by the hero's display plinth rather than by the
+>   car, and the looser interactive value — needed so an auto-rotating model
+>   does not clip at its broadside — left the subject small in a mostly-empty
+>   frame. Since #2785, iOS also accepts a `-camera_distance <float>` launch
+>   argument (Android's framing lever, `DeepLinkRouter.validateCameraDistance`
+>   range `0.05...100`) that overrides both `.framingMargin(_:)` defaults on
+>   `model-viewer` — pass it explicitly for an even tighter store frame instead
+>   of relying on the `qa_mode` capture-margin constant.
 
 ## How to regenerate
 
-```bash
-bash .claude/scripts/capture-appstore-screenshots.sh
-```
-
-The script builds the demo, then for each device class: erases the
-simulator, installs the app, and for each demo launches it with the
-`-demo <id>` launch argument — which routes straight to the demo on first
-frame (see `SceneViewDemoApp.swift`). The launch argument avoids the
-SpringBoard "Open in …?" confirmation dialog that `simctl openurl
-sceneview://demo/<id>` raises; the `sceneview://` URL scheme remains the
-user-facing deep link (scan a QR code → land on a demo).
-
-Override the simulators or settle time with env vars:
+The capture script (`.claude/scripts/capture-appstore-screenshots.sh`) was
+removed with the rest of the agent harness in #3244; this is the procedure it
+ran, by hand. Build the demo for the simulator, then for each device class
+erase the simulator, pin its chrome, install the app, and launch each demo
+through the `-demo <id>` launch argument — which routes straight to the demo on
+first frame (see `SceneViewDemoApp.swift`) and avoids the SpringBoard "Open
+in …?" confirmation that `simctl openurl sceneview://demo/<id>` raises; the
+`sceneview://` URL scheme remains the user-facing deep link.
 
 ```bash
-IPHONE_SIM="iPhone 17 Pro Max" IPAD_SIM="iPad Pro 13-inch (M5)" \
-  WAIT_SECONDS=28 bash .claude/scripts/capture-appstore-screenshots.sh
+cd samples/ios-demo
+xcodebuild build -project SceneViewDemo.xcodeproj -scheme SceneViewDemo \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/dd CODE_SIGNING_ALLOWED=NO
+APP=/tmp/dd/Build/Products/Debug-iphonesimulator/SceneView.app
+
+# Once per class: "iPhone 17 Pro Max" → iphone-6.9/, "iPad Pro 13-inch (M5)" → ipad-13/
+UDID=$(xcrun simctl list devices available -j | python3 -c \
+  'import json,sys;print([d["udid"] for r in json.load(sys.stdin)["devices"].values() for d in r if d["name"]=="iPad Pro 13-inch (M5)"][0])')
+xcrun simctl shutdown "$UDID" 2>/dev/null; xcrun simctl erase "$UDID"; xcrun simctl boot "$UDID"
+xcrun simctl ui "$UDID" appearance dark
+# Keep the plain "9:41" — the ISO form moves the clock off 09:41 and does not
+# pin the iPad date anyway (#3004).
+xcrun simctl status_bar "$UDID" override --time "9:41" \
+  --dataNetwork wifi --wifiMode active --wifiBars 3 \
+  --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+xcrun simctl install "$UDID" "$APP"
+sleep 90   # first-boot system banners ("Ready for Apple Intelligence") post about a minute in
+
+for slot in 01-model-viewer 02-dynamic-sky; do
+  xcrun simctl terminate "$UDID" io.github.sceneview.demo 2>/dev/null
+  xcrun simctl launch "$UDID" io.github.sceneview.demo -demo "${slot#*-}" -qa_mode 1
+  sleep 28   # model load + settle
+  xcrun simctl io "$UDID" screenshot "appstore-screenshots/ipad-13/$slot.png"
+done
 ```
 
-### The system-banner guard
+### System banners
 
-`simctl` exposes no way to silence notifications, and waiting them out does not
-work either: a freshly-erased device posts "Ready for Apple Intelligence" about
-a minute into the session — i.e. *during* a capture, not before the first one —
-which is exactly how that card landed in an iPad frame.
-
-So the script detects it. Because `-qa_mode 1` freezes the scene, the top band
-of a frame is static; the script shoots each demo, then re-shoots every
-`BANNER_RECHECK_SECONDS` (8 s) until it has `BANNER_SAMPLES` (3) samples, and
-compares a hash of that band across all of them. All equal means nothing
-transient was drawn over it. Any difference means a banner was up in one of them
-— the set is discarded and retried, up to `BANNER_MAX_ATTEMPTS` (4), after which
-the frame is **deleted** and the run **fails** rather than leaving a
-contaminated PNG in the tree.
-
-⚠️ What it proves is that the band did not *change* — not that it is clean. An
-overlay already up at the first shot that outlives the whole ~16 s sampling
-window hashes identically every time and is accepted. Sampling wider shrinks
-that blind spot; it never closes it.
-
-So it is a guard, not a substitute for looking. **Open all four PNGs before
-committing them.** #917 shipped a set that passed every mechanical check and was
-still wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes),
-and #2896 nearly shipped a "park diorama" that was actually a piano.
+`simctl` exposes no way to silence notifications, and waiting them out is not
+reliable either: a freshly-erased device posts "Ready for Apple Intelligence"
+about a minute into the session — i.e. possibly *during* a capture — which is
+exactly how that card once landed in an iPad frame. The removed script detected
+it by re-shooting each frame and hashing the top band; by hand, the check is
+the same one it could never replace: **open all four PNGs before committing
+them.** #917 shipped a set that passed every mechanical check and was still
+wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes), and
+#2896 nearly shipped a "park diorama" that was actually a piano.
 
 ## Publishing these to the App Store
 

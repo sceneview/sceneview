@@ -53,6 +53,7 @@ export interface ToolTextContent {
 
 export interface ToolResult {
   content: ToolTextContent[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
@@ -72,6 +73,7 @@ export interface ToolDefinition {
     required?: string[];
     additionalProperties?: boolean;
   };
+  outputSchema?: { type: "object"; properties?: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
   /**
    * MCP behaviour hints — see mcp/src/tools/types.ts for the full rationale.
    * Optional in the type to keep migrations easy; runtime contract test in
@@ -115,6 +117,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["platform"],
     },
+    outputSchema: { type: "object", properties: { platform: { type: "string" }, files: { type: "array", items: { type: "object", properties: { path: { type: "string" }, contents: { type: "string" }, language: { type: "string" } }, required: ["path", "contents", "language"], additionalProperties: false } }, instructions: { type: "array", items: { type: "string" } } }, required: ["platform", "files", "instructions"], additionalProperties: false },
     annotations: {
       readOnlyHint: true,
       openWorldHint: false,
@@ -221,6 +224,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["rrdUrl"],
     },
+    outputSchema: { type: "object", properties: { html: { type: "string" }, script: { type: "string" }, fullDocument: { type: "string" } }, required: ["html", "script", "fullDocument"], additionalProperties: false },
     annotations: {
       readOnlyHint: true,
       openWorldHint: false,
@@ -305,6 +309,7 @@ export async function dispatchTool(
 
       return {
         content: withDisclaimer([{ type: "text", text: body.join("\n") }]),
+        structuredContent: { ...result },
       };
     }
 
@@ -481,6 +486,7 @@ export async function dispatchTool(
             ].join("\n"),
           },
         ]),
+        structuredContent: { ...result },
       };
     }
 

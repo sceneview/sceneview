@@ -38,7 +38,7 @@ SceneView for Web is the browser half of the SceneView SDK. It renders with
   registers itself on `window.sceneview`, exposing `createViewer`,
   `modelViewer`, etc. for use with no bundler and no Kotlin.
 
-- **npm package** — `sceneview-web` (currently `4.31.0`).
+- **npm package** — `sceneview-web` (currently `4.32.0`).
 - **Renderer** — Filament.js (WebGL2/WASM). Requires Chrome 79+, Edge 79+,
   Firefox 78+, Safari 15+.
 
@@ -77,7 +77,7 @@ filament.js MUST load before sceneview-web.js:
 ```html
 <canvas id="viewer" style="width:100%;height:100vh;display:block"></canvas>
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"></script>
 <script>
   sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
     .then(function (sv) { sv.setAutoRotate(true); });
@@ -117,7 +117,8 @@ sceneview.createViewer('viewer').then(function (sv) {
 `SceneViewer` instance methods (from `SceneViewJS.kt`): `loadModel(url)` →
 `Promise`, `setEnvironment`, `setEnvironmentWithSkybox`, `setCameraOrbit`,
 `setCameraTarget`, `setAutoRotate`, `setAutoRotateSpeed`, `setZoomLimits`,
-`setBackgroundColor`, `fitToModels`, `startRendering`, `stopRendering`,
+`setBackgroundColor`, `fitToModels(margin?)` (margin = iOS-style multiplier on the fit
+distance, `1` default, clamped `0.2…10`, #2946), `startRendering`, `stopRendering`,
 `resize`, `dispose`.
 
 Since #2024 slice 3 the viewer also exposes a minimal **imperative node

@@ -1,5 +1,5 @@
 /**
- * MCP Streamable HTTP transport (spec 2025-03-26) — minimal server impl.
+ * MCP Streamable HTTP transport (spec 2025-06-18) — minimal server impl.
  *
  * This module is intentionally decoupled from Hono: it consumes a
  * plain `Request` and returns a plain `Response`, so it can be mounted
@@ -29,7 +29,7 @@
  *   - Per-request cancellation.
  *
  * References:
- *   - https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
+ *   - https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
  *   - https://www.jsonrpc.org/specification
  */
 
@@ -110,10 +110,10 @@ const SERVER_INFO = {
 } as const;
 
 /**
- * MCP protocol version we speak. Must match the 2025-03-26 revision
- * because that is the one implementing Streamable HTTP.
+ * Protocol revisions implemented by this server, newest first.
  */
-const PROTOCOL_VERSION = "2025-03-26";
+export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26"] as const;
+export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 
 /** Default origins always allowed even when a caller passes an allowlist. */
 const DEFAULT_ORIGIN_ALLOWLIST = [
@@ -210,6 +210,33 @@ export async function handleMcpRequest(
     }, session);
   }
 
+  // `initialize` negotiates versions in its JSON body. Every later
+  // Streamable HTTP request may carry MCP-Protocol-Version; reject an
+  // explicit version this server does not implement. As in the reference
+  // SDK, an absent header is accepted for backwards compatibility and the
+  // session's negotiated version remains in force.
+  if (req.method !== "initialize") {
+    const protocolVersion = request.headers.get("mcp-protocol-version");
+    if (
+      protocolVersion !== null &&
+      !SUPPORTED_PROTOCOL_VERSIONS.includes(
+        protocolVersion as (typeof SUPPORTED_PROTOCOL_VERSIONS)[number],
+      )
+    ) {
+      return httpJson(
+        {
+          jsonrpc: "2.0",
+          id: req.id ?? null,
+          error: {
+            code: -32000,
+            message: `Bad Request: Unsupported protocol version: ${protocolVersion} (supported versions: ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")})`,
+          },
+        },
+        400,
+      );
+    }
+  }
+
   // Notifications have no `id` and must not produce a JSON-RPC reply.
   const isNotification = req.id === undefined;
 
@@ -303,6 +330,15 @@ function handleInitialize(
   session: SessionState,
 ): unknown {
   const params = (req.params ?? {}) as Record<string, unknown>;
+  const requestedVersion = params.protocolVersion;
+  const protocolVersion =
+    typeof requestedVersion === "string" &&
+    SUPPORTED_PROTOCOL_VERSIONS.includes(
+      requestedVersion as (typeof SUPPORTED_PROTOCOL_VERSIONS)[number],
+    )
+      ? requestedVersion
+      : PROTOCOL_VERSION;
+  session.protocolVersion = protocolVersion;
   const clientInfo = params.clientInfo as
     | { name?: string; version?: string }
     | undefined;
@@ -314,7 +350,7 @@ function handleInitialize(
     };
   }
   return {
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion,
     capabilities: {
       tools: { listChanged: false },
       // Resources advertise the OpenAI Apps SDK widget templates served
@@ -352,9 +388,20 @@ function handleResourcesRead(req: JsonRpcRequest): unknown {
   return { contents: [resource] };
 }
 
-/** Returns the full list of multiplexed tool definitions. */
+/**
+ * Returns the full list of multiplexed tool definitions.
+ *
+ * Widget-bearing tools carry `_meta.ui.resourceUri` on the DECLARATION as
+ * well as on the result (see `handleToolsCall`): a host that decides from
+ * `tools/list` whether a tool has a UI never sees a result first, so a
+ * pointer that only rides on results is invisible to it (#3192).
+ */
 function handleToolsList(): unknown {
-  return { tools: getAllTools() };
+  const tools = getAllTools().map((def) => {
+    const widgetUri = widgetResourceFor(def.name);
+    return widgetUri ? { ...def, _meta: { ui: { resourceUri: widgetUri } } } : def;
+  });
+  return { tools };
 }
 
 /** Validates params and dispatches a `tools/call` to the registry. */
@@ -390,9 +437,10 @@ async function handleToolsCall(
 
   const result = await registryDispatch(toolName, args, ctx.dispatchContext);
 
-  // Widget tools attach `_meta.ui.resourceUri` so OpenAI-Apps-aware clients
-  // know to fetch the bundled HTML widget and render it inline. Other
-  // clients ignore the unknown `_meta` keys and just see the text content.
+  // Widget tools attach `_meta.ui.resourceUri` so MCP-Apps-aware clients
+  // know to fetch the bundled HTML widget and render it inline. The same
+  // pointer is on the tool declaration (`handleToolsList`). Other clients
+  // ignore the unknown `_meta` keys and just see the text content.
   const widgetUri = widgetResourceFor(toolName);
   if (widgetUri) {
     // Narrow through `unknown` to avoid the strict-overlap check on
@@ -505,7 +553,7 @@ function corsPreflight(): Response {
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "POST, OPTIONS",
       "access-control-allow-headers":
-        "content-type, authorization, mcp-session-id",
+        "content-type, authorization, mcp-session-id, mcp-protocol-version",
       "access-control-max-age": "600",
     },
   });

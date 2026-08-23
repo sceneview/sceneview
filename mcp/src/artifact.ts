@@ -12,6 +12,8 @@
 //   - scene: multi-model 3D scene with lighting and environment (Filament.js)
 //   - product-360: product turntable with hotspot annotations (Filament.js)
 
+import { FILAMENT_WEB_NPM_VERSION } from "./generated/version.js";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type ArtifactType = "model-viewer" | "chart-3d" | "scene" | "product-360" | "geometry";
@@ -66,7 +68,9 @@ export interface ArtifactResult {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const FILAMENT_CDN = "https://cdn.jsdelivr.net/npm/filament@1.70.2/filament.js";
+// The npm `filament` pin from gradle/libs.versions.toml (`filamentWeb`),
+// snapshotted at build time — never a hand-copied version (#3173).
+const FILAMENT_CDN = `https://cdn.jsdelivr.net/npm/filament@${FILAMENT_WEB_NPM_VERSION}/filament.js`;
 
 const DEFAULT_MODEL =
   "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";

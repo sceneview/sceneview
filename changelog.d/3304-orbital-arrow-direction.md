@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`ar-orbital`'s off-screen indicator now reads as an arrow ([#3304](https://github.com/sceneview/sceneview/issues/3304)).** The glyph was drawn inside a translucent disc *wider than the arrow itself*, so the silhouette that reached the eye was a circle and the direction was unreadable. It is now a shaft-and-head arrow with a shape-following halo and keyline, in the `DESIGN.md` AR-overlay guidance accent instead of the theme-dependent Material primary, with its distance label on its own scrim pill.

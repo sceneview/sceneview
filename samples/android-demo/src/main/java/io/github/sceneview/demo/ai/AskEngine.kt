@@ -75,9 +75,13 @@ class GeminiNanoAskEngine : AskEngine {
             FeatureStatus.DOWNLOADING -> AskEngineStatus.Downloading()
             else -> AskEngineStatus.Unavailable
         }
-    } catch (_: Exception) {
-        // AICore missing/broken surfaces as runtime exceptions on some devices — same answer
-        // for the user either way: not available here.
+    } catch (e: Throwable) {
+        // AICore missing/broken surfaces as runtime exceptions on some devices, and a
+        // minified build missing the ML Kit classes as a NoClassDefFoundError (an Error, not
+        // an Exception). Same answer for the user either way: not available here. Leaving
+        // an Error uncaught would keep the demo's status `null` forever — a blank bottom
+        // edge instead of the "unavailable" banner (#3188).
+        if (e is kotlinx.coroutines.CancellationException) throw e
         AskEngineStatus.Unavailable
     }
 

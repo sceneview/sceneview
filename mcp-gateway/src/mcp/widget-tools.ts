@@ -68,6 +68,19 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ["modelUrl"],
     },
+    outputSchema: {
+      type: "object",
+      properties: {
+        modelUrl: { type: "string" },
+        title: { type: "string" },
+        autoRotate: { type: "boolean" },
+        ar: { type: "boolean" },
+        alt: { type: "string" },
+        posterUrl: { type: "string" },
+      },
+      required: ["modelUrl", "title", "autoRotate", "ar", "alt"],
+      additionalProperties: false,
+    },
     annotations: {
       readOnlyHint: true,
       // The model URL is fetched by the user's browser inside the widget
@@ -82,8 +95,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 
 /**
  * Marker the gateway transport looks for to attach the widget pointer
- * (`_meta.ui.resourceUri`) on the JSON-RPC tool result. Kept here so the
- * tool definition and the marker live next to each other.
+ * (`_meta.ui.resourceUri`) on both the `tools/list` declaration and the
+ * JSON-RPC tool result. Kept here so the tool definition and the marker
+ * live next to each other.
  */
 export const WIDGET_TOOL_RESOURCE: Record<string, string> = {
   view_3d_model: "ui://widget/3d-viewer.html",
@@ -133,9 +147,14 @@ export async function dispatchTool(
       // structuredContent is what the widget reads via the MCP Apps bridge.
       // Adding it as a custom field on ToolResult — non-breaking because
       // every consumer treats unknown ToolResult keys as opaque.
-      ...({
-        structuredContent: { modelUrl, title, autoRotate, ar, alt, posterUrl },
-      } as Record<string, unknown>),
+      structuredContent: {
+        modelUrl,
+        title,
+        autoRotate,
+        ar,
+        alt,
+        ...(posterUrl === undefined ? {} : { posterUrl }),
+      },
     };
   }
 

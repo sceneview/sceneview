@@ -1,5 +1,9 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
+import android.os.Build
+import android.view.Surface
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -44,6 +49,7 @@ import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.demos.internal.DepthVisualization
 import io.github.sceneview.demo.demos.internal.RawDepthCloud
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
@@ -79,6 +85,20 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
+    val context = LocalContext.current
+    // Resolved once: the Display *object* is stable for the lifetime of this context, while
+    // `rotation` on it is live — so the per-frame read below stays cheap. Mirrors
+    // ARDepthVisualizationDemo / ARMLObjectLabelDemo (#3184).
+    val display = remember(context) {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+            }
+        }.getOrNull()
+    }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -352,6 +372,16 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                                 val confidencePlane = confidenceImage.planes[0]
                                 val w = depthImage.width
                                 val h = depthImage.height
+                                // Read the rotation per frame, not once at composition: the
+                                // display can turn between two depth frames and the cloud has
+                                // to follow it in the same frame the camera feed does. ARCore
+                                // hands the raw-depth image out in the camera-sensor frame,
+                                // which does not follow the display — without this the points
+                                // land 90° off in portrait and mostly scatter outside the
+                                // visible view (#3271 / #3184).
+                                val rotation = DepthVisualization.displayRotationToDegrees(
+                                    display?.rotation ?: Surface.ROTATION_0
+                                )
                                 cloudPacked = RawDepthCloud.buildCloud(
                                     depthBytes = depthPlane.buffer,
                                     depthRowStrideBytes = depthPlane.rowStride,
@@ -360,9 +390,13 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
                                     width = w,
                                     height = h,
                                     confidenceThreshold = confidenceThreshold,
+                                    rotationDegrees = rotation,
                                 )
-                                depthWidth = w
-                                depthHeight = h
+                                // Post-rotation dimensions — swapped on a quarter turn, which
+                                // is the portrait case. The Canvas overlay below maps points
+                                // against these, not the raw sensor dimensions.
+                                depthWidth = DepthVisualization.rotatedWidth(w, h, rotation)
+                                depthHeight = DepthVisualization.rotatedHeight(w, h, rotation)
                                 visiblePointCount = RawDepthCloud.pointCount(cloudPacked!!)
                                 depthEverReceived = true
                                 // Onboarding hint dismisses on the first frame that

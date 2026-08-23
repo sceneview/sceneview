@@ -15,8 +15,8 @@ description: "Set up SceneViewSwift in your Xcode project in 10 minutes. Build a
 
 ## Prerequisites
 
-- **Xcode 15** or newer
-- An Apple device or simulator running **iOS 18+**, **macOS 15+**, or **visionOS 1+**
+- **Xcode 16** or newer
+- An Apple device or simulator running **iOS 18+**, **macOS 15+**, or **visionOS 2+**
 - Basic familiarity with Swift and SwiftUI
 
 ---
@@ -49,7 +49,7 @@ https://github.com/sceneview/sceneview.git
 !!! tip
     You can also add the dependency manually in your `Package.swift`:
     ```swift
-    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.31.0")
+    .package(url: "https://github.com/sceneview/sceneview.git", from: "4.32.0")
     ```
 
 ---

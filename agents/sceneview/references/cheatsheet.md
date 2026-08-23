@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.31.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.31.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.32.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.32.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -103,7 +103,7 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `rememberModelInstance(modelLoader, "asset.glb")` | `ModelInstance?` | **Nullable while loading** |
 | `rememberMainLightNode(engine) { … }` | `LightNode` | Default key light (use `null` to disable) |
 | `rememberFillLightNode(engine) { … }` | `LightNode` | Default fill (use `null` to disable) |
-| `rememberCameraManipulator(...)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller; `null` to lock |
+| `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `orbitHomePosition = Position(…)` for an explicit eye (no "home" gesture exists despite the name) |
 | `rememberOnGestureListener(onSingleTapConfirmed = …)` | `GestureDetector.OnGestureListener` | Wire AR taps |
 | `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions — ARCore **dataset** for deterministic replay (no args) |
 | `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Record the **rendered scene** to MP4 in-app (no MediaProjection). Pass to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then `startMirroring(surface)` / `stopMirroring(surface)` |

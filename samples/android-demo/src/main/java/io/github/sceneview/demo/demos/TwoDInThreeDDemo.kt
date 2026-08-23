@@ -610,7 +610,7 @@ private class CinematicCameraManipulator(
     private fun ensureFallback() {
         if (fallback == null) {
             fallback = CameraGestureDetector.DefaultCameraManipulator(
-                orbitHomePosition = eyeProvider(),
+                eyePosition = eyeProvider(),
                 targetPosition = targetProvider(),
             ).also { it.setViewport(viewportW, viewportH) }
         }

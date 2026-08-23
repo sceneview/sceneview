@@ -1362,31 +1362,24 @@ struct ModelViewerScreen: View {
 
     // MARK: - Scene
 
-    @ViewBuilder
     private var sceneView: some View {
-        // qa_mode freezes auto-rotation for deterministic QA screenshots.
-        if autoRotate && !qaMode {
-            SceneView { root in
-                if let loadedModel {
-                    loadedModel.entity.position = .zero
-                    root.addChild(loadedModel.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .autoRotate(speed: 0.4)
-            .id("viewer-auto-\(loadedModel != nil)-\(selectedEnvironment.name)")
-        } else {
-            SceneView { root in
-                if let loadedModel {
-                    loadedModel.entity.position = .zero
-                    root.addChild(loadedModel.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .id("viewer-manual-\(loadedModel != nil)-\(selectedEnvironment.name)")
+        // One `SceneView` for the viewer's lifetime. The model is swapped in
+        // with `.contentID(_:)` once it lands, the environment and the
+        // auto-rotation are reactive modifiers — `SceneView` diffs them in
+        // place. The previous `if autoRotate { ... } else { ... }` plus
+        // `.id(_:)` keys re-created the `RealityView` on every change, which
+        // intermittently leaves it black on iOS 26 Simulator (#3008).
+        // qa_mode freezes auto-rotation for deterministic QA screenshots
+        // (speed 0 starts no rotation loop at all).
+        SceneView { root in
+            guard let loadedModel else { return }
+            loadedModel.entity.position = .zero
+            root.addChild(loadedModel.entity)
         }
+        .environment(selectedEnvironment)
+        .cameraControls(.orbit)
+        .autoRotate(speed: autoRotate && !qaMode ? 0.4 : 0)
+        .contentID(loadedModel == nil ? nil : "loaded")
     }
 
     // MARK: - Controls
@@ -1790,30 +1783,19 @@ struct GalleryModelViewerScreen: View {
         isLoading = false
     }
 
-    @ViewBuilder
     private var sceneView: some View {
-        if autoRotate && !qaMode {
-            SceneView { root in
-                if let loadedNode {
-                    loadedNode.entity.position = .zero
-                    root.addChild(loadedNode.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .autoRotate(speed: 0.4)
-            .id("gallery-auto-\(loadedNode != nil)-\(selectedEnvironment.name)")
-        } else {
-            SceneView { root in
-                if let loadedNode {
-                    loadedNode.entity.position = .zero
-                    root.addChild(loadedNode.entity)
-                }
-            }
-            .environment(selectedEnvironment)
-            .cameraControls(.orbit)
-            .id("gallery-manual-\(loadedNode != nil)-\(selectedEnvironment.name)")
+        // Same shape as the bundled viewer above: one `SceneView`, the model
+        // swapped in via `.contentID(_:)`, environment and auto-rotation
+        // applied reactively instead of re-keying the view (#3008).
+        SceneView { root in
+            guard let loadedNode else { return }
+            loadedNode.entity.position = .zero
+            root.addChild(loadedNode.entity)
         }
+        .environment(selectedEnvironment)
+        .cameraControls(.orbit)
+        .autoRotate(speed: autoRotate && !qaMode ? 0.4 : 0)
+        .contentID(loadedNode == nil ? nil : "loaded")
     }
 
     /// Cinematic vignette — costs ~0 GPU and lifts the model in the centre.
