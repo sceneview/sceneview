@@ -12,13 +12,38 @@ import SceneViewSwift
 public class SceneViewPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
+        // `Eager`, not the default `WaitUntilTouchesEnded` — root cause of #3045.
+        //
+        // Flutter's default policy holds every `UIGestureRecognizer` on an embedded
+        // platform view in a blocked state until the *whole* touch sequence has ended,
+        // then — per Flutter's own header doc — "results in the platform view's
+        // UIGestureRecognizers seeing the entire touch sequence, but never recognizing
+        // the gesture (and never invoking actions)". `SpatialTapGesture` (targeted and
+        // untargeted alike) is exactly that: a discrete, state-based recognizer that
+        // needs to transition into `.recognized` to fire its handler, so it was
+        // categorically silent — measured directly by instrumenting both
+        // `.targetedToAnyEntity()` and a bare, untargeted `SpatialTapGesture()` control
+        // inside this bridge and observing neither ever invoke `onEnded`, while a
+        // `DragGesture` (continuous, driven by raw touch deltas rather than a
+        // recognizer-state transition) visibly orbited the camera through the same
+        // platform view — the same asymmetry a tap-vs-drag split like this always
+        // points to. `Eager` unblocks a platform view's own recognizers as soon as
+        // Flutter decides they should run, which is what SceneView needs to resolve a
+        // tap at all; it does not affect the `SceneView`'s already-working drag/pinch
+        // path or Flutter's own widgets, which never went through this gate.
         registrar.register(
             SceneViewFactory(messenger: registrar.messenger()),
-            withId: "io.github.sceneview.flutter/sceneview"
+            withId: "io.github.sceneview.flutter/sceneview",
+            gestureRecognizersBlockingPolicy: FlutterPlatformViewGestureRecognizersBlockingPolicyEager
         )
+        // AR shares nothing with the 3D path's host (`ARSceneView` is anchor-driven,
+        // no `SceneView` gesture stack) but suffers the identical Flutter-side gate for
+        // its own `onTapOnPlane` — the same policy switch closes that gap too, at zero
+        // cost to the AR session or plane-detection gestures.
         registrar.register(
             ARSceneViewFactory(messenger: registrar.messenger()),
-            withId: "io.github.sceneview.flutter/arsceneview"
+            withId: "io.github.sceneview.flutter/arsceneview",
+            gestureRecognizersBlockingPolicy: FlutterPlatformViewGestureRecognizersBlockingPolicyEager
         )
     }
 }

@@ -272,9 +272,8 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
 
 - Geometry and light nodes are not yet rendered natively (API exists for forward compatibility)
 - AR tap-to-place is not yet implemented
-- `onTap` is delivered for `SceneView` (3D) on Android; on iOS the wiring is
-  complete but no tap has been observed to arrive (measured — see below).
-  `ARSceneView` taps are Android-only
+- `onTap` is delivered for `SceneView` (3D) on both Android and iOS (fixed in
+  #3045 — see below). `ARSceneView` taps are Android-only
 - `onModelLoaded` is not bridged; a model that fails to load is logged natively
   and not reported to Dart. The prefix to grep for differs by path, because the
   two paths report from different places: the 3D viewer logs
@@ -284,73 +283,53 @@ Method channels bridge Dart commands (`loadModel`, `clearScene`, `setEnvironment
   `[flutter_sceneview] Failed to load AR model '<path>': <error>` for anything else
 - Only Android and iOS are supported; other platforms show a fallback message
 
-### `onTap` does not fire on iOS (known gap, measured 2026-08-07)
+### `onTap` on iOS — fixed (#3045)
 
-`onTap` works on Android. On iOS the callback is wired end to end — the platform
-view now claims tap gestures, the model loads and renders, and its entity
-carries both a `CollisionComponent` and an `InputTargetComponent` — but
-RealityKit's entity-targeted hit test never resolves an entity, so the handler
-is never called. Verified on an iPhone 17 Pro Max simulator (iOS 26.3):
+This gap is closed. Two independent bugs, not one — both had to be fixed before a
+tap reached Dart:
 
-- a plain `SpatialTapGesture` on the same view **does** fire, at the correct
-  location inside the viewport, so the touch reaches SwiftUI;
-- the same tap through `.targetedToAnyEntity()` fires for no entity, whether the
-  collision shape is the generated one or an explicit bounding box.
+1. **Touch delivery.** The Flutter iOS embedding registers each platform view's
+   `UIGestureRecognizer`s with a *blocking policy* that decides how Flutter's own
+   gesture arena interacts with them. This plugin never set one, so it got
+   Flutter's default, `.waitUntilTouchesEnded` — which, per Flutter's own header
+   doc, lets a platform view's recognizers see the whole touch sequence but never
+   *complete* recognition. Measured directly: with that default, not even a bare,
+   untargeted `SpatialTapGesture()` added as a control ever invoked its handler,
+   on any tap, while a `DragGesture` on the same view (continuous, driven by raw
+   touch deltas rather than a recognizer-state transition) visibly orbited the
+   camera throughout. Both `SceneViewFactory` and `ARSceneViewFactory` now
+   register with `.eager` instead (`SceneViewPlugin.register(with:)`), which lets
+   a platform view's own recognizers complete as soon as Flutter decides they
+   should run.
+2. **Entity resolution.** Fixing touch delivery was necessary but not
+   sufficient: RealityKit's `targetedToAnyEntity()` — the modifier `SceneView`'s
+   tap gesture used to resolve which entity was hit — still resolved nothing from
+   inside a Flutter platform view, measured side by side with the same untargeted
+   control, which fired at the correct location on every tap while the targeted
+   gesture fired on none. `RealityViewCameraContent.entities(at:in:)` (a second,
+   more direct RealityKit hit-test API) showed the identical symptom: zero hits,
+   at a location with a non-zero entity count in scope. Both are screen-space
+   picks that depend on something about how the rendered frame is read back, and
+   that reads back empty specifically through Flutter's platform-view
+   compositing. `SceneView`'s tap gesture on iOS/macOS now sidesteps screen-space
+   picking entirely — it resolves the tapped entity with a manual screen-to-world
+   raycast (`Scene.raycast`, a CPU geometry test against collision shapes) built
+   from the camera SceneView already tracks for rendering, using the location the
+   *untargeted* gesture reliably reports.
 
-**A missing component is not the explanation — that was ruled out by
-measurement, not by reading.** #3027 landed `Entity.makeInputTargetable()` and
-applies it to the *whole* `contentRoot` in `buildContent`, so every entity in
-the scene carries an `InputTargetComponent` regardless of collision. Re-measured
-against that code on the same simulator: four taps at three positions on a
-rendered, orbitable model produced no callback. A drag in the same session
-orbited the camera, so the touches were reaching the native view throughout.
+Verified on an iPhone 17 Pro Max simulator (iOS 26.3): tapping the Flutter
+demo's Fox model shows "Tapped: khronos_fox"; it did not before either fix, and
+a tap on empty space still reports nothing (no false positive).
 
-**`SceneViewerHostView` is not the fix either.** #3035 moved this bridge onto
-that shared host — an `@objc UIView` built for UIKit embedding, which was the
-most promising remaining lead. Re-measured on the same simulator after the move,
-with the fox rendering and the camera orbiting: three taps on the model, no
-callback. So the gap survives a change of host, which is evidence against the
-host being what breaks it.
-
-**The package itself picks correctly.** Measured on the same simulator, same
-session: `samples/ios-demo`'s `Collision & Hit Test` demo — the same
-`SceneView`, the same `.targetedToAnyEntity()` — highlights the shape that was
-tapped. So `targetedToAnyEntity()` resolving nothing is specific to how this
-bridge presents its scene, not a property of the modifier.
-
-**Asynchronous loading is not the difference either.** Same session, same
-simulator: `samples/ios-demo`'s Model Viewer, temporarily given an
-`onEntityTapped`, reported `car_019_0` on the first tap — a `.usdz` loaded
-through the same `ModelNode.load`, well after the first frame. So neither the
-loader nor `.usdz` content is what breaks the bridge.
-
-Three differences remain, and no measurement so far has varied only one:
-
-1. **Host** — a Flutter platform view versus plain SwiftUI.
-2. **How the entity reaches the scene** — the native demo re-runs `SceneView`'s
-   `content` closure through `.contentID(loadCount)`, so `buildContent` runs
-   again and `makeInputTargetable()` sweeps the tree with the model in it.
-   `SceneViewerHostView` hands `SceneView` an empty `SceneViewerContentRoot` once
-   and never re-keys it, so that sweep only ever sees an empty root; the attached
-   models depend entirely on the components `ModelNode.load` set on them.
-3. **Scale** — the native hero is normalised with `scaleToUnits(0.6)`; the fox
-   reaches the bridge at its authored 155 units.
-
-That prediction has since been falsified, and it is worth recording why. The
-React Native bridge reaches the *same* `hostView.onTapEntity` hook through the
-same SceneViewSwift build, and its 3D `onTap` was measured **firing** on iOS
-([#3086](https://github.com/sceneview/sceneview/issues/3086)): both hosts were
-instrumented and driven back to back on one simulator, with byte-for-byte
-comparable entity graphs (11 entities, 1 collision shape, 9 input targets), and
-React Native resolved an entity on all 5 taps where Flutter resolved none on 6
-— while the *untargeted* gesture arrived every time in both. So the missing
-piece is not the shared host and not RealityKit's entity-targeted hit test: it
-is Flutter's platform-view touch delivery. The hypotheses above are kept because
-they are what the Flutter-side investigation still has to rule out.
-
-Do not describe Flutter's `onTap` as working on iOS until a tap has been seen to
-reach Dart. Tracked in
-[#3045](https://github.com/sceneview/sceneview/issues/3045).
+**Known residual gap, not yet re-verified on-device**: the raycast above assumes
+the camera SceneView's own gesture math drives (`.orbit` / `.pan` /
+`.firstPerson` — the three modes this bridge's `cameraControlMode` prop can
+request). A native SwiftUI caller using one of the three Apple-native modes
+(`.none` / `.tilt` / `.dolly`, which delegate the camera to
+`realityViewCameraControls(_:)` and have no Flutter/React Native equivalent)
+was not re-verified after this change; see the comment above `tapGesture` in
+`SceneView.swift` for the gate that closes it once there is room to build and
+check.
 
 ## Contributing
 
