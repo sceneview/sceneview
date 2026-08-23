@@ -485,7 +485,9 @@ ModelNode class properties (available via `apply` block):
 - `stopAnimation(index: Int)`, `stopAnimation(name: String)`
 - `setAnimationSpeed(index: Int, speed: Float)`
 - `scaleToUnitCube(units: Float = 1.0f)`
-- `centerOrigin(origin: Position = Position(0f, 0f, 0f))`
+- `centerOrigin(origin: Position = Position(0f, 0f, 0f))` — cross-platform parity: iOS
+  `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
+  identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
 
 ### LightNode — light source
@@ -3758,14 +3760,14 @@ of Android's 27.
 | Custom materials, shaders, post-processing | platform-native API |
 | Splat, Video, View, ContactShadow, Physics, Text nodes | platform-native API |
 
-**Renderer + status per platform** (do NOT generate code assuming iOS or Desktop render
-today — they draw a visible "not available yet" notice):
+**Renderer + status per platform** (do NOT generate code assuming iOS renders without
+the host factory — it draws a visible "not available yet" notice until registered):
 
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, delegates to `SceneView { }` | Implemented |
 | iOS | RealityKit via `SceneViewSwift` | Implemented — needs a one-time app registration, see below |
-| Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
+| Desktop (JVM) | Filament via Maven filament-kmp (offscreen → Skia). JDK 22+ | Implemented |
 
 **iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
 the app supplies the renderer:
@@ -3894,9 +3896,9 @@ Gotchas:
   model" without throwing (a malformed glTF/GLB that Filament refuses to parse), so
   `SceneViewerError.cause` is `null` in the second case. Always delivered on the **main
   thread**, including for a failed download — unlike `onFrame`, which is on the render
-  thread — so a handler may touch UI directly. Raised on **Android only** today: desktop
-  is a placeholder that loads nothing, and the iOS Kotlin side raises none of its own,
-  forwarding only what the host's Swift factory reports.
+  thread — so a handler may touch UI directly. Raised on **Android and desktop**. The
+  iOS Kotlin side raises none of its own, forwarding only what the host's Swift factory
+  reports.
 - `ModelSource.Asset` takes a path relative to the app's bundled assets and **rejects any
   URI scheme** — `content://`, `file://`, `https://` all throw `IllegalArgumentException`
   from `commonMain`, so the refusal is identical on every platform. Without that check
@@ -3982,9 +3984,19 @@ being closed incrementally (issue #2024, v5 milestone):
   `sv.addSphereNode(radius)` / `sv.addLightNode(type)` / `sv.addModelNode(url)`, keep the
   returned handle, and **address it after `create()`** — `setPosition` / `setRotation`
   (Euler degrees) / `setScale` / `setScaleUniform` / `setVisible` / `addChild` /
-  `removeChild` / `getWorldPosition` / `destroy`. This is the thing the builder DSL could
-  never do: mutate content imperatively after the scene is built. It is a **minimal first
-  slice** — no gestures, no collision, no transform object; those are additive later.
+  `removeChild` / `getWorldPosition` / `centerOrigin` / `destroy`. This is the thing the
+  builder DSL could never do: mutate content imperatively after the scene is built. It is
+  a **minimal first slice** — no gestures, no collision, no transform object; those are
+  additive later.
+- **`centerOrigin(originX, originY, originZ)` — Android/iOS parity (#2763).** Aligns the
+  AABB point selected by the normalized origin (`-1..1` per axis, `0` = AABB center) with
+  the node origin, using the exact `-(center + origin * halfExtent) * scale` formula
+  Android's `ModelNode.centerOrigin(Position)` uses (both compile the same
+  `sceneview-core` KMP function, so the two platforms cannot numerically diverge — pinned
+  by the `centerOriginGoldenVectors` table). `(0, -1, 0)` bottom-aligns; `(0, 1, 0)` hangs
+  the model from the origin. A no-op on a non-model handle, or before the model has
+  finished loading. Composes additively with the current position — call it once, right
+  after `sv.addModelNode(url)` resolves.
 
 The builder DSL below stays fully supported and is the simplest path for a static scene;
 `NodeHandle` is the additive imperative surface for scenes that mutate at runtime.
@@ -4001,6 +4013,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 | Parent / child hierarchy | `node.parent = other` / `node.childNodes` | `handle.addChild(child)` / `handle.removeChild(child)` (exported since slice 3); builder-DSL content stays flat |
 | Per-content transform | `node.position` / `node.rotation` / `node.scale` (mutable, reactive) | builder `*Config` sets it once (not re-mutable); a `NodeHandle` IS re-mutable via `setPosition` / `setRotation` / `setScale` |
 | Transform inheritance | composed parent→child via Filament `TransformManager` | composed for `NodeHandle` parent/child (Filament `TransformManager`, same as Android); builder-DSL flat content is a world-space leaf |
+| Center a model on its bounding box | `ModelNode(centerOrigin = Position(...))` / iOS `centerOrigin(normalized:)` | `handle.centerOrigin(originX, originY, originZ)` (#2763, model-node handles only) — same formula as Android/iOS |
 
 **Correct Web code** — the builder DSL (simplest for a static scene):
 
@@ -4026,6 +4039,7 @@ sceneview.createViewer("canvas").then(function (sv) {
 
   sv.addModelNode("models/helmet.glb").then(function (model) {
     model.setRotation(0, 45, 0);             // Euler degrees
+    model.centerOrigin(0, -1, 0);            // bottom-align — same formula as Android/iOS (#2763)
     model.addChild(cube);                    // re-parent — cube now follows the model
   });
 

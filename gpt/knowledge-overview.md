@@ -175,6 +175,7 @@ There are two `centerOrigin` overloads:
 - **`centerOrigin(_ target:)`** — absolute: moves the model so its visual-bounds **centre** sits at the supplied model-space point (in metres). Pass `.zero` to center on the origin — the equivalent of Kotlin `ModelNode(centerOrigin = Position(0,0,0))`. The target is an **absolute** point, so `SIMD3(0, -1, 0)` puts the bounds centre 1 m below the origin (it does NOT bottom-align).
 - **`centerOrigin(normalized origin:)`** — Android parity (#2632): `origin` is a **normalized** AABB coordinate (`-1..1` per axis, `0` = box centre, `±1` = box faces), and the selected AABB point is aligned with the node origin via `-(center + origin * extents/2)`. `centerOrigin(normalized: SIMD3(0, -1, 0))` bottom-aligns like Android's `Position(0, -1, 0)` (the model sits on the origin); `.zero` is identical to `centerOrigin(.zero)`. Prefer this overload when porting an Android grounding snippet (on an unpositioned entity) — it replaces the former manual grounding workaround `centerOrigin(SIMD3(0, bounds.extents.y / 2, 0))`.
   - **Apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
+  - **Web parity (#2763):** `sceneview-web`'s `NodeHandle.centerOrigin(x, y, z)` composes additively like Android (not like this iOS overload) since it wraps the same `sceneview-core` KMP formula Android calls — see the Web section's `centerOrigin` entry.
 
 ### iOS: GeometryNode
 
@@ -553,14 +554,14 @@ ferrari_f40.glb
 | macOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
-| Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
+| Desktop | Filament via `SceneViewer` (filament-kmp) | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
-| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android implemented; iOS + Desktop placeholder |
+| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android, iOS, Desktop implemented |
 
 `sceneview-compose` is a viewer-subset façade over the renderers above, not a platform of
-its own — no AR, no custom materials. Android delegates to Filament today; the iOS
-(RealityKit) and Desktop actuals draw a "not available yet" notice until wired.
+its own — no AR, no custom materials. Android and desktop delegate to Filament; iOS
+needs a one-time RealityKit factory registration or it draws a "not available yet" notice.
 
 ### Flutter Bridge API
 Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. Published at
