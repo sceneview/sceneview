@@ -338,23 +338,13 @@ private fun SingleModelSection(
     // the content root to the origin while the camera aims at the measured centre, and that
     // double offset is what put the Fox's tail in the lens.
     Box(Modifier.fillMaxSize().background(SceneViewTokens.Stage.background)) {
-    // The bundled helmet ships face-down (+90° X from its Blender export). The AR demos' -90° X
-    // correction stands it upright — visor on -Z under this camera's +Z = front convention, so
-    // the viewer looks at that asset from -Z instead (`frontSign`). Rotating the node rotates
-    // its bounds, so the AABB gets the same -90° X before framing: (x, y, z) → (x, z, -y).
-    val uprightRotation = if (streamedModelInstance == null) DemoMath.placementRotationFor(selectedModel.assetPath) else Rotation()
-    val upright = uprightRotation.x == -90f
-    val frontSign = if (upright) -1f else 1f
-    val bounds = remember(activeModelInstance, upright) {
+    // Every bundled model — the Damaged Helmet included — is framed at its loaded glTF pose.
+    // The helmet's root node already carries the +90° X quaternion that stands it upright under
+    // glTF +Y-up/+Z-front, so its world AABB is right as loaded; an extra -90° X here tipped it
+    // crown-forward. The camera always looks from +Z, 12° above (the Khronos sample-viewer home).
+    val bounds = remember(activeModelInstance) {
         val instance = activeModelInstance ?: return@remember null
-        val aabb = runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
-            ?: return@remember null
-        if (upright) {
-            io.github.sceneview.Aabb(
-                center = Position(aabb.center.x, aabb.center.z, -aabb.center.y),
-                halfExtent = Position(aabb.halfExtent.x, aabb.halfExtent.z, aabb.halfExtent.y),
-            )
-        } else aabb
+        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
     }
     val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
     // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
@@ -518,15 +508,13 @@ private fun SingleModelSection(
             // manipulator, which snaps the camera back to exactly this home pose. A non-null
             // `DemoSettings.cameraDistance` (slider or deep link) scales the eye along the
             // same view ray so the pitch and the band centring survive the override.
-            val cameraManipulator = remember(framing, modelCenter, frontSign, recenterGeneration, sliderDistance) {
+            val cameraManipulator = remember(framing, modelCenter, recenterGeneration, sliderDistance) {
                 val f = framing ?: return@remember createDefaultCameraManipulator(
                     orbitHomePosition = Position(modelCenter.x, modelCenter.y, sliderDistance ?: 1.4f),
                     targetPosition = modelCenter,
                 )
-                val (_, ty, tz0) = f.targetOffset
-                val (_, ey, ez0) = f.eyeOffset
-                val tz = tz0 * frontSign
-                val ez = ez0 * frontSign
+                val (_, ty, tz) = f.targetOffset
+                val (_, ey, ez) = f.eyeOffset
                 val zoom = sliderDistance?.let { it / f.distance } ?: 1f
                 createDefaultCameraManipulator(
                     orbitHomePosition = Position(
@@ -562,7 +550,7 @@ private fun SingleModelSection(
                             -autoFitRadius * 0.06f * (1f - fitProgress.value),
                             modelCenter.z - rz,
                         ),
-                        rotation = Rotation(x = uprightRotation.x, y = modelYaw),
+                        rotation = Rotation(y = modelYaw),
                     )
                 }
             }
