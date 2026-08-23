@@ -1060,6 +1060,10 @@ public final class io/github/sceneview/math/MathKt {
 	public static final fun toVector3 (Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/collision/Vector3;
 }
 
+public final class io/github/sceneview/math/ModelCenteringKt {
+	public static final fun centerOriginTranslation (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
+}
+
 public final class io/github/sceneview/math/Noise {
 	public static final field INSTANCE Lio/github/sceneview/math/Noise;
 	public final fun fbm2D (FFIFF)F
