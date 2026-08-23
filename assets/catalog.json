@@ -400,7 +400,7 @@
       "source": "sketchfab",
       "sourceId": "3205b1075bb44ffc826bce0c2a04d74c",
       "sourceUrl": "https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c",
-      "author": "Karol Miklas",
+      "author": "Karol Miklas (modified by SceneView — display plinth removed)",
       "license": "CC-BY-4.0",
       "formats": {
         "glb": {
@@ -409,7 +409,8 @@
         },
         "usdz": {
           "file": "models/usdz/cyberpunk_hovercar.usdz",
-          "size": "3.5MB"
+          "size": "3.5MB",
+          "note": "This shared copy is the unmodified original (126 mesh prims). The modified derivative that the CC-BY-4.0 indicate-changes clause covers is the iOS demo copy, samples/ios-demo/SceneViewDemo/Models/cyberpunk_hovercar.usdz: the single flat `Plane_005` display-plinth prim was removed there, leaving 125 mesh prims — the car itself is untouched. That plinth dominated the model's bounding sphere and made the auto-framed App Store slot 1 capture read as a small subject on a mostly-empty backdrop (#3006). The derivative is reproduced from this shared copy by `tools/strip-usdz-prims.sh assets/models/usdz/cyberpunk_hovercar.usdz <out> --prefix Plane_005`. The two textures the removed plinth's material exclusively bound (`Plane.005_0_diffuse_scale6.png`, `Plane.005_0_occlusion_occl.jpg`) are still present in the derivative — dropping them needs the same visual-proof step #2948 used, and this asset's own idle fin animation made that proof impractical to establish cleanly by hand; left for a follow-up."
         }
       },
       "tags": [

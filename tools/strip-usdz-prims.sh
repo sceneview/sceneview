@@ -210,11 +210,13 @@ while i < n:
             if k >= n:
                 print(f"error: unbalanced braces starting at {line!r}", file=sys.stderr)
                 sys.exit(1)
-            s = lines[k].strip()
-            if s == "{":
-                depth += 1
-            elif s == "}":
-                depth -= 1
+            # Net brace delta per line, not just bare "{"/"}" lines: inline
+            # dict values (e.g. `float3 xformOp:translate.timeSamples = {`,
+            # closed by a bare "}") open and close on asymmetric lines, which
+            # a bare-line-only check desyncs — found on cyberpunk_hovercar.usdz
+            # (#3006), whose animated prims all use timeSamples dicts.
+            s = lines[k]
+            depth += s.count("{") - s.count("}")
             k += 1
         removed += 1
         i = k
