@@ -249,7 +249,13 @@ fun DemoScaffold(
     Scaffold(
         // Edge-to-edge: the scene owns every pixel; the chrome applies the insets.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // No `snackbarHost` slot here on purpose (#3325): Scaffold only clears its
+        // own `bottomBar`/`floatingActionButton` slots automatically, and the dock
+        // is a plain overlay inside `content`, invisible to that layout pass. Left
+        // wired up, the snackbar rendered flush with the window edge — behind the
+        // dock in reading order but on top in z-order, so it visually covered the
+        // dock's buttons instead of floating clear above them. It is placed by
+        // hand below, sharing the same measured dock clearance as `bottomOverlay`.
     ) { padding ->
         // Height of the `bottomOverlay` band, measured (never assumed) so
         // `bottomOverlayReservesScene` can inset the viewport by exactly the room the
@@ -269,6 +275,11 @@ fun DemoScaffold(
         // inset) — the top band's mirror of the dock band.
         var identityRowPx by remember { mutableIntStateOf(0) }
         val identityRow = with(LocalDensity.current) { identityRowPx.toDp() }
+
+        // Room the dock band takes at the bottom — the same floor-or-measured
+        // value `bottomOverlay` clears, shared with the snackbar below so both
+        // float above the dock instead of behind or through it (#3325).
+        val dockClearance = if (hasDock) maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand) else 0.dp
 
         // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
         // reference frame (#3237). With `contentWindowInsets = 0` the padding is
@@ -316,7 +327,7 @@ fun DemoScaffold(
             // Bottom band: status pill + demo overlays stacked above the dock.
             if (bottomOverlay != null || peekHeader != null) {
                 DemoBottomOverlay(
-                    reservedBottom = if (hasDock) maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand) else 0.dp,
+                    reservedBottom = dockClearance,
                     onBandHeightChanged = { bottomOverlayBandPx = it },
                     status = peekHeader,
                     content = bottomOverlay,
@@ -368,6 +379,24 @@ fun DemoScaffold(
                     onDismissed = { settingsExpanded = false },
                 )
             }
+
+            // Placed and drawn last so it always wins the z-order, padded clear
+            // of the dock band (`dockClearance`) and the system bars — never the
+            // window edge Scaffold's own `snackbarHost` slot would have used
+            // (#3325). `windowInsetsPadding` runs before the clearance padding,
+            // matching `DemoBottomOverlay`'s order, so the two never double up.
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                        )
+                    )
+                    .padding(horizontal = SceneViewTokens.Space.md)
+                    .padding(bottom = dockClearance + SceneViewTokens.Space.sm),
+            )
         }
     }
 }

@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
@@ -410,10 +411,27 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         }
 
         // Confirms a sent bug report (#3263) — sits above everything else in
-        // this Box, same z-order reasoning as the update banner above.
+        // this Box, same z-order reasoning as the update banner above. This Box
+        // wraps the whole NavHost, so it has no visibility into whichever
+        // bottom chrome the current screen shows (RootScreen's NavigationBar,
+        // ~80dp, or a DemoScaffold's floating dock). Previously it had zero
+        // bottom padding and rendered flush with the window edge — on top of
+        // that chrome's buttons in z-order instead of floating clear above
+        // them, and only partly visible behind the gesture nav bar (#3325).
+        // `SETTINGS_FAB_RESERVED_SPACE` (104dp, `DemoScaffold.kt`) is the
+        // dock's own floor and comfortably clears the shorter NavigationBar
+        // too, so it doubles as the conservative clearance here.
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                    )
+                )
+                .padding(horizontal = SceneViewTokens.Space.md)
+                .padding(bottom = SETTINGS_FAB_RESERVED_SPACE + SceneViewTokens.Space.sm),
         )
     }
 }
