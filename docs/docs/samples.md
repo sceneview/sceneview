@@ -19,15 +19,20 @@ git clone https://github.com/sceneview/sceneview.git
 
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
-4-tab showcase (**Explore / AR View / Samples / About**) backed by an
+3-tab showcase (**Showcase / AR View / About**) backed by an
 append-only demo registry of **53 demos** (19 non-AR + 34 AR):
 
-- **Explore tab**: Featured 3D & AR demos and multi-source model streaming (Sketchfab / Icosa Gallery / Poly Haven)
+- **Showcase tab** (home): a hero card, category filter chips (3D Basics, Lighting &
+  Environment, Content, Interaction, Advanced, Augmented Reality) and a grid of media
+  cards with a generated preview image per demo. The closing "Browse online models"
+  card opens the online gallery — multi-source model streaming (Sketchfab / Icosa
+  Gallery / Poly Haven)
 - **AR View tab**: Live `ARSceneView` camera with plane detection and tap-to-place
-- **Samples tab**: The full demo catalog, grouped into six categories —
-  3D Basics, Lighting & Environment, Content, Interaction, Advanced,
-  Augmented Reality
 - **About tab**: Platform info, version, and GitHub links
+
+Every demo screen shares the same glass chrome: back button, identity pill and
+overflow menu over the scene, plus a floating bottom dock whose Controls item opens
+the settings sheet.
 
 Each demo is one append-only `*Fragment.kt` under
 `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/` and is
@@ -55,7 +60,7 @@ and the `llms.txt` demo list from those fragments, so the catalog never drifts.
 4-tab SwiftUI app:
 
 - **Explore tab**: multi-source model streaming — Sketchfab / Icosa Gallery /
-  Poly Haven (#2700, parity with the Android Explore tab). Browse + search work
+  Poly Haven (#2700, parity with the Android online gallery). Browse + search work
   for every catalog; in-app 3D rendering is USDZ-based (Sketchfab) today — the
   glTF-native CC catalogs show an honest "3D preview coming soon" viewer state
   until RealityKit can load glTF.
@@ -73,7 +78,7 @@ Browser 3D viewer with:
 
 - Filament.js WASM rendering (same engine as Android)
 - Models tab: source-agnostic multi-source catalog (#2722, parity with the
-  Android/iOS Explore) — curated SceneView samples, Icosa Gallery and
+  Android online gallery / iOS Explore) — curated SceneView samples, Icosa Gallery and
   Poly Haven (keyless CC catalogs, rendered in-app), Sketchfab when an API
   key is configured
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
