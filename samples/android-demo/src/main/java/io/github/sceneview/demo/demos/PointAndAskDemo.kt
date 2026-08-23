@@ -3,18 +3,23 @@ package io.github.sceneview.demo.demos
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.PixelCopy
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +33,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
@@ -100,6 +110,7 @@ import kotlinx.coroutines.launch
 object PointAndAskTestTags {
     const val ANSWER_CARD = "point_and_ask_answer_card"
     const val QUESTION_FIELD = "point_and_ask_question_field"
+    const val PROP_PICKER = "point_and_ask_prop_picker"
 }
 
 /** Lifecycle of one "ask" round-trip, driving the bottom card. */
@@ -123,8 +134,26 @@ private sealed interface AskState {
     data object Failed : AskState
 }
 
-/** One long-press placement: a real-world anchor carrying the showcase model. */
-private data class PlacedProp(val id: Int, val anchor: Anchor)
+/**
+ * One bundled showcase model offered by Drop-3D mode's picker (#3083). All three ship in
+ * the APK already (used elsewhere in the demo app), so adding the picker costs zero new
+ * assets — [scaleUnits] matches the value already tuned for that asset in `ArViewTab`.
+ */
+private data class PropSpec(val asset: String, val label: String, val scaleUnits: Float)
+
+/** Drop-3D mode's picker options, in display order. Shiba stays first — the prior default. */
+private val DROP_PROPS = listOf(
+    PropSpec(asset = "models/shiba.glb", label = "Shiba", scaleUnits = 0.45f),
+    PropSpec(asset = "models/khronos_fox.glb", label = "Fox", scaleUnits = 0.3f),
+    PropSpec(asset = "models/khronos_toy_car.glb", label = "Toy Car", scaleUnits = 0.3f),
+)
+
+/**
+ * One long-press placement: a real-world anchor carrying whichever [PropSpec] was selected
+ * in the Drop-3D picker at placement time (#3083). Frozen at placement so a later change of
+ * the picker never rewrites a prop already dropped in the room.
+ */
+private data class PlacedProp(val id: Int, val anchor: Anchor, val prop: PropSpec)
 
 /**
  * One world-anchored answer (P2): the tapped surface's ARCore [Anchor] plus the streamed
@@ -204,6 +233,21 @@ private class AnswerPanel(
  * screen-space card shows every round regardless (thinking, answer, failure) — it is the
  * surface the user can always see, the anchored card is the one that stays in the room
  * (#3188).
+ *
+ * Two more pieces of #2648 landed later, re-implemented against this file's current shape
+ * rather than reapplied from the original branch — that branch (`claude/point-and-ask-voice`,
+ * tip `bc3ed0170`) forked 200+ commits back with no reachable merge-base by the time it was
+ * revisited (#3083):
+ *  - **Voice input** — an optional mic button on the question field launches the system
+ *    speech recognizer (`ACTION_RECOGNIZE_SPEECH`) and appends the dictated text, the same
+ *    zero-permission pattern `BugReportSheet` already shipped for its own dictation shortcut
+ *    (#3292) — chosen over the original branch's raw `SpeechRecognizer` + runtime
+ *    `RECORD_AUDIO` grant for less permission friction and one fewer failure mode to QA.
+ *  - **Drop-3D mode** — long-press now drops whichever [PropSpec] is selected in the picker
+ *    (`DROP_PROPS`), not always the shiba. Re-scoped to the three GLBs already bundled in the
+ *    APK (shiba, fox, toy car) instead of the original branch's two new ~7 MB binary assets
+ *    (`animated_trex.glb`, `monstera_plant.glb`) — same "pick a model, drop it, ask about it"
+ *    experience with zero new assets or `CREDITS.md` licensing entries to land.
  */
 @Composable
 fun PointAndAskDemo(onBack: () -> Unit) {
@@ -230,9 +274,12 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // nothing here for Compose to observe.
     val cameraPosition = remember { floatArrayOf(0f, 0f, 0f) }
 
-    // Long-press placements — each drops the showcase model on the hit surface.
+    // Long-press placements — each drops the picker's currently selected model on the hit
+    // surface. Drop-3D mode (#3083): which model is a `controls`-sheet picker, not a fixed
+    // constant — see `DROP_PROPS`.
     val placedProps = remember { mutableStateListOf<PlacedProp>() }
     var nextPropId by remember { mutableStateOf(0) }
+    var selectedProp by remember { mutableStateOf(DROP_PROPS[0]) }
 
     // World-anchored answers (P2) — one per tap that lands on a tracked surface, until
     // Reset. `pendingPanel` is the one the in-flight round streams into; `null` means the
@@ -292,6 +339,28 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val question = questionText.trim().ifBlank { defaultQuestion }
     // Resolved at composition — anchored panels route results from non-composable callbacks.
     val failedText = stringResource(R.string.demo_point_and_ask_error)
+
+    // Voice input (#3083): the question field's optional mic button. Same zero-permission
+    // `ACTION_RECOGNIZE_SPEECH` intent `BugReportSheet` already ships for its own dictation
+    // shortcut (#3292) — the system recognizer app does the listening, this demo only reads
+    // back its result, so there is no RECORD_AUDIO grant to request or lose across rotation.
+    val speechAvailable = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
+    }
+    val voicePrompt = stringResource(R.string.demo_point_and_ask_voice_prompt)
+    val speechLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+            if (spoken != null) {
+                questionText = spoken
+            }
+        }
+    }
 
     // Composited capture (film mode): PixelCopy on the window sees camera + virtual
     // props exactly as the user does. qaMode keeps the synthetic-frame fallback so the
@@ -397,20 +466,76 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             panels.forEach { runCatching { it.anchor.detach() } }
             panels.clear()
         },
-        onResetSettings = { questionText = "" },
+        onResetSettings = {
+            questionText = ""
+            selectedProp = DROP_PROPS[0]
+        },
         controls = {
             // Free-form question (P3) — blank falls back to the default prompt, which the
             // placeholder shows. The next tap asks THIS question about the composited frame.
+            // Voice input (#3083): the trailing mic launches the system speech recognizer and
+            // replaces the field with what it heard — hidden when the device has no recognizer
+            // to hand the intent to, same guard `BugReportSheet` uses (#3292).
             OutlinedTextField(
                 value = questionText,
                 onValueChange = { questionText = it },
                 label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
                 placeholder = { Text(defaultQuestion) },
                 singleLine = true,
+                trailingIcon = if (speechAvailable) {
+                    {
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(
+                                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                    )
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                }
+                                runCatching { speechLauncher.launch(intent) }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Outlined.Mic,
+                                contentDescription =
+                                    stringResource(R.string.demo_point_and_ask_voice_cd),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag(PointAndAskTestTags.QUESTION_FIELD),
             )
+
+            // Drop-3D mode (#3083): which bundled model the next long-press drops. All three
+            // ship in the APK already (see `DROP_PROPS`), so switching is instant — no download,
+            // no new asset.
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.demo_point_and_ask_prop_picker_label),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag(PointAndAskTestTags.PROP_PICKER),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DROP_PROPS.forEach { prop ->
+                    FilterChip(
+                        selected = selectedProp == prop,
+                        onClick = { selectedProp = prop },
+                        label = { Text(prop.label) },
+                    )
+                }
+            }
+
             if (DemoSettings.qaMode) {
                 ForceTrackingFailureMenu()
             }
@@ -666,8 +791,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             askState = AskState.Capturing
                         }
                     },
-                    // Long-press drops the showcase prop on the hit surface — the object
-                    // Nano will later describe even though it only exists in AR.
+                    // Long-press drops the Drop-3D picker's currently selected model (#3083)
+                    // on the hit surface — the object Nano will later describe even though it
+                    // only exists in AR.
                     onLongPress = { e, node ->
                         if (node == null && isTracking) {
                             latestFrame?.hitTest(e)?.firstOrNull { result ->
@@ -676,7 +802,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                     trackable.trackingState == TrackingState.TRACKING &&
                                     trackable.isPoseInPolygon(result.hitPose)
                             }?.let { hit ->
-                                placedProps.add(PlacedProp(nextPropId++, hit.createAnchor()))
+                                placedProps.add(
+                                    PlacedProp(nextPropId++, hit.createAnchor(), selectedProp),
+                                )
                             }
                         }
                     },
@@ -690,14 +818,14 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         ) {
                             val instance = rememberModelInstance(
                                 modelLoader,
-                                fileLocation = PROP_ASSET,
+                                fileLocation = placed.prop.asset,
                             )
                             val textured = rememberTexturesSettled(ready = instance != null)
                             instance?.let {
                                 ModelNode(
                                     modelInstance = it,
-                                    scaleToUnits = PROP_SCALE_UNITS,
-                                    rotation = DemoMath.placementRotationFor(PROP_ASSET),
+                                    scaleToUnits = placed.prop.scaleUnits,
+                                    rotation = DemoMath.placementRotationFor(placed.prop.asset),
                                     isVisible = textured,
                                     isEditable = true,
                                 )
@@ -860,10 +988,6 @@ private fun renderMarkdownLite(text: String): AnnotatedString = buildAnnotatedSt
         }
     }
 }
-
-/** Long-press showcase prop and its placement size. */
-private const val PROP_ASSET = "models/shiba.glb"
-private const val PROP_SCALE_UNITS = 0.45f
 
 /** Frames-settle delay between hiding overlays and the PixelCopy. */
 private const val CAPTURE_OVERLAY_SETTLE_MS = 120L
