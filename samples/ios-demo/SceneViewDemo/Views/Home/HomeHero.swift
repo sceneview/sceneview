@@ -21,11 +21,16 @@ struct HomeHero: View {
         Button(action: onTap) {
             ZStack(alignment: .bottomLeading) {
                 SceneViewTokens.HomeColor.heroField
-                Image("preview_hero_model_viewer")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
+                // Hosted in an overlay so the fill-scaled image never reports
+                // its own ideal width to the ZStack (it would widen the whole
+                // home scroll content past the screen).
+                Color.clear
                     .frame(height: height)
+                    .overlay {
+                        Image("preview_hero_model_viewer")
+                            .resizable()
+                            .scaledToFill()
+                    }
                     .clipped()
                 LinearGradient(
                     stops: [
