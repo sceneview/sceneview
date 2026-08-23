@@ -43,6 +43,11 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.AddImageResult
 import io.github.sceneview.ar.arcore.captureCameraBitmap
 import io.github.sceneview.ar.arcore.rememberRuntimeAugmentedImageDatabase
@@ -105,6 +110,9 @@ fun ARImageDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // QA camera backdrop (#3308): synthetic room photo while no camera frame arrives.
+    val cameraStream = rememberARCameraStream(materialLoader)
+    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var imageCount by remember { mutableStateOf(0) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
@@ -318,11 +326,15 @@ fun ARImageDemo(onBack: () -> Unit) {
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
                 sessionConfiguration = { session: Session, config: Config ->

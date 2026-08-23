@@ -31,6 +31,11 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
@@ -87,6 +92,11 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
     var pointCount by remember { mutableIntStateOf(0) }
 
     var isTracking by remember { mutableStateOf(false) }
+    // QA camera backdrop (#3308): the emulator has no camera HAL, so a blurred room photo
+    // stands in for the camera feed until a real frame arrives.
+    var cameraReady by remember { mutableStateOf(false) }
+    val cameraStream = rememberARCameraStream(materialLoader)
+    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
 
     // "Stuck at zero points" chip state (#3270) — same shape as ARRawDepthPointCloudDemo's.
@@ -198,12 +208,17 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            if (qaBackdrop) QaCameraBackdrop(seed = "point-cloud")
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 materialLoader = materialLoader,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 onSessionUpdated = { _: Session, frame: Frame ->
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 },
                 onTrackingFailureChanged = { reason ->
