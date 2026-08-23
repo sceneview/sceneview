@@ -1269,6 +1269,39 @@ select_or_boot_emulator() {
   return 1
 }
 
+
+# ensure_airplane_mode_disabled — probe + repair connectivity right after boot
+# (#2959). A `qa-clean` snapshot cold-boots with whatever radio state it was
+# seeded with; if that was airplane mode ON, every streamed-asset resolve on
+# this run silently falls back to its bundled stand-in — same file in, same
+# file out, so the `DisposableEffect` that reloads a changed `Model` never
+# fires and a round-trip QA pass can report green while the streamed path
+# never actually ran (measured closing #2942: two different Sketchfab slugs
+# both rendered the same bundled helmet, `airplane_mode_on=1` was the cause).
+# Best-effort: this only repairs the *emulator's* radio state, not host
+# network reachability — qa-android-demos.sh's key-gated sub-legs are still
+# the backstop for "key present but no route" (#2959 proposal 2).
+ensure_airplane_mode_disabled() {
+  local serial="$1"
+  local mode
+  mode="$("$ADB_BIN" -s "$serial" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r\n')"
+  if [[ "$mode" == "1" ]]; then
+    log "WARNING: $serial booted with airplane_mode_on=1 — streamed-asset legs would silently swap to their bundled fallback (#2959). Disabling."
+    "$ADB_BIN" -s "$serial" shell cmd connectivity airplane-mode disable >/dev/null 2>&1 || \
+      "$ADB_BIN" -s "$serial" shell settings put global airplane_mode_on 0 >/dev/null 2>&1
+    "$ADB_BIN" -s "$serial" shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
+    sleep 2
+    mode="$("$ADB_BIN" -s "$serial" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r\n')"
+    if [[ "$mode" == "1" ]]; then
+      log "WARNING: could not clear airplane mode on $serial — streamed-asset legs on this run should be treated as untested"
+    else
+      log "airplane mode disabled on $serial — re-seed the '$GOLDEN_SNAPSHOT' snapshot with it off so future cold-boots stop needing this repair (#2959 proposal 3)"
+    fi
+  else
+    log "$serial: airplane_mode_on=$mode — connectivity radio state OK"
+  fi
+}
+
 wait_for_boot() {
   # When we leased an already-running emulator, EMU_SERIAL is already booted.
   local serial="$EMU_SERIAL"
@@ -1298,6 +1331,7 @@ wait_for_boot() {
     sleep 2
   done
   log "boot complete on $serial"
+  ensure_airplane_mode_disabled "$serial"
   export EMU_SERIAL="$serial"
   # Publish the leased serial to a file as a fallback for a parent QA
   # orchestrator. The primary channel is the `EMU_SERIAL=<serial>` stdout line
