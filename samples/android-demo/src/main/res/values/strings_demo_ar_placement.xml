@@ -10,6 +10,5 @@
     <string name="demo_ar_placement_picker_bundled">Bundled cycle</string>
     <string name="demo_ar_placement_picker_label">What to place</string>
     <string name="demo_ar_placement_picker_streamed">%1$s</string>
-    <string name="demo_ar_placement_picker_streaming">Streaming %1$s…</string>
     <string name="demo_ar_placement_picker_subtitle">Bundled cycle ships with the APK · streamed entries are CC-BY models from Sketchfab.</string>
 </resources>

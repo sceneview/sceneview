@@ -12,34 +12,24 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.CheckCircle
@@ -48,25 +38,17 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationCity
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
@@ -78,7 +60,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -94,8 +75,9 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
 import androidx.compose.ui.graphics.vector.ImageVector
-import io.github.sceneview.demo.common.placement.PlacementSpec
-import io.github.sceneview.demo.common.placement.TapToPlaceArSession
+import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
+import io.github.sceneview.demo.common.placement.TapToPlaceExperience
+import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
@@ -106,7 +88,6 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.ui.DemoCategoryAccent
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -124,23 +105,26 @@ import java.util.UUID
  *    asks for it. Saves battery and avoids spurious permission dialogs when
  *    the user is just browsing.
  *
- * Once the user taps "Start AR Camera" we fall through to the live AR
- * experience, now rendered by the shared `TapToPlaceArSession` engine
- * (#2482, PR 3/4 — one engine for the AR View tab and the `ar-placement`
- * demo). This auto-inherits the centre reticle (#1882), texture-settle gating
- * (#1435), per-asset rotation correction (#1477), PAUSED-surviving anchors,
- * the camera-init scrim (#2484) and the unified status vocabulary (#2234).
- * The host keeps the consumer chrome on top:
+ * Once the user taps "Start AR Camera" we fall through to
+ * [io.github.sceneview.demo.common.placement.TapToPlaceExperience] — the ONE
+ * tap-to-place screen, shared verbatim with the `ar-placement` demo (#2482).
+ * It brings the whole thing with it: the session engine (centre reticle #1882,
+ * texture-settle gating #1435, per-asset rotation correction #1477,
+ * PAUSED-surviving anchors, camera-init scrim #2484, unified status vocabulary
+ * #2234), the top-start back arrow, the "Model · <name>" bar and the picker
+ * sheet — so this file owns **no** placement UI of its own and cannot drift
+ * away from the demo a second time.
  *
- *  - Top-start: back arrow (app-wide back affordance) over the session
- *  - Top: glass status pill — drawn by the shared session's default overlays
- *  - Bottom: floating action bar with FAB "Pick model" + Reset
- *  - Modal bottom sheet for the model picker grid
+ * What is still this tab's own job is the *launcher*: the ARCore availability
+ * gate, the camera permission dance, the immersive-mode wiring and the AR demo
+ * grid. That is the "quick launcher vs feature demo" role split #2482 asked for
+ * — a difference in role, not a second implementation of the same screen.
  *
  * Reset is implemented by bumping a `key(arSceneId)` wrapper around the
- * session — there is no `removeAllAnchors` on the wrapper, so we recompose the
- * whole subtree (and its `TapToPlaceState` holder) to clear ARCore state and
- * start a fresh session.
+ * experience — there is no `removeAllAnchors` on the wrapper, so we recompose
+ * the whole subtree (and its `TapToPlaceState` holder) to clear ARCore state
+ * and start a fresh session. The picker's selection is deliberately hoisted
+ * *outside* that key: Reset clears the room, not the user's choice.
  */
 @Composable
 fun ArViewTabContent(
@@ -288,9 +272,9 @@ fun ArViewTabContent(
     }
 
     // ---------- State ----------
-    val arModels = remember { AR_MODELS }
-    var selectedModelIndex by remember { mutableStateOf(0) }
-    val selectedModel = arModels[selectedModelIndex]
+    // Selection for the canonical picker, hoisted OUTSIDE `key(arSceneId)`: a Reset
+    // wipes the placements, not the user's choice of what to place next.
+    val picker = rememberPlacementPickerState(BUNDLED_PLACEMENT_MODELS.first().id)
 
     // Force-rebuild key for the ARSceneView. Bumping this UUID recomposes the
     // whole AR subtree, which is the only way to discard ARCore state without
@@ -303,10 +287,6 @@ fun ArViewTabContent(
     // which bumps `arSceneId` — recreates a fresh holder and drops every placed
     // anchor along with the recomposed ARCore session.
     val state = key(arSceneId) { rememberTapToPlaceState() }
-
-    var showModelPicker by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val coroutineScope = rememberCoroutineScope()
 
     // ---------- Engine / loaders ----------
     val engine = rememberEngine()
@@ -333,228 +313,28 @@ fun ArViewTabContent(
         exitArSession()
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Live AR session — full bleed under the overlays. The shared
-        // `TapToPlaceArSession` engine (#2482, PR 3/4) renders the ARSceneView,
-        // centre reticle (#1882), texture-settle gating (#1435), per-asset
-        // rotation correction (#1477 — the helmet now lands upright), PAUSED-
-        // surviving anchors, the camera-init scrim (#2484), and the unified
-        // status-pill vocabulary (#2234, incl. tracking-failure messages).
-        key(arSceneId) {
-            TapToPlaceArSession(
-                nextModelLabel = arModels[selectedModelIndex].name,
-                onPlaceModel = {
-                    // Resolve the model from the CURRENT picker state at tap time
-                    // (#2476 invariant) — never captured at composition. Reading
-                    // `arModels[selectedModelIndex]` here keeps each placement on
-                    // the live selection rather than freezing on the first model.
-                    val m = arModels[selectedModelIndex]
-                    PlacementSpec(
-                        assetLocation = m.assetPath,
-                        displayName = m.name,
-                        scaleToUnits = m.scale,
-                    )
-                },
-                state = state,
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-            )
-        }
-
-        // Top-start back arrow — visible back affordance from the live AR
-        // session, mirroring the BackHandler. App-wide back affordance (#2482
-        // review note): replaces the former top-end X close.
-        FilledIconButton(
-            onClick = exitArSession,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 8.dp, start = 12.dp)
-                .size(40.dp),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.cd_back_button),
-                modifier = Modifier.size(20.dp),
-            )
-        }
-
-        // Bottom floating action bar.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // FAB "Pick model" — primary, fills available width.
-                ExtendedFloatingActionButton(
-                    onClick = { showModelPicker = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 56.dp),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    expanded = true,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.ViewInAr,
-                            contentDescription = null,
-                        )
-                    },
-                    text = {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.ar_picker_model_label),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(
-                                    alpha = 0.7f,
-                                ),
-                            )
-                            Text(
-                                text = selectedModel.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    },
-                )
-
-                // Reset — detach every anchor, then bump `arSceneId` to recompose
-                // a fresh ARCore session and a fresh `TapToPlaceState` holder
-                // (recreated inside `key(arSceneId)`), discarding all placements.
-                FilledIconButton(
-                    onClick = {
-                        state.clearAll()
-                        arSceneId = UUID.randomUUID()
-                    },
-                    modifier = Modifier.size(56.dp),
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = stringResource(R.string.ar_reset_scene),
-                    )
-                }
-            }
-        }
-    }
-
-    if (showModelPicker) {
-        ModalBottomSheet(
-            onDismissRequest = { showModelPicker = false },
-            sheetState = sheetState,
-        ) {
-            ModelPickerGrid(
-                models = arModels,
-                selectedIndex = selectedModelIndex,
-                onSelect = { idx ->
-                    selectedModelIndex = idx
-                    coroutineScope.launch {
-                        sheetState.hide()
-                        showModelPicker = false
-                    }
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ModelPickerGrid(
-    models: List<ArModel>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.ar_pick_a_model),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 12.dp),
+    // The one canonical tap-to-place experience (#2482) — the same composable the
+    // `ar-placement` demo renders. It owns the session, the top-start back arrow, the
+    // model bar and the picker sheet, so this tab holds no placement UI of its own and
+    // cannot drift away from the demo again.
+    //
+    // `key(arSceneId)` is how Reset works: bumping the UUID recomposes the whole AR
+    // subtree, which is the only way to discard ARCore state without a wrapper-level
+    // resetSession() API (iOS does the same via arViewID).
+    key(arSceneId) {
+        TapToPlaceExperience(
+            models = BUNDLED_PLACEMENT_MODELS,
+            picker = picker,
+            state = state,
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            onBack = exitArSession,
+            onReset = {
+                state.clearAll()
+                arSceneId = UUID.randomUUID()
+            },
         )
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 110.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 480.dp),
-        ) {
-            items(models.size) { index ->
-                val model = models[index]
-                val selected = index == selectedIndex
-                Card(
-                    onClick = { onSelect(index) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                    ),
-                    modifier = Modifier
-                        .border(
-                            width = if (selected) 2.dp else 0.dp,
-                            color = if (selected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                Color.Transparent
-                            },
-                            shape = RoundedCornerShape(18.dp),
-                        ),
-                    shape = RoundedCornerShape(18.dp),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(
-                                        alpha = 0.6f,
-                                    ),
-                                    shape = RoundedCornerShape(14.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ViewInAr,
-                                contentDescription = null,
-                                modifier = Modifier.size(36.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = model.name,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -998,23 +778,3 @@ private fun ArPermissionPlaceholder(granted: Boolean) {
         }
     }
 }
-
-// ---------- Model catalogue ----------
-
-internal data class ArModel(
-    val name: String,
-    val assetPath: String,
-    val scale: Float,
-)
-
-// `animated_dragon.glb` dropped from the bundle in #1152 Stage 3 (slim-down).
-// 8 MB GLB → replaced where canonical with `threejs_soldier.glb`, removed
-// from this list (Soldier covers the "animated character" role).
-private val AR_MODELS = listOf(
-    ArModel("Damaged Helmet", "models/khronos_damaged_helmet.glb", 0.3f),
-    ArModel("Fox", "models/khronos_fox.glb", 0.3f),
-    ArModel("Lantern", "models/khronos_lantern.glb", 0.3f),
-    ArModel("Toy Car", "models/khronos_toy_car.glb", 0.3f),
-    ArModel("Shiba", "models/shiba.glb", 0.3f),
-    ArModel("Soldier", "models/threejs_soldier.glb", 0.3f),
-)

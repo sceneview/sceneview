@@ -108,6 +108,12 @@
     <string name="ar_reset_scene">Reset scene</string>
     <string name="ar_pick_a_model">Pick a model</string>
     <string name="ar_picker_model_label">Model</string>
+    <!-- Canonical tap-to-place picker (PlacementModelPicker.kt) — shared by the AR View
+         tab and the `ar-placement` demo (#2482). -->
+    <string name="ar_picker_streaming">Streaming %1$s…</string>
+    <string name="ar_picker_no_model">No model</string>
+    <string name="ar_picker_source_streamed">Streamed</string>
+    <string name="ar_picker_source_streaming">Streaming…</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
     <string name="ar_status_tap_to_place">Tap a surface to place %s</string>
     <string name="ar_status_one_placed">1 placed · tap to add</string>
