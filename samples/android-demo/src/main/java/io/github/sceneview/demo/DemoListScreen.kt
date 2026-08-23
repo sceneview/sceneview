@@ -26,7 +26,10 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,6 +101,15 @@ import kotlinx.coroutines.withContext
 fun DemoListScreen(
     onDemoClick: (String) -> Unit,
     onAboutClick: () -> Unit,
+    /**
+     * Whether the "since you last tested" list has pending entries. Owned by
+     * [io.github.sceneview.demo.ui.RootScreen] — this screen must not derive it
+     * again, or acknowledging in the sheet would leave a second stale copy of
+     * the marker driving this badge. Defaulted so previews and snapshot tests
+     * render the unbadged bar they already pinned.
+     */
+    hasUnseenWhatsNew: Boolean = false,
+    onWhatsNewClick: () -> Unit = {},
 ) {
     // `rememberTopAppBarState()` survives recomposition + rotation so the
     // collapse offset doesn't snap back to expanded after a state change.
@@ -144,6 +156,7 @@ fun DemoListScreen(
         )
     }
 
+
     // Animated 3D particle backdrop (#1488) — a SceneView scene drawn as the
     // bottom layer of this Box, behind the demo grid. It only exists while the
     // Samples tab is selected (RootScreen swaps tab content), so the SceneView
@@ -160,6 +173,22 @@ fun DemoListScreen(
             LargeTopAppBar(
                 title = { Text(stringResource(R.string.samples_title)) },
                 actions = {
+                    // The discreet re-proposal. A sheet dismissed without
+                    // acknowledging must not re-open on every resume, but the
+                    // list must stay reachable — so it retreats to a dot on
+                    // this action, and the action disappears entirely once
+                    // there is nothing pending.
+                    if (hasUnseenWhatsNew) {
+                        IconButton(onClick = onWhatsNewClick) {
+                            BadgedBox(badge = { Badge() }) {
+                                Icon(
+                                    Icons.Outlined.AutoAwesome,
+                                    contentDescription =
+                                        stringResource(R.string.whats_new_since_action),
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = onAboutClick) {
                         Icon(
                             Icons.Outlined.Info,

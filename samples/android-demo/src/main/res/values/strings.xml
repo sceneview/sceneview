@@ -163,6 +163,21 @@
     <string name="whats_new_category_performance">Performance</string>
     <string name="whats_new_category_removed">Removed</string>
 
+    <!-- "What's new since you last tested" — the per-install surface. The
+         marker it reads is written only by the Got it button; see
+         WhatsNewSince.kt. -->
+    <string name="whats_new_since_title">What\'s new since you last tested</string>
+    <plurals name="whats_new_since_subtitle">
+        <item quantity="one">%1$d change since the build you marked as seen (v%2$s)</item>
+        <item quantity="other">%1$d changes since the build you marked as seen (v%2$s)</item>
+    </plurals>
+    <string name="whats_new_since_subtitle_unknown">Everything that landed since your last session</string>
+    <string name="whats_new_since_unreleased">Not yet released</string>
+    <string name="whats_new_since_mark_seen">Got it</string>
+    <string name="whats_new_since_mark_seen_hint">Closing without tapping Got it keeps this list waiting behind the top-bar badge.</string>
+    <string name="whats_new_since_open_demo">Open %s</string>
+    <string name="whats_new_since_action">What\'s new since you last tested</string>
+
     <!-- Sample categories (legacy keys kept for accessibility / cross-platform docs) -->
     <string name="category_3d">3D</string>
     <string name="category_effects">Effects</string>
