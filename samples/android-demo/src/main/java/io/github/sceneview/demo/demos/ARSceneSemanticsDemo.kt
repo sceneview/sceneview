@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -592,7 +594,18 @@ private fun LabelRow(label: SemanticLabel, fraction: Float) {
  * Bottom color legend — one tiny swatch + class name per ARCore semantic label, so the
  * segmentation overlay is readable. Colors come from [SemanticsOverlay.PALETTE_ARGB], which
  * mirrors the palette baked into `semantics_overlay.mat`.
+ *
+ * Uses [FlowRow] rather than a hand-chunked 4-items-per-row [Row]: the old fixed grouping
+ * assumed every row of four labels fits the reserved band, which held for "Sky Building Tree
+ * Road" and "Vehicle Person Water" but not for "Sidewalk Terrain Structure Object" — the widest
+ * row. A bounded, non-wrapping [Row] doesn't overflow visibly when its children run out of
+ * room; it squeezes the last child's max-width constraint down instead, so "Object" wrapped
+ * one character per line on a real device (Pixel 4a device QA, #3295 follow-up) even though
+ * nothing was clipped or crashed. [FlowRow] measures each swatch+label pair as one unit and
+ * wraps whole units to the next line, so a label is never split mid-word regardless of screen
+ * width, density or the Settings FAB's reserved band.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SemanticLegend(modifier: Modifier = Modifier) {
     Surface(
@@ -601,29 +614,28 @@ private fun SemanticLegend(modifier: Modifier = Modifier) {
         contentColor = Color.White,
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        FlowRow(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             // UNLABELED (last entry) is intentionally omitted — it renders transparent.
-            for (rowStart in 0 until SemanticsOverlay.UNLABELED_ORDINAL step 4) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for (ordinal in rowStart until minOf(rowStart + 4, SemanticsOverlay.UNLABELED_ORDINAL)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color(SemanticsOverlay.PALETTE_ARGB[ordinal]))
-                            )
-                            Text(
-                                text = SemanticsOverlay.LABEL_NAMES[ordinal],
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
+            for (ordinal in 0 until SemanticsOverlay.UNLABELED_ORDINAL) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(SemanticsOverlay.PALETTE_ARGB[ordinal]))
+                    )
+                    Text(
+                        text = SemanticsOverlay.LABEL_NAMES[ordinal],
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
-                Spacer(Modifier.height(4.dp))
             }
         }
     }
