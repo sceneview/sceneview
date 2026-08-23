@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,9 +46,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +58,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.putVoiceSilenceExtras
+import kotlinx.coroutines.launch
 
 /**
  * The lightweight "Report a bug" bottom sheet (#2188 successor).
@@ -85,6 +92,13 @@ fun BugReportSheet(
     var note by remember { mutableStateOf("") }
     var includeScreenshot by remember { mutableStateOf(report.screenshot != null) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    // Keyboard fix (#3322): a plain ModalBottomSheet does not consume the IME inset, so
+    // the system keyboard used to cover the note field with no way to scroll it into
+    // view — `imePadding()` below shrinks the sheet's content height as the keyboard
+    // rises, and this requester nudges the scroll position the moment the field gains
+    // focus, so the field (not just its top edge) lands above the keyboard on first tap.
+    val noteFieldBringIntoView = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
 
     val speechAvailable = remember {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
@@ -115,6 +129,7 @@ fun BugReportSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 24.dp),
         ) {
@@ -160,7 +175,6 @@ fun BugReportSheet(
                 onValueChange = { note = it },
                 label = { Text(stringResource(R.string.feedback_report_note_label)) },
                 placeholder = { Text(stringResource(R.string.feedback_report_note_placeholder)) },
-                modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
                 trailingIcon = if (speechAvailable) {
                     {
@@ -172,6 +186,7 @@ fun BugReportSheet(
                                         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                                     )
                                     putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                    putVoiceSilenceExtras()
                                 }
                                 runCatching { speechLauncher.launch(intent) }
                             },
@@ -185,6 +200,14 @@ fun BugReportSheet(
                 } else {
                     null
                 },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(noteFieldBringIntoView)
+                    .onFocusEvent { state ->
+                        if (state.isFocused) {
+                            scope.launch { noteFieldBringIntoView.bringIntoView() }
+                        }
+                    },
             )
 
             Spacer(Modifier.height(12.dp))
