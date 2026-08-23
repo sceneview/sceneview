@@ -64,7 +64,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.31.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.32.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

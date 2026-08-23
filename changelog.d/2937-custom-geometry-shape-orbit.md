@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **android-demo**: the *Shape Extrude* sub-mode of `custom-geometry` no longer clips its triangle, star and hexagon on a portrait phone. It paired `orbitHomePosition = (0, 0, 1.5)` with a target at `z = -1`, which reads as a 2.5 m camera but — with `autoCenterContent` putting the shape on the origin — framed from 1.5 m. The distance is now derived from the frustum in `ShapeFraming` and pinned by a JVM test, as #2923 did for the geometry demo (#2937).

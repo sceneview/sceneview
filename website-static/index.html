@@ -116,7 +116,7 @@
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
-    "softwareVersion": "4.31.0",
+    "softwareVersion": "4.32.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
@@ -137,7 +137,7 @@
         "name": "How do I add 3D to my Android Jetpack Compose app?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.31.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 46+ node types, and adds only ~5MB to your APK."
+          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.32.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 46+ node types, and adds only ~5MB to your APK."
         }
       },
       {
@@ -145,7 +145,7 @@
         "name": "What is the best AR SDK for Android with Jetpack Compose?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.31.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
+          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.32.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
         }
       },
       {
@@ -463,9 +463,9 @@
             <pre class="code-block"><code><span class="syn-green">// build.gradle.kts</span>
 <span class="syn-purple">dependencies</span> {
     <span class="syn-green">// 3D only</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.31.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.32.0"</span>)
     <span class="syn-green">// 3D + AR</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.31.0"</span>)
+    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.32.0"</span>)
 }</code></pre>
           </div>
           <div class="tabs__panel" data-panel="ios">
@@ -473,13 +473,13 @@
 <span class="syn-green">// Add in Xcode: File &rarr; Add Package Dependencies</span>
 
 <span class="syn-green-light">"https://github.com/sceneview/sceneview"</span>
-<span class="syn-green">// Version: 4.31.0</span>
+<span class="syn-green">// Version: 4.32.0</span>
 
 <span class="syn-purple">import</span> SceneViewSwift</code></pre>
           </div>
           <div class="tabs__panel" data-panel="web">
             <pre class="code-block"><code><span class="syn-green">// One line in your HTML:</span>
-<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.31.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
+<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4.32.0/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
 
 <span class="syn-green">// Then use the API:</span>
 <span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>)</code></pre>

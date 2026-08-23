@@ -75,6 +75,25 @@ struct ModelViewerDemo: View {
     /// same demo produced different poses AND different HDRI backdrops (#2896).
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
+    /// Raw `-camera_distance <float>` launch-arg override, written by
+    /// `SceneViewDemoApp` into `UserDefaults` (#2785). `0` is the "unset"
+    /// sentinel — see `DeepLinkRouter.cameraDistanceDefaultsKey`.
+    @AppStorage(DeepLinkRouter.cameraDistanceDefaultsKey) private var cameraDistanceRaw: Double = 0
+
+    /// Validated `-camera_distance` override, or `nil` when absent — mirrors
+    /// Android's nullable `DemoSettings.cameraDistance`. Threaded into
+    /// ``sceneView``'s `.framingMargin(_:)` in place of the demo's own
+    /// interactive / `qa_mode` defaults, the same "explicit override wins
+    /// over auto-fit" precedence Android's `rememberHeroOrbitCameraManipulator`
+    /// applies to `radius` (`DemoHelpers.kt`, #1571). Note `.framingMargin(_:)`
+    /// itself clamps to `0.2...10` (`SceneView.swift`) — narrower than
+    /// `DeepLinkRouter`'s accepted `0.05...100`, since it is a fit-margin
+    /// multiplier, not the absolute-metre distance Android's `radius` is;
+    /// callers targeting a store-tight frame want small values (< 1) anyway.
+    private var cameraDistanceOverride: Float? {
+        cameraDistanceRaw > 0 ? Float(cameraDistanceRaw) : nil
+    }
+
     var body: some View {
         ZStack {
             sceneView
@@ -135,7 +154,11 @@ struct ModelViewerDemo: View {
             // value was the reason the store frame read as a small subject
             // adrift in empty backdrop: the hero's bounding sphere is set by
             // its display plinth, not by the car (#2896).
-            .framingMargin(qaMode ? Self.captureFramingMargin : 0.95)
+            //
+            // `cameraDistanceOverride` — the `-camera_distance <float>` launch
+            // arg (#2785) — wins over both when present, same as Android's
+            // `DemoSettings.cameraDistance` beating its own `radius` default.
+            .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : 0.95))
             .contentID(loadedNode == nil ? nil : loadCount)
             .ignoresSafeArea()
 

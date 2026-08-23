@@ -41,6 +41,21 @@ struct SceneViewDemoApp: App {
            qIdx + 1 < args.count, args[qIdx + 1] == "1" {
             UserDefaults.standard.set(true, forKey: DeepLinkRouter.qaModeDefaultsKey)
         }
+        // Propagate `-camera_distance <float>` so the App Store screenshot
+        // pipeline can frame the hero demo tighter than the interactive
+        // auto-fit default — mirrors Android's `camera_distance` intent
+        // extra (#2652) and its dual-ingress precedence (extra beats deep
+        // link). Unlike the Android Bundle extra, `CommandLine.arguments`
+        // has no typed-value channel — every launch arg, from `xcrun simctl
+        // launch` or Xcode's own scheme arguments, arrives as a `String` —
+        // so there is no `Number` case to mirror here, just `Float.init?`.
+        // [DeepLinkRouter.validateCameraDistance] applies the identical
+        // clamp as Android either way: absent, unparseable, non-finite, or
+        // out-of-range all leave the sentinel `0` (== "no override"). #2785.
+        if let dIdx = args.firstIndex(of: "-camera_distance"), dIdx + 1 < args.count,
+           let distance = DeepLinkRouter.validateCameraDistance(Float(args[dIdx + 1])) {
+            UserDefaults.standard.set(Double(distance), forKey: DeepLinkRouter.cameraDistanceDefaultsKey)
+        }
         return DemoDeepLinkRegistry.allowedIds.contains(id) ? id : nil
     }()
 

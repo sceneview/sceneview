@@ -28,6 +28,15 @@ import Foundation
 /// Example: `sceneview://demo/animation?qa_mode=1`
 /// The parsed result is stored in `UserDefaults` under the key `"qa_mode"`
 /// so any demo can read it via `@AppStorage("qa_mode")`.
+///
+/// ### Camera distance
+///
+/// The `-camera_distance <float>` launch argument (parsed in
+/// `SceneViewDemoApp`) lets the App Store screenshot pipeline frame the hero
+/// demo tighter than the interactive auto-fit default — mirrors Android's
+/// `camera_distance` intent extra (`DeepLinkRouter.kt`,
+/// `coerceCameraDistanceExtra`, #2652). [validateCameraDistance] applies the
+/// identical clamp so both platforms accept the same value range (#2785).
 enum DeepLinkRouter {
 
     /// Custom URL scheme registered in `Info.plist > CFBundleURLTypes`.
@@ -51,6 +60,34 @@ enum DeepLinkRouter {
     /// `UserDefaults` key written when `?qa_mode=1` is present in the URL.
     /// Read via `@AppStorage("qa_mode") var qaMode: Bool` in any demo view.
     static let qaModeDefaultsKey: String = "qa_mode"
+
+    /// Smallest accepted camera-distance / framing value. Matches Android's
+    /// `DeepLinkRouter.CAMERA_DISTANCE_MIN` exactly, so a value rejected on
+    /// one platform is rejected on the other — see [validateCameraDistance].
+    static let cameraDistanceMin: Float = 0.05
+
+    /// Largest accepted camera-distance / framing value. Matches Android's
+    /// `DeepLinkRouter.CAMERA_DISTANCE_MAX` exactly.
+    static let cameraDistanceMax: Float = 100
+
+    /// `UserDefaults` key written when a valid `-camera_distance <float>`
+    /// launch argument is parsed (`SceneViewDemoApp`). Read via
+    /// `@AppStorage("camera_distance") var cameraDistanceRaw: Double = 0` in
+    /// any demo view — `0` (the default) means "no override": it is outside
+    /// `[cameraDistanceMin, cameraDistanceMax]`, so it is never a value
+    /// [validateCameraDistance] would accept. `AppStorage` has no native
+    /// `Optional<Double>` support, hence the sentinel (mirrors Android's
+    /// nullable `DemoSettings.cameraDistance`, which needs no such trick).
+    static let cameraDistanceDefaultsKey: String = "camera_distance"
+
+    /// Validates an already-parsed camera-distance value against the
+    /// accepted range. Mirrors Android's `DeepLinkRouter.validateCameraDistance`
+    /// exactly: returns [value] iff it is non-nil, finite, and within
+    /// `[cameraDistanceMin, cameraDistanceMax]`; otherwise `nil`. Never throws.
+    static func validateCameraDistance(_ value: Float?) -> Float? {
+        guard let value, value.isFinite else { return nil }
+        return (value >= cameraDistanceMin && value <= cameraDistanceMax) ? value : nil
+    }
 
     /// Parses the URL and returns the validated demo id, or `nil`.
     /// As a side-effect, writes `UserDefaults["qa_mode"]` when the
