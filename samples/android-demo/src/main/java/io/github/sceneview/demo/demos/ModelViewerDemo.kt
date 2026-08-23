@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -448,7 +449,12 @@ private fun SingleModelSection(
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstModelFrame,
-        previewRes = DemoPreviews.resourceFor("model-viewer", dark = true),
+        // #3324 — this was hardcoded `dark = true`, so a light-theme device flashed the
+        // DARK preview edge-to-edge as the loading cover: a visibly wrong (mismatched)
+        // image before the sample's first real Filament frame took over. Every other
+        // preview consumer (`DemoEntry.previewPainter`) already keys off the live
+        // scheme; this is the one that didn't.
+        previewRes = DemoPreviews.resourceFor("model-viewer", dark = isSystemInDarkTheme()),
         controls = {
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
