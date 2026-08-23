@@ -179,9 +179,16 @@ fun ARCameraInitScrim(
     var timedOut by androidx.compose.runtime.remember(initializing) {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // QA camera backdrop (#3308): the emulator never delivers a frame, so drop the black
+    // cover as soon as the backdrop takes over instead of holding it for the full timeout.
+    val effectiveTimeout = if (io.github.sceneview.demo.common.qaCameraBackdropEnabled()) {
+        minOf(timeoutMillis, io.github.sceneview.demo.common.QA_BACKDROP_TIMEOUT_MS)
+    } else {
+        timeoutMillis
+    }
     if (initializing) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(timeoutMillis)
+            kotlinx.coroutines.delay(effectiveTimeout)
             timedOut = true
         }
     }

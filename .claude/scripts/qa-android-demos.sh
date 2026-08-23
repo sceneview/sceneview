@@ -6,7 +6,8 @@
 # flows under `.maestro/android/`. Maestro drives every one of the 42 demos
 # like a real user (deep-link launch, camera-orbit drag, viewport tap, ONE
 # screenshot per demo, navigate back) and asserts each demo's Activity stays
-# alive. See `.maestro/README.md`.
+# alive. See `.maestro/README.md`. AR demos launch with `qa_backdrop: true` so the
+# camera-less emulator screenshots on a room photo instead of black (#3308).
 #
 # This script just orchestrates the pieces around `maestro test`:
 #   1. (optional) build + install the demo APK

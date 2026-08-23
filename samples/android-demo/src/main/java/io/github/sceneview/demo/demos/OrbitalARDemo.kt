@@ -43,6 +43,11 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
@@ -389,6 +394,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // QA camera backdrop (#3308) — see TapToPlaceArSession.
+    val cameraStream = rememberARCameraStream(materialLoader)
+    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
 
     // Elapsed seconds since the anchor was created, advanced by withFrameNanos. Drives
     // orbit + spin animation. Stored as nanos to avoid float-precision drift over long
@@ -526,11 +534,15 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                 .fillMaxSize()
                 .onSizeChanged { viewportSize = it }
         ) {
+            if (qaBackdrop) QaCameraBackdrop(seed = "ar-orbital")
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
                 sessionConfiguration = { _: Session, config: Config ->
