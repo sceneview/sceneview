@@ -8,6 +8,21 @@
 //   roughness   — float [0,1], 0 = mirror, 1 = fully diffuse.
 //   reflectance — float [0,1], dielectric Fresnel reflectance at normal incidence.
 // matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
+//
+// doubleSided: false — Filament's MaterialBuilder::doubleSided(bool) sets
+// BOTH the default culling state AND `mDoubleSidedCapability` unconditionally
+// of the boolean passed in (confirmed against Filament 1.72.1, the pinned
+// `filament` toolchain: docs/Materials.md.html + libs/filamat/src/MaterialBuilder.cpp).
+// Declaring the key at all — even `false` — is what enables
+// `MaterialInstance::setDoubleSided(true/false)` at runtime; omitting it
+// entirely (the prior state of this file) leaves the capability off, so
+// `setDoubleSided()` silently no-ops with a "Parent material does not have
+// double-sided capability" warning (#1426, #3335). `false` keeps every
+// existing consumer of `createColorInstance` single-sided and back-face
+// culled by default — zero rendering/perf change for callers that never
+// touch `setDoubleSided` — while letting per-instance callers (e.g. a
+// spinning plane whose back face would otherwise vanish, GeometryDemo)
+// opt in to double-sided rendering at runtime with zero extra cost when off.
 material {
     "name" : "Opaque Colored",
 
@@ -34,7 +49,8 @@ material {
         "uv0"
     ],
     "shadingModel" : "lit",
-    "blending" : "opaque"
+    "blending" : "opaque",
+    "doubleSided" : false
 }
 fragment {
     void material(inout MaterialInputs material) {
