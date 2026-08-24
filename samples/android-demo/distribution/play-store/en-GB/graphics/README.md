@@ -12,12 +12,12 @@ they are **not in sync today**. Read the next section before assuming parity.
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (#2854/#2855) |
+| `phone-screenshot-*` | 4 | **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
 | `tablet7-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet7_QA` in #3106, once #2913 had fixed the multi-model framing) |
 | `tablet10-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet10_QA` in #3106, once #2913 had fixed the multi-model framing) |
 | iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
 
-**Set v2** is what the capture script produces today. It is three frames
+**Set v2** is what the now-removed capture script produced (see below). It is three frames
 deliberately — fewer strong shots beat more mixed ones — each judged on the
 captured mosaic rather than picked a-priori (#2854):
 
@@ -66,9 +66,9 @@ and neutralises the status bar.
 
 | Pattern                       | Play `imageType`       | Slot                  | Reproducible by the script?        |
 |-------------------------------|------------------------|-----------------------|------------------------------------|
-| `phone-screenshot-{N}.png`    | `phoneScreenshots`     | Phone, 1080x2304      | **Yes** (default)                  |
-| `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **Yes** — `--form-factor tablet7`  |
-| `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **Yes** — `--form-factor tablet10` |
+| `phone-screenshot-{N}.png`    | `phoneScreenshots`     | Phone, 1080x2304      | **No** — manual since #3244        |
+| `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **No** — manual since #3244        |
+| `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **No** — manual since #3244        |
 | `icon-512.png`                | `icon`                 | Store icon, 512x512   | Sourced from `branding/`           |
 | `feature-graphic.png`         | `featureGraphic`       | Feature graphic       | Sourced from `branding/`           |
 
@@ -77,8 +77,9 @@ The `imageType` column is the Play `AppImageType` enum value that
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
-All three classes are script-reproducible and all three now ship the full set v2
-at three slots each (Play accepts 2–8 per type). The tablet files sat at two for
+No class is script-reproducible any more (#3244 removed the script). The phone
+class ships set v3 at four slots since #3321; both tablet classes still ship
+set v2 at three slots each (Play accepts 2–8 per type). The tablet files sat at two for
 one release — they were captured while `multi-model` was dropped from tablet runs
 and were not re-shot when #2913 fixed its framing; #3106 re-captured them. The
 set is what a run *writes*, and a run also **prunes**
@@ -93,6 +94,16 @@ tablet PNGs that #2907 has now retired were shot from a **4.23.0** build and
 predate the demo bottom-overlay fix (#2780).
 
 ## Regenerating the screenshots
+
+> **The capture script (`capture-play-store-screenshots.sh`) was removed in
+> #3244** along with the rest of the agent harness, and nothing replaced it. A
+> re-capture today is manual: build the debug APK, drive each screen on a QA
+> AVD (never a personal device — `emulator-5554` for phone, the tablet AVDs
+> below for tablets), `adb exec-out screencap`, crop the status bar (96 px on
+> the phone AVD), and judge every frame by eye — set v3 (#3321) was produced
+> exactly this way. Everything below is kept as the record of how the tablet
+> sets were shot and of every capture-side trap that scripted era uncovered;
+> re-read it before any re-capture, the traps have not moved.
 
 ```bash
 # Phone (default) — on the Pixel-class QA AVD
