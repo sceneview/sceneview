@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
@@ -105,6 +106,7 @@ class MainActivity : ComponentActivity() {
         // app on the device could flip it on once via `--ez qa_mode true` and leave the
         // showcase frozen until process death.
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
+        DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
         // (`/data/data/...`, photos, configs). The path is consumed once by
@@ -140,11 +142,19 @@ class MainActivity : ComponentActivity() {
         pendingDemoId.value = DeepLinkRouter.validate(intent.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent.data)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
+        DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
         DemoSettings.initialTab = resolveInitialTab(intent)
     }
+
+    /**
+     * `--ez qa_backdrop true|false` forces the QA camera backdrop on or off (#3308); absent,
+     * it follows `qa_mode`. Tracks the latest intent like `qa_mode` does.
+     */
+    private fun resolveQaBackdrop(intent: Intent?): Boolean? =
+        intent?.takeIf { it.hasExtra("qa_backdrop") }?.getBooleanExtra("qa_backdrop", false)
 
     /**
      * Resolves the optional initial tab a consolidated demo should pre-select from an
@@ -401,10 +411,27 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         }
 
         // Confirms a sent bug report (#3263) — sits above everything else in
-        // this Box, same z-order reasoning as the update banner above.
+        // this Box, same z-order reasoning as the update banner above. This Box
+        // wraps the whole NavHost, so it has no visibility into whichever
+        // bottom chrome the current screen shows (RootScreen's NavigationBar,
+        // ~80dp, or a DemoScaffold's floating dock). Previously it had zero
+        // bottom padding and rendered flush with the window edge — on top of
+        // that chrome's buttons in z-order instead of floating clear above
+        // them, and only partly visible behind the gesture nav bar (#3325).
+        // `SETTINGS_FAB_RESERVED_SPACE` (104dp, `DemoScaffold.kt`) is the
+        // dock's own floor and comfortably clears the shorter NavigationBar
+        // too, so it doubles as the conservative clearance here.
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                    )
+                )
+                .padding(horizontal = SceneViewTokens.Space.md)
+                .padding(bottom = SETTINGS_FAB_RESERVED_SPACE + SceneViewTokens.Space.sm),
         )
     }
 }

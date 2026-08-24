@@ -90,7 +90,19 @@ data class PlacementModel(
     val id: String,
     val displayName: String,
     val assetLocation: String,
-    val scaleToUnits: Float = 0.3f,
+    /**
+     * The object's **real-world size** in metres — its longest dimension as it would be if
+     * you put the real thing in the room. Fed to `ModelNode(scaleToUnits = …)`, so this is
+     * literally what 100 % means on the pinch readout (#3326).
+     *
+     * Every row used to carry the same `0.3f`, which is where "AR placement doesn't feel
+     * right" starts: a soldier, a fox, a lantern and a toy car all arrived as 30 cm
+     * objects, so nothing in the room was ever the size the room says it should be. The
+     * numbers here are the physical objects' sizes, not a framing convenience — and they
+     * are declared per row rather than trusted from the glTF because these assets are not
+     * authored in metres (the Khronos Fox is ~140 units long).
+     */
+    val realWorldSizeMeters: Float = 0.3f,
     val source: PlacementModelSource = PlacementModelSource.Bundled,
     val pending: Boolean = false,
 )
@@ -110,11 +122,38 @@ data class PlacementModel(
  * distinct silhouette and material, so cycling the picker visibly changes the room.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
-    PlacementModel(id = "soldier", displayName = "Soldier", assetLocation = "models/threejs_soldier.glb"),
-    PlacementModel(id = "fox", displayName = "Fox", assetLocation = "models/khronos_fox.glb"),
-    PlacementModel(id = "lantern", displayName = "Lantern", assetLocation = "models/khronos_lantern.glb"),
-    PlacementModel(id = "toy-car", displayName = "Toy Car", assetLocation = "models/khronos_toy_car.glb"),
-    PlacementModel(id = "shiba", displayName = "Shiba", assetLocation = "models/shiba.glb"),
+    // Sizes are the real objects', in metres, on their longest axis — see
+    // PlacementModel.realWorldSizeMeters (#3326).
+    PlacementModel(
+        id = "soldier",
+        displayName = "Soldier",
+        assetLocation = "models/threejs_soldier.glb",
+        realWorldSizeMeters = 1.8f, // an adult, standing
+    ),
+    PlacementModel(
+        id = "fox",
+        displayName = "Fox",
+        assetLocation = "models/khronos_fox.glb",
+        realWorldSizeMeters = 0.9f, // nose to tail
+    ),
+    PlacementModel(
+        id = "lantern",
+        displayName = "Lantern",
+        assetLocation = "models/khronos_lantern.glb",
+        realWorldSizeMeters = 1.6f, // the Khronos asset is a street lantern post
+    ),
+    PlacementModel(
+        id = "toy-car",
+        displayName = "Toy Car",
+        assetLocation = "models/khronos_toy_car.glb",
+        realWorldSizeMeters = 0.18f, // it is a toy — it should read as one
+    ),
+    PlacementModel(
+        id = "shiba",
+        displayName = "Shiba",
+        assetLocation = "models/shiba.glb",
+        realWorldSizeMeters = 0.6f, // withers height of the breed
+    ),
 )
 
 /**

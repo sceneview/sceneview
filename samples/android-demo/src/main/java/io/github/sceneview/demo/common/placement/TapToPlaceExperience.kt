@@ -45,9 +45,9 @@ import io.github.sceneview.rememberModelLoader
  *    review note). Drawn here only for a host that has no app bar of its own (the AR View
  *    tab); inside a [io.github.sceneview.demo.DemoScaffold] the scaffold's own top-start
  *    back arrow is the same affordance and this one stays off.
- *  - the **status pill** — inherited from the session's default overlays, fed the one
- *    label computed here, so both surfaces say "Tap a surface to place Fox" and then
- *    "3 placed · tap to add" in the same words at the same moment.
+ *  - the **coaching line** — inherited from the session's default overlays, fed the one
+ *    label computed here, so both surfaces say "Tap to place Fox" in the same words at the
+ *    same moment, and both go quiet at the same moment too (#3326).
  *  - the **model picker** — [PlacementModelPickerSheet] plus [PlacementModelBar], the
  *    richer of the two variants, and now applied on both surfaces.
  *  - **tap-time model resolution** — the [PlacementModel] is read from [picker] *inside*
@@ -109,7 +109,7 @@ fun TapToPlaceExperience(
                     PlacementSpec(
                         assetLocation = model.assetLocation,
                         displayName = model.displayName,
-                        scaleToUnits = model.scaleToUnits,
+                        realWorldSizeMeters = model.realWorldSizeMeters,
                     )
                 }
             },

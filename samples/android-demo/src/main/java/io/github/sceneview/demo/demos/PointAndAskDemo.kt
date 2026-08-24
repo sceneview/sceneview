@@ -85,6 +85,7 @@ import io.github.sceneview.demo.ai.AskEngine
 import io.github.sceneview.demo.ai.AskEngineStatus
 import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
@@ -492,6 +493,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                                         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                                     )
                                     putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                                    putVoiceSilenceExtras()
                                 }
                                 runCatching { speechLauncher.launch(intent) }
                             },

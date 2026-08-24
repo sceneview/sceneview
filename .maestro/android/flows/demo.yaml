@@ -65,6 +65,7 @@ appId: io.github.sceneview.demo
     arguments:
       demo: ${DEMO_ID}
       qa_mode: true
+      qa_backdrop: true
 
 # Let the first frame render. The demo scaffold shows a scrim for up to 12 s
 # while the engine warms up; 6 s is plenty for the deep-linked demo to be
@@ -152,6 +153,7 @@ appId: io.github.sceneview.demo
           arguments:
             demo: ${DEMO_ID}
             qa_mode: true
+            qa_backdrop: true
             camera_distance: ${CAMERA_DISTANCE}
       - waitForAnimationToEnd:
           timeout: 6000
@@ -213,6 +215,7 @@ appId: io.github.sceneview.demo
           arguments:
             demo: ${DEMO_ID}
             qa_mode: true
+            qa_backdrop: true
             camera_distance: "40"
       - waitForAnimationToEnd:
           timeout: 6000

@@ -30,6 +30,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.demos.internal.Shape
 import io.github.sceneview.demo.demos.internal.ShapeFraming
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -220,7 +221,7 @@ private fun ShapeSection(
     mode: CustomGeometryMode,
     onModeChange: (CustomGeometryMode) -> Unit,
 ) {
-    var selectedShape by remember { mutableStateOf("Triangle") }
+    var selectedShape by remember { mutableStateOf(Shape.Triangle) }
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
@@ -229,9 +230,9 @@ private fun ShapeSection(
     val starMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Accent)
     val hexagonMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.TintLight)
     val shapeMaterials = mapOf(
-        "Triangle" to triangleMaterial,
-        "Star" to starMaterial,
-        "Hexagon" to hexagonMaterial,
+        Shape.Triangle to triangleMaterial,
+        Shape.Star to starMaterial,
+        Shape.Hexagon to hexagonMaterial,
     )
     // Outlines live in ShapeFraming so the framing test measures the vertices actually
     // extruded, not a copy of them (#2937).
@@ -250,11 +251,11 @@ private fun ShapeSection(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("Triangle", "Star", "Hexagon").forEach { shape ->
+                Shape.entries.forEach { shape ->
                     FilterChip(
                         selected = selectedShape == shape,
                         onClick = { selectedShape = shape },
-                        label = { Text(shape) }
+                        label = { Text(shape.label) }
                     )
                 }
             }

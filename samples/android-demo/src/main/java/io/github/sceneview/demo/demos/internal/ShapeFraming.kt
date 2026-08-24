@@ -31,6 +31,22 @@ import kotlin.math.sin
  * distance would become `|orbitHomePosition − contentCentre|` and [CAMERA_DISTANCE] would need
  * re-deriving.
  */
+/**
+ * The three outlines [ShapeFraming] offers, and the chip label each one shows in
+ * [io.github.sceneview.demo.demos.CustomGeometryDemo]'s picker.
+ *
+ * Was a bare `String` used as both the display label AND the dispatch key into three
+ * separately hand-copied maps/state (`selectedShape`, `shapeMaterials`, `shapePaths`) —
+ * every site had to repeat the literal `"Triangle"` / `"Star"` / `"Hexagon"` correctly, with
+ * nothing to catch a typo or a future `stringResource()` swap at compile time (#3322). An
+ * enum makes the three maps exhaustive-checkable and the label the one place text lives.
+ */
+internal enum class Shape(val label: String) {
+    Triangle("Triangle"),
+    Star("Star"),
+    Hexagon("Hexagon"),
+}
+
 internal object ShapeFraming {
 
     /** Depth the shape is authored at, and the camera's orbit target. */
@@ -73,11 +89,11 @@ internal object ShapeFraming {
         }
     }
 
-    /** Every outline the sub-mode offers, keyed by its chip label. */
-    val paths: Map<String, List<Position2>> = mapOf(
-        "Triangle" to trianglePath,
-        "Star" to starPath,
-        "Hexagon" to hexagonPath,
+    /** Every outline the sub-mode offers, keyed by [Shape] (#3322 — was keyed by the raw label). */
+    val paths: Map<Shape, List<Position2>> = mapOf(
+        Shape.Triangle to trianglePath,
+        Shape.Star to starPath,
+        Shape.Hexagon to hexagonPath,
     )
 
     /**
