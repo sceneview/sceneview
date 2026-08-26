@@ -52,4 +52,12 @@ orientation, its scale, the brushed-metal dish and the olives are all correct; i
 `KHR_materials_iridescence` contribution specifically that does not appear on that GL
 path. Confirm on a real GPU before quoting iridescence as the reason for this pick.
 
+The three GLBs **moved** out of `samples/android-tv-demo/src/main/assets/models/` rather
+than being copied. The TV demo merges the phone demo's asset folder via
+`sourceSets.main.assets.srcDirs`, so the same `models/x.glb` present in both folders is
+`Error: Duplicate resources` at `mergeAssets` — a hard build failure, not a last-one-wins.
+The TV demo reaches all three at the identical `models/...` paths through that same line;
+its APK still ships them at the same paths and the same byte sizes, and `TvModelListTest`
+searches both folders, which is what makes the move a no-op for the TV demo.
+
 Bundled model assets grow 17.7 MB → 30.1 MB.
