@@ -211,8 +211,9 @@ for attempt in range(1, POLL_ATTEMPTS + 1):
             # Degraded path: no platform is resolvable, so match on
             # the build number alone and keep polling until it shows
             # up. Be honest about what this does NOT prove —
-            # `deploy-macos` computes the SAME `run_number + 1000`
-            # against the SAME app record, so a number match here
+            # `deploy-macos` receives the SAME build number (the
+            # `check` job's timestamp output, #3081) against the
+            # SAME app record, so a number match here
             # cannot distinguish the two platforms' builds, exactly
             # as the pre-#2963 newest-VALID fallback could not. It is
             # no worse than what it replaces, and it is still tighter
@@ -246,8 +247,9 @@ if not build_id:
     )
     print(f"::error::After ~{2 + POLL_ATTEMPTS} minutes, {detail} — Apple processing overran or the "
           "upload failed. The release was NOT submitted for review. RECOVERY: dispatch a FRESH run — "
-          "re-running this one reuses the same github.run_number, so it re-archives the same "
-          "CFBundleVersion and Apple rejects the duplicate upload before the submit step is reached.")
+          "re-running only the failed job reuses the `check` job's build-number output, so it "
+          "re-archives the same CFBundleVersion and Apple rejects the duplicate upload before the "
+          "submit step is reached (#3081).")
     raise SystemExit(1)
 print(f"Selected iOS build: {build_version} (ID: {build_id})")
 
@@ -908,9 +910,10 @@ try:
                 # unreadable body is a reporting problem, not a
                 # release failure. Raising here would turn a
                 # SUCCESSFUL submission into a red step that cannot
-                # even be re-run (the same github.run_number
+                # even be re-run (re-running the failed job reuses
+                # the `check` job's build-number output, so it
                 # re-archives a duplicate CFBundleVersion, which
-                # Apple rejects). Pre-existing on main, kept from
+                # Apple rejects — #3081). Pre-existing on main, kept from
                 # biting here (#2963 review).
                 state = "? (response body unreadable)"
             print(f"Successfully submitted for App Store review! State: {state}")
