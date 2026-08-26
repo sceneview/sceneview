@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-iOS demo: the app mirrors the Android showcase redesign — a Showcase · AR View · About tab bar, a home with a Model Viewer hero, category chips, search and 5:4 media cards (previews shared with Android), the online gallery behind a "Browse online models" card, a glass chrome (`.demoChrome`) with back button, identity pill, overflow menu and floating dock replacing the gear FAB, and a Model Viewer with fitted framing, Models / Environment sheets, an animation bar and a "View in AR" handoff.

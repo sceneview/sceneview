@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.32.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.33.0")
 ```
 
 ```swift
