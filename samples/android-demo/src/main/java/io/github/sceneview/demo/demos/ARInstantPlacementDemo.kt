@@ -46,6 +46,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.node.AnchorNode as ArAnchorNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -461,6 +462,13 @@ private fun InstantPlacementScene(
     // the overlay never projects a destroyed node.
     val editableNodes = remember { mutableStateMapOf<Int, ModelNode>() }
 
+    // The AnchorNode of each placed model. Needed for two things: the drag gesture is
+    // handled by the ANCHOR node (detach on begin, re-anchor on end — AnchorNode's
+    // `isPositionEditable` is a plain `true` field, not gated on `isEditable`), so the
+    // feedback overlay listens to it for move events; and the lost-anchor reconciliation
+    // below must read the node's CURRENT anchor, not the placement-time one.
+    val anchorNodes = remember { mutableStateMapOf<Int, ArAnchorNode>() }
+
     // Placement and tracking state live in the caller (see [InstantPlacementSceneState])
     // so the "Clear All" control and the status pills can sit in the scaffold's overlay
     // slots; aliased here so the scene body reads exactly as it did.
@@ -504,14 +512,24 @@ private fun InstantPlacementScene(
                 // Hiding those models + surfacing "Lost" on the badge is cheaper than
                 // a re-hit-test recovery and keeps the demo deterministic.
                 placedModels.forEach { placed ->
-                    val anchorStopped = placed.anchor.trackingState == TrackingState.STOPPED
+                    val anchorNode = anchorNodes[placed.id]
+                    // A drag on the anchor node DELIBERATELY detaches the anchor for the
+                    // duration of the gesture and re-anchors on release — reconciling
+                    // mid-gesture would read that as anchor loss and kill the model
+                    // (observed on the Pixel 4a rig: model gone ~0.3s into every drag,
+                    // with ARCore double-detach warnings).
+                    if (anchorNode?.editingTransforms?.isNotEmpty() == true) return@forEach
+                    // Read the node's CURRENT anchor: after a drag the AnchorNode holds a
+                    // fresh anchor and the placement-time one is dead.
+                    val activeAnchor = anchorNode?.anchor ?: placed.anchor
+                    val anchorStopped = activeAnchor.trackingState == TrackingState.STOPPED
                     if (lostAnchors[placed.id] != anchorStopped) {
                         lostAnchors[placed.id] = anchorStopped
                     }
                     if (anchorStopped) {
                         // Free ARCore's anchor slot — there are only a few dozen per
                         // session and dead Instant Placement points never recover.
-                        runCatching { placed.anchor.detach() }
+                        runCatching { activeAnchor.detach() }
                         // Don't refresh the trackingMethod snapshot once the anchor's
                         // gone — the underlying InstantPlacementPoint may still report
                         // its last method, which would mask the "Lost" state behind a
@@ -585,7 +603,10 @@ private fun InstantPlacementScene(
                         // permanent loss is still handled above via lostAnchors (#1435).
                         AnchorNode(
                             anchor = placed.anchor,
-                            visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES
+                            visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES,
+                            apply = {
+                                anchorNodes[placed.id] = this
+                            }
                         ) {
                             // `fileLocation =` forces the URL-capable overload (handles both
                             // the `file://` streamed URI and the bundled asset path). See the
@@ -606,7 +627,10 @@ private fun InstantPlacementScene(
                                     }
                                 )
                                 DisposableEffect(placed.id) {
-                                    onDispose { editableNodes.remove(placed.id) }
+                                    onDispose {
+                                        editableNodes.remove(placed.id)
+                                        anchorNodes.remove(placed.id)
+                                    }
                                 }
                             }
                         }
@@ -622,8 +646,17 @@ private fun InstantPlacementScene(
         for (id in editableNodes.keys.toList()) {
             val node = editableNodes[id] ?: continue
             key(id) {
+                val feedback = rememberNodeEditingFeedback(node)
+                // The drag gesture is handled by the parent ANCHOR node (detach →
+                // re-anchor), not by the model node — subscribe the same feedback state
+                // to it so the move visuals (contact shadow + accent ring) track drags.
+                val anchorNode = anchorNodes[id]
+                DisposableEffect(feedback, anchorNode) {
+                    anchorNode?.addEditingListener(feedback)
+                    onDispose { anchorNode?.removeEditingListener(feedback) }
+                }
                 NodeEditingOverlay(
-                    state = rememberNodeEditingFeedback(node),
+                    state = feedback,
                     view = view,
                     modifier = Modifier.matchParentSize(),
                 )
