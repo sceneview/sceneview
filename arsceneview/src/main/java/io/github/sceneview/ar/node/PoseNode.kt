@@ -126,7 +126,10 @@ open class PoseNode(
     internal var frameUpdatedAnchors: Set<com.google.ar.core.Anchor>? = null
 
     // Rotation edition is disabled by default because retrieved from the pose.
+    // The custom getter keeps [Node]'s `isEditable &&` gate, which a plain field
+    // override would silently drop.
     override var isRotationEditable = false
+        get() = isEditable && field
 
     override var isVisible
         get() = super.isVisible &&

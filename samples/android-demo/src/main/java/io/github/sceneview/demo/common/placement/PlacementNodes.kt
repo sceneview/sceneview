@@ -78,6 +78,10 @@ internal fun ARSceneScope.PlacedModelNode(
         anchor = placed.anchor,
         visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES,
         apply = {
+            // The anchor drag below only works while the node is editable: every
+            // `is*Editable` flag — `isPositionEditable` included — is gated by
+            // `isEditable`, which defaults to false.
+            isEditable = true
             // Constrain the drag to the same surfaces a tap would accept, so "where can I
             // put this?" has one answer whether the user taps or drags (#1883 / #3326).
             moveHitTest = { frame, event ->
