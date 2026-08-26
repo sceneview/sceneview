@@ -16,8 +16,8 @@ You are an expert in SceneView, the #1 open-source 3D & AR SDK for Android and i
 
 ## Android dependencies
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.0.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.0.0")   // AR
+implementation("io.github.sceneview:sceneview:4.32.0")    // 3D
+implementation("io.github.sceneview:arsceneview:4.32.0")  // AR
 ```
 
 ## Critical rules
@@ -70,14 +70,25 @@ fun MyARScreen() {
 
 ## iOS (SceneViewSwift via SPM)
 ```swift
+// SPM: https://github.com/sceneview/sceneview.git from: "4.32.0"
 import SceneViewSwift
-SceneView(environment: .studio) {
-    ModelNode(named: "helmet.usdz").scaleToUnits(1.0)
+
+struct ContentView: View {
+    @State private var model: ModelNode?
+
+    var body: some View {
+        SceneView { content in
+            if let model { content.addChild(model.entity) }
+        }
+        .environment(.studio)
+        .cameraControls(.orbit)
+        .task { model = try? await ModelNode.load("helmet.usdz") }
+    }
 }
 ```
 
-## 46+ node types (generated from the node sources — see .cursorrules for the
-## grouped list). 3D (`io.github.sceneview.node`, 26): BillboardNode, CameraNode, CapsuleNode, ConeNode, ContactShadowNode, CubeNode, CylinderNode, DynamicSkyNode, FogNode, ImageNode, LightNode, LineNode, MeshNode, ModelNode, Node, PathNode, PhysicsNode, PlaneNode, ReflectionProbeNode, ShapeNode, SphereNode, SplatNode, TextNode, TorusNode, VideoNode, ViewNode
+## 48+ node types (generated from the node sources — see .cursorrules for the
+## grouped list). 3D (`io.github.sceneview.node`, 28): BillboardNode, CameraNode, CapsuleNode, ConeNode, ContactShadowNode, CubeNode, CylinderNode, DynamicSkyNode, FogNode, GeometryNode, ImageNode, LightNode, LineNode, MeshNode, ModelNode, Node, PathNode, PhysicsNode, PlaneNode, ReflectionProbeNode, RenderableNode, ShapeNode, SphereNode, SplatNode, TextNode, TorusNode, VideoNode, ViewNode
 ## AR (`io.github.sceneview.ar.node`, 20): ARCameraNode, ARFogNode, AnchorNode, AugmentedFaceNode, AugmentedImageNode, CloudAnchorNode, DepthHitResultNode, DepthMeshNode, HitResultNode, PlacementReticleNode, PlaneNode, PointCloudNode, PoseNode, ReticleNode, RooftopAnchorNode, SceneMeshNode, ShadowReceiverPlaneNode, StreetscapeGeometryNode, TerrainAnchorNode, TrackableNode
 
 ## MCP Server
