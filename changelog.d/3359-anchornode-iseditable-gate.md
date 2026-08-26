@@ -1,6 +1,6 @@
 <!-- category: Fixed -->
 <!-- breaking -->
-- **`AnchorNode` no longer answers move gestures unless `isEditable = true`.** Its
+- **`AnchorNode` no longer answers move gestures unless `isEditable = true` ([#3359](https://github.com/sceneview/sceneview/pull/3359)).** Its
   `isPositionEditable` override was a plain field that silently dropped `Node`'s
   `isEditable &&` gate, so a drag on any anchored node detached and re-created its anchor
   even with editing off — observed as ARCore "already removed/detached" bursts killing
