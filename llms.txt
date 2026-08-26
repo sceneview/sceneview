@@ -5460,14 +5460,14 @@ of Android's 27.
 | Custom materials, shaders, post-processing | platform-native API |
 | Splat, Video, View, ContactShadow, Physics, Text nodes | platform-native API |
 
-**Renderer + status per platform** (do NOT generate code assuming iOS or Desktop render
-today — they draw a visible "not available yet" notice):
+**Renderer + status per platform** (do NOT generate code assuming iOS renders without
+the host factory — it draws a visible "not available yet" notice until registered):
 
 | Platform | Renderer | Status |
 |---|---|---|
 | Android | Filament, delegates to `SceneView { }` | Implemented |
 | iOS | RealityKit via `SceneViewSwift` | Implemented — needs a one-time app registration, see below |
-| Desktop (JVM) | Filament via a vendored FFM binding | Placeholder — needs the native build chain |
+| Desktop (JVM) | Filament via Maven filament-kmp (offscreen → Skia). JDK 22+ | Implemented |
 
 **iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
 the app supplies the renderer:
@@ -5596,9 +5596,9 @@ Gotchas:
   model" without throwing (a malformed glTF/GLB that Filament refuses to parse), so
   `SceneViewerError.cause` is `null` in the second case. Always delivered on the **main
   thread**, including for a failed download — unlike `onFrame`, which is on the render
-  thread — so a handler may touch UI directly. Raised on **Android only** today: desktop
-  is a placeholder that loads nothing, and the iOS Kotlin side raises none of its own,
-  forwarding only what the host's Swift factory reports.
+  thread — so a handler may touch UI directly. Raised on **Android and desktop**. The
+  iOS Kotlin side raises none of its own, forwarding only what the host's Swift factory
+  reports.
 - `ModelSource.Asset` takes a path relative to the app's bundled assets and **rejects any
   URI scheme** — `content://`, `file://`, `https://` all throw `IllegalArgumentException`
   from `commonMain`, so the refusal is identical on every platform. Without that check
@@ -7515,14 +7515,14 @@ Backpressure is absorbed by `rateHz`. Wire format: JSON-lines consumed by
 | macOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | visionOS | RealityKit | SwiftUI | via SceneViewSwift | Alpha |
 | Web | Filament.js + WebXR | Kotlin/JS | `samples/web-demo` | Alpha |
-| Desktop | Software renderer | Compose Desktop | `samples/desktop-demo` | Alpha |
+| Desktop | Filament via `SceneViewer` (filament-kmp) | Compose Desktop | `samples/desktop-demo` | Alpha |
 | Flutter | Filament/RealityKit | PlatformView | `samples/flutter-demo` | Alpha |
 | React Native | Filament/RealityKit | Fabric | `samples/react-native-demo` | Alpha |
-| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android implemented; iOS + Desktop placeholder |
+| Compose Multiplatform | per-platform (see below) | `sceneview-compose` | -- | Android, iOS, Desktop implemented |
 
 `sceneview-compose` is a viewer-subset façade over the renderers above, not a platform of
-its own — no AR, no custom materials. Android delegates to Filament today; the iOS
-(RealityKit) and Desktop actuals draw a "not available yet" notice until wired.
+its own — no AR, no custom materials. Android and desktop delegate to Filament; iOS
+needs a one-time RealityKit factory registration or it draws a "not available yet" notice.
 
 ### Flutter Bridge API
 Package: `flutter_sceneview` (pub.dev) — Alpha, Android + iOS only. Published at

@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
  * |---|---|---|
  * | Android | Filament, via the existing `SceneView { }` composable | implemented |
  * | iOS | RealityKit, via `SceneViewSwift` | implemented — needs a one-time app registration |
- * | Desktop (JVM) | Filament, via the vendored FFM binding | **placeholder — not wired yet** |
+ * | Desktop (JVM) | Filament, via filament-kmp (offscreen → Skia). JDK 22+ | implemented |
  *
  * On a platform still marked *placeholder*, this composable draws a visible notice
  * naming the platform and the reason instead of rendering a scene. It does not throw,
@@ -55,7 +55,8 @@ import androidx.compose.ui.Modifier
  *   touch point, or `null` when the tap missed the model. **On iOS a miss produces no
  *   call at all** rather than a call with `null`, and [ModelHit.position] is the tapped
  *   entity's bounds centre rather than the exact surface point — RealityKit's hit-test
- *   gesture only fires on a hit and reports no surface coordinate. See the module README.
+ *   gesture only fires on a hit and reports no surface coordinate. **On desktop the
+ *   position is the color-pick unprojected through the camera**; see the module README.
  * @param onFrame invoked once per rendered frame with the frame time in nanoseconds.
  *   Called on the platform's render-driving thread — keep it allocation-free.
  *
@@ -68,9 +69,8 @@ import androidx.compose.ui.Modifier
  *
  *   **Always called on the main thread**, on every failure path including a download —
  *   unlike [onFrame], which runs on the render thread. So a handler may touch UI
- *   directly. Currently raised on Android only: desktop is a placeholder that loads
- *   nothing, and on iOS the Kotlin side raises none of its own, forwarding only what the
- *   host's Swift factory reports.
+ *   directly. Raised on Android and desktop. On iOS the Kotlin side raises none of its
+ *   own, forwarding only what the host's Swift factory reports.
  */
 @Composable
 public expect fun SceneViewer(

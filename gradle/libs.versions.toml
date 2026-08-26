@@ -76,6 +76,10 @@ filamentWeb = "1.52.3"
 # Bumping the vendored Filament.js ⇒ bump this together and regenerate the 3
 # blobs in the same PR (the CONTRIBUTING.md invariant, applied to the site).
 filamentWebsite = "1.70.1"
+# Desktop Filament via filament-kmp on Maven. Independent of the three Filament
+# runtime pins above — this artifact vendors its own native Filament
+# (0.4.0 ships 1.75.0). Used only by sceneview-compose desktopMain.
+filamentKmp = "0.4.0"
 arCore = "1.54.0"
 
 # Networking
@@ -184,6 +188,8 @@ kotlin-math = { group = "dev.romainguy", name = "kotlin-math", version.ref = "ko
 filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
 filament-gltfio = { group = "com.google.android.filament", name = "gltfio-android", version.ref = "filament" }
 filament-utils = { group = "com.google.android.filament", name = "filament-utils-android", version.ref = "filament" }
+filament-kmp-compose = { group = "io.github.erkko68.filament", name = "filament-compose", version.ref = "filamentKmp" }
+filament-kmp-gltfio = { group = "io.github.erkko68.filament", name = "gltfio", version.ref = "filamentKmp" }
 
 # AR
 arcore = { group = "com.google.ar", name = "core", version.ref = "arCore" }

@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -7,39 +8,49 @@ plugins {
 }
 
 kotlin {
-    jvm("desktop")
+    // filament-kmp (via sceneview-compose desktop) is FFM — JDK 22+.
+    jvmToolchain(22)
+
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_22)
+        }
+    }
+
+    applyDefaultHierarchyTemplate()
 
     sourceSets {
-        val desktopMain by getting {
+        val commonMain by getting {
             dependencies {
-                // SceneView KMP core — declared as dependency but NOT used for rendering.
-                // This demo is a Compose Canvas wireframe renderer, not a SceneView integration.
-                api(project(":sceneview-core"))
-
-                // Compose Desktop
-                implementation(compose.desktop.currentOs)
+                implementation(project(":sceneview-compose"))
+                implementation(compose.runtime)
+                implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.ui)
-                implementation(compose.foundation)
-
-                // TODO: Filament JNI desktop libraries
-                // Filament provides native C++ libraries for Windows/Linux/macOS,
-                // but no published JVM/JNI bindings for desktop.
-                // When available, add LWJGL + Filament JNI dependencies here.
+                implementation(compose.components.resources)
             }
         }
 
-        val desktopTest by getting {
+        val desktopMain by getting {
             dependencies {
-                implementation(kotlin("test"))
+                implementation(compose.desktop.currentOs)
             }
         }
     }
 }
 
+compose.resources {
+    packageOfResClass = "io.github.sceneview.desktop.resources"
+    publicResClass = true
+}
+
 compose.desktop {
     application {
         mainClass = "io.github.sceneview.desktop.MainKt"
+        jvmArgs += "--enable-native-access=ALL-UNNAMED"
+        javaHome = javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(22))
+        }.get().metadata.installationPath.asFile.absolutePath
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

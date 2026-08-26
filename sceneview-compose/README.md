@@ -53,7 +53,7 @@ no honest common shape.
 |---|---|---|
 | Android | Filament, via `io.github.sceneview.SceneView` | ✅ implemented |
 | iOS | RealityKit, via `SceneViewSwift` | ✅ implemented — needs a one-time app registration, below |
-| Desktop (JVM) | Filament, via an FFM binding to be vendored from filament-kmp | ⏳ placeholder — binding not vendored yet, then needs the native build chain |
+| Desktop (JVM) | Filament, via filament-kmp (Maven). Offscreen readback → Skia. **JDK 22+** | ✅ implemented |
 
 Unimplemented platforms render a visible placeholder naming the platform and the reason,
 not an empty viewport — a blank box is indistinguishable from a model that failed to
@@ -174,6 +174,23 @@ iOS: gestures write into them, and writes drive the camera. Measured on the iOS 
 simulator — a 180-point horizontal drag moved the camera to the arithmetically expected
 −51.6° and reported exactly that back, and writing 90° from the app moved the camera
 there.
+
+## Desktop (JVM)
+
+Filament through [filament-kmp](https://github.com/Erkko68/filament-kmp) on Maven
+(`filament-compose` 0.4.0, `implementation` — never on the public API). Offscreen
+readback → Skia, inside filament-kmp. **JDK 22+** (FFM). Consumers must run with
+`--enable-native-access=ALL-UNNAMED`.
+
+`ModelSource.Asset` resolves against the JVM classpath. Prefer `ModelSource.Bytes`
+from a Compose Multiplatform resource. Sample: [`samples/desktop-demo`](../samples/desktop-demo).
+
+| | Android | Desktop |
+|---|---|---|
+| `onTap` / `ModelHit.position` | collision ray–surface | Filament color-pick unprojected through the view/projection matrices. A miss is `null`. If the pick lands before the camera has attached, the orbit target is used as a last resort |
+| `EnvironmentSource.Color` `alpha` / `Hdr(showSkybox = false)` | transparent surface (`isOpaque`) | same — the surface goes transparent (`FilamentSceneView(transparent = …)`, PREMUL readback, filament-kmp 0.4.0) |
+| `Lighting.ambientIntensity` | always applied | applies only with `EnvironmentSource.Hdr` — Default/Color have no IBL |
+| `onFrame` | Filament frame callback | filament-kmp `OnFrame` (Compose frame clock that drives the offscreen readback). Not invoked when the callback is null |
 
 ## Targets
 
