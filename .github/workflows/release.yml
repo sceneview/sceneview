@@ -665,7 +665,12 @@ jobs:
   pub-publish:
     name: Publish flutter_sceneview to pub.dev
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 20, not 15: the verify step below now budgets up to 10 min for pub.dev's
+    # own documented propagation window ("it may take up-to 10 minutes"), on
+    # top of ~1-2 min for checkout/flutter-action/dry-run/publish. 15 min left
+    # no margin and was itself part of why v4.33.0 went red on a publish that
+    # had actually landed.
+    timeout-minutes: 20
     needs: [breaking-change-guard]
     permissions:
       contents: read

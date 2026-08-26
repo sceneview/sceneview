@@ -68,10 +68,19 @@ VERSION="$3"
 [ -n "$PACKAGE" ] || usage
 [ -n "$VERSION" ] || usage
 
-# Per-registry defaults. npm and pub.dev are near-immediate; Central is not.
+# Per-registry defaults. npm is near-immediate; Central and pub.dev are not.
 case "$REGISTRY" in
     npm)   DEF_ATTEMPTS=5;  DEF_DELAY=20 ;;
-    pub)   DEF_ATTEMPTS=5;  DEF_DELAY=20 ;;
+    # 20 × 30s = 10 min. NOT a guess: pub.dev's own upload response says so
+    # verbatim — "it may take up-to 10 minutes before the new version is
+    # available" — yet the previous budget here was 5 × 20s = 100s, ~6x short
+    # of the bound pub.dev itself documents. v4.33.0 hit exactly that gap:
+    # the publish step's own log shows the server's "Successfully uploaded"
+    # message, the version was live on pub.dev minutes later, and the job
+    # still went red because verification gave up first (#3011/#3021 follow-up).
+    # v4.32.0 came within one retry of the same false red (FOUND on attempt
+    # 3/5, ~60s from the end of a 100s budget) — this was not a one-off.
+    pub)   DEF_ATTEMPTS=20; DEF_DELAY=30 ;;
     # 20 × 45s = 15 min, against the ~30 min OSSRH lag measured at v4.26.0.
     # Short of the worst case on purpose: the shared deadline, not this
     # number, is what keeps four artifacts inside one job timeout.
