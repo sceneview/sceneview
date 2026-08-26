@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -66,7 +67,7 @@ data class NodeEditingOverlayColors(
     /** Border/text tint while the pinch is pressing against `editableScaleRange`. */
     val limit: Color = Color(0xFFFFB4AB),
     /** Soft contact shadow under the node while dragging. */
-    val shadow: Color = Color(0x59000000),
+    val shadow: Color = Color(0x80000000),
 )
 
 /**
@@ -154,7 +155,8 @@ fun NodeEditingOverlay(
 
             if (showMove) {
                 // Soft contact shadow following the node's base — grounds the model on
-                // its target plane while it is being dragged.
+                // its target plane while it is being dragged. The thin accent ring keeps
+                // the placement readable on grounds too dark for the shadow itself.
                 scale(scaleX = 1f, scaleY = squash, pivot = base) {
                     drawCircle(
                         brush = Brush.radialGradient(
@@ -164,6 +166,12 @@ fun NodeEditingOverlay(
                         ),
                         radius = rx * 1.25f,
                         center = base,
+                    )
+                    drawCircle(
+                        color = colors.accent.copy(alpha = 0.7f),
+                        radius = rx,
+                        center = base,
+                        style = Stroke(width = 1.5.dp.toPx()),
                     )
                 }
             }
@@ -187,13 +195,15 @@ fun NodeEditingOverlay(
 
             if (showRotation) {
                 scale(scaleX = 1f, scaleY = squash, pivot = base) {
+                    // Faint full track…
                     drawCircle(
-                        color = colors.accent.copy(alpha = 0.45f),
+                        color = colors.accent.copy(alpha = 0.3f),
                         radius = rx,
                         center = base,
-                        style = Stroke(width = 2.5.dp.toPx()),
+                        style = Stroke(width = 2.dp.toPx()),
                     )
-                    // Live sweep: grows with the twist since the gesture began.
+                    // …with a bold live sweep growing with the twist since the gesture
+                    // began — thicker and full-opacity so it separates from the track.
                     drawArc(
                         color = colors.accent,
                         startAngle = -90f,
@@ -201,7 +211,7 @@ fun NodeEditingOverlay(
                         useCenter = false,
                         topLeft = Offset(base.x - rx, base.y - rx),
                         size = Size(rx * 2f, rx * 2f),
-                        style = Stroke(width = 4.dp.toPx()),
+                        style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
                     )
                 }
             }
@@ -295,21 +305,33 @@ private class NodeScreenAnchors {
         val transform = node.worldTransform
         fun world(p: Float3) = (transform * Float4(p, 1f)).xyz
 
-        val radius = max(halfExtent.x, halfExtent.z)
-        val basePx = view.worldToScreen(world(center - Float3(0f, halfExtent.y, 0f)))
+        // The AABB corner over-estimates the visual footprint of roundish models by up
+        // to √2 — pull the ring in so it reads as hugging the base, not as a pedestal.
+        val radius = max(halfExtent.x, halfExtent.z) * RING_RADIUS_FACTOR
+        val baseY = center.y - halfExtent.y
+        // Four points of the base circle. The on-screen ellipse is fitted to their
+        // projections rather than centered on the projected 3D center — in perspective a
+        // floor circle's near edge drops much further below the center than its far edge
+        // rises above it, so a center-symmetric ellipse would overlap the model.
+        val xP = view.worldToScreen(world(Float3(center.x + radius, baseY, center.z)))
+        val xM = view.worldToScreen(world(Float3(center.x - radius, baseY, center.z)))
+        val zP = view.worldToScreen(world(Float3(center.x, baseY, center.z + radius)))
+        val zM = view.worldToScreen(world(Float3(center.x, baseY, center.z - radius)))
         val topPx = view.worldToScreen(world(center + Float3(0f, halfExtent.y, 0f)))
-        val edgeXPx = view.worldToScreen(world(center + Float3(radius, -halfExtent.y, 0f)))
-        val edgeZPx = view.worldToScreen(world(center + Float3(0f, -halfExtent.y, radius)))
 
         viewportSize = Size(view.viewport.width.toFloat(), view.viewport.height.toFloat())
-        base = basePx?.let { Offset(it.x, it.y) }
         top = topPx?.let { Offset(it.x, it.y) }
-        if (basePx != null && edgeXPx != null && edgeZPx != null) {
-            radiusX = max(
-                abs(edgeXPx.x - basePx.x),
-                abs(edgeZPx.x - basePx.x),
-            ).coerceAtLeast(1f)
-            radiusY = max(abs(edgeXPx.y - basePx.y), abs(edgeZPx.y - basePx.y))
+        if (xP != null && xM != null && zP != null && zM != null) {
+            base = Offset(
+                (xP.x + xM.x + zP.x + zM.x) / 4f,
+                (xP.y + xM.y + zP.y + zM.y) / 4f,
+            )
+            // Semi-axes from the two projected chords: the X pair spans the ellipse
+            // horizontally, the Z (depth) pair spans it vertically.
+            radiusX = (abs(xP.x - xM.x) / 2f).coerceAtLeast(1f)
+            radiusY = max(abs(zP.y - zM.y), abs(xP.y - xM.y)) / 2f
+        } else {
+            base = null
         }
     }
 
@@ -357,6 +379,9 @@ private fun Node.localBounds(): Pair<Float3, Float3> {
 }
 
 private const val DEFAULT_HALF_EXTENT = 0.25f
+
+/** See the [NodeScreenAnchors.update] comment — AABB corner → visual footprint. */
+private const val RING_RADIUS_FACTOR = 0.85f
 
 /** Keep the base ellipse readable even when the camera is nearly at node level. */
 private const val MIN_RING_SQUASH = 0.10f

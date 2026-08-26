@@ -122,7 +122,6 @@ fun GestureFeedbackPreviewDemo(onBack: () -> Unit) {
                         ModelNode(
                             modelInstance = instance,
                             scaleToUnits = 0.6f,
-                            position = Position(y = 0.3f),
                             isEditable = true,
                             apply = {
                                 isPositionEditable = true
@@ -131,6 +130,16 @@ fun GestureFeedbackPreviewDemo(onBack: () -> Unit) {
                                 // range is ABSOLUTE local scale — scaleToUnits means the
                                 // start scale is nowhere near 1.0.
                                 editableScaleRange = (scale.x * 0.5f)..(scale.x * 2f)
+                                // The helmet asset's origin is its AABB center; sit the
+                                // model ON the floor instead of half-burying it, both at
+                                // placement and on every drag (a drag puts the node
+                                // ORIGIN at the floor hit point).
+                                fun baseLift() = -(center.y - halfExtent.y) * scale.x
+                                position = Position(y = baseLift())
+                                onMove = { _, _, worldPos ->
+                                    worldPosition = worldPos + Position(y = baseLift())
+                                    false
+                                }
                                 modelNodeRef.value = this
                             }
                         )
