@@ -132,7 +132,11 @@ data class PlacementModel(
  * Filament can render, and a fox in a living room is not a thing anyone places. They are
  * replaced by three Khronos glTF-Sample-Assets pieces that each drive a *different* material
  * model — sheen (velvet), sheen + specular, and iridescence + transmission + volume — so the
- * six rows now read as a small showroom rather than as a conformance suite. Both GLBs stay
+ * six rows now read as a small showroom rather than as a conformance suite. (Verified on
+ * `emulator-5554`: both sheen rows read as velvet. The dish's iridescent shell renders as a
+ * dark glossy form there with no thin-film shift — correct geometry, scale and metal, but
+ * the iridescence contribution does not appear on that emulator's ES 3.0 GL translator, and
+ * has not yet been confirmed on a real GPU.) Both GLBs stay
  * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARTerrainAnchorDemo`
  * loads the fox directly, so nothing is deleted, only re-curated.
  */
@@ -415,9 +419,18 @@ private fun PlacementModelCard(
                 // way to know what a row looked like was to place it. Streamed rows keep
                 // the glyph: their bytes are not in the APK, so there is no thumbnail to
                 // show that would be honest about what lands.
-                val thumbnail = ModelThumbnails.resourceFor(
-                    model.assetLocation.substringAfterLast('/').substringBeforeLast('.'),
-                )
+                //
+                // Guarded on `Bundled`, and that guard is load-bearing: a streamed row
+                // whose download is still in flight carries its FALLBACK's asset path in
+                // `assetLocation`, so an unguarded lookup finds the fallback's thumbnail
+                // and the card shows "Coffee Mug" over a picture of the olive dish. That
+                // is the #2940 defect drawn as a picture instead of rendered in a frame.
+                val thumbnail = model.source.takeIf { it == PlacementModelSource.Bundled }
+                    ?.let {
+                        ModelThumbnails.resourceFor(
+                            model.assetLocation.substringAfterLast('/').substringBeforeLast('.'),
+                        )
+                    }
                 if (thumbnail != null) {
                     Image(
                         painter = painterResource(thumbnail),

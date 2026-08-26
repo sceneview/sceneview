@@ -44,4 +44,12 @@ the Iridescent Dish carried a `sourceUrl` that 404s (`IridescenceDishWithOlives`
 directory is `IridescentDishWithOlives`) plus the same wrong author. Both are corrected and
 every CREDITS surface regenerated.
 
+One caveat worth recording rather than hiding: on `emulator-5554` (Android Emulator
+OpenGL ES translator, ES 3.0 over Metal) the sofa's and chair's sheen reads exactly as
+intended, but the dish's iridescent shell renders as a dark glossy form with no
+thin-film colour shift under either the studio or the outdoor IBL. The model, its
+orientation, its scale, the brushed-metal dish and the olives are all correct; it is the
+`KHR_materials_iridescence` contribution specifically that does not appear on that GL
+path. Confirm on a real GPU before quoting iridescence as the reason for this pick.
+
 Bundled model assets grow 17.7 MB → 30.1 MB.
