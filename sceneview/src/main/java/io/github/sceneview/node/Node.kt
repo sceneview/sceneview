@@ -748,6 +748,23 @@ open class Node protected constructor(
         get() = gestureDelegate.editingTransforms
         set(value) { gestureDelegate.editingTransforms = value }
 
+    /**
+     * Registers a multi-consumer observer of editing gestures on this node.
+     *
+     * Unlike the single-slot `onMove`/`onRotate`/`onScale` lambdas, any number of
+     * [io.github.sceneview.gesture.NodeEditingListener]s can be attached without
+     * clobbering each other — this is the hook behind the opt-in gesture feedback UI
+     * (`rememberNodeEditingFeedback` / `NodeEditingOverlay`).
+     */
+    fun addEditingListener(listener: io.github.sceneview.gesture.NodeEditingListener) {
+        gestureDelegate.editingListeners += listener
+    }
+
+    /** Removes a listener previously registered with [addEditingListener]. */
+    fun removeEditingListener(listener: io.github.sceneview.gesture.NodeEditingListener) {
+        gestureDelegate.editingListeners -= listener
+    }
+
     var onSmoothEnd
         get() = animationDelegate.onSmoothEnd
         set(value) { animationDelegate.onSmoothEnd = value }
