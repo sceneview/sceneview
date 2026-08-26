@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -56,6 +57,10 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.gesture.NodeEditingOverlay
+import io.github.sceneview.gesture.rememberNodeEditingFeedback
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -445,8 +450,16 @@ private fun InstantPlacementScene(
     state: InstantPlacementSceneState,
 ) {
     val engine = rememberEngine()
+    // Hoisted so the gesture-feedback overlay below can project world → screen through
+    // the same Filament view the AR scene renders with.
+    val view = rememberARView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+
+    // Placed editable nodes, keyed by placed-model id, for the on-model gesture
+    // feedback overlays. Entries are removed on disposal (Clear All / lost anchor) so
+    // the overlay never projects a destroyed node.
+    val editableNodes = remember { mutableStateMapOf<Int, ModelNode>() }
 
     // Placement and tracking state live in the caller (see [InstantPlacementSceneState])
     // so the "Clear All" control and the status pills can sit in the scaffold's overlay
@@ -463,6 +476,7 @@ private fun InstantPlacementScene(
         ARSceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
+            view = view,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
@@ -586,12 +600,33 @@ private fun InstantPlacementScene(
                                     modelInstance = it,
                                     scaleToUnits = 0.3f,
                                     isVisible = textured,
-                                    isEditable = true
+                                    isEditable = true,
+                                    apply = {
+                                        editableNodes[placed.id] = this
+                                    }
                                 )
+                                DisposableEffect(placed.id) {
+                                    onDispose { editableNodes.remove(placed.id) }
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // Opt-in on-model gesture feedback: one overlay per placed editable model —
+        // rotation ring + yaw badge, scale badge with range-limit bounce, contact
+        // shadow while dragging. Drawn over the camera feed by world→screen projection
+        // through the hoisted [view].
+        for (id in editableNodes.keys.toList()) {
+            val node = editableNodes[id] ?: continue
+            key(id) {
+                NodeEditingOverlay(
+                    state = rememberNodeEditingFeedback(node),
+                    view = view,
+                    modifier = Modifier.matchParentSize(),
+                )
             }
         }
 

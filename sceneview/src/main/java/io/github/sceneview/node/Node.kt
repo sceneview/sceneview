@@ -1332,8 +1332,13 @@ open class Node protected constructor(
 
     // ---- Destroy ----
 
-    /** Guards [destroy] against re-entrancy when a node tree references itself. */
-    private var isDestroyed = false
+    /**
+     * `true` once [destroy] has run. Guards [destroy] against re-entrancy, and lets
+     * observers that outlive the node by a frame (e.g. the gesture-feedback overlay's
+     * projection loop) skip touching released Filament components.
+     */
+    var isDestroyed = false
+        private set
 
     /**
      * Detach and destroy the node and all its children.

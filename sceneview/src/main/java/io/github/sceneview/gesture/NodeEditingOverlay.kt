@@ -301,6 +301,13 @@ private class NodeScreenAnchors {
     private var viewportSize by mutableStateOf(Size.Zero)
 
     fun update(node: Node, view: View) {
+        if (node.isDestroyed) {
+            // The overlay can outlive the node by a frame (disposal ordering) — never
+            // touch released Filament components.
+            base = null
+            top = null
+            return
+        }
         val (center, halfExtent) = node.localBounds()
         val transform = node.worldTransform
         fun world(p: Float3) = (transform * Float4(p, 1f)).xyz

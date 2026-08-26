@@ -154,7 +154,7 @@ open class SplatNode(
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sortJob: Job? = null
     private var lastSortCameraPosition: Position? = null
-    private var isDestroyed = false
+    private var isSplatDestroyed = false
 
     /**
      * Number of splats rendered, `0..splatCloud.count`. Defaults to the full cloud.
@@ -291,7 +291,7 @@ open class SplatNode(
      */
     private fun maybeResort() {
         val provider = cameraPositionProvider ?: return
-        if (isDestroyed || sortJob?.isActive == true) return
+        if (isSplatDestroyed || sortJob?.isActive == true) return
         // Map the camera world position into this node's model space so parented/transformed
         // nodes sort correctly (the splat positions are model-space).
         val cameraWorld = provider()
@@ -317,7 +317,7 @@ open class SplatNode(
             val positionScale = SplatBuffers.packPositionScale(splatCloud, order, textureSize)
             val colorOpacity = SplatBuffers.packColorOpacity(splatCloud, order, textureSize)
             withContext(Dispatchers.Main) {
-                if (!isDestroyed) uploadTextures(positionScale, colorOpacity)
+                if (!isSplatDestroyed) uploadTextures(positionScale, colorOpacity)
             }
         }
     }
@@ -361,8 +361,8 @@ open class SplatNode(
     override fun destroy() {
         // Re-entry guard: a second destroy() would re-enqueue the data textures
         // on the EngineDestroyQueue (benign today, but future-proof it).
-        if (isDestroyed) return
-        isDestroyed = true
+        if (isSplatDestroyed) return
+        isSplatDestroyed = true
         coroutineScope.cancel()
         // Renderable components first (while entity ids are still valid), then the entities.
         batchEntities.forEach { engine.safeDestroyRenderable(it) }
