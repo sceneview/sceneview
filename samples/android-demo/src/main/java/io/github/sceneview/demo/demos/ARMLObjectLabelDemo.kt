@@ -24,8 +24,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -135,6 +137,11 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     val detections = remember { mutableStateListOf<DetectionAnchor>() }
     var statusBannerRes by remember { mutableIntStateOf(R.string.demo_ar_ml_status_warming) }
 
+    // Real pixel size of the AR surface, measured by Compose layout — see
+    // `updateAnchorsFromDetections`'s `displayW`/`displayH` doc for why this replaced a
+    // hardcoded 1000×1000 square (#3337). Zero until the first layout pass.
+    var viewSize by remember { mutableStateOf(IntSize.Zero) }
+
     // Detector throttle — minimum gap between detector runs so we don't starve the
     // renderer. ~6 fps is plenty for "label what's in front of me".
     val lastDetectMs = remember { longArrayOf(0L) }
@@ -224,7 +231,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
             }
         },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it }) {
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
@@ -258,6 +265,8 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                             results = pending.results,
                             imageW = pending.imageW,
                             imageH = pending.imageH,
+                            displayW = viewSize.width,
+                            displayH = viewSize.height,
                             detections = detections,
                             labelBitmaps = labelBitmaps,
                         )
@@ -450,6 +459,30 @@ internal fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
 }
 
 /**
+ * Maps a detection's bounding-box centre, in **CPU image pixel space** (`imageW × imageH`),
+ * to the equivalent point in **AR surface pixel space** (`displayW × displayH`) — the
+ * coordinate space `Frame.hitTest` expects.
+ *
+ * Pure fraction-preserving scale: the fraction of the image the centre sits at (x/imageW,
+ * y/imageH) is applied to the real display size. [displayW]/[displayH] MUST be the AR
+ * surface's actual pixel size (see [updateAnchorsFromDetections] doc) — a fixed square
+ * placeholder here was the root cause of #3337's mislocated bounding-box anchors on tall
+ * portrait phones.
+ */
+internal fun bboxCentreToScreenPoint(
+    cx: Int,
+    cy: Int,
+    imageW: Int,
+    imageH: Int,
+    displayW: Int,
+    displayH: Int,
+): Pair<Float, Float> {
+    val xFraction = cx.toFloat() / imageW.coerceAtLeast(1)
+    val yFraction = cy.toFloat() / imageH.coerceAtLeast(1)
+    return (xFraction * displayW) to (yFraction * displayH)
+}
+
+/**
  * Reconciles the current detection set with the latest ML Kit results.
  *
  * Strategy:
@@ -463,18 +496,33 @@ internal fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
  * Bbox centre is mapped from the **CPU image coordinate space** (`imageW × imageH`) to
  * the display coordinate space via the active `frame`'s coords transform — ARCore's
  * `frame.transformCoordinates2d` would be the right tool, but for V1 we approximate by
- * scaling from the image space to the framebuffer via the camera's display geometry.
- * Detector throttle (#kDetectIntervalMs) keeps the cost bounded.
+ * scaling the bbox centre's fraction of the image to the same fraction of [displayW] ×
+ * [displayH]. Detector throttle (#kDetectIntervalMs) keeps the cost bounded.
+ *
+ * [displayW]/[displayH] MUST be the AR surface's actual pixel size — the same size ARCore's
+ * `Session.setDisplayGeometry` was configured with — because `Frame.hitTest` interprets its
+ * arguments as screen-space pixels on that surface. An earlier version hardcoded a 1000×1000
+ * square here ("arbitrary; hitTest takes screen-space pixels"): on a real phone's tall
+ * portrait aspect (e.g. a Pixel 9 at 1080×2424) that square only spans the top ~41% of the
+ * screen, so any object detected in the lower half of the frame hit-tested against the WRONG
+ * point and its label anchor landed off the object — the "bounding box" mislocation reported
+ * on-device in #3322/#3337.
  */
 private fun updateAnchorsFromDetections(
     frame: Frame,
     results: List<DetectedObject>,
     imageW: Int,
     imageH: Int,
+    displayW: Int,
+    displayH: Int,
     detections: SnapshotStateList<DetectionAnchor>,
     labelBitmaps: MutableMap<String, Bitmap>,
 ) {
     if (results.isEmpty()) return
+    // No layout pass yet (first frame or two after the composable enters) — the surface's
+    // real pixel size isn't known, so a hit-test would be meaningless. Skip this pass; the
+    // next one retries once `onSizeChanged` has fired.
+    if (displayW <= 0 || displayH <= 0) return
 
     // Build category keys from this frame's detections.
     val newKeys = mutableSetOf<String>()
@@ -495,18 +543,10 @@ private fun updateAnchorsFromDetections(
         // same aspect under the default camera config — scaling the centre to the
         // frame's hit-test surface as a proportion of width/height is the safest
         // approximation without bringing in the (deprecated) transformCoordinates3d API.
-        val xFraction = cx.toFloat() / imageW.coerceAtLeast(1)
-        val yFraction = cy.toFloat() / imageH.coerceAtLeast(1)
+        val (screenX, screenY) = bboxCentreToScreenPoint(cx, cy, imageW, imageH, displayW, displayH)
 
-        // Use frame.camera.imageIntrinsics + projection? Simpler: skip the screen-space
-        // mapping and use a centred hit-test for V1 — every detection appears near scene
-        // centre. The user is meant to aim the device AT the object, so centre is already
-        // close to the truth for a single detection. For multi-detection, the labels stack
-        // tightly at scene centre — acceptable V1 UX, improvable in a follow-up.
-        val displayW = 1000f // arbitrary; hitTest takes screen-space pixels
-        val displayH = 1000f
         val hits = runCatching {
-            frame.hitTest(xFraction * displayW, yFraction * displayH)
+            frame.hitTest(screenX, screenY)
         }.getOrNull().orEmpty()
         val hit = hits.firstOrNull { it.distance in 0.1f..5.0f } ?: continue
 
