@@ -55,7 +55,7 @@ import java.io.File
  * [PlacementModelBar] naming what the next tap will place, same picker sheet. This file
  * contributes only what makes it a *demo* rather than a launcher:
  *
- *  - **A richer catalogue.** The five bundled models both surfaces offer
+ *  - **A richer catalogue.** The six bundled models both surfaces offer
  *    ([BUNDLED_PLACEMENT_MODELS]) plus the six streamed CC-BY Sketchfab models of
  *    [SampleAssets.byCategory]`["ar_placement"]`
  *    ([#1152](https://github.com/sceneview/sceneview/issues/1152)). The picker marks the
@@ -199,7 +199,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                text = "Five models ship inside the APK; the rows marked Streamed are " +
+                text = "Six models ship inside the APK; the rows marked Streamed are " +
                     "CC-BY models fetched from Sketchfab the first time you arm them, " +
                     "and fall back to a bundled stand-in until they land.",
                 style = MaterialTheme.typography.labelSmall,

@@ -1,0 +1,18 @@
+{
+  "_comment": "Square 320x320 tiles for ModelThumbnails, keyed by BUNDLED ASSET STEM (the file name in samples/android-demo/src/main/assets/models/ without .glb) — that is the key ModelThumbnails.resourceFor() looks up, so the id here and the drawable name must stay identical. Run: GEMINI_ENV_FILE=... python3 tools/demo-previews/gen.py tools/demo-previews/model-thumbs.json /tmp/thumbs --kind thumb, then copy /tmp/thumbs/webp/*.webp into samples/android-demo/src/main/res/drawable-nodpi/. Every tile must be reviewed next to its reference before merge.",
+  "style": "Square product tile for a mobile app model picker. 3/4 front view, about 20 degrees elevation, subject fills roughly 75% of the frame, centred with breathing room. One soft key light upper-left, a subtle rim light from back-right, a soft contact shadow under the object. Deep dark studio field colour #0E1218, no gradient band, no horizon line, no props, no floor pattern. No text, no UI, no watermark, no device frame. Faithful to the attached reference: keep the real model's shapes, proportions and materials exactly; relight and recompose only.",
+  "items": {
+    "khronos_glam_velvet_sofa": {
+      "prompt": "The Khronos Glam Velvet Sofa (exactly the model in the attached reference): a long low mid-century sofa upholstered in deep blue velvet on slim dark metal legs. Show the sheen of the velvet — the soft bright falloff at the grazing angles along the seat back and armrests. Frame it large and close, the sofa spanning nearly the full width of the square, seen from a low three-quarter angle so it reads as a substantial piece of furniture rather than a distant miniature.",
+      "refUrl": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/GlamVelvetSofa/screenshot/screenshot.jpg"
+    },
+    "khronos_sheen_chair": {
+      "prompt": "The Khronos Sheen Chair (exactly the model in the attached reference): a low wide lounge chair with rounded tubular orange fabric cushions on four slender tapered wooden legs. Show the fabric sheen catching the rim light along the top of the backrest.",
+      "refUrl": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/SheenChair/screenshot/screenshot.jpg"
+    },
+    "khronos_iridescent_dish": {
+      "prompt": "The Khronos Iridescent Dish with Olives (exactly the model in the attached reference): a shallow brushed-gold dish filled with green and dark purple olives, with a tall iridescent blown-glass form rising and curving over it. Show the iridescence as thin-film colour shifting across the glass and the specular highlight on the metal rim.",
+      "refUrl": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/IridescentDishWithOlives/screenshot/screenshot.jpg"
+    }
+  }
+}

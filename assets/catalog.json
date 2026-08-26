@@ -1912,7 +1912,7 @@
       "name": "Glam Velvet Sofa",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa",
-      "author": "Wayfair",
+      "author": "Wayfair, LLC (Eric Chadwick)",
       "license": "CC-BY-4.0",
       "formats": {
         "glb": {
@@ -2841,12 +2841,12 @@
       "name": "Sheen Chair",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
-      "author": "KhronosGroup",
-      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)",
+      "license": "CC0-1.0",
       "formats": {
         "glb": {
           "file": "models/glb/khronos_sheen_chair.glb",
-          "size": "1.0MB"
+          "size": "3.9MB"
         }
       },
       "tags": [
@@ -2858,6 +2858,7 @@
         "reference"
       ],
       "usedIn": [
+        "android-demo",
         "android-tv-demo"
       ],
       "defaultScale": 0.8,
@@ -2865,15 +2866,15 @@
     },
     {
       "id": "khronos_iridescent_dish",
-      "name": "Iridescence Dish With Olives",
+      "name": "Iridescent Dish with Olives",
       "source": "khronos",
-      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceDishWithOlives",
-      "author": "KhronosGroup",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives",
+      "author": "Wayfair, LLC (Eric Chadwick)",
       "license": "CC-BY-4.0",
       "formats": {
         "glb": {
           "file": "models/glb/khronos_iridescent_dish.glb",
-          "size": "3.8MB"
+          "size": "5.5MB"
         }
       },
       "tags": [
@@ -2884,6 +2885,7 @@
         "reference"
       ],
       "usedIn": [
+        "android-demo",
         "android-tv-demo"
       ],
       "defaultScale": 1.0,
@@ -2895,12 +2897,12 @@
       "_comment": "Sheen Chair bundled under a short filename by the web demo's curated catalog.",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
-      "author": "KhronosGroup",
-      "license": "CC-BY-4.0",
+      "author": "Wayfair, LLC (Eric Chadwick)",
+      "license": "CC0-1.0",
       "formats": {
         "glb": {
           "file": "models/glb/sheen_chair.glb",
-          "size": "1.0MB"
+          "size": "3.9MB"
         }
       },
       "tags": [

@@ -10,8 +10,14 @@ object ModelThumbnails {
     private val resources: Map<String, Int> = mapOf(
         "khronos_damaged_helmet" to R.drawable.model_thumb_khronos_damaged_helmet,
         "khronos_fox" to R.drawable.model_thumb_khronos_fox,
+        "khronos_glam_velvet_sofa" to R.drawable.model_thumb_khronos_glam_velvet_sofa,
+        "khronos_iridescent_dish" to R.drawable.model_thumb_khronos_iridescent_dish,
         "khronos_lantern" to R.drawable.model_thumb_khronos_lantern,
+        "khronos_sheen_chair" to R.drawable.model_thumb_khronos_sheen_chair,
         "khronos_toy_car" to R.drawable.model_thumb_khronos_toy_car,
+        // Fox and Shiba no longer appear in the viewer's own list (#3324) but stay mapped:
+        // both GLBs still ship, and any surface that names them by stem still gets a
+        // thumbnail rather than a placeholder.
         "shiba" to R.drawable.model_thumb_shiba,
         "threejs_soldier" to R.drawable.model_thumb_threejs_soldier,
     )

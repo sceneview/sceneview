@@ -3,9 +3,16 @@
 
 Usage:
   gen.py prompts.json out_dir [--refs DIR] [--only id,id] [--variants light,dark] [--model M]
+  gen.py model-thumbs.json out_dir --kind thumb --refs DIR   # square model/environment tiles
 
 prompts.json: {"style": "...shared suffix...", "items": {"<demo-id>": {"prompt": "...", "ref": "file.png", "ar": bool}}}
-Output: out_dir/raw/<id>_<variant>.png and out_dir/webp/preview_<id_>_<variant>.webp (800x640, q80).
+Output (--kind preview, the default):
+  out_dir/raw/<id>_<variant>.png and out_dir/webp/preview_<id_>_<variant>.webp (800x640, q80).
+Output (--kind thumb):
+  out_dir/raw/<id>_dark.png and out_dir/webp/model_thumb_<id>.webp (320x320, q80) — the
+  sheet-and-picker tile size `ModelThumbnails` maps by asset stem. Thumbs are dark-only:
+  the sheets that show them sit on a scrim in both app themes, so a light variant would
+  never be read (`--variants` is ignored for this kind).
 The key is read from GEMINI_API_KEY or from the env file named by GEMINI_ENV_FILE (never printed).
 See DESIGN.md "Preview Image Art Direction" for the rules these prompts must follow.
 """
@@ -55,20 +62,37 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("prompts"); ap.add_argument("out")
     ap.add_argument("--model", default="gemini-3.1-flash-image"); ap.add_argument("--refs")
     ap.add_argument("--only"); ap.add_argument("--variants", default="light,dark")
+    ap.add_argument("--kind", default="preview", choices=("preview", "thumb"))
     a = ap.parse_args(); spec = json.load(open(a.prompts)); style = spec.get("style", "")
     os.makedirs(os.path.join(a.out, "raw"), exist_ok=True); os.makedirs(os.path.join(a.out, "webp"), exist_ok=True)
     only = set(a.only.split(",")) if a.only else None; failed = []
+    thumb = a.kind == "thumb"
+    variants = ["dark"] if thumb else a.variants.split(",")
     for did, item in spec["items"].items():
         if only and did not in only: continue
-        for variant in a.variants.split(","):
+        for variant in variants:
             png = os.path.join(a.out, "raw", f"{did}_{variant}.png")
             if not os.path.exists(png):
                 field = (AR_FIELD if item.get("ar") else FIELD)[variant]
                 refs = [os.path.join(a.refs, item["ref"])] if a.refs and item.get("ref") and os.path.exists(os.path.join(a.refs, item["ref"])) else []
+                # `refUrl` fetches the reference instead of committing it. Model thumbs are
+                # image-to-image from each asset's OWN upstream render (the Khronos
+                # `screenshot/screenshot.jpg`), and those are themselves CC-BY works: caching
+                # them under `refs/` would put third-party binaries in the repo that need
+                # their own attribution line for no gain. Fetched to `out/raw`, never tracked.
+                if not refs and item.get("refUrl"):
+                    cached = os.path.join(a.out, "raw", f"ref_{did}{os.path.splitext(item['refUrl'])[1]}")
+                    if not os.path.exists(cached):
+                        urllib.request.urlretrieve(item["refUrl"], cached)
+                    refs = [cached]
                 print(f"[{did}/{variant}] ref={'yes' if refs else 'no'}")
-                if not generate(a.model, png, item["prompt"].rstrip(". ") + ". " + field + " " + style, refs, "4:3"):
+                if not generate(a.model, png, item["prompt"].rstrip(". ") + ". " + field + " " + style,
+                                refs, "1:1" if thumb else "4:3"):
                     failed.append(f"{did}_{variant}"); continue
-            crop_save(png, os.path.join(a.out, "webp", f"preview_{did.replace('-', '_')}_{variant}.webp"), 5, 4, 800)
+            if thumb:
+                crop_save(png, os.path.join(a.out, "webp", f"model_thumb_{did}.webp"), 1, 1, 320)
+            else:
+                crop_save(png, os.path.join(a.out, "webp", f"preview_{did.replace('-', '_')}_{variant}.webp"), 5, 4, 800)
     print("failed:", failed)
 
 if __name__ == "__main__": main()

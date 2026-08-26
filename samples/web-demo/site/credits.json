@@ -122,9 +122,9 @@
         {
           "file": "models/sheen_chair.glb",
           "name": "Sheen Chair (web demo)",
-          "author": "KhronosGroup",
-          "license": "CC-BY-4.0",
-          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "author": "Wayfair, LLC (Eric Chadwick)",
+          "license": "CC0-1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair",
           "size": 4125648,
           "note": ""

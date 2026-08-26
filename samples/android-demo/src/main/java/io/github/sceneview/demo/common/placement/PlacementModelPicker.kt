@@ -5,6 +5,7 @@
 
 package io.github.sceneview.demo.common.placement
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -49,12 +50,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.viewer.ModelThumbnails
 import kotlinx.coroutines.launch
 
 /**
@@ -118,12 +123,24 @@ data class PlacementModel(
  * as content someone meant to put in the room. That audit never reached the AR View tab's
  * own list. It does now.
  *
- * Every entry is a grounded object — a character, an animal or a household item — with a
- * distinct silhouette and material, so cycling the picker visibly changes the room.
+ * Every entry is a grounded object — a character, a piece of furniture or a household item
+ * — with a distinct silhouette and material, so cycling the picker visibly changes the room.
+ *
+ * **What the catalogue offers, and why (#3324).** Two rows used to be untextured low-poly
+ * animals (`khronos_fox`, `shiba`): flat vertex colours and a single base-colour map, which
+ * is exactly what "the default models aren't great" describes — they say nothing about what
+ * Filament can render, and a fox in a living room is not a thing anyone places. They are
+ * replaced by three Khronos glTF-Sample-Assets pieces that each drive a *different* material
+ * model — sheen (velvet), sheen + specular, and iridescence + transmission + volume — so the
+ * six rows now read as a small showroom rather than as a conformance suite. Both GLBs stay
+ * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARTerrainAnchorDemo`
+ * loads the fox directly, so nothing is deleted, only re-curated.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
     // Sizes are the real objects', in metres, on their longest axis — see
-    // PlacementModel.realWorldSizeMeters (#3326).
+    // PlacementModel.realWorldSizeMeters (#3326). The three Khronos furniture/tableware
+    // rows are authored IN METRES and sit on y = 0, so their number here is the asset's
+    // own measured bounding box rather than an estimate (checked against the GLB).
     PlacementModel(
         id = "soldier",
         displayName = "Soldier",
@@ -131,10 +148,16 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
         realWorldSizeMeters = 1.8f, // an adult, standing
     ),
     PlacementModel(
-        id = "fox",
-        displayName = "Fox",
-        assetLocation = "models/khronos_fox.glb",
-        realWorldSizeMeters = 0.9f, // nose to tail
+        id = "velvet-sofa",
+        displayName = "Velvet Sofa",
+        assetLocation = "models/khronos_glam_velvet_sofa.glb",
+        realWorldSizeMeters = 2.19f, // measured: 2.188 m wide
+    ),
+    PlacementModel(
+        id = "sheen-chair",
+        displayName = "Sheen Chair",
+        assetLocation = "models/khronos_sheen_chair.glb",
+        realWorldSizeMeters = 0.83f, // measured: 0.827 m wide
     ),
     PlacementModel(
         id = "lantern",
@@ -143,16 +166,16 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
         realWorldSizeMeters = 1.6f, // the Khronos asset is a street lantern post
     ),
     PlacementModel(
+        id = "olive-dish",
+        displayName = "Olive Dish",
+        assetLocation = "models/khronos_iridescent_dish.glb",
+        realWorldSizeMeters = 0.53f, // measured: 0.532 m across
+    ),
+    PlacementModel(
         id = "toy-car",
         displayName = "Toy Car",
         assetLocation = "models/khronos_toy_car.glb",
         realWorldSizeMeters = 0.18f, // it is a toy — it should read as one
-    ),
-    PlacementModel(
-        id = "shiba",
-        displayName = "Shiba",
-        assetLocation = "models/shiba.glb",
-        realWorldSizeMeters = 0.6f, // withers height of the breed
     ),
 )
 
@@ -386,12 +409,33 @@ private fun PlacementModelCard(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ViewInAr,
-                    contentDescription = null,
-                    modifier = Modifier.size(PICKER_CARD_ICON_SIZE),
-                    tint = MaterialTheme.colorScheme.primary,
+                // The generated thumbnail of the row's own asset when there is one, the
+                // generic AR glyph otherwise. Before #3324 every card rendered the same
+                // glyph, so the grid was six identical tiles under six labels and the only
+                // way to know what a row looked like was to place it. Streamed rows keep
+                // the glyph: their bytes are not in the APK, so there is no thumbnail to
+                // show that would be honest about what lands.
+                val thumbnail = ModelThumbnails.resourceFor(
+                    model.assetLocation.substringAfterLast('/').substringBeforeLast('.'),
                 )
+                if (thumbnail != null) {
+                    Image(
+                        painter = painterResource(thumbnail),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(PICKER_CARD_MEDIA_HEIGHT)
+                            .clip(RoundedCornerShape(SceneViewTokens.Radius.sm)),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.ViewInAr,
+                        contentDescription = null,
+                        modifier = Modifier.size(PICKER_CARD_ICON_SIZE),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Text(
