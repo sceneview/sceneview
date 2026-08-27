@@ -4,8 +4,8 @@
 #
 #   dispatch(version) ─▶ web device-QA gate (BLOCKING) ─▶ bump via the now-complete
 #   sync-versions.sh --fix (M7b, 0 residuals) ─▶ changelog collate ─▶ release PR
-#   with auto-merge ─▶ [tag-release.yml] tags the merge commit and dispatches
-#   release.yml on the tag ref.
+#   with auto-merge ─▶ this workflow's own `tag` job waits for that PR to merge,
+#   tags the merge commit and dispatches release.yml on the tag ref.
 #
 # WHY PR-then-tag and not a direct push: main is protected by required status
 # checks (ci.yml job names) with no push restrictions but no GITHUB_TOKEN
@@ -13,11 +13,33 @@
 # can, which is exactly what the manual recipe did). The PR path keeps the
 # required checks honest AND gives the bump diff a reviewable surface for free.
 #
-# WHY the companion tag workflow: a tag created here with GITHUB_TOKEN would
-# NOT trigger release.yml (GitHub suppresses workflow-to-workflow events for
-# the default token). tag-release.yml therefore creates the tag at merge time
-# and explicitly dispatches release.yml on the tag ref (release.yml already
-# accepts workflow_dispatch).
+# WHY THIS WORKFLOW TAGS ITSELF INSTEAD OF HANDING OFF (#3358): GitHub emits NO
+# workflow events for anything done with the default `GITHUB_TOKEN`. That bites
+# twice on this pipeline, one step apart:
+#
+#   * the auto-MERGE of the release PR is performed with GITHUB_TOKEN, so the
+#     resulting push to main fires no `push` event — a companion workflow keyed
+#     on `on: push: branches: [main]` never runs. This is exactly how v4.33.0
+#     shipped a bumped-but-untagged main with nothing red anywhere (#3358);
+#   * the TAG this pipeline pushes is likewise GITHUB_TOKEN-made, so release.yml's
+#     `on: push: tags:` trigger would not fire either.
+#
+# The fix for the first is to stop depending on the event chain at all: the `tag`
+# job below belongs to THIS run, waits for the PR it just opened to merge, and
+# tags the merge commit directly. If the merge never happens, that job fails red
+# instead of the release evaporating in silence. The fix for the second is
+# unchanged — an explicit `gh workflow run release.yml --ref v$V` (release.yml
+# already accepts workflow_dispatch, which is equivalent to the tag-push path).
+#
+# A PAT/App token for the merge was the other candidate. Rejected: it makes the
+# release depend on a credential that expires silently and fails back into the
+# exact same invisible half-release, and it widens the blast radius of the one
+# job allowed to write to main. Owning the tag in-run needs no secret at all.
+#
+# tag-release.yml survives as a safety net for the human-merge path (a human
+# merge IS a real push event) and as a manual `workflow_dispatch` recovery
+# handle. Both callers share `.claude/scripts/tag-release.sh`, which is
+# idempotent — whoever tags first wins, the other exits 0.
 name: Release fast
 
 on:
@@ -45,6 +67,8 @@ jobs:
     name: QA gate + bump PR (${{ inputs.version }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      branch: ${{ steps.open_pr.outputs.branch }}
     # Shell-injection hardening: the version input reaches shell ONLY via this
     # env var (never ${{ }} inside run: bodies) — env interpolation is inert,
     # and the regex validation below rejects anything but 4.x.y anyway.
@@ -112,11 +136,13 @@ jobs:
         run: bash .claude/scripts/collate-changelog.sh "$RELEASE_VERSION"
 
       - name: Open release PR (auto-merge)
+        id: open_pr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="$RELEASE_VERSION"
           BRANCH="release/v$V"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
@@ -128,9 +154,79 @@ jobs:
           git add -A
           git reset -q -- device-qa-report.json device-qa-artifacts ar-qa-summary.json web-qa-summary.json
           git commit -m "release: $V — version bump + changelog collate" \
-            -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V via tag-release.yml, which dispatches release.yml on the tag."
+            -m "Automated by release-fast.yml (web QA verdict gated, sync-versions 0 mismatch). Merging this PR tags v$V from the same release-fast run, which dispatches release.yml on the tag."
           git push origin "$BRANCH"
           gh pr create --title "release: $V — version bump + changelog collate" \
-            --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (tag-release.yml) and launches release.yml." \
+            --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (the \`tag\` job of this same release-fast run) and launches release.yml." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto
+
+  # The release is NOT done when the PR is open — it is done when the tag exists.
+  # This job owns that gap end to end (#3358): it waits for its own PR to merge
+  # and tags the merge commit, instead of handing off to a `push`-triggered
+  # workflow that a GITHUB_TOKEN auto-merge never wakes up.
+  tag:
+    name: Await merge + tag v${{ inputs.version }}
+    needs: checkpoint
+    runs-on: ubuntu-latest
+    # Long by design: this spans the release PR's full required-check suite.
+    # Timing out is the POINT of the job — a release PR that never merges must
+    # end in a red run, which is precisely what #3358 lacked.
+    timeout-minutes: 180
+    # Job-level permissions REPLACE the workflow-level block, so restate what is
+    # needed: `contents` to push the tag, `actions` to dispatch release.yml.
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+    env:
+      RELEASE_BRANCH: ${{ needs.checkpoint.outputs.branch }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Wait for the release PR to merge
+        id: wait
+        run: |
+          # 340 × 30 s ≈ 170 min, inside the 180-min job timeout so the wait
+          # ends with a named error rather than an opaque cancellation.
+          for _ in $(seq 1 340); do
+            # A transient API blip must cost one poll, not the whole release:
+            # `|| true` keeps `bash -e` from killing the wait, and an empty
+            # answer simply falls through to the next iteration.
+            STATUS=$(gh pr view "$RELEASE_BRANCH" --json state,mergeCommit \
+              -q '.state + " " + (.mergeCommit.oid // "")' || true)
+            STATE=${STATUS%% *}
+            OID=${STATUS#* }
+            case "$STATE" in
+              MERGED)
+                # Never fall back to "HEAD" on a blank oid: HEAD here is still
+                # the PRE-merge main this job checked out, and tagging that
+                # would tag the wrong commit.
+                [ -n "$OID" ] || { echo "::error::PR reports MERGED with no merge commit oid"; exit 1; }
+                echo "PR merged as $OID."
+                echo "oid=$OID" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              CLOSED)
+                echo "::error::release PR $RELEASE_BRANCH was closed without merging — no tag, no release"
+                exit 1
+                ;;
+            esac
+            sleep 30
+          done
+          echo "::error::release PR $RELEASE_BRANCH still not merged after ~170 min — check its required checks, then re-run tag-release.yml manually once it lands"
+          exit 1
+
+      # Same hardening rule as the checkpoint job: the commit id reaches the
+      # shell through an env var only, never `${{ }}` inside a `run:` body.
+      - name: Tag the merge commit and dispatch release.yml
+        env:
+          MERGE_OID: ${{ steps.wait.outputs.oid }}
+        run: |
+          git fetch --tags origin main
+          bash .claude/scripts/tag-release.sh "$MERGE_OID"
