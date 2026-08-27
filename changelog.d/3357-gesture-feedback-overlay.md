@@ -14,7 +14,7 @@
   `gesture-feedback-preview` demo (non-AR, QA-able on any emulator).
 
 <!-- category: Fixed -->
-- **A vetoed editing gesture no longer strands its parent mid-gesture.** `onMoveBegin` /
+- **A vetoed editing gesture no longer strands its parent mid-gesture ([#3357](https://github.com/sceneview/sceneview/pull/3357)).** `onMoveBegin` /
   `onRotateBegin` / `onScaleBegin` delegate to the parent node both when the transform
   flag is off and when the node's own callback lambda vetoes, but the matching `End`
   handlers routed on the flag alone — so an editable node whose lambda vetoed ended a
