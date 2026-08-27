@@ -7,7 +7,12 @@
 <resources>
     <string name="demo_spatial_audio_title">Spatial Audio</string>
     <string name="demo_spatial_audio_subtitle">Positional sound that pans as you orbit</string>
-    <string name="demo_spatial_audio_hint">A bell tone orbits the centre. Drag to orbit — the sound pans between your ears.</string>
+    <string name="demo_spatial_audio_hint">The purple sphere is the sound source: the bell loop is attached to it, and the shells pulsing out of it are the sound leaving. You are the listener — the camera. Drag to orbit and the bell pans between your ears and changes volume with distance.</string>
+    <!-- Legend rows floating over the scene: what each thing on screen is (#3332). -->
+    <string name="demo_spatial_audio_legend_source">Sound source — the bell is attached to this sphere</string>
+    <string name="demo_spatial_audio_legend_listener">Listener — the camera, i.e. you</string>
+    <!-- %1$s = distance in metres, already formatted; %2$d = volume percent. -->
+    <string name="demo_spatial_audio_readout">%1$s m away · %2$d%% volume</string>
     <string name="demo_spatial_audio_falloff_label">Distance falloff</string>
     <string name="demo_spatial_audio_inverse">Inverse</string>
     <string name="demo_spatial_audio_linear">Linear</string>
