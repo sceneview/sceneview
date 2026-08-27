@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,8 +83,11 @@ import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.ai.ASK_FAILURE_ESCALATION_THRESHOLD
 import io.github.sceneview.demo.ai.AskEngine
 import io.github.sceneview.demo.ai.AskEngineStatus
+import io.github.sceneview.demo.ai.AskFailure
+import io.github.sceneview.demo.ai.askCaptureRegion
 import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
@@ -131,8 +136,11 @@ private sealed interface AskState {
      */
     data class Answered(val text: String, val streaming: Boolean = false) : AskState
 
-    /** Inference or capture failed — transient, retry on next tap. */
-    data object Failed : AskState
+    /**
+     * Inference or capture failed. [failure] says which cause, so the card can name it and
+     * a terminal one can retire the "tap to try again" invitation entirely (#3343).
+     */
+    data class Failed(val failure: AskFailure) : AskState
 }
 
 /**
@@ -192,14 +200,14 @@ private class AnswerPanel(
      * already succeeded, and keeping the panel makes the failure visible where the user
      * pointed instead of silently un-pinning it.
      */
-    fun accept(state: AskState, failedText: String) {
+    fun accept(state: AskState, failedText: (AskFailure) -> String) {
         when (state) {
             is AskState.Answered -> {
                 text = state.text
                 streaming = state.streaming
             }
-            AskState.Failed -> {
-                if (text.isBlank()) text = failedText
+            is AskState.Failed -> {
+                if (text.isBlank()) text = failedText(state.failure)
                 streaming = false
             }
             else -> Unit
@@ -338,8 +346,19 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val defaultQuestion = stringResource(R.string.demo_point_and_ask_question)
     var questionText by rememberSaveable { mutableStateOf("") }
     val question = questionText.trim().ifBlank { defaultQuestion }
-    // Resolved at composition — anchored panels route results from non-composable callbacks.
-    val failedText = stringResource(R.string.demo_point_and_ask_error)
+    // Resolved through the context — anchored panels route results from non-composable
+    // callbacks, and the message now depends on which failure occurred (#3343).
+    val failedText: (AskFailure) -> String = { context.getString(it.messageRes) }
+
+    // How many rounds in a row have failed, and with what. Once a failure is terminal, or
+    // the same non-terminal one repeats, the card stops saying "tap to try again" — the
+    // exact loop reported in #3343 — and explains the situation instead.
+    var consecutiveFailures by remember { mutableIntStateOf(0) }
+
+    // Where the last tap landed, in window pixels. The capture is cropped around it so the
+    // model is shown what the user pointed at rather than the whole floor-to-ceiling frame
+    // (see `askCaptureRegion`). Null before the first tap and for QA's synthetic frame.
+    var tapFocus by remember { mutableStateOf<Offset?>(null) }
 
     // Voice input (#3083): the question field's optional mic button. Same zero-permission
     // `ACTION_RECOGNIZE_SPEECH` intent `BugReportSheet` already ships for its own dictation
@@ -377,7 +396,18 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         // Where this round's answer goes: the panel pinned by the tap (P2), or the
         // screen-space card when the tap hit nothing trackable. Resolved once, here, so a
         // panel pinned by a LATER tap can never steal this round's deltas.
-        val onResult = answerSink(pendingPanel, failedText) { askState = it }
+        // Counting failures here rather than in a `LaunchedEffect(askState)` is deliberate:
+        // two identical failures in a row produce the SAME `AskState.Failed` value, so a
+        // state-keyed effect would never re-run — and "the same error over and over" is
+        // precisely the case #3343 is about.
+        val onResult = answerSink(pendingPanel, failedText) { state ->
+            when (state) {
+                is AskState.Failed -> consecutiveFailures++
+                is AskState.Answered -> consecutiveFailures = 0
+                else -> Unit
+            }
+            askState = state
+        }
         if (DemoSettings.qaMode) {
             delay(QA_CAPTURE_TIMEOUT_MS)
             if (askState != AskState.Capturing) return@LaunchedEffect
@@ -389,7 +419,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         val activity = context.findActivity()
         val decor = activity?.window?.decorView
         if (decor == null || decor.width == 0 || decor.height == 0) {
-            onResult(AskState.Failed)
+            onResult(AskState.Failed(AskFailure.CaptureFailed))
             return@LaunchedEffect
         }
         hideOverlaysForCapture = true
@@ -422,18 +452,26 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 // correlated with logcat instead of re-diagnosed from scratch.
                 if (result == PixelCopy.SUCCESS && !hasTransparentHole(bitmap)) {
                     askState = AskState.Thinking
-                    askJob = scope.askAboutBitmap(bitmap, askEngine, question, onResult)
+                    // Crop around the tap and downscale before handing the frame to ML
+                    // Kit (#3343). ML Kit only clamps the SHORT edge to 768 px, so the
+                    // raw window capture reached Gemini Nano as a full-height strip —
+                    // mostly floor and ceiling, and a vision-token bill the on-device
+                    // budget has no room for. See `askCaptureRegion`.
+                    val framed = frameForModel(bitmap, tapFocus)
+                    askJob = scope.askAboutBitmap(framed, askEngine, question, onResult)
                 } else {
                     if (result == PixelCopy.SUCCESS) {
                         Log.w(
-                            "PointAndAskDemo",
+                            ASK_LOG_TAG,
                             "Composited capture came back with a transparent hole where the " +
                                 "AR viewport should be (PixelCopy reported SUCCESS) — refusing " +
                                 "to send a blank frame to Gemini (#3276).",
                         )
+                    } else {
+                        Log.w(ASK_LOG_TAG, "PixelCopy failed with result $result (#3343).")
                     }
                     bitmap.recycle()
-                    onResult(AskState.Failed)
+                    onResult(AskState.Failed(AskFailure.CaptureFailed))
                 }
             },
             Handler(Looper.getMainLooper()),
@@ -442,7 +480,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         if (roundLive) {
             roundLive = false
             hideOverlaysForCapture = false
-            onResult(AskState.Failed)
+            Log.w(ASK_LOG_TAG, "PixelCopy never called back within the capture budget (#3188).")
+            onResult(AskState.Failed(AskFailure.CaptureFailed))
         }
     }
 
@@ -461,6 +500,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             askJob?.cancel()
             askJob = null
             askState = AskState.Idle
+            // Reset clears the escalated failure card too — the user explicitly asked for
+            // a clean slate, so the demo gives the device another honest chance (#3343).
+            consecutiveFailures = 0
             placedProps.forEach { runCatching { it.anchor.detach() } }
             placedProps.clear()
             pendingPanel = null
@@ -697,12 +739,14 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             )
                         }
 
-                        AskState.Failed -> BottomCard {
-                            Text(
-                                text = stringResource(R.string.demo_point_and_ask_error),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+                        // One card per cause, and — once retrying is demonstrably not
+                        // going to help — an explanation instead of an invitation to keep
+                        // tapping (#3343).
+                        is AskState.Failed -> AskFailureCard(
+                            failure = ask.failure,
+                            escalated = ask.failure.isTerminal ||
+                                consecutiveFailures >= ASK_FAILURE_ESCALATION_THRESHOLD,
+                        )
                     }
                 }
             }
@@ -744,6 +788,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         // wanted described — no ping, no capture, no answer (#3187).
                         if (engineStatus == AskEngineStatus.Ready && !busy) {
                             ping = Offset(e.x, e.y) to System.nanoTime()
+                            // Same point the capture is cropped around: the model is asked
+                            // about what the finger landed on, not the whole room (#3343).
+                            tapFocus = Offset(e.x, e.y)
                             // P2 — pin the answer where the user pointed. The hit-test runs
                             // on the latest frame, the same one the capture is about to
                             // composite, so the pinned pose matches what the model sees.
@@ -1078,7 +1125,7 @@ private const val MAX_PANELS = 8
  */
 private fun answerSink(
     panel: AnswerPanel?,
-    failedText: String,
+    failedText: (AskFailure) -> String,
     screenCard: (AskState) -> Unit,
 ): (AskState) -> Unit = if (panel == null) {
     screenCard
@@ -1107,6 +1154,13 @@ private fun Context.isOffline(): Boolean {
  * [AskState.Answered] per delta and the final state on completion. A failure mid-stream
  * keeps the text already received (marked complete) — only a failure before any delta
  * surfaces [AskState.Failed]. Takes ownership of [bitmap] (recycled when the round ends).
+ *
+ * The throwable is classified rather than swallowed (#3343): the card names the actual
+ * cause, and every failure is logged with its ML Kit error code so the next report of
+ * "it only says it can't answer" arrives with the code attached instead of needing to be
+ * re-diagnosed from scratch. A stream that completes with no text at all is [
+ * AskFailure.EmptyAnswer] — a distinct outcome from a thrown inference error, and one the
+ * user can act on (rephrase) rather than retry blindly.
  */
 private fun CoroutineScope.askAboutBitmap(
     bitmap: Bitmap,
@@ -1120,13 +1174,76 @@ private fun CoroutineScope.askAboutBitmap(
             text += delta
             onResult(AskState.Answered(text, streaming = true))
         }
-        onResult(if (text.isBlank()) AskState.Failed else AskState.Answered(text))
+        onResult(
+            if (text.isBlank()) {
+                Log.w(ASK_LOG_TAG, "Gemini Nano completed the stream with no text (#3343).")
+                AskState.Failed(AskFailure.EmptyAnswer)
+            } else {
+                AskState.Answered(text)
+            }
+        )
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) {
-        onResult(if (text.isBlank()) AskState.Failed else AskState.Answered(text))
+    } catch (e: Throwable) {
+        // Throwable, not Exception: a minified build missing the ML Kit classes raises a
+        // NoClassDefFoundError, which is an Error — letting it escape would kill the
+        // coroutine scope silently and leave the demo wedged in `Thinking` (cf. #3188).
+        val failure = AskFailure.of(e)
+        Log.w(ASK_LOG_TAG, "Gemini Nano inference failed — classified as $failure (#3343).", e)
+        onResult(
+            if (text.isBlank()) AskState.Failed(failure) else AskState.Answered(text)
+        )
     } finally {
         bitmap.recycle()
+    }
+}
+
+/** Logcat tag for every Point & Ask failure path — one grep away in a bug report. */
+private const val ASK_LOG_TAG = "PointAndAskDemo"
+
+/**
+ * Crops [capture] to [askCaptureRegion] around [focus] and downscales it to the model's
+ * budget, recycling the oversized original. Returns [capture] unchanged when it is already
+ * within budget, so the caller's ownership contract (the returned bitmap is recycled once
+ * the round ends) holds either way.
+ *
+ * Why this exists rather than trusting ML Kit's own resize: genai-prompt 1.0.0-beta4
+ * rescales only when `min(width, height) > 768`, and only the SHORT edge — a 1080×2424
+ * window capture arrives as 768×1723. See `ASK_IMAGE_MAX_EDGE` (#3343).
+ */
+private fun frameForModel(capture: Bitmap, focus: Offset?): Bitmap {
+    val region = askCaptureRegion(
+        sourceWidth = capture.width,
+        sourceHeight = capture.height,
+        focusX = focus?.x,
+        focusY = focus?.y,
+    )
+    val unchanged = region.x == 0 && region.y == 0 &&
+        region.width == capture.width && region.height == capture.height &&
+        region.scaledWidth == capture.width && region.scaledHeight == capture.height
+    if (unchanged) return capture
+    return runCatching {
+        val cropped = Bitmap.createBitmap(
+            capture, region.x, region.y, region.width, region.height,
+        )
+        val scaled = if (
+            cropped.width == region.scaledWidth && cropped.height == region.scaledHeight
+        ) {
+            cropped
+        } else {
+            Bitmap.createScaledBitmap(
+                cropped, region.scaledWidth, region.scaledHeight, true,
+            ).also { if (it !== cropped) cropped.recycle() }
+        }
+        // `createBitmap`/`createScaledBitmap` may return the source itself when nothing
+        // had to change; only recycle the capture when a genuinely new bitmap came back.
+        if (scaled !== capture) capture.recycle()
+        scaled
+    }.getOrElse {
+        // Out of memory or a degenerate rectangle — the full frame is still a usable
+        // question, so degrade to it rather than failing the round.
+        Log.w(ASK_LOG_TAG, "Could not reframe the capture for the model; sending it whole.", it)
+        capture
     }
 }
 
@@ -1220,6 +1337,62 @@ private fun AnchoredAnswerCard(question: String, text: String, streaming: Boolea
  */
 private val ANCHORED_CARD_WIDTH = 320.dp
 private val ANCHORED_CARD_HEIGHT = 200.dp
+
+/**
+ * The failure card (#3343). Two shapes, one component:
+ *
+ *  - **transient** — a single line naming what actually went wrong, so a busy model, a
+ *    rejected frame and a failed capture read differently instead of all being "Gemini
+ *    Nano couldn't answer";
+ *  - **escalated** — reached when the failure is terminal (this device cannot run the
+ *    model at all) or the same kind of failure has repeated
+ *    [ASK_FAILURE_ESCALATION_THRESHOLD] times. The retry invitation is dropped and the
+ *    card explains the on-device-only design and what the user can actually check.
+ *
+ * `DESIGN.md`'s "Blocked" severity: an error indicator plus the theme's `error` role, so
+ * both schemes stay legible without a hardcoded colour.
+ */
+@Composable
+private fun AskFailureCard(failure: AskFailure, escalated: Boolean) {
+    BottomCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Outlined.ErrorOutline,
+                contentDescription = stringResource(R.string.demo_point_and_ask_error_cd),
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = stringResource(
+                    if (escalated) {
+                        R.string.demo_point_and_ask_error_repeated_title
+                    } else {
+                        failure.messageRes
+                    }
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (escalated) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        if (escalated) {
+            Spacer(Modifier.height(6.dp))
+            // The specific cause stays on screen under the explanation — it is what makes
+            // a bug report actionable, and it is the line that matches logcat.
+            Text(
+                text = stringResource(failure.messageRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.demo_point_and_ask_error_repeated_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+            )
+        }
+    }
+}
 
 /** Shared bottom-overlay card chrome for every Point & Ask state. */
 @Composable
