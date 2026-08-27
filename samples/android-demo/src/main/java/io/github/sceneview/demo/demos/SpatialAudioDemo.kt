@@ -108,12 +108,12 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
-    // Camera home — close enough that the orbiting sphere fills a comfortable
-    // portion of the viewport (the orbit radius is only 0.6 m), but high enough
-    // to show the ground plate for depth. The look-at hugs the orbit plane so
-    // the sphere never disappears off-screen.
+    // Camera home — far enough back that the whole orbit ring plus the widest
+    // wave shell fit in frame (they did not at the previous 1.4 m: the shells
+    // ran off both edges), high enough to show the ground plate for depth. The
+    // look-at hugs the orbit plane so the source never leaves the viewport.
     val cameraNode = rememberCameraNode(engine) {
-        position = Position(0f, 0.45f, 1.4f)
+        position = Position(0f, 0.6f, 1.9f)
         lookAt(Position(0f, 0f, 0f))
     }
 
@@ -439,10 +439,18 @@ private const val ORBIT_RADIUS = 0.6f
 /** Radius (m) of the solid sphere the audio node is attached to. */
 private const val EMITTER_RADIUS = 0.16f
 
-/** Geometry radius (m) of a wave shell — animated through `scale`, never here. */
+/**
+ * Geometry radius (m) of a wave shell — animated through `scale`, never here.
+ *
+ * The scale ceiling is a framing constraint, not a taste call: measured on the
+ * emulator at the camera home below, a shell of radius 0.68 m subtends ~42° and
+ * runs off both sides of the viewport, which is the "one purple blob" the
+ * report was about. Capped at 0.38 m — 2.4× the emitter — the shell stays a
+ * shell you watch leave, and the whole orbit still fits on screen.
+ */
 private const val WAVE_BASE_RADIUS = 0.2f
-private const val WAVE_MIN_SCALE = 1.0f
-private const val WAVE_MAX_SCALE = 3.4f
+private const val WAVE_MIN_SCALE = 0.9f
+private const val WAVE_MAX_SCALE = 1.9f
 
 /** One full expansion of a shell, in seconds. */
 private const val WAVE_PERIOD_SEC = 1.6f
@@ -450,8 +458,13 @@ private const val WAVE_PERIOD_SEC = 1.6f
 /** Alpha of a wave shell the instant it leaves the emitter; it fades to 0. */
 private const val WAVE_ALPHA_MAX = 0.30f
 
-/** Alpha of the orbit-path polyline — present, never competing with the source. */
-private const val ORBIT_PATH_ALPHA = 0.45f
+/**
+ * Alpha of the orbit-path polyline. Filament draws a `LINES` primitive one
+ * pixel wide with no way to thicken it, and at 420 dpi that hairline needs the
+ * colour at close to full strength to read at all — measured on the emulator,
+ * 0.45 was a ghost.
+ */
+private const val ORBIT_PATH_ALPHA = 0.85f
 
 /** Three shells, evenly spread over the period. */
 private val WAVE_PHASES = listOf(0f, 1f / 3f, 2f / 3f)
