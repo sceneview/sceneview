@@ -3,6 +3,7 @@ package io.github.sceneview.node
 import android.view.MotionEvent
 import android.view.View
 import dev.romainguy.kotlin.math.Float2
+import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 
@@ -19,11 +20,8 @@ import io.github.sceneview.math.Size
  * `0..widthPx` / `0..heightPx`, which is exactly what Android expects — a view un-presses itself
  * when the pointer moves out of its bounds.
  *
- * @param mirrorX Whether the rendered content is mirrored horizontally, i.e. the node was built
- * with `invertFrontFaceWinding = true`. That flag sets the material's `uvOffset.x` to `1`, and both
- * `view_texture_*.mat` then shade `uv.x = uv.x + uvOffset.x * (1 - 2 * uv.x)` — plain `1 - uv.x`.
- * Pixels move on screen but the quad does not, so the mapping has to mirror with them: without
- * this, in a `Row { Button("Cancel"); Button("OK") }`, tapping the visible "Cancel" fires "OK".
+ * @param mirrorX Whether the rendered content is mirrored horizontally on screen — see
+ * [shouldMirrorX], which is what the caller should pass here.
  * @return the view pixel coordinate, or `null` when the quad or the view has no usable size (a
  * [ViewNode] whose content has not been measured yet).
  */
@@ -42,6 +40,40 @@ internal fun viewTouchPixels(
     val v = 0.5f - (localPosition.y - center.y) / size.y
     return Float2(if (mirrorX) (1.0f - u) * widthPx else u * widthPx, v * heightPx)
 }
+
+/**
+ * Whether the quad was picked on its **back** face, from the node-local direction of the picking
+ * ray (#3329).
+ *
+ * A [ViewNode]'s quad lies in the local XY plane and reads correctly when looked at from `+Z`. A
+ * ray cast from a camera on that side therefore travels towards `-Z`; one travelling towards `+Z`
+ * started behind the quad, so what the user is looking at — and aiming at — is the back face.
+ *
+ * A ray exactly parallel to the quad (`z == 0`) cannot hit it in any meaningful way; it counts as
+ * front-facing so the mapping stays the default one.
+ */
+internal fun isBackFaceHit(localRayDirection: Float3): Boolean = localRayDirection.z > 0.0f
+
+/**
+ * Whether [viewTouchPixels] has to mirror its X axis, i.e. whether the content the user sees is
+ * horizontally mirrored relative to the plain front-face mapping.
+ *
+ * Two independent mirrors, which cancel when both apply:
+ *
+ * - **[invertFrontFaceWinding]** — that flag sets the material's `uvOffset.x` to `1`, and both
+ *   `view_texture_*.mat` then shade `uv.x = uv.x + uvOffset.x * (1 - 2 * uv.x)` — plain `1 - uv.x`.
+ *   Pixels move on screen but the quad does not, so the mapping has to mirror with them: without
+ *   this, in a `Row { Button("Cancel"); Button("OK") }`, tapping the visible "Cancel" fires "OK".
+ * - **Back-face pick** ([isBackFaceHit]) — the material is double-sided and un-mirrors its UVs on
+ *   the back face, so a quad orbited past edge-on keeps reading correctly on screen. The mapping
+ *   used to stay front-face regardless (the "known limitation" this replaces), so every touch on a
+ *   quad turned away from the viewer landed on the horizontally mirrored pixel: on a spinning card
+ *   the "Tap me" button simply stopped working for half of every turn (#3329).
+ */
+internal fun shouldMirrorX(
+    invertFrontFaceWinding: Boolean,
+    localRayDirection: Float3
+): Boolean = invertFrontFaceWinding != isBackFaceHit(localRayDirection)
 
 /**
  * Dispatches picked [MotionEvent]s into an embedded [View] hierarchy, and owns the touch-target

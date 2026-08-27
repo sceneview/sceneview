@@ -140,4 +140,40 @@ class TransformConversionsTest {
             Float3(computed[3].x, computed[3].y, computed[3].z)
         )
     }
+
+    // --- Direction (#3329) ---
+
+    @Test
+    fun worldToLocalDirectionIgnoresTranslation() {
+        // The whole point of the w = 0 transform: a direction is a free vector, so moving the
+        // node must not move it. The position conversion would return (-7, 2, -3) here.
+        val worldToLocal = inverse(translation(Float3(7f, -2f, 4f)))
+        assertFloat3Near(
+            Float3(0f, 0f, -1f),
+            worldToLocalDirection(Float3(0f, 0f, -1f), worldToLocal)
+        )
+    }
+
+    @Test
+    fun worldToLocalDirectionFlipsSignForAHalfTurnedNode() {
+        // A quad yawed 180° is seen from behind by a camera that still looks down -Z: in the
+        // node's own space the picking ray now travels towards +Z, which is what `isBackFaceHit`
+        // reads to mirror the touch mapping.
+        val worldTransform = Transform(rotation = Rotation(y = 180f))
+        val local = worldToLocalDirection(Float3(0f, 0f, -1f), inverse(worldTransform))
+        assertTrue(local.z > 0f, "Expected a back-face ray (local z > 0) but got ${local.z}")
+    }
+
+    @Test
+    fun localToWorldDirectionRoundTrips() {
+        val worldTransform = Transform(position = Position(2f, 5f, -3f), rotation = Rotation(12f, 37f, -8f))
+        val direction = Float3(0.2f, -0.4f, -0.9f)
+        assertFloat3Near(
+            direction,
+            worldToLocalDirection(
+                localToWorldDirection(direction, worldTransform),
+                inverse(worldTransform)
+            )
+        )
+    }
 }

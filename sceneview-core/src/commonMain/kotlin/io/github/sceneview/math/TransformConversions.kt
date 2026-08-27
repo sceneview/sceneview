@@ -1,5 +1,6 @@
 package io.github.sceneview.math
 
+import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.inverse
 import dev.romainguy.kotlin.math.scale
@@ -38,6 +39,37 @@ fun worldToLocalPosition(worldPosition: Position, worldToLocal: Transform): Posi
  */
 fun localToWorldPosition(localPosition: Position, worldTransform: Transform): Position =
     worldTransform * localPosition
+
+// --- Direction ---
+
+/**
+ * Convert a world-space **direction** to this node's local space.
+ *
+ * A direction is a free vector, not a point: it must be transformed with `w = 0` so the
+ * matrix translation is dropped. Using the `Mat4 * Float3` point operator instead would
+ * add the node's world position to the vector, which is wrong for a ray direction and
+ * gives a nonsense answer for anything that reads its sign (facing tests, back-face
+ * culling, …).
+ *
+ * The result is **not normalised**: a non-uniform parent scale stretches it. Every
+ * component keeps its sign under a positive scale, so a facing test on one axis stays
+ * valid without the normalise.
+ *
+ * @param worldDirection Direction in world space.
+ * @param worldToLocal Inverse of the node's world transform (`inverse(worldTransform)`).
+ */
+fun worldToLocalDirection(worldDirection: Direction, worldToLocal: Transform): Direction =
+    (worldToLocal * Float4(worldDirection, 0.0f)).xyz
+
+/**
+ * Convert a local-space **direction** to world space. See [worldToLocalDirection] for why
+ * this is not the position conversion.
+ *
+ * @param localDirection Direction in this node's local space.
+ * @param worldTransform The node's world transform matrix.
+ */
+fun localToWorldDirection(localDirection: Direction, worldTransform: Transform): Direction =
+    (worldTransform * Float4(localDirection, 0.0f)).xyz
 
 // --- Quaternion ---
 

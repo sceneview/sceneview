@@ -849,11 +849,9 @@ class DemoInteractionTest {
 
     @Test
     fun viewNode_visibleAndTapCounter() {
-        // #2239 Batch 1 — `view-node` and `collision` consolidated into
-        // `picking-collision` with a segmented toggle. Open the unified demo,
-        // switch to the "View Node" tab, then run the original interactions.
+        // #3329 — `picking-collision`'s two tabs are now one scene: the shapes and the
+        // Compose card share it, so there is no tab to switch to any more.
         openDemo("picking-collision")
-        tap("View Node")
         screenshot("88_viewNode_visible_default")
 
         // ViewNode's card is rendered inside a Compose hierarchy attached to the 3D-textured
@@ -864,17 +862,19 @@ class DemoInteractionTest {
         // `Card(onClick = …)`, with the "Tap me" Button inside it). We click three distinct
         // positions so three genuine up-events fire (tapping the same pixel back-to-back can
         // coalesce into a double-tap sequence on some gesture stacks); the counter must read 3.
+        // The card now floats at world y = 0.52 above the shape row, with the eye pulled
+        // back to 4.2 m (PickingLayout) — that projects to ~0.42 × h in the portrait frame.
         val cx = device.displayWidth / 2
-        val cy = (device.displayHeight * 0.35).toInt()
+        val cy = (device.displayHeight * 0.42).toInt()
         device.click(cx - 40, cy); Thread.sleep(500)
         device.click(cx, cy + 40); Thread.sleep(500)
         device.click(cx + 40, cy); Thread.sleep(700)
         screenshot("89_viewNode_tapped_3")
 
-        tap("Visible")
+        tap("Compose card")
         screenshot("90_viewNode_hidden")
 
-        tap("Visible")
+        tap("Compose card")
         screenshot("91_viewNode_visible_back")
     }
 
@@ -940,27 +940,26 @@ class DemoInteractionTest {
 
     @Test
     fun collision_shapeTapAndReset() {
-        // #2239 Batch 1 — `collision` and `view-node` consolidated into
-        // `picking-collision`. The default landing tab is Ray Hit-Test, so the
-        // alias arrives ready to exercise the shape-tap + Reset Colors flow.
+        // #3329 — one scene now: the shape row and the Compose card share it, and the
+        // row was pulled in to x = ±0.5 with the eye at 4.2 m so it stops being clipped
+        // by the portrait viewport edges (see PickingLayout).
         openDemo("picking-collision")
         screenshot("85_collision_default")
 
         val w = device.displayWidth
         val h = device.displayHeight
-        // Two-row mapping confirmed by hit-test log on Pixel_7a portrait (default
-        // camera at z=4, shapes at z=-2):
-        //   spheres (world y=+0.3) → display abs y ≈ 720  ≈ 0.30 × h
-        //   cubes   (world y= 0 )  → display abs y ≈ 886  ≈ 0.37 × h (viewport centre)
-        // X mapping from world:
-        //   x=-0.6→0.25 | x=-0.3→0.37 | x=0→0.50 | x=0.3→0.63 | x=0.6→0.75
-        val sphereY = (h * 0.30).toInt()
-        val cubeY   = (h * 0.37).toInt()
-        device.click((w * 0.25).toInt(), cubeY);   Thread.sleep(300)  // cube   0
-        device.click((w * 0.37).toInt(), sphereY); Thread.sleep(300)  // sphere 1
+        // Projected from PickingLayout for a phone-portrait frame (eye at z = 4.2 aimed at
+        // y = 0.1, viewport ≈ 0.92 × h centred on 0.53 × h):
+        //   spheres (world y = -0.05) → ≈ 0.57 × h
+        //   cubes   (world y = -0.30) → ≈ 0.64 × h
+        //   x = -0.5 → 0.22 | -0.25 → 0.36 | 0 → 0.50 | 0.25 → 0.64 | 0.5 → 0.78
+        val sphereY = (h * 0.57).toInt()
+        val cubeY   = (h * 0.64).toInt()
+        device.click((w * 0.22).toInt(), cubeY);   Thread.sleep(300)  // cube   0
+        device.click((w * 0.36).toInt(), sphereY); Thread.sleep(300)  // sphere 1
         device.click((w * 0.50).toInt(), cubeY);   Thread.sleep(300)  // cube   2
-        device.click((w * 0.63).toInt(), sphereY); Thread.sleep(300)  // sphere 3
-        device.click((w * 0.75).toInt(), cubeY);   Thread.sleep(400)  // cube   4
+        device.click((w * 0.64).toInt(), sphereY); Thread.sleep(300)  // sphere 3
+        device.click((w * 0.78).toInt(), cubeY);   Thread.sleep(400)  // cube   4
         screenshot("86_collision_after_taps")
 
         tap("Reset Colors")

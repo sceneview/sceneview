@@ -108,4 +108,44 @@ class RayHitTest {
         assertClose(point1.y, point2.y)
         assertClose(point1.z, point2.z)
     }
+
+    // --- Ray direction (#3329) ---
+
+    @Test
+    fun defaultDirectionLooksDownNegativeZ() {
+        // A hit built outside CollisionSystem.hitTest still has to answer a facing test, and the
+        // front-facing answer is the safe one: it keeps the pre-#3329 mapping.
+        val direction = RayHit().getDirection()
+        assertClose(0f, direction.x)
+        assertClose(0f, direction.y)
+        assertClose(-1f, direction.z)
+    }
+
+    @Test
+    fun directionRoundTrips() {
+        val hit = RayHit()
+        hit.setWorldDirection(dev.romainguy.kotlin.math.Float3(0.2f, -0.5f, 0.8f))
+        val world = hit.getWorldDirection()
+        assertClose(0.2f, world.x)
+        assertClose(-0.5f, world.y)
+        assertClose(0.8f, world.z)
+    }
+
+    @Test
+    fun setCopiesTheDirection() {
+        val source = RayHit()
+        source.setDirection(Vector3(1f, 0f, 0f))
+        val target = RayHit()
+        target.set(source)
+        assertClose(1f, target.getDirection().x)
+    }
+
+    @Test
+    fun resetRestoresTheDefaultDirection() {
+        val hit = RayHit()
+        hit.setDirection(Vector3(1f, 0f, 0f))
+        hit.reset()
+        assertClose(0f, hit.getDirection().x)
+        assertClose(-1f, hit.getDirection().z)
+    }
 }

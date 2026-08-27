@@ -3,6 +3,7 @@ package io.github.sceneview.node
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import org.junit.Assert.assertEquals
@@ -103,6 +104,62 @@ class ViewTouchForwarderTest {
         assertNull(viewTouchPixels(Position(0.0f), center, size, 0, 200))
         assertNull(viewTouchPixels(Position(0.0f), center, size, 400, 0))
         assertNull(viewTouchPixels(Position(0.0f), center, Size(0.0f), 400, 200))
+    }
+
+    // ── Facing (#3329) ───────────────────────────────────────────────────────────────────────────
+
+    /** A camera on the quad's `+Z` side: the ray it casts travels towards `-Z`. */
+    private val fromTheFront = Float3(0.0f, 0.0f, -1.0f)
+
+    /** A camera behind the quad — what a node yawed past 90° presents to the viewer. */
+    private val fromBehind = Float3(0.0f, 0.0f, 1.0f)
+
+    @Test
+    fun `a ray travelling towards -Z hits the front face`() {
+        assertFalse(isBackFaceHit(fromTheFront))
+        // Grazing but still front-facing: only the Z sign decides.
+        assertFalse(isBackFaceHit(Float3(0.98f, 0.1f, -0.02f)))
+    }
+
+    @Test
+    fun `a ray travelling towards +Z hits the back face`() {
+        assertTrue(isBackFaceHit(fromBehind))
+        assertTrue(isBackFaceHit(Float3(-0.98f, 0.1f, 0.02f)))
+    }
+
+    @Test
+    fun `a ray parallel to the quad counts as front-facing rather than as a mirror`() {
+        // It cannot meaningfully hit the quad at all; answering "front" keeps the default mapping
+        // instead of flipping the content under the finger on a degenerate pick.
+        assertFalse(isBackFaceHit(Float3(1.0f, 0.0f, 0.0f)))
+    }
+
+    @Test
+    fun `the two mirrors cancel`() {
+        // Neither: the plain front mapping.
+        assertFalse(shouldMirrorX(invertFrontFaceWinding = false, localRayDirection = fromTheFront))
+        // Either one alone mirrors…
+        assertTrue(shouldMirrorX(invertFrontFaceWinding = true, localRayDirection = fromTheFront))
+        assertTrue(shouldMirrorX(invertFrontFaceWinding = false, localRayDirection = fromBehind))
+        // …and a mirrored-winding node picked from behind is drawn unmirrored again, so the
+        // mapping must not mirror either.
+        assertFalse(shouldMirrorX(invertFrontFaceWinding = true, localRayDirection = fromBehind))
+    }
+
+    @Test
+    fun `a back-face hit lands on the pixel the user is actually looking at`() {
+        // Regression for #3329: the "Tap me" button drawn on the right half of the card. Seen from
+        // behind, the quad's local +X edge is the one on the viewer's LEFT, so a hit at local
+        // x = -1 (the local left edge) is what the viewer sees on the right — pixel 400.
+        val mirror = shouldMirrorX(invertFrontFaceWinding = false, localRayDirection = fromBehind)
+        val point = viewTouchPixels(
+            localPosition = Position(x = -1.0f, y = 0.0f, z = 0.0f),
+            center = center, size = size, widthPx = 400, heightPx = 200, mirrorX = mirror
+        )!!
+        assertEquals(400.0f, point.x, 1e-4f)
+        // Pre-fix this returned 0 — the opposite edge of the card, which is why half of every
+        // turn of a spinning card had a dead button.
+        assertEquals(100.0f, point.y, 1e-4f)
     }
 
     // ── Stream state machine ─────────────────────────────────────────────────────────────────────

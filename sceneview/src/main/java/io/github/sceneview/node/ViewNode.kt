@@ -34,6 +34,7 @@ import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.worldToLocalDirection
 import io.github.sceneview.math.worldToLocalPosition
 import io.github.sceneview.node.ViewNode.WindowManager
 
@@ -267,20 +268,30 @@ class ViewNode(
      * the quad would otherwise leave the embedded view pressed forever and leak the rest of the
      * gesture, mid-stream, to detectors that never saw its `DOWN`.
      *
-     * **Known limitation:** the material is double-sided and un-mirrors its UVs on the back face,
-     * so a quad orbited from behind reads correctly on screen while this mapping stays front-face.
-     * Touches picked on the back face therefore land on the horizontally mirrored pixel. Detecting
-     * the facing needs the camera, which this callback does not receive.
+     * The mapping is **facing-aware** (#3329): the material is double-sided and un-mirrors its UVs
+     * on the back face, so a quad orbited past edge-on keeps reading correctly on screen and the
+     * touch mapping has to mirror with it. The facing comes from the picking ray — carried on the
+     * [HitResult] by [io.github.sceneview.collision.CollisionSystem.hitTest] — not from the camera,
+     * which this callback does not receive. Before that, every touch on a quad turned away from the
+     * viewer landed on the horizontally mirrored pixel: on a spinning card the button under the
+     * finger simply did nothing for half of every turn.
      */
     override fun onTouchEvent(e: MotionEvent, hitResult: HitResult): Boolean {
         if (isTouchForwardingEnabled && isVisible) {
+            val worldToLocal = worldToLocal
             val point = viewTouchPixels(
                 localPosition = worldToLocalPosition(hitResult.getWorldPosition(), worldToLocal),
                 center = geometry.center,
                 size = geometry.size,
                 widthPx = layout.width,
                 heightPx = layout.height,
-                mirrorX = invertFrontFaceWinding
+                mirrorX = shouldMirrorX(
+                    invertFrontFaceWinding = invertFrontFaceWinding,
+                    localRayDirection = worldToLocalDirection(
+                        hitResult.getWorldDirection(),
+                        worldToLocal
+                    )
+                )
             )
             if (point != null && touchForwarder.onHit(e, point.x, point.y)) {
                 return true

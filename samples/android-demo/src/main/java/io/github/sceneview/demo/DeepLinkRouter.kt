@@ -91,11 +91,10 @@ internal object DeepLinkRouter {
         "custom-mesh" to "custom-geometry",
         "shape" to "custom-geometry",
         // #2239 Batch 1 — Picking & Collision consolidation. The retired
-        // `collision` and `view-node` demos merged into `picking-collision`
-        // with a segmented-button toggle. Existing `sceneview://demo/collision`
-        // and `sceneview://demo/view-node` deep links keep working; `collision`
-        // lands on the default Ray Hit-Test tab and `view-node` pre-selects the
-        // View Node tab (#2315 — see [ALIAS_INITIAL_TAB]).
+        // `collision` and `view-node` demos merged into `picking-collision`.
+        // #3329 then merged that demo's own two tabs into a single scene, so
+        // both aliases now land on the same (only) view — no [ALIAS_INITIAL_TAB]
+        // entry, because there is no tab left to pre-select.
         "collision" to "picking-collision",
         "view-node" to "picking-collision",
         // #2239 Batch 1 — Camera & Gestures consolidation. The retired
@@ -163,8 +162,6 @@ internal object DeepLinkRouter {
         "movable-light" to 1,
         // custom-geometry — [Custom Mesh, Shape Extrude]
         "shape" to 1,
-        // picking-collision — [Ray Hit-Test, View Node]
-        "view-node" to 1,
         // camera-gestures — [Camera Modes, Node Gestures]
         "gesture-editing" to 1,
         // two-d-in-three-d — [Text, Image, Video, Billboard]
