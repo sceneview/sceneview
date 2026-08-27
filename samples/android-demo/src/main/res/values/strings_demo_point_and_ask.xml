@@ -20,7 +20,24 @@
     <!-- Shown instead of answer_source when ConnectivityManager reports no active network —
          proof the answer was produced with zero connectivity. -->
     <string name="demo_point_and_ask_answer_source_offline">✦ Gemini Nano · on-device · no network</string>
+    <!-- Failure messages. One per distinct cause: a single catch-all string made every
+         failure mode look the same on screen and in logcat, and invited a user whose
+         device can never answer to keep tapping (#3343). -->
     <string name="demo_point_and_ask_error">Gemini Nano couldn\'t answer — tap to try again</string>
+    <string name="demo_point_and_ask_error_capture">Couldn\'t capture the AR frame — hold still and tap again</string>
+    <string name="demo_point_and_ask_error_empty">Gemini Nano returned an empty answer — try rephrasing your question</string>
+    <string name="demo_point_and_ask_error_unavailable">Gemini Nano isn\'t available on this device</string>
+    <string name="demo_point_and_ask_error_system_update">Gemini Nano needs a system update (Android System Intelligence / AICore)</string>
+    <string name="demo_point_and_ask_error_disk_space">Not enough free storage for Gemini Nano — free some space and tap again</string>
+    <string name="demo_point_and_ask_error_busy">Gemini Nano is busy or throttled right now — tap again in a moment</string>
+    <string name="demo_point_and_ask_error_too_large">The question was too long for the on-device model — try a shorter one</string>
+    <string name="demo_point_and_ask_error_image">Gemini Nano rejected the captured frame — point at something and tap again</string>
+
+    <!-- Shown once a failure repeats (or a terminal one occurs): stop offering a retry
+         that cannot work, explain instead (#3343). -->
+    <string name="demo_point_and_ask_error_repeated_title">Point &amp; Ask can\'t answer on this device</string>
+    <string name="demo_point_and_ask_error_repeated_body">Answers run entirely on-device through Google AICore — there is no cloud fallback, by design. Check that Android System Intelligence is up to date, or try again after a restart.</string>
+    <string name="demo_point_and_ask_error_cd">Error</string>
 
     <!-- Free-form question input (P3) -->
     <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>
