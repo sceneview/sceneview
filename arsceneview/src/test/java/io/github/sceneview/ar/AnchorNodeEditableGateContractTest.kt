@@ -43,8 +43,10 @@ class AnchorNodeEditableGateContractTest {
         .associate { it.name to it.readText() }
 
     /** Matches a plain-field editable-flag override NOT followed by the gating getter. */
-    private val overrideRegex =
-        Regex("""override\s+var\s+(is(?:Position|Rotation|Scale)Editable)[^\n]*\n(\s*get\(\)\s*=\s*isEditable\s*&&\s*field)?""")
+    private val overrideRegex = Regex(
+        """override\s+var\s+(is(?:Position|Rotation|Scale)Editable)[^\n]*\n""" +
+            """(\s*get\(\)\s*=\s*isEditable\s*&&\s*field)?"""
+    )
 
     @Test
     fun `every editable flag override keeps the isEditable gate`() {
