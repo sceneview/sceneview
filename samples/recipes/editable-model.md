@@ -66,3 +66,38 @@ SceneView { root in
 - Camera orbit still works on empty areas of the viewport
 - For AR scenes, use `isEditable = true` on `AnchorNode` children for real-world-aligned editing
 - To limit gestures, configure `editableScaleRange` or handle `onGesture` callbacks
+- `editableScaleRange` is a window on **absolute local scale** (default `0.1f..10.0f`),
+  not a factor relative to the start scale — a model placed with `scaleToUnits` starts at
+  a non-1 scale, so set the range around it: `editableScaleRange = scale.x * 0.5f..scale.x * 2f`
+
+## Opt-in gesture feedback (Android)
+
+Show live on-model feedback while the user manipulates the node — a selection ring, a
+rotation ring with yaw readout, a scale percentage badge that bounces at
+`editableScaleRange` limits, and a contact shadow while dragging:
+
+```kotlin
+val view = rememberView(engine)               // pass the SAME view to SceneView below
+var modelNode by remember { mutableStateOf<ModelNode?>(null) }
+
+Box {
+    SceneView(engine = engine, view = view, /* … */) {
+        model?.let {
+            ModelNode(modelInstance = it, isEditable = true, apply = { modelNode = this })
+        }
+    }
+    modelNode?.let { node ->
+        NodeEditingOverlay(
+            state = rememberNodeEditingFeedback(node),
+            view = view,
+            modifier = Modifier.matchParentSize(),
+            selected = true,                  // white ring while no gesture is active
+        )
+    }
+}
+```
+
+Reading the gesture without the ready-made overlay: `rememberNodeEditingFeedback(node)`
+exposes `activeKinds`, `yawDegrees` (full-turn safe — never read `node.rotation.y`, it
+saturates at ±90°), `scalePercent`, `scaleLimit` / `scaleLimitHits` as Compose state; the
+non-Compose hook is `node.addEditingListener(NodeEditingListener)`.

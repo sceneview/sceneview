@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -45,6 +46,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.node.AnchorNode as ArAnchorNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -56,6 +58,10 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
 import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.gesture.NodeEditingOverlay
+import io.github.sceneview.gesture.rememberNodeEditingFeedback
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -445,8 +451,24 @@ private fun InstantPlacementScene(
     state: InstantPlacementSceneState,
 ) {
     val engine = rememberEngine()
+    // Hoisted so the gesture-feedback overlay below can project world → screen through
+    // the same Filament view the AR scene renders with.
+    val view = rememberARView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+
+    // Placed editable nodes, keyed by placed-model id, for the on-model gesture
+    // feedback overlays. Entries are removed on disposal (Clear All / lost anchor) so
+    // the overlay never projects a destroyed node.
+    val editableNodes = remember { mutableStateMapOf<Int, ModelNode>() }
+
+    // The AnchorNode of each placed model. Needed for two things: the drag gesture is
+    // handled by the ANCHOR node (detach on begin, re-anchor on end — `AnchorNode`
+    // overrides `isPositionEditable` to `true`, which the model node leaves `false`), so
+    // the feedback overlay listens to it for move events; and the lost-anchor
+    // reconciliation below must read the node's CURRENT anchor, not the placement-time
+    // one.
+    val anchorNodes = remember { mutableStateMapOf<Int, ArAnchorNode>() }
 
     // Placement and tracking state live in the caller (see [InstantPlacementSceneState])
     // so the "Clear All" control and the status pills can sit in the scaffold's overlay
@@ -463,6 +485,7 @@ private fun InstantPlacementScene(
         ARSceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
+            view = view,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             playbackDataset = playbackDataset,
@@ -490,14 +513,24 @@ private fun InstantPlacementScene(
                 // Hiding those models + surfacing "Lost" on the badge is cheaper than
                 // a re-hit-test recovery and keeps the demo deterministic.
                 placedModels.forEach { placed ->
-                    val anchorStopped = placed.anchor.trackingState == TrackingState.STOPPED
+                    val anchorNode = anchorNodes[placed.id]
+                    // A drag on the anchor node DELIBERATELY detaches the anchor for the
+                    // duration of the gesture and re-anchors on release — reconciling
+                    // mid-gesture would read that as anchor loss and kill the model
+                    // (observed on the Pixel 4a rig: model gone ~0.3s into every drag,
+                    // with ARCore double-detach warnings).
+                    if (anchorNode?.editingTransforms?.isNotEmpty() == true) return@forEach
+                    // Read the node's CURRENT anchor: after a drag the AnchorNode holds a
+                    // fresh anchor and the placement-time one is dead.
+                    val activeAnchor = anchorNode?.anchor ?: placed.anchor
+                    val anchorStopped = activeAnchor.trackingState == TrackingState.STOPPED
                     if (lostAnchors[placed.id] != anchorStopped) {
                         lostAnchors[placed.id] = anchorStopped
                     }
                     if (anchorStopped) {
                         // Free ARCore's anchor slot — there are only a few dozen per
                         // session and dead Instant Placement points never recover.
-                        runCatching { placed.anchor.detach() }
+                        runCatching { activeAnchor.detach() }
                         // Don't refresh the trackingMethod snapshot once the anchor's
                         // gone — the underlying InstantPlacementPoint may still report
                         // its last method, which would mask the "Lost" state behind a
@@ -571,7 +604,15 @@ private fun InstantPlacementScene(
                         // permanent loss is still handled above via lostAnchors (#1435).
                         AnchorNode(
                             anchor = placed.anchor,
-                            visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES
+                            visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES,
+                            apply = {
+                                // Every `is*Editable` flag — `isPositionEditable`
+                                // included — is gated by `isEditable`, which defaults to
+                                // false. Without this opt-in the anchor ignores the drag
+                                // and the move feedback never fires.
+                                isEditable = true
+                                anchorNodes[placed.id] = this
+                            }
                         ) {
                             // `fileLocation =` forces the URL-capable overload (handles both
                             // the `file://` streamed URI and the bundled asset path). See the
@@ -586,12 +627,55 @@ private fun InstantPlacementScene(
                                     modelInstance = it,
                                     scaleToUnits = 0.3f,
                                     isVisible = textured,
-                                    isEditable = true
+                                    isEditable = true,
+                                    apply = {
+                                        // `editableScaleRange` is an ABSOLUTE local-scale
+                                        // window, not a factor — and `scaleToUnits` makes
+                                        // that scale a function of how the asset was
+                                        // authored. The Khronos Fox is modelled at ~140
+                                        // units, so 0.3 units of it is a local scale near
+                                        // 0.002: far below the default `0.1f..10f`, which
+                                        // silently rejected every pinch update and made
+                                        // zoom look dead on that model. Re-center the
+                                        // window on the as-placed scale.
+                                        editableScaleRange = scale.x * 0.25f..scale.x * 4f
+                                        editableNodes[placed.id] = this
+                                    }
                                 )
+                                DisposableEffect(placed.id) {
+                                    onDispose {
+                                        editableNodes.remove(placed.id)
+                                        anchorNodes.remove(placed.id)
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // Opt-in on-model gesture feedback: one overlay per placed editable model —
+        // rotation ring + yaw badge, scale badge with range-limit bounce, contact
+        // shadow while dragging. Drawn over the camera feed by world→screen projection
+        // through the hoisted [view].
+        for (id in editableNodes.keys.toList()) {
+            val node = editableNodes[id] ?: continue
+            key(id) {
+                val feedback = rememberNodeEditingFeedback(node)
+                // The drag gesture is handled by the parent ANCHOR node (detach →
+                // re-anchor), not by the model node — subscribe the same feedback state
+                // to it so the move visuals (contact shadow + accent ring) track drags.
+                val anchorNode = anchorNodes[id]
+                DisposableEffect(feedback, anchorNode) {
+                    anchorNode?.addEditingListener(feedback)
+                    onDispose { anchorNode?.removeEditingListener(feedback) }
+                }
+                NodeEditingOverlay(
+                    state = feedback,
+                    view = view,
+                    modifier = Modifier.matchParentSize(),
+                )
             }
         }
 

@@ -5,6 +5,8 @@ import android.view.MotionEvent
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.notifyEditingPressed
+import io.github.sceneview.node.notifyEditingReleased
 
 /**
  * Detects various gestures and events using the supplied {@link MotionEvent}s.
@@ -233,9 +235,37 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         }
     )
 
+    /**
+     * The editable node currently held down, so its press can be released on UP/CANCEL
+     * even when the finger has since travelled off it.
+     */
+    private var pressedNode: Node? = null
+
     fun onTouchEvent(event: MotionEvent, hitResult: HitResult?) {
         lastTouchEvent = event
         touchedNode = hitResult?.node
+
+        // Press/release is dispatched ahead of gesture recognition: the sub-detectors only
+        // report a Begin once their threshold is crossed, which is far too late for
+        // on-model feedback to acknowledge the touch (#3357).
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                // Editing gestures bubble to the first editable ancestor (see
+                // NodeGestureDelegate's parent delegation), so the press does too.
+                val node = generateSequence(hitResult?.node) { it.parent }
+                    .firstOrNull { it.isEditable }
+                if (node !== pressedNode) {
+                    pressedNode?.gestureDelegate?.notifyEditingReleased()
+                    pressedNode = node
+                    node?.gestureDelegate?.notifyEditingPressed()
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                pressedNode?.gestureDelegate?.notifyEditingReleased()
+                pressedNode = null
+            }
+        }
 
         gestureDetector.onTouchEvent(event)
         moveGestureDetector.onTouchEvent(event)

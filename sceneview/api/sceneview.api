@@ -1595,6 +1595,125 @@ public final class io/github/sceneview/gesture/MoveGestureDetector$SimpleOnMoveL
 	public static fun onMoveEnd (Lio/github/sceneview/gesture/MoveGestureDetector$SimpleOnMoveListener;Lio/github/sceneview/gesture/MoveGestureDetector;Landroid/view/MotionEvent;)V
 }
 
+public final class io/github/sceneview/gesture/NodeEditingFeedbackState : io/github/sceneview/gesture/NodeEditingListener {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/node/Node;F)V
+	public synthetic fun <init> (Lio/github/sceneview/node/Node;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getActiveKinds ()Ljava/util/Set;
+	public final fun getMoveWorldPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getNode ()Lio/github/sceneview/node/Node;
+	public final fun getRotationDeltaDegrees ()F
+	public final fun getScaleBaseline ()F
+	public final fun getScaleLimit ()Lio/github/sceneview/gesture/NodeScaleLimit;
+	public final fun getScaleLimitHits ()I
+	public final fun getScalePercent ()F
+	public final fun getYawDegrees ()F
+	public final fun isArmed ()Z
+	public final fun isEditing ()Z
+	public final fun isGrowing ()Z
+	public final fun isPressed ()Z
+	public fun onEditingBegin (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public fun onEditingEnd (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public fun onEditingPressed (Lio/github/sceneview/node/Node;)V
+	public fun onEditingReleased (Lio/github/sceneview/node/Node;)V
+	public fun onPositionEdited (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;)V
+	public fun onRotationEdited (Lio/github/sceneview/node/Node;F)V
+	public fun onScaleEdited (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeScaleEdit;)V
+	public final fun setScaleBaseline (F)V
+}
+
+public final class io/github/sceneview/gesture/NodeEditingFeedbackStateKt {
+	public static final fun rememberNodeEditingFeedback (Lio/github/sceneview/node/Node;Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/gesture/NodeEditingFeedbackState;
+}
+
+public final class io/github/sceneview/gesture/NodeEditingKind : java/lang/Enum {
+	public static final field Move Lio/github/sceneview/gesture/NodeEditingKind;
+	public static final field Rotate Lio/github/sceneview/gesture/NodeEditingKind;
+	public static final field Scale Lio/github/sceneview/gesture/NodeEditingKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/gesture/NodeEditingKind;
+	public static fun values ()[Lio/github/sceneview/gesture/NodeEditingKind;
+}
+
+public abstract interface class io/github/sceneview/gesture/NodeEditingListener {
+	public fun onEditingBegin (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public fun onEditingEnd (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public fun onEditingPressed (Lio/github/sceneview/node/Node;)V
+	public fun onEditingReleased (Lio/github/sceneview/node/Node;)V
+	public fun onPositionEdited (Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;)V
+	public fun onRotationEdited (Lio/github/sceneview/node/Node;F)V
+	public fun onScaleEdited (Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeScaleEdit;)V
+}
+
+public final class io/github/sceneview/gesture/NodeEditingListener$DefaultImpls {
+	public static fun onEditingBegin (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public static fun onEditingEnd (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeEditingKind;)V
+	public static fun onEditingPressed (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;)V
+	public static fun onEditingReleased (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;)V
+	public static fun onPositionEdited (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;Ldev/romainguy/kotlin/math/Float3;)V
+	public static fun onRotationEdited (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;F)V
+	public static fun onScaleEdited (Lio/github/sceneview/gesture/NodeEditingListener;Lio/github/sceneview/node/Node;Lio/github/sceneview/gesture/NodeScaleEdit;)V
+}
+
+public final class io/github/sceneview/gesture/NodeEditingListenerKt {
+	public static final fun quaternionYawDegrees (Ldev/romainguy/kotlin/math/Quaternion;)F
+}
+
+public final class io/github/sceneview/gesture/NodeEditingOverlayColors {
+	public static final field $stable I
+	public synthetic fun <init> (JJJJJJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JJJJJJJLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-0d7_KjU ()J
+	public final fun component2-0d7_KjU ()J
+	public final fun component3-0d7_KjU ()J
+	public final fun component4-0d7_KjU ()J
+	public final fun component5-0d7_KjU ()J
+	public final fun component6-0d7_KjU ()J
+	public final fun component7-0d7_KjU ()J
+	public final fun copy-4JmcsL4 (JJJJJJJ)Lio/github/sceneview/gesture/NodeEditingOverlayColors;
+	public static synthetic fun copy-4JmcsL4$default (Lio/github/sceneview/gesture/NodeEditingOverlayColors;JJJJJJJILjava/lang/Object;)Lio/github/sceneview/gesture/NodeEditingOverlayColors;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAccent-0d7_KjU ()J
+	public final fun getBadgeBackground-0d7_KjU ()J
+	public final fun getBadgeBorder-0d7_KjU ()J
+	public final fun getBadgeText-0d7_KjU ()J
+	public final fun getLimit-0d7_KjU ()J
+	public final fun getSelection-0d7_KjU ()J
+	public final fun getShadow-0d7_KjU ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/gesture/NodeEditingOverlayKt {
+	public static final fun NodeEditingOverlay (Lio/github/sceneview/gesture/NodeEditingFeedbackState;Lcom/google/android/filament/View;Landroidx/compose/ui/Modifier;ZLio/github/sceneview/gesture/NodeEditingOverlayColors;Landroidx/compose/runtime/Composer;II)V
+}
+
+public final class io/github/sceneview/gesture/NodeScaleEdit {
+	public static final field $stable I
+	public fun <init> (FLdev/romainguy/kotlin/math/Float3;ZLio/github/sceneview/gesture/NodeScaleLimit;)V
+	public final fun component1 ()F
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component3 ()Z
+	public final fun component4 ()Lio/github/sceneview/gesture/NodeScaleLimit;
+	public final fun copy (FLdev/romainguy/kotlin/math/Float3;ZLio/github/sceneview/gesture/NodeScaleLimit;)Lio/github/sceneview/gesture/NodeScaleEdit;
+	public static synthetic fun copy$default (Lio/github/sceneview/gesture/NodeScaleEdit;FLdev/romainguy/kotlin/math/Float3;ZLio/github/sceneview/gesture/NodeScaleLimit;ILjava/lang/Object;)Lio/github/sceneview/gesture/NodeScaleEdit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApplied ()Z
+	public final fun getFactor ()F
+	public final fun getLimit ()Lio/github/sceneview/gesture/NodeScaleLimit;
+	public final fun getScale ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/gesture/NodeScaleLimit : java/lang/Enum {
+	public static final field Max Lio/github/sceneview/gesture/NodeScaleLimit;
+	public static final field Min Lio/github/sceneview/gesture/NodeScaleLimit;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/gesture/NodeScaleLimit;
+	public static fun values ()[Lio/github/sceneview/gesture/NodeScaleLimit;
+}
+
 public class io/github/sceneview/gesture/RotateGestureDetector {
 	public static final field $stable I
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/RotateGestureDetector$OnRotateListener;)V
@@ -2458,6 +2577,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	protected fun <init> (Lcom/google/android/filament/Engine;IZ)V
 	public final fun addChildNode (Lio/github/sceneview/node/Node;)Lio/github/sceneview/node/Node;
 	public final fun addChildNodes (Ljava/util/Set;)Lio/github/sceneview/node/Node;
+	public final fun addEditingListener (Lio/github/sceneview/gesture/NodeEditingListener;)V
 	public final fun animatePositions ([Ldev/romainguy/kotlin/math/Float3;)Landroid/animation/ObjectAnimator;
 	public final fun animateQuaternions ([Ldev/romainguy/kotlin/math/Quaternion;)Landroid/animation/ObjectAnimator;
 	public final fun animateRotations ([Ldev/romainguy/kotlin/math/Float3;)Landroid/animation/ObjectAnimator;
@@ -2533,6 +2653,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun getWorldTransform ()Ldev/romainguy/kotlin/math/Mat4;
 	public final fun getWorldTransform (Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
 	public final fun getWorldTransform (Lio/github/sceneview/node/Node;)Ldev/romainguy/kotlin/math/Mat4;
+	public final fun isDestroyed ()Z
 	public fun isEditable ()Z
 	public final fun isHittable ()Z
 	public fun isPositionEditable ()Z
@@ -2580,6 +2701,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun overlapTestAll ()Ljava/util/List;
 	public final fun removeChildNode (Lio/github/sceneview/node/Node;)Lio/github/sceneview/node/Node;
 	public final fun removeChildNodes (Ljava/util/Set;)Lio/github/sceneview/node/Node;
+	public final fun removeEditingListener (Lio/github/sceneview/gesture/NodeEditingListener;)V
 	public final fun setChildNodes (Ljava/util/Set;)V
 	public final fun setCollider (Lio/github/sceneview/collision/Collider;)V
 	public final fun setCollisionShape (Lio/github/sceneview/collision/CollisionShape;)V

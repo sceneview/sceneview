@@ -748,6 +748,23 @@ open class Node protected constructor(
         get() = gestureDelegate.editingTransforms
         set(value) { gestureDelegate.editingTransforms = value }
 
+    /**
+     * Registers a multi-consumer observer of editing gestures on this node.
+     *
+     * Unlike the single-slot `onMove`/`onRotate`/`onScale` lambdas, any number of
+     * [io.github.sceneview.gesture.NodeEditingListener]s can be attached without
+     * clobbering each other — this is the hook behind the opt-in gesture feedback UI
+     * (`rememberNodeEditingFeedback` / `NodeEditingOverlay`).
+     */
+    fun addEditingListener(listener: io.github.sceneview.gesture.NodeEditingListener) {
+        gestureDelegate.editingListeners += listener
+    }
+
+    /** Removes a listener previously registered with [addEditingListener]. */
+    fun removeEditingListener(listener: io.github.sceneview.gesture.NodeEditingListener) {
+        gestureDelegate.editingListeners -= listener
+    }
+
     var onSmoothEnd
         get() = animationDelegate.onSmoothEnd
         set(value) { animationDelegate.onSmoothEnd = value }
@@ -1315,8 +1332,13 @@ open class Node protected constructor(
 
     // ---- Destroy ----
 
-    /** Guards [destroy] against re-entrancy when a node tree references itself. */
-    private var isDestroyed = false
+    /**
+     * `true` once [destroy] has run. Guards [destroy] against re-entrancy, and lets
+     * observers that outlive the node by a frame (e.g. the gesture-feedback overlay's
+     * projection loop) skip touching released Filament components.
+     */
+    var isDestroyed = false
+        private set
 
     /**
      * Detach and destroy the node and all its children.

@@ -10,8 +10,12 @@ import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.degrees
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.gesture.MoveGestureDetector
+import io.github.sceneview.gesture.NodeEditingKind
+import io.github.sceneview.gesture.NodeEditingListener
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
+import io.github.sceneview.gesture.evaluateScaleEdit
+import io.github.sceneview.gesture.quaternionYawDegrees
 import io.github.sceneview.math.Position
 import kotlin.reflect.KProperty1
 
@@ -28,7 +32,7 @@ import kotlin.reflect.KProperty1
  * @param node The owning [Node] whose transforms and collision system are used.
  */
 class NodeGestureDelegate(
-    private val node: Node
+    internal val node: Node
 ) : GestureDetector.OnGestureListener,
     OnDoubleTapListener,
     OnContextClickListener,
@@ -84,6 +88,31 @@ class NodeGestureDelegate(
 
     /** Called whenever the set of actively-edited transform properties changes. */
     var onEditingChanged: ((editingTransforms: Set<KProperty1<Node, Any>?>) -> Unit)? = null
+
+    /**
+     * Multi-consumer observers of editing gestures — see [NodeEditingListener].
+     *
+     * Unlike the single-slot lambdas above, any number of listeners can be attached
+     * without clobbering each other or the app's own callbacks. Managed through
+     * [Node.addEditingListener] / [Node.removeEditingListener]; iterated on a snapshot
+     * copy so a listener may remove itself from its own callback.
+     */
+    internal val editingListeners = mutableListOf<NodeEditingListener>()
+
+    internal inline fun notifyEditingListeners(block: NodeEditingListener.() -> Unit) {
+        if (editingListeners.isNotEmpty()) editingListeners.toList().forEach(block)
+    }
+
+    /**
+     * The gesture kinds this delegate actually claimed at `Begin`.
+     *
+     * `Begin` bubbles to the parent both when the transform flag is off AND when the
+     * node's own callback lambda vetoes, but the flag alone cannot tell the two apart at
+     * `End` — an editable node whose lambda vetoed would end a gesture the parent is
+     * running, leaving the parent with a `Begin` that never gets its `End`. Routing
+     * `End` on what was claimed keeps the two sides symmetric.
+     */
+    private val claimedKinds = mutableSetOf<NodeEditingKind>()
 
     /** The set of [Node] transform properties currently being edited by a gesture. */
     var editingTransforms = setOf<KProperty1<Node, Any>>()
@@ -142,6 +171,8 @@ class NodeGestureDelegate(
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (node.isPositionEditable && onMoveBegin?.invoke(detector, e) != false) {
             editingTransforms = editingTransforms + Node::position
+            claimedKinds += NodeEditingKind.Move
+            notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Move) }
             true
         } else {
             // Delegate to parent via its virtual method to preserve polymorphic overrides
@@ -169,6 +200,7 @@ class NodeGestureDelegate(
     ): Boolean {
         return if (onMove?.invoke(detector, e, worldPosition) != false) {
             node.worldPosition = worldPosition
+            notifyEditingListeners { onPositionEdited(node, worldPosition) }
             true
         } else {
             false
@@ -176,8 +208,9 @@ class NodeGestureDelegate(
     }
 
     override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
-        if (node.isPositionEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Move)) {
             editingTransforms = editingTransforms - Node::position
+            notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Move) }
         } else {
             node.parent?.onMoveEnd(detector, e)
         }
@@ -188,6 +221,8 @@ class NodeGestureDelegate(
     override fun onRotateBegin(detector: RotateGestureDetector, e: MotionEvent): Boolean {
         return if (node.isRotationEditable && onRotateBegin?.invoke(detector, e) != false) {
             editingTransforms = editingTransforms + Node::quaternion
+            claimedKinds += NodeEditingKind.Rotate
+            notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Rotate) }
             true
         } else {
             node.parent?.onRotateBegin(detector, e) ?: false
@@ -216,6 +251,9 @@ class NodeGestureDelegate(
     ): Boolean {
         return if (onRotate?.invoke(detector, e, rotationDelta) != false) {
             node.quaternion *= rotationDelta
+            notifyEditingListeners {
+                onRotationEdited(node, quaternionYawDegrees(rotationDelta))
+            }
             true
         } else {
             false
@@ -223,8 +261,9 @@ class NodeGestureDelegate(
     }
 
     override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
-        if (node.isRotationEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Rotate)) {
             editingTransforms = editingTransforms - Node::quaternion
+            notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Rotate) }
         } else {
             node.parent?.onRotateEnd(detector, e)
         }
@@ -234,6 +273,10 @@ class NodeGestureDelegate(
 
     override fun onScaleBegin(detector: ScaleGestureDetector, e: MotionEvent): Boolean {
         return if (node.isScaleEditable && onScaleBegin?.invoke(detector, e) != false) {
+            // Note: `editingTransforms` only gains Node::scale on the first onScale delta,
+            // but feedback UIs want the badge up as soon as the pinch is recognized.
+            claimedKinds += NodeEditingKind.Scale
+            notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Scale) }
             true
         } else {
             node.parent?.onScaleBegin(detector, e) ?: false
@@ -252,24 +295,23 @@ class NodeGestureDelegate(
     fun onScale(detector: ScaleGestureDetector, e: MotionEvent, scaleFactor: Float): Boolean {
         return if (onScale?.invoke(detector, e, scaleFactor) != false) {
             val damped = 1f + (scaleFactor - 1f) * node.scaleGestureSensitivity
-            val newScale = node.scale * damped
-            if (newScale.x in node.editableScaleRange &&
-                newScale.y in node.editableScaleRange &&
-                newScale.z in node.editableScaleRange
-            ) {
-                node.scale = newScale
-                true
-            } else {
-                false
+            val edit = evaluateScaleEdit(node.scale, damped, node.editableScaleRange)
+            if (edit.applied) {
+                node.scale = edit.scale
             }
+            // Rejected updates are reported too: the range gate silently freezes the node
+            // and feedback UIs need `edit.limit` to show why.
+            notifyEditingListeners { onScaleEdited(node, edit) }
+            edit.applied
         } else {
             false
         }
     }
 
     override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
-        if (node.isScaleEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Scale)) {
             editingTransforms = editingTransforms - Node::scale
+            notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Scale) }
         } else {
             node.parent?.onScaleEnd(detector, e)
         }
