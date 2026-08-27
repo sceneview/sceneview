@@ -32,7 +32,7 @@ import kotlin.reflect.KProperty1
  * @param node The owning [Node] whose transforms and collision system are used.
  */
 class NodeGestureDelegate(
-    private val node: Node
+    internal val node: Node
 ) : GestureDetector.OnGestureListener,
     OnDoubleTapListener,
     OnContextClickListener,
@@ -99,17 +99,9 @@ class NodeGestureDelegate(
      */
     internal val editingListeners = mutableListOf<NodeEditingListener>()
 
-    private inline fun notifyEditingListeners(block: NodeEditingListener.() -> Unit) {
+    internal inline fun notifyEditingListeners(block: NodeEditingListener.() -> Unit) {
         if (editingListeners.isNotEmpty()) editingListeners.toList().forEach(block)
     }
-
-    /**
-     * Touch-down / touch-up on this node, dispatched by [io.github.sceneview.gesture.GestureDetector]
-     * ahead of any gesture recognition — see [NodeEditingListener.onEditingPressed].
-     */
-    internal fun notifyEditingPressed() = notifyEditingListeners { onEditingPressed(node) }
-
-    internal fun notifyEditingReleased() = notifyEditingListeners { onEditingReleased(node) }
 
     /** The set of [Node] transform properties currently being edited by a gesture. */
     var editingTransforms = setOf<KProperty1<Node, Any>>()

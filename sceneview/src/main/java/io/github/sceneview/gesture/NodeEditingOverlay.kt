@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.android.filament.View
+import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
 import io.github.sceneview.components.RenderableComponent
@@ -59,29 +60,9 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
-/**
- * Colors used by [NodeEditingOverlay].
- *
- * Defaults follow the SceneView AR-surface rules: the ground behind the overlay is an
- * arbitrary camera frame (or 3D scene), not an app surface, so the badge scrim and
- * accents keep their dark-scheme values in both themes.
- */
-data class NodeEditingOverlayColors(
-    /** Rotation ring / arc and active-gesture accents. */
-    val accent: Color = Color(0xFFA4C1FF),
-    /** Selection ring (gesture-idle). */
-    val selection: Color = Color.White,
-    /** Badge pill background — near-opaque dark scrim over the camera feed. */
-    val badgeBackground: Color = Color(0xE6000000),
-    /** Badge pill hairline. */
-    val badgeBorder: Color = Color(0x29FFFFFF),
-    /** Badge text. */
-    val badgeText: Color = Color.White,
-    /** Border/text tint while the pinch is pressing against `editableScaleRange`. */
-    val limit: Color = Color(0xFFFFB4AB),
-    /** Soft contact shadow under the node while dragging. */
-    val shadow: Color = Color(0x80000000),
-)
+/** Both projected chord ends, or `null` if either fell behind the camera. */
+private fun bothOrNull(a: Float2?, b: Float2?): Pair<Float2, Float2>? =
+    if (a != null && b != null) a to b else null
 
 /**
  * Opt-in on-model gesture feedback, drawn over the scene in Compose.
@@ -439,15 +420,20 @@ private class NodeScreenAnchors {
 
         viewportSize = Size(view.viewport.width.toFloat(), view.viewport.height.toFloat())
         top = topPx?.let { Offset(it.x, it.y) }
-        if (xP != null && xM != null && zP != null && zM != null) {
+        // worldToScreen returns null behind the camera; the ellipse needs both full chords.
+        val xChord = bothOrNull(xP, xM)
+        val zChord = bothOrNull(zP, zM)
+        if (xChord != null && zChord != null) {
+            val (xPos, xNeg) = xChord
+            val (zPos, zNeg) = zChord
             base = Offset(
-                (xP.x + xM.x + zP.x + zM.x) / 4f,
-                (xP.y + xM.y + zP.y + zM.y) / 4f,
+                (xPos.x + xNeg.x + zPos.x + zNeg.x) / 4f,
+                (xPos.y + xNeg.y + zPos.y + zNeg.y) / 4f,
             )
             // Semi-axes from the two projected chords: the X pair spans the ellipse
             // horizontally, the Z (depth) pair spans it vertically.
-            radiusX = (abs(xP.x - xM.x) / 2f).coerceAtLeast(1f)
-            radiusY = max(abs(zP.y - zM.y), abs(xP.y - xM.y)) / 2f
+            radiusX = (abs(xPos.x - xNeg.x) / 2f).coerceAtLeast(1f)
+            radiusY = max(abs(zPos.y - zNeg.y), abs(xPos.y - xNeg.y)) / 2f
         } else {
             base = null
         }

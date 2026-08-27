@@ -5,6 +5,8 @@ import android.view.MotionEvent
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.notifyEditingPressed
+import io.github.sceneview.node.notifyEditingReleased
 
 /**
  * Detects various gestures and events using the supplied {@link MotionEvent}s.
