@@ -463,10 +463,11 @@ private fun InstantPlacementScene(
     val editableNodes = remember { mutableStateMapOf<Int, ModelNode>() }
 
     // The AnchorNode of each placed model. Needed for two things: the drag gesture is
-    // handled by the ANCHOR node (detach on begin, re-anchor on end — AnchorNode's
-    // `isPositionEditable` is a plain `true` field, not gated on `isEditable`), so the
-    // feedback overlay listens to it for move events; and the lost-anchor reconciliation
-    // below must read the node's CURRENT anchor, not the placement-time one.
+    // handled by the ANCHOR node (detach on begin, re-anchor on end — `AnchorNode`
+    // overrides `isPositionEditable` to `true`, which the model node leaves `false`), so
+    // the feedback overlay listens to it for move events; and the lost-anchor
+    // reconciliation below must read the node's CURRENT anchor, not the placement-time
+    // one.
     val anchorNodes = remember { mutableStateMapOf<Int, ArAnchorNode>() }
 
     // Placement and tracking state live in the caller (see [InstantPlacementSceneState])
@@ -605,6 +606,11 @@ private fun InstantPlacementScene(
                             anchor = placed.anchor,
                             visibleTrackingStates = ArPlacement.ANCHORED_VISIBLE_STATES,
                             apply = {
+                                // Every `is*Editable` flag — `isPositionEditable`
+                                // included — is gated by `isEditable`, which defaults to
+                                // false. Without this opt-in the anchor ignores the drag
+                                // and the move feedback never fires.
+                                isEditable = true
                                 anchorNodes[placed.id] = this
                             }
                         ) {

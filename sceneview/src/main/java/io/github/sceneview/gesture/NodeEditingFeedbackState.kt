@@ -67,11 +67,15 @@ class NodeEditingFeedbackState(
     var rotationDeltaDegrees by mutableFloatStateOf(0f)
         private set
 
-    /** See [NodeEditingFeedbackState] — the scale that reads as `100 %`. */
+    /**
+     * See [NodeEditingFeedbackState] — the scale that reads as `100 %`.
+     *
+     * A non-positive baseline is ignored by [scalePercent] rather than producing `NaN`.
+     */
     var scaleBaseline by mutableFloatStateOf(scaleBaseline)
 
     /** Current scale of the node as a percentage of [scaleBaseline]. */
-    var scalePercent by mutableFloatStateOf(node.scale.x / scaleBaseline * 100f)
+    var scalePercent by mutableFloatStateOf(percentOf(node.scale.x, scaleBaseline))
         private set
 
     /**
@@ -116,7 +120,7 @@ class NodeEditingFeedbackState(
                 yawDegrees = quaternionYawDegrees(node.quaternion)
             }
             NodeEditingKind.Scale -> {
-                scalePercent = node.scale.x / scaleBaseline * 100f
+                scalePercent = percentOf(node.scale.x, scaleBaseline)
                 scaleLimit = null
             }
             NodeEditingKind.Move -> moveWorldPosition = node.worldPosition
@@ -145,12 +149,18 @@ class NodeEditingFeedbackState(
         // Ignore the dead zone: a factor of exactly 1 carries no direction.
         if (edit.factor != 1f) isGrowing = edit.factor > 1f
         if (edit.applied) {
-            scalePercent = edit.scale.x / scaleBaseline * 100f
+            scalePercent = percentOf(edit.scale.x, scaleBaseline)
             scaleLimit = null
         } else {
             scaleLimit = edit.limit
             scaleLimitHits++
         }
+    }
+
+    private companion object {
+        /** `100 %` when the baseline is not a usable divisor (a node placed at scale 0). */
+        fun percentOf(scale: Float, baseline: Float) =
+            if (baseline > 0f) scale / baseline * 100f else 100f
     }
 }
 

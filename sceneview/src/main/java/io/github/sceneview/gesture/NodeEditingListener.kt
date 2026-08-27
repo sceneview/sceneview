@@ -104,11 +104,16 @@ internal fun evaluateScaleEdit(
 ): NodeScaleEdit {
     val newScale = currentScale * dampedFactor
     val applied = newScale.x in range && newScale.y in range && newScale.z in range
+    // Read the bound off the rejected scale, not off the pinch direction: a node whose
+    // scale already sits outside the window (`scaleToUnits` on a model authored in
+    // hundreds of units lands far under the 0.1f default floor) is pinned against the
+    // SAME bound whichever way the user pinches, and the direction would name the
+    // opposite one.
+    val belowFloor = newScale.x < range.start || newScale.y < range.start ||
+        newScale.z < range.start
     val limit = when {
         applied -> null
-        // A shrink can only exit through the lower bound and a grow through the upper
-        // one, whichever axis crossed first.
-        dampedFactor < 1f -> NodeScaleLimit.Min
+        belowFloor -> NodeScaleLimit.Min
         else -> NodeScaleLimit.Max
     }
     return NodeScaleEdit(factor = dampedFactor, scale = newScale, applied = applied, limit = limit)

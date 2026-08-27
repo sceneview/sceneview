@@ -103,6 +103,17 @@ class NodeGestureDelegate(
         if (editingListeners.isNotEmpty()) editingListeners.toList().forEach(block)
     }
 
+    /**
+     * The gesture kinds this delegate actually claimed at `Begin`.
+     *
+     * `Begin` bubbles to the parent both when the transform flag is off AND when the
+     * node's own callback lambda vetoes, but the flag alone cannot tell the two apart at
+     * `End` — an editable node whose lambda vetoed would end a gesture the parent is
+     * running, leaving the parent with a `Begin` that never gets its `End`. Routing
+     * `End` on what was claimed keeps the two sides symmetric.
+     */
+    private val claimedKinds = mutableSetOf<NodeEditingKind>()
+
     /** The set of [Node] transform properties currently being edited by a gesture. */
     var editingTransforms = setOf<KProperty1<Node, Any>>()
         set(value) {
@@ -160,6 +171,7 @@ class NodeGestureDelegate(
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (node.isPositionEditable && onMoveBegin?.invoke(detector, e) != false) {
             editingTransforms = editingTransforms + Node::position
+            claimedKinds += NodeEditingKind.Move
             notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Move) }
             true
         } else {
@@ -196,7 +208,7 @@ class NodeGestureDelegate(
     }
 
     override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
-        if (node.isPositionEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Move)) {
             editingTransforms = editingTransforms - Node::position
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Move) }
         } else {
@@ -209,6 +221,7 @@ class NodeGestureDelegate(
     override fun onRotateBegin(detector: RotateGestureDetector, e: MotionEvent): Boolean {
         return if (node.isRotationEditable && onRotateBegin?.invoke(detector, e) != false) {
             editingTransforms = editingTransforms + Node::quaternion
+            claimedKinds += NodeEditingKind.Rotate
             notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Rotate) }
             true
         } else {
@@ -248,7 +261,7 @@ class NodeGestureDelegate(
     }
 
     override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
-        if (node.isRotationEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Rotate)) {
             editingTransforms = editingTransforms - Node::quaternion
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Rotate) }
         } else {
@@ -262,6 +275,7 @@ class NodeGestureDelegate(
         return if (node.isScaleEditable && onScaleBegin?.invoke(detector, e) != false) {
             // Note: `editingTransforms` only gains Node::scale on the first onScale delta,
             // but feedback UIs want the badge up as soon as the pinch is recognized.
+            claimedKinds += NodeEditingKind.Scale
             notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Scale) }
             true
         } else {
@@ -295,7 +309,7 @@ class NodeGestureDelegate(
     }
 
     override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
-        if (node.isScaleEditable) {
+        if (claimedKinds.remove(NodeEditingKind.Scale)) {
             editingTransforms = editingTransforms - Node::scale
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Scale) }
         } else {

@@ -53,9 +53,33 @@ class NodeEditingFeedbackMathTest {
         val edit = evaluateScaleEdit(Float3(0.02f), 1.2f, defaultRange)
 
         assertFalse(edit.applied)
-        // Growing (factor > 1) while still under the floor reports Max by direction
-        // convention — the practical fix is an app-side range around the start scale.
-        assertEquals(NodeScaleLimit.Max, edit.limit)
+        // The bound is read off the rejected scale, not off the pinch direction: growing
+        // from under the floor is still stuck against the floor. The practical fix is an
+        // app-side range around the start scale.
+        assertEquals(NodeScaleLimit.Min, edit.limit)
+    }
+
+    @Test
+    fun `a node already below the floor reports Min whichever way it is pinched`() {
+        // The scaleToUnits trap in motion: the Fox sits near 0.002 under a 0.1f floor, so
+        // every update is rejected. Naming the bound from the pinch DIRECTION would call a
+        // grow "Max" while the node is pinned under the minimum.
+        val growing = evaluateScaleEdit(Float3(0.002f), 1.05f, defaultRange)
+        val shrinking = evaluateScaleEdit(Float3(0.002f), 0.95f, defaultRange)
+
+        assertFalse(growing.applied)
+        assertFalse(shrinking.applied)
+        assertEquals(NodeScaleLimit.Min, growing.limit)
+        assertEquals(NodeScaleLimit.Min, shrinking.limit)
+    }
+
+    @Test
+    fun `a node already above the ceiling reports Max whichever way it is pinched`() {
+        val growing = evaluateScaleEdit(Float3(50f), 1.05f, defaultRange)
+        val shrinking = evaluateScaleEdit(Float3(50f), 0.95f, defaultRange)
+
+        assertEquals(NodeScaleLimit.Max, growing.limit)
+        assertEquals(NodeScaleLimit.Max, shrinking.limit)
     }
 
     @Test
