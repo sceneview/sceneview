@@ -4,13 +4,19 @@ import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,7 +33,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -53,6 +62,8 @@ import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.DepthOcclusionCopy
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -165,16 +176,18 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
         controls = {
             // One-line hint instead of a multi-paragraph "How to test" card:
             // the sheet is now just the real control (the depth toggle) plus a
-            // short explanation of what it does (#1620 thread 1).
+            // short explanation of what it does (#1620 thread 1). Since #3340 the
+            // same toggle is also on-screen — the sheet copy is the long form.
             Text(
-                text = "Tap a flat surface to place the model, then toggle Depth " +
-                    "to see real objects occlude (or fail to occlude) it.",
+                text = "Tap a flat surface to place the helmet, then pass your hand " +
+                    "between the phone and it. With occlusion on, your hand cuts the " +
+                    "helmet away; with it off, the helmet draws straight over your hand.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             if (depthSupported == false) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(SceneViewTokens.Space.sm))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -182,15 +195,14 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.small
                 ) {
                     Text(
-                        text = "Your device doesn't support ARCore Depth API. " +
-                            "Occlusion is disabled.",
+                        text = DepthOcclusionCopy.UNSUPPORTED,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.padding(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -214,25 +226,23 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             ForceTrackingFailureMenu()
         },
-        // Status pill — green tint when depth is ON, red tint when OFF.
-        // Big enough for a screenshot to read at a glance.
+        // State pill + one coaching line (#3340).
+        //
+        // This used to be a single `DEPTH ON` / `DEPTH OFF` chip in hardcoded green and
+        // red. Two problems, both reported: it names an ARCore setting rather than an
+        // effect, so the screen never says what the demo is *for*; and occlusion is only
+        // legible as a contrast between two frames, which a single frame can only carry
+        // in words. The pill now states the consequence too, and the line under it names
+        // the one gesture that reveals the effect. All copy comes from
+        // [DepthOcclusionCopy], so it is unit-testable without ARCore.
         topOverlay = {
-            Surface(
-                color = if (depthOn) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFFB71C1C).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = if (depthOn) "DEPTH ON" else "DEPTH OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            OcclusionStatePill(occlusionOn = depthOn)
+
+            DepthOcclusionCopy.coachingHint(
+                isTracking = isTracking,
+                hasPlacedModel = placedAnchor != null,
+                occlusionOn = depthOn,
+            )?.let { hint -> OcclusionCoachingLine(hint) }
         },
         // Status banner + primary action are hosted by the scaffold's `bottomOverlay`
         // slot, a bottom-aligned Column: they stack instead of sharing the same band,
@@ -264,18 +274,30 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Primary action on-screen (#1964) — Clear re-arms placement (a
-            // primary re-interaction), so it lives on-screen instead of in
-            // the Settings sheet. The depth Switch stays in the sheet — genuine
-            // secondary configuration. Hidden until something has been placed.
-            if (placedAnchor != null) {
-                SceneActionBar(
-                    SceneAction("Clear", onClick = {
-                        placedAnchor?.let { runCatching { it.detach() } }
-                        placedAnchor = null
-                    }),
-                )
-            }
+            // Primary action on-screen (#1964, #3340) — the occlusion toggle IS the
+            // demo, so it belongs under the thumb, not two taps deep in the Settings
+            // sheet. Until #3340 the only on-screen action was Clear and the toggle
+            // lived exclusively in the sheet, which is why the effect the demo exists
+            // to show was reachable only by someone who already knew to go looking
+            // for it. The sheet keeps its Switch — both drive the same state.
+            SceneActionBar(
+                *listOfNotNull(
+                    SceneAction(
+                        label = DepthOcclusionCopy.toggleAction(depthOn),
+                        onClick = { occlusionEnabled = !occlusionEnabled },
+                        // Same gate as the sheet Switch: on a device with no Depth API
+                        // the button would re-key the scene for no visible change.
+                        enabled = depthSupported != false,
+                    ),
+                    // Clear re-arms placement — only meaningful once something is placed.
+                    placedAnchor?.let {
+                        SceneAction("Clear", onClick = {
+                            placedAnchor?.let { anchor -> runCatching { anchor.detach() } }
+                            placedAnchor = null
+                        })
+                    },
+                ).toTypedArray()
+            )
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -402,23 +424,26 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             ) {
                 Surface(
                     modifier = Modifier.testTag("depth-transition-spinner"),
-                    color = Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White,
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = 6.dp
+                    color = SceneViewTokens.ArOverlay.scrimDark,
+                    contentColor = SceneViewTokens.ArOverlay.onScrim,
+                    shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
+                    tonalElevation = SceneViewTokens.Elevation.md
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                        modifier = Modifier.padding(
+                            horizontal = SceneViewTokens.Space.md,
+                            vertical = SceneViewTokens.Space.md,
+                        ),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(SPINNER_SIZE),
+                            color = SceneViewTokens.ArOverlay.accentProgress,
+                            strokeWidth = SPINNER_STROKE
                         )
                         Text(
-                            text = "Switching depth mode…",
+                            text = "Switching occlusion mode…",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -427,3 +452,126 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/** Depth-transition spinner geometry — matches `DemoStatusBanner`'s leading indicator. */
+private val SPINNER_SIZE = 20.dp
+private val SPINNER_STROKE = 2.dp
+
+/** Status dot in the state pill. Small enough to read as an indicator, not a bullet. */
+private val STATE_DOT_SIZE = 10.dp
+
+/**
+ * The demo's state pill: what occlusion is doing, and what that means on screen.
+ *
+ * Painted on the shared `ar-scrim` ground rather than in its own colours (#3340). It used
+ * to be flat green / flat red, hardcoded — which is both a `DESIGN.md` violation and the
+ * wrong ground over a live camera feed, where a mid-tone fill lands on whatever luminance
+ * the room happens to have. Every AR overlay in this app converges on the same answer:
+ * a near-opaque dark scrim, white text, and the state carried by a small leading dot.
+ * See `DemoStatusBanner`'s "Why the pill is a dark scrim" note for the full argument.
+ *
+ * The scrim deliberately does not flip with the app theme — the ground behind it is a
+ * camera frame, not `surface`. Only its opacity moves, exactly as the tokens define.
+ */
+@Composable
+private fun OcclusionStatePill(occlusionOn: Boolean) {
+    // Read the *theme's* darkness, not the system's — `SceneViewDemoTheme` takes an
+    // explicit flag that `isSystemInDarkTheme()` would ignore. Same rule as the banner.
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val scrim = if (dark) {
+        SceneViewTokens.ArOverlay.scrimDark
+    } else {
+        SceneViewTokens.ArOverlay.scrimLight
+    }
+    val borderColor = if (dark) {
+        SceneViewTokens.ArOverlay.borderDark
+    } else {
+        SceneViewTokens.ArOverlay.borderLight
+    }
+    // Active state gets the overlay's own accent; inactive gets the same white the text
+    // is on, dimmed. No new colour token, and the pair reads as on/off in both themes.
+    val dotColor = if (occlusionOn) {
+        SceneViewTokens.ArOverlay.accentProgress
+    } else {
+        SceneViewTokens.ArOverlay.onScrim.copy(alpha = INACTIVE_DOT_ALPHA)
+    }
+    val shape = RoundedCornerShape(SceneViewTokens.Radius.md)
+
+    Row(
+        modifier = Modifier
+            .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
+            .background(color = scrim, shape = shape)
+            .border(
+                width = SceneViewTokens.ArOverlay.borderWidth,
+                color = borderColor,
+                shape = shape,
+            )
+            .padding(
+                horizontal = SceneViewTokens.Space.md,
+                vertical = SceneViewTokens.Space.sm,
+            )
+            // The state changes under the user's thumb; TalkBack should say so without
+            // them having to go find the pill.
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag(OCCLUSION_STATE_PILL_TAG),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(STATE_DOT_SIZE)
+                .background(color = dotColor, shape = CircleShape)
+        )
+        Column {
+            Text(
+                text = DepthOcclusionCopy.stateTitle(occlusionOn),
+                style = SceneViewTokens.Type.caption,
+                color = SceneViewTokens.ArOverlay.onScrim,
+            )
+            Text(
+                text = DepthOcclusionCopy.stateConsequence(occlusionOn),
+                style = SceneViewTokens.Type.caption,
+                color = SceneViewTokens.ArOverlay.onScrim.copy(alpha = SECONDARY_TEXT_ALPHA),
+            )
+        }
+    }
+}
+
+/**
+ * The single coaching line under the state pill — the gesture that reveals the effect.
+ *
+ * Deliberately lighter than [OcclusionStatePill]: it is an instruction the user follows
+ * once and then stops reading, so it gets no dot, no border and a smaller footprint.
+ */
+@Composable
+private fun OcclusionCoachingLine(text: String) {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val scrim = if (dark) {
+        SceneViewTokens.ArOverlay.scrimDark
+    } else {
+        SceneViewTokens.ArOverlay.scrimLight
+    }
+    Text(
+        text = text,
+        style = SceneViewTokens.Type.caption,
+        color = SceneViewTokens.ArOverlay.onScrim.copy(alpha = SECONDARY_TEXT_ALPHA),
+        modifier = Modifier
+            .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
+            .background(color = scrim, shape = RoundedCornerShape(SceneViewTokens.Radius.sm))
+            .padding(
+                horizontal = SceneViewTokens.Space.sm + SceneViewTokens.Space.xs,
+                vertical = SceneViewTokens.Space.xs + SceneViewTokens.Space.xs,
+            )
+            .testTag(OCCLUSION_HINT_TAG),
+    )
+}
+
+/** `on-ar-scrim-dim` in `DESIGN.md` — secondary text on the AR scrim. */
+private const val SECONDARY_TEXT_ALPHA = 0.72f
+
+/** The off-state dot: the same white as the label, faded to read as "not active". */
+private const val INACTIVE_DOT_ALPHA = 0.32f
+
+/** Test tags — the on-device AR harness asserts the pill flips with the toggle. */
+const val OCCLUSION_STATE_PILL_TAG = "occlusion-state-pill"
+const val OCCLUSION_HINT_TAG = "occlusion-coaching-hint"

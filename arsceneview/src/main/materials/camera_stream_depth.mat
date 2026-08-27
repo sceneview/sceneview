@@ -80,6 +80,12 @@ material {
 }
 
 fragment {
+    // Stand-in distance, in metres, for texels ARCore returned no depth for. Far enough
+    // that the projected NDC depth sits on the far plane (so nothing is ever occluded by
+    // a hole in the depth image), finite so the projection never divides by zero. See the
+    // occlusion block below.
+    const float kNoDepthDistanceMeters = 1000.0;
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
@@ -106,8 +112,28 @@ fragment {
         vec3 fogged = mix(camera, materialParams.fogColor, factor);
         material.baseColor.rgb = fogged;
 
-        // Depth occlusion path — unchanged from the original material.
-        vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, (-depth_mm / 1000.f)));
+        // Depth occlusion path.
+        //
+        // "No depth available" must mean "occlude nothing" (#3340). ARCore reports
+        // `depth_mm == 0` for every texel it could not solve — sky, thin edges, moving
+        // subjects, and (crucially) EVERY texel of the 1x1 placeholder texture that is
+        // bound until the first depth image lands, plus whole frames on devices where
+        // depth estimation drops out mid-session.
+        //
+        // Feeding 0 straight into the projection puts the sample at the camera origin,
+        // so `view.w` is 0 and `ndc_depth` is a division by zero: +inf, which the
+        // rasterizer clamps to 1.0 when writing gl_FragDepth. Filament is reverse-Z
+        // (1.0 = NEAR, 0.0 = far — see ARDepthOfField's convention note), so the camera
+        // quad landed on the near plane and occluded EVERY virtual fragment exactly
+        // where we knew the least about the real world. The model simply vanished.
+        //
+        // Substitute a far-but-finite distance for invalid texels instead. It runs
+        // through the same projection as a real sample, so the result is a legal NDC
+        // depth near the far plane under whatever convention the active projection
+        // uses — no division by zero, no clamped infinity, and "no data" degrades to
+        // "occludes nothing", which is the documented intent.
+        float occlusion_depth_m = mix(kNoDepthDistanceMeters, depth_m, depth_valid);
+        vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, -occlusion_depth_m));
         float ndc_depth = view.z / view.w;
         gl_FragDepth = ndc_depth;
     }
