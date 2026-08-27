@@ -232,11 +232,17 @@ private fun SingleModelSection(
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val bundledModels = remember { listOf(
+        // #3324 — the two untextured low-poly rows (Fox, Shiba) are out: in a full-screen
+        // PBR viewer they are the two models that make the SDK look worse than it is. The
+        // three that take their place each exercise a different material extension
+        // (sheen, sheen + specular, iridescence + transmission + volume). Both GLBs stay
+        // bundled — `SampleAssets` fallbacks and `ARTerrainAnchorDemo` still load them.
         BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
-        BundledViewerModel("models/khronos_fox.glb", "Fox"),
+        BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa"),
+        BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair"),
+        BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish"),
         BundledViewerModel("models/khronos_lantern.glb", "Lantern"),
         BundledViewerModel("models/khronos_toy_car.glb", "Toy Car"),
-        BundledViewerModel("models/shiba.glb", "Shiba"),
         BundledViewerModel("models/threejs_soldier.glb", "Soldier"),
     ) }
     var selectedModel by remember { mutableStateOf(bundledModels.first()) }

@@ -281,26 +281,31 @@ object SampleAssets {
         // here, with `khronos_lantern.glb` claimed by three slugs and
         // `khronos_damaged_helmet.glb` by two.
         //
-        // The demo bundles exactly six GLBs, so the mapping is a bijection and
-        // has no slack: repointing one slug now forces a swap, not a free pick.
-        // Distinctness is the guarantee — resemblance is NOT. Three of these
-        // fallbacks (`shiba`, `khronos_fox`, `threejs_soldier`) are animals or
-        // a character standing in for furniture and are chosen on silhouette
-        // class alone (compact ground mass / four-legged horizontal / upright).
-        // A keyless user sees six distinguishable objects, not six plausible
-        // ones. Closing that semantic gap needs assets this APK does not ship,
-        // so it is deliberately out of scope here, where the fix must add no
-        // binary. #2960 tracks that same mismatch class on the iOS registry;
-        // the Android side has no equivalent tracker yet.
+        // The demo now bundles nine GLBs (#3324 added the Khronos velvet sofa,
+        // sheen chair and iridescent dish for the picker), so the mapping is no
+        // longer a bijection with no slack — and two of the three silhouette-only
+        // stand-ins #2960 complained about could finally be repointed at
+        // something that RESEMBLES the streamed model rather than merely
+        // differing from its neighbours: "Coffee Mug" → the dish, "Wooden End
+        // Table" → the chair. Distinctness is still the hard guarantee (pinned by
+        // `SampleAssetsTest`); resemblance is now true for four of six. The two
+        // that remain shape-class-only are "Potted Monstera" (`shiba`, a compact
+        // ground mass) and "Picture Frame" (`threejs_soldier`, the upright
+        // silhouette) — neither has a plausible bundled counterpart, and adding
+        // one for its own sake would be binary the APK does not need. #2960
+        // tracks the same mismatch class on the iOS registry, which is untouched
+        // here (it bundles USDZs, not these GLBs).
         SketchfabSlug(
             uid = "5f5ccee1514c440887c072fae8e0d699",
             displayName = "Coffee Mug",
             author = "FrenchBaguette",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            // Restored to `khronos_toy_car.glb` (the re-exported, now-decodable asset —
-            // see the Gallery "Nile" entry above). #2390 had temporarily repointed this
-            // at `khronos_lantern.glb` while the toy_car GLB was unparseable.
-            fallbackBundledPath = "models/khronos_toy_car.glb",
+            // Tableware for tableware (#3324). Was `khronos_toy_car.glb`, a
+            // silhouette-class-only stand-in: #2960 documented the semantic gap and said
+            // closing it needed assets the APK did not ship. It ships them now — the
+            // Khronos Iridescent Dish arrived with the picker re-curation — so a keyless
+            // user arming "Coffee Mug" sees a glazed dish rather than a toy car.
+            fallbackBundledPath = "models/khronos_iridescent_dish.glb",
             scaleToUnits = 0.10f,
             hasBakedAnimation = false,
             category = "ar_placement",
@@ -338,10 +343,11 @@ object SampleAssets {
             displayName = "Wooden End Table",
             author = "mozillareality",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            // Was `khronos_lantern.glb` (collided with Potted Monstera AND Floor
-            // Lamp). The fox is the four-legged horizontal silhouette in the
-            // bundle — the closest shape class to a low table (#2960).
-            fallbackBundledPath = "models/khronos_fox.glb",
+            // Furniture for furniture (#3324). Was `khronos_fox.glb` — a four-legged
+            // animal standing in for a four-legged table, which is the #2960 semantic
+            // gap in its purest form. The Khronos Sheen Chair is now bundled, so the
+            // keyless stand-in for a piece of furniture is a piece of furniture.
+            fallbackBundledPath = "models/khronos_sheen_chair.glb",
             scaleToUnits = 0.60f,
             hasBakedAnimation = false,
             category = "ar_placement",

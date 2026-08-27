@@ -35,11 +35,20 @@ android {
         noCompress 'filamat', 'ktx'
     }
     // Asset folders: TV demo's own assets (src/main/assets) hold the TV-only
-    // models (nike_air_jordan, sheen_chair, etc.). The shared models +
+    // models (nike_air_jordan, toon_cat, khronos_duck). The shared models +
     // environments live in the phone demo's folder and are picked up at
     // build time via sourceSets so the TV demo can reference them by their
     // existing `models/...` paths without copying or symlinking. This split
     // keeps the phone APK from carrying the TV-only models — see issue #879.
+    //
+    // A model may live in exactly ONE of the two folders: this is a source-set
+    // MERGE, so the same `models/x.glb` in both is `Error: Duplicate resources`
+    // at `mergeAssets`, not a silent last-one-wins. The sheen chair, velvet sofa
+    // and iridescent dish were TV-only until #3324 gave them to the phone
+    // picker; they moved to the phone folder rather than being copied, and the
+    // TV demo still reaches them at the same `models/...` paths through this
+    // line. `TvModelListTest` searches both folders, which is what makes such a
+    // move a no-op for the TV demo.
     sourceSets.main.assets.srcDirs += '../android-demo/src/main/assets'
     // Allow TvModelListTest to read src/main/assets/ from its test source set
     // via a relative path (test working dir is this module's root).

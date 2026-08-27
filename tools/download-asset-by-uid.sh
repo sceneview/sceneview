@@ -3,7 +3,11 @@
 # Usage: bash tools/download-asset-by-uid.sh <uid> <filename_without_extension>
 set -e
 
-API_KEY="[REDACTED-API-KEY]"
+API_KEY="${SKETCHFAB_API_KEY:-}"
+if [ -z "$API_KEY" ]; then
+    echo "SKETCHFAB_API_KEY is not set. Get a token from https://sketchfab.com/settings/password and export it." >&2
+    exit 1
+fi
 MODELS_DIR="samples/android-demo/src/main/assets/models"
 
 uid=$1

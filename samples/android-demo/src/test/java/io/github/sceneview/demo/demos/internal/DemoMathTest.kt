@@ -449,10 +449,16 @@ class DemoMathTest {
 
     @Test
     fun `placementRotationFor returns identity for other bundled models`() {
-        // Fox, lantern, toy car, shiba are authored upright — no correction.
+        // Fox, lantern, toy car, shiba are authored upright — no correction. So are the
+        // three Khronos furniture/tableware models the picker gained in #3324: they are
+        // authored in metres, Y-up, sitting on y = 0, which is why they need no rotation
+        // and why their `realWorldSizeMeters` is the GLB's own measured extent.
         for (path in listOf(
             "models/khronos_fox.glb",
+            "models/khronos_glam_velvet_sofa.glb",
+            "models/khronos_iridescent_dish.glb",
             "models/khronos_lantern.glb",
+            "models/khronos_sheen_chair.glb",
             "models/khronos_toy_car.glb",
             "models/shiba.glb",
         )) {
