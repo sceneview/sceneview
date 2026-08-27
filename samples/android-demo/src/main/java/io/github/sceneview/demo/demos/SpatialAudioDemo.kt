@@ -48,7 +48,6 @@ import io.github.sceneview.demo.ui.GlassSurface
 import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
-import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -108,12 +107,18 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
-    // Camera home — far enough back that the whole orbit ring plus the widest
-    // wave shell fit in frame (they did not at the previous 1.4 m: the shells
-    // ran off both edges), high enough to show the ground plate for depth. The
-    // look-at hugs the orbit plane so the source never leaves the viewport.
+    // Camera home. The binding constraint here is the *horizontal* field of
+    // view on a portrait phone, and it is much tighter than it looks: the
+    // default 28 mm lens gives a 46° vertical FOV, which on a 1080x2400
+    // viewport is only ~22° across — a half-angle of 11°. Measured on the
+    // emulator, that put the source off the right edge for a third of every
+    // orbit. A 16 mm lens widens the half-angle to ~19°, and at 1.9 m back the
+    // orbit plus the widest wave shell (0.55 m of half-extent) clears it with
+    // room to spare. The look-at hugs the orbit plane so the source stays in
+    // frame all the way round.
     val cameraNode = rememberCameraNode(engine) {
-        position = Position(0f, 0.6f, 1.9f)
+        focalLength = 16.0
+        position = Position(0f, 0.55f, 1.9f)
         lookAt(Position(0f, 0f, 0f))
     }
 
@@ -257,16 +262,11 @@ fun SpatialAudioDemo(onBack: () -> Unit) {
                 }
             )
 
-            // Ground "shadow" plate — a dim surface set just below the orbit
-            // plane gives the sphere a grounded backdrop to read against.
-            val groundMaterial = rememberMaterialInstance(
-                materialLoader, SceneViewColors.SurfaceDim
-            )
-            PlaneNode(
-                materialInstance = groundMaterial,
-                size = Size(x = 2f, y = 0f, z = 2f),
-                position = Position(y = -0.3f),
-            )
+            // No ground plate. The 2 m one that used to sit at y = -0.3 read on
+            // screen as a blown-out white slab filling the bottom half of the
+            // viewport — a PBR surface that dim under a 12 000 lux key light
+            // has nowhere to go but bright — and it buried the lower half of
+            // the orbit ring behind it. The ring is the ground reference now.
 
             // The orbit path, drawn as a faint closed polyline in the orbit
             // plane. It replaces the old centre marker sphere: the user asked
@@ -433,22 +433,30 @@ private fun circlePoints(radius: Float, segments: Int = 64): List<Position> =
 
 private enum class FalloffMode { Inverse, Linear }
 
-/** Radius (m) of the circle the sound source travels on. */
-private const val ORBIT_RADIUS = 0.6f
+/**
+ * Radius (m) of the circle the sound source travels on.
+ *
+ * Sized against the viewport, not against a room: see the camera home for why
+ * a portrait phone only affords ~19° of half-FOV. At 0.32 m the whole orbit
+ * plus a full-width wave shell stays on screen from 1.9 m back, and the
+ * source-to-listener distance still sweeps 1.6 m — 2.3 m, which is enough
+ * travel for both falloff curves to show a visible swing on the meter.
+ */
+private const val ORBIT_RADIUS = 0.32f
 
 /** Radius (m) of the solid sphere the audio node is attached to. */
-private const val EMITTER_RADIUS = 0.16f
+private const val EMITTER_RADIUS = 0.10f
 
 /**
  * Geometry radius (m) of a wave shell — animated through `scale`, never here.
  *
  * The scale ceiling is a framing constraint, not a taste call: measured on the
- * emulator at the camera home below, a shell of radius 0.68 m subtends ~42° and
- * runs off both sides of the viewport, which is the "one purple blob" the
- * report was about. Capped at 0.38 m — 2.4× the emitter — the shell stays a
- * shell you watch leave, and the whole orbit still fits on screen.
+ * emulator, an oversized shell runs off both sides of the viewport, which is
+ * the "one purple blob" the report was about. Capped at 0.23 m — 2.3× the
+ * emitter — the shell stays a shell you watch leave, and the whole orbit still
+ * fits on screen.
  */
-private const val WAVE_BASE_RADIUS = 0.2f
+private const val WAVE_BASE_RADIUS = 0.12f
 private const val WAVE_MIN_SCALE = 0.9f
 private const val WAVE_MAX_SCALE = 1.9f
 
