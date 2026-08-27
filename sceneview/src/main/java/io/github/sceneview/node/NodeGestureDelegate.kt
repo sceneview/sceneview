@@ -103,6 +103,14 @@ class NodeGestureDelegate(
         if (editingListeners.isNotEmpty()) editingListeners.toList().forEach(block)
     }
 
+    /**
+     * Touch-down / touch-up on this node, dispatched by [io.github.sceneview.gesture.GestureDetector]
+     * ahead of any gesture recognition — see [NodeEditingListener.onEditingPressed].
+     */
+    internal fun notifyEditingPressed() = notifyEditingListeners { onEditingPressed(node) }
+
+    internal fun notifyEditingReleased() = notifyEditingListeners { onEditingReleased(node) }
+
     /** The set of [Node] transform properties currently being edited by a gesture. */
     var editingTransforms = setOf<KProperty1<Node, Any>>()
         set(value) {

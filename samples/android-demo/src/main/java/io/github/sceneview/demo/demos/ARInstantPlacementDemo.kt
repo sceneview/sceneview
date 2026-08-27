@@ -623,6 +623,16 @@ private fun InstantPlacementScene(
                                     isVisible = textured,
                                     isEditable = true,
                                     apply = {
+                                        // `editableScaleRange` is an ABSOLUTE local-scale
+                                        // window, not a factor — and `scaleToUnits` makes
+                                        // that scale a function of how the asset was
+                                        // authored. The Khronos Fox is modelled at ~140
+                                        // units, so 0.3 units of it is a local scale near
+                                        // 0.002: far below the default `0.1f..10f`, which
+                                        // silently rejected every pinch update and made
+                                        // zoom look dead on that model. Re-center the
+                                        // window on the as-placed scale.
+                                        editableScaleRange = scale.x * 0.25f..scale.x * 4f
                                         editableNodes[placed.id] = this
                                     }
                                 )

@@ -39,8 +39,19 @@ class NodeEditingFeedbackState(
     var activeKinds by mutableStateOf(emptySet<NodeEditingKind>())
         private set
 
+    /**
+     * `true` from the moment a finger goes down on [node] until it lifts — including the
+     * window before any gesture is recognized. Drive the "armed" visual with this, not
+     * with [isEditing], or the feedback only appears once the model is already moving.
+     */
+    var isPressed by mutableStateOf(false)
+        private set
+
     /** `true` while any editing gesture is active on [node]. */
     val isEditing: Boolean get() = activeKinds.isNotEmpty()
+
+    /** Pressed, but the gesture is still undecided — the "armed, no mode yet" state. */
+    val isArmed: Boolean get() = isPressed && activeKinds.isEmpty()
 
     /**
      * Heading of the node around the world-up axis in degrees, `(-180°, 180°]`.
@@ -78,9 +89,24 @@ class NodeEditingFeedbackState(
     var scaleLimitHits by mutableIntStateOf(0)
         private set
 
+    /**
+     * `true` when the pinch is currently growing the node, `false` when shrinking.
+     * Drives the direction of the scale affordance arrows.
+     */
+    var isGrowing by mutableStateOf(true)
+        private set
+
     /** World position of the last applied drag update, `null` outside a move gesture. */
     var moveWorldPosition by mutableStateOf<Position?>(null)
         private set
+
+    override fun onEditingPressed(node: Node) {
+        isPressed = true
+    }
+
+    override fun onEditingReleased(node: Node) {
+        isPressed = false
+    }
 
     override fun onEditingBegin(node: Node, kind: NodeEditingKind) {
         activeKinds = activeKinds + kind
@@ -116,6 +142,8 @@ class NodeEditingFeedbackState(
     }
 
     override fun onScaleEdited(node: Node, edit: NodeScaleEdit) {
+        // Ignore the dead zone: a factor of exactly 1 carries no direction.
+        if (edit.factor != 1f) isGrowing = edit.factor > 1f
         if (edit.applied) {
             scalePercent = edit.scale.x / scaleBaseline * 100f
             scaleLimit = null

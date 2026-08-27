@@ -57,6 +57,20 @@ data class NodeScaleEdit(
  */
 interface NodeEditingListener {
 
+    /**
+     * A finger went down on [node] and it is editable — no gesture is identified yet.
+     *
+     * The move / rotate / scale detectors only fire their `Begin` callback once the touch
+     * passes a recognition threshold (a real translation, ~2° of twist, a pinch span
+     * change), which is several tens of milliseconds of finger movement later. Feedback
+     * that waits for that reads as unresponsive on first contact, so this is the signal
+     * to show the "armed" visual — the node is grabbed, the gesture is still undecided.
+     */
+    fun onEditingPressed(node: Node) {}
+
+    /** The finger that pressed [node] lifted or the stream was cancelled. */
+    fun onEditingReleased(node: Node) {}
+
     /** An editing gesture of the given [kind] started on [node]. */
     fun onEditingBegin(node: Node, kind: NodeEditingKind) {}
 
