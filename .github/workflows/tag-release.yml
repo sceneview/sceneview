@@ -1,24 +1,29 @@
-# tag-release.yml — companion of release-fast.yml (M7c).
+# tag-release.yml — safety net + manual handle for the release-fast tag step.
 #
-# When a release-fast bump PR merges to main (squash commit titled
-# "release: X.Y.Z — …"), this workflow creates the annotated tag vX.Y.Z on the
-# merge commit and explicitly dispatches release.yml on the tag ref.
+# The PRIMARY tagger is now release-fast.yml's own `tag` job (#3358): it waits
+# for the release PR it opened to merge and tags the merge commit itself. That
+# removes the event chain entirely, because the auto-merge is performed with the
+# default `GITHUB_TOKEN` and GitHub emits NO workflow events for pushes made
+# with that token — this workflow's `on: push` trigger simply never fired for an
+# auto-merged release PR, and v4.33.0 sat bumped-but-untagged until a human
+# noticed.
 #
-# The explicit dispatch exists because GitHub suppresses workflow-to-workflow
-# events for the default GITHUB_TOKEN: a tag pushed here would never fire
-# release.yml's `on: push: tags:` trigger by itself. release.yml already
-# accepts workflow_dispatch, and running it on the tag ref is equivalent to
-# the tag-push path.
+# This workflow remains for the two cases release-fast cannot cover:
+#   * a HUMAN merges the release PR (a human merge IS a real push event, and it
+#     may land after release-fast's waiting job has already timed out);
+#   * `workflow_dispatch` — a manual recovery handle when a release did land
+#     untagged for any other reason.
 #
-# Safety: fires ONLY on main pushes whose HEAD commit subject matches the
-# release-fast commit shape AND whose version matches gradle.properties —
-# a hand-written commit that merely says "release:" without the bump does
-# nothing. Existing tags are never moved.
+# The decision logic lives in `.claude/scripts/tag-release.sh`, shared with
+# release-fast so the two callers cannot drift. It is idempotent: it fires ONLY
+# on a HEAD commit matching the release-fast commit shape whose version matches
+# gradle.properties, and an already-existing tag is a no-op, never a move.
 name: Tag release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -38,17 +43,4 @@ jobs:
       - name: Detect release commit and tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          SUBJECT=$(git log -1 --pretty=%s)
-          # Squash-merge subject = the PR title + " (#N)": match that shape.
-          V=$(echo "$SUBJECT" | sed -n 's/^release: \([0-9][0-9.]*\) — version bump + changelog collate\( (#[0-9]*)\)\{0,1\}$/\1/p')
-          [ -z "$V" ] && { echo "Not a release commit — nothing to do."; exit 0; }
-          PROP=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
-          [ "$PROP" != "$V" ] && { echo "::error::commit says $V but VERSION_NAME=$PROP — refusing to tag"; exit 1; }
-          git rev-parse "v$V" >/dev/null 2>&1 && { echo "v$V already exists — nothing to do."; exit 0; }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$V" -m "SceneView $V"
-          git push origin "v$V"
-          echo "Tagged v$V — dispatching release.yml on the tag ref."
-          gh workflow run release.yml --ref "v$V"
+        run: bash .claude/scripts/tag-release.sh
