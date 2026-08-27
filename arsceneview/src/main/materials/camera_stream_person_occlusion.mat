@@ -76,6 +76,14 @@ material {
 }
 
 fragment {
+    // See `camera_stream_depth.mat` — stand-in distance for texels with no ARCore depth.
+    const float kNoDepthDistanceMeters = 1000.0;
+
+    // Reverse-Z near plane. Filament maps 1.0 to NEAR and 0.0 to far (see
+    // ARDepthOfField's convention note), so this is "as close to the lens as a
+    // fragment can be" — what the PERSON mask has to write to win every depth test.
+    const float kNdcNearPlane = 1.0;
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
@@ -94,22 +102,32 @@ fragment {
         material.baseColor.rgb = fogged;
 
         // Depth-occlusion path — the camera quad writes the real-world depth so virtual
-        // geometry farther than the depth pixel fails the depth test.
-        vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, (-depth_mm / 1000.f)));
+        // geometry farther than the depth pixel fails the depth test. Texels with no
+        // ARCore depth are pushed to `kNoDepthDistanceMeters` rather than left at 0,
+        // which would divide by `view.w == 0` and clamp to the near plane, occluding
+        // everything. Same fix, same reason as `camera_stream_depth.mat` (#3340).
+        float occlusion_depth_m = mix(kNoDepthDistanceMeters, depth_m, depth_valid);
+        vec4 view = mulMat4x4Float3(getClipFromViewMatrix(), vec3(0.f, 0.f, -occlusion_depth_m));
         float ndc_depth = view.z / view.w;
 
         // People-occlusion path (#1761). `personTexture` is a binary R8 mask; the GPU
         // normalises 255 → 1.0 and 0 → 0.0. `step(0.5, …)` recovers the boolean
         // branch-free. Where a real person is detected we force the camera fragment to the
-        // near clip plane (NDC depth 0.0) so EVERY virtual fragment behind it — regardless
-        // of its real-world distance — fails the depth test and the person occludes it.
+        // near clip plane so EVERY virtual fragment behind it — regardless of its
+        // real-world distance — fails the depth test and the person occludes it.
+        //
+        // The near plane is `kNdcNearPlane` (1.0), NOT 0.0. This wrote 0.0 until #3340:
+        // under Filament's reverse-Z that is the *far* plane, so the mask pushed people
+        // behind everything and virtual objects drew straight over them — the exact
+        // inverse of people occlusion. The original comment even said "near clip plane
+        // (NDC depth 0.0)", which is where the sign was lost.
         //
         // This is intentionally more aggressive than the depth path: ARCore's coarse motion-
         // stereo depth is unreliable on a moving person (thin limbs, fast motion), so the
         // semantic mask is the authoritative people cue. Where there is NO person we keep
         // the genuine `ndc_depth`, so static real-world geometry still occludes correctly.
         float is_person = step(0.5f, texture(materialParams_personTexture, getUV0()).r);
-        gl_FragDepth = mix(ndc_depth, 0.f, is_person);
+        gl_FragDepth = mix(ndc_depth, kNdcNearPlane, is_person);
     }
 }
 
