@@ -87,7 +87,14 @@ open class AnchorNode(
             updateVisibility()
         }
 
+    /**
+     * Whether the anchor can be moved by drag gestures.
+     *
+     * Like every editable flag, it is gated by [isEditable]: a move gesture detaches and
+     * re-creates the anchor only when both [isEditable] and this flag are `true`.
+     */
     override var isPositionEditable = true
+        get() = isEditable && field
 
     override var isVisible
         get() = super.isVisible && (trackingState in visibleTrackingStates || isMoving)
