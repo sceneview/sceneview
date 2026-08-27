@@ -12,3 +12,12 @@
   threshold — and fades the half of the base ring that lies behind the model so the ring
   reads as a mark on the ground rather than a decal in front of it. New
   `gesture-feedback-preview` demo (non-AR, QA-able on any emulator).
+
+<!-- category: Fixed -->
+- **A vetoed editing gesture no longer strands its parent mid-gesture.** `onMoveBegin` /
+  `onRotateBegin` / `onScaleBegin` delegate to the parent node both when the transform
+  flag is off and when the node's own callback lambda vetoes, but the matching `End`
+  handlers routed on the flag alone — so an editable node whose lambda vetoed ended a
+  gesture the *parent* was running, leaving the parent's `editingTransforms` holding the
+  edited property for the life of the node. `End` now routes on the gesture the delegate
+  actually claimed at `Begin`.
