@@ -26,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
@@ -40,6 +39,7 @@ import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberPausableHeroYaw
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
@@ -286,7 +286,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
                             highlighted = highlightedIndices.size,
                             total = shapes.size,
                             tapCount = tapCount,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            containerRole = CardRole.Front,
                             onTap = { tapCount++ },
                         )
                     }
@@ -303,7 +303,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
                             highlighted = highlightedIndices.size,
                             total = shapes.size,
                             tapCount = tapCount,
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            containerRole = CardRole.Back,
                             onTap = { tapCount++ },
                         )
                     }
@@ -368,6 +368,11 @@ private object PickingLayout {
  * The card rendered inside the 3D quad. Clickable as a whole *and* through its button: since #2845
  * a tap anywhere on the quad is a real Compose click, so the whole card counts — exactly as it
  * would on screen.
+ *
+ * @param containerRole picks the container colour *inside* the re-applied theme, so it follows
+ * light/dark like every other surface. It cannot be a resolved [Color] handed in by the caller:
+ * the caller composes in the activity's tree and this composable in the ViewNode's, and the two
+ * resolve `MaterialTheme` differently — see below.
  */
 @Composable
 private fun PickedCard(
@@ -375,9 +380,34 @@ private fun PickedCard(
     highlighted: Int,
     total: Int,
     tapCount: Int,
-    containerColor: Color,
+    containerRole: CardRole,
     onTap: () -> Unit,
 ) {
+    // A ViewNode composes in its own off-screen ComposeView, which inherits none of this demo's
+    // CompositionLocals — without re-applying the theme here `MaterialTheme` resolves to the M3
+    // *light* defaults, so the card stayed pale lavender in dark mode while every other surface
+    // switched. Same reasoning as PointAndAskDemo's anchored answer card.
+    SceneViewDemoTheme {
+        PickedCardContent(title, highlighted, total, tapCount, containerRole, onTap)
+    }
+}
+
+/** Which themed container colour a [PickedCard] wears — resolved inside the card's own theme. */
+private enum class CardRole { Front, Back }
+
+@Composable
+private fun PickedCardContent(
+    title: String,
+    highlighted: Int,
+    total: Int,
+    tapCount: Int,
+    containerRole: CardRole,
+    onTap: () -> Unit,
+) {
+    val containerColor = when (containerRole) {
+        CardRole.Front -> MaterialTheme.colorScheme.primaryContainer
+        CardRole.Back -> MaterialTheme.colorScheme.secondaryContainer
+    }
     Card(
         onClick = onTap,
         colors = CardDefaults.cardColors(containerColor = containerColor),

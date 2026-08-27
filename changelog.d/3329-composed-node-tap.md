@@ -15,4 +15,7 @@
   targets, so a tap always reaches a Compose component whichever side is turned towards you.
   The primitives moved from flat unlit fills on black to lit PBR instances under the studio IBL
   plus a warm key light, and the row was pulled in to `x = ±0.5` with the eye at 4.2 m so it
-  stops being clipped by the portrait viewport edges.
+  stops being clipped by the portrait viewport edges. The in-scene card also re-applies
+  `SceneViewDemoTheme`: a `ViewNode` composes in its own off-screen `ComposeView` and inherits
+  none of the host's `CompositionLocal`s, so the card used to resolve the Material 3 *light*
+  defaults and stayed pale lavender while the rest of the app went dark.

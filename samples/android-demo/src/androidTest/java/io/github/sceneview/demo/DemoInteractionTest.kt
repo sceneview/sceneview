@@ -862,10 +862,11 @@ class DemoInteractionTest {
         // `Card(onClick = …)`, with the "Tap me" Button inside it). We click three distinct
         // positions so three genuine up-events fire (tapping the same pixel back-to-back can
         // coalesce into a double-tap sequence on some gesture stacks); the counter must read 3.
-        // The card now floats at world y = 0.52 above the shape row, with the eye pulled
-        // back to 4.2 m (PickingLayout) — that projects to ~0.42 × h in the portrait frame.
+        // The card now floats at world y = 0.52 above the shape row, with the eye pulled back
+        // to 4.2 m (PickingLayout). Measured on the emulator at 1080x2400 for #3329: the card
+        // centre lands at 0.38 x h, spanning roughly +/-0.07 x h and +/-0.17 x w around it.
         val cx = device.displayWidth / 2
-        val cy = (device.displayHeight * 0.42).toInt()
+        val cy = (device.displayHeight * 0.38).toInt()
         device.click(cx - 40, cy); Thread.sleep(500)
         device.click(cx, cy + 40); Thread.sleep(500)
         device.click(cx + 40, cy); Thread.sleep(700)
@@ -948,18 +949,18 @@ class DemoInteractionTest {
 
         val w = device.displayWidth
         val h = device.displayHeight
-        // Projected from PickingLayout for a phone-portrait frame (eye at z = 4.2 aimed at
-        // y = 0.1, viewport ≈ 0.92 × h centred on 0.53 × h):
-        //   spheres (world y = -0.05) → ≈ 0.57 × h
-        //   cubes   (world y = -0.30) → ≈ 0.64 × h
-        //   x = -0.5 → 0.22 | -0.25 → 0.36 | 0 → 0.50 | 0.25 → 0.64 | 0.5 → 0.78
-        val sphereY = (h * 0.57).toInt()
-        val cubeY   = (h * 0.64).toInt()
-        device.click((w * 0.22).toInt(), cubeY);   Thread.sleep(300)  // cube   0
-        device.click((w * 0.36).toInt(), sphereY); Thread.sleep(300)  // sphere 1
+        // Measured off the emulator at 1080x2400 while validating #3329 (not projected by
+        // hand — these are the pixels the shapes actually landed on):
+        //   spheres (world y = -0.05) → 0.54 x h
+        //   cubes   (world y = -0.30) → 0.61 x h
+        //   x = -0.5 → 0.19 | -0.25 → 0.34 | 0 → 0.50 | 0.25 → 0.65 | 0.5 → 0.81
+        val sphereY = (h * 0.54).toInt()
+        val cubeY   = (h * 0.61).toInt()
+        device.click((w * 0.19).toInt(), cubeY);   Thread.sleep(300)  // cube   0
+        device.click((w * 0.34).toInt(), sphereY); Thread.sleep(300)  // sphere 1
         device.click((w * 0.50).toInt(), cubeY);   Thread.sleep(300)  // cube   2
-        device.click((w * 0.64).toInt(), sphereY); Thread.sleep(300)  // sphere 3
-        device.click((w * 0.78).toInt(), cubeY);   Thread.sleep(400)  // cube   4
+        device.click((w * 0.65).toInt(), sphereY); Thread.sleep(300)  // sphere 3
+        device.click((w * 0.81).toInt(), cubeY);   Thread.sleep(400)  // cube   4
         screenshot("86_collision_after_taps")
 
         tap("Reset Colors")
