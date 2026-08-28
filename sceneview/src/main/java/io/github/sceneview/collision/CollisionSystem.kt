@@ -83,6 +83,11 @@ class CollisionSystem(var view: View) {
                 collider.getTransformedShape()?.rayIntersection(ray.toCollisionRay(), it) == true
             }?.apply {
                 node = collider.node
+                // The shape only knows the point it was hit at; which *side* of a surface that is
+                // takes the ray. Stamp it here — the one place that still holds the ray once the
+                // per-shape intersection has run — so a ViewNode can map a touch onto the right
+                // pixel when its quad is picked from behind (#3329).
+                setWorldDirection(ray.direction)
             }?.takeIf {
                 it.node.isHittable
             }

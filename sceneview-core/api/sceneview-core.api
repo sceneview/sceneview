@@ -690,13 +690,17 @@ public final class io/github/sceneview/collision/Ray {
 
 public class io/github/sceneview/collision/RayHit {
 	public fun <init> ()V
+	public final fun getDirection ()Lio/github/sceneview/collision/Vector3;
 	public final fun getDistance ()F
 	public final fun getPoint ()Lio/github/sceneview/collision/Vector3;
+	public final fun getWorldDirection ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getWorldPosition ()Ldev/romainguy/kotlin/math/Float3;
 	public fun reset ()V
 	public final fun set (Lio/github/sceneview/collision/RayHit;)V
+	public final fun setDirection (Lio/github/sceneview/collision/Vector3;)V
 	public final fun setDistance (F)V
 	public final fun setPoint (Lio/github/sceneview/collision/Vector3;)V
+	public final fun setWorldDirection (Ldev/romainguy/kotlin/math/Float3;)V
 }
 
 public final class io/github/sceneview/collision/Sphere : io/github/sceneview/collision/CollisionShape {
@@ -1092,6 +1096,7 @@ public final class io/github/sceneview/math/SplinesKt {
 
 public final class io/github/sceneview/math/TransformConversionsKt {
 	public static final fun computeWorldToLocal (Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun localToWorldDirection (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun localToWorldPosition (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun localToWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Quaternion;
 	public static final fun localToWorldQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;
@@ -1099,6 +1104,7 @@ public final class io/github/sceneview/math/TransformConversionsKt {
 	public static final fun localToWorldRotation (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun localToWorldScale (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun localToWorldTransform (Ldev/romainguy/kotlin/math/Mat4;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
+	public static final fun worldToLocalDirection (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun worldToLocalPosition (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Float3;
 	public static final fun worldToLocalQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Quaternion;
 	public static final fun worldToLocalQuaternion (Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Quaternion;)Ldev/romainguy/kotlin/math/Quaternion;

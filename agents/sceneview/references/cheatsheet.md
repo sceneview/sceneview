@@ -118,14 +118,14 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `BillboardNode` | `TwoDInThreeDDemo.kt` | Always faces the camera (Billboard tab of unified 2D in 3D demo) |
 | `ImageNode` | `TwoDInThreeDDemo.kt` | 2D image quad (Image tab of unified 2D in 3D demo) |
 | `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
-| `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (View Node tab of the unified demo). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false` |
+| `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (the floating card of the unified Picking & Collision demo). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false` |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
 | `PhysicsNode(node, mass, restitution, …)` | `AnimationPhysicsDemo.kt` | Wraps an existing node; experimental (Physics tab of unified Animation & Physics demo) |
 | `ReflectionProbeNode` | `LightingLabDemo.kt` | Local IBL probe (Reflections tab of unified Lighting Lab demo) |
 
 For collision, use the **`rememberCollisionSystem(view)`** helper (it's already
 plumbed by default in `SceneView`'s param list above) — not a node type. See
-`PickingAndCollisionDemo.kt` (Ray Hit-Test tab of the unified Picking & Collision demo) for the API in action.
+`PickingAndCollisionDemo.kt` (the unified Picking & Collision demo — one scene, shapes + card) for the API in action.
 
 ## AR-only nodes (in `arsceneview`)
 
