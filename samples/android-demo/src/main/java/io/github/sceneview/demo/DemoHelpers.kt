@@ -164,10 +164,13 @@ fun ErrorScrim(
  *
  * Defensive timeout (#2484): if the first frame never arrives — a device that fails
  * to open the camera, a session that errors before delivering a frame — the scrim
- * would otherwise cover the viewport forever. After [timeoutMillis] it dismisses
- * itself regardless, so the demo's own fallback / error messaging is never
- * permanently hidden. The happy path (first frame in ~1–3 s) flips [initializing]
- * false long before the timeout, so this only ever fires on a genuinely stuck start.
+ * would otherwise cover the viewport forever. After [timeoutMillis] the **spinner card**
+ * dismisses itself regardless, so the demo's own fallback / error messaging is never
+ * permanently hidden behind a progress indicator that is lying. The black backdrop stays
+ * (#3373) — an AR viewport that never received a frame is not black, and uncovering it
+ * painted a parasitic band across the fallback screen. See [arCameraInitScrimVisibility].
+ * The happy path (first frame in ~1–3 s) flips [initializing] false long before the
+ * timeout, so this only ever fires on a genuinely stuck start.
  */
 @Composable
 fun ARCameraInitScrim(
@@ -192,13 +195,19 @@ fun ARCameraInitScrim(
             timedOut = true
         }
     }
-    if (!initializing || timedOut) return
+    val visibility = arCameraInitScrimVisibility(
+        initializing = initializing,
+        timedOut = timedOut,
+        qaBackdropEnabled = io.github.sceneview.demo.common.qaCameraBackdropEnabled(),
+    )
+    if (visibility == ArCameraInitScrimVisibility.Hidden) return
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
+        if (visibility == ArCameraInitScrimVisibility.BackdropOnly) return@Box
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -220,6 +229,43 @@ fun ARCameraInitScrim(
             )
         }
     }
+}
+
+/** What [ARCameraInitScrim] should draw for a given session state (#2484, #3373). */
+internal enum class ArCameraInitScrimVisibility {
+    /** Nothing — the camera feed is live, or the QA backdrop owns the viewport. */
+    Hidden,
+
+    /** The opaque black backdrop only — the session is stuck, but the viewport must stay covered. */
+    BackdropOnly,
+
+    /** The black backdrop plus the spinner card — a normal, still-progressing camera start. */
+    BackdropAndSpinner,
+}
+
+/**
+ * Decides what [ARCameraInitScrim] draws. Pure so it can be unit-tested JVM-side.
+ *
+ * The defensive timeout (#2484) used to dismiss the whole scrim, backdrop included. That was the
+ * wrong half to drop (#3373): when ARCore never starts, the AR viewport behind the scrim is not
+ * black — it is whatever the uninitialised camera-stream quad happens to sample — so uncovering
+ * it painted a parasitic band across the demo's own "AR couldn't start" fallback. The timeout
+ * exists so the *spinner* stops lying about progress; the backdrop is what guarantees the
+ * fallback screen has a deliberate background. So after the timeout we keep the backdrop and
+ * drop only the spinner.
+ *
+ * The one case that still dismisses completely is the QA camera backdrop (#3308): there a
+ * synthetic room photo is deliberately rendered behind the viewport and must be visible.
+ */
+internal fun arCameraInitScrimVisibility(
+    initializing: Boolean,
+    timedOut: Boolean,
+    qaBackdropEnabled: Boolean,
+): ArCameraInitScrimVisibility = when {
+    !initializing -> ArCameraInitScrimVisibility.Hidden
+    !timedOut -> ArCameraInitScrimVisibility.BackdropAndSpinner
+    qaBackdropEnabled -> ArCameraInitScrimVisibility.Hidden
+    else -> ArCameraInitScrimVisibility.BackdropOnly
 }
 
 /**
