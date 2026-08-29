@@ -636,9 +636,9 @@ private fun FiltersBar(animatedOnly: Boolean, onToggle: () -> Unit) {
                 )
             },
             colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                selectedLeadingIconColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ),
         )
     }
@@ -672,8 +672,8 @@ private fun SourcePickerRow(
                 onClick = { onSelect(source) },
                 label = { Text(source.id.displayName) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
             )
         }
@@ -885,14 +885,14 @@ private fun CategoryChip(category: SketchfabCategory, onClick: (SketchfabCategor
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .clickable { onClick(category) }
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(
             text = category.displayName,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
             fontWeight = FontWeight.Medium,
         )
     }

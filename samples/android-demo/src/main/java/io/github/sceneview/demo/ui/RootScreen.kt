@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewInAr
@@ -221,14 +222,12 @@ private fun AboutTabContent() {
     ) {
         AboutHeroCard()
         AboutInfoCard(
-            icon = Icons.Filled.Favorite,
-            iconColor = Color(0xFFE91E63),
+            icon = Icons.Filled.Public,
             title = stringResource(R.string.about_card_open_source_title),
             subtitle = stringResource(R.string.about_card_open_source_subtitle),
         )
         AboutInfoCard(
             icon = Icons.Filled.Book,
-            iconColor = Color(0xFF2196F3),
             title = stringResource(R.string.about_card_docs_title),
             subtitle = stringResource(R.string.about_card_docs_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -236,7 +235,6 @@ private fun AboutTabContent() {
         )
         AboutInfoCard(
             icon = Icons.Filled.Code,
-            iconColor = Color(0xFF5C6BC0),
             title = stringResource(R.string.about_card_github_title),
             subtitle = stringResource(R.string.about_card_github_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -244,7 +242,6 @@ private fun AboutTabContent() {
         )
         AboutInfoCard(
             icon = Icons.Filled.PlayArrow,
-            iconColor = Color(0xFFFF9800),
             title = stringResource(R.string.about_card_playground_title),
             subtitle = stringResource(R.string.about_card_playground_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -252,7 +249,6 @@ private fun AboutTabContent() {
         )
         AboutInfoCard(
             icon = Icons.Filled.Favorite,
-            iconColor = Color(0xFFF44336),
             title = stringResource(R.string.about_card_sponsor_title),
             subtitle = stringResource(R.string.about_card_sponsor_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -260,7 +256,6 @@ private fun AboutTabContent() {
         )
         AboutInfoCard(
             icon = Icons.Filled.Group,
-            iconColor = Color(0xFF26A69A),
             title = stringResource(R.string.about_card_credits_title),
             subtitle = stringResource(R.string.about_card_credits_subtitle),
             trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
@@ -280,7 +275,6 @@ private fun AboutTabContent() {
         // screen still raises `FeedbackOpenRequest` from its own top app bar.
         AboutInfoCard(
             icon = Icons.Filled.BugReport,
-            iconColor = Color(0xFF7E57C2),
             title = stringResource(R.string.about_card_feedback_title),
             subtitle = stringResource(R.string.about_card_feedback_subtitle),
             onClick = { FeedbackOpenRequest.request() },
@@ -315,7 +309,7 @@ private fun AboutTabContent() {
                 Icon(
                     Icons.Filled.Favorite,
                     contentDescription = null,
-                    tint = Color(0xFFE91E63),
+                    tint = MaterialTheme.colorScheme.primary,
                     // The gap on BOTH sides of the heart lives here, not in the
                     // strings: a leading space in a resource is stripped by aapt
                     // unless quoted, which is why this read "…<heart>by Thomas
@@ -356,10 +350,12 @@ private fun AboutHeroCard() {
                 modifier = Modifier
                     .size(110.dp)
                     .background(
+                        // DESIGN.md `gradient-hero`: the theme's primary → tertiary pair IS
+                        // #005bc1 → #6446cd in light and #a4c1ff → #d2a8ff in dark.
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFF2196F3).copy(alpha = 0.55f),
-                                Color(0xFF9C27B0).copy(alpha = 0.40f),
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.tertiary,
                             ),
                         ),
                         shape = RoundedCornerShape(28.dp),
@@ -369,7 +365,7 @@ private fun AboutHeroCard() {
                 Icon(
                     Icons.Filled.ViewInAr,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(56.dp),
                 )
             }
@@ -394,7 +390,7 @@ private fun AboutHeroCard() {
                     Icon(
                         Icons.Filled.Star,
                         contentDescription = null,
-                        tint = Color(0xFF4CAF50),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(14.dp),
                     )
                     Spacer(Modifier.width(6.dp))
@@ -419,7 +415,7 @@ private fun AboutHeroCard() {
 @Composable
 private fun AboutInfoCard(
     icon: ImageVector,
-    iconColor: Color,
+    iconColor: Color = MaterialTheme.colorScheme.primary,
     title: String,
     subtitle: String,
     trailingIcon: ImageVector? = null,
