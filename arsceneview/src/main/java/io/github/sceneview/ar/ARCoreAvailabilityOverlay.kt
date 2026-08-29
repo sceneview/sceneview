@@ -79,6 +79,9 @@ enum class ARCoreAvailability {
  *   start, so it maps to `null` and the host's own "initializing" copy stays up.
  *
  * Every other value is terminal until the user acts, so each maps to a state.
+ *
+ * Deliberately has no `else` branch: a future `ArCoreApk.Availability` constant then breaks
+ * the build here instead of silently falling into a bucket nobody chose.
  */
 fun ArCoreApk.Availability.toARCoreAvailability(): ARCoreAvailability? = when (this) {
     ArCoreApk.Availability.SUPPORTED_INSTALLED -> null
@@ -88,9 +91,6 @@ fun ArCoreApk.Availability.toARCoreAvailability(): ARCoreAvailability? = when (t
     ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> ARCoreAvailability.Unsupported
     ArCoreApk.Availability.UNKNOWN_ERROR -> ARCoreAvailability.CheckFailed
     ArCoreApk.Availability.UNKNOWN_TIMED_OUT -> ARCoreAvailability.CheckFailed
-    // Defensive: a future ARCore enum constant is treated as "we could not tell", never as
-    // "supported" — an honest retryable card beats an infinite initializing spinner.
-    else -> ARCoreAvailability.CheckFailed
 }
 
 /**

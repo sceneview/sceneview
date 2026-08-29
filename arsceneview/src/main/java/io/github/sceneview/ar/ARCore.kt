@@ -183,63 +183,76 @@ class ARCore(
     fun checkPermissionAndInstall(handler: ARPermissionHandler): Boolean {
         // Camera permission
         if (checkCameraPermission && !handler.hasCameraPermission()) {
-            if (!cameraPermissionRequested) {
-                cameraPermissionRequested = true
-                handler.requestCameraPermission { granted ->
-                    isCameraPermissionDenied = !granted
-                    if (!granted) {
-                        // `shouldShowPermissionRationale()` is historically inverted on this
-                        // interface: it answers `true` once the system stops asking.
-                        onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
-                    }
-                    // On grant the dialog's dismissal resumes the activity, and `resume()`
-                    // creates the session through the branch below.
-                }
-            }
+            requestCameraPermissionOnce(handler)
             // Denied (or still being asked): hold the session back instead of letting
             // `Session()` throw `CameraNotAvailable` on the next resume.
-        } else {
-            isCameraPermissionDenied = false
-            try {
-                if (checkAvailability && !installRequested) {
-                    val availability = handler.checkARCoreAvailability()
-                    val unavailable = availability.toARCoreAvailability()
-                    if (unavailable == null) {
-                        publishAvailability(null)
-                        // Still `UNKNOWN_CHECKING`? ARCore has not answered yet: hold the
-                        // session back and let the next resume ask again, rather than
-                        // requesting an install for a device we have not classified.
-                        return availability == Availability.SUPPORTED_INSTALLED
-                    }
-                    publishAvailability(unavailable)
-                    // Only the install / update states have a Play Store flow to launch.
-                    // `UNSUPPORTED_DEVICE_NOT_CAPABLE` makes `requestInstall` throw, and a
-                    // failed check has nothing to install — both are surfaced, not retried
-                    // behind the user's back (#3374).
-                    if (unavailable == ARCoreAvailability.NotInstalled ||
-                        unavailable == ARCoreAvailability.NeedsUpdate
-                    ) {
-                        if (handler.requestARCoreInstall(!installRequested)) {
-                            installRequested = true
-                        } else {
-                            // ARCore reports it is installed after all.
-                            publishAvailability(null)
-                            return true
-                        }
-                    }
-                } else {
-                    // Availability checks disabled, or the user is coming back from the Play
-                    // Store install we requested: the session may start, so drop any card.
-                    publishAvailability(null)
-                    return true
-                }
-            } catch (e: Exception) {
-                // `requestInstall` throws `Unavailable*Exception` on a device it cannot serve.
-                // Classify it so the UI can explain, then still report it to the host.
-                publishAvailability(e.toARCoreAvailability())
-                onException(e)
-            }
+            return false
         }
+        isCameraPermissionDenied = false
+        return try {
+            checkARCoreInstall(handler)
+        } catch (e: Exception) {
+            // `requestInstall` throws `Unavailable*Exception` on a device it cannot serve.
+            // Classify it so the UI can explain, then still report it to the host.
+            publishAvailability(e.toARCoreAvailability())
+            onException(e)
+            false
+        }
+    }
+
+    /** Asks for the camera permission at most once per instance. */
+    private fun requestCameraPermissionOnce(handler: ARPermissionHandler) {
+        if (cameraPermissionRequested) return
+        cameraPermissionRequested = true
+        handler.requestCameraPermission { granted ->
+            isCameraPermissionDenied = !granted
+            if (!granted) {
+                // `shouldShowPermissionRationale()` is historically inverted on this
+                // interface: it answers `true` once the system stops asking.
+                onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
+            }
+            // On grant the dialog's dismissal resumes the activity, and `resume()` creates
+            // the session through [checkARCoreInstall].
+        }
+    }
+
+    /**
+     * Asks ARCore whether it can serve this device and launches the install / update flow
+     * when there is one, publishing the verdict on the way (#3374).
+     *
+     * @return `true` when the session may be created now.
+     */
+    private fun checkARCoreInstall(handler: ARPermissionHandler): Boolean {
+        if (!checkAvailability || installRequested) {
+            // Availability checks disabled, or the user is coming back from the Play Store
+            // install we requested: the session may start, so drop any card.
+            publishAvailability(null)
+            return true
+        }
+        val availability = handler.checkARCoreAvailability()
+        val unavailable = availability.toARCoreAvailability()
+        if (unavailable == null) {
+            publishAvailability(null)
+            // Still `UNKNOWN_CHECKING`? ARCore has not answered yet: hold the session back
+            // and let the next resume ask again, rather than requesting an install for a
+            // device we have not classified.
+            return availability == Availability.SUPPORTED_INSTALLED
+        }
+        publishAvailability(unavailable)
+        // Only the install / update states have a Play Store flow to launch.
+        // `UNSUPPORTED_DEVICE_NOT_CAPABLE` makes `requestInstall` throw, and a failed check
+        // has nothing to install — both are surfaced, not retried behind the user's back.
+        if (unavailable != ARCoreAvailability.NotInstalled &&
+            unavailable != ARCoreAvailability.NeedsUpdate
+        ) {
+            return false
+        }
+        if (!handler.requestARCoreInstall(!installRequested)) {
+            // ARCore reports it is installed after all.
+            publishAvailability(null)
+            return true
+        }
+        installRequested = true
         return false
     }
 
