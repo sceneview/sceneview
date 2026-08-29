@@ -11,7 +11,14 @@ Desktop.ini
 .claude/settings.local.json
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+# The ROOT .mcp.json is the project-scoped MCP server list Claude Code reads at
+# session start (`claude mcp add --scope project`). It is meant to be committed and
+# shared — it is how a fresh clone gets `sceneview-mcp` (#3380). It was blanket-ignored
+# from c95b32c8d as "local config with machine-specific paths", but machine-specific
+# and secret-bearing servers belong at LOCAL scope, which Claude Code stores in
+# ~/.claude.json and never writes here. Nested .mcp.json files stay ignored.
 .mcp.json
+!/.mcp.json
 !plugins/*/.mcp.json
 # Private session artefacts (CDI-safety: do not expose employer/maintainer identity)
 # .claude/STATE.md = the single live session-state source of truth (methodology v2).

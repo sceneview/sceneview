@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "sceneview": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "sceneview-mcp"]
     }

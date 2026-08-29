@@ -37,7 +37,7 @@ LLMs hallucinate APIs. SceneView 3.0.0 shipped a completely new Jetpack Compose 
 }
 ```
 
-Add to `.claude/mcp.json` (project), `~/.claude/mcp.json` (global), or `claude_desktop_config.json` (Claude Desktop).
+In Claude Code, run `claude mcp add --scope project sceneview -- npx -y sceneview-mcp`, which writes the snippet above to `.mcp.json` at the project root — the only project-scoped MCP file Claude Code reads (`.claude/mcp.json` is silently ignored). Use `--scope user` for all your projects; that entry lives in `~/.claude.json`. In Claude Desktop, add it to `claude_desktop_config.json`.
 
 ## Links
 
