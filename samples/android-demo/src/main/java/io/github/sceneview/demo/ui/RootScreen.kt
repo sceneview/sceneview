@@ -365,8 +365,9 @@ private fun AboutTabContent() {
         // than the viewport there is always another card in the band, so the
         // FAB masked text at every scroll position but the top one. No
         // clearance constant can fix that shape. As a sibling in this column
-        // it cannot overlap anything, the four tabs get their 168 dp of dead
-        // bottom gutter back, and the in-context path is untouched: a demo
+        // it cannot overlap anything, the three tabs got their dead bottom
+        // gutter back (see `ListGutter.kt`), and the in-context path is
+        // untouched: a demo
         // screen still raises `FeedbackOpenRequest` from its own top app bar.
         AboutInfoCard(
             icon = Icons.Filled.BugReport,
