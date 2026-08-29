@@ -9,10 +9,8 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.PlaneVisualizerV2
-import io.github.sceneview.ar.arcore.firstByTypeOrNull
 import io.github.sceneview.ar.arcore.fps
 import io.github.sceneview.ar.arcore.getUpdatedPlanes
-import io.github.sceneview.ar.arcore.hitTest
 import io.github.sceneview.ar.arcore.isTracking
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.loaders.MaterialLoader
@@ -162,11 +160,16 @@ class PlaneRendererV2(
     var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_CENTER
 
     /**
-     * ### Adjust the max screen [ArFrame.hitTest] number per seconds
+     * Maximum number of plane-renderer updates per second.
      *
-     * Decrease if you don't need a very precise position update and want to reduce frame
-     * consumption.
-     * Increase for a more accurate positioning update.
+     * The whole [update] pass is gated to this rate: polling ARCore's updated planes, picking
+     * the centre plane in [PlaneRenderer.PlaneRendererMode.RENDER_CENTER], and pushing plane
+     * geometry to Filament. Decrease if you don't need a very precise position update and
+     * want to reduce frame consumption; increase for a more accurate positioning update.
+     *
+     * The name comes from the `Frame.hitTest` this gate used to throttle. That hit test is
+     * gone (#3339), but the gate, its default and its meaning as a rate limit are unchanged,
+     * so the name is kept for source and binary compatibility.
      */
     var maxHitTestPerSecond: Int = 10
 
@@ -232,25 +235,43 @@ class PlaneRendererV2(
                     if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL) {
                         updatedPlanes.forEach { renderPlane(it, frame = frame, camera = camera) }
                     } else if (planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_CENTER) {
-                        // Do a hitTest on the current frame. The result is used to render only
-                        // the top most plane Trackable visible at the centre of the screen.
+                        // AR10 (#2504): `updatedPlanes` is ARCore's JNI-backed list, so the
+                        // per-visualizer `plane !in updatedPlanes` below was an O(M) linear scan —
+                        // O(N×M) across all visualizers every frame. Hoist a `HashSet` once so the
+                        // membership test is O(1). ARCore hands out a FRESH `Plane` wrapper per
+                        // frame, so this works on `Plane`'s native-handle value equality (see
+                        // `io.github.sceneview.ar.arcore.diffPlanes`), never on identity — set
+                        // membership matches the list `contains` exactly and the visibility
+                        // outcome is unchanged.
+                        val updatedPlaneSet = updatedPlanes.toHashSet()
+                        // Find the top most plane Trackable at the centre of the screen; only that
+                        // one is rendered.
+                        //
+                        // #3339: this used to be a real `frame.hitTest(centreX, centreY)`. ARCore
+                        // attempts a depth sub-test inside every `hitTest`, and on devices whose
+                        // motion-stereo depth pipeline is unavailable that sub-test fails and its
+                        // NATIVE logger spams `depth_hit_test.cc` / `AR_ERROR_ILLEGAL_STATE`
+                        // warnings — here at the `maxHitTestPerSecond` rate, forever, on every AR
+                        // screen. Nothing on the Kotlin side can filter a native log, and no
+                        // `hitTest` overload accepts a trackable-type filter, so the only fix is
+                        // not to make the call. [CenterPlaneFinder] answers the same question
+                        // analytically, applying the same acceptance rules the discarded
+                        // `firstByTypeOrNull(HORIZONTAL_UPWARD_FACING)` filter applied.
                         val centerPlane = if (isVisible) {
-                            // Don't make the hit test if we don't need to know the center plane
-                            frame.hitTest(viewSize.width / 2.0f, viewSize.height / 2.0f)
-                                .firstByTypeOrNull(
-                                    planeTypes = setOf(Plane.Type.HORIZONTAL_UPWARD_FACING)
-                                )?.trackable as? Plane
+                            // Don't look for the center plane if we don't need to know it
+                            CenterPlaneFinder.find(
+                                frame = frame,
+                                // Planes that did not change this frame are still tracked and
+                                // still drawn, so they stay eligible: union the updated planes
+                                // with the ones we currently visualize.
+                                candidates = HashSet(updatedPlaneSet).apply {
+                                    addAll(visualizers.keys)
+                                }
+                            )
                         } else null
                         updatedPlanes.forEach {
                             renderPlane(it, frame = frame, camera = camera, visible = it == centerPlane)
                         }
-                        // AR10 (#2504): `updatedPlanes` is ARCore's JNI-backed list, so the
-                        // per-visualizer `plane !in updatedPlanes` below was an O(M) linear scan —
-                        // O(N×M) across all visualizers every frame. Hoist a `HashSet` once so the
-                        // membership test is O(1). Identity-based set membership matches the list
-                        // `contains` exactly (ARCore returns the same `Plane` instance per trackable
-                        // across frames), so the visibility outcome is unchanged.
-                        val updatedPlaneSet = updatedPlanes.toHashSet()
                         visualizers.forEach { (plane, visualizer) ->
                             if (plane !in updatedPlaneSet) {
                                 visualizer.setVisible(isVisible && plane == centerPlane)
