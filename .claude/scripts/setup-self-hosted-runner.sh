@@ -84,6 +84,13 @@ HEARTBEAT_LABEL="io.github.sceneview.runner-heartbeat"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEARTBEAT_SCRIPT="${SCRIPT_DIR}/runner-heartbeat.sh"
 
+# Disk gate (#2816): the heartbeat refuses to mark the runner online below this
+# many free GiB on DISK_MOUNT, so a near-full host produces a transparent
+# fallback to macos-15 instead of an ENOSPC red mid-job. 15 GiB = a Flutter
+# setup's ~4.5 GiB peak + the host's 6 GiB local-build gate + scratch headroom.
+MIN_FREE_DISK_GB="${RUNNER_MIN_FREE_DISK_GB:-15}"
+DISK_MOUNT="${RUNNER_DISK_MOUNT:-/}"
+
 UID_NUM="$(id -u)"
 GUI_DOMAIN="gui/${UID_NUM}"
 
@@ -122,6 +129,21 @@ if [[ "${ACTION}" == "--check" ]]; then
   log ""
   log "Heartbeat LaunchAgent: ${HEARTBEAT_PLIST}"
   print_service_status "${HEARTBEAT_LABEL}"
+
+  log ""
+  log "Free disk (heartbeat gate, #2816):"
+  free_mib_check="$(df -k "${DISK_MOUNT}" 2>/dev/null | awk 'NR==2 { print int($4 / 1024); exit }')"
+  if [[ -n "${free_mib_check}" ]]; then
+    free_gb_check="$(awk -v m="${free_mib_check}" 'BEGIN { printf "%.1f", m / 1024 }')"
+    log "  ${DISK_MOUNT}: ${free_gb_check} GiB free (minimum ${MIN_FREE_DISK_GB} GiB)"
+    if (( free_mib_check < MIN_FREE_DISK_GB * 1024 )); then
+      log "  verdict:     BELOW threshold — heartbeat marks ONLINE=false, jobs use macos-15"
+    else
+      log "  verdict:     ok"
+    fi
+  else
+    log "  ${DISK_MOUNT}: unreadable — heartbeat marks ONLINE=false"
+  fi
 
   if [[ -f /tmp/sceneview-runner-heartbeat.log ]]; then
     log ""
@@ -313,6 +335,8 @@ cat > "${HEARTBEAT_PLIST}" <<PLIST
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>GITHUB_REPO</key><string>${REPO}</string>
     <key>RUNNER_NAME</key><string>${RUNNER_NAME}</string>
+    <key>RUNNER_MIN_FREE_DISK_GB</key><string>${MIN_FREE_DISK_GB}</string>
+    <key>RUNNER_DISK_MOUNT</key><string>${DISK_MOUNT}</string>
     <key>HOME</key><string>${HOME}</string>
   </dict>
   <key>StandardOutPath</key><string>/tmp/sceneview-runner-heartbeat.log</string>
@@ -332,5 +356,6 @@ log "  Runner name:  ${RUNNER_NAME}"
 log "  Label:        ${RUNNER_LABEL}"
 log "  LaunchAgent:  ${RUNNER_PLIST_LABEL} (KeepAlive, auto-restart on exit/update)"
 log "  Heartbeat:    every 300s -> /tmp/sceneview-runner-heartbeat.log"
+log "  Disk gate:    ONLINE only while ${DISK_MOUNT} has >= ${MIN_FREE_DISK_GB} GiB free (#2816)"
 log ""
 log "Verify with: bash $(basename "$0") --check"
