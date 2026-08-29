@@ -26,11 +26,15 @@ import com.google.ar.core.Session
 sealed interface PlaneRendererBase {
 
     /**
-     * Display size (in pixels) of the surface this renderer draws into.
+     * Display size (in pixels) of the surface this renderer draws into. Set by `ARSceneView`
+     * whenever the surface is resized.
      *
-     * Used by V1 to drive its centre-screen hit-test in
-     * [PlaneRenderer.PlaneRendererMode.RENDER_CENTER]. Set by `ARSceneView` whenever the
-     * surface is resized.
+     * Both renderers used to read it to place their centre-screen `Frame.hitTest` in
+     * [PlaneRenderer.PlaneRendererMode.RENDER_CENTER]. Since #3339 that hit test is gone —
+     * centre-plane selection is computed analytically from the camera pose, which needs no
+     * viewport size — so nothing in the SDK reads this today. It stays part of the contract
+     * because it is public API, and because any future screen-space work in a renderer needs
+     * exactly this value.
      */
     var viewSize: Size
 
