@@ -2,7 +2,9 @@
 
 package io.github.sceneview.demo
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -69,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -92,6 +95,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -102,6 +106,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
@@ -246,11 +251,25 @@ fun DemoScaffold(
     var chromeToggled by rememberSaveable { mutableStateOf(true) }
     val chromeVisible = chromeToggled || touchExploration || DemoSettings.qaMode
 
+    // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
+    // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
+    // They used to read because they sat on whatever the scene rendered. Force the
+    // light (white) icon set while the scrim is up, and restore whatever the theme had
+    // when the chrome hides or the demo is left; capturing the previous value rather
+    // than deducing it keeps this correct in both themes and under edge-to-edge.
+    val view = LocalView.current
+    DisposableEffect(view, chromeVisible) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        if (chromeVisible) controller?.isAppearanceLightStatusBars = false
+        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
+    }
+
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
-    // The dock always carries the Controls item now (#3328): the settings sheet is the
-    // single settings surface, so it must exist even on a demo with no own controls —
-    // Reset, Feedback and QA mode live in it.
-    val hasDock = true
 
     // Reset + its snackbar confirmation, hoisted out of the chrome: the sheet is the
     // only caller since the overflow menu was folded into it.
@@ -300,8 +319,11 @@ fun DemoScaffold(
 
         // Room the dock band takes at the bottom — the same floor-or-measured
         // value `bottomOverlay` clears, shared with the snackbar below so both
-        // float above the dock instead of behind or through it (#3325).
-        val dockClearance = if (hasDock) maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand) else 0.dp
+        // float above the dock instead of behind or through it (#3325). The dock
+        // always exists now (#3328): it carries the Controls item that opens the
+        // one settings surface, even on a demo with no controls of its own, so
+        // the clearance is unconditional.
+        val dockClearance = maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand)
 
         // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
         // reference frame (#3237). With `contentWindowInsets = 0` the padding is
@@ -334,6 +356,33 @@ fun DemoScaffold(
                     firstFrameRendered = firstFrameRendered,
                     previewRes = previewRes,
                     onRetry = onReset,
+                )
+            }
+
+            // Ground for the identity row (#3328). Like the bottom band below, it is
+            // drawn here rather than inside the chrome so it tints the *scene* and
+            // never the glass — or the demo's own top overlay, which a scrim drawn
+            // inside the chrome greys out, because the chrome is composed after the
+            // overlay slots. It still fades with the chrome, which is the only thing
+            // standing on it.
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(SceneViewTokens.Motion.fade()),
+                exit = fadeOut(SceneViewTokens.Motion.fade()),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SceneViewTokens.Glass.scrimTopHeight)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to SceneViewTokens.Glass.scrim,
+                                SceneViewTokens.Glass.scrimPlateau to
+                                    SceneViewTokens.Glass.scrim,
+                                1f to Color.Transparent,
+                            )
+                        ),
                 )
             }
 
@@ -493,22 +542,6 @@ private fun BoxScope.DemoChrome(
         modifier = Modifier.matchParentSize(),
     ) {
         Box(Modifier.fillMaxSize()) {
-            // The chrome's own ground (#3328). Drawn first, inside the fade, so it
-            // comes and goes with the glass it exists to make legible, and behind it
-            // so nothing is tinted twice. Not touchable: it is `Box` with no input.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(SceneViewTokens.Glass.scrimTopHeight)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to SceneViewTokens.Glass.scrim,
-                            SceneViewTokens.Glass.scrimPlateau to SceneViewTokens.Glass.scrim,
-                            1f to Color.Transparent,
-                        )
-                    ),
-            )
             DemoIdentityRow(
                 title = title,
                 assetSource = assetSource,

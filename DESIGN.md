@@ -344,10 +344,11 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
   bottom band (220dp minimum) each carry a vertical scrim, flat for the 55 %
   nearest the screen edge and fading to transparent, so the chrome never depends
-  on what the scene happens to render behind it. The top scrim fades with the
-  chrome; the bottom one grows to the measured overlay band and outlives the
-  fade, because a status pill or legend stays on screen after a scene tap has
-  hidden the dock.
+  on what the scene happens to render behind it. Both are drawn under the
+  overlay slots, so they tint the scene and never a demo's own overlay card. The
+  top scrim fades with the chrome; the bottom one grows to the measured overlay
+  band and outlives the fade, because a status pill or legend stays on screen
+  after a scene tap has hidden the dock.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
 
