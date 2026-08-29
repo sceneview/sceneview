@@ -37,6 +37,7 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.body.BodyPose
@@ -139,6 +140,10 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
 
     // True after the first ARCore camera frame — used to dismiss ARCameraInitScrim (#2485).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var bodyPose by remember { mutableStateOf(BodyPose(emptyMap())) }
 
@@ -238,6 +243,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                 sessionConfiguration = { _: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.DISABLED
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _, frame: Frame ->
                     // First callback = camera is delivering frames; dismiss the init scrim.
                     if (!cameraReady) cameraReady = true
@@ -291,7 +297,10 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
             // Cover the still-black ARSceneView surface until ARCore delivers its first
             // camera frame — on a cold start this can take several seconds and the
             // silent black screen reads as a crash (#2485, #1473).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

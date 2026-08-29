@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Unit tests for [arCameraInitScrimVisibility] — the scrim decision behind `ARCameraInitScrim`
- * (#2484, #3373).
+ * (#2484, #3373, #3341).
  */
 class ArCameraInitScrimVisibilityTest {
 
@@ -17,6 +17,7 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = false,
                 timedOut = false,
                 qaBackdropEnabled = false,
+                arCoreUnavailable = false,
             )
         )
     }
@@ -29,6 +30,7 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = false,
                 timedOut = true,
                 qaBackdropEnabled = false,
+                arCoreUnavailable = false,
             )
         )
     }
@@ -41,6 +43,7 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = true,
                 timedOut = false,
                 qaBackdropEnabled = false,
+                arCoreUnavailable = false,
             )
         )
     }
@@ -58,6 +61,7 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = true,
                 timedOut = true,
                 qaBackdropEnabled = false,
+                arCoreUnavailable = false,
             )
         )
     }
@@ -71,6 +75,7 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = true,
                 timedOut = true,
                 qaBackdropEnabled = true,
+                arCoreUnavailable = false,
             )
         )
     }
@@ -84,6 +89,59 @@ class ArCameraInitScrimVisibilityTest {
                 initializing = true,
                 timedOut = false,
                 qaBackdropEnabled = true,
+                arCoreUnavailable = false,
+            )
+        )
+    }
+
+    /**
+     * #3341: an unsupported device (every emulator — #2754) never delivers a first frame, so
+     * `initializing` stays true forever and the scrim used to settle on a permanent black
+     * cover. The SDK's own `ARCoreAvailabilityOverlay` draws inside the `ARSceneView`, i.e.
+     * *under* this scrim, so the verdict has to dismiss the scrim or the explanation is never
+     * seen.
+     */
+    @Test
+    fun `an ARCore verdict hides the scrim even though the camera never started`() {
+        assertEquals(
+            ArCameraInitScrimVisibility.Hidden,
+            arCameraInitScrimVisibility(
+                initializing = true,
+                timedOut = true,
+                qaBackdropEnabled = false,
+                arCoreUnavailable = true,
+            )
+        )
+    }
+
+    /**
+     * The verdict wins over the spinner phase: waiting is pointless the moment ARCore says
+     * the session cannot start, so the user should not watch a progress indicator for the
+     * eight seconds it takes the defensive timeout to fire.
+     */
+    @Test
+    fun `an ARCore verdict hides the scrim before the timeout fires`() {
+        assertEquals(
+            ArCameraInitScrimVisibility.Hidden,
+            arCameraInitScrimVisibility(
+                initializing = true,
+                timedOut = false,
+                qaBackdropEnabled = false,
+                arCoreUnavailable = true,
+            )
+        )
+    }
+
+    /** The QA backdrop and the verdict agree here — both want the viewport uncovered. */
+    @Test
+    fun `an ARCore verdict hides the scrim with the QA backdrop on`() {
+        assertEquals(
+            ArCameraInitScrimVisibility.Hidden,
+            arCameraInitScrimVisibility(
+                initializing = true,
+                timedOut = false,
+                qaBackdropEnabled = true,
+                arCoreUnavailable = true,
             )
         )
     }

@@ -35,6 +35,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.RooftopAnchorNode
 import io.github.sceneview.demo.DemoScaffold
@@ -156,6 +157,10 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
 
     var arSession by remember { mutableStateOf<Session?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `isTracking` never flips
+    // then, so every "waiting for the camera" line below has to read the verdict or it
+    // contradicts the SDK's own explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var earthTracking by remember { mutableStateOf(false) }
     // Tracked alongside `earthTracking` because `Earth.resolveAnchorOnRooftopAsync`
     // throws IllegalStateException if `earth.earthState != EarthState.ENABLED`. The
@@ -269,6 +274,9 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                     geospatialUnavailable != null -> geospatialUnavailable!!
                     // Friendly, complete sentence from friendlyArSessionError (#2349).
                     sessionError != null -> sessionError!!
+                    // ARCore will never start here, so "waiting" is a lie — the SDK
+                    // overlay in the AR view carries the real explanation (#3341).
+                    arCoreAvailability != null -> "AR is unavailable on this device"
                     !isTracking -> "Waiting for camera tracking…"
                     !earthTracking -> "Waiting for VPS lock (go outside, look around)…"
                     cameraLat != null && cameraLng != null -> {
@@ -345,6 +353,10 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                         "${geospatialUnavailable!!} — needs urban area with building data + Cloud API key",
                         tone = DemoStatusTone.Blocked,
                     )
+                // The SDK's availability overlay already fills the viewport with the
+                // reason and the retry; a second, now false, "Initializing camera…"
+                // underneath it only contradicts it (#3341).
+                arCoreAvailability != null -> Unit
                 !isTracking -> DemoStatusBanner("Initializing camera…", tone = DemoStatusTone.Progress)
                 else ->
                     DemoStatusBanner(
@@ -413,6 +425,7 @@ fun ARRooftopAnchorDemo(onBack: () -> Unit) {
                     // "FatalException" class name to the user.
                     sessionError = friendlyArSessionError(exception)
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     val earth = session.earth

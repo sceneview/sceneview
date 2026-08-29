@@ -211,6 +211,7 @@ fun TapToPlaceArSession(
                 // Change-only write (60 Hz path): drives the ShadowReceiverPlane set.
                 if (trackedPlanes != tracked) trackedPlanes = tracked
             },
+            onARCoreAvailability = { state.arCoreAvailability = it },
             onTrackingFailureChanged = { reason ->
                 state.trackingFailureReason = reason
             },
@@ -385,8 +386,13 @@ fun TapToPlaceArSession(
             extraSceneContent?.invoke(this)
         }
 
-        // Cover the still-black AR viewport until the first camera frame (#2484).
-        ARCameraInitScrim(initializing = !state.cameraReady)
+        // Cover the still-black AR viewport until the first camera frame (#2484) — unless
+        // ARCore has already ruled the session out (#3341), in which case that frame is never
+        // coming and the scrim would bury the SDK's own explanation card.
+        ARCameraInitScrim(
+            initializing = !state.cameraReady,
+            arCoreAvailability = state.arCoreAvailability,
+        )
 
         overlays(state)
     }

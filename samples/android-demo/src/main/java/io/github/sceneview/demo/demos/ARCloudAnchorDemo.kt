@@ -28,6 +28,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.CloudAnchorNode as CloudAnchorNodeImpl
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -90,6 +91,10 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var hostedId by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("Tap a surface to place an anchor") }
@@ -258,6 +263,10 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 val isAnchorReady = hostedId != null || cloudAnchorId != null
                 val (guidanceText, guidanceTone) = when {
                     forcedMessage != null -> forcedMessage to DemoStatusTone.Guidance
+                    // ARCore will never start here, so "initializing" is a lie. The
+                    // SDK overlay in the viewport carries the real reason (#3341).
+                    arCoreAvailability != null ->
+                        "AR is unavailable on this device" to DemoStatusTone.Blocked
                     !isTracking ->
                         "Initializing camera — move slowly to find a surface" to
                             DemoStatusTone.Progress
@@ -306,6 +315,7 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 onSessionCreated = { session ->
                     arSession = session
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _, frame: Frame ->
                     cameraReady = true
                     latestFrame = frame
@@ -373,7 +383,10 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

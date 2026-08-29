@@ -41,6 +41,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
@@ -229,6 +230,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var geometryCount by remember { mutableStateOf(0) }
     // After this long tracking with `geometryCount == 0` and no unsupported-device
@@ -431,6 +436,7 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
                     // "FatalException" class name to the user.
                     sessionError = friendlyArSessionError(exception)
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -463,7 +469,10 @@ fun ARStreetscapeDemo(onBack: () -> Unit) {
 
             // Cover the still-black AR viewport until the first camera frame; lifts on a
             // session error so the error banner below is never hidden (#2484).
-            ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
+            ARCameraInitScrim(
+                initializing = !cameraReady && sessionError == null,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

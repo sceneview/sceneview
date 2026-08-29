@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Pose
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.physics.DepthCollider
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -95,6 +96,10 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_collider_title),
@@ -188,6 +193,7 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                 // access to the live session + frame; we use them to (a) keep the latest
                 // camera pose so a future Drop tap spawns balls in front of the user (#1874),
                 // and (b) feed the per-frame collider region cull.
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _, frame ->
                     cameraReady = true
                     latestCameraPoseRef.value = frame.camera.pose
@@ -305,7 +311,10 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
         }
 
         // Cover the still-black AR viewport until the first camera frame (#2484).
-        ARCameraInitScrim(initializing = !cameraReady)
+        ARCameraInitScrim(
+            initializing = !cameraReady,
+            arCoreAvailability = arCoreAvailability,
+        )
       }
     }
 }

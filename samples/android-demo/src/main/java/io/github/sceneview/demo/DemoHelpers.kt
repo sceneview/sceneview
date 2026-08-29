@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.math.Position
 import java.io.File
 import kotlin.math.acos
@@ -150,17 +151,30 @@ fun ErrorScrim(
  *
  * ```kotlin
  * var cameraReady by remember { mutableStateOf(false) }
+ * var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
  * Box(Modifier.fillMaxSize()) {
  *     ARSceneView(
  *         onSessionUpdated = { _, _ -> cameraReady = true /* … */ },
+ *         onARCoreAvailability = { arCoreAvailability = it },
  *         …
  *     ) { … }
- *     ARCameraInitScrim(initializing = !cameraReady)
+ *     ARCameraInitScrim(
+ *         initializing = !cameraReady,
+ *         arCoreAvailability = arCoreAvailability,
+ *     )
  * }
  * ```
  *
  * Place it as the last child of the [Box] that wraps the `ARSceneView` so it draws
  * on top of the still-black viewport but below any other status overlays.
+ *
+ * [arCoreAvailability] is the ARCore verdict reported by `ARSceneView.onARCoreAvailability`,
+ * and it is **not optional** (#3341): a non-null verdict means ARCore will never deliver a
+ * frame on this device, so [initializing] stays true forever and the scrim would cover the
+ * viewport permanently — including the SDK's own
+ * [io.github.sceneview.ar.ARCoreAvailabilityOverlay] explanation card, which draws *inside*
+ * the `ARSceneView` and therefore *below* this scrim. Pass the verdict and the scrim steps
+ * aside the moment it lands. On an emulator (#2754) this is the only path there is.
  *
  * Defensive timeout (#2484): if the first frame never arrives — a device that fails
  * to open the camera, a session that errors before delivering a frame — the scrim
@@ -175,6 +189,7 @@ fun ErrorScrim(
 @Composable
 fun ARCameraInitScrim(
     initializing: Boolean,
+    arCoreAvailability: ARCoreAvailability?,
     label: String = "Starting camera…",
     timeoutMillis: Long = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS,
 ) {
@@ -199,6 +214,7 @@ fun ARCameraInitScrim(
         initializing = initializing,
         timedOut = timedOut,
         qaBackdropEnabled = io.github.sceneview.demo.common.qaCameraBackdropEnabled(),
+        arCoreUnavailable = arCoreAvailability != null,
     )
     if (visibility == ArCameraInitScrimVisibility.Hidden) return
     Box(
@@ -254,14 +270,23 @@ internal enum class ArCameraInitScrimVisibility {
  * fallback screen has a deliberate background. So after the timeout we keep the backdrop and
  * drop only the spinner.
  *
- * The one case that still dismisses completely is the QA camera backdrop (#3308): there a
- * synthetic room photo is deliberately rendered behind the viewport and must be visible.
+ * Two cases dismiss completely. The QA camera backdrop (#3308): there a synthetic room photo
+ * is deliberately rendered behind the viewport and must be visible. And [arCoreUnavailable]
+ * (#3341): once ARCore has returned a verdict, the session will never start, so there is
+ * nothing left to wait for and the scrim is covering the SDK's own explanation card. That
+ * branch comes first — it must win over the spinner phase too, because a verdict makes the
+ * spinner wrong immediately, not eight seconds later. Uncovering the viewport is safe here
+ * for a reason #3373 did not have: since #3377 the camera-stream quad stays out of the render
+ * pass until a real frame is bound, so what shows through is the renderer's own opaque black
+ * clear colour — exactly the ground the dark explanation card is designed for.
  */
 internal fun arCameraInitScrimVisibility(
     initializing: Boolean,
     timedOut: Boolean,
     qaBackdropEnabled: Boolean,
+    arCoreUnavailable: Boolean,
 ): ArCameraInitScrimVisibility = when {
+    arCoreUnavailable -> ArCameraInitScrimVisibility.Hidden
     !initializing -> ArCameraInitScrimVisibility.Hidden
     !timedOut -> ArCameraInitScrimVisibility.BackdropAndSpinner
     qaBackdropEnabled -> ArCameraInitScrimVisibility.Hidden
