@@ -27,7 +27,8 @@ import ARKit
 /// only, something useful renders offline (the bundled hero).
 struct ModelViewerDemo: View {
     /// Bundled models offered in the Models sheet. The Khronos set mirrors
-    /// Android's grid; the hovercar is the iOS store hero.
+    /// Android's grid; the hovercar is the iOS store hero, selected under
+    /// `qa_mode` by ``storeHeroAssetName`` rather than by being first here.
     private static let bundledModels: [BundledViewerModel] = [
         BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
         BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
@@ -47,10 +48,37 @@ struct ModelViewerDemo: View {
         ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night"),
     ]
 
+    /// The subject App Store slot 1 is meant to show. The interactive default
+    /// is `bundledModels[0]` (Damaged Helmet) — the Khronos reference model a
+    /// first-run user should land on — but `dynamic-sky`, which fills slot 2,
+    /// loads that *same* helmet since #3003. Left alone the listing showed one
+    /// subject twice: the redesign (#3308) rewrote this view and kept the
+    /// "hovercar is the iOS store hero" comment while defaulting to index 0,
+    /// so the store hero silently stopped being captured (#3006). Under
+    /// `qa_mode` only — the interactive first-run subject is unchanged.
+    private static let storeHeroAssetName = "cyberpunk_hovercar"
+
     /// Fitted framing: the bounding sphere plus 12 % of air, which clears the
     /// dock band at the bottom of the viewport.
     private static let framingMargin: Float = 1.12
     /// Under `qa_mode` the pose is frozen, so the store capture fills the frame.
+    ///
+    /// Tighter than `DynamicSkyDemo`'s 0.75 because the subjects differ in
+    /// aspect, not in preference: the auto-fit pass inscribes the *space
+    /// diagonal* of the union bounds in a sphere and fits that sphere to the
+    /// narrower of the two FOV axes — width, in a portrait store frame. A
+    /// near-isotropic subject (the helmet) fills that sphere; the hovercar is
+    /// wide and short, so the same margin leaves it visibly smaller.
+    ///
+    /// 0.62 is the floor, not a preference: swept on the 6.9" simulator with
+    /// the `-camera_distance` override (#2785), 0.75 leaves the car at roughly
+    /// 45 % of the frame width and 0.5 clips its tail against the right edge.
+    /// It cannot go lower while the car renders off-centre — the union bounds
+    /// this pass fits are visibly wider than the car's silhouette, so the car
+    /// sits right of the frame centre and runs out of room on that side long
+    /// before the empty left third is used. Closing that gap is a
+    /// `CameraControls.fitRadius` change (fit the projected AABB rather than
+    /// the space-diagonal sphere), not a constant, and is out of scope here.
     private static let captureFramingMargin: Float = 0.62
 
     private enum ViewerSheet: Identifiable {
@@ -237,6 +265,13 @@ struct ModelViewerDemo: View {
         }
         #endif
         .task {
+            // Under `qa_mode` the store hero replaces the first-run default,
+            // so slot 1 captures the hovercar instead of repeating slot 2's
+            // helmet (#3006). Assigned before the load so a single pass runs.
+            if qaMode,
+               let hero = Self.bundledModels.first(where: { $0.assetName == Self.storeHeroAssetName }) {
+                selectedModel = hero
+            }
             await loadBundled(selectedModel)
         }
         .onChange(of: selectedAnimation) { _, index in
