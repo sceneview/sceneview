@@ -584,8 +584,12 @@ open class ARCameraStream(
      * a real camera texture and real display-transformed UVs (#3373).
      *
      * The renderable is kept out of the render pass until this flips true — see [update].
+     *
+     * Internal: this is an implementation detail of the visibility gating, not a supported signal
+     * for consumers. It is readable from the module's own instrumentation tests because Filament's
+     * Java `RenderableManager` exposes `setLayerMask` but no reader for it.
      */
-    var hasCameraFrame: Boolean = false
+    internal var hasCameraFrame: Boolean = false
         private set
 
     fun update(session: Session, frame: Frame) {
