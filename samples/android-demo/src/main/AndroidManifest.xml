@@ -129,13 +129,33 @@
 
             <!--
                 Verified App-Link over HTTPS — pairs with
-                `website-static/.well-known/assetlinks.json`, which lists
-                both the Play App Signing SHA-256 and the local upload key
-                so verification succeeds for Play Store installs AND for
-                local `adb install` / `assembleDebug` builds.
-                Verify on a phone via `adb shell pm get-app-links
-                io.github.sceneview.demo` (expected: "sceneview.github.io:
-                verified"); `pm verify-app-links` re-runs verification.
+                `website-static/.well-known/assetlinks.json`, which lists the
+                Play App Signing SHA-256 and the upload key.
+
+                Scope, deliberately narrow (#3366): host `sceneview.github.io`
+                AND path prefix `/open`. Never widen this to a bare
+                `<data android:scheme="https" />` — a host-less https filter
+                makes the demo a candidate for every https link on the device
+                and it can win the chooser, stealing links (and taps) from
+                unrelated apps. `DeepLinkRouter.extractCandidate` applies the
+                same host + path check in code, so both layers must be
+                widened together or not at all.
+
+                Verification is expected to SUCCEED only for builds signed
+                with one of the two fingerprints in assetlinks.json (Play
+                Store installs, and local installs of a release build signed
+                with the upload keystore). `assembleDebug` is signed with the
+                default `~/.android/debug.keystore`, which is NOT listed, so
+                a debug install always reports an unverified domain — that is
+                normal, not a regression. The custom `sceneview://demo/<id>`
+                scheme above is the deep-link channel for debug/QA builds.
+
+                Check the state with `adb shell pm get-app-links
+                io.github.sceneview.demo`. To exercise the https link on a
+                debug build, opt the domain in by hand with
+                `pm set-app-links-user-selection` — the exact command, and the
+                expected output per build type, are in
+                website-static/.well-known/README.md.
             -->
             <intent-filter android:label="Open in SceneView" android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
