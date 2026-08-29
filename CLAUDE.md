@@ -29,7 +29,7 @@ Full API reference: [`llms.txt`](./llms.txt).
 - **`.filamat` blobs are compiled artifacts, not sources.** If `gradle/libs.versions.toml`
   bumps any of its three independent pins (`filament`, `filamentWebsite`, `filamentWeb`),
   recompile that pin's blobs with the matching `matc` in the same PR — v4.1.0 shipped
-  mismatched halves and crashed 10 demos at runtime. Two checks, both manual:
+  mismatched halves and crashed 10 demos at runtime. Two manual checks:
   `bash tools/GenerateFilamat.sh --check` (blob drift) and
   `bash .claude/scripts/check-web-filamat-abi.sh` (web runtime ABI, #2783).
 - **`local.properties` holds a live API key.** Never print it, never commit it.
@@ -44,26 +44,18 @@ Full API reference: [`llms.txt`](./llms.txt).
 
 ## Conventions
 
-- **UI**: design tokens live in [`DESIGN.md`](./DESIGN.md) — read it before writing any
-  UI, never hardcode colors or spacing, always light + dark. Demo-app UI is designed
+- **UI**: tokens live in [`DESIGN.md`](./DESIGN.md) — read it before writing any UI,
+  never hardcode colors or spacing, always light + dark. Demo-app UI is designed
   natively against real references (Sketchfab, Polycam, Reality Composer), never
   tool-generated.
 - **Changelog**: one fragment per PR, `changelog.d/<issue-or-pr>-<slug>.md` with a
   `<!-- category: Fixed -->` tag. `CHANGELOG.md` is generated — never hand-edit it, same
   for `gpt/knowledge-*.md` and every `CREDITS.md` (licence compliance).
 - **Public surfaces are English only** — commit messages and PR bodies included.
-- **Codex is a delegation lever, not a rule** — it bills the ChatGPT plan, a quota
-  separate from Claude's. The orchestrating session picks its delegate per task: Codex
-  (`ask` · `review` · `implement --new-worktree`) for well-scoped mechanical work or an
-  independent second opinion, Claude subagents when judgment or integration quality
-  matters. Always `.claude/scripts/codex-delegate.sh`, never a raw `codex`, never an
-  OpenAI API key. Commits, merges and releases stay with the lead session.
-
-## CI
-
-`.github/workflows/ci.yml` is the one PR workflow. Its `changes` job detects touched
-paths and gates every other job; `changes-verdict` ("Path filter completed") always runs
-and is the required check. Heavy suites (`render-tests.yml`, `device-qa.yml`) run
-on push to `main` and nightly, never cancelling each other; the one per-PR
-exception is `render-tests.yml`'s `android-library-render` job, path-gated on
-`sceneview/**`, `sceneview-core/**` and the Gradle files (#3216). Details in [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Codex is a delegation lever, not a rule** — it bills a quota separate from Claude's.
+  Always `.claude/scripts/codex-delegate.sh` (`ask` · `review` · `implement
+  --new-worktree`), never a raw `codex`, never an OpenAI API key. Commits, merges and
+  releases stay with the lead session.
+- **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
+  every other job and `changes-verdict` ("Path filter completed") is the required check.
+  Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).

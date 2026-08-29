@@ -124,7 +124,7 @@ jobs:
     # Deliberately NOT opted in to the self-hosted `sceneview-mac` runner: this
     # job runs `npm ci` and `pod install`, which write into shared per-user
     # caches (`~/.npm`, `~/Library/Caches/CocoaPods`). Keep it on a disposable
-    # hosted runner. See CLAUDE.md → self-hosted runner skill.
+    # hosted runner. Runner setup: `.claude/scripts/setup-self-hosted-runner.sh`.
     runs-on: macos-15
     timeout-minutes: 40
 
