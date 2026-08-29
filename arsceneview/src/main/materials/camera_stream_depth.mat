@@ -86,9 +86,24 @@ fragment {
     // occlusion block below.
     const float kNoDepthDistanceMeters = 1000.0;
 
+    // Exact sRGB EOTF (IEC 61966-2-1), issue #3338 — see camera_stream_flat.mat for the
+    // full rationale. Short version: the camera texel is sRGB-encoded full-range BT.709
+    // (ARCore dataspace 0x08810000), and Filament re-encodes with the exact sRGB OETF at
+    // the color-grading output stage, so decoding with `pow(c, 2.2)` (what Filament's
+    // `inverseTonemapSRGB()` does) left an achromatic S-curve on the camera background
+    // worth up to -8.5/255 in the shadows. Kept verbatim in all three camera materials —
+    // matc has no include mechanism.
+    vec3 srgbToLinearExact(const vec3 srgb) {
+        vec3 s = clamp(srgb, 0.0, 1.0);
+        return mix(s * (1.0 / 12.92),
+                   pow((s + 0.055) * (1.0 / 1.055), vec3(2.4)),
+                   step(vec3(0.04045), s));
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
+        vec3 camera = Inverse_Tonemap_Filmic(
+                srgbToLinearExact(texture(materialParams_cameraTexture, getUV0()).rgb));
         vec2 packed_depth = texture(materialParams_depthTexture, getUV0()).xy;
         float depth_mm = dot(packed_depth, vec2(255.f, 256.f * 255.f));
         float depth_m = depth_mm / 1000.f;

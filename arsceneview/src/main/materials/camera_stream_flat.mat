@@ -29,9 +29,38 @@ material {
 }
 
 fragment {
+    // Exact sRGB EOTF (IEC 61966-2-1), issue #3338.
+    //
+    // The camera texel arriving from the external sampler is already sRGB-encoded,
+    // full-range BT.709 RGB: ARCore hands the buffer over with dataspace 0x08810000
+    // (STANDARD_BT709 | TRANSFER_SRGB | RANGE_FULL), so the EGL external sampler has
+    // already done YUV -> RGB with the right matrix and the right range.
+    //
+    // To survive the pipeline untouched the pixel has to be decoded with the SAME
+    // transfer function Filament re-encodes with at the end. Filament's color-grading
+    // output stage is Rec709-sRGB-D65 — the exact piecewise sRGB OETF, linear segment
+    // included. Filament's own `inverseTonemapSRGB()` helper decodes with `pow(c, 2.2)`
+    // instead, which is only an approximation of that curve, so the round trip
+    // `sRGB_OETF(pow(c, 2.2))` was not the identity: up to -8.5/255 of error in the
+    // shadows (peak at code 16), crossing back to +1.5/255 in the highlights. Achromatic,
+    // so not a tint — an S-curve contrast boost applied to the camera background ONLY,
+    // which graded the real world differently from the virtual content composited over it.
+    //
+    // Decoding with the exact curve makes the round trip bit-exact at every 8-bit code.
+    vec3 srgbToLinearExact(const vec3 srgb) {
+        vec3 s = clamp(srgb, 0.0, 1.0);
+        return mix(s * (1.0 / 12.92),
+                   pow((s + 0.055) * (1.0 / 1.055), vec3(2.4)),
+                   step(vec3(0.04045), s));
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        material.baseColor.rgb = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
+        // Inverse_Tonemap_Filmic is the exact analytic inverse of ToneMapper.Filmic,
+        // which createARView() installs on the View — that leg already cancelled and is
+        // kept as-is. Only the transfer-function leg changes (#3338).
+        vec3 camera = texture(materialParams_cameraTexture, getUV0()).rgb;
+        material.baseColor.rgb = Inverse_Tonemap_Filmic(srgbToLinearExact(camera));
         material.baseColor.a = 1.f;
     }
 }

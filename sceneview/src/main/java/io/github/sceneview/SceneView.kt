@@ -1188,8 +1188,8 @@ fun rememberView(engine: Engine, creator: () -> View = { createView(engine) }) =
  *
  * Uses [createARView] instead of [createView] — the AR view keeps bloom and ambient occlusion off
  * so the camera background is not tinted, while still applying the Filmic tone mapper that the
- * camera-stream shader's `inverseTonemapSRGB` needs in order to round-trip back to the original
- * camera pixels.
+ * camera-stream shader's `Inverse_Tonemap_Filmic` needs in order to round-trip back to the
+ * original camera pixels.
  *
  * @see createARView for a full explanation of the AR camera-background tone-mapping pipeline.
  */
