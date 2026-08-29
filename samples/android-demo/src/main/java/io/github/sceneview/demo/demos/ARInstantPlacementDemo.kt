@@ -45,6 +45,7 @@ import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode as ArAnchorNode
 import io.github.sceneview.demo.DemoScaffold
@@ -322,7 +323,11 @@ fun ARInstantPlacementDemo(onBack: () -> Unit) {
             val effectiveReason =
                 ForcedTrackingFailure.override ?: sceneState.trackingFailureReason
             AnimatedVisibility(
-                visible = !sceneState.isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, `isTracking` stays false
+                // forever — this pill would sit under the SDK's "AR unavailable" card
+                // promising the camera is on its way. Drop it and let the card speak.
+                visible = (!sceneState.isTracking && sceneState.arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -406,6 +411,15 @@ private class InstantPlacementSceneState {
 
     /** Whether the ARCore camera is tracking — drives the scanning indicator. */
     var isTracking by mutableStateOf(false)
+
+    /**
+     * Non-null once ARCore has ruled the session out on this device (#3341).
+     *
+     * [isTracking] can never flip in that case, so the scanning indicator would claim the
+     * camera is "initializing" for as long as the demo is open, right next to the SDK
+     * overlay saying AR cannot run at all.
+     */
+    var arCoreAvailability by mutableStateOf<ARCoreAvailability?>(null)
 
     /** Latest ARCore-reported tracking failure, or `null` while tracking is healthy. */
     var trackingFailureReason by mutableStateOf<TrackingFailureReason?>(null)
@@ -498,6 +512,7 @@ private fun InstantPlacementScene(
             } else {
                 Config.InstantPlacementMode.DISABLED
             },
+            onARCoreAvailability = { state.arCoreAvailability = it },
             onSessionUpdated = { _, frame: Frame ->
                 latestFrame = frame
                 state.isTracking = frame.camera.trackingState == TrackingState.TRACKING

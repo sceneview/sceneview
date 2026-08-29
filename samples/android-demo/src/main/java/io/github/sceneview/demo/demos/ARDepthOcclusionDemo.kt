@@ -47,6 +47,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.rememberARCameraStream
@@ -137,6 +138,10 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
     // remount so the entry scrim never re-fires on toggle — that 2-3 frame rebuild flash
     // already has its own dedicated affordance, the #1777 "Switching depth mode…" spinner.
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     // Latest Frame for hit testing in the gesture callback.
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
@@ -256,7 +261,11 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // waiting for the next ARCore tracking-failure callback.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = (!isTracking && arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -349,6 +358,7 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
                             }
                         }
                     ),
+                    onARCoreAvailability = { arCoreAvailability = it },
                     onSessionUpdated = { _, frame: Frame ->
                         cameraReady = true
                         latestFrame = frame
@@ -409,7 +419,10 @@ fun ARDepthOcclusionDemo(onBack: () -> Unit) {
             // Cover the still-black AR viewport until the first camera frame (#2484).
             // Outside `key(depthOn)` so the depth toggle never resurrects the entry
             // scrim — the toggle's own #1777 spinner below covers that flash.
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
 
             // Depth-toggle transition spinner (#1777) — covers the 2-3 frame engine +
             // camera-stream rebuild triggered by the `key(depthOn)` remount. Without it

@@ -54,6 +54,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rerun.RerunBridge
 import io.github.sceneview.ar.rerun.rememberRerunBridge
@@ -99,6 +100,11 @@ fun ARRerunDemo(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var isTracking by remember { mutableStateOf(false) }
+
+    // #3341: non-null once ARCore has ruled this device out. The flag the scanning
+    // banner waits on never flips then, so that banner has to read the verdict or
+    // it promises a scan under the SDK's "AR unavailable" card, forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var frameCount by remember { mutableStateOf(0L) }
     var eventsPerSec by remember { mutableStateOf(0f) }
@@ -190,7 +196,11 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // so flipping the override re-renders the overlay immediately.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = (!isTracking && arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -251,6 +261,7 @@ fun ARRerunDemo(onBack: () -> Unit) {
                         lastCameraPose = frame.camera.pose
                     }
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason ->
                     trackingFailureReason = reason
                 },

@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import com.google.ar.core.Anchor
 import com.google.ar.core.HitResult
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.math.Rotation
 
@@ -92,6 +93,17 @@ enum class TapToPlaceUxState {
 class TapToPlaceState internal constructor() {
     /** True once the first `onSessionUpdated` frame arrived (drives the init scrim). */
     var cameraReady: Boolean by mutableStateOf(false)
+        internal set
+
+    /**
+     * Non-null once ARCore has ruled the session out on this device (#3341).
+     *
+     * [cameraReady] can never flip in that case, so everything keyed off "still starting" —
+     * the init scrim above all — has to read this too or it waits forever. The SDK draws the
+     * explanation card itself; this is what tells the demo's own chrome to stop claiming AR
+     * is on its way.
+     */
+    var arCoreAvailability: ARCoreAvailability? by mutableStateOf(null)
         internal set
 
     var isTracking: Boolean by mutableStateOf(false)

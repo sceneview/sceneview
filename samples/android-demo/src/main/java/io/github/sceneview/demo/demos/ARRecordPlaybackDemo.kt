@@ -58,6 +58,7 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.recording.ARRecorder
 import io.github.sceneview.ar.recording.rememberARRecorder
@@ -707,6 +708,10 @@ private fun ModeContent(
     // ARSceneView surface is bare black, so we cover it with ARCameraInitScrim rather
     // than leave a viewport that reads as frozen/broken (#1473).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     // When the recorder transitions out of RECORDING (and back to IDLE), refresh the
     // recordings list so the new MP4 shows up in PLAYBACK mode.
@@ -746,6 +751,7 @@ private fun ModeContent(
             config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
             config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
         },
+        onARCoreAvailability = { arCoreAvailability = it },
         onSessionUpdated = { session: Session, frame: Frame ->
             cameraReady = true
             latestFrame = frame
@@ -850,6 +856,7 @@ private fun ModeContent(
     // entry doesn't read as a frozen screen with a dimmed record button (#1473).
     ARCameraInitScrim(
         initializing = !cameraReady,
+        arCoreAvailability = arCoreAvailability,
         label = when (mode) {
             Mode.PLAYBACK -> "Starting playback…"
             Mode.ANALYSE -> "Starting analysis…"

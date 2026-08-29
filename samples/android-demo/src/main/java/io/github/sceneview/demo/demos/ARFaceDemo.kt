@@ -18,6 +18,7 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.frontCameraConfig
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -64,6 +65,10 @@ fun ARFaceDemo(onBack: () -> Unit) {
     // Frame-received sentinel — flips true on the first onSessionUpdated call so the
     // "slow front camera" hint knows the camera feed is live.
     var cameraActive by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraActive` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     // Session resumed — set by onSessionResumed. The slow-camera hint is anchored on
     // this (not the composition) so its grace window starts when ARCore actually
     // resumes the session.
@@ -204,6 +209,7 @@ fun ARFaceDemo(onBack: () -> Unit) {
                     android.util.Log.e("ARFaceDemo", "AR session failed", error)
                     sessionFailed = true
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { session: Session, _: Frame ->
                     // Mark camera as active on the first frame so the slow-camera hint
                     // knows the front camera opened successfully.
@@ -238,6 +244,7 @@ fun ARFaceDemo(onBack: () -> Unit) {
             // spinner, not a black viewport, covers a slow front-camera start (#2484).
             ARCameraInitScrim(
                 initializing = !cameraActive && !sessionFailed,
+                arCoreAvailability = arCoreAvailability,
                 timeoutMillis = SLOW_FRONT_CAMERA_HINT_MS,
             )
         }

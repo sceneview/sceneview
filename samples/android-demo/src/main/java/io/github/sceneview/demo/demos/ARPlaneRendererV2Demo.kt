@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.scene.PlaneRendererBase
 import io.github.sceneview.demo.DemoScaffold
@@ -92,6 +93,11 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var planeDetected by remember { mutableStateOf(false) }
+
+    // #3341: non-null once ARCore has ruled this device out. The flag the scanning
+    // banner waits on never flips then, so that banner has to read the verdict or
+    // it promises a scan under the SDK's "AR unavailable" card, forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
@@ -204,7 +210,10 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
             // Scanning / tracking-failure status — never leave the user staring at a
             // black screen (#1617). Visible until at least one plane is tracked.
             AnimatedVisibility(
-                visible = !planeDetected,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = !planeDetected && arCoreAvailability == null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -246,6 +255,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     } else {
                         PlaneRendererBase.Version.V1
                     },
+                    onARCoreAvailability = { arCoreAvailability = it },
                     onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                     onSessionUpdated = { _, frame ->
                         if (!planeDetected) {

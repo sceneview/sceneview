@@ -36,6 +36,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.createARCameraStream
 import io.github.sceneview.ar.node.ARFogNode
@@ -111,6 +112,10 @@ fun ARFogDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     // Replay a recorded ARCore dataset when the device-QA harness deep-links
     // the demo with `--es ar_playback_file <path>`. `null` for every normal
@@ -260,7 +265,11 @@ fun ARFogDemo(onBack: () -> Unit) {
         bottomOverlay = {
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = (!isTracking && arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -315,6 +324,7 @@ fun ARFogDemo(onBack: () -> Unit) {
                         }
                     },
                     cameraStream = cameraStream,
+                    onARCoreAvailability = { arCoreAvailability = it },
                     onSessionUpdated = { _, frame: Frame ->
                         cameraReady = true
                         isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -348,7 +358,10 @@ fun ARFogDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

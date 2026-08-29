@@ -42,6 +42,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.common.QaCameraBackdrop
@@ -110,6 +111,10 @@ fun ARImageDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     // QA camera backdrop (#3308): synthetic room photo while no camera frame arrives.
     val cameraStream = rememberARCameraStream(materialLoader)
     val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
@@ -353,6 +358,7 @@ fun ARImageDemo(onBack: () -> Unit) {
                         runtimeDatabase.addImage("reference", referenceBitmap, 0.15f)
                     }
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _: Session, frame: Frame ->
                     cameraReady = true
                     latestFrame = frame
@@ -395,7 +401,10 @@ fun ARImageDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

@@ -25,6 +25,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -77,6 +78,10 @@ fun ARPoseDemo(onBack: () -> Unit) {
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     // Base pose: 1 m in front of the camera at the moment the demo gained tracking.
     // Captured once per session to keep the lantern anchored in world space (so sliders
     // nudge it relative to that anchor, not to the moving camera).
@@ -148,6 +153,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { _, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -207,7 +213,10 @@ fun ARPoseDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }

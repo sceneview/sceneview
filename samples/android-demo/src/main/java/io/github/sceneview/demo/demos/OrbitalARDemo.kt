@@ -947,7 +947,10 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             }
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
-            ARCameraInitScrim(initializing = !cameraReady)
+            ARCameraInitScrim(
+                initializing = !cameraReady,
+                arCoreAvailability = arCoreAvailability,
+            )
 
             // Off-screen target indicator (#1482, #3269) — one edge arrow per
             // off-screen planet, each labelled with the live distance to it, so the

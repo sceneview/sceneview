@@ -35,6 +35,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.TerrainAnchorNode
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -159,6 +160,10 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
     // camera and delivered a frame. Until then the ARSceneView surface is bare black,
     // so we cover it with ARCameraInitScrim instead of leaving a frozen-looking screen.
     var cameraReady by remember { mutableStateOf(false) }
+    // #3341: non-null once ARCore has ruled this device out. `cameraReady` never flips
+    // then, so the init scrim below has to read the verdict or it covers the SDK's own
+    // explanation card forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var isTracking by remember { mutableStateOf(false) }
     var earthTracking by remember { mutableStateOf(false) }
     // Tracked alongside `earthTracking` because `Earth.resolveAnchorOnTerrainAsync`
@@ -344,6 +349,10 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                         "${geospatialUnavailable!!} — needs outdoor area with VPS coverage + Cloud API key",
                         tone = DemoStatusTone.Blocked,
                     )
+                // The SDK's availability overlay already fills the viewport with the
+                // reason and the retry; a second, now false, "Initializing camera…"
+                // underneath it only contradicts it (#3341).
+                arCoreAvailability != null -> Unit
                 !isTracking -> DemoStatusBanner("Initializing camera…", tone = DemoStatusTone.Progress)
                 else ->
                     DemoStatusBanner(
@@ -414,6 +423,7 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
                     // "FatalException" class name to the user.
                     sessionError = friendlyArSessionError(exception)
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onSessionUpdated = { session: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -446,7 +456,10 @@ fun ARTerrainAnchorDemo(onBack: () -> Unit) {
 
             // Cover the still-black ARSceneView surface until ARCore delivers its
             // first camera frame, so the entry doesn't read as a frozen screen (#1473).
-            ARCameraInitScrim(initializing = !cameraReady && sessionError == null)
+            ARCameraInitScrim(
+                initializing = !cameraReady && sessionError == null,
+                arCoreAvailability = arCoreAvailability,
+            )
         }
     }
 }
