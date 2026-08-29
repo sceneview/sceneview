@@ -125,8 +125,10 @@ internal data class PlaneRayCandidate(val center: Float3, val normal: Float3)
  * `HitResult` filtering applies `Plane.isPoseInPolygon` to a hit that already passed the
  * infinite-plane test (see `firstByTypeOrNull`'s `planePoseInPolygon = true` default).
  *
- * Iterates with an index loop rather than `mapIndexedNotNull` / `minByOrNull` so the hot
- * path allocates nothing beyond the hit points themselves.
+ * The planes the ray actually meets are ordered by distance and [isInPolygon] is applied
+ * from the nearest outwards, stopping at the first acceptance. At the ARCore call site that
+ * boundary test is a JNI round trip, so ordering first means it usually runs exactly once.
+ * Ties keep input order: [sortedBy] is a stable sort.
  *
  * @param rayOrigin    Ray origin in world space.
  * @param rayDirection Ray direction in world space, normalized.
@@ -139,24 +141,21 @@ internal fun nearestPlaneAlongRay(
     rayDirection: Float3,
     candidates: List<PlaneRayCandidate>,
     isInPolygon: (index: Int, hitPoint: Float3) -> Boolean
-): Int? {
-    var nearestIndex: Int? = null
-    var nearestDistance = Float.MAX_VALUE
-    for (index in candidates.indices) {
+): Int? = candidates.indices
+    .mapNotNull { index ->
         val candidate = candidates[index]
-        val distance = rayPlaneDistance(
+        rayPlaneDistance(
             rayOrigin = rayOrigin,
             rayDirection = rayDirection,
             planeCenter = candidate.center,
             planeNormal = candidate.normal
-        ) ?: continue
-        if (distance >= nearestDistance) continue
-        if (!isInPolygon(index, rayOrigin + rayDirection * distance)) continue
-        nearestIndex = index
-        nearestDistance = distance
+        )?.let { distance -> index to distance }
     }
-    return nearestIndex
-}
+    .sortedBy { (_, distance) -> distance }
+    .firstOrNull { (index, distance) ->
+        isInPolygon(index, rayOrigin + rayDirection * distance)
+    }
+    ?.first
 
 /**
  * ARCore-facing half of the centre-plane selection: turns a [Frame] plus a set of live
@@ -202,9 +201,7 @@ internal object CenterPlaneFinder {
         val planes = ArrayList<Plane>(candidates.size)
         val geometry = ArrayList<PlaneRayCandidate>(candidates.size)
         for (plane in candidates) {
-            if (plane.trackingState != TrackingState.TRACKING) continue
-            if (plane.subsumedBy != null) continue
-            if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) continue
+            if (!plane.isCenterPlaneCandidate()) continue
             val centerPose = plane.centerPose
             planes += plane
             geometry += PlaneRayCandidate(
@@ -227,4 +224,17 @@ internal object CenterPlaneFinder {
 
         return index?.let { planes[it] }
     }
+
+    /**
+     * Whether this plane is eligible to be the highlighted centre plane, before any ray
+     * geometry is considered.
+     *
+     * Ordered cheapest-first, and short-circuiting, because every term is a JNI getter.
+     */
+    private fun Plane.isCenterPlaneCandidate(): Boolean =
+        trackingState == TrackingState.TRACKING &&
+            // Subsumed planes are merged into a larger one and are never drawn by
+            // `renderPlane`, so highlighting one would select a plane nobody can see.
+            subsumedBy == null &&
+            type == Plane.Type.HORIZONTAL_UPWARD_FACING
 }
