@@ -55,6 +55,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.ui.LabeledSlider
+import java.util.Locale
 
 /**
  * **Contact Shadow Preview** — a *non-AR* SceneView that shows what the procedural contact
@@ -623,13 +624,39 @@ internal fun ContactShadowControls(
         label = stringResource(R.string.contact_shadow_intensity_label),
         value = intensityFactor,
         onValueChange = onIntensityFactorChange,
-        valueRange = 0f..1.5f,
-        valueText = stringResource(
-            R.string.contact_shadow_intensity_value,
-            (intensityFactor * 100).toInt()
-        ),
+        valueRange = SHADOW_INTENSITY_RANGE,
+        valueText = formatShadowIntensityFactor(intensityFactor),
     )
 }
+
+/**
+ * Track bounds of the intensity slider, as a multiplier on each pool's per-context opacity.
+ *
+ * The top of the track is deliberately above `1f`: the control exists to over- and under-drive
+ * the context preset, so it has to reach past the preset's own value. `1f` — the default — is
+ * therefore two thirds along the track, not at its end.
+ */
+internal val SHADOW_INTENSITY_RANGE = 0f..1.5f
+
+/**
+ * Renders [factor] as the multiplier it is (`1.00×`), not as a percentage.
+ *
+ * The readout used to be `"${(factor * 100).toInt()}%"`, which put a flat `100%` on screen while
+ * the thumb sat visibly short of the track end — the range runs to `1.5`, so `100%` is two thirds
+ * along (#3372). A bare percentage promises that its maximum is `100`, and this quantity's is not:
+ * the slider boosts *past* the context preset. Naming the value `×` instead keeps the headroom the
+ * control was built for and makes a thumb short of the end self-explanatory rather than broken —
+ * the end of the track now reads `1.50×`, which is exactly what it is.
+ *
+ * [Locale.US] rather than the device locale, for the same reason `LabeledSlider` formats that way:
+ * these readouts sit beside API values a reader is meant to copy into code, and a decimal comma
+ * would not round-trip through `toFloat()`.
+ */
+internal fun formatShadowIntensityFactor(factor: Float): String =
+    String.format(Locale.US, "%.2f", factor) + MULTIPLIER_SIGN
+
+/** `×` U+00D7, set tight against the number — a multiplier sign is not a unit. */
+private const val MULTIPLIER_SIGN = '×'
 
 // ── Scene layout constants ────────────────────────────────────────────────────────────────
 
