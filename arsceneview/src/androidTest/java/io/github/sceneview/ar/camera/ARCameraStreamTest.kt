@@ -82,6 +82,23 @@ class ARCameraStreamTest {
     }
 
     /**
+     * #3373: the camera quad joins the Filament scene as soon as the stream is created, long
+     * before ARCore delivers a frame. In that window its external OES texture has no image
+     * attached and its UV buffer holds only the seeded identity UVs, so drawing it paints
+     * driver-defined garbage over the app's own UI — on the emulator, a coloured band across
+     * the "AR couldn't start" fallback. The renderable must therefore start hidden.
+     *
+     * Asserted through [ARCameraStream.hasCameraFrame] rather than the layer mask itself:
+     * Filament's Java `RenderableManager` exposes `setLayerMask` but no reader.
+     */
+    @Test
+    fun cameraQuad_isHiddenUntilTheFirstFrame() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            assertEquals(false, cameraStream.hasCameraFrame)
+        }
+    }
+
+    /**
      * The placeholder is 1×1 by design — a zero RG8 texel decodes to `depth_mm == 0`, which
      * the material treats as "no depth available" — but it must not survive the first depth
      * frame. This is the exact pre-fix state, pinned so a regression is unambiguous.

@@ -520,6 +520,14 @@ open class ARCameraStream(
             CAMERA_UVS.size / VERTEX_COUNT * FLOAT_SIZE_IN_BYTES
         ).build(engine).apply {
             setBufferAt(engine, POSITION_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_VERTICES))
+            // Seed identity UVs at build time (#3373). `update()` overwrites these with the
+            // ARCore display-transformed UVs on the first frame, but until that frame lands
+            // buffer 1 would otherwise be unset, and Filament draws the quad every frame from
+            // the moment the entity joins the scene — with undefined attribute data. On the
+            // emulator (no ARCore, so `update()` never runs) that painted a garbage band across
+            // the "AR couldn't start" fallback. Note: `CAMERA_UVS` directly, not `uvCoordinates`
+            // — that property is declared below and is still null inside this initializer.
+            setBufferAt(engine, UV_BUFFER_INDEX, FloatBuffer.wrap(CAMERA_UVS))
         }
 
     private val uvCoordinates: FloatBuffer =
@@ -562,7 +570,23 @@ open class ARCameraStream(
                 indexBuffer)
             .material(0, standardMaterial.defaultInstance)
             .build(engine, entity)
+
+        // Hidden until the first ARCore frame (#3373). The external OES textures created above
+        // have no image attached until ARCore writes into them, so sampling them is
+        // driver-defined — on the emulator's host-GL translation it returns a constant colour.
+        // Drawing the quad in that state paints an arbitrary background over the app's own
+        // fallback UI. Stay invisible until `update()` has bound a real camera texture.
+        setLayerVisible(false)
     }
+
+    /**
+     * Whether ARCore has delivered at least one camera frame, i.e. whether the quad is bound to
+     * a real camera texture and real display-transformed UVs (#3373).
+     *
+     * The renderable is kept out of the render pass until this flips true — see [update].
+     */
+    var hasCameraFrame: Boolean = false
+        private set
 
     fun update(session: Session, frame: Frame) {
         // Hot-path audit (#3157): this JNI read is the floor for this surface, not an oversight.
@@ -593,6 +617,13 @@ open class ARCameraStream(
                 transformedUvCoordinates.put(i, 1.0f - transformedUvCoordinates[i])
             }
             vertexBuffer.setBufferAt(engine, UV_BUFFER_INDEX, transformedUvCoordinates)
+        }
+
+        // Both the real camera texture and the real UVs are now bound, so the quad is safe to
+        // draw. Reveal it once (#3373).
+        if (!hasCameraFrame) {
+            hasCameraFrame = true
+            setLayerVisible(true)
         }
 
         // The depth texture feeds both the depth-occlusion material AND the people-occlusion
