@@ -48,8 +48,9 @@ import io.github.sceneview.rememberModelLoader
 /**
  * AR showcase demo — **Plane Renderer V2** ([#2203](https://github.com/sceneview/sceneview/issues/2203)).
  *
- * Single-screen AR scene that runs `ARSceneView` with **V2 as the live default** and gives
- * the user a top-end [Switch] to flip V1 ↔ V2 on the fly so the difference reads instantly:
+ * Single-screen AR scene that opts `ARSceneView` into V2 — **this demo starts on V2; the SDK
+ * default is still [PlaneRendererBase.Version.V1]** — and gives the user a top-end [Switch] to
+ * flip V1 ↔ V2 on the fly so the difference reads instantly:
  *
  * | Toggle state | Renderer       | What you see                                                     |
  * |--------------|----------------|------------------------------------------------------------------|
@@ -143,8 +144,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
         },
         // Both bottom tenants live in the scaffold slot (#2779). They used to be
         // hand-anchored `BottomStart` (legend) and `BottomCenter` (scanning pill), and
-        // both are visible the instant the demo opens — V2 is the default and no plane
-        // is tracked yet — so they shared the same band. The slot is a bottom-aligned
+        // both are visible the instant the demo opens — the toggle starts on V2 and no
+        // plane is tracked yet — so they shared the same band. The slot is a bottom-aligned
         // Column: siblings stack and cannot overlap.
         bottomOverlay = {
             // Legend card — names the colour codes V2 ships per plane type so the user

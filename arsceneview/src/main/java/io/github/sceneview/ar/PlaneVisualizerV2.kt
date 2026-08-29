@@ -31,11 +31,14 @@ import java.nio.FloatBuffer
 /**
  * Renders a single ARCore Plane using native Filament geometry — V2 implementation.
  *
- * **V2 is the default plane renderer as of this release.** See
- * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella that delivered
- * it. The legacy V1 [io.github.sceneview.ar.PlaneVisualizer] remains available behind
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` for one release cycle
- * and is now `@Deprecated`.
+ * **V2 is an experimental opt-in — it is not the default.** The default is
+ * [io.github.sceneview.ar.scene.PlaneRendererBase.Version.V1], drawn by [PlaneVisualizer].
+ * v4.16.0 briefly shipped V2 as the default, but on-device QA showed the V2 visual output not
+ * matching the design intent, so v4.16.1 reverted the default to V1 while V2 is polished. V1
+ * was never deprecated and remains fully supported. Opt into V2 with
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` — see
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella and the
+ * research notes.
  *
  * **PR #3 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): the V2
  * plane is now a real PBR surface lit by the real room. Four user-visible effects:
@@ -204,7 +207,7 @@ class PlaneVisualizerV2(
     /**
      * Reusable 2-element backing list for [updateRenderable]'s primitive selection (#2328 / #2402).
      *
-     * V2 is the default renderer, so this per-frame path runs often. Building the primitive list
+     * This runs once per plane per frame whenever V2 is opted into. Building the primitive list
      * with a fresh `buildList { }` each call churned one short-lived list per plane per frame; the
      * selection is recomputed into this single reused list every call (cleared first via
      * [selectPlanePrimitives]), so no cached state can go stale — only the allocation is removed.
