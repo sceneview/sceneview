@@ -953,14 +953,14 @@ private fun CategoryChip(category: SketchfabCategory, onClick: (SketchfabCategor
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(SceneViewTokens.Radius.full))
-            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .clickable { onClick(category) }
             .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
     ) {
         Text(
             text = category.displayName,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
             fontWeight = FontWeight.Medium,
         )
     }
