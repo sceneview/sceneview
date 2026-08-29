@@ -24,11 +24,14 @@ import io.github.sceneview.texture.ImageTexture
 /**
  * Control rendering of ARCore planes — V2 implementation.
  *
- * **V2 is the default plane renderer as of this release.** See
- * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella that delivered
- * it. The legacy V1 [PlaneRenderer] remains available behind
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` for one release cycle
- * and is now `@Deprecated`.
+ * **V2 is an experimental opt-in — it is not the default.** The default is
+ * [PlaneRendererBase.Version.V1], rendered by [PlaneRenderer]. v4.16.0 briefly shipped V2 as
+ * the default, but on-device QA showed the V2 visual output not matching the design intent,
+ * so v4.16.1 reverted the default to V1 while V2 is polished. V1 was never deprecated and
+ * remains fully supported. Opt into V2 with
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` — see
+ * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella and the
+ * research notes.
  *
  * **PR #4 status** ([#2203](https://github.com/sceneview/sceneview/issues/2203)): a floor,
  * a ceiling and a wall visible at once now read as three distinct surfaces.
@@ -61,18 +64,18 @@ import io.github.sceneview.texture.ImageTexture
  * V2 falls back transparently to the V1 flat-polygon mesh (with smooth `(0, 1, 0)` normals
  * so the lit shader still reads as a level surface). Never crashes, never blanks.
  *
- * **#2203 sprint — all 5 PRs landed**:
+ * **#2203 sprint — 5 PRs landed, #5 since reverted**:
  *
  * | PR  | Effect                                                                       |
  * |-----|------------------------------------------------------------------------------|
  * | #2  | Depth-driven tessellation + polygon clip + slope-aware unlit grid. **DONE.** |
  * | #3  | PBR + HDR reflections + scan-in ring + reflection fade-in. **DONE.**         |
  * | #4  | Type-aware shading: floor / ceiling / wall get distinct identities. **DONE.** |
- * | #5  | V2 becomes the default. V1 gets `@Deprecated` for one release cycle. **DONE.** |
+ * | #5  | V2 made the default in v4.16.0. **REVERTED in v4.16.1** — see below.        |
  *
- * V2 is now the default — no opt-in required. Pass
- * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V1)` to fall back to V1
- * during the one-cycle deprecation window.
+ * PR #5 did not survive on-device QA. v4.16.1 restored V1 as the default and removed the
+ * `@Deprecated` that PR #5 had put on V1. Pass
+ * `ARSceneView(planeRendererVersion = PlaneRendererBase.Version.V2)` to opt into V2.
  *
  * @see PlaneRendererBase
  * @see PlaneRenderer
@@ -151,11 +154,11 @@ class PlaneRendererV2(
      *
      * The default mode is `RENDER_TOP_MOST`
      */
-    // PlaneRendererMode is nested inside the now-@Deprecated V1 PlaneRenderer class. The
-    // enum itself is reused as-is by V2 (no V2-specific replacement was introduced); the
-    // suppression is the textbook case for referencing a deprecated container of a
-    // still-valid nested type. When V1 is removed in a future release, PlaneRendererMode
-    // will be hoisted onto PlaneRendererBase.
+    // PlaneRendererMode is nested inside the V1 PlaneRenderer class; the enum is reused as-is
+    // by V2 (no V2-specific replacement was introduced). The suppression dates from the
+    // v4.16.0 window, when V1 was briefly @Deprecated. v4.16.1 restored V1 as the default and
+    // removed that deprecation, so this @Suppress is inert today — it only becomes
+    // load-bearing again if V1 is ever deprecated for real.
     @Suppress("DEPRECATION")
     var planeRendererMode = PlaneRenderer.PlaneRendererMode.RENDER_CENTER
 
