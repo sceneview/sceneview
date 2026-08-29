@@ -6,5 +6,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_orbital_title">Orbital AR</string>
-    <string name="demo_ar_orbital_subtitle">Models orbit around you in AR</string>
+    <string name="demo_ar_orbital_subtitle">Catch four flyers circling you in AR</string>
 </resources>

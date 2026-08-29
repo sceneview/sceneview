@@ -134,27 +134,45 @@ class SampleAssetsTest {
     fun `ar_placement fallbacks are pairwise distinct`() {
         // Mirrors iOS `testARPlacementFallbacksArePairwiseDistinct`
         // (SceneViewDemoTests/BundledAssetPrimBudgetTests.swift, #2973).
-        //
-        // Scope is `ar_placement` ONLY, and that is deliberate: other categories
-        // share a fallback legitimately (the four `solar` butterflies all fall
-        // back to the same animated character), so a registry-wide version of
-        // this assertion would fail on entries that are not defects. What makes
-        // this category different is that ARPlacementDemo / ARInstantPlacementDemo
-        // ACCUMULATE placed models — two chips sharing a fallback render as the
-        // identical asset, side by side, under two labels (#2940 / #2355).
-        // Distinctness is all this guard asserts — it says nothing about a
-        // fallback RESEMBLING its label; that wider mismatch class is tracked
-        // for the iOS registry under #2960.
-        //
-        // The slug set is derived from the registry BY CATEGORY, never from a
-        // hardcoded list of names: a slug added to `ar_placement` tomorrow is
-        // covered by this guard without anyone remembering to update it.
-        val slugs = SampleAssets.byCategory["ar_placement"].orEmpty()
+        // ARPlacementDemo / ARInstantPlacementDemo ACCUMULATE placed models —
+        // two chips sharing a fallback render as the identical asset, side by
+        // side, under two labels (#2940 / #2355).
+        assertFallbacksPairwiseDistinct("ar_placement")
+    }
+
+    @Test
+    fun `solar fallbacks are pairwise distinct`() {
+        // Same defect class, different demo: OrbitalARDemo shows ALL four
+        // `solar` companions at once on a single anchor, so in keyless mode a
+        // shared fallback put the same model at four points of the ring — the
+        // "too many models, they all look alike" half of #3341.
+        assertFallbacksPairwiseDistinct("solar")
+    }
+
+    /**
+     * Fails when two slugs of [category] share a `fallbackBundledPath`.
+     *
+     * Scope is per-category on purpose: distinctness only matters where a demo
+     * shows several slugs of that category *simultaneously*. A registry-wide
+     * version would fail on entries that are not defects — `gallery` and
+     * `animation` may legitimately reuse a bundled GLB because their demos show
+     * one model at a time.
+     *
+     * Distinctness is all this asserts — it says nothing about a fallback
+     * RESEMBLING its label; that wider mismatch class is tracked for the iOS
+     * registry under #2960.
+     *
+     * The slug set is derived from the registry BY CATEGORY, never from a
+     * hardcoded list of names: a slug added tomorrow is covered without anyone
+     * remembering to update this test.
+     */
+    private fun assertFallbacksPairwiseDistinct(category: String) {
+        val slugs = SampleAssets.byCategory[category].orEmpty()
 
         // Distinctness over fewer than two slugs is vacuously true, so a
         // registry that lost the category would pass silently without this.
         assertTrue(
-            "ar_placement has ${slugs.size} slug(s) — pairwise distinctness is " +
+            "$category has ${slugs.size} slug(s) — pairwise distinctness is " +
                 "vacuous below two, so this guard is no longer guarding anything",
             slugs.size > 1,
         )
@@ -165,10 +183,10 @@ class SampleAssetsTest {
             val owner = claimedBy[slug.fallbackBundledPath]
             if (owner != null) {
                 fail(
-                    "ar_placement fallback collision: \"$owner\" and " +
+                    "$category fallback collision: \"$owner\" and " +
                         "\"${slug.displayName}\" both fall back to " +
-                        "${slug.fallbackBundledPath}. Both demos in this category " +
-                        "place several models in one scene, so in keyless mode the " +
+                        "${slug.fallbackBundledPath}. The demo for this category " +
+                        "shows several models in one scene, so in keyless mode the " +
                         "two labels render the identical asset — the #2940 defect. " +
                         "Point one of them at a distinct bundled model (#2355).",
                 )

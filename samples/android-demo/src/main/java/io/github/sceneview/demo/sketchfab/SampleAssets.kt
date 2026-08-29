@@ -64,6 +64,10 @@ object SampleAssets {
     val all: List<SketchfabSlug> = listOf(
         // ── Solar / Orbital scene (OrbitalARDemo) ──────────────────────────
         // 4 animated companions. Each carries a skeletal animation.
+        // Every slot points at a *distinct* bundled GLB: OrbitalARDemo shows all
+        // four at once on one anchor, so a shared fallback rendered the same
+        // model four times around the ring in keyless mode (#3341, same defect
+        // class as #2940 for `ar_placement`). Guarded by SampleAssetsTest.
         SketchfabSlug(
             uid = "0f24b085e8654e4db09c2fe681a79e3f",
             displayName = "Fantasy Butterfly",
@@ -80,7 +84,7 @@ object SampleAssets {
             displayName = "Fluttering Butterfly",
             author = "LasquetiSpice",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/khronos_fox.glb",
             scaleToUnits = 0.18f,
             hasBakedAnimation = true,
             category = "solar",
@@ -91,7 +95,7 @@ object SampleAssets {
             displayName = "Animated Butterfly",
             author = "leorehman333",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/shiba.glb",
             scaleToUnits = 0.12f,
             hasBakedAnimation = true,
             category = "solar",
@@ -102,7 +106,7 @@ object SampleAssets {
             displayName = "Animated Butterflies",
             author = "bestgamekits",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/khronos_toy_car.glb",
             scaleToUnits = 0.35f,
             hasBakedAnimation = true,
             category = "solar",

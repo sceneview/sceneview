@@ -18,12 +18,12 @@ import kotlin.math.tan
  *
  * No ARCore [com.google.ar.core.Frame]/[com.google.ar.core.Camera] involved: the camera
  * is described purely by a `view · projection` [Transform] plus a world-space
- * [Position], which is exactly what [OrbitalARDemo.kt]'s `computeOffscreenTarget`
+ * [Position], which is exactly what [OrbitalARDemo.kt]'s `computeProjectedTarget`
  * wrapper hands the function once it reads those two values off the real ARCore
  * `Frame`. That split is what makes this testable on the JVM at all.
  *
  * The camera used throughout: sitting at the world origin, looking down -Z (the OpenGL
- * ES / ARCore `getProjectionMatrix` convention documented on [computeOffscreenTarget]),
+ * ES / ARCore `getProjectionMatrix` convention documented on [computeProjectedTarget]),
  * +Y up — i.e. the view matrix is the identity, so `viewProjection == projection`. The
  * projection is built by hand ([standardPerspective]) rather than via a library helper:
  * `dev.romainguy.kotlin.math.perspective()` was tried first and turned out to use a
