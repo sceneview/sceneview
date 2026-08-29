@@ -42,6 +42,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float4
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.common.QaCameraBackdrop
@@ -391,6 +392,10 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // ride this anchor — turning the phone shows them passing by in world space.
     var userAnchor by remember { mutableStateOf<Anchor?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+    // ARCore verdict (#3374): non-null once we know AR cannot start on this device. The
+    // SDK draws the explanation over the scene; the demo's own status pill must then stop
+    // claiming AR is initializing, because it never will.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     // Cover the jet-black ARSceneView surface until ARCore delivers its first camera
     // frame, so the ~1–3 s warm-up on entry doesn't read as a frozen screen (#2484).
     var cameraReady by remember { mutableStateOf(false) }
@@ -490,6 +495,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // has been dismissed (#2481), the pill is gone entirely — the orbit is
     // self-explanatory at that point and a permanent banner only clutters the AR view.
     val statusText = when {
+        // ARCore will never start here — the SDK overlay explains why, so drop the pill
+        // rather than stack a second, and now false, message on top of it (#3374).
+        arCoreAvailability != null -> null
         !isTracking -> "Initializing AR — look around to start tracking"
         userAnchor == null -> "Locking world anchor…"
         !onboardingDismissed -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
@@ -545,6 +553,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                 cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
+                onARCoreAvailability = { arCoreAvailability = it },
                 sessionConfiguration = { _: Session, config: Config ->
                     // Plane detection off — the formation lives in world space around the
                     // user, not on a plane. Disabling planes is cheaper and gives a cleaner

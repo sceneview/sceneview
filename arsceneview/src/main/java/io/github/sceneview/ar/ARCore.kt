@@ -70,6 +70,24 @@ class ARCore(
     var isCameraPermissionDenied: Boolean = false
         private set
 
+    /**
+     * Called on the main thread whenever the ARCore availability verdict changes (#3374).
+     *
+     * `null` means "nothing to report": ARCore is installed and current, or the check is still
+     * running. A non-null value is terminal until the user acts — the device is not capable,
+     * Google Play Services for AR is missing or too old, or the check itself failed.
+     *
+     * Before #3374 an unsupported device produced no signal at all: the install request threw,
+     * the exception was swallowed into [onArSessionFailed], and hosts that had not wired that
+     * callback (every demo) sat on their own "initializing" copy forever.
+     * [ARSceneView] wires this to its built-in `arCoreAvailabilityOverlay`.
+     */
+    var onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null
+
+    /** The last verdict published through [onARCoreAvailability]. `null` when AR can start. */
+    var arCoreAvailability: ARCoreAvailability? = null
+        private set
+
     private var cameraPermissionRequested = false
     private var installRequested = false
 
@@ -164,22 +182,68 @@ class ARCore(
         } else {
             isCameraPermissionDenied = false
             try {
-                if (checkAvailability && !installRequested &&
-                    handler.checkARCoreAvailability() != Availability.SUPPORTED_INSTALLED
-                ) {
-                    if (handler.requestARCoreInstall(!installRequested)) {
-                        installRequested = true
-                    } else {
-                        return true
+                if (checkAvailability && !installRequested) {
+                    val availability = handler.checkARCoreAvailability()
+                    val unavailable = availability.toARCoreAvailability()
+                    if (unavailable == null) {
+                        publishAvailability(null)
+                        // Still `UNKNOWN_CHECKING`? ARCore has not answered yet: hold the
+                        // session back and let the next resume ask again, rather than
+                        // requesting an install for a device we have not classified.
+                        return availability == Availability.SUPPORTED_INSTALLED
+                    }
+                    publishAvailability(unavailable)
+                    // Only the install / update states have a Play Store flow to launch.
+                    // `UNSUPPORTED_DEVICE_NOT_CAPABLE` makes `requestInstall` throw, and a
+                    // failed check has nothing to install — both are surfaced, not retried
+                    // behind the user's back (#3374).
+                    if (unavailable == ARCoreAvailability.NotInstalled ||
+                        unavailable == ARCoreAvailability.NeedsUpdate
+                    ) {
+                        if (handler.requestARCoreInstall(!installRequested)) {
+                            installRequested = true
+                        } else {
+                            // ARCore reports it is installed after all.
+                            publishAvailability(null)
+                            return true
+                        }
                     }
                 } else {
+                    // Availability checks disabled, or the user is coming back from the Play
+                    // Store install we requested: the session may start, so drop any card.
+                    publishAvailability(null)
                     return true
                 }
             } catch (e: Exception) {
+                // `requestInstall` throws `Unavailable*Exception` on a device it cannot serve.
+                // Classify it so the UI can explain, then still report it to the host.
+                publishAvailability(e.toARCoreAvailability())
                 onException(e)
             }
         }
         return false
+    }
+
+    /** Publishes [availability] to [onARCoreAvailability] when it actually changed. */
+    private fun publishAvailability(availability: ARCoreAvailability?) {
+        if (arCoreAvailability == availability) return
+        arCoreAvailability = availability
+        onARCoreAvailability?.invoke(availability)
+    }
+
+    /**
+     * Re-runs the ARCore availability check after a verdict reported through
+     * [onARCoreAvailability], launching the install / update flow when there is one (#3374).
+     *
+     * Safe to call from an "Install" / "Update" / "Try again" tap: the install request is
+     * un-latched first, so a user who cancelled the Play Store flow can start it again.
+     *
+     * @param handler the permission handler; defaults to the one passed to [create].
+     */
+    fun retryARCoreAvailability(handler: ARPermissionHandler? = permissionHandler) {
+        handler ?: return
+        installRequested = false
+        checkPermissionAndInstall(handler)
     }
 
     /**

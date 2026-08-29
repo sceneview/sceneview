@@ -15,6 +15,19 @@
     <string name="sceneview_camera_permission_grant">Grant camera access</string>
     <string name="sceneview_camera_permission_settings">Open settings</string>
 
+    <!-- ARCoreAvailabilityOverlay (#3374) — ARCore cannot start a session on this device. -->
+    <string name="sceneview_arcore_unsupported_title">AR isn\'t available on this device</string>
+    <string name="sceneview_arcore_unsupported_body">This device doesn\'t support ARCore, so the camera experience can\'t start. The other demos still work.</string>
+    <string name="sceneview_arcore_not_installed_title">AR needs Google Play Services for AR</string>
+    <string name="sceneview_arcore_not_installed_body">Install Google Play Services for AR to run this demo.</string>
+    <string name="sceneview_arcore_install">Install</string>
+    <string name="sceneview_arcore_needs_update_title">Update Google Play Services for AR</string>
+    <string name="sceneview_arcore_needs_update_body">The installed version of Google Play Services for AR is too old for this demo.</string>
+    <string name="sceneview_arcore_update">Update</string>
+    <string name="sceneview_arcore_check_failed_title">Couldn\'t check AR support</string>
+    <string name="sceneview_arcore_check_failed_body">Checking Google Play Services for AR failed. Check your connection and try again.</string>
+    <string name="sceneview_arcore_retry">Try again</string>
+
     <!-- PlaneDiscoveryGuide (#2241) — plane-discovery onboarding overlay.
          Lost-tracking copy reuses the sceneview_*_message strings above. -->
     <string name="sceneview_plane_discovery_hint">Move your phone to find a surface</string>
