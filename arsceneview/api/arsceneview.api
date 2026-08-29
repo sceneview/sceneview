@@ -175,13 +175,13 @@ public final class io/github/sceneview/ar/ARSceneScope : io/github/sceneview/Sce
 	public final fun DepthHitResultNode (FFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthHitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun DepthMeshNode (Lio/github/sceneview/ar/node/DepthMeshNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
-	public final fun HitResultNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun HitResultNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun HitResultNode (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
-	public final fun PlacementReticle (FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public final fun PlacementReticle (FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun PlaneNode (Lcom/google/ar/core/Plane;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun PointCloudNode (Lio/github/sceneview/ar/node/PointCloudNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun PoseNode (Lcom/google/ar/core/Pose;Ljava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
-	public final fun ReticleNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun ReticleNode (FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun RooftopAnchorNode (Lio/github/sceneview/ar/node/RooftopAnchorNode;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun SceneMeshNode (Lcom/google/ar/core/StreetscapeGeometry;Ljava/util/Set;Lcom/google/ar/core/StreetscapeGeometry$Quality;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun ShadowReceiverPlane (Lcom/google/ar/core/Plane;FLjava/util/Set;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
@@ -624,7 +624,7 @@ public final class io/github/sceneview/ar/CloudAnchorRegistry$DefaultImpls {
 public final class io/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt;
 	public fun <init> ()V
-	public final fun getLambda$-829785509$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$1192742845$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
 }
 
 public final class io/github/sceneview/ar/ComposableSingletons$ARSceneViewKt {
@@ -1829,8 +1829,8 @@ public class io/github/sceneview/ar/node/PlacementReticleNode : io/github/scenev
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/node/PlacementReticleNode$Companion;
 	public static final field DEFAULT_ORIENTATION_SMOOTHING F
-	public fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
-	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;J)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFZZFLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun getHitResult ()Lcom/google/ar/core/HitResult;
 	public final fun getOrientationSmoothing ()F
 	protected fun resolveHitPose (Lcom/google/ar/core/Pose;)Lcom/google/ar/core/Pose;
@@ -1909,8 +1909,8 @@ public class io/github/sceneview/ar/node/PoseNode : io/github/sceneview/node/Nod
 
 public class io/github/sceneview/ar/node/ReticleNode : io/github/sceneview/ar/node/HitResultNode {
 	public static final field $stable I
-	public fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
-	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;J)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;FFLjava/util/Set;ZZZLjava/util/Set;Ljava/util/Set;ZLjava/lang/Float;Lkotlin/Pair;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun getHitResult ()Lcom/google/ar/core/HitResult;
 	public final fun getOnHitResultChanged ()Lkotlin/jvm/functions/Function1;
 	public fun setHitResult (Lcom/google/ar/core/HitResult;)V

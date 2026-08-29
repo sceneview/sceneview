@@ -290,6 +290,11 @@ class ARSceneScope internal constructor(
      * @param minCameraDistance         Camera-to-hit floor (meters). Default `0.3f`; `null` to disable.
      * @param minCameraDistanceFromPlane Legacy plane-only distance gate. Prefer [minCameraDistance].
      * @param predicate                 Custom filter applied to each [HitResult].
+     * @param refreshIntervalMs         Minimum interval (ms) between two ARCore hit tests. `0`
+     *                                  (the default) runs the hit test every updated frame — the
+     *                                  original behaviour; a positive value (e.g. `100` = 10 Hz)
+     *                                  rate-limits the raycast. Live-updatable on recomposition
+     *                                  (#3391).
      * @param apply                     Additional imperative configuration on [HitResultNodeImpl].
      * @param content                   Optional child nodes declared in a [NodeScope].
      */
@@ -309,6 +314,7 @@ class ARSceneScope internal constructor(
         minCameraDistance: Float? = 0.3f,
         minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
         predicate: ((HitResult) -> Boolean)? = null,
+        refreshIntervalMs: Long = 0L,
         apply: HitResultNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
@@ -326,8 +332,14 @@ class ARSceneScope internal constructor(
                 planePoseInPolygon = planePoseInPolygon,
                 minCameraDistance = minCameraDistance,
                 minCameraDistanceFromPlane = minCameraDistanceFromPlane,
-                predicate = predicate
+                predicate = predicate,
+                refreshIntervalMs = refreshIntervalMs
             ).apply(apply)
+        }
+        // Not a `remember` key: the throttle is a live-writable var, so a changed rate must
+        // re-rate the existing node, never destroy and re-create it (#3391).
+        SideEffect {
+            node.refreshIntervalMs = refreshIntervalMs
         }
         NodeLifecycle(node, content)
     }
@@ -418,6 +430,11 @@ class ARSceneScope internal constructor(
      * @param predicate                 Custom filter applied to each candidate [HitResult].
      * @param onHitResultChanged        Invoked whenever the resolved hit changes (including
      *                                  `null` ↔ value transitions).
+     * @param refreshIntervalMs         Minimum interval (ms) between two ARCore hit tests. `0`
+     *                                  (the default) runs the hit test every updated frame — the
+     *                                  original behaviour; a positive value (e.g. `100` = 10 Hz)
+     *                                  rate-limits the raycast for the whole placement flow. The
+     *                                  marker keeps easing between hits (#3391).
      * @param apply                     Additional imperative configuration on the underlying
      *                                  [ReticleNodeImpl].
      * @param content                   Optional child nodes (the visual marker geometry) declared
@@ -440,6 +457,7 @@ class ARSceneScope internal constructor(
         minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
         predicate: ((HitResult) -> Boolean)? = null,
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
+        refreshIntervalMs: Long = 0L,
         apply: ReticleNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
@@ -458,15 +476,19 @@ class ARSceneScope internal constructor(
                 minCameraDistance = minCameraDistance,
                 minCameraDistanceFromPlane = minCameraDistanceFromPlane,
                 predicate = predicate,
-                onHitResultChanged = onHitResultChanged
+                onHitResultChanged = onHitResultChanged,
+                refreshIntervalMs = refreshIntervalMs
             ).apply(apply)
         }
         // Keep the live `onHitResultChanged` callback in sync with the latest
         // composition — without this, a recomposed callback (e.g. closing over
         // fresh state) would never get invoked because the node held the
-        // original lambda captured at remember time.
+        // original lambda captured at remember time. Same for the hit-test rate:
+        // it is a live-writable var, never a `remember` key, so changing it
+        // re-rates the existing node instead of destroying it (#3391).
         SideEffect {
             node.onHitResultChanged = onHitResultChanged
+            node.refreshIntervalMs = refreshIntervalMs
         }
         NodeLifecycle(node, content)
     }
@@ -516,6 +538,12 @@ class ARSceneScope internal constructor(
      *                               live-updatable on recomposition.
      * @param onHitResultChanged     Invoked on every hit change (including to/from `null`) —
      *                               drives AIMING/READY host state.
+     * @param refreshIntervalMs      Minimum interval (ms) between two ARCore hit tests. `0` (the
+     *                               default) runs the hit test every updated frame — the original
+     *                               behaviour; a positive value (e.g. `100` = 10 Hz) rate-limits
+     *                               the raycast. Independent of [orientationSmoothing], which
+     *                               keeps damping every frame, so a throttled cursor still eases
+     *                               rather than steps. Live-updatable on recomposition (#3391).
      * @param apply                  Additional imperative configuration on the node.
      * @param content                Custom visual; `null` = the built-in cyan disc.
      */
@@ -528,6 +556,7 @@ class ARSceneScope internal constructor(
         orientationSmoothing: Float = PlacementReticleNodeImpl.DEFAULT_ORIENTATION_SMOOTHING,
         predicate: ((HitResult) -> Boolean)? = null,
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
+        refreshIntervalMs: Long = 0L,
         apply: PlacementReticleNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
@@ -540,13 +569,17 @@ class ARSceneScope internal constructor(
                 depthPoint = depthPoint,
                 orientationSmoothing = orientationSmoothing,
                 predicate = predicate,
-                onHitResultChanged = onHitResultChanged
+                onHitResultChanged = onHitResultChanged,
+                refreshIntervalMs = refreshIntervalMs
             ).apply(apply)
         }
         // Keep the recomposition-facing knobs live (see ReticleNode above / #2506).
+        // `refreshIntervalMs` is deliberately NOT a `remember` key: re-rating an existing
+        // reticle must never destroy and re-create it mid-placement (#3391).
         SideEffect {
             node.onHitResultChanged = onHitResultChanged
             node.orientationSmoothing = orientationSmoothing
+            node.refreshIntervalMs = refreshIntervalMs
         }
         // ONE NodeLifecycle call site: branching between two NodeLifecycle calls on
         // `content != null` would destroy-and-reattach the remembered node when a host

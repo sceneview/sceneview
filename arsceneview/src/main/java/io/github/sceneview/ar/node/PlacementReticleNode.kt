@@ -90,6 +90,14 @@ internal class ReticleOrientationSmoother(smoothing: Float) {
  * @param onHitResultChanged    Invoked whenever the resolved [HitResult] changes
  *                              (including transitions to / from `null`) — drives
  *                              AIMING / READY host state.
+ * @param refreshIntervalMs     Minimum interval, in milliseconds, between two ARCore hit
+ *                              tests. `0` (the default) runs the hit test on every updated
+ *                              frame — the original behaviour; a positive value (e.g. `100`
+ *                              = 10 Hz) rate-limits the raycast. Forwarded through
+ *                              [ReticleNode] to [HitResultNode.refreshIntervalMs] (#3391).
+ *                              Note the two rates are independent: the *orientation
+ *                              smoothing* keeps running every frame, so a throttled reticle
+ *                              still eases rather than steps between hits.
  *
  * @see io.github.sceneview.ar.ARSceneScope.PlacementReticle
  * @see ReticleNode
@@ -102,7 +110,8 @@ open class PlacementReticleNode(
     depthPoint: Boolean = false,
     orientationSmoothing: Float = DEFAULT_ORIENTATION_SMOOTHING,
     predicate: ((HitResult) -> Boolean)? = null,
-    onHitResultChanged: ((HitResult?) -> Unit)? = null
+    onHitResultChanged: ((HitResult?) -> Unit)? = null,
+    refreshIntervalMs: Long = 0L
 ) : ReticleNode(
     engine = engine,
     xPx = xPx,
@@ -114,7 +123,8 @@ open class PlacementReticleNode(
     point = !snapToPlane,
     depthPoint = depthPoint,
     predicate = predicate,
-    onHitResultChanged = onHitResultChanged
+    onHitResultChanged = onHitResultChanged,
+    refreshIntervalMs = refreshIntervalMs
 ) {
 
     private val smoother = ReticleOrientationSmoother(orientationSmoothing)

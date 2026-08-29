@@ -36,6 +36,17 @@ import com.google.ar.core.TrackingState
  * pose on tap-to-place — without attaching a separate `onSessionUpdated`
  * listener that re-runs an identical hit test.
  *
+ * ### Hit-test cost
+ *
+ * The reticle inherits [HitResultNode.refreshIntervalMs] and forwards it from its own
+ * constructor ([#3391](https://github.com/sceneview/sceneview/issues/3391)). `0` — the
+ * default — runs ARCore's [HitResult] raycast on **every** updated frame, the original
+ * byte-for-byte behaviour. Because a reticle is the one node that is on screen for the
+ * whole placement flow, it is also the one most likely to want a ceiling: pass a positive
+ * value (e.g. `100` = 10 Hz) to rate-limit the raycast. Between hit tests the reticle keeps
+ * its last pose and the inherited smooth-transform easing still runs every frame, so the
+ * marker keeps gliding rather than stepping.
+ *
  * ### When to use [ReticleNode] vs raw [HitResultNode]
  *
  * - Use [ReticleNode] for a placement cursor where you need a one-call callback
@@ -85,6 +96,12 @@ import com.google.ar.core.TrackingState
  * @param predicate                 Custom filter applied to each candidate [HitResult].
  * @param onHitResultChanged        Invoked whenever the resolved [HitResult] changes
  *                                  (including transitions to / from `null`).
+ * @param refreshIntervalMs         Minimum interval, in milliseconds, between two ARCore
+ *                                  hit tests. `0` (the default) runs the hit test on every
+ *                                  updated frame — the original behaviour; a positive value
+ *                                  (e.g. `100` = 10 Hz) rate-limits the raycast. Forwarded
+ *                                  to [HitResultNode.refreshIntervalMs], which stays
+ *                                  writable afterwards for live changes (#3391).
  */
 open class ReticleNode(
     engine: Engine,
@@ -102,7 +119,8 @@ open class ReticleNode(
     minCameraDistance: Float? = 0.3f,
     minCameraDistanceFromPlane: Pair<Camera, Float>? = null,
     predicate: ((HitResult) -> Boolean)? = null,
-    var onHitResultChanged: ((HitResult?) -> Unit)? = null
+    var onHitResultChanged: ((HitResult?) -> Unit)? = null,
+    refreshIntervalMs: Long = 0L
 ) : HitResultNode(
     engine = engine,
     xPx = xPx,
@@ -116,7 +134,8 @@ open class ReticleNode(
     planePoseInPolygon = planePoseInPolygon,
     minCameraDistance = minCameraDistance,
     minCameraDistanceFromPlane = minCameraDistanceFromPlane,
-    predicate = predicate
+    predicate = predicate,
+    refreshIntervalMs = refreshIntervalMs
 ) {
 
     /**
