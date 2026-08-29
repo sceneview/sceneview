@@ -262,10 +262,15 @@ final class CameraControlsTests: XCTestCase {
 
     // MARK: - Fit-to-bounds framing (#1026 / #1041)
 
-    func testFitRadiusFramesBoundingSphere() {
-        // A 1m cube at 60° vertical FOV with a square viewport (aspect 1):
-        // both FOVs equal, halfFov = 30°, sphereRadius = sqrt(3)/2 ≈ 0.866.
-        // distance = 0.866 / sin(30°) = 1.732, × 1.15 margin ≈ 1.99.
+    func testFitRadiusFitsProjectedExtentNotBoundingSphere() {
+        // A 1m cube at 60° vertical FOV with a square viewport (aspect 1),
+        // seen from the default 30° elevation. The cube's sweep about Y is a
+        // cylinder of radius hypot(0.5, 0.5) = 0.707 and half-height 0.5; the
+        // vertical axis binds at 1.7247, × 1.15 margin = 1.984.
+        //
+        // The pre-#3383 sphere fit charged sqrt(3)/2 / sin(30°) = 1.732 here,
+        // so a square viewport barely moves — the divergence is in portrait
+        // (see testFitRadiusMatrixAcrossViewportsAndSubjects).
         let controls = CameraControls()
         let r = controls.fitRadius(
             boundsExtents: SIMD3<Float>(1, 1, 1),
@@ -273,7 +278,22 @@ final class CameraControlsTests: XCTestCase {
             aspect: 1.0,
             margin: 1.15
         )
-        XCTAssertEqual(r, 1.99, accuracy: 0.05)
+        XCTAssertEqual(r, 1.984, accuracy: 0.01)
+    }
+
+    /// The #3383 headline case: a 3 m column in a portrait viewport. The
+    /// sphere fit divided half the space diagonal by `sin` of the *smaller*
+    /// (horizontal) half-FOV and pushed the camera to 5.90 m; the subject is
+    /// bound by the vertical axis alone and 3.00 m frames it exactly. Before
+    /// the fix the column filled barely half the height it could.
+    func testFitRadiusFillsPortraitViewportWithTallSubject() {
+        let controls = CameraControls(mode: .orbit, maxRadius: 500)
+        let r = controls.fitRadius(
+            boundsExtents: SIMD3<Float>(0.3, 3.0, 0.3),
+            fovYDegrees: 60, aspect: 0.46, margin: 1.0)
+        XCTAssertEqual(r, 3.0, accuracy: 0.01)
+        // Well under the 5.902 the bounding-sphere fit returned.
+        XCTAssertLessThan(r, 4.0)
     }
 
     func testFitRadiusLargerForBiggerContent() {
@@ -358,6 +378,208 @@ final class CameraControlsTests: XCTestCase {
             boundsExtents: SIMD3<Float>(0.4, 1.2, 0.7), fovYDegrees: 60,
             aspect: 0.46, margin: 1.15)
         XCTAssertEqual(implicitMargin, explicitMargin, accuracy: 0.0001)
+    }
+
+    // MARK: - Per-axis projected fit (#3383)
+
+    /// The three subjects the fit has to tell apart. A bounding sphere cannot:
+    /// it sees only `hypot(hx, hy, hz)`, so `wideFlat` and `tallNarrow` — which
+    /// need opposite things from a portrait viewport — get the same treatment.
+    private static let fitSubjects: [(name: String, extents: SIMD3<Float>)] = [
+        ("wide/flat", SIMD3<Float>(4.0, 0.5, 0.5)),
+        ("tall/narrow", SIMD3<Float>(0.3, 3.0, 0.3)),
+        ("cubic", SIMD3<Float>(1.0, 1.0, 1.0)),
+    ]
+
+    /// iPhone portrait, square, and landscape (`width / height`).
+    private static let fitViewports: [(name: String, aspect: Float)] = [
+        ("portrait", 0.46),
+        ("square", 1.0),
+        ("landscape", 2.17),
+    ]
+
+    /// Viewport × subject, at the default 30° elevation with `margin: 1.0` so
+    /// the numbers below are the raw fit. Each was cross-checked against a
+    /// 720-sample azimuth sweep of the exact eight-corner fit (worst relative
+    /// error 9.5e-06), and the `sphere` column is what shipped before #3383.
+    func testFitRadiusMatrixAcrossViewportsAndSubjects() {
+        //  subject      viewport     fitted   sphere (pre-#3383)
+        let expected: [String: Float] = [
+            "wide/flat portrait":   7.9124,  // 7.9125 — horizontal-bound either way
+            "wide/flat square":     4.0281,  // 4.0620
+            "wide/flat landscape":  3.7411,  // 4.0620
+            "tall/narrow portrait": 3.0000,  // 5.9019 — the #3383 headline
+            "tall/narrow square":   3.0000,  // 3.0299
+            "tall/narrow landscape": 3.0000, // 3.0299
+            "cubic portrait":       2.9820,  // 3.3739
+            "cubic square":         1.7247,  // 1.7321
+            "cubic landscape":      1.7247,  // 1.7321
+        ]
+        // maxRadius raised so nothing in the matrix hits the clamp.
+        let controls = CameraControls(mode: .orbit, maxRadius: 500)
+        for (subject, extents) in Self.fitSubjects {
+            for (viewport, aspect) in Self.fitViewports {
+                let key = "\(subject) \(viewport)"
+                let r = controls.fitRadius(
+                    boundsExtents: extents, fovYDegrees: 60,
+                    aspect: aspect, margin: 1.0)
+                XCTAssertEqual(r, expected[key]!, accuracy: 0.005, key)
+            }
+        }
+    }
+
+    /// A vertically-bound subject must cost the same in every viewport: the
+    /// vertical FOV does not change with the aspect ratio. The sphere fit
+    /// charged the column 5.90 m in portrait against 3.03 m in landscape
+    /// purely because it divided by the *smaller* half-FOV.
+    func testFitRadiusOfVerticallyBoundSubjectIgnoresAspect() {
+        let controls = CameraControls(mode: .orbit, maxRadius: 500)
+        let column = SIMD3<Float>(0.3, 3.0, 0.3)
+        let fits = Self.fitViewports.map {
+            controls.fitRadius(boundsExtents: column, fovYDegrees: 60,
+                               aspect: $0.aspect, margin: 1.0)
+        }
+        for fit in fits {
+            XCTAssertEqual(fit, fits[0], accuracy: 0.001)
+        }
+    }
+
+    /// Auto-rotating content must not clip as it turns broadside, so the fit
+    /// reads no ``CameraControls/azimuth`` at all — it frames the box's sweep
+    /// about world Y. An "optimisation" that specialises on the current
+    /// azimuth fails here before it ships a clipping turntable.
+    func testFitRadiusIsInvariantToAzimuth() {
+        var controls = CameraControls(mode: .orbit, maxRadius: 500)
+        let subject = SIMD3<Float>(4.0, 0.5, 0.5)  // worst case: very wide
+        controls.azimuth = 0
+        let reference = controls.fitRadius(
+            boundsExtents: subject, fovYDegrees: 60, aspect: 0.46, margin: 1.0)
+        for step in 1..<16 {
+            controls.azimuth = Float(step) * 2 * .pi / 16
+            let r = controls.fitRadius(
+                boundsExtents: subject, fovYDegrees: 60, aspect: 0.46,
+                margin: 1.0)
+            XCTAssertEqual(r, reference, accuracy: 0.0001,
+                           "azimuth \(controls.azimuth)")
+        }
+    }
+
+    /// The containment proof, and the reason the matrix numbers above can be
+    /// trusted rather than merely pinned: place the camera at the fitted
+    /// radius and check all eight box corners against both FOV axes, at 24
+    /// azimuths. Nothing may leave the frame (`<= 0`), and the fit must stay
+    /// *tight* — the pre-#3383 sphere fit wasted up to 49 % of the frame on
+    /// the tall column, which the -0.02 floor rejects.
+    func testFitRadiusFramesEveryCornerAtEveryAzimuth() {
+        for (subject, extents) in Self.fitSubjects {
+            for (viewport, aspect) in Self.fitViewports {
+                var controls = CameraControls(mode: .orbit, maxRadius: 500)
+                controls.orbitRadius = controls.fitRadius(
+                    boundsExtents: extents, fovYDegrees: 60,
+                    aspect: aspect, margin: 1.0)
+                var tightest = -Float.greatestFiniteMagnitude
+                for step in 0..<24 {
+                    controls.azimuth = Float(step) * 2 * .pi / 24
+                    let overshoot = frustumOvershoot(
+                        extents: extents, controls: controls,
+                        fovYDegrees: 60, aspect: aspect)
+                    XCTAssertLessThanOrEqual(
+                        overshoot, 1e-4,
+                        "\(subject) \(viewport) clipped at azimuth \(step)")
+                    tightest = max(tightest, overshoot)
+                }
+                XCTAssertGreaterThan(
+                    tightest, -0.02,
+                    "\(subject) \(viewport) framed looser than it needs")
+            }
+        }
+    }
+
+    /// #3383 must not make any existing scene worse: the per-axis fit is
+    /// bounded above by the sphere fit it replaces, so no content is ever
+    /// pushed further away than it was in v4.x.
+    func testFitRadiusNeverExceedsPreviousBoundingSphereFit() {
+        let controls = CameraControls(mode: .orbit, maxRadius: 500)
+        var subjects = Self.fitSubjects
+        subjects.append((name: "vehicle", extents: SIMD3<Float>(2.2, 1.0, 5.0)))
+        subjects.append((name: "helmet", extents: SIMD3<Float>(0.9, 1.1, 0.9)))
+        for (subject, extents) in subjects {
+            for (viewport, aspect) in Self.fitViewports {
+                // The pre-#3383 formula, verbatim: half the space diagonal
+                // divided by the sine of the smaller half-FOV.
+                let half = extents * 0.5
+                let sphereRadius = simd_length(half)
+                let fovY = Float(60) * .pi / 180
+                let fovX = 2 * atan(tan(fovY / 2) * aspect)
+                let sphereFit = sphereRadius / sin(min(fovY, fovX) / 2)
+                let fitted = controls.fitRadius(
+                    boundsExtents: extents, fovYDegrees: 60,
+                    aspect: aspect, margin: 1.0)
+                XCTAssertLessThanOrEqual(fitted, sphereFit * 1.0001,
+                                         "\(subject) \(viewport)")
+            }
+        }
+    }
+
+    /// ``CameraControls/elevation`` is public and the drag handler's clamp does
+    /// not apply to a value set directly, so the fit must survive a straight
+    /// overhead pose. The analytic basis avoids the cross product that
+    /// degenerates when the eye vector is parallel to world up.
+    func testFitRadiusSurvivesPolarElevation() {
+        var controls = CameraControls(mode: .orbit, maxRadius: 500)
+        let subject = SIMD3<Float>(2.2, 1.0, 5.0)
+        var results: [Float] = []
+        for elevation in [Float.pi / 2, -Float.pi / 2, Float.pi / 2 - 0.001] {
+            controls.elevation = elevation
+            let r = controls.fitRadius(
+                boundsExtents: subject, fovYDegrees: 60, aspect: 0.46,
+                margin: 1.0)
+            XCTAssertTrue(r.isFinite, "elevation \(elevation)")
+            results.append(r)
+        }
+        // Straight up, straight down and just-off-vertical all agree.
+        for r in results {
+            XCTAssertEqual(r, 10.784, accuracy: 0.01)
+        }
+    }
+
+    /// Worst frustum overshoot across the eight corners of a box centred on
+    /// the controls' target, as a fraction of the orbit radius. `<= 0` means
+    /// the whole box is inside both FOV axes.
+    ///
+    /// A corner `v` (relative to the target) is inside at distance `d` iff
+    /// `d >= v·back + |v·axis| / tanAxis` on the horizontal and vertical axes.
+    private func frustumOvershoot(
+        extents: SIMD3<Float>,
+        controls: SceneViewSwift.CameraControls,
+        fovYDegrees: Float,
+        aspect: Float
+    ) -> Float {
+        let half = extents * 0.5
+        let distance = controls.orbitRadius
+        // Same basis the renderer uses — read from the production camera pose.
+        let back = simd_normalize(controls.cameraPosition() - controls.target)
+        let forward = -back
+        let right = simd_normalize(simd_cross(forward, SIMD3<Float>(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let tanY = tan(fovYDegrees * .pi / 180 / 2)
+        let tanX = tanY * aspect
+
+        var worst = -Float.greatestFiniteMagnitude
+        for signX in [Float(-1), 1] {
+            for signY in [Float(-1), 1] {
+                for signZ in [Float(-1), 1] {
+                    let corner = SIMD3<Float>(signX * half.x,
+                                              signY * half.y,
+                                              signZ * half.z)
+                    let depth = simd_dot(corner, back)
+                    let needX = depth + abs(simd_dot(corner, right)) / tanX
+                    let needY = depth + abs(simd_dot(corner, up)) / tanY
+                    worst = max(worst, max(needX, needY) - distance)
+                }
+            }
+        }
+        return worst / distance
     }
 
     // MARK: - Content bounds union (#1391)
