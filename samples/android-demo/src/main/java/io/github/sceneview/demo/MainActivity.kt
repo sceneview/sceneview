@@ -54,8 +54,10 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
 import io.github.sceneview.demo.feedback.BugReportSheet
+import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.feedback.PendingBugReport
+import io.github.sceneview.demo.feedback.ReportScreen
 import io.github.sceneview.demo.feedback.captureBugReportInfo
 import io.github.sceneview.demo.feedback.captureBugReportScreenshot
 import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
@@ -342,7 +344,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
 
         // Bug-report entry points (#1930, rebuilt permission-free in #2188's
         // successor):
-        //  - the tab host ("list" — RootScreen, all four tabs) gets the
+        //  - the tab host ("list" — RootScreen, every tab) gets the
         //    extended FAB rendered below;
         //  - every demo screen gets a top-app-bar feedback action in
         //    DemoScaffold, which raises FeedbackOpenRequest (observed here).
@@ -364,16 +366,26 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
 
         fun openBugReport() {
             if (bugReport != null) return
-            // Capture the demo id NOW (the sheet host is the only place that
-            // can see the NavController), so the report names the exact demo
-            // the bug is in (#1934).
-            val demoId = currentEntry
-                ?.takeIf { it.destination.route == "demo/{id}" }
-                ?.arguments?.getString("id")
+            // Capture the current screen NOW (the sheet host is the only place
+            // that can see the NavController), so the report names where the
+            // bug is (#1934, #3390).
+            //
+            // The demo id is read straight off the arguments rather than by
+            // comparing the route to a literal: the literal was "demo/{id}"
+            // while the declared route had grown a "?model={model}" argument,
+            // so the id silently came back null and every report shipped
+            // without a screen (#3390). Only the demo destination declares an
+            // `id`, so this is null on the tab host by construction.
+            val entry = currentEntry
+            val screen = ReportScreen(
+                demoId = entry?.arguments?.getString("id"),
+                rootScreen = CurrentRootScreen.label,
+                route = entry?.destination?.route,
+            )
             reportScope.launch {
                 val screenshot = activity?.let { captureBugReportScreenshot(it) }
                 bugReport = PendingBugReport(
-                    info = captureBugReportInfo(context, demoId),
+                    info = captureBugReportInfo(context, screen),
                     screenshot = screenshot,
                 )
             }

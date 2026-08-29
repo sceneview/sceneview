@@ -19,7 +19,8 @@ import java.util.Locale
  * no runtime permission, no foreground service, no Play Console foreground-
  * service declaration:
  *
- * - a [BugReportInfo.metadata] snapshot (app version, device, OS, ABI, screen),
+ * - a [BugReportInfo.metadata] snapshot (the screen the report was filed from,
+ *   app version, device, OS, ABI, display),
  * - the app's own logcat tail ([collectAppLogcat] — readable without any
  *   permission for the app's own pid),
  * - an optional screenshot captured via `PixelCopy` (see `CapturedScreenshot.kt`).
@@ -36,11 +37,28 @@ data class BugReportInfo(
     val logcat: List<String>,
 )
 
-/** Lines requested from `logcat -t` for the app's own pid. */
-internal const val LOGCAT_TAIL_LINES = 400
+/**
+ * Lines requested from `logcat -t` for the app's own pid.
+ *
+ * Deliberately deep: diagnosing a *repeating* warning means seeing it often
+ * enough to measure its period, not merely learning that it happened once
+ * (#3390 — #3339 was only pinned down by matching a warning's cadence against
+ * a throttle interval).
+ */
+internal const val LOGCAT_TAIL_LINES = 1200
 
-/** Max logcat lines embedded in the GitHub-issue body / share text. */
-internal const val ISSUE_LOGCAT_MAX_LINES = 60
+/**
+ * Max logcat lines carried by the share text. The share path has no URL
+ * budget, so the whole captured tail rides along.
+ */
+internal const val SHARE_LOGCAT_MAX_LINES = LOGCAT_TAIL_LINES
+
+/**
+ * Ceiling for the log block in a GitHub-issue body. The real count is decided
+ * by [buildGitHubIssueUrl], which packs as many lines as [ISSUE_URL_MAX_LENGTH]
+ * allows.
+ */
+internal const val ISSUE_LOGCAT_MAX_LINES = 400
 
 /**
  * Hard cap for the pre-filled GitHub issue URL. Browsers and the GitHub app
@@ -52,21 +70,51 @@ internal const val ISSUE_URL_MAX_LENGTH = 7000
 internal const val GITHUB_NEW_ISSUE_URL = "https://github.com/sceneview/sceneview/issues/new"
 
 /**
- * Snapshot of device / app context attached to a bug report — what a
- * maintainer needs to reproduce: app build, OS, device, ABI, screen.
+ * Where the user was when they opened the report — captured by the sheet host,
+ * the only place with a handle on the `NavController` (#3390).
  *
- * @param demoId id of the demo the user was on when they opened the report,
- *   or `null` on a tab screen (the row is then omitted).
+ * @param demoId id of the demo on top, or `null` on the tab host.
+ * @param rootScreen label of the visible root screen (see [CurrentRootScreen]),
+ *   or `null` when a demo covers the tab host.
+ * @param route raw navigation route, used as a last-resort label.
  */
-fun captureBugReportMetadata(context: Context, demoId: String?): Map<String, String> {
+data class ReportScreen(
+    val demoId: String? = null,
+    val rootScreen: String? = null,
+    val route: String? = null,
+)
+
+/**
+ * Human-readable name of the screen a report was filed from — the first thing
+ * a maintainer needs, and the thing the reports were missing (#3390).
+ */
+fun formatScreenLabel(screen: ReportScreen): String = when {
+    !screen.demoId.isNullOrBlank() -> "Demo · ${screen.demoId}"
+    !screen.rootScreen.isNullOrBlank() -> screen.rootScreen
+    !screen.route.isNullOrBlank() -> screen.route.substringBefore('?')
+    else -> "unknown"
+}
+
+/**
+ * Snapshot of device / app context attached to a bug report — what a
+ * maintainer needs to reproduce: where the user was, app build, OS, device,
+ * ABI, display.
+ *
+ * `Screen` names the navigation destination; the display resolution lives
+ * under `Display` (it used to own the `Screen` key, which read as the far more
+ * useful thing it was not).
+ */
+fun captureBugReportMetadata(context: Context, screen: ReportScreen): Map<String, String> {
     val dm = context.resources.displayMetrics
     return buildMap {
         put("App version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-        if (!demoId.isNullOrBlank()) put("Demo", demoId)
+        put("Screen", formatScreenLabel(screen))
+        // Kept as its own row on purpose: the issue title falls back to it.
+        if (!screen.demoId.isNullOrBlank()) put("Demo", screen.demoId)
         put("Device", "${Build.MANUFACTURER} ${Build.MODEL}")
         put("Android", "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         put("ABI", Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
-        put("Screen", "${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi}dpi")
+        put("Display", "${dm.widthPixels}x${dm.heightPixels} @ ${dm.densityDpi}dpi")
         put("Locale", Locale.getDefault().toLanguageTag())
     }
 }
@@ -80,7 +128,12 @@ fun captureBugReportMetadata(context: Context, demoId: String?): Map<String, Str
  */
 fun collectAppLogcat(maxLines: Int = LOGCAT_TAIL_LINES): List<String> = runCatching {
     val process = Runtime.getRuntime().exec(
-        arrayOf("logcat", "-d", "-t", maxLines.toString(), "--pid=${Process.myPid()}"),
+        // `-v threadtime` pins the line shape so [compactLogLine] can strip the
+        // redundant columns when the URL budget is tight.
+        arrayOf(
+            "logcat", "-d", "-v", "threadtime",
+            "-t", maxLines.toString(), "--pid=${Process.myPid()}",
+        ),
     )
     process.inputStream.bufferedReader().use { reader ->
         reader.readLines()
@@ -92,9 +145,9 @@ fun collectAppLogcat(maxLines: Int = LOGCAT_TAIL_LINES): List<String> = runCatch
 
 /** Assemble the full report snapshot. Cheap enough for the main thread, but
  *  callers run it alongside the (async) screenshot capture anyway. */
-fun captureBugReportInfo(context: Context, demoId: String?): BugReportInfo =
+fun captureBugReportInfo(context: Context, screen: ReportScreen): BugReportInfo =
     BugReportInfo(
-        metadata = captureBugReportMetadata(context, demoId),
+        metadata = captureBugReportMetadata(context, screen),
         logcat = collectAppLogcat(),
     )
 
@@ -122,7 +175,7 @@ fun formatShareText(info: BugReportInfo, note: String): String = buildString {
         appendLine()
     }
     info.metadata.forEach { (key, value) -> appendLine("$key: $value") }
-    val logcat = info.logcat.takeLast(ISSUE_LOGCAT_MAX_LINES)
+    val logcat = info.logcat.takeLast(SHARE_LOGCAT_MAX_LINES)
     if (logcat.isNotEmpty()) {
         appendLine()
         appendLine("Recent app log (last ${logcat.size} lines):")
@@ -170,33 +223,62 @@ fun formatIssueBody(
 }.trimEnd()
 
 /**
- * Pre-filled `issues/new` URL. If the encoded URL exceeds
- * [ISSUE_URL_MAX_LENGTH] the logcat block is shrunk, then dropped — GitHub
- * (and browsers) silently truncate over-long URLs, which would corrupt the
- * markdown mid-tag.
+ * Drop the columns a maintainer never reads back from a `threadtime` line —
+ * the date and the pid/tid pair — while keeping the millisecond timestamp,
+ * which is load-bearing: the period of a repeating warning is measured from
+ * it (#3390). Roughly doubles the number of lines that fit in a URL.
+ *
+ * `06-01 12:00:00.000  6543  6560 W Filament: msg` → `12:00:00.000 W Filament: msg`
+ *
+ * Lines in any other shape are returned untouched (minus a leading date).
+ */
+internal fun compactLogLine(line: String): String = line
+    .replaceFirst(THREADTIME_PREFIX, "$1 ")
+    .replaceFirst(LEADING_DATE, "")
+
+private val THREADTIME_PREFIX =
+    Regex("""^\d{2}-\d{2} (\d{2}:\d{2}:\d{2}\.\d{3})\s+\d+\s+\d+\s+""")
+
+private val LEADING_DATE = Regex("""^\d{2}-\d{2} (?=\d{2}:\d{2}:\d{2})""")
+
+/**
+ * Pre-filled `issues/new` URL, carrying as much log as the URL can hold.
+ *
+ * GitHub (and browsers) silently truncate over-long URLs, which would corrupt
+ * the markdown mid-tag, so [ISSUE_URL_MAX_LENGTH] is a hard budget. Body length
+ * grows monotonically with the line count, so the largest fitting tail is
+ * binary-searched: the previous coarse 60/30/10/0 ladder snapped an ordinary
+ * report down to 30 lines, far too short to read a repeating warning (#3390).
  */
 fun buildGitHubIssueUrl(info: BugReportInfo, note: String): String {
     val title = formatReportTitle(info, note)
-    // Progressively smaller logcat tails until the URL fits.
-    val attempts = sequenceOf(ISSUE_LOGCAT_MAX_LINES, 30, 10, 0)
-    for (lines in attempts) {
-        val body = formatIssueBody(info, note, maxLogcatLines = lines)
-        val url = GITHUB_NEW_ISSUE_URL +
-            "?title=" + urlEncode(title) +
-            "&labels=" + urlEncode("bug") +
-            "&body=" + urlEncode(body)
-        if (url.length <= ISSUE_URL_MAX_LENGTH) return url
-    }
-    // Metadata-only body still too long (pathological note) — truncate the note.
-    val body = formatIssueBody(
-        info.copy(logcat = emptyList()),
-        note.take(1000),
-        maxLogcatLines = 0,
-    )
-    return GITHUB_NEW_ISSUE_URL +
+    val compact = info.copy(logcat = info.logcat.map(::compactLogLine))
+
+    fun url(body: String): String = GITHUB_NEW_ISSUE_URL +
         "?title=" + urlEncode(title) +
         "&labels=" + urlEncode("bug") +
         "&body=" + urlEncode(body)
+
+    fun urlWith(lines: Int): String = url(formatIssueBody(compact, note, lines))
+
+    var best = urlWith(lines = 0)
+    if (best.length > ISSUE_URL_MAX_LENGTH) {
+        // Metadata-only body still too long (pathological note) — truncate the note.
+        return url(formatIssueBody(compact.copy(logcat = emptyList()), note.take(1000), 0))
+    }
+    var low = 1
+    var high = minOf(ISSUE_LOGCAT_MAX_LINES, compact.logcat.size)
+    while (low <= high) {
+        val mid = (low + high) / 2
+        val candidate = urlWith(mid)
+        if (candidate.length <= ISSUE_URL_MAX_LENGTH) {
+            best = candidate
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return best
 }
 
 /** Query-string encoding (`URLEncoder` is form-encoding: spaces become `+`,
@@ -260,4 +342,24 @@ object FeedbackOpenRequest {
     fun consume() {
         _requested.value = false
     }
+}
+
+/**
+ * Which root screen is visible, published for the bug reporter (#3390).
+ *
+ * The tab selection is local state inside `RootScreen` — the sheet host sees
+ * the `NavController`, whose single `list` destination covers all the tabs, so
+ * without this a report filed from the tab host could not name the screen.
+ * Same single-publisher shape as [FeedbackOpenRequest]: `RootScreen` writes it,
+ * the reporter reads it, and it is cleared when the tab host leaves composition
+ * (a demo on top names itself instead).
+ */
+object CurrentRootScreen {
+    /**
+     * English label of the visible root screen, verbatim as it appears in the
+     * report ("Showcase tab", "Explore gallery", …), or `null` when the tab
+     * host is gone.
+     */
+    @Volatile
+    var label: String? = null
 }

@@ -16,6 +16,7 @@ class BugReportFormatTest {
 
     private val metadata = linkedMapOf(
         "App version" to "4.19.0 (350)",
+        "Screen" to "Demo · model-viewer",
         "Demo" to "model-viewer",
         "Device" to "Google Pixel 7a",
         "Android" to "15 (API 35)",
@@ -64,12 +65,23 @@ class BugReportFormatTest {
     }
 
     @Test
-    fun `share text truncates the logcat to the issue cap`() {
-        val lines = (1..200).map { "line $it" }
+    fun `share text carries the whole captured window, not the issue cap`() {
+        // The share path has no URL budget: it is the one that must survive a
+        // repeating warning long enough to measure its period (#3390).
+        val lines = (1..LOGCAT_TAIL_LINES).map { "line $it" }
         val text = formatShareText(info(logcat = lines), "")
-        assertTrue(text.contains("last $ISSUE_LOGCAT_MAX_LINES lines"))
-        assertFalse(text.contains("line 1\n"))       // oldest lines dropped
-        assertTrue(text.contains("line 200"))         // newest lines kept
+        assertTrue(text.contains("last $LOGCAT_TAIL_LINES lines"))
+        assertTrue(text.contains("line 1\n"))
+        assertTrue(text.contains("line $LOGCAT_TAIL_LINES"))
+    }
+
+    @Test
+    fun `share text keeps the newest lines when the capture overflows`() {
+        val lines = (1..SHARE_LOGCAT_MAX_LINES + 50).map { "line $it" }
+        val text = formatShareText(info(logcat = lines), "")
+        assertTrue(text.contains("last $SHARE_LOGCAT_MAX_LINES lines"))
+        assertFalse(text.contains("line 1\n"))                        // oldest dropped
+        assertTrue(text.contains("line ${SHARE_LOGCAT_MAX_LINES + 50}")) // newest kept
     }
 
     // ── Issue body ───────────────────────────────────────────────────────────
@@ -119,6 +131,39 @@ class BugReportFormatTest {
         val lines = (1..400).map { "06-01 12:00:00.000 W/Filament: " + "x".repeat(180) }
         val url = buildGitHubIssueUrl(info(logcat = lines), "note")
         assertTrue("url length ${url.length}", url.length <= ISSUE_URL_MAX_LENGTH)
+    }
+
+    @Test
+    fun `issue url packs a usable log window, not a couple of dozen lines`() {
+        // Regression guard for #3390: the coarse fallback ladder used to snap to
+        // 30 lines — too short to see a repeating warning twice and measure its
+        // period. Realistic threadtime lines, so the budget arithmetic is real.
+        val lines = (1..ISSUE_LOGCAT_MAX_LINES).map {
+            val millis = (it % 1000).toString().padStart(3, '0')
+            "06-01 12:00:00.$millis  6543  6560 W Filament: throttled draw call skipped"
+        }
+        val url = buildGitHubIssueUrl(info(logcat = lines), "Repeating warning in the AR view")
+        assertTrue("url length ${url.length}", url.length <= ISSUE_URL_MAX_LENGTH)
+
+        val body = URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
+        val packed = Regex("""App log \(last (\d+) lines\)""").find(body)!!.groupValues[1].toInt()
+        assertTrue("packed only $packed lines", packed >= 60)
+        assertTrue(body.contains("| Screen | Demo · model-viewer |"))
+    }
+
+    // ── Log compaction ───────────────────────────────────────────────────────
+
+    @Test
+    fun `compaction drops the date and pid columns but keeps the milliseconds`() {
+        // Milliseconds are what makes a repeating warning measurable; the date
+        // and the pid/tid pair are constant across the whole capture.
+        assertEquals(
+            "12:00:00.123 W Filament: msg",
+            compactLogLine("06-01 12:00:00.123  6543  6560 W Filament: msg"),
+        )
+        // Other shapes only lose their leading date.
+        assertEquals("12:00:00.123 I/Demo: msg", compactLogLine("06-01 12:00:00.123 I/Demo: msg"))
+        assertEquals("a free-form line", compactLogLine("a free-form line"))
     }
 
     @Test
