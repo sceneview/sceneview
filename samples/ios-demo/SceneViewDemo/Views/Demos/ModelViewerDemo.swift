@@ -58,6 +58,23 @@ struct ModelViewerDemo: View {
     /// `qa_mode` only — the interactive first-run subject is unchanged.
     private static let storeHeroAssetName = "cyberpunk_hovercar"
 
+    /// The stage App Store slot 1 is meant to stand on, drawn as a skybox.
+    ///
+    /// The interactive defaults are `environments[0]` (`studio`) with the
+    /// skybox *hidden*, so the viewport shows the model over the clear colour
+    /// — a deliberate look for a viewer you are about to orbit and pick models
+    /// in, and unchanged here. It is the wrong look for a store frame: with no
+    /// backdrop drawn, the hovercar's dark bodywork reads as a grey silhouette
+    /// on near-black. That exact frame was already rejected once — #2896 was
+    /// filed about a "dim, dark-on-black" capture, and the fix recorded at the
+    /// time was to stage the hero in `studio_warm`, an actual photo studio
+    /// (seamless cyclorama, softboxes) whose bright backdrop separates the
+    /// silhouette at every orbit angle. The redesign (#3308) rewrote this view
+    /// and dropped that constant, so the store frames silently went back to
+    /// dark-on-black — the same class of regression #3382 fixed for the hero
+    /// model. Applied under `qa_mode` only.
+    private static let storeHeroEnvironmentName = "studio_warm"
+
     /// Fitted framing: the bounding sphere plus 12 % of air, which clears the
     /// dock band at the bottom of the viewport.
     private static let framingMargin: Float = 1.12
@@ -265,12 +282,19 @@ struct ModelViewerDemo: View {
         }
         #endif
         .task {
-            // Under `qa_mode` the store hero replaces the first-run default,
-            // so slot 1 captures the hovercar instead of repeating slot 2's
-            // helmet (#3006). Assigned before the load so a single pass runs.
-            if qaMode,
-               let hero = Self.bundledModels.first(where: { $0.assetName == Self.storeHeroAssetName }) {
-                selectedModel = hero
+            // Under `qa_mode` the store hero and its stage replace the
+            // first-run defaults, so slot 1 captures the hovercar instead of
+            // repeating slot 2's helmet (#3006), lit against a drawn backdrop
+            // instead of the clear colour (#2896). Assigned before the load so
+            // a single pass runs.
+            if qaMode {
+                if let hero = Self.bundledModels.first(where: { $0.assetName == Self.storeHeroAssetName }) {
+                    selectedModel = hero
+                }
+                if let stage = Self.environments.first(where: { $0.assetName == Self.storeHeroEnvironmentName }) {
+                    environment = stage
+                    showSkybox = true
+                }
             }
             await loadBundled(selectedModel)
         }

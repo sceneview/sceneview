@@ -61,6 +61,22 @@ enum DeepLinkRouter {
     /// Read via `@AppStorage("qa_mode") var qaMode: Bool` in any demo view.
     static let qaModeDefaultsKey: String = "qa_mode"
 
+    /// `true` when the process was launched by a script rather than by a human
+    /// — the App Store screenshot pipeline, or the XCUITest suite. Both route
+    /// straight to a demo with `-demo <id>`, which no interactive launch ever
+    /// carries, so the argument is the signal.
+    ///
+    /// **Why the app needs to know.** Scripted passes also set `-qa_mode 1` to
+    /// freeze auto-rotation, and QA mode paints an on-screen "QA ×" affordance
+    /// (`DemoSheet`) so a human who toggled it can toggle it back. On a capture
+    /// pass there is no human, and the frame becomes a published App Store
+    /// asset. The chip arrived with the redesign (#3308), after the last store
+    /// capture, so it never shipped — but it would have been baked into the
+    /// #3384 refresh and every one after it. Suppress *chrome that exists only
+    /// to serve a human*, never the determinism (frozen pose, framing) the
+    /// pipeline actually relies on.
+    static let isScriptedCapture: Bool = CommandLine.arguments.contains("-demo")
+
     /// Smallest accepted camera-distance / framing value. Matches Android's
     /// `DeepLinkRouter.CAMERA_DISTANCE_MIN` exactly, so a value rejected on
     /// one platform is rejected on the other — see [validateCameraDistance].
