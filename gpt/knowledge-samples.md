@@ -581,6 +581,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `camera-gestures` — Camera & Gestures. Orbit, pan, zoom and per-node edit gestures.
 - `picking-collision` — Picking & Collision. Ray hit-test with picked ViewNode overlays.
+- `gesture-feedback-preview` — Gesture Feedback Preview. On-model rotation ring, scale badge and drag shadow.
 
 ### Advanced
 

@@ -27,15 +27,23 @@ Install [Claude Code](https://claude.ai/code), then **either** install the offic
 /plugin install sceneview@sceneview
 ```
 
-**Or** add just the MCP server directly:
+**Or** add just the MCP server directly, from your project directory:
 
 ```bash
-echo '{
-  "mcpServers": {
-    "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] }
-  }
-}' > .claude/mcp.json
+claude mcp add --scope project sceneview -- npx -y sceneview-mcp
 ```
+
+That writes `.mcp.json` **at the project root** — the only project-scoped MCP file Claude Code reads. Claude Code does *not* read `.claude/mcp.json` or `~/.claude/mcp.json`: a config placed there is silently ignored, and the server never appears. To write the file by hand instead:
+
+```json
+{
+  "mcpServers": {
+    "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] }
+  }
+}
+```
+
+Claude Code reads `.mcp.json` at session start and asks you to approve the server the first time. Verify with `claude mcp list` — `sceneview` should show `✔ Connected`. Use `--scope user` on the `add` command instead to enable it in all your projects (that one is stored in `~/.claude.json`).
 
 Now Claude has the full SceneView API. Ask it to:
 

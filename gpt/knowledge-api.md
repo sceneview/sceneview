@@ -3052,6 +3052,53 @@ The `camera-gestures` demo in `samples/android-demo` (Node Gestures tab) is the
 canonical end-to-end example: it wires every flag to a UI switch, a
 scale-sensitivity slider, and a live-transform overlay.
 
+### On-model gesture feedback (opt-in)
+
+Nothing is drawn on an editable node unless the app asks for it. Two layers:
+
+```kotlin
+val engine = rememberEngine()
+val view = rememberView(engine)          // hoist it and pass the SAME view to the scene
+Box {
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, view = view, /* … */)
+    modelNode?.let { node ->
+        NodeEditingOverlay(
+            state = rememberNodeEditingFeedback(node),
+            view = view,
+            modifier = Modifier.matchParentSize(),
+            selected = node == selectedNode,
+        )
+    }
+}
+```
+
+`NodeEditingOverlay` draws the ready-made visuals: a selection ring at the node's base,
+a rotation ring with a live sweep arc and yaw badge, a scale percentage badge that
+bounces at the `editableScaleRange` bounds, and a contact shadow while dragging.
+
+To build custom feedback instead, read `rememberNodeEditingFeedback(node)` directly —
+it is snapshot state, so a composable reading it recomposes live during the gesture:
+`isPressed` / `isArmed` (finger down, gesture not yet identified), `activeKinds`,
+`yawDegrees`, `rotationDeltaDegrees`, `scalePercent`, `scaleLimit`, `scaleLimitHits`,
+`isGrowing`, `moveWorldPosition`. Outside Compose, register a
+`NodeEditingListener` with `node.addEditingListener(…)` — any number of listeners can
+attach without taking the single-slot `onMove` / `onRotate` / `onScale` callbacks.
+
+Key facts an AI codegen pass must get right:
+
+- Pass the **same** Filament `View` to the scene and the overlay; the overlay projects
+  world → screen through it. Hoist it with `rememberView` / `rememberARView`.
+- Register the feedback on the node the gestures actually **edit**. When a `ModelNode`
+  is parented under an `AnchorNode` and the anchor owns the drag (`isPositionEditable`
+  defaults to `false` on a plain `Node`), observe both.
+- `yawDegrees` comes from an `atan2` extraction, not `node.rotation.y` — the Euler
+  decomposition saturates at ±90° on the Y axis.
+- `scaleLimit` is non-null exactly while `editableScaleRange` is rejecting updates. That
+  range is a window on **absolute** local scale, so a model placed with `scaleToUnits`
+  can start outside it and never respond to a pinch at all — see `NodeScaleEdit`.
+
+The non-AR `gesture-feedback-preview` demo exercises every state on any emulator.
+
 ---
 
 ## Resource Loading

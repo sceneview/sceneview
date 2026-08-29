@@ -6,7 +6,7 @@
 - [ ] Test with MCP inspector: `npx @modelcontextprotocol/inspector node dist/index.js`
 - [ ] Verify all 5 samples return valid Kotlin
 - [ ] Verify `get_setup("3d")` and `get_setup("ar")` return correct snippets
-- [ ] Test in Claude Code: add to `.claude/mcp.json`, run `/mcp`, ask for an AR app
+- [ ] Test in Claude Code: `claude mcp add --scope project sceneview -- npx -y sceneview-mcp` (writes `.mcp.json` at the project root), confirm `claude mcp list` shows `✔ Connected`, run `/mcp`, ask for an AR app
 - [ ] Test in Claude Desktop: add config, restart, ask for a 3D model viewer
 - [ ] Record demo video (see storyboard.md)
 
