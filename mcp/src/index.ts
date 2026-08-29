@@ -23,6 +23,12 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import {
+  buildDiscoverResult,
+  DiscoverRequestSchema,
+  SERVER_CAPABILITIES,
+  SERVER_INFO,
+} from "./discover.js";
 import { DEMO_WITH_SETTINGS_EXAMPLE, SKETCHFAB_STREAMING_EXAMPLE } from "./examples.js";
 import { LATEST_SCENEVIEW_RELEASE, PACKAGE_VERSION } from "./generated/version.js";
 import { fetchKnownIssues } from "./issues.js";
@@ -53,10 +59,19 @@ function logStartupBanner(): void {
 
 logStartupBanner();
 
-const server = new Server(
-  { name: "sceneview-mcp", version: PACKAGE_VERSION },
-  { capabilities: { resources: {}, tools: {} } }
-);
+// `SERVER_INFO` / `SERVER_CAPABILITIES` live in `./discover.ts` so the
+// handshake and `server/discover` answer the identity/capability question the
+// same way, from one source.
+const server = new Server({ ...SERVER_INFO }, { capabilities: { ...SERVER_CAPABILITIES } });
+
+// ─── server/discover (MCP 2026-07-28) ────────────────────────────────────────
+//
+// Handshake-free discovery: answered before `initialize`, with no session and
+// no negotiated version. The SDK routes on the method literal and imposes no
+// pre-initialization gate, so registering the handler is enough. See
+// `./discover.ts` for why we answer a 2026-07-28 method while serving
+// 2025-11-25 (issue #3349).
+server.setRequestHandler(DiscoverRequestSchema, async () => buildDiscoverResult());
 
 // ─── Telemetry (anonymous, opt-out via SCENEVIEW_TELEMETRY=0) ────────────────
 //
