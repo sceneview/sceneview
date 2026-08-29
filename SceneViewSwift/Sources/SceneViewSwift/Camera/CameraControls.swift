@@ -119,7 +119,7 @@ public struct CameraControls: Sendable {
     public var orbitRadius: Float = 2.0
 
     /// Default padding factor applied by ``fitRadius(boundsExtents:fovYDegrees:aspect:margin:)``
-    /// — 15 % of breathing room around the content's bounding sphere. Exposed
+    /// — 15 % of breathing room around the content's fitted extent. Exposed
     /// so ``SceneView/framingMargin(_:)`` and the auto-framing pass share one
     /// definition of "unchanged framing" (#2896).
     public static let defaultFitMargin: Float = 1.15
@@ -238,14 +238,34 @@ public struct CameraControls: Sendable {
     /// overflowed and clipped on every edge. This computes a radius that
     /// scales-to-fit, closing the #1041 follow-up.
     ///
-    /// The box is treated as its bounding sphere (half its space diagonal)
-    /// so the fit holds for every orbit angle, not just the front view.
-    /// The camera looks at the box centre, so the required distance is
-    /// `sphereRadius / sin(halfFov)`. The frustum is narrower on whichever
-    /// axis has the smaller FOV — for portrait phones that is the
-    /// horizontal axis (`aspect < 1`), so both the vertical FOV and the
-    /// aspect-derived horizontal FOV are considered and the smaller half-FOV
-    /// wins.
+    /// The box is fitted **per FOV axis on its projected extent**, not as a
+    /// bounding sphere. Until #3383 the box was collapsed to half its space
+    /// diagonal and divided by `sin` of the *smaller* half-FOV, which charged
+    /// every subject for the diagonal of a box it does not occupy and charged
+    /// the vertical axis the horizontal axis's distance. A 3 m column in a
+    /// portrait viewport was pushed to 5.90 m when 3.00 m frames it — the
+    /// subject filled barely half the height it could.
+    ///
+    /// Framing stays invariant to ``azimuth`` — an auto-rotating model must
+    /// not clip when it turns broadside — by fitting the box's *sweep* about
+    /// the world Y axis: a cylinder of radius `hypot(halfX, halfZ)` and
+    /// half-height `halfY`. That sweep is fitted exactly, via its support
+    /// function, so the result is the tightest azimuth-invariant distance
+    /// rather than an upper bound on one.
+    ///
+    /// The fit does depend on ``elevation`` (the sphere fit did not), because
+    /// a subject's projected height and width change as the camera rises.
+    /// Orbiting vertically after the fit can therefore graze the frame on
+    /// extreme pitches; the default ``defaultFitMargin`` of 1.15 covers the
+    /// worst case measured (a 4 m panel in landscape, which needs 1.124).
+    ///
+    /// **Depth** still counts, but anisotropically: `halfZ` enters through the
+    /// swept radius instead of being folded into one isotropic radius that the
+    /// vertical axis then pays for as well. A shallow subject no longer buys
+    /// the distance a deep one needs.
+    ///
+    /// The returned distance is never larger than the pre-#3383 one, so no
+    /// scene is framed further away than it used to be.
     ///
     /// - Parameters:
     ///   - boundsExtents: The full width / height / depth of the content
@@ -258,8 +278,8 @@ public struct CameraControls: Sendable {
     ///   - margin: Extra padding factor applied to the fitted radius so the
     ///     content does not touch the viewport edges. Default
     ///     ``defaultFitMargin`` (15 % breathing room). Below `1.0` the camera
-    ///     dollies closer and the empty corners of the bounding sphere leave
-    ///     the frame — see ``SceneView/framingMargin(_:)``.
+    ///     dollies closer and the subject's extremities leave the frame — see
+    ///     ``SceneView/framingMargin(_:)``.
     /// - Returns: The orbit radius that frames the box, clamped to
     ///   `[minRadius, maxRadius]`.
     public func fitRadius(
@@ -268,22 +288,44 @@ public struct CameraControls: Sendable {
         aspect: Float = 0.46,
         margin: Float = CameraControls.defaultFitMargin
     ) -> Float {
-        // Bounding-sphere radius — half the box's space diagonal — so the
-        // fit is orbit-angle invariant.
-        let half = boundsExtents * 0.5
-        let sphereRadius = simd_length(half)
-        guard sphereRadius.isFinite, sphereRadius > 0 else { return orbitRadius }
+        let half = simd_abs(boundsExtents) * 0.5
+        guard half.x.isFinite, half.y.isFinite, half.z.isFinite,
+              half.x > 0 || half.y > 0 || half.z > 0 else { return orbitRadius }
+
+        // Half-extents of the box's sweep about world Y — a cylinder. Sweeping
+        // is what makes the fit azimuth-invariant (see the doc comment).
+        let sweptRadius = (half.x * half.x + half.z * half.z).squareRoot()
 
         let fovY = max(fovYDegrees, 1) * .pi / 180
-        // Horizontal FOV from the vertical FOV and the viewport aspect.
+        let tanY = tan(fovY / 2)
+        // Horizontal half-FOV tangent from the vertical FOV and the aspect.
         let safeAspect = (aspect.isFinite && aspect > 0) ? aspect : 0.46
-        let fovX = 2 * atan(tan(fovY / 2) * safeAspect)
-        // The limiting axis is the one with the *smaller* FOV.
-        let halfFov = min(fovY, fovX) / 2
-        let sinHalf = sin(halfFov)
-        guard sinHalf > 0 else { return orbitRadius }
+        let tanX = tanY * safeAspect
+        guard tanY > 0, tanX > 0 else { return orbitRadius }
 
-        let fitted = (sphereRadius / sinHalf) * margin
+        // Camera basis at azimuth 0 — the sweep makes azimuth irrelevant, so
+        // this loses no generality and avoids a cross product that degenerates
+        // at elevation ±90°:
+        //   back = (0, s, c)    right = (1, 0, 0)    up = (0, c, -s)
+        let s = sin(elevation)
+        let c = cos(elevation)
+
+        // A point `v` (relative to the target) is inside the frustum at
+        // distance `d` iff `d >= v·back + |v·axis| / tanAxis` on both axes.
+        // Maximising the right-hand side over the cylinder is its support
+        // function `support(w) = half.y·|w.y| + sweptRadius·hypot(w.x, w.z)`
+        // evaluated at `w = back ± axis / tanAxis`.
+        //
+        // Horizontal: w = (±1/tanX, s, c) — both signs give the same support.
+        let inverseTanX = 1 / tanX
+        let horizontal = half.y * abs(s)
+            + sweptRadius * (inverseTanX * inverseTanX + c * c).squareRoot()
+        // Vertical: w = (0, s ± c/tanY, c ∓ s/tanY) — the two signs differ.
+        let verticalUpper = half.y * abs(s + c / tanY) + sweptRadius * abs(c - s / tanY)
+        let verticalLower = half.y * abs(s - c / tanY) + sweptRadius * abs(c + s / tanY)
+
+        let fitted = Swift.max(horizontal, Swift.max(verticalUpper, verticalLower)) * margin
+        guard fitted.isFinite, fitted > 0 else { return orbitRadius }
         return Swift.min(Swift.max(fitted, minRadius), maxRadius)
     }
 
