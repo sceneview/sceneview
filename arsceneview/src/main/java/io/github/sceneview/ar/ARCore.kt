@@ -70,8 +70,29 @@ class ARCore(
     var isCameraPermissionDenied: Boolean = false
         private set
 
+    /**
+     * Called on the main thread whenever the ARCore availability verdict changes (#3374).
+     *
+     * `null` means "nothing to report": ARCore is installed and current, or the check is still
+     * running. A non-null value is terminal until the user acts — the device is not capable,
+     * Google Play Services for AR is missing or too old, or the check itself failed.
+     *
+     * Before #3374 an unsupported device produced no signal at all: the install request threw,
+     * the exception was swallowed into [onArSessionFailed], and hosts that had not wired that
+     * callback (every demo) sat on their own "initializing" copy forever.
+     * [ARSceneView] wires this to its built-in `arCoreAvailabilityOverlay`.
+     */
+    var onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null
+
+    /** The last verdict published through [onARCoreAvailability]. `null` when AR can start. */
+    var arCoreAvailability: ARCoreAvailability? = null
+        private set
+
     private var cameraPermissionRequested = false
     private var installRequested = false
+
+    /** Last context a session was created from, so a retry can create another one. */
+    private var lastContext: Context? = null
 
     internal var session: ARSession? = null
         private set
@@ -124,6 +145,7 @@ class ARCore(
      * @param context Android context.
      */
     fun createSession(context: Context) {
+        lastContext = context
         try {
             session = ARSession(
                 context,
@@ -132,9 +154,24 @@ class ARCore(
                 onPaused = onSessionPaused,
                 onConfigChanged = onSessionConfigChanged
             ).also(onSessionCreated)
+            publishAvailability(null)
         } catch (exception: Exception) {
-            onException(exception)
+            onSessionCreateFailed(exception)
         }
+    }
+
+    /**
+     * Reports a session-creation failure as a state the UI can show, then forwards it (#3374).
+     *
+     * `ArCoreApk` answering `SUPPORTED_INSTALLED` is not a promise that `Session()` will
+     * succeed — an emulator with Google Play Services for AR installed still fails to create
+     * one. That left the exact hang #3374 is about, one step further along: no verdict, no
+     * session, and the host's "initializing" copy up forever. Publishing
+     * [ARCoreAvailability.SessionFailed] closes that last silent path.
+     */
+    internal fun onSessionCreateFailed(exception: Exception) {
+        publishAvailability(ARCoreAvailability.SessionFailed)
+        onException(exception)
     }
 
     /**
@@ -146,40 +183,117 @@ class ARCore(
     fun checkPermissionAndInstall(handler: ARPermissionHandler): Boolean {
         // Camera permission
         if (checkCameraPermission && !handler.hasCameraPermission()) {
-            if (!cameraPermissionRequested) {
-                cameraPermissionRequested = true
-                handler.requestCameraPermission { granted ->
-                    isCameraPermissionDenied = !granted
-                    if (!granted) {
-                        // `shouldShowPermissionRationale()` is historically inverted on this
-                        // interface: it answers `true` once the system stops asking.
-                        onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
-                    }
-                    // On grant the dialog's dismissal resumes the activity, and `resume()`
-                    // creates the session through the branch below.
-                }
-            }
+            requestCameraPermissionOnce(handler)
             // Denied (or still being asked): hold the session back instead of letting
             // `Session()` throw `CameraNotAvailable` on the next resume.
-        } else {
-            isCameraPermissionDenied = false
-            try {
-                if (checkAvailability && !installRequested &&
-                    handler.checkARCoreAvailability() != Availability.SUPPORTED_INSTALLED
-                ) {
-                    if (handler.requestARCoreInstall(!installRequested)) {
-                        installRequested = true
-                    } else {
-                        return true
-                    }
-                } else {
-                    return true
-                }
-            } catch (e: Exception) {
-                onException(e)
-            }
+            return false
         }
+        isCameraPermissionDenied = false
+        return try {
+            checkARCoreInstall(handler)
+        } catch (e: Exception) {
+            // `requestInstall` throws `Unavailable*Exception` on a device it cannot serve.
+            // Classify it so the UI can explain, then still report it to the host.
+            publishAvailability(e.toARCoreAvailability())
+            onException(e)
+            false
+        }
+    }
+
+    /** Asks for the camera permission at most once per instance. */
+    private fun requestCameraPermissionOnce(handler: ARPermissionHandler) {
+        if (cameraPermissionRequested) return
+        cameraPermissionRequested = true
+        handler.requestCameraPermission { granted ->
+            isCameraPermissionDenied = !granted
+            if (!granted) {
+                // `shouldShowPermissionRationale()` is historically inverted on this
+                // interface: it answers `true` once the system stops asking.
+                onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
+            }
+            // On grant the dialog's dismissal resumes the activity, and `resume()` creates
+            // the session through [checkARCoreInstall].
+        }
+    }
+
+    /**
+     * Asks ARCore whether it can serve this device and launches the install / update flow
+     * when there is one, publishing the verdict on the way (#3374).
+     *
+     * @return `true` when the session may be created now.
+     */
+    private fun checkARCoreInstall(handler: ARPermissionHandler): Boolean {
+        if (!checkAvailability || installRequested) {
+            // Availability checks disabled, or the user is coming back from the Play Store
+            // install we requested: the session may start, so drop any card.
+            publishAvailability(null)
+            return true
+        }
+        val availability = handler.checkARCoreAvailability()
+        val unavailable = availability.toARCoreAvailability()
+        if (unavailable == null) {
+            publishAvailability(null)
+            // Still `UNKNOWN_CHECKING`? ARCore has not answered yet: hold the session back
+            // and let the next resume ask again, rather than requesting an install for a
+            // device we have not classified.
+            return availability == Availability.SUPPORTED_INSTALLED
+        }
+        publishAvailability(unavailable)
+        // Only the install / update states have a Play Store flow to launch.
+        // `UNSUPPORTED_DEVICE_NOT_CAPABLE` makes `requestInstall` throw, and a failed check
+        // has nothing to install — both are surfaced, not retried behind the user's back.
+        if (unavailable != ARCoreAvailability.NotInstalled &&
+            unavailable != ARCoreAvailability.NeedsUpdate
+        ) {
+            return false
+        }
+        if (!handler.requestARCoreInstall(!installRequested)) {
+            // ARCore reports it is installed after all.
+            publishAvailability(null)
+            return true
+        }
+        installRequested = true
         return false
+    }
+
+    /** Publishes [availability] to [onARCoreAvailability] when it actually changed. */
+    private fun publishAvailability(availability: ARCoreAvailability?) {
+        if (arCoreAvailability == availability) return
+        arCoreAvailability = availability
+        onARCoreAvailability?.invoke(availability)
+    }
+
+    /**
+     * Re-runs the ARCore availability check after a verdict reported through
+     * [onARCoreAvailability], launching the install / update flow when there is one (#3374).
+     *
+     * Safe to call from an "Install" / "Update" / "Try again" tap: the install request is
+     * un-latched first, so a user who cancelled the Play Store flow can start it again.
+     *
+     * @param handler the permission handler; defaults to the one passed to [create].
+     */
+    fun retryARCoreAvailability(handler: ARPermissionHandler? = permissionHandler) {
+        // A session that failed to be created is retried by creating another one — the
+        // availability check already said "installed" and would say so again (#3374).
+        if (arCoreAvailability == ARCoreAvailability.SessionFailed) {
+            retrySession()
+            return
+        }
+        handler ?: return
+        installRequested = false
+        checkPermissionAndInstall(handler)
+    }
+
+    /**
+     * Drops a session that failed to be created and creates a fresh one, resuming it when the
+     * host is resumed. No-op before any creation attempt.
+     */
+    fun retrySession(context: Context? = lastContext) {
+        val target = context ?: return
+        publishAvailability(null)
+        destroy()
+        createSession(target)
+        session?.resume()
     }
 
     /**

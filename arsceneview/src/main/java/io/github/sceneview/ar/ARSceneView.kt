@@ -777,6 +777,28 @@ fun ARSceneView(
         ARCameraPermissionOverlay(it)
     },
     /**
+     * What to draw over the scene when ARCore cannot start a session on this device (#3374):
+     * the device is not capable, Google Play Services for AR is missing or too old, or the
+     * availability check failed. Receives an [ARCoreAvailabilityState] whose
+     * [ARCoreAvailabilityState.retry] launches the install / update flow, or re-runs the check.
+     *
+     * Without it, an unsupported device produces no visible state at all and the host's own
+     * "initializing" copy stays up forever. Defaults to the built-in
+     * [ARCoreAvailabilityOverlay]; pass `null` to draw nothing and handle
+     * [onARCoreAvailability] yourself.
+     */
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = {
+        ARCoreAvailabilityOverlay(it)
+    },
+    /**
+     * Called when the ARCore availability verdict changes (#3374). `null` means AR can start
+     * (or the check is still running); any other value is terminal until the user acts.
+     *
+     * Use it to replace your own "initializing" chrome with an explicit state — the built-in
+     * [arCoreAvailabilityOverlay] already explains the situation over the scene.
+     */
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    /**
      * DSL block for declaring AR nodes via [ARSceneScope].
      */
     content: (@Composable ARSceneScope.() -> Unit)? = null
@@ -949,6 +971,9 @@ fun ARSceneView(
     // Camera permission denial (#3308): `null` while granted or not yet answered, otherwise
     // whether the system has stopped asking. Cleared when a session finally comes up.
     var cameraPermissionDenial by remember { mutableStateOf<Boolean?>(null) }
+    // ARCore availability (#3374): `null` while AR can start or the check is still running,
+    // otherwise why it cannot. Cleared when a session finally comes up.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     val arCore = remember {
         // Snapshotted at first composition. ARCore requires setPlaybackDataset() to be called
         // BEFORE the first resume(), so we capture the param value once when the session is
@@ -960,6 +985,7 @@ fun ARSceneView(
         ARCore(
             onSessionCreated = { session ->
                 cameraPermissionDenial = null
+                arCoreAvailability = null
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
                 // resume(), and configure() happens here, then resume() runs immediately
@@ -1114,6 +1140,13 @@ fun ARSceneView(
     }
 
     arCore.onCameraPermissionDenied = { permanently -> cameraPermissionDenial = permanently }
+    // Reassigned on each composition like the denial callback above, so the host lambda is
+    // never stale. Both are set during composition, before the `DisposableEffect` below runs
+    // `arCore.create()` — the first verdict is therefore never missed (#3374).
+    arCore.onARCoreAvailability = { availability ->
+        arCoreAvailability = availability
+        onARCoreAvailability?.invoke(availability)
+    }
 
     DisposableEffect(lifecycle) {
         arCore.create(context, permissionHandler, sessionFeatures)
@@ -1564,6 +1597,19 @@ fun ARSceneView(
                 )
             }
             cameraPermissionOverlay(state)
+        }
+
+        // The camera permission card wins when both apply: granting the camera is the first
+        // step, and stacking two explanations over the scene helps nobody (#3374).
+        val availability = arCoreAvailability
+        if (denial == null && availability != null && arCoreAvailabilityOverlay != null) {
+            val state = remember(availability, permissionHandler) {
+                ARCoreAvailabilityState(
+                    availability = availability,
+                    retry = { arCore.retryARCoreAvailability(permissionHandler) },
+                )
+            }
+            arCoreAvailabilityOverlay(state)
         }
     }
 
