@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
-import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
@@ -37,9 +36,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -47,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
@@ -362,7 +357,6 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         // re-opening re-captures in <100 ms.
         var bugReport by remember { mutableStateOf<PendingBugReport?>(null) }
         val reportScope = rememberCoroutineScope()
-        val snackbarHostState = remember { SnackbarHostState() }
 
         fun openBugReport() {
             if (bugReport != null) return
@@ -409,42 +403,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // after the sheet is gone. The app-start sweep
                 // (sweepStaleFeedbackMedia) reclaims the few-hundred-KB file
                 // on the next launch instead.
+                // No "sent" confirmation on return to the app (#3398): the
+                // hand-off itself is the acknowledgement — the browser opens
+                // on the pre-filled GitHub issue, or the system share sheet
+                // takes over. The snackbar that used to greet the user back
+                // (#3263, positioned in #3325) was redundant with it, and
+                // could not be truthful anyway — with no GitHub API call on
+                // device, "sent" only ever meant "intent launched".
                 onDismiss = { bugReport = null },
-                onSent = { message ->
-                    reportScope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = message,
-                            duration = SnackbarDuration.Long,
-                        )
-                    }
-                },
             )
         }
-
-        // Confirms a sent bug report (#3263) — sits above everything else in
-        // this Box, same z-order reasoning as the update banner above. This Box
-        // wraps the whole NavHost, so it has no visibility into whichever
-        // bottom chrome the current screen shows (RootScreen's NavigationBar,
-        // ~80dp, or a DemoScaffold's floating dock). Previously it had zero
-        // bottom padding and rendered flush with the window edge — on top of
-        // that chrome's buttons in z-order instead of floating clear above
-        // them, and only partly visible behind the gesture nav bar (#3325).
-        // `SETTINGS_FAB_RESERVED_SPACE` (104dp, `DemoScaffold.kt`) is the
-        // dock's own floor and comfortably clears the shorter NavigationBar
-        // too, so it doubles as the conservative clearance here.
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
-                )
-                .padding(horizontal = SceneViewTokens.Space.md)
-                .padding(bottom = SETTINGS_FAB_RESERVED_SPACE + SceneViewTokens.Space.sm),
-        )
     }
 }
 

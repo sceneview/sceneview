@@ -75,20 +75,19 @@ import kotlinx.coroutines.launch
  * text only for the GitHub path, since a URL cannot carry the image, and the
  * UI says so).
  *
- * On a successful hand-off the sheet dismisses itself and [onSent] fires
- * with a short confirmation message for the host to surface (e.g. a
- * snackbar) — there is no server-side GitHub API call here (no auth token
- * on device), so "success" means the browser/share intent launched, not
- * that an issue was actually filed; the confirmation copy reflects that.
- * When no app can handle the intent, the sheet stays open and shows the
- * error inline instead (#3263).
+ * On a successful hand-off the sheet simply dismisses itself — the browser
+ * or share sheet opening over the app IS the visible confirmation, so no
+ * extra snackbar/toast greets the user on their return (#3398). There is no
+ * server-side GitHub API call here (no auth token on device), so "success"
+ * means the browser/share intent launched, not that an issue was actually
+ * filed. When no app can handle the intent, the sheet stays open and shows
+ * the error inline instead (#3263).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BugReportSheet(
     report: PendingBugReport,
     onDismiss: () -> Unit,
-    onSent: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -107,8 +106,6 @@ fun BugReportSheet(
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
     }
     val voicePrompt = stringResource(R.string.feedback_report_voice_prompt)
-    val sentGitHubMessage = stringResource(R.string.feedback_report_sent_github)
-    val sentShareMessage = stringResource(R.string.feedback_report_sent_share)
     val noAppError = stringResource(R.string.feedback_report_no_app)
     val speechLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -225,7 +222,6 @@ fun BugReportSheet(
                 onClick = {
                     if (openGitHubIssue(context, report.info, note)) {
                         sendError = null
-                        onSent(sentGitHubMessage)
                         onDismiss()
                     } else {
                         sendError = noAppError
@@ -245,7 +241,6 @@ fun BugReportSheet(
                 onClick = {
                     if (shareReport(context, report, note, includeScreenshot)) {
                         sendError = null
-                        onSent(sentShareMessage)
                         onDismiss()
                     } else {
                         sendError = noAppError

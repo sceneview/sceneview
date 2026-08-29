@@ -379,8 +379,6 @@
     <string name="feedback_report_open_github">Send to GitHub</string>
     <string name="feedback_report_share_chooser">Share bug report</string>
     <string name="feedback_report_no_app">No app available to send the report</string>
-    <string name="feedback_report_sent_github">GitHub opened — finish and submit there. Thanks!</string>
-    <string name="feedback_report_sent_share">Report shared — thanks!</string>
     <string name="feedback_report_voice_cd">Dictate description</string>
     <string name="feedback_report_voice_prompt">Describe the issue</string>
 </resources>
