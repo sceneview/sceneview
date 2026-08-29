@@ -49,6 +49,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,7 @@ import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
@@ -108,6 +110,23 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
     var selectedCategory by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
     var galleryOpen by rememberSaveable { mutableStateOf(false) }
+
+    // Publish the visible screen for the bug reporter (#3390). The tab
+    // selection lives here as local state, while the NavController the reporter
+    // can see has a single "list" destination covering all three tabs — so
+    // without this every report filed from the tab host was screen-less.
+    // The two sub-states matter as much as the tab: "Explore gallery" and a
+    // live AR session are the screens a bug is actually filed against.
+    val reportScreenLabel = when {
+        selectedTab == RootTab.Showcase && galleryOpen -> "Explore gallery"
+        selectedTab == RootTab.ArView && arSessionActive -> "AR View tab · session active"
+        else -> selectedTab.reportLabel
+    }
+    DisposableEffect(reportScreenLabel) {
+        CurrentRootScreen.label = reportScreenLabel
+        // A demo on top removes the tab host from composition; it names itself.
+        onDispose { CurrentRootScreen.label = null }
+    }
 
     // "What's new since you last tested" lives HERE, not inside the Showcase
     // tab, because the requirement is "on app open": the auto-open must fire
@@ -204,10 +223,21 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
     }
 }
 
-enum class RootTab(@StringRes val labelRes: Int, val icon: ImageVector) {
-    Showcase(R.string.tab_showcase, Icons.Filled.GridView),
-    ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr),
-    About(R.string.tab_about, Icons.Filled.Info),
+/**
+ * @param labelRes localized label shown in the bottom navigation bar.
+ * @param reportLabel English name of the tab as it appears in a bug report
+ *   (#3390). Deliberately not [labelRes]: issues are read in English whatever
+ *   the reporter's device locale, so a localized label would land untranslated
+ *   in the tracker.
+ */
+enum class RootTab(
+    @StringRes val labelRes: Int,
+    val icon: ImageVector,
+    val reportLabel: String,
+) {
+    Showcase(R.string.tab_showcase, Icons.Filled.GridView, "Showcase tab"),
+    ArView(R.string.tab_ar_view, Icons.Filled.ViewInAr, "AR View tab"),
+    About(R.string.tab_about, Icons.Filled.Info, "About tab"),
 }
 
 /**

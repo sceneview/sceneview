@@ -364,6 +364,16 @@
     <string name="feedback_report_screenshot_share_only">The screenshot is attached when you share — the GitHub link can\'t carry an image.</string>
     <string name="feedback_report_note_label">Describe the issue (optional)</string>
     <string name="feedback_report_note_placeholder">What happened? What did you expect?</string>
+    <!--
+      Names what the report carries, so "nothing leaves your device until you
+      choose" above is verifiable rather than a promise: %1$s is the screen the
+      report was filed from, %2$s the log-line count (#3390).
+    -->
+    <string name="feedback_report_attached">Attached: %1$s · %2$s</string>
+    <plurals name="feedback_report_log_lines">
+        <item quantity="one">%d log line</item>
+        <item quantity="other">%d log lines</item>
+    </plurals>
     <string name="feedback_report_privacy">Sent only through the app you pick — no account, no upload, no recording.</string>
     <string name="feedback_report_share">Share report</string>
     <string name="feedback_report_open_github">Send to GitHub</string>

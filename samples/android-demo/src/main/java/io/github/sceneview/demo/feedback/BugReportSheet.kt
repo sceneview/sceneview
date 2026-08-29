@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
@@ -54,11 +55,13 @@ import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
+import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlinx.coroutines.launch
 
 /**
@@ -211,6 +214,9 @@ fun BugReportSheet(
             )
 
             Spacer(Modifier.height(12.dp))
+            AttachedContextHint(info = report.info)
+
+            Spacer(Modifier.height(SceneViewTokens.Space.sm))
             PrivacyHint()
 
             Spacer(Modifier.height(16.dp))
@@ -336,6 +342,44 @@ private fun ScreenshotCard(
                 )
             }
         }
+    }
+}
+
+/**
+ * "Attached: Showcase tab · 1200 log lines" — the two things the report used to
+ * be missing, shown before it is sent (#3390).
+ *
+ * Worth the row: the sheet promises the report bundles context, and this is
+ * where the user (and a maintainer reading a screenshot of this sheet) can see
+ * *which* screen was captured and how deep the log actually goes.
+ */
+@Composable
+private fun AttachedContextHint(info: BugReportInfo) {
+    val screen = info.metadata["Screen"] ?: return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Outlined.Description,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            stringResource(
+                R.string.feedback_report_attached,
+                screen,
+                pluralStringResource(
+                    R.plurals.feedback_report_log_lines,
+                    info.logcat.size,
+                    info.logcat.size,
+                ),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

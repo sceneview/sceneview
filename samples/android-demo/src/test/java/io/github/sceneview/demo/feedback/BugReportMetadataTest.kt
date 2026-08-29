@@ -19,9 +19,12 @@ class BugReportMetadataTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
+    /** The demo route as declared by the `NavHost`, query argument included. */
+    private val demoRoute = "demo/{id}?model={model}"
+
     @Test
     fun `always captures the core device and app fields`() {
-        val metadata = captureBugReportMetadata(context, demoId = null)
+        val metadata = captureBugReportMetadata(context, ReportScreen())
         assertEquals(
             "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             metadata["App version"],
@@ -29,18 +32,43 @@ class BugReportMetadataTest {
         assertTrue(metadata.containsKey("Device"))
         assertTrue(metadata.containsKey("Android"))
         assertTrue(metadata.containsKey("ABI"))
-        assertTrue(metadata.containsKey("Screen"))
+        assertTrue(metadata.containsKey("Display"))
         assertTrue(metadata.containsKey("Locale"))
     }
+
+    @Test
+    fun `always names a screen, even when nothing identifies it`() {
+        // The row a maintainer reads first: it must never be missing (#3390).
+        assertEquals("unknown", screenRow(ReportScreen()))
+        assertEquals("Showcase tab", screenRow(ReportScreen(rootScreen = "Showcase tab")))
+        // A demo on top wins over both the root screen and the raw route.
+        assertEquals(
+            "Demo · model-viewer",
+            screenRow(
+                ReportScreen(
+                    demoId = "model-viewer",
+                    rootScreen = "Showcase tab",
+                    route = demoRoute,
+                ),
+            ),
+        )
+        // Last resort: the raw route, minus its query arguments.
+        assertEquals("demo/{id}", screenRow(ReportScreen(route = demoRoute)))
+    }
+
+    private fun screenRow(screen: ReportScreen): String? =
+        captureBugReportMetadata(context, screen)["Screen"]
 
     @Test
     fun `names the current demo when one is open and omits the row otherwise`() {
         assertEquals(
             "model-viewer",
-            captureBugReportMetadata(context, demoId = "model-viewer")["Demo"],
+            captureBugReportMetadata(context, ReportScreen(demoId = "model-viewer"))["Demo"],
         )
-        assertFalse(captureBugReportMetadata(context, demoId = null).containsKey("Demo"))
-        assertFalse(captureBugReportMetadata(context, demoId = "  ").containsKey("Demo"))
+        assertFalse(captureBugReportMetadata(context, ReportScreen()).containsKey("Demo"))
+        assertFalse(
+            captureBugReportMetadata(context, ReportScreen(demoId = "  ")).containsKey("Demo"),
+        )
     }
 
     @Test
