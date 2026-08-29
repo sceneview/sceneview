@@ -84,9 +84,19 @@ fragment {
     // fragment can be" — what the PERSON mask has to write to win every depth test.
     const float kNdcNearPlane = 1.0;
 
+    // Exact sRGB EOTF (IEC 61966-2-1), issue #3338 — copied verbatim from
+    // `camera_stream_depth.mat`; see `camera_stream_flat.mat` for the full rationale.
+    vec3 srgbToLinearExact(const vec3 srgb) {
+        vec3 s = clamp(srgb, 0.0, 1.0);
+        return mix(s * (1.0 / 12.92),
+                   pow((s + 0.055) * (1.0 / 1.055), vec3(2.4)),
+                   step(vec3(0.04045), s));
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        vec3 camera = inverseTonemapSRGB(texture(materialParams_cameraTexture, getUV0()).rgb);
+        vec3 camera = Inverse_Tonemap_Filmic(
+                srgbToLinearExact(texture(materialParams_cameraTexture, getUV0()).rgb));
         vec2 packed_depth = texture(materialParams_depthTexture, getUV0()).xy;
         float depth_mm = dot(packed_depth, vec2(255.f, 256.f * 255.f));
         float depth_m = depth_mm / 1000.f;

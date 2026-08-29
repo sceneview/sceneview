@@ -134,23 +134,33 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * depends on Filament — no ARCore types are involved. The `arsceneview` module calls it via
  * [rememberARView]. This avoids duplicating Filament View configuration across modules.
  *
- * The AR camera stream material (`camera_stream_flat.mat` / `camera_stream_depth.mat`) draws the
- * live camera feed by calling Filament's `inverseTonemapSRGB()` in its fragment shader. Despite
- * the name, that helper is **not** a plain sRGB→linear decode — the compiled shader expands to:
+ * The AR camera stream materials (`camera_stream_flat.mat`, `camera_stream_depth.mat`,
+ * `camera_stream_person_occlusion.mat`) draw the live camera feed. ARCore hands the buffer over
+ * with dataspace `0x08810000` (`STANDARD_BT709 | TRANSFER_SRGB | RANGE_FULL`), so the EGL external
+ * sampler has already done YUV→RGB and what the fragment shader reads is sRGB-encoded, full-range
+ * BT.709 RGB. To reach the framebuffer untouched, that pixel must be pre-distorted by the exact
+ * inverse of everything Filament applies downstream. Two legs, both of which must cancel exactly:
  *
- *   inverseTonemapSRGB(c) = Inverse_Tonemap_Filmic(pow(c, 2.2))
+ *   camera sRGB → sRGB EOTF (exact) → Inverse_Tonemap_Filmic → working space
+ *               → ToneMapper.Filmic → sRGB OETF (exact) → output = original camera image ✓
  *
- * i.e. it (1) decodes sRGB gamma **and** (2) inverts Filament's *Filmic* tone-map curve. It only
- * round-trips back to the original camera pixels if the View then re-applies the **Filmic** tone
- * mapper as its post-process step. The full pipeline for the camera background is therefore:
+ * **Tone-map leg.** `Inverse_Tonemap_Filmic` is the exact analytic inverse of [ToneMapper.Filmic],
+ * so the pair cancels term for term. Using [ToneMapper.Linear] here (as a previous fix for #657
+ * did) leaves the inverse-Filmic curve baked into the feed with nothing to cancel it — the camera
+ * background comes out washed-out and low-contrast (issue #1434). [ToneMapper.Filmic] is the only
+ * tone mapper that cancels the shader's curve, and it is also the right curve for virtual content.
  *
- *   camera sRGB → pow(2.2) → Inverse_Tonemap_Filmic → working space
- *               → ToneMapper.Filmic → sRGB output  = original camera image ✓
+ * **Transfer leg.** Filament's color-grading output stage is Rec709-sRGB-D65, i.e. the exact
+ * piecewise sRGB OETF. The materials used to decode with Filament's `inverseTonemapSRGB()` helper,
+ * which expands to `Inverse_Tonemap_Filmic(pow(c, 2.2))` — and `pow(c, 2.2)` only approximates the
+ * sRGB curve, so `sRGB_OETF(pow(c, 2.2))` was not the identity. The residual reached −8.5/255 in
+ * the shadows (peak at code 16) and crossed to +1.5/255 in the highlights: achromatic, so not a
+ * tint, but an S-curve contrast boost applied to the camera background only, grading the real
+ * world differently from the virtual content composited over it (issue #3338). The materials now
+ * decode with the exact IEC 61966-2-1 EOTF, which round-trips bit-exact at every 8-bit code.
  *
- * Using [ToneMapper.Linear] here (as a previous fix for #657 did) leaves the inverse-Filmic curve
- * baked into the feed with nothing to cancel it — the camera background comes out washed-out and
- * low-contrast (issue #1434). [ToneMapper.Filmic] is the only tone mapper that correctly cancels
- * the shader's `inverseTonemapSRGB`, and it is also the right curve for the virtual 3D content.
+ * Both legs live in the `.mat` sources — changing the tone mapper here without changing them (or
+ * vice versa) breaks the cancellation.
  *
  * Unlike [createView], the AR view keeps bloom and ambient occlusion **off** so they cannot tint
  * the camera background — those were the real source of the oversaturation/vignetting in #657.
@@ -177,7 +187,9 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     // Filmic tone mapper: the AR camera-stream shader pre-applies Inverse_Tonemap_Filmic, so the
     // Filmic post-process re-applies the matching forward curve and the camera background round-
     // trips back to the original pixels. Using ToneMapper.Linear here leaves the inverse curve
-    // uncancelled and washes the camera feed out (issue #1434). See KDoc above for the full chain.
+    // uncancelled and washes the camera feed out (issue #1434). Its output stage is the exact sRGB
+    // OETF, which is why the materials decode with the exact EOTF and not pow(2.2) (issue #3338).
+    // See KDoc above for the full chain.
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
