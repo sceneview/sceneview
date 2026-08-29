@@ -39,7 +39,9 @@
 #      budget lapsed and the outcome is explicitly INCONCLUSIVE
 #   1  the registry is reachable and does NOT serve the version, or no probe
 #      ever reached the registry
-#   2  usage error
+#   2  could not run — usage error, or a tool the probes need (curl, and
+#      python3 for pub.dev) is unavailable. Never confused with 1: 1 is a
+#      claim ABOUT the publish, 2 says no claim could be made.
 #
 # Env overrides:
 #   PUBLISH_VERIFY_ATTEMPTS  probe count
@@ -90,6 +92,24 @@ case "$REGISTRY" in
         exit 2
         ;;
 esac
+
+# ─── Tooling the probes cannot do without ──────────────────────────────────
+# Every probe is a `curl`, and the pub.dev probe parses the package document
+# with python3. A missing tool used to be indistinguishable from a registry
+# that never answered: the probe printed nothing, the run reported UNREACHABLE
+# and exited 1 — "no probe ever reached the registry" — which reads as a failed
+# publish. That is exactly the false red this file exists to prevent, so a
+# missing tool is now its own outcome: could not run (exit 2).
+missing_tool() {
+    echo "CANNOT RUN: '$1' is not available — $2" >&2
+    echo "  This is a tooling gap on the runner, NOT evidence about the publish." >&2
+    exit 2
+}
+command -v curl >/dev/null 2>&1 || missing_tool curl "every registry probe is a curl"
+if [ "$REGISTRY" = "pub" ]; then
+    command -v python3 >/dev/null 2>&1 ||
+        missing_tool python3 "the pub.dev probe parses the package document with it"
+fi
 
 ATTEMPTS="${PUBLISH_VERIFY_ATTEMPTS:-$DEF_ATTEMPTS}"
 DELAY="${PUBLISH_VERIFY_DELAY:-$DEF_DELAY}"

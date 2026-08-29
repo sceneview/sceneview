@@ -26,10 +26,29 @@
 # `web-desktop` job in ci.yml, which already has both gradle/JDK and node). The
 # spec self-skips when the bundle is not staged, so the lean node-only
 # `device-qa.sh --platform=web` leg never red-blocks on a missing artifact.
+#
+# Exit codes:
+#   0 = the staged bundle boots and renders
+#   1 = the bundle is broken (build failed, artifact missing, a spec failed)
+#   2 = could not run — node/npm/npx is unavailable on this host
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
+
+# ─── Tooling ───────────────────────────────────────────────────────────────
+# `npm install` / `npx playwright` are the only way this smoke test reaches a
+# browser. Under `set -e` a missing binary aborts the script with 127 and a
+# bare `npm: command not found`, which in a CI log is indistinguishable from
+# "the web bundle is broken". A host without node cannot run this leg; say so.
+for tool in node npm npx; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "[web-bundle-smoke] CANNOT RUN: '$tool' is not available." >&2
+    echo "  This smoke test drives Playwright through npm; without node it cannot" >&2
+    echo "  run. That is a tooling gap, not a defect in the web bundle." >&2
+    exit 2
+  }
+done
 
 WEBDIR="samples/web-demo"
 STAGE="$WEBDIR/site/kotlin-bundle"

@@ -185,6 +185,16 @@ echo "$DESC"
 #
 # Any hex versionCode literal is parsed and normalised to decimal so it
 # compares cleanly with the decimal value gradle was given.
+# The manifest is parsed with python3 — see the skip-vs-fail discipline at the
+# top of this file: missing validation tooling must WARN + SKIP, never block.
+if ! command -v python3 >/dev/null 2>&1; then
+  skip "manifest parsing skipped — 'python3' is not available. Without it the" \
+       "parsed package/versionName/versionCode would all come back empty and" \
+       "this guard would report 'could not parse … from artifact manifest' —" \
+       "a tooling gap dressed as a corrupt artifact. The upload proceeds" \
+       "unvalidated."
+fi
+
 read -r GOT_PKG GOT_NAME GOT_CODE < <(python3 - "$DESC" <<'PYEOF'
 import re, sys
 desc = sys.argv[1]
