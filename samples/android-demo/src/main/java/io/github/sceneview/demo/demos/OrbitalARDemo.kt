@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -29,8 +31,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotateRad
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -83,44 +89,53 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 
 /**
- * Personal-solar-system AR demo — 8 themed planets orbit around the user.
+ * Catch-the-flyers AR demo — four winged models circle the user, and the user taps
+ * them out of the air.
  *
  * On the first tracked AR frame, an [Anchor] is created at world origin (the camera's
- * pose at session-start in ARCore — i.e. wherever the user is standing). Eight model
+ * pose at session-start in ARCore — i.e. wherever the user is standing). Four model
  * instances are placed as children of an [AnchorNode] in a circle of radius 1.5 m,
- * at evenly-spaced angles (360° / 8 = 45° apart). Each model has:
+ * one per quadrant (360° / 4 = 90° apart). Each flyer has:
  *
- * - its own **orbital speed** (between 0.05 and 0.30 rad/s) — slow at the outer
- *   "planets", fast at the inner ones, so the formation looks like a solar system
- *   rather than a rigid ring;
- * - either a **baked animation** (4 streamed animated creatures — butterfly,
- *   hummingbird, bee, koi — plus the bundled `threejs_soldier`, oriented along the
- *   orbit tangent so they "fly the orbit") **or** a **local Y spin** (between 0.7
- *   and 2.0 rad/s) for static GLBs (helmet, lantern, toy car) so they feel alive
- *   without their own rig;
- * - a **distinct height** between -0.5 m and +0.5 m relative to the user's eye level.
+ * - its own **orbital speed** (0.10–0.18 rad/s) so the ring does not look rigid,
+ *   inside a band slow enough that a tap can actually land on a moving target;
+ * - a **baked animation** (streamed animated creatures), oriented along the orbit
+ *   tangent so it flies the orbit;
+ * - a **distinct height** between -0.35 m and +0.35 m relative to eye level.
  *
- * The user stays fixed in AR and can turn around to watch each model pass by.
+ * The user stays fixed in AR and turns around to find and catch each flyer.
  *
  * Animation is driven by `withFrameNanos` so the orbit advances at the display's
  * refresh rate. Per-recompose state (`orbitSeconds`) is hoisted via `mutableLongStateOf`
  * so the `ModelNode` positions/rotations recompute every frame.
  *
+ * ### The catch mechanic (issue #3341)
+ *
+ * A transparent tap layer sits on top of the AR viewport. Every frame the demo projects
+ * each flyer to screen space ([projectTarget]); a tap picks the nearest flyer within
+ * [CATCH_RADIUS_DP] ([nearestCatchTarget]). A caught flyer freezes at its capture angle,
+ * loses its off-screen arrow and gets a scale bump, the device buzzes, and a ripple ring
+ * confirms the hit — a missed tap draws a dim ring, so the input is always acknowledged.
+ * Once all four are caught, a tap anywhere releases them and they resume from exactly
+ * where they were frozen. All of the arithmetic lives in pure internal functions with
+ * JVM tests, because the emulator can never run an AR session (#2754).
+ *
+ * The demo used to orbit **eight** models — four streamed creatures interleaved with four
+ * static bundled props — with an arrow per off-screen model and no way to interact with
+ * any of them. #3341 is the QA report for exactly that: too many models to follow, and a
+ * "catch" that could never succeed because nothing was catchable.
+ *
  * ### Streaming pipeline (Stage 2, issue #1152)
  *
- * Four of the eight planets are now streamed via [SketchfabAssetResolver] from the
- * curated `solar` category in [SampleAssets]. The resolver never fails a slot: a missing
+ * All four flyers are streamed via [SketchfabAssetResolver] from the curated `solar`
+ * category in [SampleAssets]. The resolver never fails a slot: a missing
  * [SketchfabConfig.apiKey] (App Store / first-launch) short-circuits to the bundled
  * fallback declared in the registry, and so does every *runtime* failure with a key
  * present — no network, aeroplane mode, a stale key, a 4xx, exhausted retries. So the demo
- * always renders eight planets, just sometimes with duplicate visuals, and a configured key
- * is never evidence that any of them streamed (which is why the asset-source pill asks the
- * resolved files instead — #2953). The four bundled GLBs (helmet, lantern, toy car,
- * soldier) are always read straight from `assets/models/` and have no network dependency.
- *
- * This replaces the previous "2 duplicate dragons + 2 duplicate soldiers" workaround
- * that the bundle-only design was forced into (the old #978 audit flagged the dups
- * as a quality issue — the formation looked like clones rather than a solar system).
+ * always renders four flyers, and a configured key is never evidence that any of them
+ * streamed (which is why the asset-source pill asks the resolved files instead — #2953).
+ * The four registry fallbacks are pairwise distinct (#3341 — they all pointed at the same
+ * soldier before), so keyless mode still shows four different companions.
  */
 private data class Planet(
     /**
@@ -130,8 +145,10 @@ private data class Planet(
      */
     val streamedSlug: SketchfabSlug? = null,
     /**
-     * Bundled asset path under `assets/`. Used when [streamedSlug] is null —
-     * the three pure-bundled planets (helmet, lantern, toy car, animated dragon).
+     * Bundled asset path under `assets/`. Used when [streamedSlug] is null. No slot
+     * uses it since #3341 cut the formation down to four streamed flyers, but the
+     * branch stays: it is how a slot is pinned to an APK asset with no registry entry,
+     * and the demo's loading code still honours it.
      */
     val bundledAssetPath: String? = null,
     val scaleToUnits: Float,
@@ -152,106 +169,75 @@ private data class Planet(
     }
 }
 
-// 8 themed planets — 4 streamed via the resolver (animated creatures from the
-// `solar` category of SampleAssets), 4 bundled in the APK as offline fallback +
-// to keep variety when the Sketchfab key is missing. The streamed entries fall
-// back to their registered bundled GLB when offline, so the demo always renders
-// eight orbiting models — no broken/black slots, no clones (the old 7-slot
-// design duplicated the dragon and soldier just to fill the ring).
+// Four flying companions, one per quadrant of a 1.5 m ring — the whole formation
+// (#3341). It used to be eight: four streamed creatures interleaved with four bundled
+// props (helmet, lantern, toy car, walking soldier). Eight objects on eight heights at
+// eight speeds is not a solar system, it is a crowd: with one edge arrow per off-screen
+// object, five to seven arrows pointed in five to seven directions at once and there
+// was no way to tell which one was worth turning toward. Four is the number that stays
+// legible — at most three arrows on screen, each one a real invitation.
+//
+// Every slot now *flies*. The bundled props were the other half of the complaint: the
+// designated "catch me" target was a toy car spinning in mid-air, and a walking soldier
+// stepping through empty space reads as a bug, not as a companion. All four entries are
+// streamed animated creatures from the `solar` category of SampleAssets, looked up by
+// uid so a registry re-ordering cannot silently re-tune a slot. Offline they fall back
+// to four *distinct* bundled GLBs (#3341 fixed the registry, which pointed all four at
+// the same soldier): still four separate companions, just not flying ones.
+//
+// Speeds are 0.10–0.18 rad/s (they were 0.05–0.30). The fast end was the second half of
+// "you never manage to catch one": at 0.30 rad/s on a 1.5 m ring an object crosses a
+// phone-width of view in about a second, which is not a target, it is a glimpse. The
+// spread is kept — a ring where everything moves at the same rate looks rigid — just
+// inside a band where a tap can land.
 private val ORBITAL_PLANETS: List<Planet> = run {
-    // The four streamed entries — order matches the SampleAssets `solar` category
-    // (four animated butterflies). We look them up by uid so a registry
-    // re-ordering doesn't silently break the per-slot orbit tuning below.
-    val butterfly = SampleAssets.byUid["0f24b085e8654e4db09c2fe681a79e3f"]
-    val hummingbird = SampleAssets.byUid["80f8d9a6dadc411e89ca366cb0cfb0d9"]
-    val bee = SampleAssets.byUid["d4fbcbaab845402999f30c5aa75851e6"]
-    val koi = SampleAssets.byUid["8ca3b9aa82694e6b8bc53a69b4529539"]
+    val fantasyButterfly = SampleAssets.byUid["0f24b085e8654e4db09c2fe681a79e3f"]
+    val flutteringButterfly = SampleAssets.byUid["80f8d9a6dadc411e89ca366cb0cfb0d9"]
+    val animatedButterfly = SampleAssets.byUid["d4fbcbaab845402999f30c5aa75851e6"]
+    val butterflySwarm = SampleAssets.byUid["8ca3b9aa82694e6b8bc53a69b4529539"]
 
-    // Per-slot tuning kept compatible with the previous bundle-only design — same
-    // orbit radius (1.5 m), same height spread (±0.5 m), same speed range
-    // (0.05–0.30 rad/s) so the visual rhythm doesn't change.
+    // Quadrant spacing (90° apart), heights spread over ±0.35 m around eye level so no
+    // two flyers overlap from a standing viewpoint, and one distinct speed each.
     listOf(
-        // Slot 0 — bundled helmet, static spinning (hero anchor at angle 0).
+        // Slot 0 — the swarm, biggest and slowest: the easy first catch, straight ahead
+        // of wherever the user was looking when the anchor dropped.
         Planet(
-            bundledAssetPath = "models/khronos_damaged_helmet.glb",
-            scaleToUnits = 0.20f,
-            initialAngleRad = 0f,
-            orbitSpeed = 0.08f,
-            spinSpeed = 0.7f,
-            height = 0.0f,
-            hasBakedAnimation = false,
-        ),
-        // Slot 1 — streamed butterfly, baked anim, flies the orbit tangent.
-        Planet(
-            streamedSlug = butterfly,
-            scaleToUnits = 0.30f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 1,
-            orbitSpeed = 0.20f,
-            spinSpeed = 0f,
-            height = -0.2f,
-            hasBakedAnimation = true,
-        ),
-        // Slot 2 — bundled lantern, static spinning.
-        Planet(
-            bundledAssetPath = "models/khronos_lantern.glb",
-            scaleToUnits = 0.20f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 2,
-            orbitSpeed = 0.06f,
-            spinSpeed = 0.9f,
-            height = 0.4f,
-            hasBakedAnimation = false,
-        ),
-        // Slot 3 — streamed hummingbird, baked anim.
-        Planet(
-            streamedSlug = hummingbird,
-            scaleToUnits = 0.18f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 3,
-            orbitSpeed = 0.15f,
-            spinSpeed = 0f,
-            height = -0.4f,
-            hasBakedAnimation = true,
-        ),
-        // Slot 4 — bundled toy car, static spinning (kid-friendly anchor).
-        Planet(
-            bundledAssetPath = "models/khronos_toy_car.glb",
-            scaleToUnits = 0.20f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 4,
-            orbitSpeed = 0.10f,
-            spinSpeed = 2.0f,
-            height = 0.2f,
-            hasBakedAnimation = false,
-        ),
-        // Slot 5 — streamed bee, baked anim.
-        Planet(
-            streamedSlug = bee,
-            scaleToUnits = 0.12f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 5,
-            orbitSpeed = 0.25f,
-            spinSpeed = 0f,
-            height = -0.5f,
-            hasBakedAnimation = true,
-        ),
-        // Slot 6 — bundled animated soldier (baked walk cycle).
-        // Replaced animated_dragon.glb (8.0 MB) with threejs_soldier.glb
-        // (2.1 MB, same baked-animation property) as part of the Stage 3
-        // APK slim-down — see #1152 Stage 3 PR.
-        Planet(
-            bundledAssetPath = "models/threejs_soldier.glb",
-            scaleToUnits = 0.30f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 6,
-            orbitSpeed = 0.05f,
-            spinSpeed = 0f,
-            height = 0.5f,
-            hasBakedAnimation = true,
-        ),
-        // Slot 7 — streamed koi fish, baked anim (closes the ring).
-        Planet(
-            streamedSlug = koi,
+            streamedSlug = butterflySwarm,
             scaleToUnits = 0.35f,
-            initialAngleRad = 2f * PI.toFloat() / 8f * 7,
-            orbitSpeed = 0.30f,
+            initialAngleRad = 0f,
+            orbitSpeed = 0.10f,
             spinSpeed = 0f,
-            height = 0.3f,
+            height = 0.05f,
+            hasBakedAnimation = true,
+        ),
+        // Slot 1 — fantasy butterfly, high and to the side.
+        Planet(
+            streamedSlug = fantasyButterfly,
+            scaleToUnits = 0.30f,
+            initialAngleRad = 2f * PI.toFloat() / 4f * 1,
+            orbitSpeed = 0.13f,
+            spinSpeed = 0f,
+            height = 0.35f,
+            hasBakedAnimation = true,
+        ),
+        // Slot 2 — fluttering butterfly, below eye level.
+        Planet(
+            streamedSlug = flutteringButterfly,
+            scaleToUnits = 0.22f,
+            initialAngleRad = 2f * PI.toFloat() / 4f * 2,
+            orbitSpeed = 0.16f,
+            spinSpeed = 0f,
+            height = -0.20f,
+            hasBakedAnimation = true,
+        ),
+        // Slot 3 — smallest and fastest, the one worth chasing last.
+        Planet(
+            streamedSlug = animatedButterfly,
+            scaleToUnits = 0.18f,
+            initialAngleRad = 2f * PI.toFloat() / 4f * 3,
+            orbitSpeed = 0.18f,
+            spinSpeed = 0f,
+            height = -0.35f,
             hasBakedAnimation = true,
         ),
     )
@@ -260,13 +246,56 @@ private val ORBITAL_PLANETS: List<Planet> = run {
 private const val ORBIT_RADIUS = 1.5f
 
 /**
- * Index into [ORBITAL_PLANETS] of the "target to chase" — the model the off-screen
- * directional indicator points at (issue #1482). Slot 4 is the bundled toy car, the
- * orbiting object the QA tester referred to as "the flying car". It is a deliberately
- * slow-orbiting (0.10 rad/s), kid-friendly anchor model, so it stays a stable, easy
- * target for the user to turn toward and "catch".
+ * Radius, in dp, of the tap-to-catch hit disc around a flyer's projected screen
+ * position — see [nearestCatchTarget].
+ *
+ * It is deliberately far larger than the models themselves. The mechanic the QA report
+ * asked for ("you never manage to catch one" — #3341) is *catching a moving thing on a
+ * hand-held phone*: the target drifts between the moment the finger starts moving and
+ * the moment it lands, the phone drifts too, and a 0.18-unit butterfly at 1.5 m covers
+ * well under 48 dp on screen. A mesh-exact ray cast would be technically correct and
+ * unplayable. 72 dp is 1.5× Material 3's 48 dp minimum touch target, and that minimum
+ * is the floor for a *stationary* control.
  */
-private const val TARGET_PLANET_INDEX = 4
+private const val CATCH_RADIUS_DP = 72f
+
+/**
+ * How much a caught flyer grows, as a multiplier on its `scaleToUnits`.
+ *
+ * The freeze alone is ambiguous on a hand-held phone — the whole scene is drifting, so
+ * "it stopped" is not something the eye can assert. A size change is unmistakable, and
+ * 1.25× is enough to read without turning a butterfly into scenery.
+ */
+private const val CATCH_SCALE_BUMP = 1.25f
+
+/** Lifetime of the tap-feedback ring, in seconds. */
+private const val CATCH_FEEDBACK_SECONDS = 0.45f
+
+/** Radius the tap-feedback ring expands to, as a multiple of [CATCH_RADIUS_DP]. */
+private const val CATCH_FEEDBACK_MAX_RADIUS_FACTOR = 1.6f
+
+/**
+ * The last tap on the AR viewport, kept just long enough to draw a ring at it.
+ *
+ * Both outcomes are drawn, and that is the point: the original complaint was "you feel
+ * you never manage to catch one" (#3341). A tap that does nothing at all is
+ * indistinguishable from a tap the app never received, so a miss gets its own dim ring —
+ * the user learns the aim was off, not that the demo is broken.
+ *
+ * @param x tap position in viewport pixels.
+ * @param y tap position in viewport pixels.
+ * @param startSeconds value of the demo's orbit clock when the tap landed; the ring's
+ *   progress is `(now - startSeconds) / CATCH_FEEDBACK_SECONDS`. Reusing the orbit clock
+ *   rather than an animation of its own keeps the ring on the same frame callback as
+ *   everything else in the demo.
+ * @param hit true when the tap caught a flyer.
+ */
+private data class CatchFeedback(
+    val x: Float,
+    val y: Float,
+    val startSeconds: Float,
+    val hit: Boolean,
+)
 
 /**
  * Near/far clip planes (metres) used when asking ARCore for the camera projection
@@ -315,7 +344,58 @@ internal fun projectOffscreenTarget(
     viewProjection: Transform,
     cameraPosition: Position,
     targetWorld: Position,
-): OffscreenTarget? {
+): OffscreenTarget? =
+    // Viewport size is irrelevant to the off-screen answer (it only scales screenX/Y),
+    // so a 1×1 viewport keeps this overload free of a size parameter it never needed.
+    projectTarget(viewProjection, cameraPosition, targetWorld, 1f, 1f).asOffscreenTarget()
+
+/**
+ * Full screen-space state of one orbiting flyer: where it lands on the viewport, whether
+ * it is visible at all, and the edge-arrow direction/distance to use when it is not.
+ *
+ * This is the superset [projectOffscreenTarget] used to return half of. The catch
+ * mechanic (#3341) needs the *on-screen pixel position* to hit-test a tap against, and
+ * the arrow overlay needs the direction/distance — both fall out of the same single
+ * projection, so they are computed together, once per flyer per AR frame.
+ *
+ * @param screenX horizontal position in viewport pixels. Meaningless (and unused) when
+ *   [onScreen] is false — a point behind the camera has no screen position.
+ * @param screenY vertical position in viewport pixels, +Y down (Compose convention).
+ * @param onScreen true when the flyer is inside the camera frustum, i.e. tappable.
+ * @param angleRad direction from the screen centre toward the flyer, in Compose screen
+ *   space (0 = +X / right, π/2 = +Y / down).
+ * @param distanceMeters straight-line camera-to-flyer distance, in metres.
+ */
+internal data class ProjectedTarget(
+    val screenX: Float,
+    val screenY: Float,
+    val onScreen: Boolean,
+    val angleRad: Float,
+    val distanceMeters: Float,
+) {
+    /** The arrow-overlay view of this projection: `null` while the flyer is visible. */
+    fun asOffscreenTarget(): OffscreenTarget? =
+        if (onScreen) null else OffscreenTarget(angleRad, distanceMeters)
+}
+
+/**
+ * Pure projection of [targetWorld] into the camera described by [viewProjection] /
+ * [cameraPosition], onto a [viewportWidth] × [viewportHeight] viewport.
+ *
+ * No ARCore types involved — [viewProjection] is `projection · view` and
+ * [cameraPosition] is the camera's world-space translation — so this is plain JVM math,
+ * unit-testable without a device or an ARCore mock (#3269, #3341; see
+ * `OffscreenTargetProjectionTest` and `CatchTargetTest`). That matters more here than
+ * usual: the emulator can never run an AR session (#2754), so pure functions plus JVM
+ * tests are the only way any of this is verifiable off a physical device.
+ */
+internal fun projectTarget(
+    viewProjection: Transform,
+    cameraPosition: Position,
+    targetWorld: Position,
+    viewportWidth: Float,
+    viewportHeight: Float,
+): ProjectedTarget {
     val clip = viewProjection * Float4(targetWorld, w = 1.0f)
 
     val behindCamera = clip.w <= 0f
@@ -326,22 +406,101 @@ internal fun projectOffscreenTarget(
     val ndcY = if (behindCamera) -clip.y else clip.y / safeW
 
     val onScreen = !behindCamera && ndcX in -1f..1f && ndcY in -1f..1f
-    if (onScreen) return null
 
     val dx = targetWorld.x - cameraPosition.x
     val dy = targetWorld.y - cameraPosition.y
     val dz = targetWorld.z - cameraPosition.z
-    val distanceMeters = sqrt(dx * dx + dy * dy + dz * dz)
 
-    // Compose screen Y points down, NDC Y points up — flip Y for the screen-space angle.
-    return OffscreenTarget(angleRad = atan2(-ndcY, ndcX), distanceMeters = distanceMeters)
+    return ProjectedTarget(
+        // NDC [-1, 1] → pixels, flipping Y (NDC / OpenGL Y points up, Compose Y down).
+        screenX = (ndcX + 1f) * 0.5f * viewportWidth,
+        screenY = (1f - ndcY) * 0.5f * viewportHeight,
+        onScreen = onScreen,
+        angleRad = atan2(-ndcY, ndcX),
+        distanceMeters = sqrt(dx * dx + dy * dy + dz * dz),
+    )
 }
 
 /**
- * ARCore-facing wrapper around [projectOffscreenTarget]: pulls the view/projection
- * matrix and camera position off [frame] and delegates the actual math.
+ * Index of the flyer a tap at ([tapX], [tapY]) catches, or `null` for a miss.
+ *
+ * A flyer is catchable when it is on screen, not already caught, and its projected
+ * position is within [radiusPx] of the tap. When several qualify — they do overlap, the
+ * ring is only 1.5 m across — the **nearest** one wins, so a tap aimed between two
+ * flyers resolves the way the user expects rather than by list order.
+ *
+ * Distance is compared squared: no `sqrt`, and no behaviour change.
  */
-private fun computeOffscreenTarget(frame: Frame, targetWorld: Position): OffscreenTarget? {
+internal fun nearestCatchTarget(
+    projected: Map<Int, ProjectedTarget>,
+    tapX: Float,
+    tapY: Float,
+    radiusPx: Float,
+    caught: Set<Int>,
+): Int? {
+    val radiusSq = radiusPx * radiusPx
+    var bestIndex: Int? = null
+    var bestDistanceSq = Float.MAX_VALUE
+    projected.forEach { (index, target) ->
+        if (!target.onScreen || index in caught) return@forEach
+        val dx = target.screenX - tapX
+        val dy = target.screenY - tapY
+        val distanceSq = dx * dx + dy * dy
+        if (distanceSq <= radiusSq && distanceSq < bestDistanceSq) {
+            bestDistanceSq = distanceSq
+            bestIndex = index
+        }
+    }
+    return bestIndex
+}
+
+/**
+ * Orbit angle of a flyer at [seconds], in radians, wrapped to `[0, 2π)`.
+ *
+ * [angleOffsetRad] is the per-flyer phase shift accumulated by catch/release cycles (see
+ * [releaseAngleOffset]); it is 0 for a flyer that has never been caught. The modulo
+ * before the caller's `sin`/`cos` keeps Float precision over a long session (#978).
+ */
+internal fun orbitAngleRad(
+    initialAngleRad: Float,
+    orbitSpeed: Float,
+    angleOffsetRad: Float,
+    seconds: Float,
+): Float {
+    val twoPi = 2f * PI.toFloat()
+    val raw = (initialAngleRad + angleOffsetRad + orbitSpeed * seconds) % twoPi
+    return if (raw < 0f) raw + twoPi else raw
+}
+
+/**
+ * Phase offset that makes a released flyer resume from exactly where it was frozen.
+ *
+ * Catching a flyer stops it in place while the clock keeps running, so releasing it
+ * naively would teleport it forward by however long it was held. Solving
+ * `orbitAngleRad(initial, speed, offset, seconds) == frozenAngleRad` for `offset` gives
+ * the shift that makes the release continuous.
+ */
+internal fun releaseAngleOffset(
+    initialAngleRad: Float,
+    orbitSpeed: Float,
+    seconds: Float,
+    frozenAngleRad: Float,
+): Float {
+    val twoPi = 2f * PI.toFloat()
+    val raw = (frozenAngleRad - initialAngleRad - orbitSpeed * seconds) % twoPi
+    return if (raw < 0f) raw + twoPi else raw
+}
+
+/**
+ * ARCore-facing wrapper around [projectTarget]: pulls the view/projection matrix and
+ * camera position off [frame] and delegates the actual math.
+ */
+private fun computeProjectedTarget(
+    frame: Frame,
+    targetWorld: Position,
+    viewportWidth: Float,
+    viewportHeight: Float,
+): ProjectedTarget? {
     val camera = frame.camera
     if (camera.trackingState != TrackingState.TRACKING) return null
 
@@ -349,7 +508,9 @@ private fun computeOffscreenTarget(frame: Frame, targetWorld: Position): Offscre
         camera.getProjectionTransform(PROJECTION_NEAR, PROJECTION_FAR) * camera.viewTransform
     val cameraPose = camera.pose
     val cameraPosition = Position(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
-    return projectOffscreenTarget(viewProjection, cameraPosition, targetWorld)
+    return projectTarget(
+        viewProjection, cameraPosition, targetWorld, viewportWidth, viewportHeight,
+    )
 }
 
 @Composable
@@ -367,8 +528,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // returns the streamed GLB or the bundled fallback (we never block on the
     // network — see `SketchfabAssetResolver.resolve` Kdoc). The value flips from
     // `null` (download / fallback-copy still running on IO) to a real [File]
-    // once the resolver returns. Bundled-only planets contribute `null` here
-    // and go straight through `rememberModelInstance(assetPath)` below.
+    // once the resolver returns. Since #3341 every slot is streamed, so no slot
+    // contributes `null` here for the bundled-only reason; the branch stays because
+    // [Planet.bundledAssetPath] is still a supported way to define a slot.
     //
     // ORBITAL_PLANETS is a `val` constant, so the call order of `produceState`
     // is stable across recompositions — Compose's positional memoisation stays
@@ -387,7 +549,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     }
 
     // The user's initial-pose anchor. Created lazily on the first tracked frame, since
-    // ARCore world origin is undefined until tracking begins. After that, all 8 planets
+    // ARCore world origin is undefined until tracking begins. After that, all four flyers
     // ride this anchor — turning the phone shows them passing by in world space.
     var userAnchor by remember { mutableStateOf<Anchor?>(null) }
     var isTracking by remember { mutableStateOf(false) }
@@ -425,15 +587,92 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // be clamped to the real edge of the AR surface.
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Onboarding-dismiss state (#2481). The "Turn around — N models orbiting" **banner
+    // ---- Catch mechanic (#3341) -------------------------------------------------------
+    //
+    // Where each flyer landed on screen this frame, keyed by slot. `offscreenTargets`
+    // below is derived from it, and a tap is resolved against it by [nearestCatchTarget].
+    // Recomputed once per AR frame in onSessionUpdated — a tap can only ever be as fresh
+    // as the last frame, which at 30–60 fps is well inside the tolerance a 72 dp disc buys.
+    var projectedTargets by remember { mutableStateOf<Map<Int, ProjectedTarget>>(emptyMap()) }
+    // Caught flyers, slot -> the orbit angle they were caught at. Presence in this map IS
+    // the caught state, and the angle is what freezes them: the render and the projection
+    // both read it instead of the clock, so a caught flyer holds still exactly where the
+    // user grabbed it.
+    var caughtAngles by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+    // Per-slot angular offset applied after a release. Releasing must not teleport the
+    // flyer back to where the free-running clock says it would be — that snap is the same
+    // discontinuity the catch was supposed to remove — so each release records the offset
+    // that makes the orbit resume from the frozen angle. See [releaseAngleOffset].
+    var angleOffsets by remember { mutableStateOf<Map<Int, Float>>(emptyMap()) }
+    // The last tap, so the overlay can draw a ring at it. See [CatchFeedback].
+    var catchFeedback by remember { mutableStateOf<CatchFeedback?>(null) }
+
+    val allCaught = caughtAngles.size == ORBITAL_PLANETS.size
+
+    // Single source of truth for "where is slot `index` on its orbit right now", shared by
+    // the projection (which decides what a tap hits) and the ModelNode (which decides what
+    // the user sees). They must not drift apart: a hitbox that sits anywhere other than the
+    // model on screen is precisely the "I tapped it and nothing happened" complaint.
+    fun angleOf(index: Int): Float {
+        caughtAngles[index]?.let { return it }
+        val planet = ORBITAL_PLANETS[index]
+        return orbitAngleRad(
+            initialAngleRad = planet.initialAngleRad,
+            orbitSpeed = planet.orbitSpeed,
+            angleOffsetRad = angleOffsets[index] ?: 0f,
+            seconds = orbitSeconds,
+        )
+    }
+
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val catchRadiusPx = with(density) { CATCH_RADIUS_DP.dp.toPx() }
+
+    // `rememberUpdatedState` because the pointerInput below is keyed on Unit — it is
+    // installed once and must never be torn down mid-gesture, so it has to read the
+    // *current* state through this holder rather than close over the first frame's values.
+    val onViewportTap by rememberUpdatedState<(Offset) -> Unit> { offset ->
+        if (allCaught) {
+            // Everything is caught: the next tap releases the whole formation, so the
+            // demo is replayable without leaving and re-entering it (and without a
+            // "Reset" button competing with the AR view for space).
+            angleOffsets = caughtAngles.mapValues { (index, frozenAngle) ->
+                val planet = ORBITAL_PLANETS[index]
+                releaseAngleOffset(
+                    initialAngleRad = planet.initialAngleRad,
+                    orbitSpeed = planet.orbitSpeed,
+                    seconds = orbitSeconds,
+                    frozenAngleRad = frozenAngle,
+                )
+            }
+            caughtAngles = emptyMap()
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            catchFeedback = CatchFeedback(offset.x, offset.y, orbitSeconds, hit = true)
+        } else {
+            val hit = nearestCatchTarget(
+                projected = projectedTargets,
+                tapX = offset.x,
+                tapY = offset.y,
+                radiusPx = catchRadiusPx,
+                caught = caughtAngles.keys,
+            )
+            if (hit != null) {
+                caughtAngles = caughtAngles + (hit to angleOf(hit))
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+            catchFeedback = CatchFeedback(offset.x, offset.y, orbitSeconds, hit = hit != null)
+        }
+    }
+
+    // Onboarding-dismiss state (#2481). The "Turn around and tap to catch" **banner
     // text only** is a first-launch nudge: it teaches the user to turn and watch the
     // formation pass by, then gets out of the way once the user has clearly engaged
     // (the QA tester: "là, il met encore la flèche alors qu'on est dessus"). `
     // onboardingDismissed` flips true once the nudge has served its purpose and stays
     // true (it's a rememberSaveable so a device rotation mid-session doesn't re-show
     // it). It is set true when EITHER:
-    //  - the orbit is live and the chase target has come on-screen at least once
-    //    (the user successfully turned toward a model — see onSessionUpdated), or
+    //  - the orbit is live and at least one flyer has come on-screen (the user
+    //    successfully turned toward the formation — see onSessionUpdated), or
     //  - the onboarding window below elapses (timeout fallback, so the nudge always
     //    eventually clears even in the rare frame where nothing has streamed in yet).
     //
@@ -469,8 +708,9 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     // model" for the formation, and the pill never says which one swapped. See
     // [AssetSourceProbe] for the full rule.
     //
-    // Only the streamed slots are probed — the four bundled planets (helmet, lantern, toy
-    // car, soldier) read straight from `assets/` and have no origin question to answer.
+    // Only streamed slots are probed. Since #3341 that is all four of them, so the filter
+    // is a no-op today; it stays because a bundled slot reads straight from `assets/` and
+    // would have no origin question to answer.
     val streamedSlots = streamedFiles.filterIndexed { i, _ ->
         ORBITAL_PLANETS[i].streamedSlug != null
     }
@@ -485,20 +725,29 @@ fun OrbitalARDemo(onBack: () -> Unit) {
     }
 
     // Status pill text, mirroring the ARPlacement / ARInstantPlacement style. It carries
-    // the two transient setup states (tracking, anchor lock) and the "Turn around"
-    // onboarding nudge. Once tracking + anchor are established *and* the onboarding nudge
-    // has been dismissed (#2481), the pill is gone entirely — the orbit is
+    // the two transient setup states (tracking, anchor lock), the "Turn around"
+    // onboarding nudge, and — since #3341 — the catch score.
+    //
+    // The score is the one line that does NOT disappear with onboarding, and that is the
+    // fix for "you feel you never manage to catch one": a mechanic with no running total
+    // gives the user nothing to read their own progress from. It is also the only place
+    // the release gesture is taught, at the exact moment it becomes available. Between a
+    // dismissed nudge and the first catch the pill is still gone entirely — the orbit is
     // self-explanatory at that point and a permanent banner only clutters the AR view.
     val statusText = when {
         !isTracking -> "Initializing AR — look around to start tracking"
         userAnchor == null -> "Locking world anchor…"
-        !onboardingDismissed -> "Turn around — ${ORBITAL_PLANETS.size} models orbiting"
+        allCaught -> "All ${ORBITAL_PLANETS.size} caught — tap anywhere to release"
+        caughtAngles.isNotEmpty() ->
+            "Caught ${caughtAngles.size} / ${ORBITAL_PLANETS.size} — tap the others"
+        !onboardingDismissed ->
+            "Turn around and tap to catch — ${ORBITAL_PLANETS.size} models flying"
         else -> null
     }
 
     // No Settings FAB: this demo has nothing to configure. The orbit runs
     // automatically and the status pill already tells the user what to do
-    // ("Turn around — N models orbiting"), so a settings sheet carrying a
+    // ("Turn around and tap to catch"), so a settings sheet carrying a
     // lone paragraph of help text added only chrome (#1620 thread 1).
     DemoScaffold(
         title = stringResource(R.string.demo_ar_orbital_title),
@@ -563,23 +812,24 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                             session.createAnchor(Pose.IDENTITY)
                         }.getOrNull()
                     }
-                    // Off-screen target indicator (#1482, #3269). Project **every**
-                    // planet's current world position into the camera and keep an entry
-                    // for each one that falls outside the frustum, so the overlay can
-                    // draw one edge arrow (with distance) per off-screen object — not
-                    // just the chase target — and it stays up continuously, per object,
-                    // until that object re-enters the viewport.
+                    // Project **every** flyer's current world position into the camera,
+                    // once per frame. One pass now feeds two consumers (#1482, #3269,
+                    // #3341): the edge arrows, which need the off-screen subset, and the
+                    // tap-to-catch hit test, which needs the on-screen screen positions.
+                    // Projecting twice would let the hitbox and the arrow disagree about
+                    // where a flyer is.
                     val anchor = userAnchor
-                    offscreenTargets = if (anchor != null && isTracking) {
+                    val viewport = viewportSize
+                    projectedTargets = if (anchor != null && isTracking &&
+                        viewport != IntSize.Zero
+                    ) {
                         ORBITAL_PLANETS.indices.mapNotNull { index ->
                             runCatching {
                                 val planet = ORBITAL_PLANETS[index]
-                                val targetAngle =
-                                    (planet.initialAngleRad + planet.orbitSpeed * orbitSeconds) %
-                                        (2f * PI.toFloat())
+                                val targetAngle = angleOf(index)
                                 // Target position in the AnchorNode's local frame —
                                 // identical to the ModelNode `position` computed in the
-                                // content block.
+                                // content block, because both call `angleOf`.
                                 val local = Position(
                                     x = cos(targetAngle) * ORBIT_RADIUS,
                                     y = planet.height,
@@ -589,21 +839,34 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                                 // the anchor pose, then project + frustum-test it.
                                 val worldPoint = anchor.pose.transform *
                                     Float4(local, w = 1.0f)
-                                computeOffscreenTarget(
+                                computeProjectedTarget(
                                     frame,
                                     Position(worldPoint.x, worldPoint.y, worldPoint.z),
+                                    viewport.width.toFloat(),
+                                    viewport.height.toFloat(),
                                 )?.let { index to it }
                             }.getOrNull()
                         }.toMap()
                     } else {
                         emptyMap()
                     }
+                    // Caught flyers are frozen in front of the user, so they never need an
+                    // arrow — and once the formation is caught the screen goes quiet, which
+                    // is the reward. Arrows for the ones still loose stay up continuously,
+                    // per object, until that object re-enters the viewport.
+                    offscreenTargets = projectedTargets
+                        .filterKeys { it !in caughtAngles }
+                        .mapNotNull { (index, projected) ->
+                            projected.asOffscreenTarget()?.let { index to it }
+                        }
+                        .toMap()
                     // Onboarding nudge dismisses the "Turn around" **banner text** for
-                    // good the first time the user brings the chase target on-screen
-                    // (#2481). This must not affect arrow visibility (#3269) — see the
+                    // good the first time the user brings any flyer on-screen (#2481).
+                    // This must not affect arrow visibility (#3269) — see the
                     // `onboardingDismissed` Kdoc above.
                     if (anchor != null && isTracking &&
-                        !offscreenTargets.containsKey(TARGET_PLANET_INDEX)
+                        projectedTargets.isNotEmpty() &&
+                        projectedTargets.size != offscreenTargets.size
                     ) {
                         onboardingDismissed = true
                     }
@@ -633,11 +896,13 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                                 )
                             }
                             if (instance != null) {
-                                // Modulo before sin/cos so a long-running session
-                                // (~290 h+) doesn't lose Float precision (#978).
-                                val orbitAngle =
-                                    (planet.initialAngleRad + planet.orbitSpeed * orbitSeconds) %
-                                            (2f * PI.toFloat())
+                                // Same `angleOf` the hit test uses, so the model and its
+                                // hitbox can never disagree — and it is what holds a
+                                // caught flyer still (#3341). Modulo lives inside
+                                // `orbitAngleRad`, before sin/cos, so a long-running
+                                // session (~290 h+) doesn't lose Float precision (#978).
+                                val orbitAngle = angleOf(index)
+                                val caught = index in caughtAngles
                                 // Models with a baked animation (dragon, soldier) face the
                                 // tangent of the orbit (= direction of motion) instead of
                                 // spinning on Y — a flying dragon spinning on itself breaks
@@ -653,7 +918,11 @@ fun OrbitalARDemo(onBack: () -> Unit) {
                                 }
                                 ModelNode(
                                     modelInstance = instance,
-                                    scaleToUnits = planet.scaleToUnits,
+                                    scaleToUnits = if (caught) {
+                                        planet.scaleToUnits * CATCH_SCALE_BUMP
+                                    } else {
+                                        planet.scaleToUnits
+                                    },
                                     position = Position(
                                         x = cos(orbitAngle) * ORBIT_RADIUS,
                                         y = planet.height,
@@ -685,7 +954,73 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             if (offscreenTargets.isNotEmpty() && viewportSize != IntSize.Zero) {
                 OffscreenTargetArrows(targets = offscreenTargets.values.toList())
             }
+
+            // Tap-to-catch layer (#3341). Last child of the viewport Box so it sits above
+            // the AR surface and the arrows, and transparent so it changes nothing
+            // visually. It is a plain full-screen gesture layer rather than per-node
+            // touch handling on purpose: the hit test is a 72 dp disc around a projected
+            // point, which is deliberately much larger than the mesh, and a mesh-exact
+            // ray cast is what made this unplayable in the first place.
+            //
+            // Keyed on Unit — the handler must survive every recomposition (one per AR
+            // frame) or a gesture in flight would be cancelled mid-tap. It reads current
+            // state through `onViewportTap`'s rememberUpdatedState holder.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset -> onViewportTap(offset) }
+                    }
+            )
+
+            // Tap-feedback ring, drawn on top of everything (#3341). Expands and fades
+            // over CATCH_FEEDBACK_SECONDS, driven by the same orbit clock as the rest of
+            // the demo.
+            val feedback = catchFeedback
+            if (feedback != null && viewportSize != IntSize.Zero) {
+                val progress = (orbitSeconds - feedback.startSeconds) / CATCH_FEEDBACK_SECONDS
+                if (progress in 0f..1f) {
+                    CatchFeedbackRing(feedback = feedback, progress = progress)
+                }
+            }
         }
+    }
+}
+
+/**
+ * The expanding ring drawn at the user's last tap (issue #3341).
+ *
+ * Two states, and the miss state is the important one: a tap that hits nothing still
+ * draws — dimmer, thinner, and without the filled centre — because "nothing happened at
+ * all" is exactly what the original report described. A visible miss tells the user the
+ * app saw the tap and the aim was off, which is a thing they can correct.
+ *
+ * @param progress 0 at the tap, 1 when the ring has finished; the radius eases outward
+ *   and the alpha fades linearly to nothing.
+ */
+@Composable
+private fun CatchFeedbackRing(feedback: CatchFeedback, progress: Float) {
+    val maxRadius = with(LocalDensity.current) {
+        (CATCH_RADIUS_DP * CATCH_FEEDBACK_MAX_RADIUS_FACTOR).dp.toPx()
+    }
+    val strokeWidth = with(LocalDensity.current) { (if (feedback.hit) 4f else 2f).dp.toPx() }
+    // Ease-out: fast at the start, so the ring reads as a response to the finger rather
+    // than as an animation that happens to begin near it.
+    val eased = 1f - (1f - progress) * (1f - progress)
+    val radius = maxRadius * (0.35f + 0.65f * eased)
+    val alpha = (1f - progress) * (if (feedback.hit) 0.9f else 0.45f)
+    val color = if (feedback.hit) {
+        SceneViewTokens.ArOverlay.accentGuidance
+    } else {
+        SceneViewTokens.ArOverlay.onScrim
+    }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawCircle(
+            color = color.copy(alpha = alpha),
+            radius = radius,
+            center = Offset(feedback.x, feedback.y),
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+        )
     }
 }
 
