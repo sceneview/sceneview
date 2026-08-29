@@ -26,6 +26,8 @@
     <string name="sceneview_arcore_update">Update</string>
     <string name="sceneview_arcore_check_failed_title">Couldn\'t check AR support</string>
     <string name="sceneview_arcore_check_failed_body">Checking Google Play Services for AR failed. Check your connection and try again.</string>
+    <string name="sceneview_arcore_session_failed_title">Couldn\'t start AR</string>
+    <string name="sceneview_arcore_session_failed_body">Google Play Services for AR is installed, but this device could not start an AR session.</string>
     <string name="sceneview_arcore_retry">Try again</string>
 
     <!-- PlaneDiscoveryGuide (#2241) — plane-discovery onboarding overlay.

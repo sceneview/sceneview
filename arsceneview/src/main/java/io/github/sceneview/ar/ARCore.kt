@@ -91,6 +91,9 @@ class ARCore(
     private var cameraPermissionRequested = false
     private var installRequested = false
 
+    /** Last context a session was created from, so a retry can create another one. */
+    private var lastContext: Context? = null
+
     internal var session: ARSession? = null
         private set
 
@@ -142,6 +145,7 @@ class ARCore(
      * @param context Android context.
      */
     fun createSession(context: Context) {
+        lastContext = context
         try {
             session = ARSession(
                 context,
@@ -150,9 +154,24 @@ class ARCore(
                 onPaused = onSessionPaused,
                 onConfigChanged = onSessionConfigChanged
             ).also(onSessionCreated)
+            publishAvailability(null)
         } catch (exception: Exception) {
-            onException(exception)
+            onSessionCreateFailed(exception)
         }
+    }
+
+    /**
+     * Reports a session-creation failure as a state the UI can show, then forwards it (#3374).
+     *
+     * `ArCoreApk` answering `SUPPORTED_INSTALLED` is not a promise that `Session()` will
+     * succeed — an emulator with Google Play Services for AR installed still fails to create
+     * one. That left the exact hang #3374 is about, one step further along: no verdict, no
+     * session, and the host's "initializing" copy up forever. Publishing
+     * [ARCoreAvailability.SessionFailed] closes that last silent path.
+     */
+    internal fun onSessionCreateFailed(exception: Exception) {
+        publishAvailability(ARCoreAvailability.SessionFailed)
+        onException(exception)
     }
 
     /**
@@ -241,9 +260,27 @@ class ARCore(
      * @param handler the permission handler; defaults to the one passed to [create].
      */
     fun retryARCoreAvailability(handler: ARPermissionHandler? = permissionHandler) {
+        // A session that failed to be created is retried by creating another one — the
+        // availability check already said "installed" and would say so again (#3374).
+        if (arCoreAvailability == ARCoreAvailability.SessionFailed) {
+            retrySession()
+            return
+        }
         handler ?: return
         installRequested = false
         checkPermissionAndInstall(handler)
+    }
+
+    /**
+     * Drops a session that failed to be created and creates a fresh one, resuming it when the
+     * host is resumed. No-op before any creation attempt.
+     */
+    fun retrySession(context: Context? = lastContext) {
+        val target = context ?: return
+        publishAvailability(null)
+        destroy()
+        createSession(target)
+        session?.resume()
     }
 
     /**

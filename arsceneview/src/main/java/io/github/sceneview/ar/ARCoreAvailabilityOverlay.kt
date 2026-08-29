@@ -56,6 +56,14 @@ enum class ARCoreAvailability {
      * Retryable.
      */
     CheckFailed,
+
+    /**
+     * ARCore reported itself installed and current, but creating the session still failed —
+     * the emulator case found while validating #3374: `ArCoreApk` answers
+     * `SUPPORTED_INSTALLED`, then `Session()` throws and the host hangs on its own
+     * "initializing" copy exactly as an unsupported device used to. Retryable.
+     */
+    SessionFailed,
 }
 
 /**
@@ -143,6 +151,7 @@ internal fun ARCoreAvailability.titleRes(): Int = when (this) {
     ARCoreAvailability.NotInstalled -> R.string.sceneview_arcore_not_installed_title
     ARCoreAvailability.NeedsUpdate -> R.string.sceneview_arcore_needs_update_title
     ARCoreAvailability.CheckFailed -> R.string.sceneview_arcore_check_failed_title
+    ARCoreAvailability.SessionFailed -> R.string.sceneview_arcore_session_failed_title
 }
 
 /** Body string resource for this state. */
@@ -151,6 +160,7 @@ internal fun ARCoreAvailability.bodyRes(): Int = when (this) {
     ARCoreAvailability.NotInstalled -> R.string.sceneview_arcore_not_installed_body
     ARCoreAvailability.NeedsUpdate -> R.string.sceneview_arcore_needs_update_body
     ARCoreAvailability.CheckFailed -> R.string.sceneview_arcore_check_failed_body
+    ARCoreAvailability.SessionFailed -> R.string.sceneview_arcore_session_failed_body
 }
 
 /** Action label string resource, or `null` when the state has no action. */
@@ -159,6 +169,7 @@ internal fun ARCoreAvailability.actionRes(): Int? = when (this) {
     ARCoreAvailability.NotInstalled -> R.string.sceneview_arcore_install
     ARCoreAvailability.NeedsUpdate -> R.string.sceneview_arcore_update
     ARCoreAvailability.CheckFailed -> R.string.sceneview_arcore_retry
+    ARCoreAvailability.SessionFailed -> R.string.sceneview_arcore_retry
 }
 
 /**

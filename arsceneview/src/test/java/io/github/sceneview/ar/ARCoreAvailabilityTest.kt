@@ -190,12 +190,19 @@ class ARCoreAvailabilityTest {
         assertTrue(ARCoreAvailability.NotInstalled.isActionable)
         assertTrue(ARCoreAvailability.NeedsUpdate.isActionable)
         assertTrue(ARCoreAvailability.CheckFailed.isActionable)
+        assertTrue(ARCoreAvailability.SessionFailed.isActionable)
         assertNull(ARCoreAvailability.Unsupported.actionRes())
-        listOf(
-            ARCoreAvailability.NotInstalled,
-            ARCoreAvailability.NeedsUpdate,
-            ARCoreAvailability.CheckFailed,
-        ).forEach { assertNotNull("$it needs a button", it.actionRes()) }
+        ARCoreAvailability.values()
+            .filter { it != ARCoreAvailability.Unsupported }
+            .forEach { assertNotNull("$it needs a button", it.actionRes()) }
+    }
+
+    @Test
+    fun `every state has copy - a new one cannot ship blank`() {
+        ARCoreAvailability.values().forEach { state ->
+            assertTrue("$state needs a title", state.titleRes() != 0)
+            assertTrue("$state needs a body", state.bodyRes() != 0)
+        }
     }
 
     // ── ARCore flow ─────────────────────────────────────────────────────────
@@ -302,6 +309,38 @@ class ARCoreAvailabilityTest {
 
         assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.Unsupported), published)
         assertEquals(3, handler.checkAvailabilityCallCount)
+    }
+
+    // ── Session creation failed although ARCore said "installed" ────────────
+
+    @Test
+    fun `a session that fails to be created publishes SessionFailed and still reports`() {
+        // The emulator case: `ArCoreApk` answers SUPPORTED_INSTALLED, then `Session()`
+        // throws. Before this, the exception went to `onArSessionFailed` alone — which no
+        // demo wires — and the host stayed on "Initializing AR" forever, exactly as #3374.
+        assertTrue(arCore.checkPermissionAndInstall(handler))
+
+        arCore.onSessionCreateFailed(IllegalStateException("session_create_implementation"))
+
+        assertEquals(listOf<ARCoreAvailability?>(ARCoreAvailability.SessionFailed), published)
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
+        assertEquals(1, failures.size)
+    }
+
+    @Test
+    fun `retrying a failed session recreates it instead of re-asking availability`() {
+        arCore.onSessionCreateFailed(IllegalStateException("boom"))
+        val checksBefore = handler.checkAvailabilityCallCount
+
+        arCore.retryARCoreAvailability(handler)
+
+        // A second availability check would answer SUPPORTED_INSTALLED again and clear the
+        // card without a session behind it — the hang, one loop later.
+        assertEquals(checksBefore, handler.checkAvailabilityCallCount)
+        assertEquals(0, handler.requestInstallCallCount)
+        // No context was ever passed to `createSession`, so the card stays up rather than
+        // being cleared by a retry that could not run.
+        assertEquals(ARCoreAvailability.SessionFailed, arCore.arCoreAvailability)
     }
 
     @Test
