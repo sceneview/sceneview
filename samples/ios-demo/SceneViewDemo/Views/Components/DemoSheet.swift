@@ -132,7 +132,10 @@ public struct DemoChromeModifier<Controls: View>: ViewModifier {
                         .font(SceneViewTokens.TypeScale.captionSemibold)
                         .foregroundStyle(SceneViewTokens.Glass.onGlass)
                         .lineLimit(1)
-                    if qaMode {
+                    // The chip is a human's escape hatch out of QA mode. A
+                    // scripted pass has no human and its frames ship to the
+                    // App Store, so it must not be baked in (#3384).
+                    if qaMode && !DeepLinkRouter.isScriptedCapture {
                         Text(" QA ×")
                             .font(SceneViewTokens.TypeScale.caption)
                             .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)

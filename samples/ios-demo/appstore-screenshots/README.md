@@ -3,12 +3,26 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
-> ✅ **The #2897 caveat is cleared.** These four frames were re-captured on
-> 2026-08-03 from a build that carries the linear-multiplier fix, so they are
-> what the app renders. As predicted by the measurement that caveat carried
-> (viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4), the visible
-> change is nil — the re-shot frames are indistinguishable by eye from the ones
-> they replace. Only the IBL contribution moved; the skybox is drawn directly
+> ✅ **The committed set is current as of 2026-08-29 (#3384).** These four
+> frames were re-captured from `main` at `710bb13dd`. The previous set dated
+> from 2026-08-04 (`a1dcba562`) and had gone stale in two visible ways: the
+> demo-app glass chrome redesign (#3308) replaced the UI drawn over every
+> frame, and #3315 stripped the white display plinth the hovercar was standing
+> on. The subjects themselves did not change — the old set already showed the
+> hovercar in slot 1 and the Damaged Helmet in slot 2. What the app renders
+> today is what this directory holds.
+>
+> Slot 1 keeps its old subject only because two `qa_mode` overrides put it
+> back: #3382 re-selects the hovercar (the redesign's first-run default is the
+> helmet, which would have made slot 1 a duplicate of slot 2), and this refresh
+> adds the stage under it — the capture pass draws a `studio_warm` skybox
+> instead of the interactive default's undrawn one, which had put the store
+> frame back on black (#2896, regressed by #3308).
+>
+> ✅ **The #2897 caveat is cleared.** The linear-multiplier fix is in the build
+> these frames came from. As predicted by the measurement that caveat carried
+> (viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4), its visible
+> change was nil. Only the IBL contribution moved; the skybox is drawn directly
 > and the direct lights were untouched.
 >
 > ✅ **`dynamic-sky` now shows the same subject Android does (#3003).** It used
@@ -28,7 +42,7 @@ app — real iOS-simulator captures of rendered 3D content.
 >
 > ⚠️ **The iPad frames carry their capture date, and `simctl` cannot pin it
 > (#3004).** `simctl status_bar override --time "9:41"` fixes the clock, but
-> iPadOS draws the date beside it: the committed frames read `09:41 Mon 3 Aug`.
+> iPadOS draws the date beside it: the committed frames read `09:41 Sat 29 Aug`.
 > The documented escape hatch does not work — measured on the iPad Pro 13-inch
 > (M4) simulator, iOS 26.3: `--time` rejects every ISO form except the
 > milliseconds one (`2007-01-09T09:41:00.000Z`), and that form sets **only the
@@ -77,8 +91,31 @@ Android's set v2 order, minus `multi-model` (see below). Both ids are
 standalone demos that render rich 3D content with **no network** — deliberately
 not empty or loading AR scenes:
 
-1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) on the `.warm`
-   photo-studio backdrop, frozen on a three-quarter hero pose
+1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) staged in
+   `studio_warm` with its skybox drawn, frozen on a three-quarter hero pose.
+   **Neither the model nor the stage is what the demo shows interactively**, and
+   both overrides are load-bearing:
+   - The hovercar is **not** the demo's interactive default model. Under
+     `qa_mode` the demo picks `storeHeroAssetName` (`ModelViewerDemo.swift`)
+     before the first load (#3382); a frame showing the Khronos helmet here
+     means that selection regressed, and that is exactly what the set shipped
+     with before #3384.
+   - The stage is **not** the interactive default either. Interactively this
+     demo opens on `studio` with `showSkybox = false`, so nothing is drawn
+     behind the model and the viewport shows it over the clear colour — fine
+     for a viewer you are about to orbit, wrong for a store frame: the
+     hovercar's dark bodywork then reads as a grey silhouette on near-black,
+     the exact "dim, dark-on-black" capture #2896 was filed about. Under
+     `qa_mode` the demo therefore also picks `storeHeroEnvironmentName`
+     (`studio_warm` — a real photo studio: seamless cyclorama, softboxes) and
+     turns the skybox **on**. A slot-1 frame with a black background means that
+     override regressed. The pre-redesign code carried the same decision as a
+     `heroEnvironment` constant; #3308 dropped it, which is how the dark frames
+     came back.
+   - Expect a soft dark vertical block against the right edge: it is the studio
+     flag in the `studio_warm` HDRI, i.e. the corner of the cyclorama, not a
+     rendering artefact. It is small on `iphone-6.9` and takes roughly the
+     top-right fifth of the wider `ipad-13` frame.
 2. `02-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI sky,
    its metal and rough-dielectric regions carrying the time-of-day light. Same
    subject Android's Lighting Lab shows for this id (#3003); it was a five-cube
@@ -134,18 +171,37 @@ Captured with the simulator in **dark appearance** and a cleaned status bar
 (fixed 9:41, full signal/battery), mirroring the Android capture's dark-mode +
 status-bar crop.
 
-⚠️ Dark appearance styles the **system chrome only** — it does not darken the
-frames, and these two are light: each scene's look comes from its own HDRI, so
-`model-viewer` renders against `.warm`'s white studio and `dynamic-sky` under a
-daylit sky, with dark status-bar glyphs to match. Measured on both classes; do
-not read "dark appearance" as "dark frame", and do not treat a light frame here
-as a capture bug.
+⚠️ Dark appearance styles the **system chrome only** — it does not decide how
+dark a frame is. Each scene's look comes from the HDRI it draws: since #3384
+both slots are light (a `studio_warm` cyclorama, a daylit sky), so do not read
+"dark appearance" as "dark frame". This has been wrong in both directions
+before — the paragraph claimed both frames were light while `model-viewer` was
+in fact rendering on black, then claimed they sat at opposite ends the same day
+the stage was fixed. Re-check it against the committed PNGs rather than
+trusting it.
 
-One more thing the mosaic shows: only `dynamic-sky` carries the floating
-**Settings** control (it is the demo that has a settings sheet — `model-viewer`
-has none), so the two frames differ in app chrome. That is the demos' own
-shape, not a capture artefact, but it is visible when the two sit side by side
-on the listing.
+The status-bar glyphs are **not** the same colour in the two frames — dark in
+`01-model-viewer`, light in `02-dynamic-sky`, on both classes. iOS picks for
+legibility against what is behind them; both are legible, and neither is a
+capture bug to "fix".
+
+One more thing the mosaic shows: the two demos carry different app chrome.
+`model-viewer` has a five-item glass dock along the bottom (place, environment,
+model, animation, settings); `dynamic-sky` has a single round glass control.
+`model-viewer` also resolves a demo title, so it draws a "Model Viewer" pill in
+the identity row, where `dynamic-sky` has none. That is the demos' own shape,
+not a capture artefact, but it is visible when the two sit side by side on the
+listing.
+
+⚠️ **The capture pass must not paint QA chrome.** `qa_mode` normally draws a
+"QA ×" chip beside the title pill so a human who enabled it can turn it back
+off. On a capture pass there is no human and the frame ships to Apple, so
+`DemoSheet` suppresses the chip when `DeepLinkRouter.isScriptedCapture` is true
+(the `-demo <id>` launch argument, which only a script passes). The chip landed
+with the redesign (#3308), three weeks after the previous set was captured, so
+no shipped frame ever carried it — but the first refresh to run after #3308
+would have, since the pipeline launches with `-qa_mode 1`. If it reappears in a
+capture, check that gate before re-capturing.
 
 The set is captured under `-qa_mode 1`, which freezes each demo's orbit
 auto-rotation on its authored pose. That is what makes a re-capture comparable
@@ -167,15 +223,27 @@ slice of HDRI behind it changed every run.
 >   `dynamic-sky` with no sky at all. `SceneEnvironment.load()` now falls back to
 >   ImageIO. A `[SceneViewSwift] Failed to load environment '…'` line in the
 >   console means this regressed.
-> - `model-viewer` frames tighter under `qa_mode` than it does interactively:
->   its bounding sphere is set by the hero's display plinth rather than by the
->   car, and the looser interactive value — needed so an auto-rotating model
->   does not clip at its broadside — left the subject small in a mostly-empty
->   frame. Since #2785, iOS also accepts a `-camera_distance <float>` launch
->   argument (Android's framing lever, `DeepLinkRouter.validateCameraDistance`
->   range `0.05...100`) that overrides both `.framingMargin(_:)` defaults on
->   `model-viewer` — pass it explicitly for an even tighter store frame instead
->   of relying on the `qa_mode` capture-margin constant.
+> - `model-viewer` frames tighter under `qa_mode` than it does interactively,
+>   because the looser interactive value — needed so an auto-rotating model does
+>   not clip at its broadside — left the subject small in a mostly-empty frame.
+>   The plinth that used to drive the bounding sphere is gone (#3315); the fit
+>   is now the car's own bounds. Since #2785, iOS also accepts a
+>   `-camera_distance <float>` launch argument (Android's framing lever,
+>   `DeepLinkRouter.validateCameraDistance` range `0.05...100`) that overrides
+>   both `.framingMargin(_:)` defaults on `model-viewer`.
+>
+> **Do not reach for `-camera_distance` to fix the off-centre hovercar.**
+> Measured on the #3384 set, the car sits right of frame centre with the left
+> third empty: horizontal centre at 62 % of width on `iphone-6.9` (747 px wide,
+> 57 % of the frame, 126 px of right clearance) and 60 % on `ipad-13` (1040 px,
+> 50 %, 304 px of right clearance). The cause is #3383 — `CameraControls.fitRadius`
+> inscribes the union AABB's *space diagonal* in a sphere and fits it to the
+> narrower FOV axis — so the defect is an **offset**, not a scale.
+> `-camera_distance` only scales: it makes the asymmetry more pronounced and
+> pushes the already-tight tail toward the right edge, which #3006 measured
+> clipping at margin `0.5`. Leave the documented `captureFramingMargin = 0.62`
+> pipeline alone (that value is measured, not a preference) and let the fix land
+> in #3383.
 
 ## How to regenerate
 
@@ -195,9 +263,11 @@ xcodebuild build -project SceneViewDemo.xcodeproj -scheme SceneViewDemo \
   -derivedDataPath /tmp/dd CODE_SIGNING_ALLOWED=NO
 APP=/tmp/dd/Build/Products/Debug-iphonesimulator/SceneView.app
 
-# Once per class: "iPhone 17 Pro Max" → iphone-6.9/, "iPad Pro 13-inch (M5)" → ipad-13/
+# Once per class: "iPhone 17 Pro Max" → iphone-6.9/, "iPad Pro 13-inch (M4)" → ipad-13/
+# Substitute whichever iPad generation your Xcode actually installed — see the
+# table above, M4 and M5 both emit 2064 × 2752. The #3384 set is M4.
 UDID=$(xcrun simctl list devices available -j | python3 -c \
-  'import json,sys;print([d["udid"] for r in json.load(sys.stdin)["devices"].values() for d in r if d["name"]=="iPad Pro 13-inch (M5)"][0])')
+  'import json,sys;print([d["udid"] for r in json.load(sys.stdin)["devices"].values() for d in r if d["name"]=="iPad Pro 13-inch (M4)"][0])')
 xcrun simctl shutdown "$UDID" 2>/dev/null; xcrun simctl erase "$UDID"; xcrun simctl boot "$UDID"
 xcrun simctl ui "$UDID" appearance dark
 # Keep the plain "9:41" — the ISO form moves the clock off 09:41 and does not
