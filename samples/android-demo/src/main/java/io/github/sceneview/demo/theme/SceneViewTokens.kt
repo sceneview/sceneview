@@ -67,6 +67,33 @@ object SceneViewTokens {
         val pillHeight = 36.dp
         /** `GlassPill` horizontal content padding. */
         val pillPaddingHorizontal = 14.dp
+
+        /**
+         * `chrome-scrim` — the wash the chrome bands sit on.
+         *
+         * White on media only reads when the media is dark, and a Filament scene is
+         * whatever the demo authored: the contact-shadow studio is a near-white room,
+         * where an 8 % white fill and white glyphs disappear entirely. The chrome
+         * therefore carries its own ground, the same transparent-to-black media scrim
+         * the Spatial Gallery puts under white copy. 60 % black takes a white
+         * background down to ~5.6:1 against white text, so the band reads on the
+         * brightest scene the demos ship and stays unobtrusive on the darkest.
+         */
+        val scrim = Color(0x99000000)
+        /** Height of the top scrim: the identity row, its gutter and the status bar. */
+        val scrimTopHeight = 160.dp
+        /**
+         * Floor for the bottom scrim: enough for the dock band alone. The scaffold
+         * grows it to the measured `dockClearance + bottomOverlayBand` whenever a
+         * demo stacks a status pill or a legend above the dock, so the ground always
+         * reaches the topmost thing standing on it.
+         */
+        val scrimBottomHeight = 220.dp
+        /**
+         * Where the scrim stops being flat and starts fading out, as a fraction of its
+         * height measured from the screen edge. The chrome sits inside the flat part.
+         */
+        const val scrimPlateau = 0.55f
     }
 
     /**

@@ -329,15 +329,28 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 | Token | Value | Usage |
 |---|---|---|
-| `glass-surface` (over media) | rgba(255,255,255,0.08) | Back button, identity pill, overflow button, dock |
+| `glass-surface` (over media) | rgba(255,255,255,0.08) | Back button, identity pill, dock |
 | `glass-border` | 1px rgba(255,255,255,0.08) | Outline of every glass element |
 | `on-glass` | #ffffff | Icons and labels on glass |
 | `on-glass-muted` | rgba(255,255,255,0.72) | Secondary label on glass |
-| `glass-icon-button` | 44dp visual, 48dp touch target | Back / overflow |
+| `chrome-scrim` | rgba(0,0,0,0.60) → transparent | Ground under the chrome bands |
+| `glass-icon-button` | 44dp visual, 48dp touch target | Back |
 | `glass-pill` | 36dp high, 14dp horizontal padding | Identity pill |
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
+- **The chrome bands sit on `chrome-scrim`.** White on media reads only when the
+  media is dark, and a demo scene can be any brightness — a near-white studio
+  erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
+  bottom band (220dp minimum) each carry a vertical scrim, flat for the 55 %
+  nearest the screen edge and fading to transparent, so the chrome never depends
+  on what the scene happens to render behind it. Both are drawn under the
+  overlay slots, so they tint the scene and never a demo's own overlay card. The
+  top scrim fades with the chrome; the bottom one grows to the measured overlay
+  band and outlives the fade, because a status pill or legend stays on screen
+  after a scene tap has hidden the dock.
+- **There is no overflow menu.** Reset, Send feedback and QA mode live in the
+  settings sheet the dock's Controls item opens — one settings surface, not two.
 
 ### Floating Dock (Android demo)
 

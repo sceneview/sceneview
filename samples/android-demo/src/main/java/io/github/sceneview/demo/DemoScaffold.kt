@@ -2,7 +2,9 @@
 
 package io.github.sceneview.demo
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -36,26 +38,22 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Feedback
-import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +62,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SheetState
@@ -72,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -85,6 +85,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -93,6 +95,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -103,6 +106,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
@@ -158,17 +162,18 @@ data class DockItem(
  * **Top row** (16 dp margins): back glass button (contentDescription
  * "Navigate back" — Maestro's per-demo liveness gate taps it) · identity pill
  * with the demo [title] and the optional [assetSource] suffix · the QA pill
- * (`" QA ×"`, unchanged — the rendering suite keys on it) · overflow glass
- * button opening a menu with Reset ([onReset]), Reset settings
- * ([onResetSettings]), Feedback and the QA-mode toggle.
+ * (`" QA ×"`, unchanged — the rendering suite keys on it). The overflow "⋮"
+ * menu that used to end this row is gone (#3328): its actions moved into the
+ * settings sheet, so there is one settings surface instead of two.
  *
  * **Dock** (bottom-centre, [HorizontalFloatingToolbar]): up to four [dock]
- * items, the auto-appended *Controls* item when [controls] is non-null (it
- * carries `SETTINGS_FAB` + "Demo settings", so `DemoInteractionTest` opens the
- * same sheet it always did), and an optional [dockAccent] rendered as a filled
- * primary button — the AR action. Hidden entirely when there is nothing to put
- * in it. [SETTINGS_FAB_RESERVED_SPACE] names the band it occupies; the
- * `bottomOverlay` slot stacks **above** that band, measured from the real dock.
+ * items, the always-appended *Controls* item (it carries `SETTINGS_FAB` +
+ * "Demo settings", so `DemoInteractionTest` opens the same sheet it always
+ * did), and an optional [dockAccent] rendered as a filled primary button — the
+ * AR action. Always present, since the Controls item is now the only way to
+ * Reset, send feedback or toggle QA mode. [SETTINGS_FAB_RESERVED_SPACE] names
+ * the band it occupies; the `bottomOverlay` slot stacks **above** that band,
+ * measured from the real dock.
  *
  * **Chrome toggle**: a tap on the scene — observed in the `Initial` pointer
  * pass without consuming, so the 3D view keeps every drag, tap and pinch —
@@ -184,11 +189,13 @@ data class DockItem(
  * viewport. AR demos pass `null` on purpose: their viewport is the live camera
  * feed (#1361).
  *
- * **Controls sheet**: `controls != null` → a [ModalBottomSheet] on the theme's
- * `surfaceContainer` with a 28 dp top radius, opened from the dock's Controls
- * item at the detent this demo was last left at (#2084, persisted per demo via
- * [DemoSheetDetentStore]). [onResetSettings] adds a "Reset" text button in the
- * sheet header. [peekHeader] — a short live status such as "3 anchors placed"
+ * **Settings sheet** (the single settings surface, #3328): a [ModalBottomSheet]
+ * on the theme's `surfaceContainer` with a 28 dp top radius, opened from the
+ * dock's Controls item at the detent this demo was last left at (#2084,
+ * persisted per demo via [DemoSheetDetentStore]). It stacks the demo's own
+ * [controls], then — behind a divider — Reset ([onReset]), Send feedback and
+ * the QA-mode toggle. [onResetSettings] adds a "Reset" text button pinned in
+ * the sheet header. [peekHeader] — a short live status such as "3 anchors placed"
  * — is rendered as a glass status pill at the top of the bottom band; the old
  * peek chip it used to label is gone.
  *
@@ -244,8 +251,41 @@ fun DemoScaffold(
     var chromeToggled by rememberSaveable { mutableStateOf(true) }
     val chromeVisible = chromeToggled || touchExploration || DemoSettings.qaMode
 
+    // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
+    // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
+    // They used to read because they sat on whatever the scene rendered. Force the
+    // light (white) icon set while the scrim is up, and restore whatever the theme had
+    // when the chrome hides or the demo is left; capturing the previous value rather
+    // than deducing it keeps this correct in both themes and under edge-to-edge.
+    val view = LocalView.current
+    DisposableEffect(view, chromeVisible) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        if (chromeVisible) controller?.isAppearanceLightStatusBars = false
+        onDispose { if (previous != null) controller?.isAppearanceLightStatusBars = previous }
+    }
+
     var settingsExpanded by rememberSaveable { mutableStateOf(false) }
-    val hasDock = dock.isNotEmpty() || dockAccent != null || controls != null
+
+    // Reset + its snackbar confirmation, hoisted out of the chrome: the sheet is the
+    // only caller since the overflow menu was folded into it.
+    val onResetConfirmed: (() -> Unit)? = onReset?.let { reset ->
+        {
+            haptic.medium()
+            reset()
+            resetScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(
+                    message = resetConfirmation,
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
 
     Scaffold(
         // Edge-to-edge: the scene owns every pixel; the chrome applies the insets.
@@ -279,8 +319,11 @@ fun DemoScaffold(
 
         // Room the dock band takes at the bottom — the same floor-or-measured
         // value `bottomOverlay` clears, shared with the snackbar below so both
-        // float above the dock instead of behind or through it (#3325).
-        val dockClearance = if (hasDock) maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand) else 0.dp
+        // float above the dock instead of behind or through it (#3325). The dock
+        // always exists now (#3328): it carries the Controls item that opens the
+        // one settings surface, even on a demo with no controls of its own, so
+        // the clearance is unconditional.
+        val dockClearance = maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand)
 
         // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
         // reference frame (#3237). With `contentWindowInsets = 0` the padding is
@@ -316,6 +359,66 @@ fun DemoScaffold(
                 )
             }
 
+            // Ground for the identity row (#3328). Like the bottom band below, it is
+            // drawn here rather than inside the chrome so it tints the *scene* and
+            // never the glass — or the demo's own top overlay, which a scrim drawn
+            // inside the chrome greys out, because the chrome is composed after the
+            // overlay slots. It still fades with the chrome, which is the only thing
+            // standing on it.
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(SceneViewTokens.Motion.fade()),
+                exit = fadeOut(SceneViewTokens.Motion.fade()),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SceneViewTokens.Glass.scrimTopHeight)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to SceneViewTokens.Glass.scrim,
+                                SceneViewTokens.Glass.scrimPlateau to
+                                    SceneViewTokens.Glass.scrim,
+                                1f to Color.Transparent,
+                            )
+                        ),
+                )
+            }
+
+            // Ground for everything that lives at the bottom of the scene (#3328):
+            // the dock band and, when a demo reserves one, the whole bottom-overlay
+            // stack above it. It lives here rather than inside the chrome for two
+            // reasons: it is drawn *before* the overlays and the chrome, so it tints
+            // the scene and never the glass sitting on it; and it outlives the
+            // chrome's fade, because a status pill stays on screen after a scene tap
+            // has hidden the dock. Sized to the measured band so a pill a demo lifted
+            // clear of the dock still lands on the scrim.
+            val bottomBand = maxOf(
+                SceneViewTokens.Glass.scrimBottomHeight,
+                dockClearance + bottomOverlayBand,
+            )
+            AnimatedVisibility(
+                visible = chromeVisible || bottomOverlay != null || peekHeader != null,
+                enter = fadeIn(SceneViewTokens.Motion.fade()),
+                exit = fadeOut(SceneViewTokens.Motion.fade()),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(bottomBand)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                1f - SceneViewTokens.Glass.scrimPlateau to
+                                    SceneViewTokens.Glass.scrim,
+                                1f to SceneViewTokens.Glass.scrim,
+                            )
+                        ),
+                )
+            }
+
             // Top band: the demo's own overlays below the identity row, then the
             // chrome on top so scaffold controls always win the z-order.
             if (topOverlay != null) {
@@ -340,42 +443,27 @@ fun DemoScaffold(
                 title = title,
                 assetSource = assetSource,
                 onBack = onBack,
-                onReset = onReset?.let { reset ->
-                    {
-                        haptic.medium()
-                        reset()
-                        resetScope.launch {
-                            snackbarHostState.currentSnackbarData?.dismiss()
-                            snackbarHostState.showSnackbar(
-                                message = resetConfirmation,
-                                duration = SnackbarDuration.Short,
-                            )
-                        }
-                    }
-                },
-                onResetSettings = onResetSettings,
                 haptic = haptic,
                 dock = dock,
                 dockAccent = dockAccent,
-                controlsItem = if (controls != null) {
-                    DockItem(
-                        icon = Icons.Outlined.Tune,
-                        label = stringResource(R.string.demo_settings_fab_cd),
-                        onClick = {
-                            haptic.selection()
-                            settingsExpanded = true
-                        },
-                    )
-                } else null,
+                controlsItem = DockItem(
+                    icon = Icons.Outlined.Tune,
+                    label = stringResource(R.string.demo_settings_fab_cd),
+                    onClick = {
+                        haptic.selection()
+                        settingsExpanded = true
+                    },
+                ),
                 onIdentityRowHeight = { identityRowPx = maxOf(identityRowPx, it) },
                 onDockBandHeight = { dockBandPx = maxOf(dockBandPx, it) },
             )
 
-            if (controls != null && settingsExpanded) {
+            if (settingsExpanded) {
                 DemoSettingsSheet(
                     demoTitle = title,
                     controlsContent = controls,
                     haptic = haptic,
+                    onReset = onResetConfirmed,
                     onResetSettings = onResetSettings,
                     onDismissed = { settingsExpanded = false },
                 )
@@ -440,8 +528,6 @@ private fun BoxScope.DemoChrome(
     title: String,
     assetSource: AssetSourceState?,
     onBack: () -> Unit,
-    onReset: (() -> Unit)?,
-    onResetSettings: (() -> Unit)?,
     haptic: SceneViewHaptic,
     dock: List<DockItem>,
     dockAccent: DockItem?,
@@ -460,8 +546,6 @@ private fun BoxScope.DemoChrome(
                 title = title,
                 assetSource = assetSource,
                 onBack = onBack,
-                onReset = onReset,
-                onResetSettings = onResetSettings,
                 haptic = haptic,
                 onHeightChanged = onIdentityRowHeight,
             )
@@ -486,8 +570,6 @@ private fun BoxScope.DemoIdentityRow(
     title: String,
     assetSource: AssetSourceState?,
     onBack: () -> Unit,
-    onReset: (() -> Unit)?,
-    onResetSettings: (() -> Unit)?,
     haptic: SceneViewHaptic,
     onHeightChanged: (Int) -> Unit,
 ) {
@@ -555,7 +637,7 @@ private fun BoxScope.DemoIdentityRow(
         }
         if (DemoSettings.qaMode) {
             // Tappable QA pill: tap to disable — a single-tap escape hatch for a
-            // user who toggled QA mode from the overflow menu by accident (#951).
+            // user who toggled QA mode from the settings sheet by accident (#951).
             // Text is exactly `" QA ×"`: the rendering suite keys on it.
             GlassPill(
                 modifier = Modifier
@@ -575,99 +657,6 @@ private fun BoxScope.DemoIdentityRow(
                     maxLines = 1,
                 )
             }
-        }
-        DemoOverflowMenu(
-            onReset = onReset,
-            onResetSettings = onResetSettings,
-            haptic = haptic,
-        )
-    }
-}
-
-/**
- * Overflow glass button + [DropdownMenu]. Feedback keeps `FEEDBACK_ACTION` and
- * raises [io.github.sceneview.demo.feedback.FeedbackOpenRequest] exactly as the
- * former top-bar action did (#1930); Reset keeps `RESET_ACTION` (#1966). The
- * QA-mode toggle moved here from the long-press on the deleted peek chip.
- *
- * `wrapContentSize(Alignment.TopEnd)` on the anchor [Box] is the documented
- * Compose fix for a menu anchored to a button flush against the trailing edge
- * of the screen (AndroidX b/168594123, "DropdownMenu is positioned strangely
- * for toggles up against the edge of the screen") — exactly this button's
- * position, last in the identity row on every demo screen. Without it the
- * `DropdownMenu` opened detached from the glass button it belongs to (#3323).
- */
-@Composable
-private fun DemoOverflowMenu(
-    onReset: (() -> Unit)?,
-    onResetSettings: (() -> Unit)?,
-    haptic: SceneViewHaptic,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
-        GlassIconButton(
-            icon = Icons.Filled.MoreVert,
-            contentDescription = stringResource(R.string.demo_menu_cd),
-            onClick = { open = true },
-            modifier = Modifier.testTag(DemoScaffoldTestTags.OVERFLOW_MENU),
-        )
-        DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ) {
-            if (onReset != null) {
-                val resetCd = stringResource(R.string.demo_reset_cd)
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.demo_settings_reset)) },
-                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                    onClick = {
-                        open = false
-                        onReset()
-                    },
-                    modifier = Modifier
-                        .semantics { contentDescription = resetCd }
-                        .testTag(DemoScaffoldTestTags.RESET_ACTION),
-                )
-            }
-            if (onResetSettings != null) {
-                val resetSettingsCd = stringResource(R.string.demo_settings_reset_cd)
-                DropdownMenuItem(
-                    text = { Text(resetSettingsCd) },
-                    leadingIcon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
-                    onClick = {
-                        open = false
-                        haptic.selection()
-                        onResetSettings()
-                    },
-                )
-            }
-            val feedbackCd = stringResource(R.string.feedback_action_cd)
-            DropdownMenuItem(
-                text = { Text(feedbackCd) },
-                leadingIcon = { Icon(Icons.Outlined.Feedback, contentDescription = null) },
-                onClick = {
-                    open = false
-                    haptic.selection()
-                    io.github.sceneview.demo.feedback.FeedbackOpenRequest.request()
-                },
-                modifier = Modifier
-                    .semantics { contentDescription = feedbackCd }
-                    .testTag(DemoScaffoldTestTags.FEEDBACK_ACTION),
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.demo_menu_qa_mode)) },
-                leadingIcon = { Icon(Icons.Outlined.Science, contentDescription = null) },
-                trailingIcon = if (DemoSettings.qaMode) {
-                    { Text("✓", style = MaterialTheme.typography.labelLarge) }
-                } else null,
-                onClick = {
-                    open = false
-                    haptic.medium()
-                    DemoSettings.qaMode = !DemoSettings.qaMode
-                },
-            )
         }
     }
 }
@@ -886,9 +875,10 @@ object DemoScaffoldTestTags {
     const val SETTINGS_FAB = "demo-settings-fab"
     const val SETTINGS_SHEET = "demo-settings-sheet"
     const val SETTINGS_RESET = "demo-settings-reset"
+    /** Rows in the settings sheet's actions section — the overflow menu's heirs (#3328). */
     const val RESET_ACTION = "demo-reset-action"
     const val FEEDBACK_ACTION = "demo-feedback-action"
-    const val OVERFLOW_MENU = "demo-overflow-menu"
+    const val QA_MODE_ACTION = "demo-qa-mode-action"
     const val QA_PILL = "demo-qa-pill"
     /** The identity pill, tagged only when it carries an asset-source suffix. */
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
@@ -1049,7 +1039,14 @@ private fun BoxScope.DemoTopOverlay(
 }
 
 /**
- * The controls [ModalBottomSheet], opened from the dock's Controls item.
+ * The one settings surface, opened from the dock's Controls item.
+ *
+ * There used to be two (#3328): this sheet for the demo's own controls, and a
+ * top-right overflow [androidx.compose.material3.DropdownMenu] carrying Reset,
+ * Reset settings, Send feedback and QA mode — with "Reset settings" present in
+ * both. The menu is gone; its four actions live here, below the demo controls,
+ * behind a divider. That is why [controlsContent] is nullable: a demo with no
+ * controls of its own still needs the sheet for the app-level actions.
  *
  * Follows the app theme (`surfaceContainer`, 28 dp top radius) — it is a
  * themed surface, unlike the glass chrome over the media.
@@ -1062,8 +1059,9 @@ private fun BoxScope.DemoTopOverlay(
 @Composable
 private fun DemoSettingsSheet(
     demoTitle: String,
-    controlsContent: @Composable ColumnScope.() -> Unit,
+    controlsContent: (@Composable ColumnScope.() -> Unit)?,
     haptic: SceneViewHaptic,
+    onReset: (() -> Unit)?,
     onResetSettings: (() -> Unit)?,
     onDismissed: () -> Unit,
 ) {
@@ -1132,13 +1130,65 @@ private fun DemoSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(
-                    start = SceneViewTokens.Space.md,
-                    end = SceneViewTokens.Space.md,
-                    bottom = SceneViewTokens.Space.lg,
-                ),
-            content = controlsContent,
-        )
+                .padding(bottom = SceneViewTokens.Space.lg),
+        ) {
+            if (controlsContent != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SceneViewTokens.Space.md),
+                    content = controlsContent,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(
+                        horizontal = SceneViewTokens.Space.md,
+                        vertical = SceneViewTokens.Space.md,
+                    ),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+            }
+
+            // The former overflow-menu actions (#3328), in the order they had there.
+            if (onReset != null) {
+                val resetCd = stringResource(R.string.demo_reset_cd)
+                SheetActionRow(
+                    icon = Icons.Filled.Refresh,
+                    label = stringResource(R.string.demo_reset_action),
+                    contentDescription = resetCd,
+                    onClick = onReset,
+                    modifier = Modifier.testTag(DemoScaffoldTestTags.RESET_ACTION),
+                )
+            }
+            val feedbackCd = stringResource(R.string.feedback_action_cd)
+            SheetActionRow(
+                icon = Icons.Outlined.Feedback,
+                label = feedbackCd,
+                contentDescription = feedbackCd,
+                onClick = {
+                    haptic.selection()
+                    io.github.sceneview.demo.feedback.FeedbackOpenRequest.request()
+                },
+                modifier = Modifier.testTag(DemoScaffoldTestTags.FEEDBACK_ACTION),
+            )
+            SheetActionRow(
+                icon = Icons.Outlined.Science,
+                label = stringResource(R.string.demo_menu_qa_mode),
+                contentDescription = stringResource(R.string.demo_menu_qa_mode),
+                onClick = {
+                    haptic.medium()
+                    DemoSettings.qaMode = !DemoSettings.qaMode
+                },
+                modifier = Modifier.testTag(DemoScaffoldTestTags.QA_MODE_ACTION),
+                trailing = {
+                    // Decorative: the whole row is the toggle, so the switch must not
+                    // take a second focus stop for TalkBack.
+                    Switch(
+                        checked = DemoSettings.qaMode,
+                        onCheckedChange = null,
+                    )
+                },
+            )
+        }
     }
 
     // The `SheetState` starts at `Hidden` and animates open, so this effect fires
@@ -1178,5 +1228,47 @@ private fun DemoSettingsSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * One app-level action inside the settings sheet: leading icon, label, optional
+ * trailing control. A full-width tap target — the whole row is the affordance,
+ * so a trailing [Switch] stays decorative (`onCheckedChange = null`) instead of
+ * competing for the same gesture and doubling the accessibility focus stops.
+ */
+@Composable
+private fun SheetActionRow(
+    icon: ImageVector,
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription }
+            .padding(
+                horizontal = SceneViewTokens.Space.md,
+                vertical = SceneViewTokens.Space.sm,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        trailing?.invoke()
     }
 }

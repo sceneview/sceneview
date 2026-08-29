@@ -104,10 +104,14 @@ class DemoScaffoldBottomBandTest {
     }
 
     @Test
-    fun bottomOverlay_usesTheWholeBottomEdge_whenThereIsNoDock() {
-        // No `controls`, no `dock`, no accent → no dock is composed at all, and the
-        // overlay must reach the bottom of the scene area instead of reserving a
-        // band for chrome that does not exist.
+    fun bareDemo_stillGetsTheDock_andTheOverlayClearsIt() {
+        // Before #3328 a demo with no `controls`, no `dock` and no accent composed
+        // no dock at all, and the overlay ran to the bottom of the scene. The
+        // settings sheet is now the single settings surface — Reset, Send feedback
+        // and QA mode live in it — so the dock always carries the Controls item
+        // that opens it, on every demo. The invariant that replaces "no dock" is
+        // therefore: the bare demo still has a dock, and the overlay still clears
+        // it rather than running underneath.
         composeRule.setContent {
             ScaledDensity(1.0f) {
                 SceneViewDemoTheme(darkTheme = false) {
@@ -129,13 +133,23 @@ class DemoScaffoldBottomBandTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).assertDoesNotExist()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB)
+            .assertIsDisplayed()
+            .assertContentDescriptionEquals("Demo settings")
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK)
+            .getUnclippedBoundsInRoot()
         val overlay = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
         val scene = composeRule.onNodeWithTag(SCENE_PROBE).getUnclippedBoundsInRoot()
         assertTrue(
-            "without a dock the overlay ends at ${overlay.bottom} while the scene ends at " +
-                "${scene.bottom} — a band is being reserved for chrome that is not there.",
-            overlay.bottom >= scene.bottom - 1.dp,
+            "a demo with no controls of its own still gets the dock, but its overlay ends " +
+                "at ${overlay.bottom} while the dock starts at ${dock.top}.",
+            overlay.bottom <= dock.top,
+        )
+        assertTrue(
+            "the overlay ends at ${overlay.bottom}, ${dock.top - overlay.bottom} above the " +
+                "dock at ${dock.top} on a scene ending at ${scene.bottom} — the reserve " +
+                "should be the dock band and a gutter, not a second empty band.",
+            dock.top - overlay.bottom < 48.dp,
         )
     }
 

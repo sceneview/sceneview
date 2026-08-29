@@ -286,8 +286,7 @@
     <string name="demo_source_streamed">Streamed</string>
     <string name="demo_source_streaming">Streaming</string>
     <string name="demo_source_bundled">Offline</string>
-    <!-- Overflow menu + stalled-load card (DemoScaffold). -->
-    <string name="demo_menu_cd">More options</string>
+    <!-- Settings-sheet actions + stalled-load card (DemoScaffold). -->
     <string name="demo_menu_qa_mode">QA mode</string>
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
@@ -298,6 +297,12 @@
     <string name="demo_settings_reset">Reset</string>
     <string name="demo_settings_reset_cd">Reset demo settings to defaults</string>
     <!-- Predictable per-demo reset action (#1966) -->
+    <!--
+        Labelled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
+        header's settings-scoped "Reset", and two identically-labelled buttons doing
+        different things is exactly the confusion the merge set out to remove.
+    -->
+    <string name="demo_reset_action">Reset demo</string>
     <string name="demo_reset_cd">Reset this demo to its initial state</string>
     <string name="demo_reset_done">Demo reset — ready to try again</string>
     <string name="about_star_on_github">Star on GitHub</string>

@@ -237,8 +237,10 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             if (shadowVisible) R.string.contact_shadow_peek_on
             else R.string.contact_shadow_peek_off
         ),
+        // One reset, offered once: this demo has no settings-only state to restore apart from
+        // what `resetAll` already covers, so wiring `onResetSettings` to the same lambda would
+        // put the very same action twice in the merged sheet (#3328).
         onReset = resetAll,
-        onResetSettings = resetAll,
         // The wall TV's live A/B, hosted by the scaffold's top band so it sits in the TV's
         // half of the frame — see [WallShadowBeat] for why this is an on-screen control and
         // not a settings-sheet row. The slot owns the gutter and the inset, so the beat
