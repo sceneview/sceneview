@@ -8,7 +8,7 @@
 # Exit codes:
 #   0 = all versions aligned
 #   1 = mismatches found (or fixed if --fix)
-#   2 = error
+#   2 = could not run (bad invocation, missing input, missing dependency)
 
 set -euo pipefail
 
@@ -26,6 +26,20 @@ NC='\033[0m' # No Color
 
 echo -e "${CYAN}=== SceneView Version Sync Check ===${NC}"
 echo ""
+
+# ─── Hard dependency ───────────────────────────────────────────────────────
+# Every package.json / version.json read AND every --fix rewrite goes through
+# `python3 -c "import json; ..."`. Those calls swallow their own failure
+# (`2>/dev/null || echo "MISSING"`), so on a host without python3 the run stayed
+# GREEN while silently dropping three checks and degrading five more to
+# warnings — and `--fix` would have rewritten nothing while reporting success.
+# A missing interpreter is "could not run" (exit 2), never a pass.
+if ! command -v python3 >/dev/null 2>&1; then
+    echo -e "${RED}FATAL: python3 is required to read and rewrite the JSON version files${NC}" >&2
+    echo "  Every package.json / version.json check goes through python3; without it" >&2
+    echo "  this scan would report a green it did not verify." >&2
+    exit 2
+fi
 
 # ─── Source of truth ───────────────────────────────────────────────────────
 SOURCE_VERSION=$(grep '^VERSION_NAME=' "$REPO_ROOT/gradle.properties" | cut -d= -f2)

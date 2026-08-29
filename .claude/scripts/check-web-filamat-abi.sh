@@ -36,7 +36,9 @@
 #   bash .claude/scripts/check-web-filamat-abi.sh
 #
 # Exit code: 0 if every web blob matches its own runtime, 1 on any mismatch,
-# 2 if the repo layout is missing (not a checkout / files absent).
+# 2 if the leg COULD NOT RUN — the repo layout is missing (not a checkout /
+# files absent) or a required tool (a sha256 hasher) is unavailable. 1 is
+# reserved for "the blobs are wrong"; it must never mean "the gate is broken".
 
 set -u
 
@@ -79,12 +81,28 @@ blob_material_version() {
     od -A n -t u4 -j 12 -N 4 "$1" 2>/dev/null | tr -d ' \n'
 }
 
+# Resolve the hasher ONCE, up front. Doing it per call and falling through to
+# `sha256sum` unconditionally meant that on a host with neither hasher the
+# command printed `sha256sum: command not found`, `actual` came back EMPTY, and
+# every vendored runtime file was reported as "changed but RUNTIME.json was not
+# updated" — exit 1, i.e. "you broke the Filament runtime pin", for a host that
+# simply cannot hash. A gate that cannot run must say so (exit 2), never invent
+# a drift.
+if command -v shasum >/dev/null 2>&1; then
+    HASHER="shasum -a 256"
+elif command -v sha256sum >/dev/null 2>&1; then
+    HASHER="sha256sum"
+else
+    echo "check-web-filamat-abi.sh: neither 'shasum' nor 'sha256sum' is available" >&2
+    echo "  This leg hashes the vendored Filament runtime; without a hasher it" >&2
+    echo "  cannot run. This is a tooling gap, not a blob mismatch." >&2
+    exit 2
+fi
+
 sha256_of() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{print $1}'
-    else
-        sha256sum "$1" | awk '{print $1}'
-    fi
+    # Word-splitting on $HASHER is intentional (`shasum -a 256` or `sha256sum`).
+    # shellcheck disable=SC2086
+    $HASHER "$1" | awk '{print $1}'
 }
 
 # Minimal string/number field reader — RUNTIME.json is ours and flat, so this
