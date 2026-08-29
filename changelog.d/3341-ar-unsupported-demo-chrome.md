@@ -16,5 +16,12 @@
   scanning pill all keyed off "not tracking yet", which on an unsupported device is
   permanently true — so "Initializing camera…" sat next to a card saying the camera was
   never going to start. They now read the verdict first, matching what the Orbital demo
-  already did. The demo scaffold's back control was already drawn above the scrim, so
-  leaving the demo has worked throughout; what was missing was any reason to.
+  already did.
+  The same reading covers the shared "Scanning for surfaces…" banner: seven more demos
+  gated it on a flag — `isTracking`, a detected-plane count, a first-plane boolean — that
+  an unsupported device leaves untouched forever, so the banner promised a scan that could
+  not start. Two of them, Depth Occlusion and AR Fog, only looked correct because the scrim
+  was covering them; uncovering the card exposed the banner underneath. All seven now
+  defer to the verdict.
+  The demo scaffold's back control was already drawn above the scrim, so leaving the demo
+  has worked throughout; what was missing was any reason to.

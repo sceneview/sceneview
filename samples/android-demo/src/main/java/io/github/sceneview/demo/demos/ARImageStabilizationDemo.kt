@@ -35,6 +35,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.configure
 import io.github.sceneview.demo.DemoScaffold
@@ -124,6 +125,11 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+
+    // #3341: non-null once ARCore has ruled this device out. The flag the scanning
+    // banner waits on never flips then, so that banner has to read the verdict or
+    // it promises a scan under the SDK's "AR unavailable" card, forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     // Auto-placement guard. The demo's whole point — "model stays anchored while
     // the camera bg stabilizes" — only lands if the user *sees* a model on screen
@@ -258,7 +264,11 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // so flipping the override re-renders the overlay immediately.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = (!isTracking && arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -343,6 +353,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
                             }
                     }
                 },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason ->
                     trackingFailureReason = reason
                 },

@@ -36,6 +36,7 @@ import com.google.ar.core.SemanticLabel
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.semanticLabelFraction
 import io.github.sceneview.ar.createARCameraStream
@@ -105,6 +106,11 @@ fun ARPeopleOcclusionDemo(onBack: () -> Unit) {
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
+
+    // #3341: non-null once ARCore has ruled this device out. The flag the scanning
+    // banner waits on never flips then, so that banner has to read the verdict or
+    // it promises a scan under the SDK's "AR unavailable" card, forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     // Live PERSON-pixel fraction for the HUD — `0f` when no person is in frame.
     var personFraction by remember { mutableFloatStateOf(0f) }
 
@@ -201,7 +207,11 @@ fun ARPeopleOcclusionDemo(onBack: () -> Unit) {
             // Scanning / tracking-failure overlay — same vocabulary as ARDepthOcclusionDemo.
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
             AnimatedVisibility(
-                visible = !isTracking || ForcedTrackingFailure.override != null,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = (!isTracking && arCoreAvailability == null) ||
+                    ForcedTrackingFailure.override != null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -282,6 +292,7 @@ fun ARPeopleOcclusionDemo(onBack: () -> Unit) {
                         // Cheap GPU-side fraction — no full semantic-image walk needed.
                         personFraction = frame.semanticLabelFraction(SemanticLabel.PERSON)
                     },
+                    onARCoreAvailability = { arCoreAvailability = it },
                     onTrackingFailureChanged = { reason ->
                         trackingFailureReason = reason
                     },

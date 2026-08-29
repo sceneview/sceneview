@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
+import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.demo.DemoScaffold
@@ -75,6 +76,11 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     // "Total ever detected" — incremented by the onAdded lifecycle callback so the count keeps
     // climbing even when ARCore subsumes a smaller plane into a larger coplanar one.
     var totalDetected by remember { mutableIntStateOf(0) }
+
+    // #3341: non-null once ARCore has ruled this device out. The flag the scanning
+    // banner waits on never flips then, so that banner has to read the verdict or
+    // it promises a scan under the SDK's "AR unavailable" card, forever.
+    var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
 
@@ -131,7 +137,10 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
             // least one plane is tracked.
             val noPlanesYet = totalDetected == 0
             AnimatedVisibility(
-                visible = noPlanesYet,
+                // #3341: on a device ARCore has ruled out, the flag this banner waits on
+                // never flips, so the banner would promise a scan under the SDK's "AR
+                // unavailable" card. Drop it and let the card carry reason and retry.
+                visible = noPlanesYet && arCoreAvailability == null,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -162,6 +171,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 onSessionCreated = { session -> arSession = session },
+                onARCoreAvailability = { arCoreAvailability = it },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
             ) {
                 // ARPlaneManager parity: observe the live set of detected planes and react to
