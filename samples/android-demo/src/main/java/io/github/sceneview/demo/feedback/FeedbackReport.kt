@@ -324,8 +324,8 @@ data class PendingBugReport(
  *
  * The sheet is owned by `SceneViewDemoApp` (it wraps the whole `NavHost`),
  * but a report entry point also lives in `DemoScaffold` — the shared scaffold
- * for every demo screen (#1930 requires the button "on the 4 tabs AND inside
- * every demo"). A demo's top-app-bar action has no direct handle on the
+ * for every demo screen (#1930 requires the button on the root tabs AND
+ * inside every demo). A demo's top-app-bar action has no direct handle on the
  * host's sheet state, so it raises this flag; `SceneViewDemoApp` observes it,
  * opens the sheet, and clears it.
  */

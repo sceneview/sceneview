@@ -287,10 +287,11 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) + fadeOut() }
         ) {
             composable("list") {
-                // New 4-tab root (Explore / AR View / Samples / About). The legacy
-                // category-grouped DemoListScreen lives untouched inside the
-                // "Samples" tab so existing deep-link flows (`adb am start ... --es
-                // demo <id>`) and the in-app update banner remain wired up.
+                // Three-tab root (Showcase / AR View / About). Demo deep links
+                // (`adb am start ... --es demo <id>`) never land here — they
+                // navigate straight to "demo/<id>" (see the pending-demo
+                // handling above) — and the in-app update banner floats over
+                // this whole Box, so both stay wired up whatever tab is active.
                 RootScreen(onDemoClick = { id -> navController.navigate("demo/$id") })
             }
             composable(
