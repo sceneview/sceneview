@@ -13,8 +13,8 @@ they are **not in sync today**. Read the next section before assuming parity.
 | Class | Files | Set |
 |---|---|---|
 | `phone-screenshot-*` | 4 | **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
-| `tablet7-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet7_QA` in #3106, once #2913 had fixed the multi-model framing) |
-| `tablet10-screenshot-*` | 3 | **v2** — `model-viewer · dynamic-sky · multi-model` (re-captured on `Tablet10_QA` in #3106, once #2913 had fixed the multi-model framing) |
+| `tablet7-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet7_QA` in #3350 to match the phone set) |
+| `tablet10-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet10_QA` in #3350 to match the phone set) |
 | iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
 
 **Set v2** is what the now-removed capture script produced (see below). It is three frames
@@ -78,10 +78,11 @@ guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
 No class is script-reproducible any more (#3244 removed the script). The phone
-class ships set v3 at four slots since #3321; both tablet classes still ship
-set v2 at three slots each (Play accepts 2–8 per type). The tablet files sat at two for
+class ships set v3 at four slots since #3321; both tablet classes ship the same
+v3 set at four slots each since #3350 (Play accepts 2–8 per type). The tablet files sat at two for
 one release — they were captured while `multi-model` was dropped from tablet runs
-and were not re-shot when #2913 fixed its framing; #3106 re-captured them. The
+and were not re-shot when #2913 fixed its framing; #3106 re-captured them on v2,
+then #3350 re-shot them on v3. The
 set is what a run *writes*, and a run also **prunes**
 any higher-numbered slot left over from a larger set, because `play_listing.py`
 selects by glob rather than by count — an unpruned leftover would still be
