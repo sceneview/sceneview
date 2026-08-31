@@ -8,9 +8,12 @@ import androidx.compose.ui.graphics.Color
 /**
  * The one place a sample category's accent colour is defined.
  *
- * The light palette mirrors the v4.1.0 SceneView design system (see `DESIGN.md`); the dark
- * palette desaturates each hue and lifts its lightness so tinted gradients and icon tints do
- * not burn at >9:1 contrast against an M3 dark `surfaceContainer`.
+ * Both palettes are sampled along the `gradient-hero` tokens in `DESIGN.md` — light runs
+ * `#005bc1 → #6446cd`, dark runs `#a4c1ff → #d2a8ff` — so every category accent stays inside
+ * the brand's blue-to-violet span instead of introducing hues the design system does not
+ * have. The reference apps the demo UI is anchored on (Sketchfab, Polycam, Reality Composer)
+ * differentiate list categories by position and label, not by hue family; the ramp keeps a
+ * subtle per-category shift without turning the list into a rainbow.
  *
  * Before this existed the palette was copied into three screens, one of them carrying a
  * "keep these in sync by hand" comment and one of them having no dark variant at all — so in
@@ -20,25 +23,25 @@ import androidx.compose.ui.graphics.Color
  */
 object DemoCategoryAccent {
 
-    /** Accent used for a category this palette does not know. */
+    /** Accent used for a category this palette does not know — `gradient-hero`'s end stop. */
     val Fallback: Color = Color(0xFF6446CD)
 
     private val light: Map<String, Color> = mapOf(
-        "3D Basics" to Color(0xFF6446CD),
-        "Lighting & Environment" to Color(0xFFE6A23C),
-        "Content" to Color(0xFF42A5F5),
-        "Interaction" to Color(0xFFEC407A),
-        "Advanced" to Color(0xFF26A69A),
-        "Augmented Reality" to Color(0xFF66BB6A),
+        "3D Basics" to Color(0xFF005BC1),
+        "Lighting & Environment" to Color(0xFF1457C3),
+        "Content" to Color(0xFF2853C6),
+        "Interaction" to Color(0xFF3C4EC8),
+        "Advanced" to Color(0xFF504ACB),
+        "Augmented Reality" to Color(0xFF6446CD),
     )
 
     private val dark: Map<String, Color> = mapOf(
-        "3D Basics" to Color(0xFFB39DDB),
-        "Lighting & Environment" to Color(0xFFFFCC80),
-        "Content" to Color(0xFF90CAF9),
-        "Interaction" to Color(0xFFF48FB1),
-        "Advanced" to Color(0xFF80CBC4),
-        "Augmented Reality" to Color(0xFFA5D6A7),
+        "3D Basics" to Color(0xFFA4C1FF),
+        "Lighting & Environment" to Color(0xFFADBCFF),
+        "Content" to Color(0xFFB6B7FF),
+        "Interaction" to Color(0xFFC0B2FF),
+        "Advanced" to Color(0xFFC9ADFF),
+        "Augmented Reality" to Color(0xFFD2A8FF),
     )
 
     /** Every category this palette covers, in design-system order. */
