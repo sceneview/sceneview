@@ -245,13 +245,17 @@ passes the variance check and is still unusable.
 - **#2913 (fixed and re-captured, #3106)** — the scene takes the viewport aspect
   into account, `multi-model` is back in the tablet set, and both tablet classes
   were re-shot at three slots. No follow-up left here.
-- **Tablet `model-viewer` framing is not deterministic.** In the committed set
-  the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
-  than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
-  classes. Two runs of the same demo should differ only by aspect, so this is a
-  demo-side non-determinism worth pinning before the next re-capture. Still true
-  after #3106 — the cause is the free-running hero orbit, so the captured pose is
-  whatever instant the settle window lands on. That is why the tablet distance was
+- **Tablet Model Viewer framing is not deterministic — but the committed v3 pair
+  happens to match.** The cause is the free-running hero orbit: the captured pose
+  is whatever instant the settle window lands on, so two runs of the same demo
+  can differ by more than aspect — which is exactly what the v2 set showed (a
+  visibly different helmet orientation on `tablet7-screenshot-1` vs
+  `tablet10-screenshot-1`, still true after #3106). The v2 evidence is gone:
+  #3350 re-captured both tablet classes with set v3, where Model Viewer sits at
+  slot 2, and judged by eye the helmet holds the same head-on pose on
+  `tablet7-screenshot-2` and `tablet10-screenshot-2` — the committed set no
+  longer shows the mismatch. The orbit itself is still unpinned, so any future
+  re-capture rolls the pose lottery again; that is why the tablet distance was
   probed at several orbit instants and chosen to survive the *widest* pose rather
   than to suit one frame: 3.5 m looked right on the 3/4 pose and clipped the
   head-on one.
