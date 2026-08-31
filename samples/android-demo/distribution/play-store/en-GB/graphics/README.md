@@ -12,10 +12,36 @@ they are **not in sync today**. Read the next section before assuming parity.
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 4 | **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
-| `tablet7-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet7_QA` in #3350 to match the phone set) |
-| `tablet10-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet10_QA` in #3350 to match the phone set) |
-| iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
+| `phone-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844, see below); slots 2–5 are **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
+| `tablet7-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet7_QA` in #3350 |
+| `tablet10-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet10_QA` in #3350 |
+| iOS (`appstore-screenshots/`) | 3 + 3 | `00-ar.png` is the **generated AR visual** (#2844); then **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both captured frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
+
+## The AR slot and the feature graphic are generated, not captured (#2844)
+
+The listing text sells AR, and until #2844 no image showed any. Slot 1 of every
+screenshot class and `feature-graphic.png` are now **AI-generated marketing
+visuals** (Gemini `gemini-3.1-flash-image`, image-to-image from the committed
+hero-model reference `tools/demo-previews/refs/hero.webp`, dark variant,
+centre-cropped to each slot's exact pixel spec) showing the sci-fi helmet
+anchored in a real photographed room, per DESIGN.md's "Preview Image Art
+Direction" (real camera background, no text/UI/device frame/people). They are
+**not** app captures, and no capture procedure in this README reproduces them.
+
+Why generated: a real AR capture needs a device camera. ARCore's emulator
+recording/playback path fails on the QA AVDs — session creation probes camera
+HAL id 0 before it ever consults the playback dataset, and the arm64 AVD has no
+HAL id 0 — and routine QA never targets a personal device. Regenerate with
+`tools/demo-previews/gen.py`'s `generate()` if these ever need a refresh, and
+judge the result by eye; replace them with real device captures whenever an
+authorized device session produces better ones.
+
+The previous captured slots were **shifted, not deleted** (git renames: old
+slot N is now slot N+1 in every class). Two consequences for any future manual
+re-capture: number fresh captures from **2**, and remember `play_listing.py`
+uploads by glob — a re-capture that writes slot 1 overwrites the AR visual,
+and a run that "prunes higher-numbered slots" (below) would prune the shifted
+captures if you renumber from 1.
 
 **Set v2** is what the now-removed capture script produced (see below). It is three frames
 deliberately — fewer strong shots beat more mixed ones — each judged on the
@@ -70,19 +96,21 @@ and neutralises the status bar.
 | `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **No** — manual since #3244        |
 | `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **No** — manual since #3244        |
 | `icon-512.png`                | `icon`                 | Store icon, 512x512   | Sourced from `branding/`           |
-| `feature-graphic.png`         | `featureGraphic`       | Feature graphic       | Sourced from `branding/`           |
+| `feature-graphic.png`         | `featureGraphic`       | Feature graphic       | Generated AR visual (#2844, see above) — replaced the `branding/` export |
 
 The `imageType` column is the Play `AppImageType` enum value that
 `store-sync/play_listing.py` uploads each pattern to. Those names are not
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
 
-No class is script-reproducible any more (#3244 removed the script). The phone
-class ships set v3 at four slots since #3321; both tablet classes ship the same
-v3 set at four slots each since #3350 (Play accepts 2–8 per type). The tablet files sat at two for
-one release — they were captured while `multi-model` was dropped from tablet runs
-and were not re-shot when #2913 fixed its framing; #3106 re-captured them on v2,
-then #3350 re-shot them on v3. The
+No class is script-reproducible any more (#3244 removed the script). Since
+#2844 every class leads with the generated AR visual in slot 1 — which no
+capture run produces (see above). Behind it, all three classes ship set v3 at
+four captured slots (2–5; Play accepts 2–8 per type) — the phone since #3321,
+both tablet classes since #3350, which re-captured the same four frames on the
+QA AVDs. Before that the tablets carried set v2 (#3106), and sat at two files for
+one release — captured while `multi-model` was dropped from tablet runs and not
+re-shot when #2913 fixed its framing. The
 set is what a run *writes*, and a run also **prunes**
 any higher-numbered slot left over from a larger set, because `play_listing.py`
 selects by glob rather than by count — an unpruned leftover would still be
@@ -246,17 +274,13 @@ passes the variance check and is still unusable.
 - **#2913 (fixed and re-captured, #3106)** — the scene takes the viewport aspect
   into account, `multi-model` is back in the tablet set, and both tablet classes
   were re-shot at three slots. No follow-up left here.
-- **Tablet Model Viewer framing is not deterministic — but the committed v3 pair
-  happens to match.** The cause is the free-running hero orbit: the captured pose
-  is whatever instant the settle window lands on, so two runs of the same demo
-  can differ by more than aspect — which is exactly what the v2 set showed (a
-  visibly different helmet orientation on `tablet7-screenshot-1` vs
-  `tablet10-screenshot-1`, still true after #3106). The v2 evidence is gone:
-  #3350 re-captured both tablet classes with set v3, where Model Viewer sits at
-  slot 2, and judged by eye the helmet holds the same head-on pose on
-  `tablet7-screenshot-2` and `tablet10-screenshot-2` — the committed set no
-  longer shows the mismatch. The orbit itself is still unpinned, so any future
-  re-capture rolls the pose lottery again; that is why the tablet distance was
+- **Tablet `model-viewer` framing is not deterministic.** In the committed set
+  the helmet sits at a visibly different orientation on `tablet7-screenshot-1`
+  than on `tablet10-screenshot-1`, while `dynamic-sky` matches across both
+  classes. Two runs of the same demo should differ only by aspect, so this is a
+  demo-side non-determinism worth pinning before the next re-capture. Still true
+  after #3106 — the cause is the free-running hero orbit, so the captured pose is
+  whatever instant the settle window lands on. That is why the tablet distance was
   probed at several orbit instants and chosen to survive the *widest* pose rather
   than to suit one frame: 3.5 m looked right on the 3/4 pose and clipped the
   head-on one.
