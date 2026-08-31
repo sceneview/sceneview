@@ -12,10 +12,10 @@ they are **not in sync today**. Read the next section before assuming parity.
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 4 | **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
-| `tablet7-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet7_QA` in #3350 to match the phone set) |
-| `tablet10-screenshot-*` | 4 | **v3** — `showcase Home · Model Viewer · Lighting Lab · Materials` (re-captured on `Tablet10_QA` in #3350 to match the phone set) |
-| iOS (`appstore-screenshots/`) | 2 + 2 | **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
+| `phone-screenshot-*` | 4 | **v3 + AR slot 1 (#2844)** — slot 1 is the generated AR visual (see "The #2844 AR set" below); slots 2–4 stay the v3 captures of the redesigned demo (#3321): `Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
+| `tablet7-screenshot-*` | 4 | **v3 + AR slot 1 (#2844)** — slot 1 generated; slots 2–4 are the `Model Viewer · Lighting Lab · Materials` re-captures from `Tablet7_QA` (#3350) |
+| `tablet10-screenshot-*` | 4 | **v3 + AR slot 1 (#2844)** — slot 1 generated; slots 2–4 are the `Model Viewer · Lighting Lab · Materials` re-captures from `Tablet10_QA` (#3350) |
+| iOS (`appstore-screenshots/`) | 3 + 3 | **v2 + AR slot 1 (#2844)** — `00-ar` (generated AR visual, filename order puts it first) · `model-viewer` · `dynamic-sky`. The two captured frames are the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents) |
 
 **Set v2** is what the now-removed capture script produced (see below). It is three frames
 deliberately — fewer strong shots beat more mixed ones — each judged on the
@@ -70,12 +70,37 @@ and neutralises the status bar.
 | `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **No** — manual since #3244        |
 | `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **No** — manual since #3244        |
 | `icon-512.png`                | `icon`                 | Store icon, 512x512   | Sourced from `branding/`           |
-| `feature-graphic.png`         | `featureGraphic`       | Feature graphic       | Sourced from `branding/`           |
+| `feature-graphic.png`         | `featureGraphic`       | Feature graphic, 1024x500 | **No** — generated AR visual (#2844), no longer sourced from `branding/` |
 
 The `imageType` column is the Play `AppImageType` enum value that
 `store-sync/play_listing.py` uploads each pattern to. Those names are not
 guessable — an invalid one 400s and, because a Play edit is atomic, voids the
 **whole** listing sync including the text and the icon (#2794).
+
+## The #2844 AR set
+
+Slot 1 of every screenshot class and the feature graphic are **generated AR
+visuals, not captures** — the demo has no AR screen that photographs this well,
+and ARCore replay captures were never produced for this set. Provenance, so the
+set can be regenerated or audited:
+
+- Generated with Gemini `gemini-3.1-flash-image` from
+  `tools/demo-previews/refs/hero.webp` (the battle-worn sci-fi helmet — the same
+  reference model as the in-app previews), composited photoreal-AR into a real
+  living room: contact shadow, reflections, depth of field. The prompts forbid
+  text, logos, UI, device frames and people.
+- Raw Gemini output is centre-cropped to each aspect then Lanczos-resized to the
+  exact slot size (1024x500 feature · 1080x2304 phone · 1200x1872 7" ·
+  1600x2512 10").
+- Each item exists in two lighting variants. The **dark** one (evening interior,
+  warm floor lamp) is committed here; the **light** one (window daylight) lives
+  in [`../../alternates-light/`](../../alternates-light/README.md) — outside
+  this directory on purpose, because `play_listing.py`'s test suite fails on
+  any file here that no `imageType` pattern claims (same rule as the mosaic,
+  see below).
+
+The iOS `00-ar` frames in `samples/ios-demo/appstore-screenshots/` come from the
+same generation run.
 
 No class is script-reproducible any more (#3244 removed the script). The phone
 class ships set v3 at four slots since #3321; both tablet classes ship the same

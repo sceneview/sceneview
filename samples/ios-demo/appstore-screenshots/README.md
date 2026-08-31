@@ -1,16 +1,20 @@
 # iOS App Store screenshots
 
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
-app — real iOS-simulator captures of rendered 3D content.
+app — real iOS-simulator captures of rendered 3D content, plus one **generated
+AR visual** per class (`00-ar.png`, #2844 — the only frame in the set that is
+not a simulator capture; see its entry below).
 
-> ✅ **The committed set is current as of 2026-08-29 (#3384).** These four
-> frames were re-captured from `main` at `710bb13dd`. The previous set dated
+> ✅ **The committed set is current as of 2026-08-31: the four captured frames
+> from #3384 plus the two generated `00-ar` frames from #2844.** The captured
+> frames were re-captured from `main` at `710bb13dd` (2026-08-29). The previous set dated
 > from 2026-08-04 (`a1dcba562`) and had gone stale in two visible ways: the
 > demo-app glass chrome redesign (#3308) replaced the UI drawn over every
 > frame, and #3315 stripped the white display plinth the hovercar was standing
 > on. The subjects themselves did not change — the old set already showed the
 > hovercar in slot 1 and the Damaged Helmet in slot 2. What the app renders
-> today is what this directory holds.
+> today is what the captured frames hold — the `00-ar` frames are generated
+> visuals and track nothing in the app.
 >
 > Slot 1 keeps its old subject only because two `qa_mode` overrides put it
 > back: #3382 re-selects the hovercar (the redesign's first-run default is the
@@ -87,10 +91,22 @@ for its class.
 
 ## Demos captured (#2854, #2896)
 
-Android's set v2 order, minus `multi-model` (see below). Both ids are
+Android's set v2 order, minus `multi-model` (see below), preceded by the
+generated AR frame. Live slot order is filename order (see "Publishing"), so
+the `00-` prefix puts the AR visual in slot 1. Both captured ids are
 standalone demos that render rich 3D content with **no network** — deliberately
 not empty or loading AR scenes:
 
+0. `00-ar` — **not a simulator capture.** The #2844 generated AR visual:
+   Gemini `gemini-3.1-flash-image` compositing the reference helmet
+   (`tools/demo-previews/refs/hero.webp`) photoreal-AR into a real living room,
+   centre-cropped and Lanczos-resized to each class's exact pixel size. The
+   committed variant is the **dark** one (evening interior, warm floor lamp);
+   the light variant lives in
+   [`../appstore-alternates-light/`](../appstore-alternates-light/README.md).
+   Full provenance is documented next to the Android halves of the same run:
+   `samples/android-demo/distribution/play-store/en-GB/graphics/README.md`,
+   "The #2844 AR set".
 1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) staged in
    `studio_warm` with its skybox drawn, frozen on a three-quarter hero pose.
    **Neither the model nor the stage is what the demo shows interactively**, and
@@ -293,7 +309,7 @@ reliable either: a freshly-erased device posts "Ready for Apple Intelligence"
 about a minute into the session — i.e. possibly *during* a capture — which is
 exactly how that card once landed in an iPad frame. The removed script detected
 it by re-shooting each frame and hashing the top band; by hand, the check is
-the same one it could never replace: **open all four PNGs before committing
+the same one it could never replace: **open all six PNGs before committing
 them.** #917 shipped a set that passed every mechanical check and was still
 wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes), and
 #2896 nearly shipped a "park diorama" that was actually a piano.
