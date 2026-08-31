@@ -3,8 +3,10 @@
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
 app — real iOS-simulator captures of rendered 3D content.
 
-> ✅ **The committed set is current as of 2026-08-29 (#3384).** These four
-> frames were re-captured from `main` at `710bb13dd`. The previous set dated
+> ✅ **The committed set is current as of 2026-08-29 (#3384).** The four
+> captured frames were re-captured from `main` at `710bb13dd`; #2844 later added
+> a fifth and sixth file — `00-ar.png` in each class, a **generated** AR visual,
+> not a capture (see "The `00-ar.png` slot" below). The previous set dated
 > from 2026-08-04 (`a1dcba562`) and had gone stale in two visible ways: the
 > demo-app glass chrome redesign (#3308) replaced the UI drawn over every
 > frame, and #3315 stripped the white display plinth the hovercar was standing
@@ -84,6 +86,21 @@ The iPhone 16 Pro Max and iPhone 17 Pro Max share the **same 6.9" display
 class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
+
+## The `00-ar.png` slot is generated, not captured (#2844)
+
+The listing text sells AR and no image showed any. `00-ar.png` in both classes
+is an **AI-generated marketing visual** (Gemini `gemini-3.1-flash-image`,
+image-to-image from the committed hero-model reference
+`tools/demo-previews/refs/hero.webp`, dark variant, centre-cropped to each
+class's exact pixel spec): the sci-fi helmet anchored in a real photographed
+room, per DESIGN.md's "Preview Image Art Direction" (real camera background,
+no text/UI/device frame/people). It is **not** a simulator capture — the
+simulator has no camera and cannot run an AR session — and no procedure in
+this README reproduces it. The `00-` prefix is load-bearing: the upload
+scripts order slots lexicographically by filename, so it takes slot 1 on the
+live listing without renaming the captured frames. Replace it with a real
+device capture whenever an authorized device session produces a better one.
 
 ## Demos captured (#2854, #2896)
 
