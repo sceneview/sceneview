@@ -12,4 +12,5 @@ needs a device camera: ARCore's recording/playback path fails on the QA
 emulators (session creation probes camera HAL id 0 before consulting the
 playback dataset, and the arm64 AVDs have none). The existing real captures
 were shifted down one slot, not replaced. Committing is not uploading — the
-store consoles are updated manually.
+release workflows sync both listings from the repository, so the visuals reach
+the stores with the next minor release.
