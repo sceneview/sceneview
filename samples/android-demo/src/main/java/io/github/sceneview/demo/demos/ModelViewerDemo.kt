@@ -572,7 +572,7 @@ private fun SingleModelSection(
         }} else null,
         dockAccent = DockItem(Icons.Filled.ViewInAr, "View in AR", {
             DemoSettings.requestedRoute = "demo/ar-placement?model=${selectedModel.assetPath}"
-        }, enabled = arSupported == true, caption = "AR"),
+        }, enabled = arSupported == true),
         chromeToggleOnTap = true,
     ) {
         // The scene fills the viewport edge to edge; the chrome floats over it. Framing

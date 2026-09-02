@@ -712,36 +712,28 @@ private fun BoxScope.DemoDock(
                 toolbarContentColor = SceneViewTokens.Glass.onGlass,
             ),
             shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+            // The accent stays icon-only: it is a 48 dp filled button, and a caption under
+            // it needs 66 dp in a 64 dp toolbar — it was silently clipped. Its filled,
+            // primary-tinted treatment is what distinguishes it from the labelled items,
+            // the way a FAB is distinguished from a navigation bar; the accessible name
+            // ("View in AR") carries the wording.
             trailingContent = if (accent != null) {
                 {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
+                    FilledIconButton(
+                        onClick = accent.onClick,
+                        enabled = accent.enabled,
+                        modifier = Modifier
+                            .size(SceneViewTokens.Layout.touchTarget)
+                            .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
                     ) {
-                        FilledIconButton(
-                            onClick = accent.onClick,
-                            enabled = accent.enabled,
-                            modifier = Modifier
-                                .size(SceneViewTokens.Layout.touchTarget)
-                                .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        ) {
-                            Icon(
-                                imageVector = accent.icon,
-                                contentDescription = accent.label,
-                                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
-                            )
-                        }
-                        DockCaption(
-                            text = accent.caption,
-                            color = if (accent.enabled) {
-                                SceneViewTokens.Glass.onGlass
-                            } else {
-                                SceneViewTokens.Glass.onGlass.copy(alpha = DOCK_DISABLED_ALPHA)
-                            },
+                        Icon(
+                            imageVector = accent.icon,
+                            contentDescription = accent.label,
+                            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
                         )
                     }
                 }

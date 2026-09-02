@@ -373,9 +373,12 @@ with `motion-fade`.
 - **Every dock item is labelled.** An icon-only dock makes the user decode glyphs, and
   two actions in the same row can legitimately want the same picture — the viewer had
   an outlined cube for "Models" beside a filled cube for "View in AR". The caption is
-  one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`, `AR`); if an
-  action needs more than one word to be understood, the wrong action is in the dock.
-  Icon and caption share a colour, so a selected toggle reads as one unit.
+  one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`); if an action
+  needs more than one word to be understood, the wrong action is in the dock. Icon and
+  caption share a colour, so a selected toggle reads as one unit.
+- **The accent is the exception.** It is a 48dp filled, primary-tinted button and stays
+  icon-only — a caption would not fit `dock-height`, and its treatment already sets it
+  apart from the labelled items the way a FAB is set apart from a navigation bar.
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
