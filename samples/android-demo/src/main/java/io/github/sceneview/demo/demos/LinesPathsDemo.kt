@@ -1,80 +1,188 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ScatterPlot
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
+import io.github.sceneview.demo.DemoPreviewPlaceholder
+import io.github.sceneview.demo.DemoPreviews
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.demos.internal.CurveKind
+import io.github.sceneview.demo.demos.internal.LinesPathsScene
+import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
+import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
-import java.util.Locale
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.roundToInt
 
-/** Base radius (metres) of every stroke bead — built once, then driven by [Scale]. */
-private const val BEAD_BASE_RADIUS = 0.010f
+/** One full lap of the marker around the route, in nanoseconds. */
+private const val LAP_DURATION_NANOS = 9_000_000_000.0
 
 /**
- * Uniform bead scale at Stroke Width `0`. Previously the slider mapped `0..1` straight onto
- * `0..BEAD_MAX_SCALE`, so roughly the bottom third of the drag produced a sub-pixel scale —
- * indistinguishable from doing nothing, which read as "the slider has no effect" (#1432). A
- * non-zero floor means every point on the track changes something visible.
- */
-private const val BEAD_MIN_SCALE = 0.6f
-
-/**
- * Uniform bead scale at Stroke Width `1`. Was `4f` (~0.05 m visual radius), which device QA
- * called "far too large" — a chain of balls that dwarfed the line itself. Lowered so the
- * thickest setting still reads as a stroke, not a string of beads (#1432).
- */
-private const val BEAD_MAX_SCALE = 2.4f
-
-/**
- * Demonstrates LineNode (single segment) and PathNode (polyline through points).
- * Controls toggle visibility, adjust the number of path points, and drive the stroke
- * width — the Stroke Width slider scales the per-point beads that give the lines a
- * visible thickness (GPU LINES primitives are capped at 1 px).
+ * **Lines, paths, splines and point sets** — the reference for drawing strokes in 3D.
+ *
+ * ### The thing this demo exists to teach
+ *
+ * `LineNode` and `PathNode` draw with Filament's `PrimitiveType.LINES`. Every mobile GL and
+ * Vulkan backend rasterises that at exactly **one device pixel**, and none of them honour a
+ * width request. On a 420 dpi phone that is ~0.4 dp: the previous version of this screen drew
+ * its line and its polyline correctly and you could not see either of them
+ * ([#3397](https://github.com/sceneview/sceneview/issues/3397),
+ * [#3425](https://github.com/sceneview/sceneview/issues/3425)) — the committed render golden
+ * was a black viewport with a chain of flat unlit discs across it.
+ *
+ * A stroke you can see has to be **geometry**. `TubeNode` sweeps a circular cross-section along
+ * a polyline with rotation-minimising frames, so a line has a radius in metres, catches the
+ * scene's light, occludes correctly and anti-aliases like anything else on screen. That is what
+ * every stroke here is built from, and it is the recipe to copy:
+ *
+ * ```kotlin
+ * SceneView(engine = engine, materialLoader = materialLoader) {
+ *     TubeNode(
+ *         points = catmullRomSpline(controlPoints, segments = 24),
+ *         radius = 0.008f,          // metres — a 16 mm stroke
+ *         closed = true,
+ *         materialInstance = rememberMaterialInstance(materialLoader, color),
+ *     )
+ * }
+ * ```
+ *
+ * ### What is on screen
+ *
+ * One point set, drawn four ways, so the relationship between them is visible at a glance:
+ *
+ * - **Route** — a closed path through eight control points, swept as a tube. The *Curve* chips
+ *   rebuild it as a raw **polyline**, a polyline with **rounded** corners (quadratic Bezier
+ *   fillets) or an interpolating **spline** (centripetal Catmull-Rom).
+ * - **Marker and trail** — a sphere travelling the route at constant speed with a brighter tube
+ *   behind it, both sampled by **arc length** so they move evenly whichever curve is selected.
+ * - **Ground track** — the same eight points flattened to a plane and drawn as a **dashed**
+ *   polyline that marches while the animation runs.
+ * - **Control points** — the point set itself, as lit spheres rather than raw GL points.
+ *
+ * Curves, arc-length sampling and framing live in [LinesPathsScene] as pure functions, covered
+ * by `LinesPathsSceneTest`.
+ *
+ * ### Why the buffers never reallocate
+ *
+ * Every route is [LinesPathsScene.ROUTE_SAMPLES] points long whatever the curve kind, every
+ * dash is [LinesPathsScene.DASH_SAMPLES] and the trail is [LinesPathsScene.TRAIL_SAMPLES]. Point
+ * counts are therefore constant for the life of the screen, so changing the curve, dragging the
+ * stroke slider or advancing the animation re-uploads vertices into the Filament buffers the
+ * tubes already own — no reallocation, nothing to free, and the 18 tubes on screen can be
+ * rewritten every frame.
  */
 @Composable
 fun LinesPathsDemo(onBack: () -> Unit) {
-    var showLine by remember { mutableStateOf(true) }
-    var showPath by remember { mutableStateOf(true) }
-    var pointCount by remember { mutableFloatStateOf(12f) }
-    // Filament's LINES primitive is hardware-capped at 1 GPU pixel on most backends, so a line
-    // "width" slider cannot drive the native line width. Instead we render per-point sphere beads
-    // and drive their *scale* — not their geometry radius — from this slider. Scale is a pure
-    // transform that `SceneScope.SphereNode` pushes via a `DisposableEffect` keyed on
-    // `scale.x/y/z`, so it re-applies whenever the *value* changes (not on every bare
-    // recomposition — that would clobber a frame-loop driver on other demos), and the beads
-    // track the slider every frame with no vertex-buffer rebuild; a radius-driven geometry
-    // update only ran on inequality and rebuilt ~600 verts per bead.
-    var lineWidth by remember { mutableFloatStateOf(0.5f) }
+    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): bypass the
+    // Filament-backed body BEFORE rememberEngine(), which needs .so files LayoutLib lacks.
+    if (LocalInspectionMode.current) {
+        DemoPreviewPlaceholder(title = "Lines & Paths", onBack = onBack)
+        return
+    }
+
+    var curve by remember { mutableStateOf(CurveKind.Smooth) }
+    var strokeMillimetres by remember { mutableFloatStateOf(LinesPathsScene.DEFAULT_STROKE_MM) }
+    var showPoints by remember { mutableStateOf(true) }
+    var animating by remember { mutableStateOf(true) }
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
+    // IBL: the strokes are lit geometry, so without an environment they read as flat silhouettes
+    // — exactly the look the unlit beads this demo replaces had.
+    rememberEnvironmentLoader(engine)
+
+    // On-brand hierarchy against the always-dark stage (`SceneViewTokens.Stage.background`):
+    // the route is the brightest ramp colour, the moving marker the second brightest so it
+    // reads against the route it sits on, the control points mid purple, and the ground track
+    // the deepest blue so it stays a backdrop rather than competing with the route.
+    val routeMaterial =
+        rememberMaterialInstance(materialLoader, SceneViewColors.TintLight, metallic = 0f, roughness = 0.35f)
+    val markerMaterial =
+        rememberMaterialInstance(materialLoader, SceneViewColors.TintSoft, metallic = 0f, roughness = 0.25f)
+    val pointMaterial =
+        rememberMaterialInstance(materialLoader, SceneViewColors.Accent, metallic = 0.1f, roughness = 0.4f)
+    val groundMaterial =
+        rememberMaterialInstance(materialLoader, SceneViewColors.Primary, metallic = 0f, roughness = 0.5f)
+
+    // Lap progress in [0, 1). Driven off the Choreographer rather than an InfiniteTransition so
+    // it pauses with the lifecycle (#936) and freezes at a fixed phase in QA mode, which is what
+    // makes the render golden deterministic.
+    var progress by remember { mutableFloatStateOf(LinesPathsScene.STATIC_PROGRESS) }
+    LifecycleAwareLaunchedEffect(animating, DemoSettings.qaMode) {
+        if (!animating || DemoSettings.qaMode) {
+            progress = LinesPathsScene.STATIC_PROGRESS
+            return@LifecycleAwareLaunchedEffect
+        }
+        var lastNanos = 0L
+        while (true) {
+            withFrameNanos { nanos ->
+                if (lastNanos != 0L) {
+                    progress = ((progress + (nanos - lastNanos) / LAP_DURATION_NANOS) % 1.0).toFloat()
+                }
+                lastNanos = nanos
+            }
+        }
+    }
+
+    val route = remember(curve) { LinesPathsScene.route(curve) }
+    val routeLength = remember(route) { LinesPathsScene.totalLength(route, closed = true) }
+    val strokeRadius = LinesPathsScene.strokeRadius(strokeMillimetres)
+
+    // Marker position and the trail behind it, both by arc length so the speed is constant.
+    val markerDistance = progress * routeLength
+    val markerPosition = LinesPathsScene.sampleAt(route, closed = true, distance = markerDistance)
+    val trailLength = routeLength * LinesPathsScene.TRAIL_FRACTION
+    val trail = LinesPathsScene.span(
+        points = route,
+        closed = true,
+        startDistance = markerDistance - trailLength,
+        length = trailLength,
+        samples = LinesPathsScene.TRAIL_SAMPLES,
+    )
+    val dashes = LinesPathsScene.dashes(
+        points = LinesPathsScene.groundTrack,
+        closed = true,
+        count = LinesPathsScene.DASH_COUNT,
+        dutyCycle = LinesPathsScene.DASH_DUTY_CYCLE,
+        phase = progress,
+        samples = LinesPathsScene.DASH_SAMPLES,
+    )
 
     val firstFrame = rememberFirstFrameState()
 
@@ -82,126 +190,158 @@ fun LinesPathsDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lines_paths_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        // The demo's own card art doubles as the loading cover, so the transition from the home
+        // grid reads as the card coming alive instead of a spinner over black (#1022) — the same
+        // wiring ModelViewerDemo uses, theme-matched so the cover matches the card tapped.
+        previewRes = DemoPreviews.resourceFor("lines-paths", dark = isSystemInDarkTheme()),
+        peekHeader = stringResource(
+            R.string.demo_lines_paths_status,
+            curve.label,
+            route.size,
+            strokeMillimetres.roundToInt(),
+        ),
+        onResetSettings = {
+            curve = CurveKind.Smooth
+            strokeMillimetres = LinesPathsScene.DEFAULT_STROKE_MM
+            showPoints = true
+            animating = true
+        },
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.ScatterPlot,
+                label = "Points",
+                onClick = { showPoints = !showPoints },
+                selected = showPoints,
+            ),
+            DockItem(
+                icon = if (animating) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                label = "Animate",
+                onClick = { animating = !animating },
+                selected = animating,
+            ),
+        ),
         controls = {
-            Text("Visibility", style = MaterialTheme.typography.labelLarge)
+            Text("Curve", style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(showLine, onClick = { showLine = !showLine }, label = { Text("Line") })
-                FilterChip(showPath, onClick = { showPath = !showPath }, label = { Text("Path") })
+                CurveKind.entries.forEach { kind ->
+                    FilterChip(
+                        selected = curve == kind,
+                        onClick = { curve = kind },
+                        label = { Text(kind.label) },
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             LabeledSlider(
-                label = "Path Points",
-                value = pointCount,
-                onValueChange = { pointCount = it },
-                valueRange = 3f..30f,
+                label = "Stroke",
+                value = strokeMillimetres,
+                onValueChange = { strokeMillimetres = it },
+                valueRange = LinesPathsScene.MIN_STROKE_MM..LinesPathsScene.MAX_STROKE_MM,
                 decimals = 0,
-                steps = 27,
+                unit = "mm",
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            LabeledSlider(
-                label = "Stroke Width",
-                value = lineWidth,
-                onValueChange = { lineWidth = it },
-                valueRange = 0f..1f,
-                valueText = "${"%.0f".format(Locale.US, lineWidth * 100)}%",
-            )
-        }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Toggleable on the whole row so tapping the label flips the state and UiAutomator
+            // finds a clickable ancestor — same contract as FogDemo's switches.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = showPoints, onValueChange = { showPoints = it }),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Control Points", style = MaterialTheme.typography.bodyLarge)
+                Switch(checked = showPoints, onCheckedChange = null)
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = animating, onValueChange = { animating = it }),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Animate", style = MaterialTheme.typography.bodyLarge)
+                Switch(checked = animating, onCheckedChange = null)
+            }
+        },
     ) {
         SceneView(
             modifier = Modifier.fillMaxSize(),
             onFrame = firstFrame.onFrame,
             engine = engine,
             materialLoader = materialLoader,
-            cameraManipulator = rememberCameraManipulator()
+            // The dashes move every frame, so a bounding box that changes 60 times a second
+            // would have the library re-centring the scene continuously and the whole
+            // composition would breathe. LinesPathsScene.SCENE_LIFT centres it instead, once.
+            autoCenterContent = false,
+            cameraManipulator = rememberHeroOrbitCameraManipulator(
+                trigger = true,
+                radius = LinesPathsScene.orbitRadius(),
+                yHeight = LinesPathsScene.orbitHeight(),
+            ),
         ) {
-            // On-brand line colors — Primary blue for the line segment, Accent purple for the
-            // path polyline. Same hero gradient as the product. Unlit because lines have ~0
-            // surface area (lighting contributes nothing useful) and we want crisp readable
-            // strokes regardless of scene illumination.
-            val lineMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Primary)
-            val pathMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Accent)
-
-            // The bead sphere is built once at BEAD_BASE_RADIUS; the slider drives its uniform
-            // `scale`, lerped `0..1 → BEAD_MIN_SCALE..BEAD_MAX_SCALE` so every position on the
-            // track changes the on-screen radius by a visible amount — no near-zero dead zone
-            // at the bottom, no oversized balls at the top (#1432).
-            val beadScale = BEAD_MIN_SCALE + lineWidth * (BEAD_MAX_SCALE - BEAD_MIN_SCALE)
-
-            // Single line segment — 1 px on most GPUs, so we also draw a row of spheres along
-            // the segment (scaled by the Stroke Width slider) to give the line a visible
-            // thickness. The bead count is high enough that they overlap into a smooth tube in
-            // the upper half of the slider range; the lower half reads as a beaded line, which
-            // is still a clearly visible response to the slider rather than no response at all.
-            if (showLine) {
-                val lineStart = Position(x = -1.0f, y = -0.5f, z = 0f)
-                val lineEnd = Position(x = 1.0f, y = 0.5f, z = 0f)
-                val lineOrigin = Position(x = 0f, y = 0.4f)
-                LineNode(
-                    start = lineStart,
-                    end = lineEnd,
-                    materialInstance = lineMaterial,
-                    position = lineOrigin
-                )
-                // Interpolate beads along the segment. Denser than the geometric minimum needed
-                // at BEAD_MAX_SCALE so overlap into a continuous stroke starts well before the
-                // slider tops out, instead of only at the very last notch.
-                val beadCount = 64
-                for (i in 0..beadCount) {
-                    val t = i.toFloat() / beadCount
-                    SphereNode(
-                        radius = BEAD_BASE_RADIUS,
-                        materialInstance = lineMaterial,
-                        scale = Scale(beadScale),
-                        position = Position(
-                            x = lineOrigin.x + lineStart.x + (lineEnd.x - lineStart.x) * t,
-                            y = lineOrigin.y + lineStart.y + (lineEnd.y - lineStart.y) * t,
-                            z = lineOrigin.z + lineStart.z + (lineEnd.z - lineStart.z) * t
-                        )
-                    )
-                }
-            }
-
-            // 3-D helix path — the points sweep through x/y on a circle and step out
-            // along z, so the polyline reads as a true 3D corkscrew instead of the flat
-            // 2-D ring it used to be. Much more visible from the default front camera.
-            if (showPath) {
-                val count = pointCount.toInt()
-                val pathPoints = remember(count) {
-                    (0 until count).map { i ->
-                        val t = i.toFloat() / (count - 1).coerceAtLeast(1)
-                        val angle = t * 4f * Math.PI.toFloat()  // 2 full turns
-                        val radius = 0.45f
-                        Position(
-                            x = cos(angle) * radius,
-                            y = sin(angle) * radius,
-                            z = (t - 0.5f) * 0.6f,  // helix depth -0.3 → +0.3 m
+            Node(position = Position(y = LinesPathsScene.SCENE_LIFT)) {
+                // The ground track: a straight-segment polyline, drawn as marching dashes. Each
+                // dash is its own short tube — capped, or the ends would read as hollow pipes.
+                dashes.forEachIndexed { index, dash ->
+                    key(index) {
+                        TubeNode(
+                            points = dash,
+                            radius = strokeRadius * LinesPathsScene.GROUND_STROKE_RATIO,
+                            radialSegments = LinesPathsScene.TUBE_SEGMENTS,
+                            caps = true,
+                            materialInstance = groundMaterial,
                         )
                     }
                 }
-                val pathOrigin = Position(x = 0f, y = -0.3f)
-                PathNode(
-                    points = pathPoints,
+
+                // The hero: the closed route, whichever curve family is selected.
+                TubeNode(
+                    points = route,
+                    radius = strokeRadius,
+                    radialSegments = LinesPathsScene.TUBE_SEGMENTS,
                     closed = true,
-                    materialInstance = pathMaterial,
-                    position = pathOrigin
+                    materialInstance = routeMaterial,
                 )
-                // Thick-path representation: one sphere bead at each path point, uniformly
-                // scaled by the Stroke Width slider. Gives the path a visible stroke width
-                // independent of GPU line-rasterisation limits.
-                pathPoints.forEach { p ->
-                    SphereNode(
-                        radius = BEAD_BASE_RADIUS,
-                        materialInstance = pathMaterial,
-                        scale = Scale(beadScale),
-                        position = Position(
-                            x = pathOrigin.x + p.x,
-                            y = pathOrigin.y + p.y,
-                            z = pathOrigin.z + p.z
-                        )
-                    )
+
+                // The trail rides slightly fatter than the route so it reads as a highlight on
+                // top of it rather than z-fighting with it.
+                TubeNode(
+                    points = trail,
+                    radius = strokeRadius * 1.35f,
+                    radialSegments = LinesPathsScene.TUBE_SEGMENTS,
+                    caps = true,
+                    materialInstance = markerMaterial,
+                )
+
+                SphereNode(
+                    radius = LinesPathsScene.MARKER_RADIUS,
+                    materialInstance = markerMaterial,
+                    position = markerPosition,
+                )
+
+                // The point set the whole scene is built from — lit spheres, not GL points.
+                if (showPoints) {
+                    LinesPathsScene.controlPoints.forEachIndexed { index, point ->
+                        key(index) {
+                            SphereNode(
+                                radius = LinesPathsScene.POINT_RADIUS,
+                                materialInstance = pointMaterial,
+                                position = point,
+                            )
+                        }
+                    }
                 }
             }
         }

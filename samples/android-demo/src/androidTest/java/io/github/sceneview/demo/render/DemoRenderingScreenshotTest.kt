@@ -140,6 +140,13 @@ class DemoRenderingScreenshotTest {
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
+    /**
+     * #3425: the committed `linespaths_default.png` was a picture of the very defect this
+     * suite exists to catch — a black viewport crossed by 1-px `PrimitiveType.LINES` and a
+     * chain of flat unlit discs. The scene it baselined no longer exists, so the golden was
+     * deleted and its slug taken out of [BASELINED_GOLDENS]; the first run after this change
+     * re-records it from the rebuilt demo and the run after that verifies it.
+     */
     @Test
     fun linesPathsDemo_default_state() {
         captureAndCompare(demoSlug = "lines-paths", goldenName = "linespaths_default", settleSeconds = 3)
@@ -605,7 +612,6 @@ class DemoRenderingScreenshotTest {
             "geometry_default",
             "lighting_default",
             "lightinglab_default",
-            "linespaths_default",
             "materials_default",
             "modelviewer_default",
             "pickingcollision_default",

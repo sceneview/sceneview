@@ -397,24 +397,45 @@ fun PostProcessingScene() {
 
 ### Lines, paths, and curves
 
+Draw strokes with `TubeNode`, not `LineNode` / `PathNode`: those use `PrimitiveType.LINES`, which
+every mobile backend rasterises at one device pixel with no width control — invisible on a phone.
+
 ```kotlin
 @Composable
 fun LinesAndPaths() {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
+    // IBL, so the strokes are lit rather than flat silhouettes.
+    rememberEnvironmentLoader(engine)
     val material = remember(materialLoader) {
-        materialLoader.createColorInstance(colorOf(r = 0f, g = 0.7f, b = 1f))
+        materialLoader.createColorInstance(colorOf(r = 0.64f, g = 0.76f, b = 1f))
     }
 
-    SceneView(modifier = Modifier.fillMaxSize(), engine = engine) {
-        LineNode(start = Position(-1f, 0f, 0f), end = Position(1f, 0f, 0f), materialInstance = material)
-        PathNode(
-            points = listOf(Position(0f, 0f, 0f), Position(0.5f, 1f, 0f), Position(1f, 0f, 0f)),
-            materialInstance = material
-        )
+    // Control points — a closed ring lifted out of plane.
+    val controls = remember {
+        List(8) { i ->
+            val a = i / 8f * 2f * PI.toFloat()
+            Position(cos(a) * 0.6f, sin(a * 2f) * 0.2f, sin(a) * 0.6f)
+        }
+    }
+    // Centripetal Catmull-Rom through every control point. Pad by wrapping to close the loop,
+    // and drop the final sample — the closed tube joins the ends itself.
+    val route = remember(controls) {
+        val padded = listOf(controls.last()) + controls + listOf(controls[0], controls[1])
+        catmullRomSpline(padded, segments = 24).dropLast(1)
+    }
+
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, materialLoader = materialLoader) {
+        TubeNode(points = route, radius = 0.008f, closed = true, materialInstance = material)
+        // The point set itself — lit spheres, not GL points.
+        controls.forEach { SphereNode(radius = 0.03f, position = it, materialInstance = material) }
     }
 }
 ```
+
+Sampling a path by **arc length** (for a marker travelling it, or for dashes) rather than by
+sample index keeps the motion at constant speed: walk the cumulative segment lengths, do not index
+into the sample list — spline samples are evenly spaced in parameter, not in distance.
 
 ### World-space text labels
 
@@ -575,7 +596,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Content
 
 - `two-d-in-three-d` — 2D in 3D. Text, image, video and billboard quads in 3D.
-- `lines-paths` — Lines & Paths. Polylines, helix, grids and circles.
+- `lines-paths` — Lines & Paths. Splines, polylines and point sets.
 
 ### Interaction
 
@@ -611,7 +632,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
-- `ar-orbital` — Orbital AR. Models orbit around you in AR.
+- `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
 - `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
 - `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.

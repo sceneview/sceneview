@@ -905,6 +905,11 @@ Two consequences to keep in mind:
   which the touch callback does not receive. Do not rely on back-face interaction.
 
 ### LineNode — single line segment
+
+> **Draws a 1-device-pixel hairline.** Mobile GL/Vulkan backends expose no line width, so at
+> phone density this is effectively invisible. Use it for debug gizmos; for a stroke a user has
+> to see, use `TubeNode` below.
+
 ```kotlin
 @Composable fun LineNode(
     start: Position = Line.DEFAULT_START,
@@ -919,6 +924,9 @@ Two consequences to keep in mind:
 ```
 
 ### PathNode — polyline through points
+
+> Same 1-pixel caveat as `LineNode`. Use `TubeNode` for a visible polyline.
+
 ```kotlin
 @Composable fun PathNode(
     points: List<Position> = Path.DEFAULT_POINTS,
@@ -931,6 +939,34 @@ Two consequences to keep in mind:
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+
+### TubeNode — polyline with a real width
+
+The visible alternative to `LineNode` / `PathNode`: sweeps a circular cross-section of `radius`
+metres along `points`, so a line is ordinary lit geometry — it has a width, catches light,
+occludes correctly and anti-aliases. Frames are rotation-minimising (parallel transport), so the
+tube does not spin at inflection points, and a `closed` loop's residual twist is spread over the
+rings so the seam has no crease.
+
+```kotlin
+@Composable fun TubeNode(
+    points: List<Position> = Tube.DEFAULT_POINTS,
+    radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
+    radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
+    closed: Boolean = false,                      // join the last point back to the first
+    caps: Boolean = true,                         // fill open ends with a disc
+    materialInstance: MaterialInstance? = null,
+    position: Position = Position(x = 0f),
+    rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),
+    apply: TubeNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Changing `points` or `radius` **without changing the point count** re-uploads into the buffers the
+tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
+them — keep sample counts constant across curve types if you switch shapes at runtime.
 
 ### MeshNode — custom geometry
 ```kotlin
@@ -1270,15 +1306,20 @@ ARSceneView(modifier = Modifier.fillMaxSize()) {
 ```
 
 **Rate-limit the ARCore hit test (perf, [#2328](https://github.com/sceneview/sceneview/issues/2328)).**
-`HitResultNode.refreshIntervalMs` (default `0` = `Frame.hitTest` every frame) throttles the
-raycast the same way `PointCloudNode` / `DepthMeshNode` rate-limit their rebuilds: a positive
-value (e.g. `100` = 10 Hz) keeps the node's last pose between hit tests, cutting hit-test load
-on scenes with several cursors. Set it in the `apply` block:
+`refreshIntervalMs` (default `0` = `Frame.hitTest` every frame) throttles the raycast the same
+way `PointCloudNode` / `DepthMeshNode` rate-limit their rebuilds: a positive value (e.g. `100`
+= 10 Hz) keeps the node's last pose between hit tests, cutting hit-test load on scenes with
+several cursors. Since [#3391](https://github.com/sceneview/sceneview/issues/3391) it is a
+first-class parameter on **`HitResultNode`, `ReticleNode` and `PlacementReticle`** alike —
+constructors and composables:
 ```kotlin
-HitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f, apply = { refreshIntervalMs = 100 }) {
+HitResultNode(xPx = viewWidth / 2f, yPx = viewHeight / 2f, refreshIntervalMs = 100L) {
     CubeNode(size = Size(0.05f))
 }
 ```
+It stays a writable `var` afterwards and the composables re-apply it on recomposition without
+re-creating the node, so it is safe to drive from state (e.g. 10 Hz on low battery, every
+frame while the user is actively aiming).
 
 ### ReticleNode — placement reticle with auto-hide
 
@@ -1306,10 +1347,17 @@ tap-to-place); use `HitResultNode` directly otherwise. New in v4.x (#1882).
     minCameraDistanceFromPlane: Pair<Camera, Float>? = null,   // legacy plane-only gate
     predicate: ((HitResult) -> Boolean)? = null,
     onHitResultChanged: ((HitResult?) -> Unit)? = null,        // null when the ray misses every trackable
+    refreshIntervalMs: Long = 0L,                              // 0 = hit test every frame; >0 rate-limits (100 = 10 Hz) (#3391)
     apply: ReticleNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null        // visual marker (e.g. a thin disc)
 )
 ```
+
+A reticle is on screen for the whole placement flow, which makes it the node most likely to
+want a hit-test ceiling. `refreshIntervalMs` is forwarded straight to
+`HitResultNode.refreshIntervalMs` (#3391): between hit tests the reticle keeps its last pose
+and the inherited smooth-transform easing still runs every frame, so the marker keeps gliding
+rather than stepping.
 
 Typical "what-you-see-is-what-you-get" placement:
 ```kotlin
@@ -1364,7 +1412,13 @@ ARSceneView(
 Semantics: `snapToPlane = true` (default) is plane-only (#1891 contract);
 `snapToPlane = false` is FREE PLACEMENT — feature-point hits accepted, plane hits still
 in-polygon. Project acceptance policies (max distance, custom rules) go through `predicate`
-(construction-time). The smoothing knob and callback are live-updatable on recomposition.
+(construction-time). The smoothing knob, the callback and `refreshIntervalMs` are all
+live-updatable on recomposition.
+
+`PlacementReticle(..., refreshIntervalMs = 100)` rate-limits the ARCore hit test to 10 Hz
+(#3391; `0`, the default, hit-tests every frame). The two rates are independent: the
+orientation smoothing keeps running every frame, so a throttled reticle still eases toward
+each new hit rather than stepping to it.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): `ARSceneView(showPlacementReticle: true)` runs
 the tap-to-place raycast every frame and drives a surface-snapped disc (orientation slerp `0.75`,

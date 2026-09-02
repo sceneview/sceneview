@@ -17,7 +17,10 @@ object LinesPathsFragment : DemoFragment {
         category = DemoCategory.CONTENT,
         icon = Icons.Filled.Timeline,
         order = 12,
-        tags = setOf("line", "polyline", "path", "helix", "grid", "circle"),
+        tags = setOf(
+            "line", "polyline", "path", "spline", "curve", "bezier", "catmull-rom",
+            "tube", "stroke", "dashed", "points", "point cloud", "trail",
+        ),
     )
 
     @Composable

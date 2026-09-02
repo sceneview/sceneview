@@ -119,7 +119,8 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `ImageNode` | `TwoDInThreeDDemo.kt` | 2D image quad (Image tab of unified 2D in 3D demo) |
 | `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
 | `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (the floating card of the unified Picking & Collision demo). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false` |
-| `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
+| `TubeNode(points, radius, closed, caps)` | `LinesPathsDemo.kt` | A polyline with a **real width** — the one to reach for. Sweeps a cross-section of `radius` metres along `points` |
+| `LineNode / PathNode` | — | `PrimitiveType.LINES`: a 1-device-pixel hairline with no width control, invisible at phone density (#3397). Debug gizmos only — use `TubeNode` for anything a user sees |
 | `PhysicsNode(node, mass, restitution, …)` | `AnimationPhysicsDemo.kt` | Wraps an existing node; experimental (Physics tab of unified Animation & Physics demo) |
 | `ReflectionProbeNode` | `LightingLabDemo.kt` | Local IBL probe (Reflections tab of unified Lighting Lab demo) |
 

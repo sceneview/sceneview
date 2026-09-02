@@ -772,24 +772,28 @@ class DemoInteractionTest {
         screenshot("61_gesture_after_reset")
     }
 
-    // ── 15. Lines & Paths — chips + line-width slider (single screen open) ────
+    // ── 15. Lines & Paths — curve chips, stroke slider, point / animate switches ──
 
     @Test
     fun linesPaths_fullScreen() {
+        // #3425 rebuild: the screen no longer has Line/Path visibility chips or a "Line Width"
+        // slider. It has three curve chips, a "Stroke" slider in millimetres, and two switches
+        // that are also dock toggles. The old cases named controls that no longer exist.
         openDemo("lines-paths")
-        screenshot("62_linesPaths_both_default")
+        screenshot("62_linesPaths_spline_default")
 
-        tap("Line"); screenshot("63_linesPaths_no_line")
-        tap("Path"); screenshot("64_linesPaths_none")
-        tap("Line"); tap("Path"); screenshot("65_linesPaths_both_back")
+        tap("Polyline"); screenshot("63_linesPaths_curve_polyline")
+        tap("Rounded"); screenshot("64_linesPaths_curve_rounded")
+        tap("Spline"); screenshot("65_linesPaths_curve_spline")
 
-        dragSlider("Line Width:", fraction = 1.0f); screenshot("70_linesPaths_width_max")
-        dragSlider("Line Width:", fraction = 0.0f); screenshot("71_linesPaths_width_zero")
-        dragSlider("Line Width:", fraction = 0.5f); screenshot("71c_linesPaths_width_mid")
+        dragSlider("Stroke", fraction = 1.0f); screenshot("70_linesPaths_stroke_max")
+        dragSlider("Stroke", fraction = 0.0f); screenshot("71_linesPaths_stroke_min")
+        dragSlider("Stroke", fraction = 0.5f); screenshot("71c_linesPaths_stroke_mid")
 
-        // Path Points slider sweep
-        dragSlider("Path Points:", fraction = 0.0f); screenshot("71a_linesPaths_points_min")
-        dragSlider("Path Points:", fraction = 1.0f); screenshot("71b_linesPaths_points_max")
+        tap("Control Points"); screenshot("71a_linesPaths_points_hidden")
+        tap("Control Points"); screenshot("71b_linesPaths_points_shown")
+
+        tap("Animate"); screenshot("71d_linesPaths_animation_paused")
     }
 
     // ── 18. Dynamic Sky ───────────────────────────────────────────────────────

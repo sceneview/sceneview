@@ -368,6 +368,7 @@ public class io/github/sceneview/SceneScope {
 	public final fun SplatNode (Lio/github/sceneview/core/splat/SplatCloud;Lkotlin/jvm/functions/Function0;ILdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun TextNode (Ljava/lang/String;FIILandroid/graphics/Typeface;FFLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun TorusNode (FFLdev/romainguy/kotlin/math/Float3;IILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun TubeNode (Ljava/util/List;FIZZLcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun VideoNode (Landroid/media/MediaPlayer;Ljava/lang/Integer;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public final fun VideoNode (Ljava/lang/String;ZZLjava/lang/Integer;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun ViewNode (Lio/github/sceneview/node/ViewNode$WindowManager;ZZLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;III)V
@@ -1410,6 +1411,67 @@ public final class io/github/sceneview/geometries/Torus$Companion {
 	public final fun getDEFAULT_MINOR_SEGMENTS ()I
 	public final fun getIndices (II)Ljava/util/List;
 	public final fun getVertices (FFLdev/romainguy/kotlin/math/Float3;II)Ljava/util/List;
+}
+
+public final class io/github/sceneview/geometries/Tube : io/github/sceneview/geometries/Geometry {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/geometries/Tube$Companion;
+	public static final field DEFAULT_CAPS Z
+	public static final field DEFAULT_CLOSED Z
+	public static final field DEFAULT_RADIAL_SEGMENTS I
+	public static final field DEFAULT_RADIUS F
+	public synthetic fun <init> (Lcom/google/android/filament/RenderableManager$PrimitiveType;Ljava/util/List;Lcom/google/android/filament/VertexBuffer;Ljava/util/List;Lcom/google/android/filament/IndexBuffer;Ljava/util/List;Lcom/google/android/filament/Box;Ljava/util/List;FIZZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCaps ()Z
+	public final fun getClosed ()Z
+	public final fun getPoints ()Ljava/util/List;
+	public final fun getRadialSegments ()I
+	public final fun getRadius ()F
+	public final fun update (Lcom/google/android/filament/Engine;Ljava/util/List;FIZZ)Lio/github/sceneview/geometries/Tube;
+	public static synthetic fun update$default (Lio/github/sceneview/geometries/Tube;Lcom/google/android/filament/Engine;Ljava/util/List;FIZZILjava/lang/Object;)Lio/github/sceneview/geometries/Tube;
+}
+
+public final class io/github/sceneview/geometries/Tube$Builder : io/github/sceneview/geometries/Geometry$Builder {
+	public static final field $stable I
+	public fun <init> ()V
+	public synthetic fun build (Lcom/google/android/filament/Engine;)Lio/github/sceneview/geometries/Geometry;
+	public fun build (Lcom/google/android/filament/Engine;)Lio/github/sceneview/geometries/Tube;
+	public final fun caps (Z)Lio/github/sceneview/geometries/Tube$Builder;
+	public final fun closed (Z)Lio/github/sceneview/geometries/Tube$Builder;
+	public final fun getCaps ()Z
+	public final fun getClosed ()Z
+	public final fun getPoints ()Ljava/util/List;
+	public final fun getRadialSegments ()I
+	public final fun getRadius ()F
+	public final fun points (Ljava/util/List;)Lio/github/sceneview/geometries/Tube$Builder;
+	public final fun radialSegments (I)Lio/github/sceneview/geometries/Tube$Builder;
+	public final fun radius (F)Lio/github/sceneview/geometries/Tube$Builder;
+}
+
+public final class io/github/sceneview/geometries/Tube$Companion {
+	public final fun frames (Ljava/util/List;Z)Ljava/util/List;
+	public static synthetic fun frames$default (Lio/github/sceneview/geometries/Tube$Companion;Ljava/util/List;ZILjava/lang/Object;)Ljava/util/List;
+	public final fun getDEFAULT_POINTS ()Ljava/util/List;
+	public final fun getIndices (IIZZ)Ljava/util/List;
+	public static synthetic fun getIndices$default (Lio/github/sceneview/geometries/Tube$Companion;IIZZILjava/lang/Object;)Ljava/util/List;
+	public final fun getVertices (Ljava/util/List;FIZZ)Ljava/util/List;
+	public static synthetic fun getVertices$default (Lio/github/sceneview/geometries/Tube$Companion;Ljava/util/List;FIZZILjava/lang/Object;)Ljava/util/List;
+	public final fun ringCount (IZ)I
+}
+
+public final class io/github/sceneview/geometries/Tube$Frame {
+	public static final field $stable I
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component3 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/geometries/Tube$Frame;
+	public static synthetic fun copy$default (Lio/github/sceneview/geometries/Tube$Frame;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/geometries/Tube$Frame;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBinormal ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getNormal ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getTangent ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public class io/github/sceneview/gesture/CameraGestureDetector {
@@ -3100,6 +3162,18 @@ public class io/github/sceneview/node/TorusNode : io/github/sceneview/node/Geome
 	public fun getGeometry ()Lio/github/sceneview/geometries/Torus;
 	public final fun updateGeometry (FFLdev/romainguy/kotlin/math/Float3;II)V
 	public static synthetic fun updateGeometry$default (Lio/github/sceneview/node/TorusNode;FFLdev/romainguy/kotlin/math/Float3;IIILjava/lang/Object;)V
+}
+
+public class io/github/sceneview/node/TubeNode : io/github/sceneview/node/GeometryNode {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Tube;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/geometries/Tube;Lcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;Ljava/util/List;FIZZLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Ljava/util/List;FIZZLcom/google/android/filament/MaterialInstance;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun getGeometry ()Lio/github/sceneview/geometries/Geometry;
+	public fun getGeometry ()Lio/github/sceneview/geometries/Tube;
+	public final fun updateGeometry (Ljava/util/List;FIZZ)V
+	public static synthetic fun updateGeometry$default (Lio/github/sceneview/node/TubeNode;Ljava/util/List;FIZZILjava/lang/Object;)V
 }
 
 public class io/github/sceneview/node/VideoNode : io/github/sceneview/node/PlaneNode {
