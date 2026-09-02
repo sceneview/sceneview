@@ -32,10 +32,10 @@ internal object CalloutLayout {
     const val MODEL_SIZE_METERS = 0.62f
 
     /** Camera orbit radius from the turntable's centre, in metres. */
-    const val CAMERA_DISTANCE = 2.1f
+    const val CAMERA_DISTANCE = 2.8f
 
     /** Camera height above the turntable's centre, in metres. A gentle look-down. */
-    const val CAMERA_HEIGHT = 0.28f
+    const val CAMERA_HEIGHT = 0.34f
 
     /** How far off the ground the whole rig sits — the point the camera looks at. */
     const val TARGET_Y = 0.02f
@@ -54,26 +54,32 @@ internal object CalloutLayout {
 
     // ── Card spread (how far the cards stand off the model) ───────────────────────────────
 
-    /** Closest the cards may stand to the turntable axis, in metres. */
-    const val MIN_SPREAD = 0.36f
+    /**
+     * Closest the cards may stand to the turntable axis, in metres.
+     *
+     * Deliberately *inside* the model's own silhouette at the low end. A call-out that
+     * overlaps the thing it names is what a real annotation UI looks like — and it is the only
+     * arrangement in which **Always on top** has anything to show.
+     */
+    const val MIN_SPREAD = 0.28f
 
     /** Furthest the cards may stand from the turntable axis, in metres. */
-    const val MAX_SPREAD = 0.95f
+    const val MAX_SPREAD = 0.70f
 
     /** Default card radius — just clear of the model's silhouette. */
-    const val DEFAULT_SPREAD = 0.52f
+    const val DEFAULT_SPREAD = 0.34f
 
     // ── Card size (world scale applied to the rendered Compose quad) ──────────────────────
 
     /**
-     * Card scale bounds. A `ViewNode` renders at `pxPerUnits = 250 px/m`, so the 300 dp-wide
-     * card below is ~2.6 m across at scale 1 — these are the factors that bring it back to a
-     * hand-sized label next to a 0.62 m model.
+     * Card scale bounds. A `ViewNode` renders at `pxPerUnits = 250 px/m`, so the demo's 264 dp
+     * card is a couple of metres across at scale 1 — these are the factors that bring it back to
+     * a hand-sized label next to a 0.62 m model.
      */
     const val MIN_CARD_SCALE = 0.07f
 
     /** @see MIN_CARD_SCALE */
-    const val MAX_CARD_SCALE = 0.22f
+    const val MAX_CARD_SCALE = 0.18f
 
     /** @see MIN_CARD_SCALE */
     const val DEFAULT_CARD_SCALE = 0.12f

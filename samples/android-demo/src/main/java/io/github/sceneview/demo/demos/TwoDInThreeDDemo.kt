@@ -55,7 +55,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.demos.internal.Callout
 import io.github.sceneview.demo.demos.internal.CalloutLayout
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -97,7 +97,7 @@ import kotlin.math.abs
  * |---|---|---|
  * | Should the card face the viewer? | **Billboard** (dock) | Off, the cards ride the turntable and go edge-on, then show their backs. On, they pivot to stay square. |
  * | Should the model be able to hide it? | **Always on top** | Off, the Vents card is half-swallowed by the helmet. On, `setDepthCulling(false)` + `PRIORITY_LAST` float it over everything. |
- * | How big is a card in metres? | **Card size** | A `ViewNode` renders at `pxPerUnits` = 250 px/m, so a 300 dp card is metres wide before you scale it. |
+ * | How big is a card in metres? | **Card size** | A `ViewNode` renders at `pxPerUnits` = 250 px/m, so a 264 dp card is metres wide before you scale it. |
  * | How far off the subject? | **Card distance** | Orbit radius of the three call-outs. |
  *
  * ## World-anchored labels, viewer-anchored controls
@@ -119,6 +119,10 @@ import kotlin.math.abs
  * 3. **One `WindowManager` sizes itself to its largest child.** All four cards here share one
  *    manager, so all four are pinned to the same [CARD_WIDTH] × [CARD_HEIGHT] box. Let one grow
  *    and every other quad silently resizes with it.
+ *
+ * And one that is not in the docs: a white Material card on an `unlit = true` `ViewNode` is a
+ * full-brightness block in an HDR pipeline, so SceneView's default bloom bleeds a halo around
+ * every label. These are shaded instead — see [AnnotationCard].
  *
  * Rebuilt from scratch for [#3424](https://github.com/sceneview/sceneview/issues/3424). The demo
  * it replaces was four unrelated scenes behind a segmented button — `TextNode` labels, a gallery
@@ -222,11 +226,12 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             cameraNode = cameraNode,
             // Required. See gotcha 1 in the class KDoc.
             viewNodeWindowManager = viewNodeManager,
-            // Photo-studio IBL, no skybox: the helmet's shell is metallic and a metal with
-            // nothing to reflect reads as grey paint. Leaving the skybox off keeps the scene
-            // floating on the theme background, which is what lets one scene look right in both
-            // light and dark.
-            environment = rememberMaterialsShowcaseEnvironment(environmentLoader),
+            // The shared model-demo IBL (#2110), no skybox. SceneView's *default* environment
+            // pairs a neutral IBL with a solid black skybox, and the helmet's shell is metallic:
+            // with nothing bright to reflect it renders solid black, which is exactly the bug
+            // #2110 was filed for. Leaving the skybox off keeps the subject floating on the
+            // demo's own background, so one scene reads correctly in both light and dark.
+            environment = rememberModelDemoEnvironment(environmentLoader),
             cameraManipulator = rememberCameraManipulator(
                 // The orbit distance is the LENGTH of `orbitHomePosition` (see GeometryLayout and
                 // #2930), and `camera_distance` (#2652) is honoured so a capture run can reframe
@@ -326,9 +331,13 @@ private fun SceneScope.AnnotationCard(
 
     ViewNode(
         windowManager = windowManager,
-        // A label is not lit by the scene: an annotation that dims as it turns into shadow is a
-        // legibility bug, not realism.
-        unlit = true,
+        // Lit, not `unlit = true`, and the reason is bloom rather than realism. An unlit
+        // ViewNode is full-brightness by definition, so a white Material card lands above the
+        // HDR pipeline's bloom threshold and every label wore a halo that ate its own contrast.
+        // Shading the quad brings it back under. The studio IBL is omnidirectional, so a card
+        // that turns away from the key light still reads — which is what makes this safe for a
+        // label, where `unlit` would otherwise be the obvious choice.
+        unlit = false,
         position = CalloutLayout.localPosition(callout, spread),
         rotation = Rotation(y = yaw),
         scale = Scale(cardScale),
@@ -357,7 +366,8 @@ private fun SceneScope.ControlCard(
 
     ViewNode(
         windowManager = windowManager,
-        unlit = true,
+        // Lit, for the same bloom reason as the call-outs — see [AnnotationCard].
+        unlit = false,
         position = CalloutLayout.CONTROL_CARD_POSITION,
         rotation = Rotation(
             y = CalloutLayout.billboardYawDegrees(
@@ -602,7 +612,7 @@ internal const val SPIN_RESUME_LABEL = "Resume spin"
 private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
 
 /** @see CardShell */
-private val CARD_WIDTH = 300.dp
+private val CARD_WIDTH = 264.dp
 
 /** @see CardShell */
 private val CARD_HEIGHT = 156.dp

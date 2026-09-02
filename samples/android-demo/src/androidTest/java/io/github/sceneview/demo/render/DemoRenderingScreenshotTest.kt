@@ -135,10 +135,12 @@ class DemoRenderingScreenshotTest {
         // the slug was taken out of BASELINED_GOLDENS. Until a fresh capture is promoted,
         // this case takes the documented first-run path: save and skip.
         //
-        // 8 s settle, not 3: the demo loads a 2 048² PBR GLB and a studio HDR, and each
-        // `ViewNode` needs a few frames after that for its off-screen `ComposeView` to
-        // draw into a `SurfaceTexture` that starts out empty.
-        captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 8,
+        // 14 s settle, not 3: the demo loads a 2 048² PBR GLB and a studio HDR, and each of the
+        // four `ViewNode`s then needs several more frames for its off-screen `ComposeView` to
+        // draw into a `SurfaceTexture` that starts out empty. Measured on the shared AVD, the
+        // scene took ~12 s from deep link to a settled frame with all four cards present; a
+        // shorter wait captures a black or half-populated scene.
+        captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 

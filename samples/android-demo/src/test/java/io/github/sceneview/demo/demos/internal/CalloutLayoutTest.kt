@@ -258,13 +258,18 @@ class CalloutLayoutTest {
         callouts.forEach { callout ->
             assertTrue("blank title on ${callout.id}", callout.title.isNotBlank())
             assertTrue("blank body on ${callout.id}", callout.body.isNotBlank())
-            // The default radius has to clear the model's own half-extent, or a card spawns
-            // inside the helmet and the demo opens on a defect.
-            assertTrue(
-                "${callout.id} starts inside the model",
-                CalloutLayout.DEFAULT_SPREAD > CalloutLayout.MODEL_SIZE_METERS / 2f,
-            )
         }
+        // The far end of the slider has to clear the model's own half-extent, or "move the
+        // cards off the subject" does not actually reach off the subject. The near end is
+        // deliberately inside it — see MIN_SPREAD.
+        assertTrue(
+            "MAX_SPREAD never clears the model",
+            CalloutLayout.MAX_SPREAD > CalloutLayout.MODEL_SIZE_METERS,
+        )
+        assertTrue(
+            "MIN_SPREAD should reach inside the silhouette, so the depth toggle has work to do",
+            CalloutLayout.MIN_SPREAD < CalloutLayout.MODEL_SIZE_METERS / 2f,
+        )
     }
 
     @Test
