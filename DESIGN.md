@@ -285,12 +285,15 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 ### App Motion (Android demo)
 
-One spring, one fade — nothing else animates in the demo chrome.
+One spring and one fade for the chrome; one shared-axis spec for screen changes and
+one fly-in for a 3D subject's arrival. Nothing else animates.
 
 | Token | Value | Usage |
 |---|---|---|
-| `motion-spring` | `spring(dampingRatio = 0.85, stiffness = 450)` | Press scale (0.97–0.98), sheet open/close, dock show/hide |
-| `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, preview crossfade |
+| `motion-spring` | `spring(dampingRatio = 0.85, stiffness = 450)` | Press scale (0.97–0.98), sheet open/close, dock show/hide, panel expand |
+| `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus, loading-cover crossfade |
+| `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
+| `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
 
 ---
 
@@ -358,13 +361,26 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 |---|---|
 | `dock-height` | 64dp |
 | `dock-radius` | `radius-full` |
-| `dock-item` | 48dp square touch target |
+| `dock-item` | 48dp minimum touch target; icon over caption |
 | `dock-icon` | 22dp |
+| `dock-caption` | `type-caption`, 2dp under the icon, one line, never truncated |
 | `dock-items` | at most 4 items + 1 optional accent (primary-tinted) item |
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
 with `motion-fade`.
+
+- **Every dock item is labelled.** An icon-only dock makes the user decode glyphs, and
+  two actions in the same row can legitimately want the same picture — the viewer had
+  an outlined cube for "Models" beside a filled cube for "View in AR". The caption is
+  one word (`Models`, `Lighting`, `Animate`, `Recenter`, `Settings`); if an action
+  needs more than one word to be understood, the wrong action is in the dock. Icon and
+  caption share a colour, so a selected toggle reads as one unit.
+- **The accent is the exception.** It is a 48dp filled, primary-tinted button and stays
+  icon-only — a caption would not fit `dock-height`, and its treatment already sets it
+  apart from the labelled items the way a FAB is set apart from a navigation bar.
+- **The caption is not the accessible name.** The content description stays the full
+  phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
 ---
 
