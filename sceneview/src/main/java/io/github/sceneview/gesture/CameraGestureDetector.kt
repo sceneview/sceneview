@@ -119,10 +119,19 @@ open class CameraGestureDetector(
         private var homeDistance: Float = -1f
 
         /**
+         * `true` when the wrapped manipulator is an `ORBIT` one, i.e. when `scroll` means "dolly
+         * towards the pivot". `MAP` scrolls the map extent and `FREE_FLIGHT` scrolls its move
+         * speed; converting a *distance* into a scroll delta is meaningless for both.
+         */
+        private fun isOrbitMode(): Boolean =
+            runCatching { manipulator.mode == Manipulator.Mode.ORBIT }.getOrDefault(false)
+
+        /**
          * Reads the orbit radius, seeding it from the manipulator's own pose the first time (which
          * is only correct before any orbit drag — see [orbitDistance]).
          */
         private fun currentOrbitDistance(): Float {
+            if (!isOrbitMode()) return -1f
             if (orbitDistance > 0f) return orbitDistance
             val eye = FloatArray(3)
             val target = FloatArray(3)
@@ -230,10 +239,12 @@ open class CameraGestureDetector(
             // Filament Manipulator instance needed).
             val zoomDelta =
                 pinchZoomDelta(prevSeparation, currSeparation, pinchZoomSpeed, pinchZoomDamping)
-            val distance = currentOrbitDistance()
+            val distance = if (isOrbitMode()) currentOrbitDistance() else -1f
             if (distance <= 0f) {
-                // No usable pose to scale against — fall back to Filament's absolute step rather
-                // than dropping the gesture entirely.
+                // Either no usable pose to scale against, or a mode where "distance" is not what
+                // scroll means: `MapManipulator` scrolls the map extent and `FreeFlightManipulator`
+                // scrolls its move *speed*, neither of which is a dolly. Hand those Filament's own
+                // step rather than a dolly conversion that does not apply to them.
                 manipulator.scroll(x, y, zoomDelta)
                 return
             }
