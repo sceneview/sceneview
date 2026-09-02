@@ -247,10 +247,14 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun customGeometryDemo_default_state() {
-        // #2239 Batch 1 — `custom-mesh` and `shape` consolidated into `custom-geometry`.
-        // The deep-link alias keeps the old slug routable; the default tab is Custom Mesh
-        // so the captured frame is comparable to the prior `custommesh_default` golden.
-        captureAndCompare(demoSlug = "custom-geometry", goldenName = "customgeometry_default", settleSeconds = 3)
+        // #3423 rebuilt this demo around a mesh generated at runtime, so the old golden
+        // (the composite molecule) was deleted with the scene it depicted and the slug was
+        // taken out of BASELINED_GOLDENS. Until a fresh capture is promoted, this case
+        // takes the documented first-run path: save and skip.
+        //
+        // 6 s settle, not 3: the knot is generated on the main thread and the demo now
+        // decodes a studio HDR for its IBL, both after Filament Engine init.
+        captureAndCompare(demoSlug = "custom-geometry", goldenName = "customgeometry_default", settleSeconds = 6)
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -599,7 +603,12 @@ class DemoRenderingScreenshotTest {
         val BASELINED_GOLDENS = setOf(
             "animationphysics_default",
             "cameragestures_default",
-            "customgeometry_default",
+            // "customgeometry_default" — deliberately NOT baselined right now. #3423
+            // rebuilt the demo from scratch (a runtime-generated torus knot replaced the
+            // composite molecule), so the committed golden depicted a scene that no longer
+            // exists and was deleted with it. The case below therefore takes the first-run
+            // path: the next suite run saves a fresh capture for promotion and skips. Put
+            // the slug back here in the SAME commit that adds the new PNG.
             "debugoverlay_default",
             "fog_default",
             "geometry_default",

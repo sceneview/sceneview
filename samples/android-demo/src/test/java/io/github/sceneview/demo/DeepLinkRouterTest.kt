@@ -311,13 +311,13 @@ class DeepLinkRouterTest {
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────
     //
     // Consolidated demos open on their default first tab unless an alias (e.g.
-    // `shape`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
+    // `physics`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
     // resolution is pure (raw id + raw param → index); the bad-index clamp lives in
     // the demo composable (initialDemoMode), out of this unit's reach.
 
     @Test
     fun `resolveInitialTab maps a non-default alias to its tab`() {
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", null))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
         assertEquals(2, DeepLinkRouter.resolveInitialTab("scene-gallery", null))
         assertEquals(3, DeepLinkRouter.resolveInitialTab("billboard", null))
@@ -328,6 +328,9 @@ class DeepLinkRouterTest {
         // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
         assertNull(DeepLinkRouter.resolveInitialTab("text", null))
+        // `shape` joined them in #3423: `custom-geometry` was rebuilt around a single
+        // runtime-generated mesh and has no tabs left to pre-select.
+        assertNull(DeepLinkRouter.resolveInitialTab("shape", null))
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
@@ -335,8 +338,8 @@ class DeepLinkRouterTest {
 
     @Test
     fun `explicit tab param wins over the alias default`() {
-        // `?tab=0` forces the default tab even when launched via the `shape` alias.
-        assertEquals(0, DeepLinkRouter.resolveInitialTab("shape", "0"))
+        // `?tab=0` forces the default tab even when launched via the `physics` alias.
+        assertEquals(0, DeepLinkRouter.resolveInitialTab("physics", "0"))
         // An explicit integer index on a plain id.
         assertEquals(2, DeepLinkRouter.resolveInitialTab("custom-geometry", "2"))
         // An explicit alias-token tab value resolves through ALIAS_INITIAL_TAB.
@@ -346,9 +349,9 @@ class DeepLinkRouterTest {
     @Test
     fun `resolveInitialTab falls back to the alias when the tab param is unusable`() {
         // A negative / unparseable / blank explicit value is ignored; the alias applies.
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "-1"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "garbage"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "  "))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "-1"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "garbage"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "  "))
     }
 
     @Test
