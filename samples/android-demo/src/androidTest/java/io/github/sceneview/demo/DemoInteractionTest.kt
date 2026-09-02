@@ -378,6 +378,32 @@ class DemoInteractionTest {
         Thread.sleep(800)
     }
 
+    /**
+     * [dragSlider] for a [io.github.sceneview.sample.ui.LabeledSlider], which merges its
+     * label, its value readout and its track into a **single** semantics node so TalkBack
+     * announces the value once instead of twice. There is therefore no `Text` node to match
+     * on — the handle is the merged node's contentDescription, `"<label>, <value>"` — and
+     * the node's bounds cover the whole control, so the track is found relative to its
+     * bottom rather than to a label baseline.
+     */
+    private fun dragSliderByDesc(labelPrefix: String, fraction: Float) {
+        if (!device.hasObject(By.descStartsWith(labelPrefix))) {
+            openSettingsSheet()
+        }
+        device.wait(Until.hasObject(By.descStartsWith(labelPrefix)), 3000)
+        val node = device.findObject(By.descStartsWith(labelPrefix))
+            ?: error("Slider with contentDescription starting with '$labelPrefix' not found")
+        val b = node.visibleBounds
+        val density = device.displayWidth / 411f  // Pixel 7a is 411 dp wide
+        // Material 3 slider track sits ~24 dp above the control's bottom edge.
+        val trackY = b.bottom - (24 * density).toInt()
+        val trackLeft = (device.displayWidth * 0.04f).toInt()
+        val trackRight = (device.displayWidth * 0.96f).toInt()
+        val targetX = trackLeft + ((trackRight - trackLeft) * fraction.coerceIn(0f, 1f)).toInt()
+        device.swipe((trackLeft + trackRight) / 2, trackY, targetX, trackY, 30)
+        Thread.sleep(800)
+    }
+
     // ── 1. Lighting — 3 light-type chips ──────────────────────────────────────
 
     @Test
@@ -455,55 +481,62 @@ class DemoInteractionTest {
         screenshot("19_geometry_cube_off")
     }
 
-    // ── 5. Custom Geometry — Custom Mesh mode (auto-rotate + orbit + scale) ───
+    // ── 5. Custom Geometry — live mesh regeneration ───────────────────────────
     //
-    // Both former demos (`custom-mesh` and `shape`) are now sub-modes of the
-    // unified `custom-geometry` demo, toggled by a segmented button at the top
-    // of the controls panel (#2239 Batch 1). The Custom Mesh mode is the
-    // default landing tab, so the deep-link still arrives ready to exercise
-    // auto-rotate / orbit / scale. The retired `custom-mesh` and `shape`
-    // deep-link ids continue to resolve through `DEMO_ID_ALIASES`.
+    // #3423 rebuilt this demo from scratch: it no longer has the Custom Mesh /
+    // Shape Extrude segmented toggle, and there is nothing left to auto-rotate
+    // or scale. It generates a torus knot's vertices at runtime, so what there
+    // is to exercise is the three parameters that rebuild the mesh plus the
+    // dock's Wireframe toggle. The retired `custom-mesh` and `shape` deep-link
+    // ids still resolve here through `DEMO_ID_ALIASES`.
+    //
+    // The sliders are driven through their contentDescription, not their text:
+    // `LabeledSlider` merges its label, value and track into a single semantics
+    // node ("Segments, 168 rings") so a screen reader announces the value once.
 
     @Test
-    fun customMesh_autoRotateAndOrbit() {
+    fun customGeometry_wireframeToggle() {
         openDemo("custom-geometry")
-        screenshot("20_customMesh_autoRotate_on")
+        screenshot("20_customGeometry_solid_default")
 
-        tap("Auto-Rotate")
-        screenshot("21_customMesh_autoRotate_off")
+        // Wireframe is a DockItem, not a sheet control — it lives in the bottom
+        // floating toolbar and is reached by its content description.
+        tapByDesc("Wireframe")
+        screenshot("21_customGeometry_wireframe_on")
 
-        // Orbit the camera by swiping horizontally on the SurfaceView area
+        tapByDesc("Wireframe")
+        screenshot("22_customGeometry_wireframe_off")
+
+        // Orbit the camera by swiping horizontally on the SurfaceView area.
         device.swipe(
             device.displayWidth / 2, device.displayHeight / 3,
             device.displayWidth / 2 + 250, device.displayHeight / 3,
             20
         )
         Thread.sleep(600)
-        screenshot("22_customMesh_after_orbit_drag")
-
-        // Scale slider — min / max / default-ish (0.5)
-        dragSlider("Scale:", fraction = 0.0f); screenshot("22a_customMesh_scale_min")
-        dragSlider("Scale:", fraction = 1.0f); screenshot("22b_customMesh_scale_max")
-        dragSlider("Scale:", fraction = 0.5f); screenshot("22c_customMesh_scale_mid")
+        screenshot("23_customGeometry_after_orbit_drag")
     }
 
-    // ── 6. Custom Geometry — Shape Extrude mode (Triangle/Star/Hexagon chips) ─
-
     @Test
-    fun shape_allPolygons() {
+    fun customGeometry_allThreeParameters() {
         openDemo("custom-geometry")
-        // Switch from the default Custom Mesh mode to the Shape Extrude mode.
-        tap("Shape Extrude")
-        screenshot("23_shape_triangle_default")
 
-        tap("Star")
-        screenshot("24_shape_star")
+        // Segments — the extremes are the demo's point: 24 rings is visibly
+        // faceted, 264 is smooth, and the status pill counts both.
+        dragSliderByDesc("Segments", fraction = 0.0f)
+        screenshot("24_customGeometry_segments_min")
+        dragSliderByDesc("Segments", fraction = 1.0f)
+        screenshot("25_customGeometry_segments_max")
 
-        tap("Hexagon")
-        screenshot("25_shape_hexagon")
+        dragSliderByDesc("Twist", fraction = 1.0f)
+        screenshot("26_customGeometry_twist_max")
+        dragSliderByDesc("Twist", fraction = 0.0f)
+        screenshot("27_customGeometry_twist_none")
 
-        tap("Triangle")
-        screenshot("26_shape_triangle_back")
+        dragSliderByDesc("Ripple", fraction = 1.0f)
+        screenshot("28_customGeometry_ripple_max")
+        dragSliderByDesc("Ripple", fraction = 0.0f)
+        screenshot("29_customGeometry_ripple_none")
     }
 
     // ── 7. Models — all 3 segmented tabs ──────────────────────────────────────

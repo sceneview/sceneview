@@ -9,10 +9,13 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.CustomGeometryDemo
 
 /**
- * Unified "Custom Geometry" demo — consolidates the retired `custom-mesh` and
- * `shape` demos behind one entry with an internal segmented-button toggle
- * (#2239 Batch 1). The old `custom-mesh` and `shape` deep-link ids stay
- * routable through [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ * "Custom Geometry" — a torus knot whose vertices, normals and UVs are generated in Kotlin
+ * at runtime and uploaded straight into a Filament vertex buffer (#3423).
+ *
+ * The catalog's other geometry entry, `geometry`, covers the built-in primitives. This one
+ * is the entry point for "the shape I need is not a primitive". The retired `custom-mesh`
+ * and `shape` deep-link ids stay routable through
+ * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  */
 object CustomGeometryFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -22,7 +25,7 @@ object CustomGeometryFragment : DemoFragment {
         category = DemoCategory.ADVANCED,
         icon = Icons.Filled.Hexagon,
         order = 10,
-        tags = setOf("geometry", "mesh", "extrusion", "composite", "procedural"),
+        tags = setOf("geometry", "mesh", "procedural", "vertices", "wireframe", "knot"),
     )
 
     @Composable
