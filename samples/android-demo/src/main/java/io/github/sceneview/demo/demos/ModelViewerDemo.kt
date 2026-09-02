@@ -305,6 +305,15 @@ private fun SingleModelSection(
     // the button doesn't get stuck in the loading state.
     var surpriseInFlight by remember { mutableStateOf(false) }
 
+    // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
+    // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
+    // now a pinch does too, so the section has to clean up after itself or a two-finger gesture
+    // here would silently re-frame an unrelated demo three taps later. A cold launch never passes
+    // through the dispose, so the `--ef camera_distance` / `?cameraDistance=` deep link is intact.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { DemoSettings.cameraDistance = null }
+    }
+
     val context = LocalContext.current
     val arSupported by produceState<Boolean?>(initialValue = null, context) {
         var availability = ArCoreApk.getInstance().checkAvailability(context)
