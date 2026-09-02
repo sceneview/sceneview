@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "io.github.sceneview.sample.tv"
 
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         applicationId "io.github.sceneview.sample.tv"

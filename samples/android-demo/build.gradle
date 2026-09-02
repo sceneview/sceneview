@@ -56,7 +56,7 @@ android {
     // Accepted values: "4k" (default), "16k", "64k".
     experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
 
-    compileSdk 36
+    compileSdk 37
 
 
     defaultConfig {

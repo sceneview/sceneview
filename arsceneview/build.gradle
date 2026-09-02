@@ -51,7 +51,7 @@ android {
     // Consumers must also add this to their own app-level build.gradle (#2226).
     experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
 
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         minSdk 24

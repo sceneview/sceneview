@@ -7,7 +7,12 @@ plugins {
 
 android {
     namespace = "io.github.sceneview.demo.flutter"
-    compileSdk = flutter.compileSdkVersion
+    // NOT `flutter.compileSdkVersion` (#3385). The `flutter_sceneview` plugin
+    // compiles against SDK 37, and Flutter's own Gradle plugin fails the app
+    // build unless the host app compiles against at least the highest SDK any
+    // plugin uses. Restore `flutter.compileSdkVersion` once the pinned Flutter
+    // SDK's default reaches 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
