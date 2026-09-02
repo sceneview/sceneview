@@ -279,6 +279,81 @@ fun ComposeIn3D() {
 }
 ```
 
+### Billboard a `ViewNode` card at the camera
+
+`ViewNode` has no billboard flag — `BillboardNode`'s per-frame `lookTowards` is on
+`ImageNode`, not on it. Solve the yaw yourself and pass it as `rotation`, which keeps the
+orientation declarative and unit-testable. Yaw only: a card that also pitched toward a
+camera looking down leans backwards, and a wall of leaning labels reads as a bug.
+
+```kotlin
+val cameraNode = rememberCameraNode(engine)
+var eye by remember { mutableStateOf(Position(0f, 0.3f, 2f)) }
+
+// atan2(x, z) — a heading measured from +Z toward +X, which is the frame Rotation(y = …)
+// turns in. NOT the usual atan2(y, x).
+fun facingYaw(card: Position, camera: Position): Float {
+    val dx = camera.x - card.x
+    val dz = camera.z - card.z
+    if (dx * dx + dz * dz < 1e-4f) return 0f      // camera sitting on the card: atan2(0,0)
+    return Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+}
+
+SceneView(
+    engine = engine,
+    cameraNode = cameraNode,
+    viewNodeWindowManager = windowManager,
+    onFrame = { eye = cameraNode.worldPosition },   // the user can orbit
+) {
+    val card = Position(0f, 0.4f, 0f)
+    ViewNode(
+        windowManager = windowManager,
+        position = card,
+        rotation = Rotation(y = facingYaw(card, eye)),
+        scale = Scale(0.12f),
+    ) { MyAppTheme { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } } }
+}
+```
+
+Under a rotating parent, subtract the parent's yaw — the value you pass is a **local**
+rotation, so the card has to undo the parent's turn before adding its own heading.
+
+### Draw a `ViewNode` on top of everything
+
+Two settings, and neither works alone: `setDepthCulling(false)` makes the quad ignore the
+depth buffer so the model cannot hide it, and `setPriority(PRIORITY_LAST)` submits it after
+the model. Priority alone does not defeat a depth test; depth alone leaves two overlapping
+cards resolving in submission order.
+
+`SceneScope.ViewNode`'s `apply` lambda runs **once**, at construction, and the composable
+never hands the node back — so read a reactive toggle through a `State` from inside a
+per-frame hook, and compare against the last applied value so it costs two JNI calls per
+*change*, not per frame.
+
+```kotlin
+val onTop = rememberUpdatedState(alwaysOnTop)
+
+ViewNode(
+    windowManager = windowManager,
+    unlit = true,                      // a label that dims in shadow is a legibility bug
+    apply = {
+        isTouchForwardingEnabled = false   // decorative: never steal a camera drag
+        var applied: Boolean? = null
+        onFrame = {
+            val wanted = onTop.value
+            if (applied != wanted) {
+                applied = wanted
+                materialInstance.setDepthCulling(!wanted)
+                setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
+            }
+        }
+    },
+) { MyAppTheme { Card { Text("Always readable") } } }
+```
+
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
+arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`.
+
 ### Animated model with play/pause
 
 ```kotlin
@@ -574,7 +649,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Content
 
-- `two-d-in-three-d` — 2D in 3D. Text, image, video and billboard quads in 3D.
+- `two-d-in-three-d` — 2D in 3D. Interactive Compose cards anchored in world space.
 - `lines-paths` — Lines & Paths. Polylines, helix, grids and circles.
 
 ### Interaction

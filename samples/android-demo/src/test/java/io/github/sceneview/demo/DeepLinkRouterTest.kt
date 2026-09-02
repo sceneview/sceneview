@@ -320,7 +320,7 @@ class DeepLinkRouterTest {
         assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
         assertEquals(2, DeepLinkRouter.resolveInitialTab("scene-gallery", null))
-        assertEquals(3, DeepLinkRouter.resolveInitialTab("billboard", null))
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("occlusion-material", null))
     }
 
     @Test
@@ -328,6 +328,11 @@ class DeepLinkRouterTest {
         // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
         assertNull(DeepLinkRouter.resolveInitialTab("text", null))
+        // `image`, `video` and `billboard` joined them in #3424: `two-d-in-three-d` was
+        // rebuilt around a single annotated scene and has no tabs left to pre-select.
+        assertNull(DeepLinkRouter.resolveInitialTab("image", null))
+        assertNull(DeepLinkRouter.resolveInitialTab("video", null))
+        assertNull(DeepLinkRouter.resolveInitialTab("billboard", null))
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
@@ -340,7 +345,7 @@ class DeepLinkRouterTest {
         // An explicit integer index on a plain id.
         assertEquals(2, DeepLinkRouter.resolveInitialTab("custom-geometry", "2"))
         // An explicit alias-token tab value resolves through ALIAS_INITIAL_TAB.
-        assertEquals(3, DeepLinkRouter.resolveInitialTab("two-d-in-three-d", "billboard"))
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("materials", "occlusion-material"))
     }
 
     @Test

@@ -130,13 +130,15 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun twoDInThreeDDemo_default_state() {
-        // #2239 Batch 1 — `text`, `image`, `video`, `billboard` consolidated into
-        // `two-d-in-three-d`. Default landing tab is Text; the captured frame is
-        // comparable to the prior `text_default` golden once re-baselined.
-        // The Image / Video / Billboard sub-modes are reachable via segmented-button
-        // taps but covered only via DemoInteractionTest; dedicated screenshot captures
-        // would need a tab-aware deep-link parameter (follow-up).
-        captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 3,
+        // #3424 rebuilt this demo around `ViewNode` Compose cards on a turntable, so the
+        // old golden (three `TextNode` labels) was deleted with the scene it depicted and
+        // the slug was taken out of BASELINED_GOLDENS. Until a fresh capture is promoted,
+        // this case takes the documented first-run path: save and skip.
+        //
+        // 8 s settle, not 3: the demo loads a 2 048² PBR GLB and a studio HDR, and each
+        // `ViewNode` needs a few frames after that for its off-screen `ComposeView` to
+        // draw into a `SurfaceTexture` that starts out empty.
+        captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 8,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
 
@@ -196,9 +198,9 @@ class DemoRenderingScreenshotTest {
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
-    // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d` (Billboard sub-mode,
-    // reachable via the "Billboard" segmented button; default landing tab covered by
-    // `twoDInThreeDDemo_default_state` above).
+    // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d`, whose #3424 rebuild
+    // then dropped the segmented tabs entirely. There is one scene now, covered by
+    // `twoDInThreeDDemo_default_state` above.
 
     // #2239 Batch 1 — `view-node` consolidated into `picking-collision` (covered by
     // `pickingCollisionDemo_default_state` above). The View Node sub-mode is reachable
@@ -610,7 +612,12 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
-            "twodinthreed_default",
+            // "twodinthreed_default" — deliberately NOT baselined right now. #3424 rebuilt
+            // the demo from scratch (Compose `ViewNode` cards around an annotated model
+            // replaced three `TextNode` labels), so the committed golden depicted a scene
+            // that no longer exists and was deleted with it. The case above therefore takes
+            // the first-run path: the next suite run saves a fresh capture for promotion and
+            // skips. Put the slug back here in the SAME commit that adds the new PNG.
         )
 
         /**
