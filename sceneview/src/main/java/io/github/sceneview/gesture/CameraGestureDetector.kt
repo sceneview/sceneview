@@ -81,7 +81,62 @@ open class CameraGestureDetector(
         protected val manipulator: Manipulator,
         protected val pinchZoomSpeed: Float = DEFAULT_PINCH_ZOOM_SPEED,
         protected val pinchZoomDamping: Float = DEFAULT_PINCH_ZOOM_DAMPING,
+        /**
+         * The `zoomSpeed` the wrapped [manipulator] was built with — Filament does not expose a
+         * getter, so it has to be repeated here. Only used to invert Filament's absolute scroll
+         * step into the relative one [scrollUpdate] wants; the default matches the `zoomSpeed`
+         * the convenience constructors below configure.
+         */
+        protected val manipulatorZoomSpeed: Float = DEFAULT_ORBIT_ZOOM_SPEED,
     ): CameraManipulator {
+
+        /**
+         * Camera-to-orbit-pivot distance, tracked in Kotlin because Filament will not tell us.
+         *
+         * `Manipulator.getLookAt` is only usable for this **before the first orbit drag**: the
+         * moment `grabUpdate` runs, `OrbitManipulator::jumpToBookmark` re-plants `mTarget` exactly
+         * one unit in front of the eye, so the reported eye→target distance is a constant `1` from
+         * then on and says nothing about the orbit radius. The radius itself only ever changes via
+         * `scroll` (orbit preserves it by construction, pan translates eye and pivot together), so
+         * seeding it once at construction and updating it by the step we ourselves request keeps
+         * it exact. `-1` means "not measured yet".
+         */
+        private var orbitDistance: Float = -1f
+
+        /**
+         * Closest / furthest the pinch may take the camera, as multiples of the distance the
+         * manipulator was *homed* at. Bounds-relative in practice, since the home distance is
+         * whatever auto-fit or the demo's framing computed for the subject. The lower bound is
+         * what stops `scroll` from punching the eye through the orbit pivot and inverting the
+         * camera (#3403).
+         */
+        var minZoomDistanceFactor: Float = DEFAULT_MIN_ZOOM_DISTANCE_FACTOR
+
+        /** @see minZoomDistanceFactor */
+        var maxZoomDistanceFactor: Float = DEFAULT_MAX_ZOOM_DISTANCE_FACTOR
+
+        /** The distance the manipulator was homed at — the reference for the zoom clamps. */
+        private var homeDistance: Float = -1f
+
+        /**
+         * Reads the orbit radius, seeding it from the manipulator's own pose the first time (which
+         * is only correct before any orbit drag — see [orbitDistance]).
+         */
+        private fun currentOrbitDistance(): Float {
+            if (orbitDistance > 0f) return orbitDistance
+            val eye = FloatArray(3)
+            val target = FloatArray(3)
+            val upward = FloatArray(3)
+            runCatching { manipulator.getLookAt(eye, target, upward) }.getOrElse { return -1f }
+            val dx = eye[0] - target[0]
+            val dy = eye[1] - target[1]
+            val dz = eye[2] - target[2]
+            val measured = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+            if (!measured.isFinite() || measured <= 0f) return -1f
+            orbitDistance = measured
+            if (homeDistance <= 0f) homeDistance = measured
+            return measured
+        }
 
         /**
          * Builds a sensible default ORBIT-mode manipulator.
@@ -110,10 +165,11 @@ open class CameraGestureDetector(
                 // (2026-05-16 Pixel 9 QA). 0.005 → 0.003 makes finger drag track the
                 // model more calmly without feeling sluggish.
                 .orbitSpeed(0.003f, 0.003f)
-                .zoomSpeed(0.05f)
+                .zoomSpeed(DEFAULT_ORBIT_ZOOM_SPEED)
                 .build(Manipulator.Mode.ORBIT),
             pinchZoomSpeed,
             pinchZoomDamping,
+            DEFAULT_ORBIT_ZOOM_SPEED,
         )
 
         /**
@@ -139,6 +195,10 @@ open class CameraGestureDetector(
 
         override fun setViewport(width: Int, height: Int) {
             manipulator.setViewport(width, height)
+            // First chance to read a still-truthful pose, and it always runs before any gesture —
+            // `getLookAt` stops reporting the orbit radius after the first drag (see
+            // [orbitDistance]), so the seed has to happen here rather than on the first pinch.
+            currentOrbitDistance()
         }
 
         override fun getTransform(): Transform {
@@ -146,6 +206,8 @@ open class CameraGestureDetector(
         }
 
         override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+            // Last moment the pose is still readable — `grabUpdate` is what re-plants the target.
+            currentOrbitDistance()
             manipulator.grabBegin(x, y, strafe)
         }
 
@@ -157,18 +219,36 @@ open class CameraGestureDetector(
             manipulator.grabEnd()
         }
 
-        override fun scrollBegin(x: Int, y: Int, separation: Float) {}
+        override fun scrollBegin(x: Int, y: Int, separation: Float) {
+            // Seed the tracked radius from the manipulator while its reported target is still the
+            // orbit pivot (see [orbitDistance]) — cheap, and a no-op once measured.
+            currentOrbitDistance()
+        }
 
         override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
-            // Pixel 9 review v2: the legacy linear curve `(prev - curr) * 0.1` was too abrupt —
-            // a 200 px pinch produced a 20-unit dolly translation, easily punching the camera
-            // through the target. The damping curve lives in [pinchZoomDelta] so it can be
-            // unit-tested on the JVM (no Filament Manipulator instance needed).
-            manipulator.scroll(
-                x,
-                y,
-                pinchZoomDelta(prevSeparation, currSeparation, pinchZoomSpeed, pinchZoomDamping),
+            // The damping curve lives in [pinchZoomDelta] so it can be unit-tested on the JVM (no
+            // Filament Manipulator instance needed).
+            val zoomDelta =
+                pinchZoomDelta(prevSeparation, currSeparation, pinchZoomSpeed, pinchZoomDamping)
+            val distance = currentOrbitDistance()
+            if (distance <= 0f) {
+                // No usable pose to scale against — fall back to Filament's absolute step rather
+                // than dropping the gesture entirely.
+                manipulator.scroll(x, y, zoomDelta)
+                return
+            }
+            val home = if (homeDistance > 0f) homeDistance else distance
+            // Relative dolly: the same pinch covers the same *fraction* of the distance whatever
+            // the subject's scale, and the clamp keeps the eye off (and never past) the pivot.
+            val next = zoomedDistance(
+                distance = distance,
+                zoomDelta = zoomDelta,
+                minDistance = home * minZoomDistanceFactor,
+                maxDistance = home * maxZoomDistanceFactor,
             )
+            if (next == distance) return
+            manipulator.scroll(x, y, dollyScrollDelta(distance, next, manipulatorZoomSpeed))
+            orbitDistance = next
         }
 
         override fun scrollEnd() {}
@@ -179,13 +259,37 @@ open class CameraGestureDetector(
 
         companion object {
             /**
-             * Default per-pixel zoom multiplier. Tuned in v4.0.x from `1/10` down to `1/30`
-             * (felt too abrupt on dense screens), then re-tuned in #1427 from `1/30` up to
-             * `1/18` — the `1/30` value made pinch-zoom feel "hyper lent" in the 2026-05-16
-             * on-device QA. `1/18` restores a responsive pinch while staying well short of
-             * the abrupt legacy `1/10`. See [pinchZoomSpeed] kdoc for tuning advice.
+             * Default pinch gain. **The unit changed in #3426**: the pinch is now a *ratio* of the
+             * current camera-to-target distance, not a number of world units, so this constant is
+             * "natural-log of the distance ratio per damped pixel" rather than "metres per damped
+             * pixel" (see [zoomedDistance]).
+             *
+             * `1/60` puts a full-screen 200 px pinch at ~ln2 (`200^0.7 / 60 ≈ 0.69`), i.e. **one
+             * comfortable pinch halves or doubles the distance** — the response Maps / Sketchfab
+             * train users to expect. The old `1/18` under the absolute-translation model moved the
+             * camera ~11 cm per pinch regardless of scale, which read as "many gestures for very
+             * little zoom" on anything framed further than a metre away (#3426) and punched
+             * straight through the pivot on anything closer (#3403).
              */
-            const val DEFAULT_PINCH_ZOOM_SPEED: Float = 1f / 18f
+            const val DEFAULT_PINCH_ZOOM_SPEED: Float = 1f / 60f
+
+            /**
+             * The `zoomSpeed` the convenience constructors configure on the Filament
+             * [Manipulator]. Only the *relative* step matters to the user now, so this is purely
+             * the unit [dollyScrollDelta] inverts — it no longer sets the zoom feel.
+             */
+            const val DEFAULT_ORBIT_ZOOM_SPEED: Float = 0.05f
+
+            /**
+             * Closest the pinch may take the camera, as a fraction of the distance it was homed
+             * at. `0.15` lets the user get comfortably inside a subject's silhouette while keeping
+             * the eye well clear of the orbit pivot — crossing it is what inverts the camera
+             * (#3403).
+             */
+            const val DEFAULT_MIN_ZOOM_DISTANCE_FACTOR: Float = 0.15f
+
+            /** Furthest the pinch may take the camera, as a multiple of the homed distance. */
+            const val DEFAULT_MAX_ZOOM_DISTANCE_FACTOR: Float = 8f
 
             /**
              * Default damping exponent for pinch deltas. Sub-1 values create a sqrt-like response

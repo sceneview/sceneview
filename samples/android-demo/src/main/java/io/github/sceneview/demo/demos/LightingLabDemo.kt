@@ -42,7 +42,9 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.DEFAULT_ORBIT_ELEVATION_DEGREES
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
@@ -251,7 +253,17 @@ private fun SkySection(
                 // visible at night when the sun is below the horizon, and the matching skybox
                 // gives the user a clear visual feedback that time-of-day actually changed.
                 mainLightNode = null,
-                cameraManipulator = rememberCameraManipulator()
+                // #3426 — this section shipped with no manipulator argument at all, so it inherited
+                // the library's stock 2.78 m pose while its own helmet is normalised to 0.5 units:
+                // the subject filled barely half the frame width, and the three sibling sections
+                // below (which do pass a radius) framed the same helmet visibly larger. Fitted to
+                // the subject now, like they are.
+                cameraManipulator = rememberCameraManipulator(
+                    orbitRadius = rememberFitOrbitRadius(
+                        extentX = 0.5f, extentY = 0.5f, extentZ = 0.5f,
+                        elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES,
+                    )
+                )
             ) {
                 DynamicSkyNode(
                     timeOfDay = timeOfDay,

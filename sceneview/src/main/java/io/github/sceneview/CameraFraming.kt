@@ -5,8 +5,12 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.toPosition
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.Node
+import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.atan
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 
@@ -75,16 +79,44 @@ fun Box.toAabb(): Aabb = Aabb(
 )
 
 /**
+ * Default camera elevation (degrees above the content centroid) the framing math assumes when a
+ * caller does not derive one from a look direction. `0` means the camera sits level with the
+ * centroid — the pose [frameToBounds]'s default `(0, 0, -1)` direction produces.
+ */
+const val DEFAULT_FRAMING_ELEVATION_DEGREES: Double = 0.0
+
+/**
  * Computes the distance from the content centroid at which a camera with the given projection
- * frames [bounds] so it just fits the viewport, with [padding] breathing room on the tighter axis.
+ * frames [bounds] so it just fits the viewport, with [padding] breathing room.
  *
- * The content is fitted by its **bounding sphere** (radius = half the AABB's space diagonal), so
- * the framing is invariant of the camera's orbit yaw / pitch — the model never clips when the
- * camera rotates around it. The required distance is taken as the larger of the vertical-fit and
- * horizontal-fit distances so the content fits on **both** axes:
+ * ### What is fitted (#3426 — the Android half of the iOS #3383 / PR #3395 fix)
  *
- * - vertical:   `d = r / sin(vfov / 2)`
- * - horizontal: `d = r / sin(hfov / 2)`, where `hfov` is derived from `vfov` and `aspect`.
+ * This used to fit the content's **bounding sphere** — half the AABB's *space diagonal* — against
+ * each FOV axis and take the larger distance. That charged every subject twice over:
+ *
+ * 1. The subject was billed for a diagonal it does not occupy. A 1 m cube got a radius of 0.866 m
+ *    for 0.5 m of half-height.
+ * 2. Each axis was billed the *other* axis's distance. On a portrait viewport the horizontal FOV
+ *    is the narrow one, so a subject bound purely by its **height** was pushed back by a **width**
+ *    constraint it never hits — a portrait viewport could never be filled. That is the "subject
+ *    starts far too small" every non-AR sample showed (#3426).
+ *
+ * The fit is now **per FOV axis**, in closed form. A point `v` relative to the target is inside
+ * the frustum at distance `d` iff `d >= v·back + |v·axis| / tanAxis` on *both* the horizontal and
+ * the vertical axis. Maximising the right-hand side over the subject is a support-function
+ * evaluation at `w = back ± axis / tanAxis`, since `|x| = max(x, −x)`.
+ *
+ * ### Azimuth invariance is kept, deliberately
+ *
+ * An auto-rotating model must not clip when it turns broadside, so the fit does **not** specialise
+ * on the current yaw. Instead of the box it frames the box's **sweep about world Y** — a cylinder
+ * of radius `hypot(halfX, halfZ)` and half-height `halfY`, whose support is
+ * `halfY·|w.y| + R·hypot(w.x, w.z)`. That sweep is fitted *exactly*, not bounded, so this is the
+ * tightest azimuth-independent distance that exists. The result is never larger than the old
+ * bounding-sphere distance, so nothing is framed further away than before.
+ *
+ * Unlike the sphere fit, the result depends on [elevationDegrees]: a camera looking down at a
+ * subject sees a shorter projected height than one level with it.
  *
  * A degenerate / empty [bounds] (not-yet-loaded async model) yields `0` so callers can detect
  * "nothing to frame yet" and defer.
@@ -92,8 +124,15 @@ fun Box.toAabb(): Aabb = Aabb(
  * @param bounds                Content bounding box, in the space the camera orbits.
  * @param verticalFovDegrees    Camera vertical field-of-view in degrees, `(0, 180)`.
  * @param aspect                Viewport aspect ratio `width / height`. Must be `> 0`.
- * @param padding               Extra framing margin as a fraction of the bounding-sphere radius.
+ * @param padding               Extra framing margin as a *fraction* of the fitted distance.
  *                              Default [DEFAULT_FRAMING_PADDING]. Clamped to `>= 0`.
+ * @param elevationDegrees      Camera elevation above the content centroid, in degrees. `0` is
+ *                              level with the centroid, `90` straight down. [frameToBounds]
+ *                              derives it from its look direction.
+ * @param azimuthInvariant      `true` (default) frames the Y-sweep, so the subject never clips at
+ *                              any orbit yaw — required for auto-rotating or user-orbited scenes.
+ *                              `false` frames the raw box at azimuth 0: strictly tighter, and
+ *                              correct for a scene the camera views head-on and does not orbit.
  * @return The orbit distance (world units) from the content centroid, or `0` when [bounds] is
  *         empty / degenerate.
  */
@@ -101,26 +140,71 @@ fun fitDistanceForBounds(
     bounds: Aabb,
     verticalFovDegrees: Double,
     aspect: Double,
-    padding: Float = DEFAULT_FRAMING_PADDING
+    padding: Float = DEFAULT_FRAMING_PADDING,
+    elevationDegrees: Double = DEFAULT_FRAMING_ELEVATION_DEGREES,
+    azimuthInvariant: Boolean = true
 ): Float {
     if (bounds.isEmpty) return 0f
     val safeAspect = if (aspect.isFinite() && aspect > 0.0) aspect else 1.0
-    val extents = bounds.extents
-    // Bounding-sphere radius — half the AABB space diagonal. Yaw / pitch-invariant.
-    val radius = 0.5f * sqrt(
-        extents.x * extents.x + extents.y * extents.y + extents.z * extents.z
-    )
-    if (!radius.isFinite() || radius <= 0f) return 0f
-    val paddedRadius = radius * (1f + max(0f, padding))
+    val half = bounds.halfExtent
+    val halfX = abs(half.x)
+    val halfY = abs(half.y)
+    val halfZ = abs(half.z)
+    if (!halfX.isFinite() || !halfY.isFinite() || !halfZ.isFinite()) return 0f
+    if (halfX <= 0f && halfY <= 0f && halfZ <= 0f) return 0f
+
+    // Radius of the box's sweep about world Y — a cylinder. Sweeping is what makes the fit
+    // azimuth-invariant, so an auto-rotating model never clips as it turns broadside.
+    val sweptRadius = sqrt(halfX * halfX + halfZ * halfZ)
 
     val vfovRad = Math.toRadians(verticalFovDegrees.coerceIn(1.0, 179.0))
-    val halfVfov = vfovRad / 2.0
-    // Horizontal FOV from the vertical FOV and the viewport aspect.
-    val halfHfov = atan(tan(halfVfov) * safeAspect)
+    val tanY = tan(vfovRad / 2.0)
+    val tanX = tanY * safeAspect
+    if (tanY <= 0.0 || tanX <= 0.0) return 0f
 
-    val distanceForVertical = paddedRadius / kotlin.math.sin(halfVfov).toFloat()
-    val distanceForHorizontal = paddedRadius / kotlin.math.sin(halfHfov).toFloat()
-    return max(distanceForVertical, distanceForHorizontal)
+    // Camera basis at azimuth 0 — for the swept fit azimuth is irrelevant, so this loses no
+    // generality, and it avoids the `cross(forward, worldUp)` that degenerates at elevation ±90°:
+    //   back = (0, s, c)    right = (1, 0, 0)    up = (0, c, -s)
+    val elevationRad = Math.toRadians(
+        if (elevationDegrees.isFinite()) elevationDegrees else DEFAULT_FRAMING_ELEVATION_DEGREES
+    )
+    val s = sin(elevationRad).toFloat()
+    val c = cos(elevationRad).toFloat()
+
+    // Support of the subject along `w`, in the horizontal plane. The swept cylinder answers
+    // `R·hypot(w.x, w.z)`; the raw box — correct when the camera stays at azimuth 0 — answers
+    // `halfX·|w.x| + halfZ·|w.z|`, which is strictly tighter and is what a static, non-orbiting
+    // scene should pay.
+    fun planarSupport(wx: Float, wz: Float): Float = if (azimuthInvariant) {
+        sweptRadius * sqrt(wx * wx + wz * wz)
+    } else {
+        halfX * abs(wx) + halfZ * abs(wz)
+    }
+
+    // Horizontal: w = (±1/tanX, s, c) — both signs give the same support.
+    val inverseTanX = (1.0 / tanX).toFloat()
+    val horizontal = halfY * abs(s) + planarSupport(inverseTanX, c)
+    // Vertical: w = (0, s ± c/tanY, c ∓ s/tanY) — the two signs differ.
+    val inverseTanY = (1.0 / tanY).toFloat()
+    val verticalUpper = halfY * abs(s + c * inverseTanY) + planarSupport(0f, c - s * inverseTanY)
+    val verticalLower = halfY * abs(s - c * inverseTanY) + planarSupport(0f, c + s * inverseTanY)
+
+    val fitted = max(horizontal, max(verticalUpper, verticalLower)) * (1f + max(0f, padding))
+    return if (fitted.isFinite() && fitted > 0f) fitted else 0f
+}
+
+/**
+ * Camera elevation, in degrees above the content centroid, implied by a look [direction] pointing
+ * **from the camera towards the content**. A camera above the subject looks down, so its direction
+ * has a negative `y` and the elevation is positive.
+ *
+ * Returns [DEFAULT_FRAMING_ELEVATION_DEGREES] for a zero / non-finite direction.
+ */
+internal fun elevationDegreesForDirection(direction: Position): Double {
+    val length =
+        sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z)
+    if (!length.isFinite() || length <= 1e-6f) return DEFAULT_FRAMING_ELEVATION_DEGREES
+    return Math.toDegrees(asin((-direction.y / length).toDouble().coerceIn(-1.0, 1.0)))
 }
 
 /**
@@ -178,14 +262,17 @@ fun CameraNode.frameToBounds(
     direction: Position = Position(0f, 0f, -1f),
     padding: Float = DEFAULT_FRAMING_PADDING
 ): Boolean {
+    val normalized = normalizeOrDefault(direction)
     val distance = fitDistanceForBounds(
         bounds = bounds,
         verticalFovDegrees = verticalFovDegreesForFocalLength(focalLength),
         aspect = getViewPortAspect(),
-        padding = padding
+        padding = padding,
+        // The projected height of a subject shrinks as the camera rises, so the fit has to know
+        // the pose it is fitting for (#3426). Derived from the caller's look direction.
+        elevationDegrees = elevationDegreesForDirection(normalized)
     )
     if (distance <= 0f) return false
-    val normalized = normalizeOrDefault(direction)
     val eye = bounds.center - normalized * distance
     worldPosition = eye
     lookAt(bounds.center)

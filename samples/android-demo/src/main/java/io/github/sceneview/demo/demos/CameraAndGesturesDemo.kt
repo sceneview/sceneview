@@ -60,7 +60,9 @@ import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.DEFAULT_ORBIT_ELEVATION_DEGREES
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.orbitHomePosition
 import io.github.sceneview.gesture.targetPosition
@@ -425,6 +427,14 @@ private fun HoldKeyButton(
 private const val MODEL_SCALE_UNITS = 0.3f
 private const val AXIS_TO_MODEL_RATIO = 1.5f
 
+/**
+ * Union extent of the node-gestures scene (#3426): the helmet reaches `MODEL_SCALE_UNITS / 2` on
+ * the negative side of each axis, the `Axes3DNode` reaches `MODEL_SCALE_UNITS · AXIS_TO_MODEL_RATIO`
+ * on the positive side. What the camera has to frame is the sum.
+ */
+private const val GESTURES_CONTENT_EXTENT =
+    MODEL_SCALE_UNITS / 2f + MODEL_SCALE_UNITS * AXIS_TO_MODEL_RATIO
+
 @Composable
 private fun NodeGesturesSection(
     onBack: () -> Unit,
@@ -567,7 +577,19 @@ private fun NodeGesturesSection(
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             environment = rememberModelDemoEnvironment(environmentLoader),
-            cameraManipulator = rememberCameraManipulator(),
+            // #3426 — the library's stock 2.78 m pose framed a 0.3-unit helmet plus its 0.45-unit
+            // axes gizmo at barely a third of the frame width. This section is about *touching*
+            // the model, so an undersized target is the one thing it cannot afford. Fitted to the
+            // gizmo, which is the widest thing on screen: the helmet spans ±MODEL_SCALE_UNITS/2 and
+            // the axes reach out to MODEL_SCALE_UNITS·AXIS_TO_MODEL_RATIO on the positive side.
+            cameraManipulator = rememberCameraManipulator(
+                orbitRadius = rememberFitOrbitRadius(
+                    extentX = GESTURES_CONTENT_EXTENT,
+                    extentY = GESTURES_CONTENT_EXTENT,
+                    extentZ = GESTURES_CONTENT_EXTENT,
+                    elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES,
+                )
+            ),
             onGestureListener = rememberOnGestureListener(
                 onDown = { _, node ->
                     gestureMode = when {
