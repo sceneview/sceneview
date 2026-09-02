@@ -33,6 +33,5 @@ thing about the subject in front of it.
   distance instead of a fixed `0.5–10 m`.
 
 Demos re-framed off a shared, aspect-aware helper instead of hand-tuned literals: the Model Viewer
-gallery (one fixed radius served models normalised from 0.20 to 0.85 units), Lighting Lab's
-sky section and Secondary Camera's main view (both inherited the library's stock 2.78 m pose), and
-Camera & Gestures' node-editing scene (its axes gizmo was framed at a third of the frame width).
+gallery (one fixed radius served models normalised from 0.20 to 0.85 units), Lighting Lab's sky
+section and Secondary Camera's main view.

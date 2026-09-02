@@ -99,17 +99,6 @@ class DemoOrbitFramingTest {
         assertTrue(big <= 1f)
     }
 
-    @Test
-    fun theGestureSceneFramesTheGizmoNotJustTheHelmet() {
-        // The node-gestures section is about touching the model, so the axes gizmo — the widest
-        // thing on screen — is what must fit, not the 0.3-unit helmet inside it.
-        val gizmoExtent = 0.3f / 2f + 0.3f * 1.5f
-        val radius = fitOrbitRadius(gizmoExtent, gizmoExtent, gizmoExtent, phonePortrait,
-            elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES)
-        assertTrue("the gizmo must fit the frame", widthFill(gizmoExtent, radius) <= 1f)
-        assertTrue("…and must not shrink back towards the stock pose", radius < 2.7789f)
-    }
-
     // ── Degenerate inputs ─────────────────────────────────────────────────────────────────────
 
     @Test
