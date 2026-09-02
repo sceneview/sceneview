@@ -11,7 +11,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -32,11 +31,13 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,7 +57,6 @@ import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -70,6 +70,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -85,20 +86,19 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -137,10 +137,19 @@ enum class AssetSourceState { Streamed, Streaming, Bundled }
 /**
  * One item of the [DemoScaffold] bottom dock.
  *
- * Rendered as a 48 dp icon button inside the floating toolbar; [label] is its
- * content description. [selected] tints the icon with the theme primary so a
- * toggle (wireframe on, grid on) reads as active. At most four items are shown
- * before the auto-appended Controls item and the optional accent.
+ * Rendered inside the floating toolbar as an icon over a visible [caption], on a
+ * 48 dp-minimum touch target; [label] is its content description. [selected] tints
+ * icon and caption with the theme primary so a toggle (wireframe on, grid on) reads
+ * as active. At most four items are shown before the auto-appended Controls item and
+ * the optional accent.
+ *
+ * **Why the caption (#3402).** Icon-only docks force the user to decode glyphs: the
+ * viewer's Recenter reticle read as a zoom control, and "Models" and "View in AR"
+ * were the same cube twice — once outlined, once filled. A one-word caption under
+ * each icon is the M3 navigation-bar idiom and `DESIGN.md` already reserves
+ * `type-caption` for "dock labels". [caption] defaults to [label] so a call site
+ * only overrides it when the accessible name is longer than the visible one
+ * ("Demo settings" → "Settings").
  */
 data class DockItem(
     val icon: ImageVector,
@@ -148,6 +157,7 @@ data class DockItem(
     val onClick: () -> Unit,
     val enabled: Boolean = true,
     val selected: Boolean = false,
+    val caption: String = label,
 )
 
 /**
@@ -182,12 +192,13 @@ data class DockItem(
  * that taps the viewport and then asserts on the chrome keeps working.
  *
  * **Loading**: `firstFrameRendered != null` covers the viewport until the
- * first Filament frame is presented (#1022) — with the demo's [previewRes]
- * image when given, else a surface-tinted scrim — and crossfades it out over
- * 350 ms. After 12 s without a frame the cover gives way to an explicit
- * "Still loading…" card with a Retry action ([onReset]) instead of a blank
- * viewport. AR demos pass `null` on purpose: their viewport is the live camera
- * feed (#1361).
+ * first Filament frame is presented (#1022) — the stage colour, a progress
+ * indicator and the optional [loadingLabel] — and crossfades it out over
+ * 350 ms. It never shows the demo's preview image: that flashed a picture
+ * framed and lit unlike the scene about to replace it (#3402). After 12 s
+ * without a frame the cover gives way to an explicit "Still loading…" card
+ * with a Retry action ([onReset]) instead of a blank viewport. AR demos pass
+ * `null` on purpose: their viewport is the live camera feed (#1361).
  *
  * **Settings sheet** (the single settings surface, #3328): a [ModalBottomSheet]
  * on the theme's `surfaceContainer` with a 28 dp top radius, opened from the
@@ -231,7 +242,7 @@ fun DemoScaffold(
     bottomOverlayReservesScene: Boolean = false,
     dock: List<DockItem> = emptyList(),
     dockAccent: DockItem? = null,
-    previewRes: Int? = null,
+    loadingLabel: String? = null,
     chromeToggleOnTap: Boolean = false,
     scene: @Composable BoxScope.() -> Unit
 ) {
@@ -354,7 +365,7 @@ fun DemoScaffold(
             if (firstFrameRendered != null) {
                 FirstFrameCover(
                     firstFrameRendered = firstFrameRendered,
-                    previewRes = previewRes,
+                    loadingLabel = loadingLabel,
                     onRetry = onReset,
                 )
             }
@@ -448,11 +459,15 @@ fun DemoScaffold(
                 dockAccent = dockAccent,
                 controlsItem = DockItem(
                     icon = Icons.Outlined.Tune,
+                    // The content description stays "Demo settings" verbatim —
+                    // `DemoInteractionTest` and the band tests key on it. Only the
+                    // visible caption is shortened, so the dock stays one word wide.
                     label = stringResource(R.string.demo_settings_fab_cd),
                     onClick = {
                         haptic.selection()
                         settingsExpanded = true
                     },
+                    caption = stringResource(R.string.demo_settings_title),
                 ),
                 onIdentityRowHeight = { identityRowPx = maxOf(identityRowPx, it) },
                 onDockBandHeight = { dockBandPx = maxOf(dockBandPx, it) },
@@ -662,10 +677,12 @@ private fun BoxScope.DemoIdentityRow(
 }
 
 /**
- * Bottom dock: a glass [HorizontalFloatingToolbar] with 48 dp items, 22 dp icons,
- * and the optional accent as a filled primary button. The dock's shown height
- * (toolbar + gutter, after the navigation-bar inset) is reported so the bottom
- * overlay slot can stack above it.
+ * Bottom dock: a glass [HorizontalFloatingToolbar] whose items are an icon over a
+ * caption on a 48 dp-minimum touch target, and the optional accent as a filled
+ * primary button carrying its own caption. The dock's shown height (toolbar +
+ * gutter, after the navigation-bar inset) is reported so the bottom overlay slot
+ * can stack above it — measured, never assumed, which is why growing the dock for
+ * the captions (#3402) does not move a single call site.
  */
 @Composable
 private fun BoxScope.DemoDock(
@@ -697,21 +714,34 @@ private fun BoxScope.DemoDock(
             shape = RoundedCornerShape(SceneViewTokens.Radius.full),
             trailingContent = if (accent != null) {
                 {
-                    FilledIconButton(
-                        onClick = accent.onClick,
-                        enabled = accent.enabled,
-                        modifier = Modifier
-                            .size(SceneViewTokens.Layout.touchTarget)
-                            .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(
-                            imageVector = accent.icon,
-                            contentDescription = accent.label,
-                            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                        FilledIconButton(
+                            onClick = accent.onClick,
+                            enabled = accent.enabled,
+                            modifier = Modifier
+                                .size(SceneViewTokens.Layout.touchTarget)
+                                .testTag(DemoScaffoldTestTags.DOCK_ACCENT),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = accent.icon,
+                                contentDescription = accent.label,
+                                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                            )
+                        }
+                        DockCaption(
+                            text = accent.caption,
+                            color = if (accent.enabled) {
+                                SceneViewTokens.Glass.onGlass
+                            } else {
+                                SceneViewTokens.Glass.onGlass.copy(alpha = DOCK_DISABLED_ALPHA)
+                            },
                         )
                     }
                 }
@@ -729,6 +759,13 @@ private fun BoxScope.DemoDock(
     }
 }
 
+/**
+ * One dock item: the icon over its [DockItem.caption], both in the same colour so a
+ * selected toggle reads as one unit. The touch target stays at least
+ * [SceneViewTokens.Layout.touchTarget] wide and tall; a caption wider than that grows
+ * the item rather than being ellipsised — a truncated label is worse than the icon
+ * alone, which is the defect this replaced (#3402).
+ */
 @Composable
 private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
@@ -738,37 +775,69 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
         animationSpec = SceneViewTokens.Motion.spring(),
         label = "dock-press",
     )
-    IconButton(
-        onClick = item.onClick,
-        enabled = item.enabled,
-        interactionSource = interaction,
+    val contentColor = when {
+        !item.enabled -> SceneViewTokens.Glass.onGlass.copy(alpha = DOCK_DISABLED_ALPHA)
+        item.selected -> MaterialTheme.colorScheme.primary
+        else -> SceneViewTokens.Glass.onGlass
+    }
+    Column(
         modifier = modifier
-            .size(SceneViewTokens.Layout.touchTarget)
+            .widthIn(min = SceneViewTokens.Layout.touchTarget)
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.md))
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                enabled = item.enabled,
+                onClick = item.onClick,
+            )
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .semantics { contentDescription = item.label },
-        colors = IconButtonDefaults.iconButtonColors(
-            contentColor = if (item.selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                SceneViewTokens.Glass.onGlass
-            },
-            disabledContentColor = SceneViewTokens.Glass.onGlass.copy(alpha = 0.38f),
-        ),
+            .padding(horizontal = SceneViewTokens.Space.xs)
+            .semantics(mergeDescendants = true) { contentDescription = item.label },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Icon(
             imageVector = item.icon,
             contentDescription = null,
+            tint = contentColor,
             modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
         )
+        DockCaption(text = item.caption, color = contentColor)
     }
 }
 
+/** The one-word label under a dock icon — `DESIGN.md` `type-caption`, never wrapped. */
+@Composable
+private fun DockCaption(text: String, color: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier.padding(top = DOCK_CAPTION_GAP),
+    )
+}
+
+/** Content alpha of a disabled dock item (M3 `disabled` opacity). */
+private const val DOCK_DISABLED_ALPHA = 0.38f
+
+/** Gap between a dock icon and its caption. */
+private val DOCK_CAPTION_GAP = 2.dp
+
 /**
  * Covers the 3D viewport until the SceneView presents its first Filament frame
- * (#1022): the demo's [previewRes] image when it has one — the same image the
- * home card shows, so the transition reads as the card coming alive — else a
- * surface-tinted scrim with a progress indicator. Cross-fades out over
- * `duration-medium` (350 ms) once [firstFrameRendered] flips, never the reverse.
+ * (#1022): the stage colour, a progress indicator and the demo's own
+ * [loadingLabel]. Cross-fades out over `duration-medium` (350 ms) once
+ * [firstFrameRendered] flips, never the reverse.
+ *
+ * **This used to be the demo's preview image (#3402).** Full-bleed, cropped, and
+ * lit nothing like the live scene — so opening the Model Viewer flashed a
+ * white-field studio photo of a helmet, then cut to a dark stage showing a
+ * differently framed model. Two pictures of the same demo, neither of them the
+ * one the user asked for. An honest loading state says "loading" instead of
+ * guessing at the frame that has not been rendered yet.
  *
  * After [FIRST_FRAME_SCRIM_TIMEOUT_MS] without a frame the cover fades and an
  * explicit "Still loading…" card takes its place, with Retry wired to the
@@ -777,7 +846,7 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
 @Composable
 private fun BoxScope.FirstFrameCover(
     firstFrameRendered: androidx.compose.runtime.State<Boolean>,
-    previewRes: Int?,
+    loadingLabel: String?,
     onRetry: (() -> Unit)?,
 ) {
     var timedOut by remember { mutableStateOf(false) }
@@ -809,19 +878,24 @@ private fun BoxScope.FirstFrameCover(
                 .testTag(DemoScaffoldTestTags.FIRST_FRAME_SCRIM),
             contentAlignment = Alignment.Center,
         ) {
-            if (previewRes != null) {
-                Image(
-                    painter = painterResource(previewRes),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+            ) {
                 androidx.compose.material3.CircularProgressIndicator(
                     modifier = Modifier.size(SceneViewTokens.Space.xl + SceneViewTokens.Space.sm),
                     color = MaterialTheme.colorScheme.primary,
                     strokeWidth = SceneViewTokens.Space.xs,
                 )
+                if (loadingLabel != null) {
+                    Text(
+                        text = loadingLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        // The cover is the stage colour in both themes, so its text is
+                        // the glass content colour, not an `onSurface` role.
+                        color = SceneViewTokens.Glass.onGlassMuted,
+                    )
+                }
             }
         }
     }
