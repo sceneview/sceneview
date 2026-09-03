@@ -24,7 +24,7 @@
 #
 # Usage:
 #   bash .claude/scripts/device-qa.sh [--platform=android|ios|web|ar|all]
-#                                     [--fast] [--ci] [--out <dir>]
+#                                     [--fast] [--ci] [--out <dir>] [--allow-offline]
 #
 # Flags:
 #   --platform=<p>   Which platform(s) to run. `all` (default) runs every
@@ -61,6 +61,14 @@
 #                    `web` leg itself is intentionally NOT advisory: it is
 #                    reliable and BLOCKING.
 #                    Pass `--advisory=` (empty) to make every leg blocking.
+#   --allow-offline  Acknowledge a deliberately offline run (#2959). The
+#                    `sketchfab` / `arcore-cloud` sub-legs already report an
+#                    honest `skipped` (never a pass) when the leased emulator
+#                    has no real route to the streamed-asset host — this flag
+#                    only controls how LOUDLY that gets surfaced: without it, a
+#                    missing route prints a boxed banner (same convention as
+#                    the API-key-absent banner); with it, a single quiet log
+#                    line. The verdict and exit code are unchanged either way.
 #   -h | --help      Show this help.
 #
 # API keys (#2343):
@@ -105,6 +113,12 @@ source "$SCRIPT_DIR/lib/emulator-select.sh"
 # keyless run reports the key-gated legs as honestly `skipped` (never green).
 # shellcheck source=lib/qa-keys.sh
 source "$SCRIPT_DIR/lib/qa-keys.sh"
+# Real network-reachability probe (#2959) — layered on top of the key-presence
+# gate above: a key can be present while the leased emulator has no actual
+# route (airplane mode, captive portal, dead DNS), which would still resolve
+# every streamed slug to its bundled fallback silently. See lib/qa-connectivity.sh.
+# shellcheck source=lib/qa-connectivity.sh
+source "$SCRIPT_DIR/lib/qa-connectivity.sh"
 
 # The demo debug APK both Android-emulator legs install. Kept as the single
 # canonical path qa-android-demos.sh expects and the CI build-android-apk job
@@ -177,6 +191,14 @@ OUT_DIR="$REPO_ROOT"
 # key must surface as a WARN, never hard-block a dev's run.
 ADVISORY="android,ar,ios,web-perf,sketchfab,arcore-cloud"
 ADVISORY_SET=false
+# --allow-offline (#2959): the sketchfab/arcore-cloud sub-legs are already
+# advisory-skip (never a hard block) when the connectivity probe finds no
+# route — that is what stops a dead network from turning into a silent pass.
+# Without this flag a missing route still prints a LOUD boxed banner (same
+# convention as the key-absent banner) so an offline run is never mistaken
+# for a clean one. With it, the banner is downgraded to a single quiet log
+# line — for a deliberately offline dev box that already knows.
+ALLOW_OFFLINE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -186,6 +208,7 @@ while [[ $# -gt 0 ]]; do
     --ci)         CI_MODE=true; shift ;;
     --out=*)      OUT_DIR="${1#--out=}"; shift ;;
     --out)        OUT_DIR="${2:?--out needs a directory}"; shift 2 ;;
+    --allow-offline) ALLOW_OFFLINE=true; shift ;;
     --advisory=*) ADVISORY="${1#--advisory=}"; ADVISORY_SET=true; shift ;;
     --advisory)   ADVISORY="${2-}"; ADVISORY_SET=true; shift 2 ;;
     -h|--help)
@@ -307,6 +330,19 @@ RESULT_REASONS=()
 RESULT_SUMMARIES=()  # path to a platform JSON summary, or "" if none
 RESULT_DURATIONS=()
 RESULT_LOGS=()       # path to a captured device/simulator log, or "" if none
+# Compact JSON connectivity object (#2959, lib/qa-connectivity.sh's
+# qa_connectivity_json), or "" when connectivity was not probed for this
+# entry — only the streamed-asset sub-legs (sketchfab/arcore-cloud) set it.
+RESULT_CONNECTIVITY=()
+
+# Names of streamed sub-legs skipped this run because the connectivity probe
+# found no route — printed as the explicit list in the final banner/verdict.
+OFFLINE_SKIPPED_LEGS=()
+# Whether record_streamed_subleg actually ran a connectivity probe this run
+# (i.e. a key was present for at least one streamed sub-leg). Stays false on a
+# keyless run so the final verdict says "not applicable", never "checked" —
+# a probe that never ran must not read like one that passed.
+CONNECTIVITY_PROBED=false
 
 record() {
   RESULT_PLATFORMS+=("$1")
@@ -315,6 +351,7 @@ record() {
   RESULT_SUMMARIES+=("$4")
   RESULT_DURATIONS+=("$5")
   RESULT_LOGS+=("${6:-}")
+  RESULT_CONNECTIVITY+=("${7:-}")
   log "$1 -> $2 ${3:+($3)}"
 }
 
@@ -368,39 +405,58 @@ record_key_subleg() {
   fi
 }
 
-# device_has_connectivity — probe the leased emulator's radio state (#2959).
-# setup-ar-emulator.sh's ensure_airplane_mode_disabled already repairs this
-# right after boot; this is the backstop for an emulator that was leased
-# already-running (never went through that repair) or where the repair
-# itself failed. Echoes "true"/"false"; empty ANDROID_SERIAL or an adb error
-# is treated as "unknown connectivity" — NOT as present, so a broken probe
+# device_has_connectivity — probe the leased emulator's ACTUAL network route
+# (#2959), not just its radio state. setup-ar-emulator.sh's
+# ensure_airplane_mode_disabled already repairs a booted-in-airplane-mode
+# snapshot; this is the backstop for an emulator that was leased
+# already-running (never went through that repair), where the repair itself
+# failed, or — the gap the airplane-mode-only check could not see — one whose
+# radio is on but whose route is dead (captive portal, dead DNS, dropped VPN).
+# Delegates to lib/qa-connectivity.sh's 3-signal probe (airplane mode +
+# dumpsys-validated + a real ping to the streamed-asset host) and exports the
+# full probe detail via the QA_CONNECTIVITY_* globals for the caller to embed
+# in the report. Echoes "true"/"false"/"unknown"; "unknown" — empty serial, or
+# every signal inconclusive — is NOT treated as present, so a broken probe
 # fails closed into an honest skip rather than a silent false-pass.
 device_has_connectivity() {
   local serial="${1:-${ANDROID_SERIAL:-}}"
-  [[ -n "$serial" ]] || { echo false; return; }
-  local mode
-  mode="$(adb -s "$serial" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r\n')"
-  [[ "$mode" == "0" ]] && echo true || echo false
+  [[ -n "$serial" ]] || { QA_CONNECTIVITY_STATUS="unknown"; echo unknown; return; }
+  qa_connectivity_probe "$serial"
+  echo "${QA_CONNECTIVITY_STATUS:-unknown}"
 }
 
 # record_streamed_subleg — like record_key_subleg, but for a sub-leg whose
 # path is BOTH key-gated AND network-gated (#2959): a present key with the
-# emulator stuck in airplane mode silently resolves every streamed slug to
-# its bundled fallback (measured closing #2942 — see
-# ensure_airplane_mode_disabled in setup-ar-emulator.sh). Reports which of
-# the two gates was missing so a skip is actionable, not just advisory noise.
+# emulator stuck in airplane mode (or reachable-in-name-only — captive portal,
+# dead DNS) silently resolves every streamed slug to its bundled fallback
+# (measured closing #2942). Reports which of the two gates was missing so a
+# skip is actionable, not just advisory noise, and embeds the connectivity
+# probe detail into the report's `connectivity` field for this entry.
 record_streamed_subleg() {
   local name="$1" parent="$2" key_present="$3" path="$4" serial="${5:-}"
   if [[ "$key_present" != "true" ]]; then
     record_key_subleg "$name" "$parent" "$key_present" "$path"
     return
   fi
+  CONNECTIVITY_PROBED=true
   local net; net="$(device_has_connectivity "$serial")"
-  if [[ "$net" != "true" ]]; then
-    record "$name" skipped "key present but no connectivity on the emulator (airplane mode, or unresolved) — ${path} would silently resolve to its bundled fallback (#2959), NOT tested" "" 0
+  local conn_json; conn_json="$(qa_connectivity_json)"
+  if [[ "$net" != "online" ]]; then
+    OFFLINE_SKIPPED_LEGS+=("$name")
+    record "$name" skipped "key present but no confirmed route on the emulator (status=${net} — airplane mode, captive portal, or dead DNS) — ${path} would silently resolve to its bundled fallback (#2959), NOT tested" "" 0 "" "$conn_json"
+    if $ALLOW_OFFLINE; then
+      log "$(qa_connectivity_verdict_line) — ${name} skipped (--allow-offline)"
+    else
+      qa_connectivity_banner_offline "$name"
+    fi
     return
   fi
-  record_key_subleg "$name" "$parent" "$key_present" "$path"
+  local pstatus; pstatus="$(last_status_of "$parent")"
+  if [[ "$pstatus" == "passed" ]]; then
+    record "$name" passed "key present — ${path} exercised by the ${parent} flow" "" 0 "" "$conn_json"
+  else
+    record "$name" skipped "${parent} leg did not pass (${pstatus:-not run}) — ${path} not exercised" "" 0 "" "$conn_json"
+  fi
 }
 
 # --- Pool emulator acquisition ---------------------------------------------
@@ -542,7 +598,12 @@ run_ios() {
   $FAST && flow="3d-basics"
 
   local rc=0
-  bash "$SCRIPT_DIR/ios-device-qa.sh" --install --flow "$flow" \
+  local ios_offline_flag=()
+  # #2959: pass the offline acknowledgement through so the iOS leg's own
+  # host-side connectivity probe (lib/qa-connectivity.sh's
+  # qa_connectivity_probe_host) prints the same quiet-vs-loud banner choice.
+  $ALLOW_OFFLINE && ios_offline_flag=(--allow-offline)
+  bash "$SCRIPT_DIR/ios-device-qa.sh" --install --flow "$flow" ${ios_offline_flag[@]+"${ios_offline_flag[@]}"} \
     > "$ARTIFACTS/ios-output.txt" 2>&1 || rc=$?
   cat "$ARTIFACTS/ios-output.txt"
 
@@ -924,6 +985,7 @@ for i in "${!RESULT_PLATFORMS[@]}"; do
   export "DQ_SUMMARY_$i=${RESULT_SUMMARIES[$i]}"
   export "DQ_DURATION_$i=${RESULT_DURATIONS[$i]}"
   export "DQ_LOG_$i=${RESULT_LOGS[$i]}"
+  export "DQ_CONN_$i=${RESULT_CONNECTIVITY[$i]}"
   if is_advisory "${RESULT_PLATFORMS[$i]}"; then
     export "DQ_ADVISORY_$i=true"
   else
@@ -964,6 +1026,11 @@ for i in range(n):
         # Path to the captured device/simulator log for this leg (currently
         # the iOS crash-gate os_log tail), or null if the leg keeps none.
         "log":      os.environ.get(f"DQ_LOG_{i}", "") or None,
+        # Connectivity probe detail (#2959) for the streamed-asset sub-legs
+        # (sketchfab/arcore-cloud) — null for every other entry, which never
+        # sets it.
+        "connectivity": (lambda raw: json.loads(raw) if raw else None)(
+            os.environ.get(f"DQ_CONN_{i}", "")),
     })
 
 # --- Release-gate verdict (#1651 / #1670) ----------------------------------
@@ -1063,6 +1130,17 @@ done
 echo "───────────────────────────────────────────────────────"
 echo "  passed=$PASSED  failed=$FAILED (of which timeout=$TIMED_OUT)  skipped=$SKIPPED  ->  $OVERALL"
 echo "  advisory legs: ${ADVISORY:-(none)}  (a red advisory leg is a release WARN, not a block — #1651)"
+# One-line connectivity verdict (#2959) — always printed, even when every
+# streamed sub-leg was exercised, so "connectivity was checked" is never
+# something you have to infer from an absent warning.
+if [[ ${#OFFLINE_SKIPPED_LEGS[@]} -gt 0 ]]; then
+  offline_csv="$(IFS=,; echo "${OFFLINE_SKIPPED_LEGS[*]}")"
+  echo "  connectivity: OFFLINE — streamed demos skipped: ${offline_csv} (#2959)"
+elif $CONNECTIVITY_PROBED; then
+  echo "  connectivity: checked, no streamed sub-leg skipped for lack of a route"
+else
+  echo "  connectivity: not probed this run (no streamed sub-leg had a key present)"
+fi
 echo "═══════════════════════════════════════════════════════"
 
 if [[ "$OVERALL" == "passed" ]]; then
