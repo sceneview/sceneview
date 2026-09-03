@@ -48,7 +48,7 @@ Pod::Spec.new do |s|
   #
   # Loose `~> 4.27` rather than `= s.version`: an app pinned to an older
   # SceneViewSwift still resolves, mirroring `flutter_sceneview.podspec`.
-  s.dependency "SceneViewSwift", "~> 4.33"
+  s.dependency "SceneViewSwift", "~> 4.34"
 
   s.swift_version = "5.9"
 end

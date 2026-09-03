@@ -85,6 +85,13 @@ fun TapToPlaceExperience(
     showModelBar: Boolean = true,
     snapToPlane: Boolean = true,
     showReticle: Boolean = true,
+    /**
+     * `true` ⇒ the folded instant-placement mode (#3405). Forwarded to the session, which
+     * configures `LOCAL_Y_UP` and falls back to `hitTestInstantPlacement` when no plane is
+     * under the tap, and to the overlays, which stop coaching "point at a surface" for a tap
+     * that would land anyway.
+     */
+    instantPlacement: Boolean = false,
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
 ) {
     val armedModel = models.armed(picker)
@@ -119,7 +126,15 @@ fun TapToPlaceExperience(
             materialLoader = materialLoader,
             snapToPlane = snapToPlane,
             showReticle = showReticle,
+            instantPlacement = instantPlacement,
             onModelPlaced = onModelPlaced,
+            overlays = { s ->
+                TapToPlaceStatusOverlays(
+                    state = s,
+                    nextModelLabel = nextModelLabel,
+                    instantPlacement = instantPlacement,
+                )
+            },
         )
 
         if (onBack != null) {

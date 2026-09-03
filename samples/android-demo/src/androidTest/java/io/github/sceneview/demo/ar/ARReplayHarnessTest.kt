@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.isArDemo
 import io.github.sceneview.demo.DemoSettings
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,7 +33,7 @@ import java.io.File
  *
  * ## What it does
  *
- * For each demo in [DemoCategory.AUGMENTED_REALITY] (see [ALL_DEMOS]) it:
+ * For each AR demo (see [ALL_DEMOS] and [isArDemo]) it:
  *
  * 1. Deploys the bundled ARCore recording into the app's external files dir.
  * 2. Deep-links the demo with `--es ar_playback_file <path>` so any demo that
@@ -155,7 +156,7 @@ class ARReplayHarnessTest {
         )
         val deployed = deployFixtureToAppPrivateDir(recording!!)
 
-        val allArDemos = ALL_DEMOS.filter { it.category == DemoCategory.AUGMENTED_REALITY }
+        val allArDemos = ALL_DEMOS.filter { it.isArDemo }
         assertTrue(
             "Expected at least one Augmented Reality demo in ALL_DEMOS",
             allArDemos.isNotEmpty(),

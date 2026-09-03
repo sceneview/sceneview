@@ -105,6 +105,10 @@ class MainActivity : ComponentActivity() {
         // showcase frozen until process death.
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
+        // Optional name of a visual state a demo should pin itself to (#3421). Only honoured
+        // in QA mode — a forced state makes a demo show something that never happened.
+        DemoSettings.qaDemoState = resolveQaDemoState(intent)
+        DemoSettings.qaAskState = intent?.getStringExtra("qa_ask_state")
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
         // (`/data/data/...`, photos, configs). The path is consumed once by
@@ -141,6 +145,8 @@ class MainActivity : ComponentActivity() {
             ?: DeepLinkRouter.parse(intent.data)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
+        DemoSettings.qaDemoState = resolveQaDemoState(intent)
+        DemoSettings.qaAskState = intent.getStringExtra("qa_ask_state")
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
@@ -153,6 +159,19 @@ class MainActivity : ComponentActivity() {
      */
     private fun resolveQaBackdrop(intent: Intent?): Boolean? =
         intent?.takeIf { it.hasExtra("qa_backdrop") }?.getBooleanExtra("qa_backdrop", false)
+
+    /**
+     * `--es qa_state <name>` pins a demo to one named visual state (#3421) — the seam the
+     * emulator smoke suite uses to capture Cloud Anchor states that need a live cloud
+     * service and a second device, and are therefore unreachable on `emulator-5554`
+     * (#2754).
+     *
+     * Gated on `qa_mode`, deliberately: unlike the camera backdrop, which only changes what
+     * is *behind* the scene, this changes what the demo *claims*, so it must never be
+     * reachable from an ordinary launch. Tracks the latest intent like the other QA extras.
+     */
+    private fun resolveQaDemoState(intent: Intent?): String? =
+        intent?.getStringExtra("qa_state")?.takeIf { DemoSettings.qaMode }
 
     /**
      * Resolves the optional initial tab a consolidated demo should pre-select from an

@@ -20,6 +20,13 @@ import androidx.compose.ui.graphics.Color
  * dark mode that screen rendered the light palette, the exact case the dark palette exists to
  * avoid. A hand-synced constant is a coherence bug waiting for someone to notice it on a
  * device; `check-demo-design-system.sh` now fails the build on a fourth copy.
+ *
+ * The keys are the `DemoCategory` constants in the Android demo's `DemoRegistry.kt`
+ * — nine since the #2239 catalogue regroup, re-sampled evenly along the same two
+ * gradient endpoints rather than nudged by hand, so the ramp stayed a ramp when it
+ * gained three stops. An unknown key falls back to [Fallback] rather than throwing;
+ * `DemoDesignSystemTest` asserts the two maps stay key-identical and that the
+ * accents remain distinct within a scheme.
  */
 object DemoCategoryAccent {
 
@@ -27,21 +34,27 @@ object DemoCategoryAccent {
     val Fallback: Color = Color(0xFF6446CD)
 
     private val light: Map<String, Color> = mapOf(
-        "3D Basics" to Color(0xFF005BC1),
-        "Lighting & Environment" to Color(0xFF1457C3),
-        "Content" to Color(0xFF2853C6),
-        "Interaction" to Color(0xFF3C4EC8),
-        "Advanced" to Color(0xFF504ACB),
-        "Augmented Reality" to Color(0xFF6446CD),
+        "Viewer" to Color(0xFF005BC1),
+        "Geometry & Materials" to Color(0xFF0C58C2),
+        "Rendering" to Color(0xFF1956C4),
+        "Interaction" to Color(0xFF2653C6),
+        "AR Placement" to Color(0xFF3250C7),
+        "AR Tracking" to Color(0xFF3E4EC8),
+        "AR Understanding" to Color(0xFF4B4BCA),
+        "AR Anchors" to Color(0xFF5849CC),
+        "Platform" to Color(0xFF6446CD),
     )
 
     private val dark: Map<String, Color> = mapOf(
-        "3D Basics" to Color(0xFFA4C1FF),
-        "Lighting & Environment" to Color(0xFFADBCFF),
-        "Content" to Color(0xFFB6B7FF),
-        "Interaction" to Color(0xFFC0B2FF),
-        "Advanced" to Color(0xFFC9ADFF),
-        "Augmented Reality" to Color(0xFFD2A8FF),
+        "Viewer" to Color(0xFFA4C1FF),
+        "Geometry & Materials" to Color(0xFFAABEFF),
+        "Rendering" to Color(0xFFB0BBFF),
+        "Interaction" to Color(0xFFB5B8FF),
+        "AR Placement" to Color(0xFFBBB4FF),
+        "AR Tracking" to Color(0xFFC1B1FF),
+        "AR Understanding" to Color(0xFFC6AEFF),
+        "AR Anchors" to Color(0xFFCCABFF),
+        "Platform" to Color(0xFFD2A8FF),
     )
 
     /** Every category this palette covers, in design-system order. */

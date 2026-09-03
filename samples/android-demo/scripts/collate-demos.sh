@@ -300,19 +300,73 @@ resolve_string() {
 
 # Map the Kotlin enum key to its display string (mirrors `DemoCategory` in
 # `samples/android-demo/src/main/java/io/github/sceneview/demo/DemoRegistry.kt`).
+# Category keys, their display-string resource, and their order — all read from
+# `DemoRegistry.kt` rather than repeated here (#2239).
+#
+# This used to be a hardcoded `case` plus a hardcoded CATEGORY_ORDER — a third copy
+# of a list that already exists twice in Kotlin (`DemoCategory` and
+# `DEMO_CATEGORIES`). When the #2239 regroup replaced the six categories with nine,
+# the hardcoded copy did not error: every new key was simply absent from
+# CATEGORY_ORDER, so the generated `llms.txt` block silently lost 48 of 50 demos.
+# A generator that drops content when it falls out of date is worse than one that
+# fails, so the order comes from `DEMO_CATEGORIES` and the label comes from the same
+# string resource the app draws, resolved through `resolve_string` exactly like the
+# demo titles. There is now no category vocabulary in this script at all.
+REGISTRY_KT="samples/android-demo/src/main/java/io/github/sceneview/demo/DemoRegistry.kt"
+
+# "KEY<TAB>string_resource_name", one line per category, in DEMO_CATEGORIES order.
+CATEGORY_TABLE="$(awk '
+    # DemoCategory.AR_PLACEMENT -> R.string.category_ar_placement
+    /DemoCategory\.[A-Z_0-9]+ -> R\.string\./ {
+        line = $0
+        sub(/.*DemoCategory\./, "", line)
+        key = line
+        sub(/ .*/, "", key)
+        res = line
+        sub(/.*R\.string\./, "", res)
+        gsub(/[ \t]/, "", res)
+        resource[key] = res
+        next
+    }
+    /^val DEMO_CATEGORIES = listOf\(/ { in_order = 1; next }
+    in_order && /^\)/ { in_order = 0; next }
+    in_order && /DemoCategory\./ {
+        line = $0
+        sub(/.*DemoCategory\./, "", line)
+        sub(/,.*/, "", line)
+        gsub(/[ \t]/, "", line)
+        order[++n] = line
+        next
+    }
+    END {
+        if (n == 0) {
+            print "Error: could not read DEMO_CATEGORIES from " ARGV[1] "." > "/dev/stderr"
+            exit 1
+        }
+        for (i = 1; i <= n; i++) {
+            key = order[i]
+            if (!(key in resource)) {
+                print "Error: DEMO_CATEGORIES lists DemoCategory." key \
+                      " but categoryDisplayNameRes() has no branch for it." > "/dev/stderr"
+                exit 1
+            }
+            printf "%s\t%s\n", key, resource[key]
+        }
+    }
+' "$REGISTRY_KT")"
+
+if [ -z "$CATEGORY_TABLE" ]; then
+    echo "Error: could not derive the category table from $REGISTRY_KT." >&2
+    exit 1
+fi
+
 category_display() {
-    case "$1" in
-        BASICS_3D)             printf '3D Basics' ;;
-        LIGHTING_ENVIRONMENT)  printf 'Lighting & Environment' ;;
-        CONTENT)               printf 'Content' ;;
-        INTERACTION)           printf 'Interaction' ;;
-        ADVANCED)              printf 'Advanced' ;;
-        AUGMENTED_REALITY)     printf 'Augmented Reality' ;;
-        *)
-            echo "Error: unknown DemoCategory.$1 — update collate-demos.sh." >&2
-            return 1
-            ;;
-    esac
+    local res
+    res=$(printf '%s\n' "$CATEGORY_TABLE" | awk -F'\t' -v c="$1" '$1 == c { print $2; found = 1 } END { exit !found }') || {
+        echo "Error: unknown DemoCategory.$1 — it is not in DEMO_CATEGORIES." >&2
+        return 1
+    }
+    resolve_string "$res"
 }
 
 # ─── 4. Build the llms.txt "Sample app demos" block ───────────────────────
@@ -327,7 +381,8 @@ category_display() {
 NEW_BLOCK="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META" "$NEW_KT" "$NEW_BLOCK"' EXIT
 
-CATEGORY_ORDER="BASICS_3D LIGHTING_ENVIRONMENT CONTENT INTERACTION ADVANCED AUGMENTED_REALITY"
+# Section order == DEMO_CATEGORIES order, read from the registry above.
+CATEGORY_ORDER="$(printf '%s\n' "$CATEGORY_TABLE" | cut -f1 | tr '\n' ' ')"
 
 {
     printf '%s\n' "$LLMS_BEGIN_MARKER"

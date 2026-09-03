@@ -299,7 +299,9 @@
       'ar-rerun': 'Rerun Debug',
       'ar-record-playback': 'Record & Playback',
       'ar-depth-occlusion': 'Depth Occlusion',
-      'ar-instant-placement': 'Instant Placement',
+      // #3405 — folded into `ar-placement`; the app resolves the old id through
+      // DeepLinkRouter.DEMO_ID_ALIASES, so the link still opens the right screen.
+      'ar-instant-placement': 'Tap to Place',
       'ar-terrain': 'Terrain Anchors',
       'ar-rooftop': 'Rooftop Anchors',
       'ar-image-stabilization': 'Image Stabilization (EIS)',

@@ -10,9 +10,12 @@ import com.google.ar.core.TrackingState
 import kotlinx.coroutines.delay
 
 /**
- * Shared AR-placement behaviour for the tap-to-place demos
- * ([io.github.sceneview.demo.demos.ARPlacementDemo],
- * [io.github.sceneview.demo.demos.ARInstantPlacementDemo]).
+ * Shared AR-placement behaviour for the tap-to-place demos.
+ *
+ * There is one of those now — [io.github.sceneview.demo.demos.ARPlacementDemo], reached
+ * through the shared `common/placement/` session — because #3405 folded
+ * `ar-instant-placement` into it. These constants survive the fold because each encodes a
+ * measured on-device fact, not because two call sites needed to agree.
  *
  * Two on-device QA findings from the 2026-05-16 Pixel 9 pass
  * ([#1435](https://github.com/sceneview/sceneview/issues/1435)) are fixed here so both

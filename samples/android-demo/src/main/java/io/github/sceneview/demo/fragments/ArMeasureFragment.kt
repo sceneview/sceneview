@@ -15,9 +15,9 @@ object ArMeasureFragment : DemoFragment {
         id = "ar-measure",
         titleRes = R.string.demo_ar_measure_title,
         subtitleRes = R.string.demo_ar_measure_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.Straighten,
-        order = 50,
+        order = 21,
         tags = setOf("ar", "measure", "distance", "hit-test", "ruler"),
         // Ships unverified on AR hardware: the accuracy figure this demo exists to be
         // honest about has not been measured on a real device yet (AR_MEASURE.md,

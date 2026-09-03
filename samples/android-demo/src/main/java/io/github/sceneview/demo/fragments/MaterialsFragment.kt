@@ -15,9 +15,9 @@ object MaterialsFragment : DemoFragment {
         id = "materials",
         titleRes = R.string.demo_materials_title,
         subtitleRes = R.string.demo_materials_subtitle,
-        category = DemoCategory.ADVANCED,
+        category = DemoCategory.GEOMETRY_MATERIALS,
         icon = Icons.Filled.Palette,
-        order = 3,
+        order = 9,
         tags = setOf("pbr", "material", "clearcoat", "sheen", "transmission", "occlusion", "streaming"),
         // The `materials` Sketchfab slugs are now real, validated, downloadable
         // models (#2095) — the demo streams them successfully and falls back to

@@ -137,7 +137,7 @@ data class PlacementModel(
  * dark glossy form there with no thin-film shift — correct geometry, scale and metal, but
  * the iridescence contribution does not appear on that emulator's ES 3.0 GL translator, and
  * has not yet been confirmed on a real GPU.) Both GLBs stay
- * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARTerrainAnchorDemo`
+ * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARGeospatialAnchorsDemo`
  * loads the fox directly, so nothing is deleted, only re-curated.
  */
 val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
@@ -375,7 +375,7 @@ fun PlacementModelPickerSheet(
 }
 
 @Composable
-private fun PlacementModelCard(
+internal fun PlacementModelCard(
     model: PlacementModel,
     selected: Boolean,
     onClick: () -> Unit,

@@ -7,4 +7,10 @@
 <resources>
     <string name="demo_ar_cloud_anchor_title">Cloud Anchors</string>
     <string name="demo_ar_cloud_anchor_subtitle">Persistent anchors shared across devices</string>
+    <!-- The one paragraph left in the settings sheet (#3421). Everything the flow needs
+         to be used is on screen; this is background, not instruction. -->
+    <string name="demo_ar_cloud_anchor_about">A cloud anchor is a spot in a real room that
+        Google\'s servers can recognise again, so two phones can put the same object in the
+        same place. Host uploads the anchor and returns a code; Resolve looks a code up.
+        Codes expire after a day.</string>
 </resources>

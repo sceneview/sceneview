@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
  * it, hand-placing a banner in the scene lambda. The claim was false. Both this
  * bar and a hand-placed `align(BottomCenter).padding(bottom = 24.dp)` banner
  * resolve into the same ~40…96 dp band above the system bars, so on
- * `ARTerrainAnchorDemo` the first-launch banner ran under the "Drop here" button
+ * `ARGeospatialAnchorsDemo` the first-launch banner ran under the "Drop here" button
  * *and* under the Settings FAB — visible to anyone who cloned the repo without an
  * ARCore Cloud key. Nothing about the old shape made that avoidable: a banner's
  * height follows its string, its wrap and the font scale, so no clearance

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.33.0)
+  Source of truth: /llms.txt  (SceneView 4.34.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.33.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.34.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -477,24 +477,49 @@ fun PostProcessingScene() {
 
 ### Lines, paths, and curves
 
+Draw strokes with `TubeNode`, not `LineNode` / `PathNode`: those use `PrimitiveType.LINES`, which
+every mobile backend rasterises at one device pixel with no width control — invisible on a phone.
+
 ```kotlin
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
 @Composable
 fun LinesAndPaths() {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
+    // IBL, so the strokes are lit rather than flat silhouettes.
+    rememberEnvironmentLoader(engine)
     val material = remember(materialLoader) {
-        materialLoader.createColorInstance(colorOf(r = 0f, g = 0.7f, b = 1f))
+        materialLoader.createColorInstance(colorOf(r = 0.64f, g = 0.76f, b = 1f))
     }
 
-    SceneView(modifier = Modifier.fillMaxSize(), engine = engine) {
-        LineNode(start = Position(-1f, 0f, 0f), end = Position(1f, 0f, 0f), materialInstance = material)
-        PathNode(
-            points = listOf(Position(0f, 0f, 0f), Position(0.5f, 1f, 0f), Position(1f, 0f, 0f)),
-            materialInstance = material
-        )
+    // Control points — a closed ring lifted out of plane.
+    val controls = remember {
+        List(8) { i ->
+            val a = i / 8f * 2f * PI.toFloat()
+            Position(cos(a) * 0.6f, sin(a * 2f) * 0.2f, sin(a) * 0.6f)
+        }
+    }
+    // Centripetal Catmull-Rom through every control point. Pad by wrapping to close the loop,
+    // and drop the final sample — the closed tube joins the ends itself.
+    val route = remember(controls) {
+        val padded = listOf(controls.last()) + controls + listOf(controls[0], controls[1])
+        catmullRomSpline(padded, segments = 24).dropLast(1)
+    }
+
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, materialLoader = materialLoader) {
+        TubeNode(points = route, radius = 0.008f, closed = true, materialInstance = material)
+        // The point set itself — lit spheres, not GL points.
+        controls.forEach { SphereNode(radius = 0.03f, position = it, materialInstance = material) }
     }
 }
 ```
+
+Sampling a path by **arc length** (for a marker travelling it, or for dashes) rather than by
+sample index keeps the motion at constant speed: walk the cumulative segment lengths, do not index
+into the sample list — spline samples are evenly spaced in parameter, not in distance.
 
 ### World-space text labels
 
@@ -639,77 +664,82 @@ and surfaces in the Samples tab. This section is generated from the per-demo
 fragments under `samples/android-demo/src/main/java/io/github/sceneview/demo/fragments/`
 by `samples/android-demo/scripts/collate-demos.sh` — never edit between the markers (#1871).
 
-### 3D Basics
+### Viewer
 
 - `model-viewer` — Models. Any glTF, HDR lighting, one tap to AR.
+- `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
 - `animation-physics` — Animation & Physics. Skeletal clips plus rigid-body physics.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
 
-### Lighting & Environment
+### Geometry & Materials
+
+- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
+- `lines-paths` — Lines & Paths. Splines, polylines and point sets.
+- `two-d-in-three-d` — 2D in 3D. Interactive Compose cards anchored in world space.
+- `materials` — Materials. PBR extensions and runtime material streaming.
+
+### Rendering
 
 - `lighting` — Lighting. Light types with a movable orbiting light.
 - `lighting-lab` — Lighting Lab. Sky, HDR environment, reflections, post-FX.
-- `fog` — Fog. Linear, exponential and height fog.
 - `contact-shadow-preview` — Contact Shadow Preview. Procedural contact shadow, grounded vs floating.
-
-### Content
-
-- `two-d-in-three-d` — 2D in 3D. Interactive Compose cards anchored in world space.
-- `lines-paths` — Lines & Paths. Polylines, helix, grids and circles.
 
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Orbit, pan, zoom and per-node edit gestures.
 - `picking-collision` — Picking & Collision. Ray hit-test with picked ViewNode overlays.
-- `gesture-feedback-preview` — Gesture Feedback Preview. On-model rotation ring, scale badge and drag shadow.
 
-### Advanced
+### AR Placement
 
-- `materials` — Materials. PBR extensions and runtime material streaming.
-- `custom-geometry` — Custom Geometry. A torus knot generated vertex by vertex at runtime.
+- `ar-placement` — Tap to Place. Pick a model, then tap a surface to place it.
+- `placement-scene` — Placement Scene. One-line tap-to-place AR.
+- `wall-placement` — Wall Placement. Mount a TV on a wall, floor-to-wall aligned.
+- `ar-plane-node` — Plane Lifecycle. PlaneNode lifecycle: added, updated, removed.
+- `ar-plane-renderer-v2` — Plane Renderer V2. Depth, PBR and HDR plane renderer, V1↔V2.
+- `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
+- `ar-measure` — Measure. Tap two points, read the distance.
+- `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
+
+### AR Tracking
+
+- `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
+- `ar-image` — Image Tracking. Detect and track reference images.
+- `ar-image-stabilization` — Image Stabilization (EIS). Electronic stabilization of the AR feed.
+- `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.
+- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
+- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
+
+### AR Understanding
+
+- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
+- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
+- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
+- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
+- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
+- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered raw depth point cloud.
+- `ar-point-cloud` — Point Cloud. World-space feature points as a point cloud.
+- `ar-scene-mesh` — Scene Mesh. Color-coded Streetscape terrain and buildings.
+- `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
+- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling HUD.
+- `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
+- `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
+- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
+
+### AR Anchors
+
+- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
+- `ar-collaborative` — Collaborative AR. Multi-user session sync over any transport.
+- `ar-geospatial-anchors` — Geospatial Anchors. Anchor models on terrain or rooftops by lat/lng.
+
+### Platform
+
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
-- `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
 - `video-recording` — Video Recording. Record the scene to MP4 in-app.
 - `secondary-camera` — Secondary Camera (PiP). Picture-in-picture second camera view.
 - `debug-overlay` — Debug Overlay. Live FPS and render stats overlay.
-
-### Augmented Reality
-
-- `ar-placement` — Tap to Place. Tap a plane to place and move a model.
-- `placement-scene` — Placement Scene. One-line tap-to-place AR.
-- `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
-- `ar-instant-placement` — Instant Placement. Place before plane detection converges.
-- `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
-- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
-- `ar-plane-renderer-v2` — Plane Renderer V2. Depth, PBR and HDR plane renderer, V1↔V2.
-- `ar-plane-node` — Plane Lifecycle. PlaneNode lifecycle: added, updated, removed.
-- `ar-point-cloud` — Point Cloud. World-space feature points as a point cloud.
-- `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
-- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered raw depth point cloud.
-- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
-- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
-- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
-- `ar-orbital` — Orbital AR. Models orbit around you in AR.
-- `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
-- `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
-- `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.
-- `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
-- `ar-image-stabilization` — Image Stabilization (EIS). Electronic stabilization of the AR feed.
-- `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-collaborative` — Collaborative AR. Multi-user session sync over any transport.
-- `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
-- `ar-scene-mesh` — Scene Mesh. Color-coded Streetscape terrain and buildings.
-- `ar-terrain` — Terrain Anchors. Anchor models on geospatial terrain.
-- `ar-rooftop` — Rooftop Anchors. Anchor models on geospatial rooftops.
-- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling HUD.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
 - `ar-rerun` — Rerun Debug. Stream pose and planes to the Rerun viewer.
-- `ar-measure` — Measure. Tap two points, read the distance.
-- `wall-placement` — Wall Placement. Mount a TV on a wall, floor-to-wall aligned.
-- `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
-- `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->
 
@@ -817,7 +847,7 @@ DemoScaffold(
 
 `settingsFabReservedSpace` resolves to the **measured** width of the Settings cluster, floored at `SETTINGS_FAB_RESERVED_SPACE` (104 dp), when the demo passes `controls`, and to `0.dp` when it does not. It is measured rather than assumed because the widest thing in that corner is the peek chip, and a chip is text — its width follows the font scale, the locale and the demo's own `peekHeader` — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`:
 
 ```kotlin notest demo-app pattern — SampleAssets/selectedSlug live in the demo app (samples/android-demo), not the SDK
 controls = {

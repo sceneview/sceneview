@@ -149,7 +149,7 @@ fun MyDemo(onBack: () -> Unit) {
 
 ## Picker pattern (Stage 2 of [#1152](https://github.com/sceneview/sceneview/issues/1152))
 
-A common pattern in the sample app: a horizontal chip row in the controls sheet picks between bundled / streamed assets. The `OrbitalARDemo` / `ModelViewerDemo` / `AnimationPhysicsDemo` / `MaterialsDemo` / `ARPlacementDemo` / `ARInstantPlacementDemo` all use it:
+A common pattern in the sample app: a horizontal chip row in the controls sheet picks between bundled / streamed assets. The `OrbitalARDemo` / `ModelViewerDemo` / `AnimationPhysicsDemo` / `MaterialsDemo` all use it:
 
 ```kotlin
 DemoScaffold(

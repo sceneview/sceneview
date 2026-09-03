@@ -122,6 +122,14 @@ treated as NOT having tested the Sketchfab path (advisory, mirroring Android's
 `sketchfab` skipped sub-leg). `Config.xcconfig` `#include?`s `Secrets.xcconfig`
 optionally, so a checkout without the file builds keyless and silently.
 
+A key present is still not sufficient on its own (#2959): both `device-qa.sh`
+(Android, via an on-device probe) and `ios-device-qa.sh` (host-side, since the
+Simulator shares the Mac's network) also probe an actual route to the
+streamed-asset host before trusting that a keyed run exercised it — airplane
+mode, a captive portal, or a dead DNS resolver would otherwise resolve every
+streamed slug to its bundled fallback silently. See `lib/qa-connectivity.sh`
+and pass `--allow-offline` to acknowledge a deliberately offline run.
+
 ### iOS coverage and known gaps
 
 - **CI wiring — nightly + release-checkpoint, advisory

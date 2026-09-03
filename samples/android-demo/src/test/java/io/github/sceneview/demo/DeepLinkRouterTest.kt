@@ -40,6 +40,15 @@ class DeepLinkRouterTest {
         DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 5, tags = setOf("test")),
     )
 
+    // Registry holding the three consolidated demos the #2239 catalogue-regroup
+    // slice redirects onto. The router only inspects `id`, so the title /
+    // subtitle resources are arbitrary (see the note above).
+    private val regroupRegistry = listOf(
+        DemoEntry("lighting-lab", R.string.demo_lighting_lab_title, R.string.demo_lighting_lab_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test")),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 7, tags = setOf("test")),
+        DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test")),
+    )
+
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
 
     @Test
@@ -308,6 +317,55 @@ class DeepLinkRouterTest {
         }
     }
 
+    // ── #2239 catalogue regroup — the four ids retired by the section slice ───
+    //
+    // `fog` -> `lighting-lab` (mode 4), `gesture-feedback-preview` ->
+    // `camera-gestures` (mode 2), and `ar-terrain` / `ar-rooftop` ->
+    // `ar-geospatial-anchors` (modes 0 and 1). Every one of these ids is on the
+    // public deep-link surface — docs, QR codes, the Maestro flows that
+    // deliberately drive retired ids to reach a consolidated demo's modes — so
+    // "the card is gone" must never mean "the link is gone".
+
+    @Test
+    fun `catalogue-regroup retired ids resolve to their consolidated demo`() {
+        val expected = mapOf(
+            "fog" to "lighting-lab",
+            "gesture-feedback-preview" to "camera-gestures",
+            "ar-terrain" to "ar-geospatial-anchors",
+            "ar-rooftop" to "ar-geospatial-anchors",
+        )
+        expected.forEach { (retired, consolidated) ->
+            assertEquals(
+                "validate('$retired') must redirect to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.validate(retired, regroupRegistry),
+            )
+            assertEquals(
+                "sceneview://demo/$retired must resolve to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), regroupRegistry),
+            )
+            assertNull(
+                "'$retired' must be gone from the real catalogue — it is a retired id",
+                ALL_DEMOS.find { it.id == retired },
+            )
+        }
+    }
+
+    @Test
+    fun `catalogue-regroup aliases pre-select the mode that holds their content`() {
+        // lighting-lab: [Sky, Environment, Reflections, Post-FX, Fog]
+        assertEquals(4, DeepLinkRouter.resolveInitialTab("fog", null))
+        // camera-gestures: [Camera, Gestures, Feedback]
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("gesture-feedback-preview", null))
+        // ar-geospatial-anchors: [Terrain, Rooftop]
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("ar-rooftop", null))
+        // `ar-terrain` is mode 0 — absent on purpose, an absent entry means
+        // "already lands correctly".
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-terrain"])
+        assertNull(DeepLinkRouter.resolveInitialTab("ar-terrain", null))
+    }
+
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────
     //
     // Consolidated demos open on their default first tab unless an alias (e.g.
@@ -466,5 +524,72 @@ class DeepLinkRouterTest {
                 index >= 1,
             )
         }
+    }
+
+    /**
+     * The invariant `DEMO_ID_ALIASES`' own KDoc states and nothing was actually checking:
+     * a key must be RETIRED (absent from the live catalogue) and a value must be LIVE.
+     *
+     * Both halves fail loudly for a reason. A key that is still registered means the alias
+     * is dead code the router never consults; a value that is not registered means every
+     * link through that alias 404s to the demo list — which is exactly the failure a
+     * consolidation is supposed to prevent.
+     */
+    @Test
+    fun `every retired alias id is gone from the catalogue and points at a live demo`() {
+        val liveIds = ALL_DEMOS.map { it.id }.toSet()
+        DeepLinkRouter.DEMO_ID_ALIASES.forEach { (retired, live) ->
+            assertTrue(
+                "'$retired' is an alias key, so it must no longer be a registered demo id",
+                retired !in liveIds,
+            )
+            assertTrue(
+                "alias '$retired' -> '$live', but '$live' is not a registered demo id",
+                live in liveIds,
+            )
+        }
+    }
+
+    /**
+     * #3405 — `ar-instant-placement` was folded into `ar-placement` (instant placement is a
+     * mode of the one flow now). Its deep link is part of the public surface: an
+     * `sceneview://demo/ar-instant-placement` link in a doc, a QR code or a store listing
+     * has to keep opening the screen that absorbed it.
+     */
+    @Test
+    fun `the retired instant-placement link resolves onto the consolidated flow`() {
+        val consolidated = listOf(
+            DemoEntry(
+                "ar-placement",
+                R.string.demo_ar_placement_title,
+                R.string.demo_ar_placement_subtitle,
+                "Augmented Reality",
+                Icons.Filled.ViewInAr,
+                order = 6,
+                tags = setOf("test"),
+            ),
+        )
+        assertEquals(
+            "ar-placement",
+            DeepLinkRouter.parse(
+                Uri.parse("sceneview://demo/ar-instant-placement"),
+                consolidated,
+            ),
+        )
+        // And through the QA / intent-extra ingress, which shares `validate`.
+        assertEquals(
+            "ar-placement",
+            DeepLinkRouter.validate("ar-instant-placement", consolidated),
+        )
+    }
+
+    /**
+     * The consolidated demo has *phases*, not segmented tabs, so the alias must not try to
+     * pre-select one — a mode is the user's choice on the chooser, and a link that silently
+     * forced instant placement would be answering a question it was never asked.
+     */
+    @Test
+    fun `the instant-placement alias carries no tab pre-selection`() {
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-instant-placement"])
     }
 }

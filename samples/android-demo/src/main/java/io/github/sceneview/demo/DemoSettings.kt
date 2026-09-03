@@ -43,6 +43,35 @@ object DemoSettings {
     var qaBackdrop: Boolean? by mutableStateOf(null)
 
     /**
+     * QA-only name of the visual state a demo should force itself into (`--es qa_state
+     * <name>`), or `null` for the demo's real, live state (#3421).
+     *
+     * The generic seam for a problem `qaBackdrop` does not solve. The backdrop gives an AR
+     * demo a *background* on a device without a camera; it cannot give it a *state*. Cloud
+     * Anchors is the first demo whose interesting states — hosting, hosted, code expired —
+     * need a live cloud service and a second phone, so none of them can be reached on
+     * `emulator-5554` (#2754) and the smoke suite could only ever capture the empty first
+     * frame. That is precisely the frame that looked fine while #3421 was open.
+     *
+     * Each demo owns its own vocabulary of names and resolves them itself (Cloud Anchors:
+     * [io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf]); an unknown name
+     * leaves the demo alone rather than guessing. Only read where
+     * [io.github.sceneview.demo.common.qaStateOverridesAllowed] is honoured, so a release
+     * build cannot be steered into a fake state by an intent.
+     */
+    var qaDemoState: String? by mutableStateOf(null)
+
+    /**
+     * QA-only Point & Ask card override (#3407). `--es qa_ask_state <id>` pins the demo's
+     * bottom card to one state — see [io.github.sceneview.demo.ai.askStepForQaOverride] and
+     * [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] — so a light + dark screenshot of every
+     * state can be taken on an emulator that has neither ARCore nor AICore (#2754). `null`
+     * (default) leaves the demo running its real state machine; an unrecognised id is
+     * ignored the same way.
+     */
+    var qaAskState: String? by mutableStateOf(null)
+
+    /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
      * when they start — i.e. a zoom level. When non-null, the shared hero-orbit camera
      * ([rememberHeroOrbitCameraManipulator]) uses this value as its orbit radius instead of

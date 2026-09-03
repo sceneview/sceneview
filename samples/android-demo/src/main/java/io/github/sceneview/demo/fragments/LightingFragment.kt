@@ -14,9 +14,9 @@ object LightingFragment : DemoFragment {
         id = "lighting",
         titleRes = R.string.demo_lighting_title,
         subtitleRes = R.string.demo_lighting_subtitle,
-        category = DemoCategory.LIGHTING_ENVIRONMENT,
+        category = DemoCategory.RENDERING,
         icon = Icons.Filled.Lightbulb,
-        order = 2,
+        order = 10,
         tags = setOf("light", "directional", "point", "spot", "shadow", "pbr"),
     )
 

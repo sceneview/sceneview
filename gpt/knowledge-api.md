@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.33.0)
+  Source of truth: /llms.txt  (SceneView 4.34.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.33.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.34.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -905,6 +905,11 @@ Two consequences to keep in mind:
   which the touch callback does not receive. Do not rely on back-face interaction.
 
 ### LineNode — single line segment
+
+> **Draws a 1-device-pixel hairline.** Mobile GL/Vulkan backends expose no line width, so at
+> phone density this is effectively invisible. Use it for debug gizmos; for a stroke a user has
+> to see, use `TubeNode` below.
+
 ```kotlin
 @Composable fun LineNode(
     start: Position = Line.DEFAULT_START,
@@ -919,6 +924,9 @@ Two consequences to keep in mind:
 ```
 
 ### PathNode — polyline through points
+
+> Same 1-pixel caveat as `LineNode`. Use `TubeNode` for a visible polyline.
+
 ```kotlin
 @Composable fun PathNode(
     points: List<Position> = Path.DEFAULT_POINTS,
@@ -931,6 +939,34 @@ Two consequences to keep in mind:
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+
+### TubeNode — polyline with a real width
+
+The visible alternative to `LineNode` / `PathNode`: sweeps a circular cross-section of `radius`
+metres along `points`, so a line is ordinary lit geometry — it has a width, catches light,
+occludes correctly and anti-aliases. Frames are rotation-minimising (parallel transport), so the
+tube does not spin at inflection points, and a `closed` loop's residual twist is spread over the
+rings so the seam has no crease.
+
+```kotlin
+@Composable fun TubeNode(
+    points: List<Position> = Tube.DEFAULT_POINTS,
+    radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
+    radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
+    closed: Boolean = false,                      // join the last point back to the first
+    caps: Boolean = true,                         // fill open ends with a disc
+    materialInstance: MaterialInstance? = null,
+    position: Position = Position(x = 0f),
+    rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),
+    apply: TubeNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Changing `points` or `radius` **without changing the point count** re-uploads into the buffers the
+tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
+them — keep sample counts constant across curve types if you switch shapes at runtime.
 
 ### MeshNode — custom geometry
 ```kotlin
@@ -1069,6 +1105,13 @@ with plane rendering, a built-in centre-screen **ring reticle** that brightens w
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
 the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
 only declare *what* rides each placed anchor:
+
+> **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
+> `ar-placement` demo: a pre-AR chooser screen arms the model *and* the placement mode
+> (`On a plane` / `Instantly`), then the shared tap-to-place camera runs it. Instant placement is
+> that flow's `Instantly` mode, not a separate screen — `sceneview://demo/ar-instant-placement`
+> is an alias onto `ar-placement`. Prefer that shape when generating a placement UI: choose the
+> subject before opening the camera, and treat "how a tap resolves" as an option of one screen.
 
 ```kotlin
 import io.github.sceneview.ar.PlacementScene
@@ -3420,13 +3463,24 @@ Library-level helper (`io.github.sceneview`, #1439) that frames a model so it fi
 viewport regardless of its intrinsic glTF size — no per-model `scaleToUnits` tuning.
 
 ```kotlin
-// Pure trigonometry — bounds + camera projection → orbit distance. Fits the content
-// bounding SPHERE, so the result is yaw-invariant (an orbiting camera never clips).
+// Pure trigonometry — bounds + camera projection → orbit distance. Each FOV axis is
+// fitted with its OWN half-angle (#3426), so a tall subject on a portrait viewport is
+// no longer pushed back by a width constraint it never hits. Yaw-invariant by default:
+// it frames the box's sweep about world +Y, so an orbiting or auto-rotating camera
+// never clips — set `azimuthInvariant = false` for a static head-on scene that should
+// not pay for a rotation it never performs.
 fun fitDistanceForBounds(
     bounds: Aabb, verticalFovDegrees: Double, aspect: Double,
-    padding: Float = DEFAULT_FRAMING_PADDING  // 0.15 = 15% breathing room
+    padding: Float = DEFAULT_FRAMING_PADDING,           // 0.15 = 15% breathing room
+    elevationDegrees: Double = DEFAULT_FRAMING_ELEVATION_DEGREES,  // 0.0 = level with the target
+    azimuthInvariant: Boolean = true
 ): Float
 ```
+
+Before v4.34.0 this fitted the content bounding *sphere* — half the AABB's space diagonal —
+and charged both axes the worse of the two. The result was never wrong, only always too far;
+the new fit is never further and up to 2× closer for tall or compact subjects. Same fix as
+iOS #3383.
 
 Usage:
 
@@ -4038,7 +4092,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.33.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.34.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4050,7 +4104,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.33.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.34.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4650,7 +4704,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.33.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.34.0")
 ```
 
 Import: `import SceneViewSwift`

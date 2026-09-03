@@ -24,7 +24,7 @@
 #
 # Usage:
 #   bash .claude/scripts/ios-device-qa.sh [--install] [--flow <name>] \
-#       [--simulator <name>]
+#       [--simulator <name>] [--allow-offline]
 #
 # Options:
 #   --install            Build the SceneViewDemo app for the simulator and
@@ -45,6 +45,12 @@
 #                        Explore/Sketchfab + streamed-USDZ demos are exercised;
 #                        without one the build is keyless and that path is
 #                        loudly reported NOT-tested. Key value is never logged.
+#   --allow-offline      Acknowledge a deliberately offline run (#2959). When a
+#                        Sketchfab key IS present, this script also probes the
+#                        HOST's actual route to the streamed-asset host (the
+#                        Simulator shares the Mac's network stack) — without
+#                        this flag, no route prints a loud boxed banner; with
+#                        it, a single quiet log line. Never flips the verdict.
 #   -h | --help          Show this help.
 #
 # Note — a full `xcodebuild` simulator build is heavy (Swift Package resolve +
@@ -75,6 +81,14 @@ source "$SCRIPT_DIR/lib/qa-keys.sh"
 # Waits for CoreSimulator, then resolves a simulator by UDID at run time rather
 # than pinning a model name (#3174).
 source "$SCRIPT_DIR/lib/ios-simulator.sh"
+# shellcheck source=lib/qa-connectivity.sh
+# Host-side connectivity probe (#2959): the Simulator shares the Mac's own
+# network stack, so probing the SIMULATOR would just re-measure the host --
+# qa_connectivity_probe_host hits the real streamed-asset host directly from
+# the host via curl. Symmetric with device-qa.sh's on-device probe for the
+# Android emulator (which has its own network namespace and needs an adb-shell
+# probe instead).
+source "$SCRIPT_DIR/lib/qa-connectivity.sh"
 
 BUNDLE_ID="io.github.sceneview.demo"
 # The demo app's CFBundleExecutable — what `log stream` sees as the process
@@ -92,12 +106,17 @@ FLOW="catalog"
 # --simulator <name> opts back into a fixed model, and back into rotting the day
 # Xcode replaces the device set.
 SIMULATOR=""
+# --allow-offline (#2959): downgrades the connectivity-probe banner below from
+# a loud boxed warning to a single quiet log line, for a deliberately offline
+# run. Mirrors device-qa.sh's flag of the same name.
+ALLOW_OFFLINE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --install)   INSTALL=true; shift ;;
     --flow)      FLOW="${2:?--flow needs a name}"; shift 2 ;;
     --simulator) SIMULATOR="${2:?--simulator needs a name}"; shift 2 ;;
+    --allow-offline) ALLOW_OFFLINE=true; shift ;;
     --sketchfab-key)
       # Explicit key override for a keyed build (#2356). Takes precedence over
       # the env / local.properties resolution below. The value is consumed, not
@@ -168,6 +187,29 @@ echo "[ios-qa] using simulator $BOOTED_UDID"
 # reported as NOT tested via the loud banner, mirroring Android #2343.
 qa_keys_resolve_sketchfab || true
 echo "[ios-qa] Sketchfab API key present: ${QA_SKETCHFAB_KEY_PRESENT}"
+
+# --- Connectivity probe (#2959) --------------------------------------------
+# A key present is necessary but not sufficient: if the HOST (which the
+# Simulator's network stack IS) has no real route to api.sketchfab.com --
+# airplane mode on the Mac, a captive portal, a dropped VPN -- the streamed
+# demos would silently resolve to their bundled fallback exactly like the
+# Android case measured closing #2942, just via a different radio. Only
+# worth probing when a key is present — a keyless run already reports the
+# streamed path NOT-tested via the banner below, so there is nothing this
+# probe could add.
+QA_IOS_CONNECTIVITY_NOTE=""
+if [[ "${QA_SKETCHFAB_KEY_PRESENT}" == "true" ]]; then
+  qa_connectivity_probe_host
+  echo "[ios-qa] $(qa_connectivity_verdict_line)"
+  if [[ "${QA_CONNECTIVITY_STATUS}" != "online" ]]; then
+    QA_IOS_CONNECTIVITY_NOTE="key present but the host has no confirmed route to ${QA_CONNECTIVITY_HOST} (status=${QA_CONNECTIVITY_STATUS}) -- streamed demos would silently resolve to their bundled fallback (#2959), NOT tested"
+    if $ALLOW_OFFLINE; then
+      echo "[ios-qa] NOTE: ${QA_IOS_CONNECTIVITY_NOTE} (--allow-offline)" >&2
+    else
+      qa_connectivity_banner_offline "ios streamed-USDZ demos"
+    fi
+  fi
+fi
 # The Info.plist substitutes SketchfabAPIKey = $(SKETCHFAB_API_KEY). When the
 # key is present we pass it as a `xcodebuild` user-defined build setting (which
 # OVERRIDES the Config.xcconfig `#include?` of Secrets.xcconfig — so the harness
@@ -317,12 +359,19 @@ fi
 if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" != "true" ]]; then
   QA_ARCORE_KEY_PRESENT=true qa_keys_banner_if_absent
   echo "[ios-qa] NOTE: Sketchfab key absent — Explore/Sketchfab + streamed-USDZ demos NOT tested (keyless build)." >&2
+elif [[ -n "$QA_IOS_CONNECTIVITY_NOTE" ]]; then
+  # Key present, but the connectivity probe above found no route (#2959) --
+  # mirrors the Android `sketchfab` sub-leg's skip reason. Advisory: it does
+  # not flip the QA verdict.
+  echo "[ios-qa] NOTE: ${QA_IOS_CONNECTIVITY_NOTE}" >&2
 fi
 
 if [[ "$MAESTRO_RC" -eq 0 ]]; then
   echo "[ios-qa] PASS — $FLOW flow completed, no crash detected."
-  if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" == "true" ]]; then
-    echo "[ios-qa] (Sketchfab key WAS present — Explore/Sketchfab path was exercised.)"
+  if [[ "${QA_SKETCHFAB_KEY_PRESENT:-false}" == "true" && -z "$QA_IOS_CONNECTIVITY_NOTE" ]]; then
+    echo "[ios-qa] (Sketchfab key WAS present and the host route was confirmed — Explore/Sketchfab path was exercised.)"
+  elif [[ -n "$QA_IOS_CONNECTIVITY_NOTE" ]]; then
+    echo "[ios-qa] (streamed-USDZ path NOT confirmed exercised: ${QA_IOS_CONNECTIVITY_NOTE})"
   fi
 elif [[ "$MAESTRO_RC" -eq 124 ]]; then
   # A budget that expired is NOT a demo crash — grading both as `FAIL` is what

@@ -1,0 +1,9 @@
+{
+  "style": "",
+  "items": {
+    "model-viewer": {
+      "prompt": "The battle-damaged sci-fi helmet of the attached reference — this exact model, and no other: a large curved visor of dark teal-green glass carrying faint cyan HUD glyphs, a glowing cyan ring lens and a small orange triangle marker, scuffed off-white armour plates with gold-brass trim along the jaw, and a segmented ear module with ribbed cables tucked behind. Three-quarter front-left view with the visor turned towards the camera. Cinematic hero banner: the helmet sits in the RIGHT half of a wide frame, dramatically lit with a soft key from the upper left and a cool rim from behind, floating on a deep dark studio field (#0E1218) that fades to near-black at the edges. The LEFT third of the frame is empty dark field, clear of the subject, so an overlay caption can sit there. The whole helmet is fully inside the frame with clear dark margin between it and the right edge and between it and the top and bottom edges — nothing is cropped or touching a border. A soft reflection under it on the dark floor. No text, no UI, no device frame, no watermark. Faithful to the attached reference: keep the real model shapes and materials; clean up, relight and recompose only.",
+      "ref": "damaged_helmet.webp"
+    }
+  }
+}

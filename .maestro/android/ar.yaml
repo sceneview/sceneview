@@ -1,4 +1,16 @@
-# Maestro flow — "Augmented Reality" demo category (33 demos).
+# Maestro flow — the AR demos (33 legs).
+#
+# Since #2239 the app splits these across four catalogue sections (AR Placement,
+# AR Tracking, AR Understanding, AR Anchors); this file stays one QA grouping —
+# see the note in catalog.yaml.
+#
+# `ar-instant-placement` was folded into `ar-placement` (#3405) — its subject is a
+# mode of that demo now, and its deep link resolves through DEMO_ID_ALIASES.
+#
+# `ar-terrain` and `ar-rooftop` were folded into `ar-geospatial-anchors` (#2239).
+# Both legs are KEPT: each drives its retired id, and ALIAS_INITIAL_TAB lands them
+# on the Terrain and Rooftop modes respectively, so both capabilities keep their
+# own QA leg.
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
@@ -39,6 +51,11 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-cloud-anchor
       DEMO_NAME: AR Cloud Anchor
+# Cloud Anchors gets a second, state-driven pass on top of the generic liveness
+# sweep (#3421): its host / resolve states need a live Cloud project and a second
+# device, so none of them are reachable on an emulator without `--es qa_state`.
+- runFlow:
+    file: flows/ar-cloud-anchor.yaml
 - runFlow:
     file: flows/demo.yaml
     env:
@@ -64,11 +81,13 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-depth-occlusion
       DEMO_NAME: AR Depth Occlusion
+# #2239 — closes a pre-existing coverage gap found while auditing the catalogue:
+# `ar-measure` was a registered demo driven by no flow at all.
 - runFlow:
     file: flows/demo.yaml
     env:
-      DEMO_ID: ar-instant-placement
-      DEMO_NAME: AR Instant Placement
+      DEMO_ID: ar-measure
+      DEMO_NAME: Measure
 - runFlow:
     file: flows/demo.yaml
     env:

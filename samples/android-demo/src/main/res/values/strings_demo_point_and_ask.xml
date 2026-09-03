@@ -32,12 +32,41 @@
     <string name="demo_point_and_ask_error_busy">Gemini Nano is busy or throttled right now — tap again in a moment</string>
     <string name="demo_point_and_ask_error_too_large">The question was too long for the on-device model — try a shorter one</string>
     <string name="demo_point_and_ask_error_image">Gemini Nano rejected the captured frame — point at something and tap again</string>
+    <!-- The AR viewport was punched out of the read-back: camera + virtual objects missing,
+         everything else intact (#2654/#3276/#3407). -->
+    <string name="demo_point_and_ask_error_capture_layer">The AR view was missing from the captured frame — nothing for the model to look at</string>
+    <!-- The read-back was intact but flat: a black viewport, a covered lens, or a lost AR
+         layer in its opaque form. Caught before it reaches the model (#3407). -->
+    <string name="demo_point_and_ask_error_capture_blank">The captured frame was blank — Gemini Nano would have seen nothing</string>
 
-    <!-- Shown once a failure repeats (or a terminal one occurs): stop offering a retry
-         that cannot work, explain instead (#3343). -->
-    <string name="demo_point_and_ask_error_repeated_title">Point &amp; Ask can\'t answer on this device</string>
-    <string name="demo_point_and_ask_error_repeated_body">Answers run entirely on-device through Google AICore — there is no cloud fallback, by design. Check that Android System Intelligence is up to date, or try again after a restart.</string>
+    <!-- Shown once the SAME round keeps failing. It changes the headline only: the precise
+         cause and its action stay on the card, and nothing here claims the device cannot run
+         the model — that claim is reserved for a platform report (#3407). -->
+    <string name="demo_point_and_ask_error_repeated_title">This keeps failing here</string>
+    <string name="demo_point_and_ask_error_repeated_body">Gemini Nano is installed and ready on this device — it is this step that keeps going wrong. Try aiming at a well-lit, textured surface, or reset the demo to start a clean session.</string>
     <string name="demo_point_and_ask_error_cd">Error</string>
+
+    <!-- One concrete next step per failure (AskRecovery). -->
+    <string name="demo_point_and_ask_action_retry">Try again</string>
+    <string name="demo_point_and_ask_action_aim">Aim and try again</string>
+    <string name="demo_point_and_ask_action_rephrase">Edit the question</string>
+    <string name="demo_point_and_ask_action_storage">Free up storage</string>
+    <string name="demo_point_and_ask_action_aicore">Open system settings</string>
+
+    <!-- Capture state — the frame read-back is now a state the user can see, instead of a
+         silent gap between the tap and "thinking" (#3407). -->
+    <string name="demo_point_and_ask_status_capturing">Capturing the AR frame…</string>
+
+    <!-- Where answers come from. Stated up front rather than only in the failure copy: the
+         demo has no cloud fallback and never sends the frame anywhere (#2648). -->
+    <string name="demo_point_and_ask_engine_on_device">On-device only · Gemini Nano · the frame never leaves this phone</string>
+
+    <!-- Debug / QA build only: what was actually sent to the model, so "it sees nothing" is
+         verifiable on the spot instead of from a bug report (#3407). -->
+    <string name="demo_point_and_ask_debug_frame_label" translatable="false">Last frame sent to the model</string>
+    <string name="demo_point_and_ask_debug_frame_none" translatable="false">No frame captured yet — tap the view to ask.</string>
+    <string name="demo_point_and_ask_debug_frame_meta" translatable="false">%1$d×%2$d · %3$s · %4$s</string>
+    <string name="demo_point_and_ask_debug_frame_cd" translatable="false">Frame sent to the model</string>
 
     <!-- Free-form question input (P3) -->
     <string name="demo_point_and_ask_question_label">Ask anything about what you see</string>

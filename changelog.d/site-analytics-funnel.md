@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-`docs/mkdocs.yml` declared `extra:` twice, so YAML last-key-wins silently dropped the GA4 analytics block and the "Was this page helpful?" feedback widget — the published docs site had 0 of 55 pages instrumented. The two mappings are merged; the docs site and all 16 static website pages now share one GA4 loader (`website-static/assets/analytics.js`), the `/go/*` short links report a `go_redirect` event, and the GitHub Sponsors CTA reports `outbound_click`. New recipe: *Measure your AR funnel*. The SDK and the demo apps still ship no telemetry.

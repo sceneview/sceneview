@@ -1,0 +1,127 @@
+# Maestro subflow — the Cloud Anchors demo's two-step flow (#3421).
+#
+# `flows/demo.yaml` already covers this demo's liveness (launch, swipe, tap, "Navigate
+# back" still present). This flow covers what that one structurally cannot: the *states*.
+#
+# Hosting and resolving need a live ARCore Cloud project, a mapped room and a second
+# phone, and `emulator-5554` cannot run ARCore at all (#2754) — so every interesting
+# state of this screen was, until #3421, unreachable by any automated check. The
+# `--es qa_state <name>` extra (MainActivity → DemoSettings.qaDemoState, QA-mode-gated)
+# pins the screen to one named state, so each one can be asserted and screenshotted.
+#
+# Names come from `CloudAnchorScenario`; `CloudAnchorScenarioTest` pins each name to the
+# state it claims, so a scenario cannot drift from its label without failing the JVM suite.
+appId: io.github.sceneview.demo
+---
+# ── Host step, the honest first frame ──────────────────────────────────────
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: placing
+- waitForAnimationToEnd:
+    timeout: 6000
+# The dock is the step selector: two captioned items, always both present.
+- assertVisible: "Host"
+- assertVisible: "Resolve"
+- assertVisible: "Tap a surface to place the anchor."
+- takeScreenshot: "cloud-anchor-placing"
+
+# ── The room-mapping meter, and Host withheld until it fills ───────────────
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: mapping
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertVisible: "Walk around the anchor to map the room."
+- assertVisible: "Room mapping"
+- takeScreenshot: "cloud-anchor-mapping"
+
+# ── Hosted: the code, with the two ways to hand it over ────────────────────
+# The old screen told the user to "copy" the id and offered nothing that could.
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: hosted
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertVisible: "Hosted. Share the code to open it elsewhere."
+- assertVisible: "Anchor code"
+- assertVisible: "Share"
+- assertVisible: "Copy"
+- takeScreenshot: "cloud-anchor-hosted"
+
+# ── Resolve step: the field that used to be on screen at the wrong time ────
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: resolve_empty
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertVisible: "Paste a code shared from another device."
+- assertVisible: "Paste the shared code"
+- assertVisible: "Paste"
+- takeScreenshot: "cloud-anchor-resolve-empty"
+
+# ── A failure the user can act on, not an ARCore constant ──────────────────
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: resolve_not_found
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertVisible: "No anchor for that code. Codes expire after 1 day."
+# The regression guard: the raw constant must never reach the screen again.
+- assertNotVisible: "ERROR_CLOUD_ID_NOT_FOUND"
+- takeScreenshot: "cloud-anchor-resolve-not-found"
+
+# ── A build with no key explains itself in a card, with no dead buttons ────
+- launchApp:
+    appId: io.github.sceneview.demo
+    clearState: false
+    stopApp: true
+    arguments:
+      demo: ar-cloud-anchor
+      qa_mode: true
+      qa_backdrop: true
+      qa_state: api_key_missing
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertVisible: "Cloud Anchors not configured"
+# The card is the only voice: no coaching pill repeating it, and no action bar of
+# buttons that could not work. (The dock's own Host / Resolve captions stay on
+# screen — disabled — because the dock is chrome, not this demo's controls.)
+- assertNotVisible: "Tap a surface to place the anchor."
+- assertNotVisible: "Restart"
+- takeScreenshot: "cloud-anchor-api-key-missing"
+
+# ── Liveness, and back out to a known state ───────────────────────────────
+- assertVisible: "Navigate back"
+- tapOn: "Navigate back"
+- waitForAnimationToEnd:
+    timeout: 2000

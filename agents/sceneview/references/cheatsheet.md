@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.33.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.33.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.34.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.34.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -119,7 +119,8 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `ImageNode` | `ARImageDemo.kt`, `LightingLabDemo.kt` | 2D image quad. `size = null` normalises the bitmap's longest edge to 1 unit |
 | `TextNode` | `ARMeasureDemo.kt` | 3D text. Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits`. Billboards only with a `cameraPositionProvider`, same as `BillboardNode` |
 | `ViewNode` | `TwoDInThreeDDemo.kt`, `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D. Requires `viewNodeWindowManager` on the `SceneView`, an explicit content size, and the theme re-applied inside (it inherits no `CompositionLocal`). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false`. Always-on-top = `materialInstance.setDepthCulling(false)` **and** `setPriority(PRIORITY_LAST)` |
-| `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
+| `TubeNode(points, radius, closed, caps)` | `LinesPathsDemo.kt` | A polyline with a **real width** — the one to reach for. Sweeps a cross-section of `radius` metres along `points` |
+| `LineNode / PathNode` | — | `PrimitiveType.LINES`: a 1-device-pixel hairline with no width control, invisible at phone density (#3397). Debug gizmos only — use `TubeNode` for anything a user sees |
 | `PhysicsNode(node, mass, restitution, …)` | `AnimationPhysicsDemo.kt` | Wraps an existing node; experimental (Physics tab of unified Animation & Physics demo) |
 | `ReflectionProbeNode` | `LightingLabDemo.kt` | Local IBL probe (Reflections tab of unified Lighting Lab demo) |
 

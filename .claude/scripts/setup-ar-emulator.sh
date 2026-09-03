@@ -1278,9 +1278,11 @@ select_or_boot_emulator() {
 # fires and a round-trip QA pass can report green while the streamed path
 # never actually ran (measured closing #2942: two different Sketchfab slugs
 # both rendered the same bundled helmet, `airplane_mode_on=1` was the cause).
-# Best-effort: this only repairs the *emulator's* radio state, not host
-# network reachability — qa-android-demos.sh's key-gated sub-legs are still
-# the backstop for "key present but no route" (#2959 proposal 2).
+# Best-effort: this only repairs the *emulator's* radio state (airplane
+# mode), not a dead route with the radio on (captive portal, dead DNS, a
+# dropped VPN) — device-qa.sh's connectivity-gated sub-legs
+# (record_streamed_subleg, lib/qa-connectivity.sh's 3-signal probe) are the
+# backstop for "key present but still no real route" (#2959 proposal 2).
 ensure_airplane_mode_disabled() {
   local serial="$1"
   local mode

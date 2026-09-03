@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-geospatial-anchors` demo (registered by
+     `ArGeospatialAnchorsFragment.kt`), which absorbed the retired `ar-terrain`
+     and `ar-rooftop` demos (#2239). Android's resource merger fans every
+     `res/values/*.xml` file in, so `R.string.demo_ar_geospatial_anchors_title`
+     etc. remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_geospatial_anchors_title">Geospatial Anchors</string>
+    <string name="demo_ar_geospatial_anchors_subtitle">Anchor models on terrain or rooftops by lat/lng</string>
+</resources>

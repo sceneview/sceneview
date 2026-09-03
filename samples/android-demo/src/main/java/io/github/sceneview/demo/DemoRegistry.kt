@@ -63,11 +63,15 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  * @param icon        Material icon used to give the card visual identity
  *                    in the absence of a captured 3D thumbnail.
  * @param order       Editorial position on the home grid — unique, lower
- *                    renders first. Foundational and visually impressive
- *                    demos lead, AR follows, coming-soon / known-issue
- *                    demos close the list. `collate-demos.sh` sorts on it
- *                    and [io.github.sceneview.demo.DemoRegistryIntegrityTest]
- *                    asserts uniqueness.
+ *                    renders first. Since #2239 it also carries the section
+ *                    layout: sections run in [DEMO_CATEGORIES] order and a
+ *                    category's demos are contiguous inside it, so the grid
+ *                    can draw one header per section by watching for the
+ *                    boundary. Within a section, foundational demos lead and
+ *                    coming-soon / known-issue demos close it.
+ *                    `collate-demos.sh` sorts on it and
+ *                    [io.github.sceneview.demo.DemoRegistryIntegrityTest]
+ *                    asserts uniqueness *and* contiguity.
  * @param tags        Capability keywords ("gltf", "hdr", "depth", …) matched
  *                    by the home search field alongside title, subtitle and
  *                    category. Never shown; never empty.
@@ -88,40 +92,116 @@ data class DemoEntry(
  * Stable category keys — they are map keys and registry filters, never
  * shown to the user. Use [categoryDisplayNameRes] to obtain the display
  * header label.
+ *
+ * Since #2239 a category is also a **section** on the home grid: the grid draws
+ * one header per category in [DEMO_CATEGORIES] order, so a category boundary is
+ * something the user sees rather than only a filter chip. Two rules follow, and
+ * [io.github.sceneview.demo.DemoRegistryIntegrityTest] enforces them: every
+ * category holds at least one demo (a header with nothing under it is a lie),
+ * and [DemoEntry.order] keeps a category's demos contiguous (a section that
+ * restarts further down the grid is not a section).
+ *
+ * The nine keys replace the six that shipped until #2239. The old set put 33 of
+ * 53 cards behind a single "Augmented Reality" chip, which is what made the
+ * catalogue unnavigable: AR is not one subject, it is placement, tracking,
+ * scene understanding and anchors — four different ARCore API families.
  */
 object DemoCategory {
-    const val BASICS_3D = "3D Basics"
-    const val LIGHTING_ENVIRONMENT = "Lighting & Environment"
-    const val CONTENT = "Content"
+    /** Load something and watch it — the first thing a newcomer opens. */
+    const val VIEWER = "Viewer"
+
+    /** Author the geometry and shade it. */
+    const val GEOMETRY_MATERIALS = "Geometry & Materials"
+
+    /** Light the scene and post-process the frame. */
+    const val RENDERING = "Rendering"
+
+    /** Touch the scene — camera manipulators, picking, node gestures. */
     const val INTERACTION = "Interaction"
-    const val ADVANCED = "Advanced"
-    const val AUGMENTED_REALITY = "Augmented Reality"
+
+    /** Put virtual content in the real room. */
+    const val AR_PLACEMENT = "AR Placement"
+
+    /** Track a subject — faces, images, bodies, hands. */
+    const val AR_TRACKING = "AR Tracking"
+
+    /** Read the room — depth, point clouds, meshes, semantics. */
+    const val AR_UNDERSTANDING = "AR Understanding"
+
+    /** Anchors that outlive the frame — cloud, geospatial, collaborative. */
+    const val AR_ANCHORS = "AR Anchors"
+
+    /** The plumbing around the renderer — audio, capture, recording, debug. */
+    const val PLATFORM = "Platform"
 }
 
 /** Ordered list of category keys — controls the home filter-chip order. */
 val DEMO_CATEGORIES = listOf(
-    DemoCategory.BASICS_3D,
-    DemoCategory.LIGHTING_ENVIRONMENT,
-    DemoCategory.CONTENT,
+    DemoCategory.VIEWER,
+    DemoCategory.GEOMETRY_MATERIALS,
+    DemoCategory.RENDERING,
     DemoCategory.INTERACTION,
-    DemoCategory.ADVANCED,
-    DemoCategory.AUGMENTED_REALITY,
+    DemoCategory.AR_PLACEMENT,
+    DemoCategory.AR_TRACKING,
+    DemoCategory.AR_UNDERSTANDING,
+    DemoCategory.AR_ANCHORS,
+    DemoCategory.PLATFORM,
 )
 
 /**
+ * The sections whose demos are AR demos.
+ *
+ * Before #2239 this was a single equality test against one `AUGMENTED_REALITY`
+ * category. The regroup split AR across four sections, so every "is this an AR
+ * demo?" question now goes through [isArDemo] rather than re-listing the four
+ * keys at each call site.
+ */
+val AR_CATEGORIES: Set<String> = setOf(
+    DemoCategory.AR_PLACEMENT,
+    DemoCategory.AR_TRACKING,
+    DemoCategory.AR_UNDERSTANDING,
+    DemoCategory.AR_ANCHORS,
+)
+
+/**
+ * AR demos that are deliberately filed outside [AR_CATEGORIES].
+ *
+ * `ar-record-playback` and `ar-rerun` sit under [DemoCategory.PLATFORM] because
+ * their subject is capture and replay tooling — the plumbing around the session,
+ * not what the session sees. They still open an ARCore session, so anything that
+ * enumerates AR demos (the AR View tab's list, the replay harness) has to include
+ * them or it silently drops two demos that need the AR device path.
+ *
+ * Keep this list empty if you can. It exists because a demo's *section* answers
+ * "where does a user look for this" and that is not always the same question as
+ * "does this need ARCore".
+ */
+private val AR_DEMOS_OUTSIDE_AR_SECTIONS: Set<String> = setOf(
+    "ar-record-playback",
+    "ar-rerun",
+)
+
+/** Whether this demo runs on ARCore — see [AR_CATEGORIES]. */
+val DemoEntry.isArDemo: Boolean
+    get() = category in AR_CATEGORIES || id in AR_DEMOS_OUTSIDE_AR_SECTIONS
+
+/**
  * Maps a stable category key to its display-name resource ID.
- * Unknown keys fall back to [R.string.category_3d] (safe default — never
- * surfaces a raw key like "3D Basics" to the user).
+ * Unknown keys fall back to [R.string.category_viewer] (safe default — never
+ * surfaces a raw key like "AR Understanding" to the user).
  */
 @StringRes
 fun categoryDisplayNameRes(category: String): Int = when (category) {
-    DemoCategory.BASICS_3D -> R.string.category_3d_basics
-    DemoCategory.LIGHTING_ENVIRONMENT -> R.string.category_lighting_environment
-    DemoCategory.CONTENT -> R.string.category_content
+    DemoCategory.VIEWER -> R.string.category_viewer
+    DemoCategory.GEOMETRY_MATERIALS -> R.string.category_geometry_materials
+    DemoCategory.RENDERING -> R.string.category_rendering
     DemoCategory.INTERACTION -> R.string.category_interaction
-    DemoCategory.ADVANCED -> R.string.category_advanced
-    DemoCategory.AUGMENTED_REALITY -> R.string.category_augmented_reality
-    else -> R.string.category_3d_basics
+    DemoCategory.AR_PLACEMENT -> R.string.category_ar_placement
+    DemoCategory.AR_TRACKING -> R.string.category_ar_tracking
+    DemoCategory.AR_UNDERSTANDING -> R.string.category_ar_understanding
+    DemoCategory.AR_ANCHORS -> R.string.category_ar_anchors
+    DemoCategory.PLATFORM -> R.string.category_platform
+    else -> R.string.category_viewer
 }
 
 /**
