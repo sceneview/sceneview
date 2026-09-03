@@ -3427,13 +3427,24 @@ Library-level helper (`io.github.sceneview`, #1439) that frames a model so it fi
 viewport regardless of its intrinsic glTF size — no per-model `scaleToUnits` tuning.
 
 ```kotlin
-// Pure trigonometry — bounds + camera projection → orbit distance. Fits the content
-// bounding SPHERE, so the result is yaw-invariant (an orbiting camera never clips).
+// Pure trigonometry — bounds + camera projection → orbit distance. Each FOV axis is
+// fitted with its OWN half-angle (#3426), so a tall subject on a portrait viewport is
+// no longer pushed back by a width constraint it never hits. Yaw-invariant by default:
+// it frames the box's sweep about world +Y, so an orbiting or auto-rotating camera
+// never clips — set `azimuthInvariant = false` for a static head-on scene that should
+// not pay for a rotation it never performs.
 fun fitDistanceForBounds(
     bounds: Aabb, verticalFovDegrees: Double, aspect: Double,
-    padding: Float = DEFAULT_FRAMING_PADDING  // 0.15 = 15% breathing room
+    padding: Float = DEFAULT_FRAMING_PADDING,           // 0.15 = 15% breathing room
+    elevationDegrees: Double = DEFAULT_FRAMING_ELEVATION_DEGREES,  // 0.0 = level with the target
+    azimuthInvariant: Boolean = true
 ): Float
 ```
+
+Before v4.34.0 this fitted the content bounding *sphere* — half the AABB's space diagonal —
+and charged both axes the worse of the two. The result was never wrong, only always too far;
+the new fit is never further and up to 2× closer for tall or compact subjects. Same fix as
+iOS #3383.
 
 Usage:
 

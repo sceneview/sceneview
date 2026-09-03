@@ -42,6 +42,11 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-cloud-anchor
       DEMO_NAME: AR Cloud Anchor
+# Cloud Anchors gets a second, state-driven pass on top of the generic liveness
+# sweep (#3421): its host / resolve states need a live Cloud project and a second
+# device, so none of them are reachable on an emulator without `--es qa_state`.
+- runFlow:
+    file: flows/ar-cloud-anchor.yaml
 - runFlow:
     file: flows/demo.yaml
     env:

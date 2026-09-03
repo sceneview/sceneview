@@ -769,7 +769,13 @@ private fun DockIconButton(item: DockItem, modifier: Modifier = Modifier) {
     )
     val contentColor = when {
         !item.enabled -> SceneViewTokens.Glass.onGlass.copy(alpha = DOCK_DISABLED_ALPHA)
-        item.selected -> MaterialTheme.colorScheme.primary
+        // The **dark-scheme** primary, in both themes — not `colorScheme.primary` (#3421).
+        // The dock is glass over a camera or a 3D scene, i.e. media, and `DESIGN.md` is
+        // explicit that accents read there are the dark-scheme values: light mode's
+        // `primary` is #005bc1, a dark navy that all but disappears against the dock's own
+        // dark scrim. Caught on the Cloud Anchors captures, where the *selected* step —
+        // the one item that most needs to read — was the least legible thing in the dock.
+        item.selected -> SceneViewTokens.ArOverlay.accentProgress
         else -> SceneViewTokens.Glass.onGlass
     }
     Column(

@@ -460,6 +460,36 @@ The one instruction surface shown over a live camera feed (`DemoStatusBanner` on
 - Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
   with fade + fall (`duration-short`). Nothing to say → nothing on screen.
 
+### AR Overlay Card
+
+The surface for what an AR demo needs the user to **see** rather than read — a code to
+share, an input to fill, a meter to watch, or an explanation of why the screen cannot
+work. It stacks directly under the coaching overlay in the same bottom band, so the two
+must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairline, same
+`radius-lg`, same 480px max width, `shadow-lg`. Padding `space-md`, children spaced
+`space-sm`.
+
+- **Theme-independent, like the coaching overlay, and for the same reason.** The ground is
+  a camera frame. A demo card that used `surface` at 90% opacity — as the Cloud Anchors
+  screen did before #3421 — is a near-white slab over the room in light mode and a
+  near-black one in dark, neither contrasted against anything on purpose.
+- Title `type-card` in `on-ar-scrim`; body and captions `type-body` / `type-caption` in
+  `on-ar-scrim-dim`.
+- **Codes are `font-mono` and shortened**, never wrapped prose. Show `first6…last4`; the
+  full value goes to the clipboard, the share sheet and the accessible name.
+- **Text input** is unstyled (`BasicTextField`), never a Material text field: every
+  Material field colour is a theme role, which is the wrong ground here. Field fill is the
+  `Button glass` white-at-8% used for every "present but empty" element over media.
+- **Meters** use three segments at `radius-xs`, `space-sm` tall, `space-xs` apart. Lit
+  segments take the coaching overlay's accent for the state they represent (`warning`
+  while the user must keep moving, `primary` once the value is acceptable); the unlit
+  track is the same `Button glass` fill.
+- **An explanation card carries no action when there is none.** A configuration a user
+  cannot change from the phone gets a title and one sentence — a button that would do
+  nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).
+- **One card at a time, and never doubled with a pill saying the same thing.** When a card
+  explains the state, the coaching overlay stays silent.
+
 ### Tabs
 - Padding: 10px 20px
 - Background: `surface-dim`
