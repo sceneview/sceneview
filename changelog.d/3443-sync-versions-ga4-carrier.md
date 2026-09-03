@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The release gate reads the GA4 stream id from its new carrier.** #3443 moved the analytics loader and its `Stream ID:` comment into `website-static/assets/analytics.js`; `sync-versions.sh` only searched `.html` files, read an empty id, reported the carrier as corrupted and blocked the 4.34.0 `Release fast` run at the version gate. The check now covers `.js` carriers too.

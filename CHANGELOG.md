@@ -2,6 +2,697 @@
 
 ## Unreleased
 
+## v4.34.0 — 2026-09-03
+
+### Added
+
+- **Opt-in on-model gesture feedback for editable nodes.** New multi-consumer
+  `Node.addEditingListener` / `NodeEditingListener` hook reporting move / rotate / scale
+  editing gestures (including pinch updates rejected by `editableScaleRange`, with the
+  bound that was hit), plus a Compose layer: `rememberNodeEditingFeedback(node)` exposes
+  the live gesture as snapshot state (saturation-free yaw readout, scale percentage,
+  limit hits) and `NodeEditingOverlay` draws the ready-made visuals over the scene —
+  selection ring, rotation ring with sweep arc and yaw badge, scale percentage badge
+  with a bounce at the range limits, and a soft contact shadow while dragging. Nothing
+  renders unless the app opts in. The feedback acknowledges the touch from first
+  contact — an "armed" state dispatched on touch-down, ahead of any gesture-recognition
+  threshold — and fades the half of the base ring that lies behind the model so the ring
+  reads as a mark on the ground rather than a decal in front of it. New
+  `gesture-feedback-preview` demo (non-AR, QA-able on any emulator).
+- **`refreshIntervalMs` on the `HitResultNode` composable.** The class has honoured the
+  throttle since #2328, but `ARSceneScope.HitResultNode` never exposed it, so Compose callers
+  had to reach through `apply { }` to find a knob the class already had. All three
+  composables (`HitResultNode`, `ReticleNode`, `PlacementReticle`) now take the parameter and
+  re-apply it in a `SideEffect` instead of keying `remember` on it — changing the rate
+  re-rates the live node rather than destroying and re-creating it.
+
+### Changed
+
+Add AR visuals to the Play Store and App Store listings
+([#2844](https://github.com/sceneview/sceneview/issues/2844)). The listing
+text sells AR but no image showed any. Slot 1 of every screenshot class
+(`phone`, `tablet7`, `tablet10`, `iphone-6.9`, `ipad-13`) and the Play feature
+graphic are now AI-generated marketing visuals — Gemini image-to-image from the
+committed hero-model reference, the sci-fi helmet anchored in a real
+photographed room per DESIGN.md's AR art direction — because a real AR capture
+needs a device camera: ARCore's recording/playback path fails on the QA
+emulators (session creation probes camera HAL id 0 before consulting the
+playback dataset, and the arm64 AVDs have none). The existing real captures
+were shifted down one slot, not replaced. Committing is not uploading — the
+release workflows sync both listings from the repository, so the visuals reach
+the stores with the next minor release.
+`CLAUDE.md` no longer restates the CI path-gating detail that `CONTRIBUTING.md` already
+carries, and its Codex bullet is condensed to the rules an agent must follow. Every fact
+that only lived in `CLAUDE.md` is kept. The file goes from 4,074 to 3,566 bytes (-12.5%),
+which is the whole of what this repository contributes to a session preamble (#3001).
+The Android demo's default models are no longer a glTF conformance suite. Both surfaces
+that offer a bundled catalogue — the shared tap-to-place picker
+(`BUNDLED_PLACEMENT_MODELS`, used by the AR View tab and the `ar-placement` demo) and the
+Model Viewer's model sheet — led with two untextured low-poly rows, `khronos_fox` (flat
+vertex colours, no material maps at all) and `shiba` (a single base-colour map). In a
+full-screen PBR viewer those two are the models that make Filament look worse than it is,
+and neither is something anyone would place in a room. They are replaced by three Khronos
+glTF-Sample-Assets pieces that each drive a *different* material model: **Glam Velvet
+Sofa** (`KHR_materials_sheen` + `KHR_materials_specular`, Wayfair, LLC — Eric Chadwick,
+CC-BY-4.0, 3.1 MB), **Sheen Chair** (`KHR_materials_sheen`, same author, CC0-1.0, 4.1 MB)
+and **Iridescent Dish with Olives** (`KHR_materials_iridescence` + `transmission` +
+`volume` + `ior`, same author, CC-BY-4.0, 5.7 MB). All three were already in the repo — the
+`android-tv-demo` bundles the same byte-identical GLBs — so nothing new was sourced, and
+all three are already proven to load in Filament's Android `gltfio` (PNG/JPEG textures, not
+`EXT_texture_webp`, which that prebuilt cannot decode — #2305).
+
+Nothing was deleted. `khronos_fox.glb` and `shiba.glb` still ship: `SampleAssets` uses them
+as offline fallbacks and `ARTerrainAnchorDemo` loads the fox directly. Their thumbnails stay
+mapped in `ModelThumbnails` too, so any surface naming them by stem still gets an image.
+
+Three knock-on fixes fell out of the same work:
+
+- **The picker's cards now show the model.** Every card rendered the same generic
+  `ViewInAr` glyph, so the grid was six identical tiles under six labels and the only way
+  to learn what a row looked like was to place it. Bundled rows now render their generated
+  `model_thumb_<stem>.webp`; streamed rows keep the glyph, because their bytes are not in
+  the APK and there is nothing honest to show until they land.
+- **`realWorldSizeMeters` is measured, not estimated,** for the three new rows (2.19 m,
+  0.83 m, 0.53 m). They are authored in metres, Y-up, sitting on y = 0, so the number fed to
+  `ModelNode(scaleToUnits = …)` — and therefore what 100 % means on the pinch read-out
+  (#3326) — is the GLB's own bounding box.
+- **Two `ar_placement` offline fallbacks finally resemble what they stand in for.**
+  #2960 documented that "Coffee Mug" fell back to a toy car and "Wooden End Table" to a
+  fox — silhouette-class matches only — and said closing that gap needed assets the APK did
+  not ship. It ships them now, so they fall back to the dish and the chair. Pairwise
+  distinctness (#2355) is unchanged and still pinned by `SampleAssetsTest`.
+
+Attribution was wrong for two of the three in `assets/catalog.json`, which is what every
+generated `CREDITS.md` is built from: the Sheen Chair was recorded as KhronosGroup /
+CC-BY-4.0 when its upstream `README.md` says Wayfair, LLC (Eric Chadwick) / **CC0-1.0**, and
+the Iridescent Dish carried a `sourceUrl` that 404s (`IridescenceDishWithOlives` — the
+directory is `IridescentDishWithOlives`) plus the same wrong author. Both are corrected and
+every CREDITS surface regenerated.
+
+One caveat worth recording rather than hiding: on `emulator-5554` (Android Emulator
+OpenGL ES translator, ES 3.0 over Metal) the sofa's and chair's sheen reads exactly as
+intended, but the dish's iridescent shell renders as a dark glossy form with no
+thin-film colour shift under either the studio or the outdoor IBL. The model, its
+orientation, its scale, the brushed-metal dish and the olives are all correct; it is the
+`KHR_materials_iridescence` contribution specifically that does not appear on that GL
+path. Confirm on a real GPU before quoting iridescence as the reason for this pick.
+
+The three GLBs **moved** out of `samples/android-tv-demo/src/main/assets/models/` rather
+than being copied. The TV demo merges the phone demo's asset folder via
+`sourceSets.main.assets.srcDirs`, so the same `models/x.glb` present in both folders is
+`Error: Duplicate resources` at `mergeAssets` — a hard build failure, not a last-one-wins.
+The TV demo reaches all three at the identical `models/...` paths through that same line;
+its APK still ships them at the same paths and the same byte sizes, and `TvModelListTest`
+searches both folders, which is what makes the move a no-op for the TV demo.
+
+Bundled model assets grow 17.7 MB → 30.1 MB.
+Android demo: the two settings surfaces are now one. The overflow menu is gone and
+its actions — Reset demo, Send feedback, QA mode — moved into the settings sheet the
+dock's Controls item opens, below the demo's own controls. The sheet's own settings
+reset stays pinned in the header, and the per-demo reset it used to be confusable
+with is now labelled "Reset demo". The chrome also carries its own scrim, so the
+back arrow, the identity pill, the dock and a demo's status pill stay legible over a
+light scene instead of disappearing into it.
+- **Every Android module now compiles against SDK 37, and the `okhttp` bump it blocked has
+  landed ([#3385](https://github.com/sceneview/sceneview/issues/3385)).** `okhttp-android`
+  5.5.0 raised its own compile-SDK floor to 37, so `checkDebugAarMetadata` failed the build
+  and pinned the SDK at 5.4.0. `compileSdk` moves 36 → 37 in `sceneview`, `arsceneview`,
+  `sceneview-compose`, `samples/common`, `samples/android-demo`, `samples/android-tv-demo`
+  and `tools/snippets-check`, and 35 → 37 in the Flutter (`flutter/sceneview_flutter/android`)
+  and React Native (`react-native/react-native-sceneview/android`) bridges, whose host demo
+  apps follow so a plugin never compiles against a higher SDK than the app embedding it.
+  `targetSdk` is deliberately unchanged at 36: the AAR-metadata floor is a *compile* floor,
+  and moving `targetSdk` opts the Play Store app into API 37 runtime behaviour changes that
+  need their own device QA. AGP stays at 8.13.2, which was tested up to 36, so
+  `android.suppressUnsupportedCompileSdk=37.0` documents the gap in each of the four
+  independent builds' `gradle.properties` — remove it with the AGP upgrade.
+- **Binary compatibility:** the new `refreshIntervalMs` parameter added to the
+  already-released public `ReticleNode` / `PlacementReticleNode` constructors and to the
+  `HitResultNode` / `ReticleNode` / `PlacementReticle` composables is source-compatible but
+  **binary-incompatible** (it changes the shipped JVM signatures and the Kotlin default-args
+  synthetics). It therefore rides a MINOR release, never a patch, and binary consumers of
+  `arsceneview` must recompile against the new artifact — the same rule the `predicate`
+  parameter followed when it was added to these same classes.
+Model Viewer demo: the launch cover is a real loading state instead of the demo's
+preview image (no more wrong-picture flash), the dock items carry labels and clearer
+icons, the default environment is the punchy Sunset HDR, and the model now arrives on
+a short Material-standard camera dolly-in.
+- **Demo app: one AR placement flow, and you pick the model before the camera opens.**
+  The `ar-placement` demo is now two phases — a still, themed chooser screen that arms the
+  model *and* the placement mode, then the shared tap-to-place camera it already used. The
+  `ar-instant-placement` demo is folded into it: instant placement is the chooser's
+  "Instantly" mode, and `sceneview://demo/ar-instant-placement` keeps resolving through the
+  deep-link alias table. Back out of the camera returns to the chooser instead of leaving
+  the demo. (#3405)
+Rebuilt the demo app's Cloud Anchors screen as an explicit two-step flow — Host an anchor
+(place, map the room, upload, share the code) and Resolve one (paste a code, resolve, see
+the anchor). The host/resolve state machine moved into plain, unit-tested Kotlin, so a
+running request now owns the status line instead of being shadowed by coaching copy,
+severity comes from the state rather than from substring-matching the sentence, and no
+action is offered that cannot work — Host waits for a placed anchor and a sufficient
+ARCore `FeatureMapQuality`, which is rendered as a room-mapping meter. Failures are
+explained in the app's own words instead of printing the raw ARCore constant, hosted codes
+can be copied or shared through the system share sheet and pasted back from the clipboard,
+and a missing or rejected ARCore Cloud API key now gets the same explanation card as an
+unavailable ARCore session. The screen's own chrome uses the AR overlay tokens, so it
+reads identically in light and dark over a camera feed.
+- **The `custom-geometry` demo is rebuilt from scratch around a mesh generated at runtime ([#3423](https://github.com/sceneview/sceneview/issues/3423)).** The demo was named for custom geometry but never authored a vertex: one sub-mode composed built-in `SphereNode`s and `CylinderNode`s into a molecule, the other extruded 2D outlines through `ShapeNode` — both built-in node types, and the first of them a near-duplicate of the `geometry` primitives demo. It now generates a **(2, 3) torus knot** swept by a twisting, rippling ribbon: `TorusKnot.vertices()` computes every position, normal and UV in plain Kotlin, `Geometry.Builder` uploads them, and `MeshNode` draws them. Three controls rebuild the mesh live — **Segments** (24 → 264 rings, 125 → 5 035 vertices), **Twist** (stepped in half-turns, the only values at which the ribbon closes on itself) and **Ripple** — plus a **Wireframe** toggle in the dock that redraws the same vertices as `PrimitiveType.LINES`, and a status pill counting the vertices and triangles currently on screen. Twist and Ripple keep the vertex count constant and so reuse the allocated GPU buffers through `Geometry.update(engine, vertices)`; only a Segments change allocates, and a paired `DisposableEffect` frees the old buffers with `Engine.safeDestroyGeometry`. Normals come from finite differences on the surface itself, so they stay correct under ripple and leave no crease at the seam; `TorusKnotTest` (17 JVM cases) pins the topology, the unit-length normals, the UV range, the seam closure and the camera framing. The segmented-button toggle is gone, so the retired `shape` deep link now lands on the demo's single view (it is no longer listed in `DeepLinkRouter.ALIAS_INITIAL_TAB`); `sceneview://demo/custom-mesh` and `sceneview://demo/shape` both keep resolving to `custom-geometry`.
+- **`2D in 3D` demo rebuilt from scratch around `ViewNode` ([#3424](https://github.com/sceneview/sceneview/issues/3424)).** The demo carrying the app's headline "2D in 3D" name used no `ViewNode` at all: it was four unrelated scenes behind a segmented button — `TextNode` labels, a gallery of procedurally-drawn `ImageNode`s, an MP4 on a `VideoNode` with a bespoke cinematic camera, and a `BillboardNode` — so the one API that puts live Compose UI into a 3D scene appeared nowhere in it. Its Billboard tab was inert on top of that: `BillboardNode` and `TextNode` billboard only when handed a `cameraPositionProvider`, and neither was given one, so the sign whose caption promised it would "stay readable" never turned. It is now one scene — the Khronos Damaged Helmet on a turntable, with three world-anchored Compose call-out cards and one live, tappable control card — and four controls that each answer a real `ViewNode` question: **Billboard** (dock) keeps the cards square to the viewer or lets them ride the turntable edge-on; **Always on top** pairs `MaterialInstance.setDepthCulling(false)` with `PRIORITY_LAST` so the model can no longer swallow a label; **Card size** shows what `pxPerUnits` = 250 px/m means in centimetres; **Card distance** moves the call-outs off the subject. Tapping the button inside the scene stops the turntable — a real `Button.onClick`, reached through a Filament picking ray. The framing and the billboard solution moved into `CalloutLayout`, pinned by `CalloutLayoutTest`. The retired `text`, `image`, `video` and `billboard` deep links still resolve here; with the tabs gone, none of them carries an initial-tab hint any more.
+Rebuilt the `lines-paths` demo around real stroke geometry, and added the `Tube` geometry and `TubeNode` it needs: `LineNode` / `PathNode` draw `PrimitiveType.LINES`, which every mobile backend rasterises at one device pixel with no width control, so the old screen's line and polyline were invisible on a phone. A tube sweeps a circular cross-section along a polyline with rotation-minimising frames, giving a line a radius in metres. The demo now shows a closed route (polyline / rounded / spline), a marker and trail sampled by arc length, a marching dashed ground track and the control-point set, with live curve, stroke, points and animate controls.
+- **Four catalog cards in the Android demo now show the demo they open
+  ([#3437](https://github.com/sceneview/sceneview/issues/3437),
+  [#3438](https://github.com/sceneview/sceneview/issues/3438)).** `custom-geometry`,
+  `two-d-in-three-d` and `lines-paths` were rebuilt from scratch, but their home-screen art
+  still advertised the scenes they replaced — a ball-and-stick molecule, a gallery of framed
+  photos, a chain of beaded hairlines. `model-viewer` was wrong in a different way: its card
+  showed a stylised helmet that `khronos_damaged_helmet.glb` does not render, so the first
+  screen a user sees promised a different model than the one that loads. All four pairs are
+  regenerated through `tools/demo-previews/`, light and dark, on the same studio backdrop as
+  their neighbours; the two procedural demos are drawn from references rendered by their own
+  generator code (`TorusKnot`, `LinesPathsScene`), so the card shows the exact curve the app
+  computes. The `HomeHero` banner above the grid showed the same wrong helmet as the
+  `model-viewer` card and is regenerated with it — the two sit a thumb's width apart on the
+  first screen, which is what #3438 was filed about. `tools/demo-previews/gen.py` grew a
+  `--kind hero` (`heroes.json`) so that banner has a recorded prompt like every other asset
+  instead of being a one-off.
+
+### Fixed
+
+- **The self-hosted macOS runner now falls back to `macos-15` when the host is nearly full
+  ([#2816](https://github.com/sceneview/sceneview/issues/2816)).** The runner heartbeat marked
+  the Mac `SELF_HOSTED_MACOS_ONLINE=true` on runner liveness alone, so a job could route to a
+  host with ~4.6 GiB free: a Flutter iOS type-check then died at `No space left on device` and
+  left a *truncated* `Flutter.xcframework` in the runner tool cache, poisoning every later
+  self-hosted Flutter job. `.claude/scripts/runner-heartbeat.sh` now refuses to declare the
+  runner online below `RUNNER_MIN_FREE_DISK_GB` free GiB (default 15 — a Flutter setup peaks
+  near 4.5 GiB and the host's 6 GiB local-build gate must stay clear), checked before the
+  GitHub API probe and logged with the reading that caused the refusal.
+  `setup-self-hosted-runner.sh --check` prints the current free-disk reading and its verdict
+  next to the heartbeat state.
+`device-qa.sh`'s `sketchfab` / `arcore-cloud` sub-legs only checked
+`airplane_mode_on` before trusting a streamed-asset run — a radio that was ON
+but routeless (captive portal, dead DNS, a dropped VPN) still passed the gate,
+so every streamed Sketchfab slug could silently resolve to its bundled
+fallback while the report said the path was exercised (measured closing
+#2942). A new `lib/qa-connectivity.sh` layers a real probe — airplane mode,
+Android's own captive-portal-validated `dumpsys connectivity` signal, and an
+actual `ping` to the streamed-asset host — and fails closed to an honest
+`skipped` when none of them prove a route. `ios-device-qa.sh` gets the
+symmetric host-side probe (the Simulator shares the Mac's network). Both
+scripts record the probe detail in their reports and accept `--allow-offline`
+to downgrade the loud connectivity banner to a quiet, explicit skip list for a
+deliberately offline run.
+App Store slot 1 shows the Cyberpunk Hovercar again instead of a second copy of slot 2's
+Damaged Helmet. The issue reported the hovercar as "framed as plinth-sized, so it reads
+small next to the fixed slot 2"; the plinth half of that had already been fixed (#3315
+stripped the display plane from `cyberpunk_hovercar.usdz`, and the flattened USD confirms
+no plane prim remains). Capturing the demo on the 6.9" simulator showed the real cause:
+the `model-viewer` slot was not rendering the hovercar at all.
+
+Two independent changes collided. #3003 switched `dynamic-sky` — slot 2 — to
+`khronos_damaged_helmet`, and the showcase redesign (#3308) rewrote `ModelViewerDemo` to
+default `selectedModel` to `bundledModels[0]`, which is that same helmet. The redesign kept
+the "the hovercar is the iOS store hero" comment while making the code disagree with it, so
+the store hero silently stopped being captured and the listing showed one subject twice.
+Under `qa_mode` the view now selects `storeHeroAssetName` explicitly before the first load;
+the interactive first-run subject is unchanged — a new user still lands on the Khronos
+reference helmet.
+
+`captureFramingMargin` stays at 0.62, and the constant now records why rather than reading
+as a preference. Swept against live captures with the `-camera_distance` override (#2785):
+0.75 leaves the car at roughly 45 % of the frame width and 0.5 clips its tail against the
+right edge. It is a floor, not a choice.
+
+One framing defect is documented and deliberately left open, because it is an SDK change
+rather than a sample constant: the car renders right of the frame centre with the left
+third of the frame empty, and its silhouette is markedly smaller than the bounds the
+auto-fit pass is fitting. `CameraControls.fitRadius` inscribes the *space diagonal* of the
+union AABB in a sphere and fits that sphere to the narrower FOV axis — width, in a portrait
+store frame — so a wide, short subject whose authored bounds exceed its visible geometry
+cannot fill the frame however tight the margin gets. Fitting the projected AABB instead
+would close it.
+- **pub.dev publish verification no longer false-reds on its own documented propagation delay.** `.claude/scripts/verify-published-version.sh`'s `pub` budget grew from 5x20s (100s) to 20x30s (10 min), matching the window pub.dev's own upload response states; `release.yml`'s `pub-publish` job timeout grew from 15 to 20 minutes to give that budget room.
+- **Repo guards now say "could not run" instead of faking a verdict when a tool is
+  missing ([#3192](https://github.com/sceneview/sceneview/issues/3192)).** Five checks
+  reported a result they had not actually verified when an interpreter or CLI was absent:
+  `check-web-filamat-abi.sh` exited `1` with two bogus `MISMATCH` blocks and an empty
+  hash when neither `shasum` nor `sha256sum` existed; `sync-versions.sh` printed a green
+  116-check report without `python3`, which is what reads and rewrites every JSON version
+  file; `verify-published-version.sh` turned a missing `curl` (or `python3` for pub.dev)
+  into a claim about the publish; `web-bundle-smoke.sh` died with a bare `npm: command
+  not found` (127) that reads like a broken web bundle; and `validate-release-artifact.sh`
+  blocked a Play Store upload with "could not parse 'package' from artifact manifest"
+  when the missing piece was `python3`, not the artifact. Each now resolves its tooling
+  up front and exits `2` (`0` WARN + SKIP for the release guard, whose own contract is
+  that missing validation tooling must never veto a release), so `1` keeps meaning "the
+  thing under test is wrong".
+The demo app's visible surfaces now draw their colours from the design system instead of
+hardcoded Material swatches: the category accents sample `DESIGN.md`'s `gradient-hero`
+ramp (blue → violet, with a dark variant) rather than a six-hue rainbow, the About tab's
+icons, hero gradient and rating star follow the theme in both light and dark, and the
+Explore category chips use the primary container instead of the tertiary one.
+- **A tap on a `ViewNode` seen from behind now lands on the pixel you are looking at
+  ([#3329](https://github.com/sceneview/sceneview/issues/3329)).** The view material is
+  double-sided and un-mirrors its UVs on the back face, so a quad orbited past edge-on keeps
+  reading correctly on screen — but the touch mapping stayed front-face, so every touch on a
+  turned-away quad landed on the horizontally mirrored pixel and the button under the finger
+  did nothing for half of every revolution. `CollisionSystem.hitTest` now stamps the picking
+  ray direction onto its `HitResult` (`RayHit.getWorldDirection()`), and `ViewNode` uses it to
+  pick the right mapping. New `worldToLocalDirection` / `localToWorldDirection` conversions
+  transform a free vector with `w = 0`, so a node's translation cannot leak into a direction.
+- **Demo app — Picking & Collision is one scene instead of two settings tabs, and is lit
+  ([#3329](https://github.com/sceneview/sceneview/issues/3329)).** The ray hit-test shapes and
+  the live Compose card now share a single `SceneView`, and the card reports the hit-test state
+  so the two halves visibly share one picking pass. Both card faces are real `Card(onClick = …)`
+  targets, so a tap always reaches a Compose component whichever side is turned towards you.
+  The primitives moved from flat unlit fills on black to lit PBR instances under the studio IBL
+  plus a warm key light, and the row was pulled in to `x = ±0.5` with the eye at 4.2 m so it
+  stops being clipped by the portrait viewport edges. The in-scene card also re-applies
+  `SceneViewDemoTheme`: a `ViewNode` composes in its own off-screen `ComposeView` and inherits
+  none of the host's `CompositionLocal`s, so the card used to resolve the Material 3 *light*
+  defaults and stayed pale lavender while the rest of the app went dark.
+- **The Spatial Audio demo now says what is emitting the sound ([#3332](https://github.com/sceneview/sceneview/issues/3332)).** The
+  scene was two unlabelled spheres — a big orbiting one carrying the bell and a tiny
+  centre marker that meant nothing — with no cue about where the sound started or who
+  was hearing it. The emitter now pulses translucent shells outward so it reads as the
+  source at a glance, the meaningless centre marker is replaced by the faint ring of the
+  orbit path it travels on, and a glass legend over the scene names both roles ("sound
+  source" / "listener — the camera, i.e. you") next to a live readout of the
+  source-to-listener distance and the gain the selected falloff curve is applying, taken
+  from the same `AudioFalloff.gainFor` the audio backend uses.
+- **The AR camera background no longer gets an extra contrast boost ([#3338](https://github.com/sceneview/sceneview/pull/3338)).** The
+  three camera-stream materials decoded the camera texel with Filament's
+  `inverseTonemapSRGB()`, whose transfer leg is `pow(c, 2.2)`, while Filament re-encodes the
+  frame with the exact piecewise sRGB OETF (its `Rec709-sRGB-D65` color-grading output
+  stage). The two do not cancel: the round trip crushed the shadows by up to 8.5/255 at code
+  16 and lifted the highlights by ~1.5/255, applied to the camera feed only — so real and
+  virtual content were graded differently. The materials now decode with the exact
+  IEC 61966-2-1 EOTF, making the round trip bit-exact. The YUV→RGB conversion was never at
+  fault: ARCore delivers the buffer as `STANDARD_BT709 | TRANSFER_SRGB | RANGE_FULL`, and the
+  EGL external sampler already handles it correctly.
+- **The plane renderer no longer fires an ARCore raycast just to pick which plane to
+  highlight ([#3339](https://github.com/sceneview/sceneview/issues/3339)).**
+  `PlaneRendererMode.RENDER_CENTER` is the default mode and the plane renderer is on by
+  default, so **every** AR screen ran a centre-screen `frame.hitTest()` continuously —
+  gated by `maxHitTestPerSecond = 10`, which against a 30 fps camera stream admits one
+  pass every fourth frame, 7.5 times a second, for the lifetime of the screen. ARCore
+  attempts a depth sub-test inside every `hitTest`, and on devices whose motion-stereo
+  depth pipeline is unavailable that sub-test fails and ARCore's **native** logger emits a
+  four-line `FAILED_PRECONDITION` / `depth_hit_test.cc` / `motion_stereo_manager.cc` /
+  `AR_ERROR_ILLEGAL_STATE` block per call — forever, on every AR screen, with no way to
+  opt out short of disabling the plane renderer. Nothing on the Kotlin side can filter a
+  native log (the `depthPoint = false` result filter runs *after* the native call) and no
+  `Frame.hitTest` overload accepts a trackable-type filter, so the only fix is not to make
+  the call. The centre plane is now found analytically, by intersecting the camera's
+  optical-axis ray with each candidate plane, applying exactly the acceptance rules the
+  discarded `firstByTypeOrNull(HORIZONTAL_UPWARD_FACING)` applied through its defaults:
+  `TRACKING` only, `HORIZONTAL_UPWARD_FACING` only, hit point inside the plane polygon.
+  Subsumed planes are additionally skipped, since they are never drawn and highlighting
+  one selected a plane that is not on screen. The failing depth sub-test never removed
+  anything the call site wanted — the result was narrowed to horizontal planes, so depth
+  could only ever have contributed `DepthPoint` candidates that were discarded anyway, and
+  the warning was benign: it did not prevent anchoring or placement. Public API is
+  unchanged — `maxHitTestPerSecond` keeps its name, default and meaning as a rate limit on
+  the whole update pass, and `PlaneRendererBase.viewSize` stays part of the contract.
+  Applies to both `PlaneRenderer` (V1, the default) and `PlaneRendererV2`.
+- **AR occlusion was inverted wherever ARCore had no depth, and the demo never said what it
+  was showing ([#3340](https://github.com/sceneview/sceneview/issues/3340)).**
+  `camera_stream_depth.mat` fed ARCore's "no depth here" sentinel (`depth_mm == 0`) straight
+  into the projection, so `view.w` was `0` and `gl_FragDepth` became `+inf` — clamped to
+  `1.0`, which under Filament's reverse-Z is the **near** plane. The camera quad therefore
+  occluded every virtual fragment exactly where the depth image had no data: sky, thin
+  edges, moving subjects, whole frames when depth estimation drops out mid-session, and
+  every frame before the first depth image lands. The model simply disappeared with
+  occlusion on. Invalid texels now project a far-but-finite distance instead, so "no depth
+  data" degrades to "occludes nothing".
+  `camera_stream_person_occlusion.mat` carried the same hole plus its own sign error — it
+  wrote `0.0` for PERSON-mask pixels, the reverse-Z **far** plane, pushing people behind
+  virtual objects rather than in front of them; it now writes the near plane.
+  `ARDepthOcclusionDemo` also stopped explaining itself: its `DEPTH ON` / `DEPTH OFF` chip
+  named an ARCore setting rather than an effect, and the toggle that *is* the demo lived
+  two taps deep in the Settings sheet. The on-screen pill now states the consequence of
+  each state ("real objects in front of the model hide it"), a coaching line names the one
+  gesture that reveals it, and the toggle sits under the thumb next to Clear. The chip's
+  hardcoded green/red is gone, replaced by the shared `ar-scrim` overlay tokens.
+- **The demo app's own chrome hid the "AR unavailable" card it was supposed to let through
+  ([#3341](https://github.com/sceneview/sceneview/issues/3341)).**
+  #3374 gave the SDK a real availability state and an explanation card, but on an
+  unsupported device — every emulator (#2754) — the demos still showed a black viewport
+  forever. `ARCameraInitScrim` is a full-screen opaque backdrop drawn as a later sibling of
+  `ARSceneView`, dismissed when the first camera frame arrives; when ARCore rules the
+  session out that frame never comes, so after its eight-second timeout the scrim settled
+  into a permanent black cover *on top of* the card explaining why. It now takes the
+  verdict as a required argument and steps aside the moment ARCore answers, at any point in
+  the start sequence — waiting through the spinner phase is pointless once the answer is
+  "this device cannot run AR". Every demo that draws the scrim now passes the verdict
+  through, sourced from `onARCoreAvailability`.
+  The demos' status copy no longer contradicts the card either: the Rooftop Anchor sheet
+  and banner, the Cloud Anchor and Terrain Anchor guidance, and the Instant Placement
+  scanning pill all keyed off "not tracking yet", which on an unsupported device is
+  permanently true — so "Initializing camera…" sat next to a card saying the camera was
+  never going to start. They now read the verdict first, matching what the Orbital demo
+  already did.
+  The same reading covers the shared "Scanning for surfaces…" banner: seven more demos
+  gated it on a flag — `isTracking`, a detected-plane count, a first-plane boolean — that
+  an unsupported device leaves untouched forever, so the banner promised a scan that could
+  not start. Two of them, Depth Occlusion and AR Fog, only looked correct because the scrim
+  was covering them; uncovering the card exposed the banner underneath. All seven now
+  defer to the verdict.
+  The demo scaffold's back control was already drawn above the scrim, so leaving the demo
+  has worked throughout; what was missing was any reason to.
+- **The Orbital AR demo showed too many models to follow and offered nothing to catch
+  ([#3341](https://github.com/sceneview/sceneview/issues/3341)).**
+  The scene put eight objects on eight heights at eight speeds around a 1.5 m ring, each
+  contributing its own screen-edge arrow: five to seven arrows pointed in five to seven
+  directions at once and none of them was worth turning toward. Half the slots were static
+  props — a helmet, a lantern, a toy car, a walking soldier stepping through empty space —
+  so "models flying around you" was true of four slots out of eight, and the one the demo
+  designated as the chase target was the toy car. And there was no catch mechanic at all:
+  no tap handling, no hitbox, no success state, no feedback, so a user who did turn toward
+  a model and tap got nothing back and read it as a mechanic they kept failing.
+  The ring is now four streamed animated flyers, one per quadrant, at 0.10–0.18 rad/s
+  (the old fast end, 0.30 rad/s, crossed a phone-width of view in about a second). Tapping
+  catches: one projection pass per frame feeds both the arrows and the hit test, so the
+  hitbox can never disagree with what is drawn; the disc is 72 dp, 1.5× Material's minimum
+  touch target for a *stationary* control, because the target, the hand and the phone all
+  drift between the start of a tap and its landing. A caught flyer freezes in place and
+  grows 1.25×, the status pill keeps the running score, and a ring is drawn for hits *and*
+  misses — a silent miss is indistinguishable from a dropped tap. Once all four are caught,
+  a tap anywhere releases them, each resuming from its frozen angle rather than jumping.
+  In keyless mode the four `solar` entries also all fell back to the same bundled
+  character, putting one identical model at four points of the ring; they now fall back to
+  four distinct GLBs, guarded by the same pairwise-distinctness test that already covered
+  `ar_placement` (#2940).
+Point & Ask (demo app) no longer answers every tap with the same "Gemini Nano couldn't
+answer". The captured AR frame is now cropped around the tap and downscaled to the
+on-device model's budget — ML Kit only clamps a bitmap's *short* edge to 768 px, so a
+1080×2424 phone capture used to reach Gemini Nano as a 768×1723 strip — and each failure
+mode now names itself (unsupported device, stale AICore, busy model, rejected frame,
+capture failure, empty answer) instead of collapsing into one string. A failure that
+retrying cannot fix retires the "tap to try again" invitation and explains the
+on-device-only design instead.
+- **`sceneview-mcp` answers `server/discover` (MCP 2026-07-28) instead of `-32601 Method not found`.** A 2026-07-28-aware client now learns in one handshake-free round trip which revisions the server actually serves, plus its identity, capabilities and cache hints (`ttlMs`, `cacheScope`), rather than being left to guess after a "method not found". Against `@hasmcp/mcp-spec-test` 0.1.1 the 2026-07-28 run goes from 8 passed / 6 failed / 22 not verified to 14 passed / 0 failed, and 2025-11-25 stays at 0 failures.
+The Play Store graphics README's follow-up bullet on tablet Model Viewer framing
+non-determinism no longer cites the retired v2 evidence. The v3 re-capture
+([#3350](https://github.com/sceneview/sceneview/pull/3350)) replaced the frames the
+bullet pointed at, and in the committed v3 set the helmet holds the same head-on pose
+on both tablet classes (Model Viewer is slot 2 there, not slot 1) — verified by
+comparing `tablet7-screenshot-2.png` and `tablet10-screenshot-2.png` by eye. The
+bullet now records that the committed pair matches while keeping the standing lesson:
+the hero orbit is free-running, so any re-capture rolls the pose lottery again and the
+camera distance must survive the widest orbit pose.
+- **A vetoed editing gesture no longer strands its parent mid-gesture ([#3357](https://github.com/sceneview/sceneview/pull/3357)).** `onMoveBegin` /
+  `onRotateBegin` / `onScaleBegin` delegate to the parent node both when the transform
+  flag is off and when the node's own callback lambda vetoes, but the matching `End`
+  handlers routed on the flag alone — so an editable node whose lambda vetoed ended a
+  gesture the *parent* was running, leaving the parent's `editingTransforms` holding the
+  edited property for the life of the node. `End` now routes on the gesture the delegate
+  actually claimed at `Begin`.
+- **A release whose PR auto-merges is now always tagged ([#3361](https://github.com/sceneview/sceneview/pull/3361)).** GitHub
+  emits no workflow events for pushes made with the default `GITHUB_TOKEN`, so when
+  `release-fast.yml`'s release PR auto-merged, the merge produced no `push` event and the
+  `push`-triggered `Tag release` workflow never ran: v4.33.0 sat on `main` with
+  `VERSION_NAME` bumped, no tag, no publications and nothing red anywhere until a human
+  noticed. `release-fast.yml` now owns the tag in the same run — a `tag` job waits for the
+  PR it opened to merge, tags the merge commit and dispatches `release.yml` — so the
+  release no longer depends on an event chain, and a PR that never merges ends in a red
+  run instead of a silent half-release. `tag-release.yml` remains as the human-merge
+  safety net and a manual recovery handle; both callers share the idempotent
+  `.claude/scripts/tag-release.sh`.
+- **`AnchorNode` no longer answers move gestures unless `isEditable = true` ([#3359](https://github.com/sceneview/sceneview/pull/3359)).** Its
+  `isPositionEditable` override was a plain field that silently dropped `Node`'s
+  `isEditable &&` gate, so a drag on any anchored node detached and re-created its anchor
+  even with editing off — observed as ARCore "already removed/detached" bursts killing
+  placed models in the ar-instant-placement demo. `PoseNode.isRotationEditable` carried
+  the same ungated override and is fixed the same way. **Behavior change:** code that
+  relied on anchors being draggable by default must now opt in with `isEditable = true`
+  on the `AnchorNode` (the demo placement helper now does exactly that).
+- **The demo app's web deep link can no longer be widened into a link hijacker
+  ([#3366](https://github.com/sceneview/sceneview/issues/3366)).** The HTTPS
+  intent-filter was already scoped to `sceneview.github.io/open`, matching
+  `DeepLinkRouter.extractCandidate`, and never shipped host-less — but nothing in
+  the build said so, so dropping `android:host` would have silently made the demo a
+  candidate for *every* https link on the device. A new pure-JVM guard
+  (`DeepLinkManifestScopeTest`) reads the scope back out of the manifest and pins it
+  to the router's own constants, so the two layers can only move together. The
+  manifest and `website-static/.well-known/README.md` also stopped claiming that
+  App-Links verify on debug builds: `assembleDebug` is signed with the default
+  `~/.android/debug.keystore`, which is not — and cannot be — listed in
+  `assetlinks.json`, so an unverified domain on a debug install is expected, and
+  `sceneview://demo/<id>` is the deep-link channel for QA.
+Demo app: the Contact Shadow Preview "Shadow intensity" slider no longer reads `100%`
+with the thumb short of the track end. The control multiplies each context preset's own
+opacity and deliberately runs past `1.0` to `1.5`, so a percentage was promising a
+maximum it did not have. The readout is now the multiplier it always was — `1.00×` at
+the default, `1.50×` at the end of the track (#3372).
+Fixed a coloured band painted across AR fallback screens when ARCore never delivers a camera
+frame (#3373). The camera-stream quad was drawn from the moment it joined the scene, sampling an
+external texture that had no image attached and reading an unset UV buffer. It now seeds identity
+UVs at build time and stays hidden until the first ARCore frame binds a real texture. The demo
+app's camera-init scrim also keeps its opaque backdrop after its defensive timeout, dropping only
+the spinner, so the "AR couldn't start" fallback always has a deliberate background.
+- **AR no longer hangs on "Initializing AR" on devices without ARCore ([#3374](https://github.com/sceneview/sceneview/issues/3374)).** `ARCore` compared
+  `ArCoreApk.checkAvailability()` only against `SUPPORTED_INSTALLED`, then asked for an
+  install on every other verdict — including `UNSUPPORTED_DEVICE_NOT_CAPABLE`, where
+  `requestInstall` throws. The exception was swallowed into `onArSessionFailed`, a
+  callback no demo wires, so the session never started and the app sat on its own
+  "initializing" copy forever. Availability is now a first-class state: the new
+  `ARCoreAvailability` enum (`Unsupported`, `NotInstalled`, `NeedsUpdate`, `CheckFailed`,
+  `SessionFailed`) is published through `ARCore.onARCoreAvailability`, and `ARSceneView` draws a built-in
+  explanation card — overridable via `arCoreAvailabilityOverlay`, or observable via
+  `onARCoreAvailability` — with an Install / Update / Try again action, and none at all on
+  a device that simply cannot run AR. `retryARCoreAvailability()` un-latches a cancelled
+  Play Store flow so the action works twice. `SUPPORTED_INSTALLED` is not a promise that
+  `Session()` will succeed — an emulator with Google Play Services for AR installed still
+  fails to create one — so a session that throws on creation now publishes
+  `SessionFailed` and offers a "Try again" that destroys and recreates the session
+  (`ARCore.retrySession()`), instead of leaving the same silent hang one step further
+  along. Behaviour on a working ARCore device is
+  unchanged: `SUPPORTED_INSTALLED` starts the session immediately and `UNKNOWN_CHECKING`
+  still waits silently.
+- **`sceneview-mcp` install instructions now name the path Claude Code actually reads.** Every surface (`llms.txt` and the generated `gpt/knowledge-*.md`, `docs/docs/ai-development.md`, `website-static/.well-known/llms.txt`, `mcp/demo/`) now leads with `claude mcp add --scope project sceneview -- npx -y sceneview-mcp` and names `.mcp.json` at the project root, with `~/.claude.json` for user scope; the old `.claude/mcp.json` and `~/.claude/mcp.json` snippets were silently ignored by Claude Code, so the server never loaded. The repo's own config moved from `.claude/mcp.json` to a committed root `.mcp.json`, which `.gitignore` no longer excludes.
+iOS/visionOS: `CameraControls.fitRadius` now fits the subject's **projected extent on each
+FOV axis** instead of inscribing its bounding box in a sphere. The old formula collapsed
+the box to half its space diagonal and divided by `sin` of the *smaller* half-FOV — the
+horizontal one on a portrait phone — so every subject paid for a diagonal it does not
+occupy, and the vertical axis paid the horizontal axis's distance. A 3 m column in a
+portrait viewport was pushed back to 5.90 m where 3.00 m frames it exactly: the subject
+filled barely half the height available to it ([#3383](https://github.com/sceneview/sceneview/issues/3383)).
+
+Framing stays invariant to `azimuth`, as an auto-rotating model must not clip when it turns
+broadside. Rather than fitting the pose you happen to be at, the fit takes the box's *sweep*
+about world Y — a cylinder — and fits that exactly through its support function, so the
+result is the tightest azimuth-independent distance rather than an upper bound on one. The
+new distance is never larger than the old one, so no scene is framed further away than
+before; portrait gains are up to 49 % of the old distance for tall subjects and 10–17 % for
+cubic ones, while wide subjects in portrait are unchanged because their horizontal reach
+genuinely requires that distance.
+
+Unlike the sphere fit, the result now depends on `elevation`, since a subject's projected
+height changes as the camera rises. The default `defaultFitMargin` of 1.15 covers the worst
+case measured (1.124, a 4 m panel in landscape), so orbiting after an auto-fit still does
+not clip.
+
+The Android (`sceneview/`) and web (`sceneview-web/`) framing helpers carry the same
+bounding-sphere approximation and are **not** touched here; they are reported in the pull
+request for a separate follow-up.
+- **The committed App Store screenshots match what the app renders again ([#3384](https://github.com/sceneview/sceneview/issues/3384)).**
+  The four PNGs in `samples/ios-demo/appstore-screenshots/` dated from 4 August and showed
+  an app that no longer exists: the pre-redesign chrome (#3308) over every frame, and the
+  white display plinth (#3315) under the hovercar. `app-store.yml` reads this directory
+  inline at every release, so those frames were what Apple received. All four re-captured on
+  the documented `qa_mode` pipeline, at the dimensions App Store Connect accepted
+  (`iphone-6.9` 1320 × 2868, `ipad-13` 2064 × 2752). The subjects are unchanged — hovercar
+  in slot 1, Damaged Helmet under a live sky in slot 2 — which for slot 1 is only true
+  because of the `qa_mode` hero override (#3382) and the stage fix below.
+
+- **The iOS store hero is staged on a lit backdrop again, not on black.** The model
+  viewer opens with `showSkybox = false`, so nothing is drawn behind the model — the
+  right look for a viewer you are about to orbit, the wrong one for a store frame: the
+  hovercar's dark bodywork read as a grey silhouette on near-black, which is the "dim,
+  dark-on-black" capture #2896 was filed about. The pre-redesign code pinned a
+  `studio_warm` hero environment for exactly that reason and #3308 dropped it. Under
+  `qa_mode` the demo now also selects `storeHeroEnvironmentName` and draws its skybox,
+  alongside the existing hero-model override (#3382). The interactive first-run look is
+  unchanged.
+
+- **QA-mode chrome no longer leaks into published store frames.** `qa_mode` paints a
+  "QA ×" chip so a human who enabled it can switch it back off; a scripted capture pass has
+  no human and its output ships to the App Store. The chip arrived with the redesign (#3308),
+  after the last capture, so it never shipped — but the pipeline launches with `-qa_mode 1`,
+  so this refresh would have baked it in. `DemoSheet` now suppresses it when
+  `DeepLinkRouter.isScriptedCapture` is true — keyed on the `-demo <id>` launch argument
+  that only the capture and XCUITest passes carry. The determinism scripted passes rely on
+  (frozen pose, framing, hero selection) is untouched; only chrome that exists to serve a
+  human is hidden.
+- **In-app bug reports now name the screen they were filed from and carry a usable log
+  window ([#3390](https://github.com/sceneview/sceneview/issues/3390)).** Reports arrived
+  with neither: the demo id was matched against the literal route `demo/{id}` while the
+  declared route had grown a `?model={model}` argument, so it always resolved to `null`,
+  and the tab host published nothing at all — a report filed from the Explore gallery or
+  a live AR session was indistinguishable from any other. Every report now opens with a
+  `Screen` row (`Demo · model-viewer`, `Explore gallery`, `AR View tab · session active`,
+  …), read from the navigation arguments rather than a route string that drifts, and the
+  display resolution moves to its own `Display` row. The log window went from ~30 lines to
+  ~1200 captured: the share path carries the whole capture, and the pre-filled GitHub
+  issue binary-searches the largest tail that fits the URL budget instead of snapping down
+  a coarse 60/30/10/0 ladder, with each `threadtime` line stripped of its date and pid/tid
+  columns — the millisecond timestamps stay, so the period of a repeating warning is
+  readable straight from the issue. The report sheet states what it is about to attach
+  before it is sent.
+- **`ReticleNode` and `PlacementReticle` can now be throttled like every other AR hit-test node ([#3391](https://github.com/sceneview/sceneview/issues/3391)).** `HitResultNode` has
+  rate-limited its per-frame ARCore `Frame.hitTest()` through `refreshIntervalMs` since
+  #2328, but neither reticle subclass accepted or forwarded that value: it appeared in no
+  constructor, no KDoc and no composable parameter list, so both silently inherited the
+  `0` = every-frame default and the raycast ran once per rendered frame whatever the caller
+  wanted. Both classes and all three composables now take `refreshIntervalMs` and forward it
+  to the base node. `0` remains the default and byte-for-byte the previous behaviour; `100`
+  gives a 10 Hz reticle. The throttle covers the hit test only — the inherited
+  smooth-transform easing, and `PlacementReticle`'s orientation smoothing, still run every
+  frame, so a rate-limited reticle glides between hits instead of stepping.
+- **`PlaneRendererV2`'s KDoc no longer claims V2 is the default plane renderer
+  ([#3392](https://github.com/sceneview/sceneview/issues/3392)).** The class documentation
+  still described the v4.16.0 state — "V2 is the default plane renderer as of this release"
+  and "the legacy V1 `PlaneRenderer` ... is now `@Deprecated`" — while the code has said
+  the opposite since v4.16.1: `ARSceneView`'s `planeRendererVersion` defaults to
+  `PlaneRendererBase.Version.V1`, and `PlaneRenderer` carries no `@Deprecated` annotation.
+  v4.16.0 briefly shipped V2 as the default, on-device QA showed the visual output not
+  matching the design intent, and v4.16.1 reverted the default to V1 while V2 is polished
+  ([#2203](https://github.com/sceneview/sceneview/issues/2203)) — that revert updated
+  `PlaneRendererBase`, `PlaneRenderer`, `ARSceneView` and `llms.txt` but missed
+  `PlaneRendererV2`, `PlaneVisualizerV2` and the `ARPlaneRendererV2Demo` sample, so a
+  reader landing on the V2 class was told to expect V2 behaviour on a stock `ARSceneView`
+  and that V1 was on its way out. All three now state that V2 is an experimental opt-in
+  (`Version.V2`), that V1 is the default, and that V1 was never deprecated; the `#2203`
+  sprint table records PR #5 as reverted instead of landed. The demo's KDoc distinguishes
+  its own starting state (it opts into V2 explicitly) from the SDK default. Documentation
+  only — no behaviour, no API and no default changed.
+- **Sending a bug report from the demo app no longer pops a confirmation
+  snackbar ([#3398](https://github.com/sceneview/sceneview/issues/3398)).**
+  Handing a report off to GitHub or the share sheet used to greet the user
+  back with a "GitHub opened — finish and submit there" / "Report shared"
+  snackbar (#3263). The hand-off itself is already the acknowledgement — the
+  sheet dismisses and the browser opens on the pre-filled issue (or the
+  system share sheet takes over) — so the snackbar was redundant, and it
+  could not be truthful anyway: with no GitHub API call on device, "sent"
+  only ever meant "intent launched". The failure path is untouched: when no
+  app can handle the intent, the sheet still stays open and shows the error
+  inline. `BugReportSheet` loses its `onSent` callback, `MainActivity` its
+  snackbar host, and the two now-unused strings are gone.
+- **The Android demo's "four tabs" comments now describe the real three-entry
+  `RootTab` ([#3401](https://github.com/sceneview/sceneview/issues/3401)).** Three
+  comments still described a four-tab bottom bar while `RootTab` has had three
+  entries (`Showcase`, `ArView`, `About`) for a while: `MainActivity.kt`'s "list"
+  route claimed a "4-tab root (Explore / AR View / Samples / About)" whose
+  "Samples" tab hosted a `DemoListScreen` that no longer exists (demo deep links
+  actually navigate straight to `demo/<id>`), `RootScreen.kt` said "the four tabs
+  get their 168 dp of dead bottom gutter back" — a figure that survives only in
+  that comment, the gutter having been reclaimed when the feedback FAB became a
+  sibling card — and `FeedbackReport.kt` quoted #1930 as requiring the button "on
+  the 4 tabs". All three now match the code, and the obsolete 168 dp figure is
+  gone so nobody reintroduces it as a real constant. Comment-only — no behaviour
+  change.
+**Demo app — Point & Ask now shows what it is doing, and stops lying about your phone.**
+On a Pixel 9 the demo answered nothing, "saw nothing" on the AR frame, and after a few taps
+declared it could not run on that device at all. Three defects behind that: the frame was
+read back from the whole *window*, which can lose the Filament `SurfaceView` layer the AR
+scene lives in; the only validation was a transparency probe, so the same lost layer coming
+back as opaque black passed straight through to Gemini Nano; and a retry counter promoted
+three ordinary failures into a permanent "not supported on this device". The frame is now
+read back from the AR view itself, validated for size, transparency *and* flatness before it
+leaves the app, and the screen is an explicit state machine — checking, downloading, ready,
+capturing, thinking, answer, or a failure that names its cause and offers the one action that
+fixes it. Only a report from the platform can say a device is unsupported. Debug builds show
+a thumbnail of the exact frame that was sent.
+`:samples:android-demo:testReleaseUnitTest` failed 13 tests on `main`
+(`DemoScaffoldTopBandTest`, `DemoScaffoldBottomBandTest`, `DemoBackgroundRoleTest`) while
+the exact same tests passed in the `debug` variant, and nothing in CI ever ran the release
+variant to notice — the demo's JVM tests only reached CI as a dependency of
+`verifyRoborazziDebug`, which is `debug`-only.
+
+The cause was a dependency scope, not application behaviour. Every failing test hosts a
+composable through `createComposeRule()`, which launches a bare
+`androidx.activity.ComponentActivity` by explicit component name. That activity's manifest
+entry came from `androidx.compose.ui:ui-test-manifest` on `debugImplementation` — correct
+per that artifact's own guidance ("never let it reach a shipped APK"), but it also meant the
+entry only reached the `debug` variant's manifest and resource-link pipeline.
+`testReleaseUnitTest` links its unit-test resource package from the `release` variant's own
+implementation graph, which a `debugImplementation` dependency never touches, so every
+Robolectric-hosted compose-rule test in the release variant died with "Unable to resolve
+activity ... ComponentActivity".
+
+Fixed by declaring the same `ComponentActivity` manifest entry directly in
+`samples/android-demo/src/main/AndroidManifest.xml` instead of pulling it in from
+`ui-test-manifest` — it has no launcher intent-filter and nothing in the app calls it, so it
+ships as an inert, unreachable entry in every build type and now resolves for both unit-test
+variants. `:samples:android-demo:testReleaseUnitTest` is also now wired into the `Unit
+tests` CI job (same `android` path gate as the existing debug suite), so this variant has
+real coverage going forward instead of sitting invisible on `main`.
+- **Demo app — "Tap me" on the Picking & Collision card now fires only from its Button
+  ([#3422](https://github.com/sceneview/sceneview/issues/3422)).** The card was a
+  `Card(onClick = onTap, …)` wrapping the button, so a tap anywhere on the card — its title,
+  its shape/tap counters, the padding around them — counted the same as pressing "Tap me".
+  The card is a plain, non-clickable `Card` now; only the `Button` has an `onClick`. A tap
+  Compose does not consume this way used to fall through to the scene's `onGestureListener`
+  as a `ViewNode` hit and bump the counter there too — that fallback branch is gone, so a
+  miss on the card is now a true miss, exactly like the ray-cast half of the demo. Shape
+  picking on the rest of the scene is unaffected.
+**Camera framing and zoom.** Three defects that shared one theme — the camera was told the wrong
+thing about the subject in front of it.
+
+- **Auto-fit framed the bounding sphere, not the subject.** `fitDistanceForBounds` charged every
+  scene for half its AABB's *space diagonal*, then billed each field-of-view axis the *other*
+  axis's distance. On a portrait viewport the horizontal FOV is the narrow one, so a subject bound
+  purely by its height was pushed back by a width constraint it never hits, and the viewport could
+  never be filled. The fit is now per FOV axis, in closed form, and frames the subject's sweep
+  about world Y so an auto-rotating model still never clips at any yaw. It is never further than
+  the old distance, and up to 2× closer for tall or compact subjects. This is the Android
+  counterpart of the iOS fix in #3383. Pass `azimuthInvariant = false` for a static head-on scene
+  that should not pay for a rotation it never performs. (#3426)
+
+- **Pinch-to-zoom moved the camera a fixed number of metres.** Filament's orbit manipulator
+  translates the eye by `zoomSpeed × scrolldelta` world units regardless of how far away it is, so
+  one full-screen pinch moved it ~11 cm: on a scene framed 5 m away that is forty gestures to
+  halve the distance, and on a 5 cm model the same gesture punched the eye straight through the
+  orbit pivot — at which point Filament flips the manipulator and the next drag rebuilds the view
+  from a negative distance, aiming the camera away from the subject. Zoom is now a *ratio* of the
+  current camera-to-target distance and is clamped either side of the framed distance, so one
+  pinch is one comfortable step at any scale and the camera can never cross its own pivot.
+  (#3403, #3426)
+
+- **The Model Viewer reset its camera whenever anything nearby changed.** Its manipulator was
+  rebuilt from `remember(framing, modelCenter, recenterGeneration, sliderDistance)`, and a Filament
+  manipulator carries the whole camera pose — so every step of the zoom slider threw the user's
+  orbit away (#3403), and so did opening the animation bar, which is when the scaffold first
+  measures its identity row and changes the framing insets (#3404). The manipulator is now keyed on
+  the content alone and reads the framing, pivot and zoom live. Pinch and the "Camera distance"
+  slider drive the same number, and that slider's range is now relative to the model's own fitted
+  distance instead of a fixed `0.5–10 m`.
+
+Demos re-framed off a shared, aspect-aware helper instead of hand-tuned literals: the Model Viewer
+gallery (one fixed radius served models normalised from 0.20 to 0.85 units), Lighting Lab's sky
+section and Secondary Camera's main view.
+- **`SpatialAudioNode` no longer runs a blocking `MediaPlayer.prepare()` on the frame the
+  sound starts on ([#3427](https://github.com/sceneview/sceneview/issues/3427), reported as
+  "a slight lag right when the beep plays" in the Spatial Audio demo).** `SpatialAudioPlayer`
+  built its private `MediaPlayer` with a synchronous, blocking `prepare()` — documented as
+  "sub-millisecond" for a short in-`assets` clip, but the container parse and decoder setup
+  it triggers is real main-thread work, and it landed inside the exact composition pass that
+  also calls `play()` via `autoPlay`. Playback now goes through `prepareAsync()` and starts
+  from the `onPrepared` callback instead, via a small `PreparePlayGate` state machine (unit
+  tested) that defers a `play()` requested before the player is ready.
+- **The release gate reads the GA4 stream id from its new carrier.** #3443 moved the analytics loader and its `Stream ID:` comment into `website-static/assets/analytics.js`; `sync-versions.sh` only searched `.html` files, read an empty id, reported the carrier as corrupted and blocked the 4.34.0 `Release fast` run at the version gate. The check now covers `.js` carriers too.
+- **The Play Store graphics README now describes the tablet v3 screenshot sets
+  it actually ships.** Two tables in
+  `samples/android-demo/distribution/play-store/en-GB/graphics/README.md` still
+  said both tablet classes carried the v2 set at three slots
+  (`model-viewer · dynamic-sky · multi-model`), while #3350 re-captured
+  `tablet7/` and `tablet10/` on the redesigned v3 set at four slots each
+  (showcase Home · Model Viewer · Lighting Lab · Materials) — verified against
+  the committed PNGs. Doc-only — no behaviour change.
+`docs/mkdocs.yml` declared `extra:` twice, so YAML last-key-wins silently dropped the GA4 analytics block and the "Was this page helpful?" feedback widget — the published docs site had 0 of 55 pages instrumented. The two mappings are merged; the docs site and all 16 static website pages now share one GA4 loader (`website-static/assets/analytics.js`), the `/go/*` short links report a `go_redirect` event, and the GitHub Sponsors CTA reports `outbound_click`. New recipe: *Measure your AR funnel*. The SDK and the demo apps still ship no telemetry.
+`tools/download-asset-by-uid.sh` no longer embeds a Sketchfab API token; it now requires `SKETCHFAB_API_KEY` from the environment (companion of the `download-assets.sh` fix).
+
 ## v4.33.0 — 2026-08-26
 
 ### Added
