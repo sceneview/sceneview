@@ -188,11 +188,17 @@
     <string name="category_ar">AR</string>
     <string name="category_interactive">Interactive</string>
 
-    <!-- Sample categories (stable display labels used by DemoListScreen) -->
-    <string name="category_3d_basics">3D Basics</string>
-    <string name="category_lighting_environment">Lighting &amp; Environment</string>
+    <!-- Catalogue section headers — one per DemoCategory key, drawn as a full-span
+         header on the home grid and as the long label in search results (#2239). -->
+    <string name="category_viewer">Viewer</string>
+    <string name="category_geometry_materials">Geometry &amp; Materials</string>
+    <string name="category_rendering">Rendering</string>
     <string name="category_interaction">Interaction</string>
-    <string name="category_augmented_reality">Augmented Reality</string>
+    <string name="category_ar_placement">AR Placement</string>
+    <string name="category_ar_tracking">AR Tracking</string>
+    <string name="category_ar_understanding">AR Understanding</string>
+    <string name="category_ar_anchors">AR Anchors</string>
+    <string name="category_platform">Platform</string>
 
     <!-- Sample demo titles (legacy keys preserved for backwards compatibility) -->
     <string name="demo_animations">Animations</string>

@@ -14,9 +14,9 @@ object ArPlaneRendererV2Fragment : DemoFragment {
         id = "ar-plane-renderer-v2",
         titleRes = R.string.demo_ar_plane_renderer_v2_title,
         subtitleRes = R.string.demo_ar_plane_renderer_v2_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.GridOn,
-        order = 27,
+        order = 19,
         tags = setOf("ar", "plane", "renderer", "depth", "pbr", "hdr"),
     )
 

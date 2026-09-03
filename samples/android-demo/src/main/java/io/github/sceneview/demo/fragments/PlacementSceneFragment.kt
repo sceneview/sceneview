@@ -14,9 +14,9 @@ object PlacementSceneFragment : DemoFragment {
         id = "placement-scene",
         titleRes = R.string.demo_placement_scene_title,
         subtitleRes = R.string.demo_placement_scene_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.AddLocationAlt,
-        order = 21,
+        order = 16,
         tags = setOf("ar", "plane", "tap-to-place", "sceneform", "anchor"),
     )
 

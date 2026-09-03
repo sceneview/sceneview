@@ -22,9 +22,9 @@ object CustomGeometryFragment : DemoFragment {
         id = "custom-geometry",
         titleRes = R.string.demo_custom_geometry_title,
         subtitleRes = R.string.demo_custom_geometry_subtitle,
-        category = DemoCategory.ADVANCED,
+        category = DemoCategory.GEOMETRY_MATERIALS,
         icon = Icons.Filled.Hexagon,
-        order = 10,
+        order = 6,
         tags = setOf("geometry", "mesh", "procedural", "vertices", "wireframe", "knot"),
     )
 

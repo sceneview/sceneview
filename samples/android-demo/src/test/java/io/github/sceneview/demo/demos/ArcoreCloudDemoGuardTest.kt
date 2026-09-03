@@ -21,9 +21,17 @@ import java.io.File
  * from shipping without it.
  *
  * The set of Cloud demos is discovered, not listed: any demo source that turns
- * on `GeospatialMode.ENABLED` or `CloudAnchorMode.ENABLED` is one. Pinning the
- * count at five would pass the day someone adds a sixth without the guard,
- * which is exactly the regression this exists to catch.
+ * on `GeospatialMode.ENABLED` or `CloudAnchorMode.ENABLED` is one. Discovery is
+ * the point — pinning a fixed list would pass the day someone adds a Cloud demo
+ * without the guard, which is exactly the regression this exists to catch.
+ *
+ * The sanity check on discovery used to be "at least five files matched", which
+ * confused a count of FILES with a count of CAPABILITIES: #2239 merged
+ * `ar-terrain` and `ar-rooftop` into one `ARGeospatialAnchorsDemo.kt`, so five
+ * Cloud demos now live in four files and the guard failed on a merge that
+ * removed nothing. The check is now "every file we know to be a Cloud demo is
+ * still discovered", which catches a marker that stopped matching without
+ * caring how the demos are packed into files.
  */
 class ArcoreCloudDemoGuardTest {
 
@@ -47,9 +55,19 @@ class ArcoreCloudDemoGuardTest {
             val source = file.readText()
             cloudModeMarkers.any { it in source }
         }
+        // Named, not counted — see the class KDoc. Add a file here when a new Cloud
+        // demo lands; never remove one to make a red build green.
+        val knownCloudSources = setOf(
+            "ARCloudAnchorDemo.kt",
+            "ARGeospatialAnchorsDemo.kt",
+            "ARSceneMeshDemo.kt",
+            "ARStreetscapeDemo.kt",
+        )
+        val discovered = cloudDemos.map { it.name }.toSet()
         assertTrue(
-            "Expected at least the five known Cloud demos; the marker list is stale",
-            cloudDemos.size >= 5,
+            "The marker list is stale — these known Cloud demos were not discovered: " +
+                (knownCloudSources - discovered).joinToString(),
+            discovered.containsAll(knownCloudSources),
         )
         val offenders = cloudDemos.mapNotNull { file ->
             val source = file.readText()

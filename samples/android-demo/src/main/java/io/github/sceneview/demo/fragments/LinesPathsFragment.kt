@@ -14,9 +14,9 @@ object LinesPathsFragment : DemoFragment {
         id = "lines-paths",
         titleRes = R.string.demo_lines_paths_title,
         subtitleRes = R.string.demo_lines_paths_subtitle,
-        category = DemoCategory.CONTENT,
+        category = DemoCategory.GEOMETRY_MATERIALS,
         icon = Icons.Filled.Timeline,
-        order = 12,
+        order = 7,
         tags = setOf(
             "line", "polyline", "path", "spline", "curve", "bezier", "catmull-rom",
             "tube", "stroke", "dashed", "points", "point cloud", "trail",

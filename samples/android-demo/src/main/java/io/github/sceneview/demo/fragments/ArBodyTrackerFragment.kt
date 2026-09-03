@@ -14,9 +14,9 @@ object ArBodyTrackerFragment : DemoFragment {
         id = "ar-body-tracker",
         titleRes = R.string.demo_ar_body_tracker_title,
         subtitleRes = R.string.demo_ar_body_tracker_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_TRACKING,
         icon = Icons.Filled.Accessibility,
-        order = 38,
+        order = 26,
         tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml"),
     )
 

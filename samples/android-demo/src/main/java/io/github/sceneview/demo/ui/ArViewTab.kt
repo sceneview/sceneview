@@ -81,6 +81,7 @@ import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.isArDemo
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
 import io.github.sceneview.rememberEngine
@@ -566,14 +567,15 @@ private fun ArLauncherScreen(
             }
         }
 
-        // All AR demos — every entry in ALL_DEMOS with category
-        // AUGMENTED_REALITY, minus the ones already shown in Featured. Pre-#2231
-        // these were reachable only via the Samples tab → half the AR feature
-        // surface was hidden on this screen. Each DemoEntry already carries
-        // titleRes / subtitleRes / icon, so the same ArDemoCard renders them.
+        // All AR demos — every AR entry in ALL_DEMOS, minus the ones already shown
+        // in Featured. Pre-#2231 these were reachable only via the Samples tab →
+        // half the AR feature surface was hidden on this screen. Each DemoEntry
+        // already carries titleRes / subtitleRes / icon, so the same ArDemoCard
+        // renders them. Since #2239 split AR across four catalogue sections the
+        // test is [isArDemo], not one category equality.
         val remainingArDemos = remember(featuredIds) {
             ALL_DEMOS
-                .filter { it.category == DemoCategory.AUGMENTED_REALITY }
+                .filter { it.isArDemo }
                 .filterNot { it.id in featuredIds }
         }
         if (remainingArDemos.isNotEmpty()) {
@@ -613,7 +615,7 @@ private fun ArLauncherScreen(
 
 /**
  * Mirrors `DemoListScreen.kt`'s `DemoCard` — gradient-tinted icon header
- * on top + title + subtitle below — using the "Augmented Reality" category
+ * on top + title + subtitle below — using the AR category
  * green accent so the launcher's demo cards feel like the same component
  * as the Samples-tab grid (#1185).
  */
@@ -626,9 +628,11 @@ private fun ArDemoCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // The Samples-tab "Augmented Reality" accent, read from the shared palette rather than
+    // The Samples-tab AR accent, read from the shared palette rather than
     // recopied, so the two grids cannot drift into looking like two apps.
-    val accent = DemoCategoryAccent["Augmented Reality", dark]
+    // The AR View tab is one screen about AR as a whole, so it takes the first of
+    // the four AR section accents rather than any one section's (#2239).
+    val accent = DemoCategoryAccent[DemoCategory.AR_PLACEMENT, dark]
 
     Surface(
         modifier = modifier

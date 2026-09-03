@@ -67,7 +67,7 @@ import java.util.Locale
  * with the same parameters so the user can verify they match visually.
  *
  * Inspired by ARCore Depth Lab's *AR Fog* sample. Without environment fog
- * the demo collapses to a virtual-only `FogNode` similar to [FogDemo], so
+ * the demo collapses to a virtual-only `FogNode` similar to the non-AR `FogNode` mode of [LightingLabDemo], so
  * users on devices without Depth API support still see the controls do
  * something meaningful.
  *

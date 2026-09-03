@@ -9,6 +9,12 @@
 # Note: the former `movable-light` demo was consolidated into `lighting` as an
 # in-demo mode switch (#1444); the retired id still deep-link-resolves via
 # DeepLinkRouter.DEMO_ID_ALIASES, but it no longer needs its own QA leg.
+#
+# #2239: `fog` is no longer a catalogue card — it is `lighting-lab`'s fifth mode.
+# Its leg below is KEPT ON PURPOSE and still drives `DEMO_ID_ALIASES` +
+# ALIAS_INITIAL_TAB, so this flow lands on the Fog mode and keeps exercising
+# `FogNode` exactly as before. Deleting the leg would have deleted the coverage,
+# not the redundancy.
 appId: io.github.sceneview.demo
 ---
 - runFlow:

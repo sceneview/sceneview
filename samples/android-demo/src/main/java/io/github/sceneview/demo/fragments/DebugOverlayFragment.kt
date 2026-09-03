@@ -14,9 +14,9 @@ object DebugOverlayFragment : DemoFragment {
         id = "debug-overlay",
         titleRes = R.string.demo_debug_overlay_title,
         subtitleRes = R.string.demo_debug_overlay_subtitle,
-        category = DemoCategory.ADVANCED,
+        category = DemoCategory.PLATFORM,
         icon = Icons.Filled.Speed,
-        order = 19,
+        order = 48,
         tags = setOf("debug", "fps", "stats", "performance", "overlay"),
     )
 

@@ -252,7 +252,7 @@ private fun SingleModelSection(
         // PBR viewer they are the two models that make the SDK look worse than it is. The
         // three that take their place each exercise a different material extension
         // (sheen, sheen + specular, iridescence + transmission + volume). Both GLBs stay
-        // bundled — `SampleAssets` fallbacks and `ARTerrainAnchorDemo` still load them.
+        // bundled — `SampleAssets` fallbacks and `ARGeospatialAnchorsDemo` still load them.
         BundledViewerModel("models/khronos_damaged_helmet.glb", "Damaged Helmet"),
         BundledViewerModel("models/khronos_glam_velvet_sofa.glb", "Velvet Sofa"),
         BundledViewerModel("models/khronos_sheen_chair.glb", "Sheen Chair"),

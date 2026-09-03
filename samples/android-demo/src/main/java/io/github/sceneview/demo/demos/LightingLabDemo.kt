@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.node.DynamicSkyNode
+import io.github.sceneview.node.FogNode
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -82,6 +84,17 @@ import java.util.Locale
  * - **Post-FX** — direct Filament [com.google.android.filament.View]
  *   post-processing (SSAO / MSAA / FXAA / dithering). (Formerly
  *   `post-processing`.)
+ * - **Fog** — [FogNode], the wrapper over the same Filament `View`'s fog
+ *   options: enable, density, and four colour presets seen through depth
+ *   falloff on an orbiting camera. (Formerly `fog`, #2239.)
+ *
+ * Fog joined this demo rather than staying a card because it is the *same API
+ * surface* as Post-FX — both are per-`View` option objects reached through the
+ * `rememberView` handle this demo already holds — and because a 181-line card
+ * with no modes of its own, sitting next to a card literally named "Lighting
+ * Lab", is the split the catalogue regroup exists to remove. `ARFogNode` keeps
+ * `FogNode` demonstrated in AR (`ar-fog`), so nothing about the API loses its
+ * showcase.
  *
  * Each sub-mode keeps its own `SceneView` + its own [rememberEngine] / loaders,
  * so switching tabs tears down the inactive section completely — no engine is
@@ -99,18 +112,31 @@ fun LightingLabDemo(onBack: () -> Unit) {
         LightingLabMode.Environment -> EnvironmentSection(onBack, mode) { mode = it }
         LightingLabMode.Reflections -> ReflectionsSection(onBack, mode) { mode = it }
         LightingLabMode.PostFx -> PostFxSection(onBack, mode) { mode = it }
+        LightingLabMode.Fog -> FogSection(onBack, mode) { mode = it }
     }
 }
 
+/**
+ * Declaration order is the segmented-button order, and
+ * [io.github.sceneview.demo.DeepLinkRouter.ALIAS_INITIAL_TAB] indexes into it —
+ * `environment` = 1, `reflection-probes` = 2, `post-processing` = 3, `fog` = 4.
+ * Append, never reorder, or every retired deep link silently lands on the wrong
+ * mode.
+ */
 private enum class LightingLabMode(val label: String) {
     Sky("Sky"),
     Environment("Environment"),
     Reflections("Reflections"),
     PostFx("Post-FX"),
+    Fog("Fog"),
 }
 
 /**
- * Two 2-up rows instead of one 4-up row (#3322). A single row split the phone-width sheet
+ * Two rows instead of one (#3322) — 2 modes on the first, the rest on the second,
+ * so adding "Fog" as a fifth mode (#2239) widened nothing: it made the second row
+ * a 3-up whose widest label is 8 characters ("Post-FX"), narrower than the
+ * "Environment" that forced this split in the first place. A single row split the
+ * phone-width sheet
  * evenly across all four modes, and "Environment" — this row's widest label, by rendered
  * glyph width rather than character count ("m"/"n"/"o" run wider than "Reflections"'s
  * "i"/"l"/"t" despite both being 11 characters) — didn't fit even after dropping the
@@ -714,5 +740,144 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+// ─── Fog section ─────────────────────────────────────────────────────────────
+// Formerly FogDemo (`fog`, #2239). Demonstrates [FogNode] — the wrapper over
+// Filament's per-View fog options — with an enable toggle, a density slider and
+// four colour presets.
+
+@Composable
+private fun FogSection(
+    onBack: () -> Unit,
+    mode: LightingLabMode,
+    onModeChange: (LightingLabMode) -> Unit,
+) {
+    data class FogPreset(val label: String, val color: Color)
+
+    val presets = remember {
+        listOf(
+            FogPreset("Mist", Color(0xFFCCDDFF)),
+            FogPreset("Warm Haze", Color(0xFFFFDDAA)),
+            FogPreset("Eerie Green", Color(0xFFAAFFCC)),
+            FogPreset("Deep Smoke", Color(0xFF888888))
+        )
+    }
+
+    // Defaults captured once so the bottom-sheet "Reset" button (#1154 Stage 3)
+    // can restore them without duplicating the literals.
+    val defaultEnabled = true
+    val defaultDensity = 0.15f
+    val defaultPreset = presets[0]
+
+    var fogEnabled by remember { mutableStateOf(defaultEnabled) }
+    var fogDensity by remember { mutableFloatStateOf(defaultDensity) }
+    var selectedPreset by remember { mutableStateOf(defaultPreset) }
+
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val view = rememberView(engine)
+    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
+
+    // Camera orbits the helmet — the volumetric fog is world-space, so moving the
+    // camera through the volume shows the depth falloff (fog thickens with distance)
+    // in a way that a spinning model can't. Spin -> model never leaves its cell, so
+    // every frame shows roughly the same "amount" of fog between the eye and the
+    // helmet surface, and the density slider looks less effective.
+    val cameraManipulator = rememberHeroOrbitCameraManipulator(
+        trigger = modelInstance != null,
+        radius = 2.2f,
+        yHeight = 0.3f,
+        durationMillis = 20_000,
+        staticYaw = 30f,
+    )
+
+    val firstFrame = rememberFirstFrameState()
+
+    DemoScaffold(
+        title = stringResource(R.string.demo_lighting_lab_title),
+        onBack = onBack,
+        firstFrameRendered = firstFrame.rendered,
+        onResetSettings = {
+            fogEnabled = defaultEnabled
+            fogDensity = defaultDensity
+            selectedPreset = defaultPreset
+        },
+        controls = {
+            ModeSelector(mode, onModeChange)
+            // Enable / disable toggle — toggleable on the whole row so tapping the
+            // label flips the state, and UiAutomator finds a clickable ancestor.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = fogEnabled,
+                        onValueChange = { fogEnabled = it },
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Fog Enabled", style = MaterialTheme.typography.bodyLarge)
+                Switch(checked = fogEnabled, onCheckedChange = null)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LabeledSlider(
+                label = "Density",
+                value = fogDensity,
+                onValueChange = { fogDensity = it },
+                valueRange = 0f..1f,
+                valueText = "%.2f".format(Locale.US, fogDensity),
+                enabled = fogEnabled,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Color Preset", style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { preset ->
+                    FilterChip(
+                        selected = selectedPreset == preset,
+                        onClick = { selectedPreset = preset },
+                        label = { Text(preset.label) },
+                        enabled = fogEnabled
+                    )
+                }
+            }
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                modelLoader = modelLoader,
+                environmentLoader = environmentLoader,
+                environment = rememberModelDemoEnvironment(environmentLoader),
+                view = view,
+                cameraManipulator = cameraManipulator,
+            ) {
+                FogNode(
+                    view = view,
+                    enabled = fogEnabled,
+                    density = fogDensity,
+                    color = selectedPreset.color,
+                )
+                modelInstance?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = 0.5f,
+                    )
+                }
+            }
+            LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
+        }
     }
 }

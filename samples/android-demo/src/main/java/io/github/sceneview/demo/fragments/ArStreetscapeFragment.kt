@@ -14,9 +14,9 @@ object ArStreetscapeFragment : DemoFragment {
         id = "ar-streetscape",
         titleRes = R.string.demo_ar_streetscape_title,
         subtitleRes = R.string.demo_ar_streetscape_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.LocationCity,
-        order = 43,
+        order = 37,
         tags = setOf("ar", "geospatial", "streetscape", "building", "terrain"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )

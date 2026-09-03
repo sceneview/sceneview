@@ -14,7 +14,7 @@ object ModelViewerFragment : DemoFragment {
         id = "model-viewer",
         titleRes = R.string.demo_model_viewer,
         subtitleRes = R.string.demo_model_viewer_subtitle,
-        category = DemoCategory.BASICS_3D,
+        category = DemoCategory.VIEWER,
         icon = Icons.Filled.ViewInAr,
         order = 1,
         tags = setOf("gltf", "glb", "hdr", "ibl", "orbit", "ar", "viewer"),

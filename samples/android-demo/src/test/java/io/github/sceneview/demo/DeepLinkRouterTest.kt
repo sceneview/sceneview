@@ -40,6 +40,15 @@ class DeepLinkRouterTest {
         DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 5, tags = setOf("test")),
     )
 
+    // Registry holding the three consolidated demos the #2239 catalogue-regroup
+    // slice redirects onto. The router only inspects `id`, so the title /
+    // subtitle resources are arbitrary (see the note above).
+    private val regroupRegistry = listOf(
+        DemoEntry("lighting-lab", R.string.demo_lighting_lab_title, R.string.demo_lighting_lab_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test")),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 7, tags = setOf("test")),
+        DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test")),
+    )
+
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
 
     @Test
@@ -306,6 +315,55 @@ class DeepLinkRouterTest {
                 DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), consolidatedRegistry),
             )
         }
+    }
+
+    // ── #2239 catalogue regroup — the four ids retired by the section slice ───
+    //
+    // `fog` -> `lighting-lab` (mode 4), `gesture-feedback-preview` ->
+    // `camera-gestures` (mode 2), and `ar-terrain` / `ar-rooftop` ->
+    // `ar-geospatial-anchors` (modes 0 and 1). Every one of these ids is on the
+    // public deep-link surface — docs, QR codes, the Maestro flows that
+    // deliberately drive retired ids to reach a consolidated demo's modes — so
+    // "the card is gone" must never mean "the link is gone".
+
+    @Test
+    fun `catalogue-regroup retired ids resolve to their consolidated demo`() {
+        val expected = mapOf(
+            "fog" to "lighting-lab",
+            "gesture-feedback-preview" to "camera-gestures",
+            "ar-terrain" to "ar-geospatial-anchors",
+            "ar-rooftop" to "ar-geospatial-anchors",
+        )
+        expected.forEach { (retired, consolidated) ->
+            assertEquals(
+                "validate('$retired') must redirect to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.validate(retired, regroupRegistry),
+            )
+            assertEquals(
+                "sceneview://demo/$retired must resolve to '$consolidated'",
+                consolidated,
+                DeepLinkRouter.parse(Uri.parse("sceneview://demo/$retired"), regroupRegistry),
+            )
+            assertNull(
+                "'$retired' must be gone from the real catalogue — it is a retired id",
+                ALL_DEMOS.find { it.id == retired },
+            )
+        }
+    }
+
+    @Test
+    fun `catalogue-regroup aliases pre-select the mode that holds their content`() {
+        // lighting-lab: [Sky, Environment, Reflections, Post-FX, Fog]
+        assertEquals(4, DeepLinkRouter.resolveInitialTab("fog", null))
+        // camera-gestures: [Camera, Gestures, Feedback]
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("gesture-feedback-preview", null))
+        // ar-geospatial-anchors: [Terrain, Rooftop]
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("ar-rooftop", null))
+        // `ar-terrain` is mode 0 — absent on purpose, an absent entry means
+        // "already lands correctly".
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-terrain"])
+        assertNull(DeepLinkRouter.resolveInitialTab("ar-terrain", null))
     }
 
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────

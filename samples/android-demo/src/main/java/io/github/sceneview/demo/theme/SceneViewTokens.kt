@@ -171,6 +171,14 @@ object SceneViewTokens {
         val chipPaddingHorizontal = 16.dp
         val gridTopGap = 20.dp
         val gridBottomInset = 32.dp
+        /**
+         * Space above a catalogue section header (#2239) — `space-2xl`. Large enough
+         * that the header reads as belonging to what follows rather than floating
+         * between two card rows.
+         */
+        val sectionHeaderTopGap = 32.dp
+        /** Space between a section header and its first card row — `space-sm`. */
+        val sectionHeaderBottomGap = 16.dp
         val cardRadius = 20.dp
         val cardTextPaddingTop = 12.dp
         val cardTextPaddingHorizontal = 14.dp

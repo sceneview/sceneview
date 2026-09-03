@@ -14,9 +14,9 @@ object ArPlacementFragment : DemoFragment {
         id = "ar-placement",
         titleRes = R.string.demo_ar_placement_title,
         subtitleRes = R.string.demo_ar_placement_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.TouchApp,
-        order = 6,
+        order = 15,
         tags = setOf("ar", "plane", "tap-to-place", "anchor", "gltf", "model"),
     )
 
