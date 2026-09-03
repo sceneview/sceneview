@@ -64,6 +64,7 @@ nav:
       - iOS visual polish: recipes/ios-visual-polish.md
       - Sketchfab streaming: recipes/sketchfab-streaming.md
       - Demo settings sheet: recipes/demo-settings-sheet.md
+      - Measure your AR funnel: recipes/measure-ar-funnel.md
     - FAQ: faq.md
     - Troubleshooting: troubleshooting.md
   - Platforms: platforms.md
@@ -103,6 +104,11 @@ nav:
   - Changelog: changelog.md
   - Migration Guide: migration.md
 
+# ONE `extra:` mapping — never two. YAML is last-key-wins: this file used to declare
+# `extra:` twice (analytics + feedback here, social/generator/version further down), so
+# the second mapping silently replaced the first and MkDocs Material rendered the docs
+# site with NO `gtag/js` at all and no "Was this page helpful?" widget. The deployed
+# sceneview.github.io/docs/ had 0 instrumented pages out of 82. Add new keys HERE.
 extra:
   analytics:
     provider: google
@@ -119,6 +125,19 @@ extra:
           name: This page could be improved
           data: 0
           note: Thanks, we'll work on improving this page.
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sceneview/sceneview
+      name: SceneView on GitHub
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/UbNDDBTNqb
+      name: SceneView Discord
+    - icon: fontawesome/brands/npm
+      link: https://www.npmjs.com/package/sceneview-mcp
+      name: SceneView MCP on npm
+  generator: false
+  version:
+    provider: mike
 
 plugins:
   - search
@@ -150,21 +169,6 @@ markdown_extensions:
   - def_list
   - pymdownx.tasklist:
       custom_checkbox: true
-
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/sceneview/sceneview
-      name: SceneView on GitHub
-    - icon: fontawesome/brands/discord
-      link: https://discord.gg/UbNDDBTNqb
-      name: SceneView Discord
-    - icon: fontawesome/brands/npm
-      link: https://www.npmjs.com/package/sceneview-mcp
-      name: SceneView MCP on npm
-  generator: false
-  version:
-    provider: mike
 
 extra_css:
   - stylesheets/extra.css
