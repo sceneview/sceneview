@@ -682,8 +682,11 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
         with:
-          # Flutter's Android build still uses AGP 7.x-era toolchain
-          # constraints — needs JDK 17 not 21.
+          # JDK 17, not the repo default of 21: Flutter's own Android
+          # toolchain floor, which the `flutter_sceneview` plugin module
+          # targets too. Still valid after #3440 moved this build to AGP
+          # 9.4.0 — AGP 9.4.0 ships Java 17 bytecode (class major 61), so
+          # JDK 17 runs it.
           java-version: "17"
 
       - uses: subosito/flutter-action@v2
