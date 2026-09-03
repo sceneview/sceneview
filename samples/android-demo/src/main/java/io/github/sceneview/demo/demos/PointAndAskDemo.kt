@@ -6,11 +6,9 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
-import android.os.Handler
-import android.os.Looper
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.util.Log
-import android.view.PixelCopy
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +62,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -73,6 +75,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
@@ -80,21 +83,34 @@ import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.position
+import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.ai.ASK_FAILURE_ESCALATION_THRESHOLD
+import io.github.sceneview.demo.ai.ASK_LOG_TAG
+import io.github.sceneview.demo.ai.AskCaptureOutcome
+import io.github.sceneview.demo.ai.AskCaptureSource
 import io.github.sceneview.demo.ai.AskEngine
-import io.github.sceneview.demo.ai.AskEngineStatus
 import io.github.sceneview.demo.ai.AskFailure
-import io.github.sceneview.demo.ai.askCaptureRegion
+import io.github.sceneview.demo.ai.AskFlow
+import io.github.sceneview.demo.ai.AskFrame
+import io.github.sceneview.demo.ai.AskRecovery
+import io.github.sceneview.demo.ai.AskStep
+import io.github.sceneview.demo.ai.asFailure
+import io.github.sceneview.demo.ai.askStepForQaOverride
+import io.github.sceneview.demo.ai.captureAskFrame
 import io.github.sceneview.demo.ai.rememberAskEngine
+import io.github.sceneview.demo.ai.toAvailability
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
+import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
+import io.github.sceneview.demo.common.qaCameraBackdropEnabled
+import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
-import io.github.sceneview.demo.feedback.hasTransparentHole
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -111,37 +127,29 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Test tags for the Point & Ask QA flows (Maestro / layout dumps). */
 object PointAndAskTestTags {
     const val ANSWER_CARD = "point_and_ask_answer_card"
     const val QUESTION_FIELD = "point_and_ask_question_field"
     const val PROP_PICKER = "point_and_ask_prop_picker"
+    const val FAILURE_CARD = "point_and_ask_failure_card"
+    const val FAILURE_ACTION = "point_and_ask_failure_action"
+    const val DEBUG_FRAME = "point_and_ask_debug_frame"
 }
 
-/** Lifecycle of one "ask" round-trip, driving the bottom card. */
-private sealed interface AskState {
-    /** Nothing in flight — tap to ask. */
-    data object Idle : AskState
-
-    /** Tap registered, composited window capture in flight. */
-    data object Capturing : AskState
-
-    /** Frame captured, Gemini Nano inference in flight. */
-    data object Thinking : AskState
-
-    /**
-     * Answer text so far. While [streaming] the model is still appending deltas (P3
-     * progressive display); once `false` the answer is complete and auto-dismisses.
-     */
-    data class Answered(val text: String, val streaming: Boolean = false) : AskState
-
-    /**
-     * Inference or capture failed. [failure] says which cause, so the card can name it and
-     * a terminal one can retire the "tap to try again" invitation entirely (#3343).
-     */
-    data class Failed(val failure: AskFailure) : AskState
-}
+/**
+ * The frame that was actually handed to the model, kept for the debug/QA preview (#3407).
+ * A thumbnail copy, made before the round recycles the real frame — so "the model saw
+ * nothing" is checkable on the spot instead of from a bug report three days later.
+ */
+private class AskFramePreview(
+    val thumbnail: Bitmap,
+    val width: Int,
+    val height: Int,
+    val source: AskCaptureSource,
+)
 
 /**
  * One bundled showcase model offered by Drop-3D mode's picker (#3083). All three ship in
@@ -200,14 +208,14 @@ private class AnswerPanel(
      * already succeeded, and keeping the panel makes the failure visible where the user
      * pointed instead of silently un-pinning it.
      */
-    fun accept(state: AskState, failedText: (AskFailure) -> String) {
-        when (state) {
-            is AskState.Answered -> {
-                text = state.text
-                streaming = state.streaming
+    fun accept(step: AskStep, failedText: (AskFailure) -> String) {
+        when (step) {
+            is AskStep.Answered -> {
+                text = step.text
+                streaming = step.streaming
             }
-            is AskState.Failed -> {
-                if (text.isBlank()) text = failedText(state.failure)
+            is AskStep.Failed -> {
+                if (text.isBlank()) text = failedText(step.failure)
                 streaming = false
             }
             else -> Unit
@@ -221,17 +229,39 @@ private class AnswerPanel(
  * **Gemini Nano on-device** through ML Kit's GenAI Prompt API, and the streamed answer
  * is shown in an overlay card. Fully offline — the frame never leaves the device.
  *
- * Long-press a surface to drop a virtual prop into the room: because the capture is the
- * composited window (PixelCopy), the on-device model *sees the augmented scene* — tap the
- * shiba you just placed and Nano describes a dog that only exists in AR. That is the
- * demo's whole point, which is why a tap on a node is never swallowed (#3187).
+ * Long-press a surface to drop a virtual prop into the room: because the capture reads the
+ * AR view itself, the on-device model *sees the augmented scene* — tap the shiba you just
+ * placed and Nano describes a dog that only exists in AR. That is the demo's whole point,
+ * which is why a tap on a node is never swallowed (#3187).
  *
- *  - Availability is gated honestly: AICore devices (Pixel 8+, recent flagships) get the
- *    real engine; a `DOWNLOADABLE` model gets a download CTA with progress; unsupported
- *    devices see an explanatory banner. No cloud fallback — on-device only (#2648).
- *  - Under `DemoSettings.qaMode` the engine is a deterministic canned stand-in and the
- *    capture falls back to a synthetic frame (AICore/camera are structurally unavailable
- *    on emulators) — the tap → capture → answer UI flow stays device-QA-able.
+ * **The screen is one explicit state machine** ([AskFlow], plain Kotlin, JVM-tested):
+ * checking availability → downloadable / downloading (with progress) → ready → capturing
+ * the frame → thinking → answer (screen card + world-anchored panel) → or a failure that
+ * names its cause and offers the single action that could fix it. Two rules hold it
+ * together, and both come from #3407:
+ *
+ *  - **Only the platform may say "not on this phone."** `AskStep.ModelUnsupported` is
+ *    reachable from a `FeatureStatus` report, a failed download, or a terminal ML Kit error
+ *    code — and from nothing else. A run of ordinary failures changes the failure card's
+ *    headline and nothing more. The previous build promoted three failures into a permanent
+ *    "Point & Ask can't answer on this device" on a Pixel 9 whose Gemini Nano was working
+ *    the whole time.
+ *  - **Nothing unusable reaches the model.** The frame is read back from the AR view
+ *    (`captureAskFrame`), cropped around the tap, downscaled to the model's budget, and then
+ *    validated for size, transparency AND flatness (`inspectAskFrame`). The old path read
+ *    the whole window — which can lose the Filament `SurfaceView` layer the AR scene lives
+ *    in — and checked only for `alpha == 0`, so that layer coming back opaque black went
+ *    straight to Gemini Nano as a blank image.
+ *
+ * No cloud fallback — on-device only, by design (#2648), and the controls sheet says so
+ * rather than leaving it to the failure copy. In a debug/QA build the same sheet shows a
+ * thumbnail of the exact frame that was sent, so "it sees nothing" is checkable on the spot.
+ *
+ * Under `DemoSettings.qaMode` the engine is a deterministic canned stand-in, and a capture
+ * the emulator cannot produce falls back to a synthetic (textured, so it passes the real
+ * validation) frame — the tap → capture → answer UI flow stays device-QA-able. Every card
+ * can additionally be pinned for screenshots with `--es qa_ask_state <id>`
+ * (`ASK_QA_STATE_IDS`), because an emulator has neither ARCore nor AICore (#2754).
  *
  * P1+P2+P3 of [#2648](https://github.com/sceneview/sceneview/issues/2648), plus the
  * film-mode polish pass: composited capture, long-press placement, tap ping, quieter
@@ -271,12 +301,36 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     val askEngine = rememberAskEngine()
-    var engineStatus by remember { mutableStateOf<AskEngineStatus?>(null) }
-    LaunchedEffect(askEngine) { engineStatus = askEngine.status() }
 
-    var askState by remember { mutableStateOf<AskState>(AskState.Idle) }
+    // The whole screen is one explicit state machine (#3407), and it lives in plain Kotlin
+    // (`AskFlow`) so every transition is unit-tested off-device. `step` is the snapshot the
+    // UI reads; `syncStep` republishes it after any transition. Keeping the machine itself
+    // free of Compose is what makes "does a pile of capture failures declare the phone
+    // unsupported?" a JVM test rather than a device question.
+    val flow = remember { AskFlow() }
+    var step by remember { mutableStateOf<AskStep>(AskStep.CheckingAvailability) }
+    val syncStep: () -> Unit = { step = flow.step }
+
+    // QA-only card override (`--es qa_ask_state <id>`): pins the bottom card to one state so
+    // an emulator with neither ARCore nor AICore (#2754) can still screenshot every state in
+    // light and dark. `null` for every normal launch.
+    val qaStep = remember(DemoSettings.qaAskState) { askStepForQaOverride(DemoSettings.qaAskState) }
+    val shownStep = qaStep ?: step
+
+    LaunchedEffect(askEngine) {
+        flow.onAvailability(askEngine.status().toAvailability())
+        syncStep()
+    }
+
     var isTracking by remember { mutableStateOf(false) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    // QA camera backdrop (#3308): the emulator has no camera HAL, so a blurred room photo
+    // stands in for the camera feed until a real frame arrives. This demo had none, which
+    // meant its emulator screenshots were flat black — the same thing a lost AR layer looks
+    // like, so the QA sweep could not tell the fix from the bug (#3407).
+    var cameraReady by remember { mutableStateOf(false) }
+    val cameraStream = rememberARCameraStream(materialLoader)
+    val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
     // Camera world position, refreshed every AR frame — read by each anchored answer
     // card's per-frame billboard (#3276). A plain holder, not Compose state: it is only
     // read inside an `onFrame` node callback, never inside a composable body, so there is
@@ -297,16 +351,15 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var nextPanelId by remember { mutableStateOf(0) }
     var pendingPanel by remember { mutableStateOf<AnswerPanel?>(null) }
 
-    // A round is busy while the screen card is working OR any anchored panel is
-    // still streaming. An anchored round hands the screen card back to Idle on
-    // its first delta, so `askState` alone under-reports it. The tap guard and
-    // the status pill BOTH read this single value — otherwise the pill returns
-    // to "tap to ask" mid-stream while the guard silently drops every tap.
+    // A round is busy while the screen card is working OR any anchored panel is still
+    // streaming. `AskFlow.isBusy` covers the screen card; the panels add the anchored half.
+    // The tap guard and the status pill BOTH read this single value — otherwise the pill
+    // returns to "tap to ask" mid-stream while the guard silently drops every tap.
     val busy by remember {
         derivedStateOf {
-            askState == AskState.Capturing ||
-                askState == AskState.Thinking ||
-                (askState as? AskState.Answered)?.streaming == true ||
+            step == AskStep.CapturingFrame ||
+                step == AskStep.Thinking ||
+                (step as? AskStep.Answered)?.streaming == true ||
                 panels.any { it.streaming }
         }
     }
@@ -334,9 +387,23 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // to the answer that follows. Keyed by timestamp so consecutive taps re-animate.
     var ping by remember { mutableStateOf<Pair<Offset, Long>?>(null) }
 
-    // Overlays are hidden for the few frames around the PixelCopy so the captured
-    // composite is a clean viewfinder (no pill, no card baked into the AI's input).
+    // In-scene overlays (the plane grid, the anchored answer cards) are hidden for the few
+    // frames around the read-back: they live INSIDE the Filament surface, so leaving them up
+    // would bake a grid and the model's own earlier answers into the next question. The 2D
+    // chrome no longer has to be hidden — the capture reads the AR view directly rather than
+    // the whole window (#3407) — so the screen stops blinking on every tap.
     var hideOverlaysForCapture by remember { mutableStateOf(false) }
+
+    // What was actually sent to the model, kept as a thumbnail for the debug/QA preview in
+    // the controls sheet (#3407). Never built in a release build.
+    var lastFramePreview by remember { mutableStateOf<AskFramePreview?>(null) }
+    val keepFramePreview = BuildConfig.DEBUG || DemoSettings.qaMode
+
+    // Bumped by every tap that starts a round. The capture effect keys off it rather than
+    // off the state: two consecutive rounds produce the same `AskStep.CapturingFrame` value,
+    // so a state-keyed effect would simply not re-run — and "the second tap does nothing" is
+    // the kind of silence #3407 is about.
+    var captureToken by remember { mutableIntStateOf(0) }
 
     // Free-form question (P3): blank = the default English prompt (best Nano quality),
     // which asks the model to describe what the tap pointed at. The field starts blank so
@@ -350,14 +417,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // callbacks, and the message now depends on which failure occurred (#3343).
     val failedText: (AskFailure) -> String = { context.getString(it.messageRes) }
 
-    // How many rounds in a row have failed, and with what. Once a failure is terminal, or
-    // the same non-terminal one repeats, the card stops saying "tap to try again" — the
-    // exact loop reported in #3343 — and explains the situation instead.
-    var consecutiveFailures by remember { mutableIntStateOf(0) }
-
     // Where the last tap landed, in window pixels. The capture is cropped around it so the
     // model is shown what the user pointed at rather than the whole floor-to-ceiling frame
-    // (see `askCaptureRegion`). Null before the first tap and for QA's synthetic frame.
+    // (see `askCaptureRegion`). Null before the first tap.
     var tapFocus by remember { mutableStateOf<Offset?>(null) }
 
     // Voice input (#3083): the question field's optional mic button. Same zero-permission
@@ -382,115 +444,106 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         }
     }
 
-    // Composited capture (film mode): PixelCopy on the window sees camera + virtual
-    // props exactly as the user does. qaMode keeps the synthetic-frame fallback so the
-    // flow stays deterministic on emulators (#1645).
-    LaunchedEffect(askState) {
-        if (askState != AskState.Capturing) {
-            // A state change mid-capture (e.g. reset) cancels the capturing run at its
-            // settle delay before the PixelCopy callback un-hides the overlays — this
-            // relaunch is the only place left to restore them.
-            hideOverlaysForCapture = false
-            return@LaunchedEffect
-        }
+    // -- One ask round -----------------------------------------------------------------
+    // Keyed by `captureToken`, not by the state: two rounds in a row produce the same
+    // `AskStep.CapturingFrame` value, and a state-keyed effect would simply not re-run.
+    //
+    // The read-back itself moved to `captureAskFrame` (#3407). The demo used to PixelCopy
+    // the whole WINDOW and accept anything that was not `alpha == 0`. But the AR scene is a
+    // Filament `SurfaceView` -- its own compositor layer, which "punches a hole through the
+    // window" -- and when a window read-back loses that layer as opaque black rather than as
+    // transparent, the alpha probe passes, the #3343 crop then centres tightly on exactly
+    // that region, and Gemini Nano is handed a flat frame. It answers about nothing, or
+    // completes empty. That is #3407's "aucune reponse Gemini qui voit rien sur la frame AR".
+    // Now the AR view is read back directly, every candidate frame is validated before it
+    // leaves the app, and a rejected frame names its own cause.
+    LaunchedEffect(captureToken) {
+        if (captureToken == 0) return@LaunchedEffect
         // Where this round's answer goes: the panel pinned by the tap (P2), or the
         // screen-space card when the tap hit nothing trackable. Resolved once, here, so a
         // panel pinned by a LATER tap can never steal this round's deltas.
-        // Counting failures here rather than in a `LaunchedEffect(askState)` is deliberate:
-        // two identical failures in a row produce the SAME `AskState.Failed` value, so a
-        // state-keyed effect would never re-run — and "the same error over and over" is
-        // precisely the case #3343 is about.
-        val onResult = answerSink(pendingPanel, failedText) { state ->
-            when (state) {
-                is AskState.Failed -> consecutiveFailures++
-                is AskState.Answered -> consecutiveFailures = 0
-                else -> Unit
-            }
-            askState = state
+        val panel = pendingPanel
+        val onStep: (AskStep) -> Unit = { newStep ->
+            panel?.accept(newStep, failedText)
+            step = newStep
         }
-        if (DemoSettings.qaMode) {
-            delay(QA_CAPTURE_TIMEOUT_MS)
-            if (askState != AskState.Capturing) return@LaunchedEffect
-            askState = AskState.Thinking
-            val synthetic = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
-            askJob = scope.askAboutBitmap(synthetic, askEngine, question, onResult)
-            return@LaunchedEffect
+        val fail: (AskFailure) -> Unit = { failure ->
+            Log.w(ASK_LOG_TAG, "Point & Ask round failed: $failure (#3407).")
+            flow.onFailure(failure)
+            onStep(flow.step)
         }
+
         val activity = context.findActivity()
-        val decor = activity?.window?.decorView
-        if (decor == null || decor.width == 0 || decor.height == 0) {
-            onResult(AskState.Failed(AskFailure.CaptureFailed))
+        if (activity == null) {
+            fail(AskFailure.CaptureFailed)
             return@LaunchedEffect
         }
+
+        // Only the IN-SCENE overlays come down: they are drawn inside the Filament surface
+        // this capture reads, so a plane grid or a previous anchored answer would become
+        // part of the question. The 2D chrome stays up -- it is not in that surface, so the
+        // screen no longer blinks on every tap.
         hideOverlaysForCapture = true
-        delay(CAPTURE_OVERLAY_SETTLE_MS)
-        val bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
-        // If PixelCopy never calls back, nothing else would ever leave `Capturing`: the
-        // overlays stay hidden, `busy` stays true and every later tap is dropped — a
-        // permanent blank viewfinder (#3188). The round is failed after a timeout instead;
-        // `roundLive` keeps a late callback from resurrecting it.
-        var roundLive = true
-        PixelCopy.request(
-            activity.window,
-            bitmap,
-            { result ->
-                if (!roundLive) {
-                    bitmap.recycle()
-                    return@request
+        try {
+            delay(CAPTURE_OVERLAY_SETTLE_MS)
+            // A read-back that never comes back would otherwise wedge the demo in
+            // `CapturingFrame` forever, with `busy` stuck true and every later tap dropped
+            // (#3188). Time it out into an ordinary, retryable failure instead.
+            val outcome = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) {
+                captureAskFrame(activity, tapFocus?.x, tapFocus?.y)
+            }
+            val frame = when (outcome) {
+                null -> {
+                    Log.w(ASK_LOG_TAG, "Frame capture exceeded its budget (#3188).")
+                    fail(AskFailure.CaptureFailed)
+                    return@LaunchedEffect
                 }
-                roundLive = false
-                hideOverlaysForCapture = false
-                // `PixelCopy.SUCCESS` alone does not prove the frame is usable (#3276). The
-                // same compositor quirk already tracked for the bug-report screenshot
-                // (`hasTransparentHole`, #2654) — a read-back that reports SUCCESS while the
-                // Filament `SurfaceView` layer (camera + placed AR objects) was left out of
-                // the composite, an `alpha == 0` hole exactly where the augmented scene
-                // should be — applies just as much here. Sending that hole to Gemini is
-                // literally "the model sees nothing": no exception, no failure banner, just
-                // an on-device answer about a blank/transparent image. Guard for it the same
-                // way the feedback screenshot does, and log so a future report of this can be
-                // correlated with logcat instead of re-diagnosed from scratch.
-                if (result == PixelCopy.SUCCESS && !hasTransparentHole(bitmap)) {
-                    askState = AskState.Thinking
-                    // Crop around the tap and downscale before handing the frame to ML
-                    // Kit (#3343). ML Kit only clamps the SHORT edge to 768 px, so the
-                    // raw window capture reached Gemini Nano as a full-height strip —
-                    // mostly floor and ceiling, and a vision-token bill the on-device
-                    // budget has no room for. See `askCaptureRegion`.
-                    val framed = frameForModel(bitmap, tapFocus)
-                    askJob = scope.askAboutBitmap(framed, askEngine, question, onResult)
-                } else {
-                    if (result == PixelCopy.SUCCESS) {
-                        Log.w(
-                            ASK_LOG_TAG,
-                            "Composited capture came back with a transparent hole where the " +
-                                "AR viewport should be (PixelCopy reported SUCCESS) — refusing " +
-                                "to send a blank frame to Gemini (#3276).",
-                        )
+
+                is AskCaptureOutcome.Rejected -> {
+                    // An emulator has no camera HAL and no AICore (#2754), so every capture
+                    // path there legitimately comes back blank. QA mode substitutes a
+                    // synthetic frame so the tap -> capture -> answer flow stays screenshot-
+                    // able -- but only AFTER the real validation has run and logged, so the
+                    // QA path exercises exactly the code a device does.
+                    if (DemoSettings.qaMode) {
+                        AskFrame(syntheticQaFrame(), AskCaptureSource.Window)
                     } else {
-                        Log.w(ASK_LOG_TAG, "PixelCopy failed with result $result (#3343).")
+                        fail(outcome.verdict.asFailure() ?: AskFailure.CaptureFailed)
+                        return@LaunchedEffect
                     }
-                    bitmap.recycle()
-                    onResult(AskState.Failed(AskFailure.CaptureFailed))
                 }
-            },
-            Handler(Looper.getMainLooper()),
-        )
-        delay(CAPTURE_TIMEOUT_MS)
-        if (roundLive) {
-            roundLive = false
+
+                is AskCaptureOutcome.Captured -> outcome.frame
+            }
+
+            if (keepFramePreview) {
+                lastFramePreview?.thumbnail?.recycle()
+                lastFramePreview = framePreviewOf(frame)
+            }
+            flow.onFrameAccepted()
+            onStep(flow.step)
+            askJob = scope.askAboutBitmap(frame.bitmap, askEngine, question) { failure, text ->
+                when {
+                    failure != null -> flow.onFailure(failure)
+                    text != null -> flow.onDelta(text)
+                    else -> flow.onStreamCompleted()
+                }
+                onStep(flow.step)
+            }
+        } finally {
             hideOverlaysForCapture = false
-            Log.w(ASK_LOG_TAG, "PixelCopy never called back within the capture budget (#3188).")
-            onResult(AskState.Failed(AskFailure.CaptureFailed))
         }
     }
 
     // Auto-dismiss a completed answer so nothing lingers over the viewfinder.
-    LaunchedEffect(askState) {
-        val answered = askState as? AskState.Answered ?: return@LaunchedEffect
+    LaunchedEffect(step) {
+        val answered = step as? AskStep.Answered ?: return@LaunchedEffect
         if (answered.streaming) return@LaunchedEffect
         delay(ANSWER_AUTO_DISMISS_MS)
-        if (askState == answered) askState = AskState.Idle
+        if (step == answered) {
+            flow.onAnswerDismissed()
+            syncStep()
+        }
     }
 
     DemoScaffold(
@@ -499,10 +552,10 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         onReset = {
             askJob?.cancel()
             askJob = null
-            askState = AskState.Idle
-            // Reset clears the escalated failure card too — the user explicitly asked for
-            // a clean slate, so the demo gives the device another honest chance (#3343).
-            consecutiveFailures = 0
+            // Reset clears the failure history too — the user explicitly asked for a clean
+            // slate, so the demo gives the device another honest chance (#3343).
+            flow.reset()
+            syncStep()
             placedProps.forEach { runCatching { it.anchor.detach() } }
             placedProps.clear()
             pendingPanel = null
@@ -514,6 +567,18 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             selectedProp = DROP_PROPS[0]
         },
         controls = {
+            // Which engine answers, stated up front rather than only in the failure copy.
+            // There is no cloud fallback in this demo and no API key anywhere near it: the
+            // frame is captured, cropped and inferred on-device (#2648). Saying so where the
+            // user can see it is the "make the choice explicit" half of #3407 — the choice
+            // here is that there is only one, and it is the private one.
+            Text(
+                text = stringResource(R.string.demo_point_and_ask_engine_on_device),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(12.dp))
+
             // Free-form question (P3) — blank falls back to the default prompt, which the
             // placeholder shows. The next tap asks THIS question about the composited frame.
             // Voice input (#3083): the trailing mic launches the system speech recognizer and
@@ -580,6 +645,50 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 }
             }
 
+            // Debug / QA only: exactly what went to the model, at the size it went. "It
+            // sees nothing on the AR frame" (#3407) was un-diagnosable from a bug report —
+            // the frame was never visible anywhere, and the logcat line that would have said
+            // so is drowned by ~90 ARCore "Use dataspace" lines a second, so the reporter's
+            // last-53-lines window never contains it. Now it is on screen.
+            if (keepFramePreview) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.demo_point_and_ask_debug_frame_label),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.height(6.dp))
+                val preview = lastFramePreview
+                if (preview == null) {
+                    Text(
+                        text = stringResource(R.string.demo_point_and_ask_debug_frame_none),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    )
+                } else {
+                    Image(
+                        bitmap = preview.thumbnail.asImageBitmap(),
+                        contentDescription =
+                            stringResource(R.string.demo_point_and_ask_debug_frame_cd),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .height(DEBUG_FRAME_PREVIEW_HEIGHT)
+                            .testTag(PointAndAskTestTags.DEBUG_FRAME),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.demo_point_and_ask_debug_frame_meta,
+                            preview.width,
+                            preview.height,
+                            preview.source.label,
+                            question,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    )
+                }
+            }
+
             if (DemoSettings.qaMode) {
                 ForceTrackingFailureMenu()
             }
@@ -590,10 +699,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         // (#3237).
         topOverlay = {
             AnimatedVisibility(
-                visible = !hideOverlaysForCapture &&
-                    askState == AskState.Idle &&
-                    !busy &&
-                    engineStatus != null,
+                visible = shownStep == AskStep.Ready && !busy,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -604,13 +710,10 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     shape = MaterialTheme.shapes.small,
                 ) {
                     Text(
-                        text = when {
-                            engineStatus == AskEngineStatus.Ready && !isTracking ->
-                                stringResource(R.string.ar_status_scanning)
-                            engineStatus == AskEngineStatus.Ready ->
-                                stringResource(R.string.demo_point_and_ask_status_ready)
-                            else ->
-                                stringResource(R.string.demo_point_and_ask_status_limited)
+                        text = if (isTracking) {
+                            stringResource(R.string.demo_point_and_ask_status_ready)
+                        } else {
+                            stringResource(R.string.ar_status_scanning)
                         },
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -623,8 +726,11 @@ fun PointAndAskDemo(onBack: () -> Unit) {
         // under it: this card is `fillMaxWidth()`, so at plain `Alignment.BottomCenter`
         // it ran into the bottom-end FAB by construction, in every state (#2779).
         bottomOverlay = {
-            // Bottom overlay — exactly one of: unavailable banner, download CTA/progress,
-            // thinking indicator, answer card, transient failure.
+            // Exactly one card, chosen by exactly one value. Every state the demo can be in
+            // is named here and none of them is a dead end: availability has its own cards
+            // (checking / download / downloading / unsupported), a round has its own
+            // (capturing / thinking / answer), and a failure names its cause AND offers the
+            // one action that could fix it (#3407).
             if (!hideOverlaysForCapture) Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -633,21 +739,48 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     // FAB, so only the end edge is inset (0.dp when there is no FAB).
                     .padding(end = settingsFabReservedSpace),
             ) {
-                when (val status = engineStatus) {
-                    // Say so in words while the availability check runs: a blank bottom
-                    // edge here was indistinguishable from a broken demo (#3188).
-                    null -> BottomCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                            Text(
-                                text = stringResource(R.string.demo_point_and_ask_status_checking),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 12.dp),
-                            )
+                when (val current = shownStep) {
+                    // Say so in words while the availability probe runs: a blank bottom edge
+                    // here was indistinguishable from a broken demo (#3188).
+                    AskStep.CheckingAvailability -> BottomCard {
+                        ProgressRow(stringResource(R.string.demo_point_and_ask_status_checking))
+                    }
+
+                    AskStep.ModelDownloadable -> BottomCard {
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_download_title),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            scope.launch {
+                                askEngine.download().collect {
+                                    flow.onAvailability(it.toAvailability())
+                                    syncStep()
+                                }
+                            }
+                        }) {
+                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
                         }
                     }
 
-                    AskEngineStatus.Unavailable -> BottomCard {
+                    is AskStep.ModelDownloading -> BottomCard {
+                        ProgressRow(
+                            current.bytesDownloaded
+                                ?.let { bytes ->
+                                    stringResource(
+                                        R.string.demo_point_and_ask_downloading_progress,
+                                        bytes / (1024 * 1024),
+                                    )
+                                }
+                                ?: stringResource(R.string.demo_point_and_ask_downloading),
+                        )
+                    }
+
+                    // The ONLY card that says this device cannot run the demo — and it is
+                    // reached only from a platform report (`FeatureStatus`, a failed
+                    // download, or a terminal ML Kit code), never from a retry count (#3407).
+                    AskStep.ModelUnsupported -> BottomCard {
                         Text(
                             text = stringResource(R.string.demo_point_and_ask_unavailable_title),
                             style = MaterialTheme.typography.titleSmall,
@@ -657,107 +790,85 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             text = stringResource(R.string.demo_point_and_ask_unavailable_body),
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { context.openAicoreSettings() }) {
+                            Text(stringResource(R.string.demo_point_and_ask_action_aicore))
+                        }
                     }
 
-                    AskEngineStatus.Downloadable -> BottomCard {
+                    // Ready and idle: the pill above carries the instruction, the viewfinder
+                    // stays clear.
+                    AskStep.Ready -> Unit
+
+                    AskStep.CapturingFrame -> BottomCard {
+                        ProgressRow(stringResource(R.string.demo_point_and_ask_status_capturing))
+                    }
+
+                    AskStep.Thinking -> BottomCard {
+                        ProgressRow(stringResource(R.string.demo_point_and_ask_status_thinking))
+                    }
+
+                    is AskStep.Answered -> BottomCard(
+                        testTag = PointAndAskTestTags.ANSWER_CARD,
+                    ) {
                         Text(
-                            text = stringResource(R.string.demo_point_and_ask_download_title),
-                            style = MaterialTheme.typography.titleSmall,
+                            text = question,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        // "▌" = live-typing cursor while deltas keep arriving.
+                        Text(
+                            text = renderMarkdownLite(
+                                if (current.streaming) "${current.text}▌" else current.text
+                            ),
+                            style = MaterialTheme.typography.bodyLarge,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = {
-                            scope.launch {
-                                askEngine.download().collect { engineStatus = it }
-                            }
-                        }) {
-                            Text(stringResource(R.string.demo_point_and_ask_download_cta))
-                        }
-                    }
-
-                    is AskEngineStatus.Downloading -> BottomCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Text(
-                                text = status.totalBytesDownloaded
-                                    ?.let { bytes ->
-                                        stringResource(
-                                            R.string.demo_point_and_ask_downloading_progress,
-                                            bytes / (1024 * 1024),
-                                        )
-                                    }
-                                    ?: stringResource(R.string.demo_point_and_ask_downloading),
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(start = 12.dp),
-                            )
-                        }
-                    }
-
-                    AskEngineStatus.Ready -> when (val ask = askState) {
-                        AskState.Idle -> Unit
-
-                        AskState.Capturing, AskState.Thinking -> BottomCard {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = stringResource(
-                                    R.string.demo_point_and_ask_status_thinking
-                                ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(start = 12.dp),
-                                )
-                            }
-                        }
-
-                        is AskState.Answered -> BottomCard(
-                            testTag = PointAndAskTestTags.ANSWER_CARD,
-                        ) {
-                            Text(
-                                text = question,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            // "▌" = live-typing cursor while deltas keep arriving.
-                            Text(
-                                text = renderMarkdownLite(
-                                    if (ask.streaming) "${ask.text}▌" else ask.text
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(
-                                    if (context.isOffline()) {
-                                        R.string.demo_point_and_ask_answer_source_offline
-                                    } else {
-                                        R.string.demo_point_and_ask_answer_source
-                                    }
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        // One card per cause, and — once retrying is demonstrably not
-                        // going to help — an explanation instead of an invitation to keep
-                        // tapping (#3343).
-                        is AskState.Failed -> AskFailureCard(
-                            failure = ask.failure,
-                            escalated = ask.failure.isTerminal ||
-                                consecutiveFailures >= ASK_FAILURE_ESCALATION_THRESHOLD,
+                        Text(
+                            text = stringResource(
+                                if (context.isOffline()) {
+                                    R.string.demo_point_and_ask_answer_source_offline
+                                } else {
+                                    R.string.demo_point_and_ask_answer_source
+                                }
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
+
+                    is AskStep.Failed -> AskFailureCard(
+                        failure = current.failure,
+                        persistent = current.persistent,
+                        onAction = {
+                            when (current.failure.recovery) {
+                                AskRecovery.OpenAicoreSettings -> context.openAicoreSettings()
+                                AskRecovery.FreeStorage -> context.openStorageSettings()
+                                else -> Unit
+                            }
+                            flow.onRetry()
+                            syncStep()
+                        },
+                    )
                 }
             }
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // QA camera backdrop (#3308). The demo had none, so every emulator screenshot of
+            // it landed on flat black — which is also a frame the model would see nothing in,
+            // making the emulator indistinguishable from the device defect this fixes.
+            if (qaBackdrop) QaCameraBackdrop(seed = "point-and-ask")
             ARSceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                isOpaque = !qaCameraBackdropEnabled(),
+                surfaceType = qaCameraBackdropSurfaceType(),
+                cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
                 // Planes are shown so the user can see where a tap will pin its answer —
                 // but never during the capture window: the composited frame is what Nano
@@ -767,6 +878,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                 viewNodeWindowManager = viewNodeManager,
                 onSessionUpdated = { _, frame ->
                     latestFrame = frame
+                    cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Keep the camera world position fresh so every anchored answer card can
                     // billboard toward the viewer (#3276) — same pattern as `ARMLObjectLabelDemo`'s
@@ -786,7 +898,10 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                         // prop you just dropped and an answer already pinned. A `node ==
                         // null` guard here swallowed every tap on the object the user most
                         // wanted described — no ping, no capture, no answer (#3187).
-                        if (engineStatus == AskEngineStatus.Ready && !busy) {
+                        // `busy` is the anchored half of the guard; `flow.canAsk` is the
+                        // screen half (model ready, no round in flight). A QA state override
+                        // pins the card, so taps must not fight it.
+                        if (qaStep == null && flow.canAsk && !busy) {
                             ping = Offset(e.x, e.y) to System.nanoTime()
                             // Same point the capture is cropped around: the model is asked
                             // about what the finger landed on, not the whole room (#3343).
@@ -837,7 +952,9 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             while (panels.size > MAX_PANELS) {
                                 panels.removeAt(0).also { runCatching { it.anchor.detach() } }
                             }
-                            askState = AskState.Capturing
+                            flow.onTap()
+                            syncStep()
+                            captureToken++
                         }
                     },
                     // Long-press drops the Drop-3D picker's currently selected model (#3083)
@@ -1112,31 +1229,7 @@ internal fun clampedPanelScale(distanceMeters: Float): Float {
 /** How many answers stay pinned before the oldest is retired. */
 private const val MAX_PANELS = 8
 
-/**
- * Routes one ask round's results: always to [screenCard] (the bottom card), and ALSO into
- * [panel] when the tap pinned one (P2).
- *
- * The screen card is never handed off. An earlier version drove it back to [AskState.Idle]
- * once a panel existed, so an anchored round drew zero screen chrome — no card, no pill, no
- * failure text — and when the in-scene card was off-screen, edge-on or its texture had not
- * come up, the answer was simply invisible (#3188). The bottom card is the guaranteed
- * surface; the anchored card is the bonus that stays in the room after the bottom card
- * auto-dismisses.
- */
-private fun answerSink(
-    panel: AnswerPanel?,
-    failedText: (AskFailure) -> String,
-    screenCard: (AskState) -> Unit,
-): (AskState) -> Unit = if (panel == null) {
-    screenCard
-} else {
-    { state ->
-        panel.accept(state, failedText)
-        screenCard(state)
-    }
-}
-
-/** Unwraps the [Activity] hosting this composition (needed for window PixelCopy). */
+/** Unwraps the [Activity] hosting this composition (needed for the frame read-back). */
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
@@ -1150,38 +1243,61 @@ private fun Context.isOffline(): Boolean {
 }
 
 /**
- * Runs one streamed [AskEngine.askStream] round-trip over [bitmap], reporting a growing
- * [AskState.Answered] per delta and the final state on completion. A failure mid-stream
- * keeps the text already received (marked complete) — only a failure before any delta
- * surfaces [AskState.Failed]. Takes ownership of [bitmap] (recycled when the round ends).
+ * Opens the system app-details screen for AICore / Android System Intelligence — the one
+ * place a user can actually check for the update the two terminal failures ask for. Falls
+ * back to the generic app-settings screen when that package is not installed (which is
+ * itself the reason the model is unavailable), and does nothing at all rather than crash if
+ * neither resolves.
+ */
+private fun Context.openAicoreSettings() {
+    val targets = listOf(
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData("package:$AICORE_PACKAGE".toUri()),
+        Intent(Settings.ACTION_APPLICATION_SETTINGS),
+    )
+    for (intent in targets) {
+        if (runCatching { startActivity(intent) }.isSuccess) return
+    }
+    Log.w(ASK_LOG_TAG, "No settings activity accepted the AICore intent (#3407).")
+}
+
+/** Opens the storage settings screen — the action offered for `NOT_ENOUGH_DISK_SPACE`. */
+private fun Context.openStorageSettings() {
+    runCatching { startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }
+        .onFailure { Log.w(ASK_LOG_TAG, "No storage settings activity (#3407).", it) }
+}
+
+/** The system package that hosts AICore / Gemini Nano. */
+private const val AICORE_PACKAGE = "com.google.android.aicore"
+
+/**
+ * Runs one streamed [AskEngine.askStream] round-trip over [bitmap], reporting results through
+ * [onEvent]: a non-null failure, else a non-null accumulated answer for each delta, else
+ * `(null, null)` for "the stream completed". Takes ownership of [bitmap] (recycled when the
+ * round ends).
  *
- * The throwable is classified rather than swallowed (#3343): the card names the actual
- * cause, and every failure is logged with its ML Kit error code so the next report of
- * "it only says it can't answer" arrives with the code attached instead of needing to be
- * re-diagnosed from scratch. A stream that completes with no text at all is [
- * AskFailure.EmptyAnswer] — a distinct outcome from a thrown inference error, and one the
- * user can act on (rephrase) rather than retry blindly.
+ * The throwable is classified rather than swallowed (#3343): the card names the actual cause,
+ * and every failure is logged with its ML Kit error code. Interpreting those events — keeping
+ * a partial answer, counting a run of failures, deciding whether the platform actually said
+ * "unsupported" — is `AskFlow`'s job, not this function's, which is exactly why that logic is
+ * unit-tested and this glue is not (#3407).
  */
 private fun CoroutineScope.askAboutBitmap(
     bitmap: Bitmap,
     askEngine: AskEngine,
     question: String,
-    onResult: (AskState) -> Unit,
+    onEvent: (failure: AskFailure?, text: String?) -> Unit,
 ) = launch {
     var text = ""
     try {
         askEngine.askStream(bitmap, question).collect { delta ->
             text += delta
-            onResult(AskState.Answered(text, streaming = true))
+            onEvent(null, text)
         }
-        onResult(
-            if (text.isBlank()) {
-                Log.w(ASK_LOG_TAG, "Gemini Nano completed the stream with no text (#3343).")
-                AskState.Failed(AskFailure.EmptyAnswer)
-            } else {
-                AskState.Answered(text)
-            }
-        )
+        if (text.isBlank()) {
+            Log.w(ASK_LOG_TAG, "Gemini Nano completed the stream with no text (#3343).")
+        }
+        onEvent(null, null)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Throwable) {
@@ -1190,62 +1306,65 @@ private fun CoroutineScope.askAboutBitmap(
         // coroutine scope silently and leave the demo wedged in `Thinking` (cf. #3188).
         val failure = AskFailure.of(e)
         Log.w(ASK_LOG_TAG, "Gemini Nano inference failed — classified as $failure (#3343).", e)
-        onResult(
-            if (text.isBlank()) AskState.Failed(failure) else AskState.Answered(text)
-        )
+        onEvent(failure, null)
     } finally {
         bitmap.recycle()
     }
 }
 
-/** Logcat tag for every Point & Ask failure path — one grep away in a bug report. */
-private const val ASK_LOG_TAG = "PointAndAskDemo"
+/**
+ * A deterministic stand-in frame for QA runs on an emulator, which has no camera HAL and so
+ * no real frame to read back (#2754/#3308). Deliberately textured rather than flat, so it
+ * passes the same [io.github.sceneview.demo.ai.inspectAskFrame] validation a device frame
+ * must pass — a QA frame that could not survive the real check would be testing nothing.
+ */
+private fun syntheticQaFrame(): Bitmap {
+    val size = 256
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val pixels = IntArray(size * size)
+    for (y in 0 until size) {
+        for (x in 0 until size) {
+            val checker = if (((x / 32) + (y / 32)) % 2 == 0) 40 else 200
+            pixels[y * size + x] = (0xFF shl 24) or (checker shl 16) or (checker shl 8) or checker
+        }
+    }
+    bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
+    return bitmap
+}
+
+/** Longest edge of the debug frame thumbnail kept in memory between rounds. */
+private const val DEBUG_FRAME_PREVIEW_MAX_EDGE = 192
+
+/** On-screen height of that thumbnail in the controls sheet. */
+private val DEBUG_FRAME_PREVIEW_HEIGHT = 140.dp
 
 /**
- * Crops [capture] to [askCaptureRegion] around [focus] and downscales it to the model's
- * budget, recycling the oversized original. Returns [capture] unchanged when it is already
- * within budget, so the caller's ownership contract (the returned bitmap is recycled once
- * the round ends) holds either way.
- *
- * Why this exists rather than trusting ML Kit's own resize: genai-prompt 1.0.0-beta4
- * rescales only when `min(width, height) > 768`, and only the SHORT edge — a 1080×2424
- * window capture arrives as 768×1723. See `ASK_IMAGE_MAX_EDGE` (#3343).
+ * A small copy of the frame about to be sent, for the debug/QA preview. A copy, because the
+ * round recycles the real bitmap the moment inference ends — and the whole point is to still
+ * be able to look at what the model looked at afterwards (#3407).
  */
-private fun frameForModel(capture: Bitmap, focus: Offset?): Bitmap {
-    val region = askCaptureRegion(
-        sourceWidth = capture.width,
-        sourceHeight = capture.height,
-        focusX = focus?.x,
-        focusY = focus?.y,
+private fun framePreviewOf(frame: AskFrame): AskFramePreview? = runCatching {
+    val longest = maxOf(frame.bitmap.width, frame.bitmap.height).coerceAtLeast(1)
+    val scale = (DEBUG_FRAME_PREVIEW_MAX_EDGE.toFloat() / longest).coerceAtMost(1f)
+    val thumbnail = Bitmap.createScaledBitmap(
+        frame.bitmap,
+        (frame.bitmap.width * scale).toInt().coerceAtLeast(1),
+        (frame.bitmap.height * scale).toInt().coerceAtLeast(1),
+        true,
     )
-    val unchanged = region.x == 0 && region.y == 0 &&
-        region.width == capture.width && region.height == capture.height &&
-        region.scaledWidth == capture.width && region.scaledHeight == capture.height
-    if (unchanged) return capture
-    return runCatching {
-        val cropped = Bitmap.createBitmap(
-            capture, region.x, region.y, region.width, region.height,
-        )
-        val scaled = if (
-            cropped.width == region.scaledWidth && cropped.height == region.scaledHeight
-        ) {
-            cropped
+    AskFramePreview(
+        // `createScaledBitmap` can hand back the source itself; copy so recycling the frame
+        // at the end of the round does not blank the preview.
+        thumbnail = if (thumbnail === frame.bitmap) {
+            frame.bitmap.copy(Bitmap.Config.ARGB_8888, false)
         } else {
-            Bitmap.createScaledBitmap(
-                cropped, region.scaledWidth, region.scaledHeight, true,
-            ).also { if (it !== cropped) cropped.recycle() }
-        }
-        // `createBitmap`/`createScaledBitmap` may return the source itself when nothing
-        // had to change; only recycle the capture when a genuinely new bitmap came back.
-        if (scaled !== capture) capture.recycle()
-        scaled
-    }.getOrElse {
-        // Out of memory or a degenerate rectangle — the full frame is still a usable
-        // question, so degrade to it rather than failing the round.
-        Log.w(ASK_LOG_TAG, "Could not reframe the capture for the model; sending it whole.", it)
-        capture
-    }
-}
+            thumbnail
+        },
+        width = frame.bitmap.width,
+        height = frame.bitmap.height,
+        source = frame.source,
+    )
+}.getOrNull()
 
 /**
  * The in-scene answer card rendered by an anchored `ViewNode` (P2). Mirrors the states of
@@ -1339,22 +1458,29 @@ private val ANCHORED_CARD_WIDTH = 320.dp
 private val ANCHORED_CARD_HEIGHT = 200.dp
 
 /**
- * The failure card (#3343). Two shapes, one component:
+ * The failure card (#3343, reworked by #3407). One shape, one component:
  *
- *  - **transient** — a single line naming what actually went wrong, so a busy model, a
- *    rejected frame and a failed capture read differently instead of all being "Gemini
- *    Nano couldn't answer";
- *  - **escalated** — reached when the failure is terminal (this device cannot run the
- *    model at all) or the same kind of failure has repeated
- *    [ASK_FAILURE_ESCALATION_THRESHOLD] times. The retry invitation is dropped and the
- *    card explains the on-device-only design and what the user can actually check.
+ *  - it always names the **actual cause**, so a busy model, a rejected frame, a lost AR
+ *    layer and a blank frame read differently;
+ *  - it always offers the **one action** that could fix that cause
+ *    ([AskFailure.recovery]) — a button, not a sentence;
+ *  - when [persistent] it changes only its headline, to say the step keeps failing. It does
+ *    NOT claim the device cannot run the model. #3343 wired a retry counter straight to
+ *    "Point & Ask can't answer on this device", so three ordinary capture failures on a
+ *    perfectly capable Pixel 9 ended the demo in a dead end that also happened to be untrue
+ *    (#3407). "Not on this phone" is now `AskStep.ModelUnsupported`'s card alone, and only
+ *    the platform can put the demo there.
  *
  * `DESIGN.md`'s "Blocked" severity: an error indicator plus the theme's `error` role, so
  * both schemes stay legible without a hardcoded colour.
  */
 @Composable
-private fun AskFailureCard(failure: AskFailure, escalated: Boolean) {
-    BottomCard {
+private fun AskFailureCard(
+    failure: AskFailure,
+    persistent: Boolean,
+    onAction: () -> Unit,
+) {
+    BottomCard(testTag = PointAndAskTestTags.FAILURE_CARD) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Outlined.ErrorOutline,
@@ -1364,21 +1490,21 @@ private fun AskFailureCard(failure: AskFailure, escalated: Boolean) {
             )
             Text(
                 text = stringResource(
-                    if (escalated) {
+                    if (persistent) {
                         R.string.demo_point_and_ask_error_repeated_title
                     } else {
                         failure.messageRes
                     }
                 ),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (escalated) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (persistent) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.padding(start = 12.dp),
             )
         }
-        if (escalated) {
+        if (persistent) {
             Spacer(Modifier.height(6.dp))
-            // The specific cause stays on screen under the explanation — it is what makes
-            // a bug report actionable, and it is the line that matches logcat.
+            // The specific cause stays on screen under the headline — it is what makes a bug
+            // report actionable, and it is the line that matches logcat.
             Text(
                 text = stringResource(failure.messageRes),
                 style = MaterialTheme.typography.bodySmall,
@@ -1391,6 +1517,26 @@ private fun AskFailureCard(failure: AskFailure, escalated: Boolean) {
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
             )
         }
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = onAction,
+            modifier = Modifier.testTag(PointAndAskTestTags.FAILURE_ACTION),
+        ) {
+            Text(stringResource(failure.recovery.labelRes))
+        }
+    }
+}
+
+/** Spinner + one line of copy — the shape every "working on it" card shares. */
+@Composable
+private fun ProgressRow(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(modifier = Modifier.size(18.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = 12.dp),
+        )
     }
 }
 

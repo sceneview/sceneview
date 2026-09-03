@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
         // showcase frozen until process death.
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
+        DemoSettings.qaAskState = intent?.getStringExtra("qa_ask_state")
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
         // (`/data/data/...`, photos, configs). The path is consumed once by
@@ -141,6 +142,7 @@ class MainActivity : ComponentActivity() {
             ?: DeepLinkRouter.parse(intent.data)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
+        DemoSettings.qaAskState = intent.getStringExtra("qa_ask_state")
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)
