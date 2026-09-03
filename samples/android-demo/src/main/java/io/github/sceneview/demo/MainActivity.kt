@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
@@ -281,10 +282,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         NavHost(
             navController = navController,
             startDestination = if (initialDemo != null) "demo/$initialDemo" else "list",
-            enterTransition = { slideInHorizontally(initialOffsetX = { it }) + fadeIn() },
-            exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 4 }) + fadeOut() },
-            popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 4 }) + fadeIn() },
-            popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) + fadeOut() }
+            // Material shared-axis X (#3406): both screens move a short distance in the
+            // same direction while they cross-fade, on `duration-medium` /
+            // `ease-expressive` from DESIGN.md. The full-window slide this replaced was
+            // an iOS-style push — the incoming screen travelled a whole viewport on
+            // Compose's default spring, which on a demo that then has to load a model
+            // read as two separate waits stacked on each other.
+            enterTransition = { slideInHorizontally(navMotion()) { it / NAV_SLIDE_FRACTION } + fadeIn(navMotion()) },
+            exitTransition = { slideOutHorizontally(navMotion()) { -it / NAV_SLIDE_FRACTION } + fadeOut(navMotion()) },
+            popEnterTransition = { slideInHorizontally(navMotion()) { -it / NAV_SLIDE_FRACTION } + fadeIn(navMotion()) },
+            popExitTransition = { slideOutHorizontally(navMotion()) { it / NAV_SLIDE_FRACTION } + fadeOut(navMotion()) }
         ) {
             composable("list") {
                 // Three-tab root (Showcase / AR View / About). Demo deep links
@@ -445,6 +452,19 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
         PlaceholderDemo(id = id, onBack = onBack)
     }
 }
+
+/**
+ * Fraction of the viewport a screen travels during a navigation transition — a
+ * sixth, the short shared-axis distance, not the full-window push (#3406).
+ */
+private const val NAV_SLIDE_FRACTION = 6
+
+/** The one spec every navigation slide and fade shares: `duration-medium`, `ease-expressive`. */
+private fun <T> navMotion(): androidx.compose.animation.core.FiniteAnimationSpec<T> =
+    androidx.compose.animation.core.tween(
+        durationMillis = SceneViewTokens.Duration.mediumMillis,
+        easing = SceneViewTokens.Ease.expressive,
+    )
 
 @Composable
 fun PlaceholderDemo(id: String, onBack: () -> Unit) {

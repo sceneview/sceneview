@@ -61,7 +61,7 @@ internal object DeepLinkRouter {
      * Query parameter / intent-extra name carrying the optional initial tab a consolidated
      * demo should open on — `sceneview://demo/<id>?tab=<id|index>` and the `--es tab <v>`
      * QA extra. The value is either a 0-based segmented-button index (`?tab=1`) or a retired
-     * alias token (`?tab=shape`) resolved through [ALIAS_INITIAL_TAB]. See [resolveInitialTab]
+     * alias token (`?tab=physics`) resolved through [ALIAS_INITIAL_TAB]. See [resolveInitialTab]
      * (#2315).
      */
     const val QUERY_PARAM_TAB: String = "tab"
@@ -83,11 +83,12 @@ internal object DeepLinkRouter {
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
         // #2239 Batch 1 — Custom Geometry consolidation. The retired
-        // `custom-mesh` and `shape` demos merged into `custom-geometry` with a
-        // segmented-button toggle. Existing `sceneview://demo/custom-mesh` and
-        // `sceneview://demo/shape` deep links keep working; `custom-mesh` lands
-        // on the default Custom Mesh tab and `shape` pre-selects the Shape tab
-        // (#2315 — see [ALIAS_INITIAL_TAB]).
+        // `custom-mesh` and `shape` demos merged into `custom-geometry`.
+        // #3423 then rebuilt that demo from scratch around a single
+        // runtime-generated mesh, so its two tabs are gone: both aliases now
+        // land on the same (only) view and neither carries an
+        // [ALIAS_INITIAL_TAB] entry. Existing `sceneview://demo/custom-mesh`
+        // and `sceneview://demo/shape` deep links keep working.
         "custom-mesh" to "custom-geometry",
         "shape" to "custom-geometry",
         // #2239 Batch 1 — Picking & Collision consolidation. The retired
@@ -149,21 +150,20 @@ internal object DeepLinkRouter {
     /**
      * Retired alias ids whose content lives on a **non-default** tab of the consolidated
      * demo that absorbed them. When a consolidated demo is opened through one of these
-     * aliases (e.g. `sceneview://demo/shape`), it should pre-select the matching segmented
+     * aliases (e.g. `sceneview://demo/physics`), it should pre-select the matching segmented
      * tab instead of falling back to its default first tab (#2315).
      *
      * The index is 0-based and matches the order of the demo's segmented-button modes.
      * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
-     * `text`) or to a demo that has no tabs at all (`image`, `video` and `billboard`, since
-     * #3424) are intentionally omitted: they already land correctly, so an absent entry
+     * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
+     * and `billboard` since #3424) are intentionally omitted: they already land correctly,
+     * so an absent entry
      * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
         // lighting — [Types, Movable]
         "movable-light" to 1,
-        // custom-geometry — [Custom Mesh, Shape Extrude]
-        "shape" to 1,
         // camera-gestures — [Camera Modes, Node Gestures]
         "gesture-editing" to 1,
         // lighting-lab — [Sky, Environment, Reflections, Post-FX]
@@ -279,13 +279,13 @@ internal object DeepLinkRouter {
      * Precedence — explicit user intent wins over the alias default, mirroring the
      * `cameraDistance` dual-ingress policy:
      *  1. An explicit [tabParam] (`--es tab <v>` extra or `?tab=<v>` query) — either a
-     *     0-based index (`"1"`) or a retired-alias token (`"shape"`) looked up in
+     *     0-based index (`"1"`) or a retired-alias token (`"physics"`) looked up in
      *     [ALIAS_INITIAL_TAB]. See [parseTabValue].
      *  2. Otherwise, the launching [rawId] itself: if it is a retired alias whose content
-     *     lives on a non-default tab (e.g. `shape` → 1), that tab.
+     *     lives on a non-default tab (e.g. `physics` → 1), that tab.
      *
-     * [rawId] is the **pre-validation** id as launched (the alias, e.g. `shape` — not the
-     * resolved `custom-geometry`), since the alias is what carries the tab hint. Never
+     * [rawId] is the **pre-validation** id as launched (the alias, e.g. `physics` — not the
+     * resolved `animation-physics`), since the alias is what carries the tab hint. Never
      * throws; an absent / blank / unparseable value falls through to the next rule and an
      * out-of-range index is left for the demo to clamp to its default tab.
      */
@@ -307,7 +307,7 @@ internal object DeepLinkRouter {
     /**
      * Parses a `?tab=` / `--es tab` value into a 0-based tab index: a non-negative integer
      * literal is taken as-is; any other token is looked up in [ALIAS_INITIAL_TAB] (so
-     * `?tab=shape` selects the Shape tab). A blank, negative, or unrecognised value returns
+     * `?tab=physics` selects the Physics tab). A blank, negative, or unrecognised value returns
      * `null`. Never throws.
      */
     internal fun parseTabValue(raw: String?): Int? {

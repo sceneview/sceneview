@@ -944,6 +944,32 @@ Two consequences to keep in mind:
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+Build the buffers with `Geometry.Builder`, which takes plain `Geometry.Vertex(position, normal, uvCoordinate, color)` records — generate them however you like:
+```kotlin
+SceneView(...) {
+    val vertices = remember(resolution) { myGenerator(resolution) }   // List<Geometry.Vertex>
+    // Key the Geometry on the vertex COUNT, not on the values: same count = same buffers.
+    val geometry = remember(engine, resolution) {
+        Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
+            .vertices(vertices)
+            .indices(myIndices(resolution))          // List<Int>, 3 per triangle
+            .build(engine)
+    }
+    // Animate by rewriting the existing buffers — no reallocation, no leak.
+    SideEffect { geometry.update(engine, vertices) }
+    // MeshNode does NOT own buffers it was handed: free them yourself.
+    DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
+
+    MeshNode(
+        primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+        vertexBuffer = geometry.vertexBuffer,
+        indexBuffer = geometry.indexBuffer,
+        boundingBox = geometry.boundingBox,
+        materialInstance = material,
+    )
+}
+```
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
 
 ### ShapeNode — 2D polygon shape
 ```kotlin

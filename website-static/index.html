@@ -17,6 +17,9 @@
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
   <title>SceneView — 3D & AR SDK for Android, iOS, Web, and more</title>
   <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native. Powered by Filament and RealityKit.">
   <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, USDZ, visionOS, cross-platform 3D, AI-first SDK, MCP server, Claude 3D, ChatGPT AR, AI code generation, LLM 3D development, Copilot 3D, Gemini AR, model context protocol">
@@ -53,40 +56,6 @@
   <meta name="twitter:description" content="Open-source, AI-first SDK for 3D and AR on Android, iOS, Web, Desktop, TV, Flutter, and React Native. Declarative API with Jetpack Compose and SwiftUI.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="twitter:image:alt" content="SceneView — 3D and AR SDK for every platform">
-
-  <!-- Google Analytics 4 -->
-  <!-- GA4 Property: SceneView Website | Stream ID: 14357002837 -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-HX1JWGSMTH"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-HX1JWGSMTH', {
-      page_title: document.title,
-      content_group: 'website'
-    });
-    // Track key events
-    document.addEventListener('DOMContentLoaded', function() {
-      // Track playground usage
-      document.querySelectorAll('[data-tab]').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-          gtag('event', 'tab_click', { tab_name: this.dataset.tab });
-        });
-      });
-      // Track CTA clicks (GitHub, Claude install, Discord)
-      document.querySelectorAll('a[href*="github.com/sceneview"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]').forEach(function(link) {
-        link.addEventListener('click', function() {
-          gtag('event', 'cta_click', { link_url: this.href, link_text: this.textContent.trim() });
-        });
-      });
-      // Track npm copy events
-      document.querySelectorAll('.code-block').forEach(function(block) {
-        block.addEventListener('click', function() {
-          gtag('event', 'code_copy', { code_snippet: this.textContent.substring(0, 100) });
-        });
-      });
-    });
-  </script>
 
   <!-- Preconnect hints -->
   <!-- Preload critical resources -->
@@ -1123,14 +1092,14 @@
           <div class="metric-card__icon-wrap metric-card__icon-wrap--contributors">
             <span class="material-symbols-outlined">group</span>
           </div>
-          <div class="metric-card__value" data-metric="contributors">46</div>
+          <div class="metric-card__value" data-metric="contributors">47</div>
           <div class="metric-card__label">Contributors</div>
         </a>
         <a href="https://central.sonatype.com/artifact/io.github.sceneview/sceneview/versions" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Released versions on Maven Central">
           <div class="metric-card__icon-wrap metric-card__icon-wrap--maven">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>
           </div>
-          <div class="metric-card__value" data-metric="releases">134</div>
+          <div class="metric-card__value" data-metric="releases">135</div>
           <div class="metric-card__label">Releases on Maven&nbsp;Central</div>
         </a>
       </div>

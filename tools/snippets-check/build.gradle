@@ -20,7 +20,7 @@ plugins {
 
 android {
     namespace = 'io.github.sceneview.docsnippets'
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         minSdk 24

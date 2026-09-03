@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,13 +76,25 @@ import io.github.sceneview.sample.rememberMaterialInstance
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES]; `view-node` no longer
  * pre-selects a tab because there is none.
  *
- * ## Why both faces of the card are clickable
+ * ## Why both faces of the card forward touches
  *
  * The card slowly turns, so the face under the finger is the back one for half of every
- * revolution. A non-interactive back meant the tap reached no Compose target at all and only
+ * revolution. A non-forwarding back meant the tap reached no Compose target at all and only
  * bumped the scene-level counter — the "the tap is not on the Compose component" of #3329.
- * Both faces are now real `Card(onClick = …)` targets, and the library maps a back-face pick
- * onto the pixel the user is actually looking at (see `ViewNode.onTouchEvent`).
+ * Both faces keep [io.github.sceneview.node.ViewNode.isTouchForwardingEnabled] on (the
+ * default), and the library maps a back-face pick onto the pixel the user is actually
+ * looking at (see `ViewNode.onTouchEvent`).
+ *
+ * ## Why only the button counts as a tap (#3422)
+ *
+ * The card itself is a plain, non-clickable `Card` — only its `Button` has an `onClick`. A
+ * tap that lands elsewhere on the card (its title, its counters, the padding around them) is
+ * therefore not consumed by anything in the embedded Compose tree, falls through
+ * `ViewNode.onTouchEvent` untouched, and reaches [rememberOnGestureListener]'s
+ * `onSingleTapUp` as a plain node hit. That fallback used to bump [tapCount] itself, which
+ * made the *whole card* count as "the button" — this demo instead lets it no-op (a `ViewNode`
+ * carries no `name`, so the shape-highlight branch below does not match it either), so
+ * `tapCount` only ever increases from the real `Button.onClick`.
  */
 @Composable
 fun PickingAndCollisionDemo(onBack: () -> Unit) {
@@ -127,21 +140,21 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
         // Only a tap that actually PICKS something counts — an empty-space tap arrives with
         // `node == null` and changes nothing, which is the whole point of a picking demo.
         //
-        // The embedded Compose tree is the FIRST to see a tap on the card (#2845): both faces are
-        // clickable, so they consume it and increment the counter themselves. A gesture the view
-        // consumes never reaches this listener, so the `ViewNode` branch here is only the fallback
-        // for taps Compose lets through (forwarding turned off, an unmeasured card, …).
+        // The embedded Compose tree is the FIRST to see a tap on the card (#2845): the card's
+        // `Button` is the only clickable target on it, so a tap on the button consumes the
+        // gesture and increments `tapCount` itself (via its own `onClick`, not from here). A
+        // tap anywhere else on the card is NOT consumed by Compose (#3422 — "tap me" must only
+        // fire from the button) and falls through to this listener as a plain `ViewNode` hit;
+        // it is deliberately ignored below (a `ViewNode` has no `name`, so it does not match
+        // the shape-highlight branch either) rather than bumping the counter.
         onSingleTapUp = { _: MotionEvent, node: Node? ->
-            when {
-                node is ViewNode -> tapCount++
-                node != null -> {
-                    val index = node.name?.removePrefix(PickingLayout.NAME_PREFIX)?.toIntOrNull()
-                    if (index != null) {
-                        highlightedIndices = if (index in highlightedIndices) {
-                            highlightedIndices - index
-                        } else {
-                            highlightedIndices + index
-                        }
+            if (node != null) {
+                val index = node.name?.removePrefix(PickingLayout.NAME_PREFIX)?.toIntOrNull()
+                if (index != null) {
+                    highlightedIndices = if (index in highlightedIndices) {
+                        highlightedIndices - index
+                    } else {
+                        highlightedIndices + index
                     }
                 }
             }
@@ -365,9 +378,10 @@ private object PickingLayout {
 }
 
 /**
- * The card rendered inside the 3D quad. Clickable as a whole *and* through its button: since #2845
- * a tap anywhere on the quad is a real Compose click, so the whole card counts — exactly as it
- * would on screen.
+ * The card rendered inside the 3D quad. Only its `Button` is clickable (#3422) — the card
+ * container itself has no `onClick`, so a tap has to actually land on "Tap me" to count, the
+ * same as it would on screen. Since #2845 that button click is a real Compose click forwarded
+ * through the quad; a tap elsewhere on the card is inert (see the demo-level KDoc above).
  *
  * @param containerRole picks the container colour *inside* the re-applied theme, so it follows
  * light/dark like every other surface. It cannot be a resolved [Color] handed in by the caller:
@@ -393,10 +407,11 @@ private fun PickedCard(
 }
 
 /** Which themed container colour a [PickedCard] wears — resolved inside the card's own theme. */
-private enum class CardRole { Front, Back }
+internal enum class CardRole { Front, Back }
 
 @Composable
-private fun PickedCardContent(
+@VisibleForTesting
+internal fun PickedCardContent(
     title: String,
     highlighted: Int,
     total: Int,
@@ -408,8 +423,10 @@ private fun PickedCardContent(
         CardRole.Front -> MaterialTheme.colorScheme.primaryContainer
         CardRole.Back -> MaterialTheme.colorScheme.secondaryContainer
     }
+    // Plain, non-clickable Card (#3422): the whole card used to be a `Card(onClick = onTap)`,
+    // so any tap on it — not just the "Tap me" button — counted. Only the Button below has an
+    // onClick now; the rest of the card (title, counters, padding) is inert.
     Card(
-        onClick = onTap,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         modifier = Modifier.padding(8.dp)
     ) {

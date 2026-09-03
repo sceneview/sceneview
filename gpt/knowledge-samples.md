@@ -661,7 +661,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Advanced
 
 - `materials` — Materials. PBR extensions and runtime material streaming.
-- `custom-geometry` — Custom Geometry. Composite meshes and shape extrusion.
+- `custom-geometry` — Custom Geometry. A torus knot generated vertex by vertex at runtime.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.

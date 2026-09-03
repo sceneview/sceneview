@@ -875,3 +875,134 @@ internal fun clampOrbitEyePitch(
         z = target.z + hz * newHorizontal,
     )
 }
+
+/**
+ * A [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator] that flies
+ * the camera **in** to its resting pose when the model arrives, then behaves exactly
+ * like the stock `DefaultCameraManipulator` (#3406).
+ *
+ * At `progress() == 0` the eye sits [startDistanceScale]× further from [target], swung
+ * [startYawDegrees] around world +Y and lifted by [startLiftFraction] of the orbit
+ * radius; at `progress() == 1` it is exactly [eye]. The caller animates that progress —
+ * one `tween(duration, ease-expressive)` is the whole effect — so the model is not
+ * merely displayed, it is arrived at. The model itself never moves, which is what keeps
+ * lights and reflections landing on the surfaces the resting frame will show.
+ *
+ * The first touch hands off to a stock manipulator seeded with the eye the flight had
+ * reached, so interrupting the entrance is seamless rather than a snap — the same
+ * hand-off [HeroOrbitCameraManipulator] does, for the same reason. There is no resume:
+ * once the user has taken the camera it is theirs, and replaying a fly-in under their
+ * fingers would be a bug, not a flourish.
+ *
+ * In [DemoSettings.qaMode] the caller pins progress at `1f`: a screenshot taken
+ * mid-flight is a different framing every run.
+ */
+class EntranceCameraManipulator(
+    private val eye: Position,
+    private val target: Position,
+    private val progress: () -> Float,
+    private val startDistanceScale: Float = 1.55f,
+    private val startYawDegrees: Float = 24f,
+    private val startLiftFraction: Float = 0.22f,
+) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
+    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
+        null
+    private var viewportW = 1
+    private var viewportH = 1
+
+    /** Eye position for the current [progress] — [eye] itself once the flight is over. */
+    private fun currentEye(): Position {
+        val p = progress().coerceIn(0f, 1f)
+        if (p >= 1f) return eye
+        val remaining = 1f - p
+        val dx = eye.x - target.x
+        val dy = eye.y - target.y
+        val dz = eye.z - target.z
+        val radius = sqrt(dx * dx + dy * dy + dz * dz)
+        // Degenerate framing: nothing to fly along, sit at the resting pose.
+        if (!radius.isFinite() || radius <= 1e-6f) return eye
+        // Swing the offset around world +Y, push it out along itself, and lift it.
+        val yaw = Math.toRadians((startYawDegrees * remaining).toDouble()).toFloat()
+        val c = cos(yaw)
+        val s = sin(yaw)
+        val scale = 1f + (startDistanceScale - 1f) * remaining
+        val lift = radius * startLiftFraction * remaining
+        return Position(
+            x = target.x + (dx * c + dz * s) * scale,
+            y = target.y + (dy + lift) * scale,
+            z = target.z + (dz * c - dx * s) * scale,
+        )
+    }
+
+    private fun flightTransform(): io.github.sceneview.math.Transform =
+        io.github.sceneview.math.Transform(
+            dev.romainguy.kotlin.math.lookAt(
+                eye = currentEye(),
+                target = target,
+                up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+            )
+        )
+
+    private fun ensureFallback() {
+        if (fallback == null) {
+            fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
+                eyePosition = currentEye(),
+                targetPosition = target,
+            ).also { it.setViewport(viewportW, viewportH) }
+        }
+    }
+
+    override fun setViewport(width: Int, height: Int) {
+        viewportW = width.coerceAtLeast(1)
+        viewportH = height.coerceAtLeast(1)
+        fallback?.setViewport(viewportW, viewportH)
+    }
+
+    override fun getTransform(): io.github.sceneview.math.Transform {
+        val fb = fallback ?: return flightTransform()
+        // Same polar clamp as the hero orbit (#2487): the stock manipulator lets a drag
+        // carry the eye onto the orbit pole, where `lookAt`'s fixed world-up collapses
+        // and the model flips upside-down.
+        val transform = fb.getTransform()
+        val eyeNow = transform.position
+        val clampedEye = clampOrbitEyePitch(eyeNow, target)
+        if (clampedEye == eyeNow) return transform
+        return io.github.sceneview.math.Transform(
+            dev.romainguy.kotlin.math.lookAt(
+                eye = clampedEye,
+                target = target,
+                up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+            )
+        )
+    }
+
+    override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+        ensureFallback()
+        fallback?.grabBegin(x, y, strafe)
+    }
+
+    override fun grabUpdate(x: Int, y: Int) {
+        fallback?.grabUpdate(x, y)
+    }
+
+    override fun grabEnd() {
+        fallback?.grabEnd()
+    }
+
+    override fun scrollBegin(x: Int, y: Int, separation: Float) {
+        ensureFallback()
+        fallback?.scrollBegin(x, y, separation)
+    }
+
+    override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
+        fallback?.scrollUpdate(x, y, prevSeparation, currSeparation)
+    }
+
+    override fun scrollEnd() {
+        fallback?.scrollEnd()
+    }
+
+    override fun update(deltaTime: Float) {
+        fallback?.update(deltaTime)
+    }
+}
