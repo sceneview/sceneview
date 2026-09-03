@@ -651,7 +651,11 @@ fi
 # The check pins the exact id ($GA4_STREAM_ID): any other value, dotted or
 # not, is a corrupted carrier. Matching `Stream ID: <value>` with a trailing
 # space/`-->` boundary means a bump that only appended digits fails too.
-STREAM_ID_FOUND=$(grep -rhoE 'Stream ID: [0-9][0-9.]*' "$REPO_ROOT/website-static" --include="*.html" 2>/dev/null | sed 's/^Stream ID: //' | sort -u || true)
+# #3443 moved the GA4 loader (and the `Stream ID:` comment that carries the id)
+# out of every page into `website-static/assets/analytics.js`, so the carrier
+# is a `.js` file now; the `.html` include alone found nothing and the gate
+# blocked the 4.34.0 release on an empty read.
+STREAM_ID_FOUND=$(grep -rhoE 'Stream ID: [0-9][0-9.]*' "$REPO_ROOT/website-static" --include="*.html" --include="*.js" 2>/dev/null | sed 's/^Stream ID: //' | sort -u || true)
 if [ "$STREAM_ID_FOUND" = "$GA4_STREAM_ID" ]; then
     add_check "website-static GA4 stream id ($GA4_STREAM_ID, carrier intact)" "$SOURCE_VERSION"
 else
