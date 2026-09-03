@@ -19,9 +19,9 @@ object AnimationPhysicsFragment : DemoFragment {
         id = "animation-physics",
         titleRes = R.string.demo_animation_physics_title,
         subtitleRes = R.string.demo_animation_physics_subtitle,
-        category = DemoCategory.BASICS_3D,
+        category = DemoCategory.VIEWER,
         icon = Icons.Filled.RotateRight,
-        order = 4,
+        order = 3,
         tags = setOf("animation", "skeletal", "physics", "rigid-body", "collision", "gltf"),
     )
 

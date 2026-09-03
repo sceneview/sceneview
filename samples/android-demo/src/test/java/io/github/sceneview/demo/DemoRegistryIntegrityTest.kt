@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 
 /**
  * Pure-JVM integrity tests for the demo registry ([ALL_DEMOS]).
@@ -89,9 +90,9 @@ class DemoRegistryIntegrityTest {
         }
         // The fallback path is still exercised for a genuinely unknown key.
         assertEquals(
-            "Unknown category must fall back to the 3D-basics label",
+            "Unknown category must fall back to the Viewer label",
             categoryDisplayNameRes("nope"),
-            categoryDisplayNameRes(DemoCategory.BASICS_3D),
+            categoryDisplayNameRes(DemoCategory.VIEWER),
         )
     }
 
@@ -135,17 +136,66 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `at least one demo exists per non-AR category`() {
-        // The Samples tab self-hides empty category sections; a 3D category with
-        // zero demos almost always means a fragment failed to collate.
-        val nonArCategories = DEMO_CATEGORIES - DemoCategory.AUGMENTED_REALITY
+    fun `every category holds at least one demo`() {
+        // Since #2239 a category is a SECTION HEADER on the home grid, not only a
+        // filter chip. An empty category therefore no longer fails quietly — it
+        // would draw a header with nothing under it. The old form of this test
+        // exempted the AR category; there is no reason to, and with AR now split
+        // across four categories the exemption would hide exactly the mistake it
+        // was written to catch.
         val populated = ALL_DEMOS.map { it.category }.toSet()
-        for (category in nonArCategories) {
+        for (category in DEMO_CATEGORIES) {
             assertTrue(
-                "Category '$category' has no demos — a fragment likely failed to collate",
+                "Category '$category' has no demos — it would draw an empty section " +
+                    "header, or a fragment failed to collate",
                 category in populated,
             )
         }
+    }
+
+    @Test
+    fun `each category occupies one contiguous run of the editorial order`() {
+        // The home grid draws a section header by watching for "the category
+        // changed" as it walks ALL_DEMOS (HomeScreen.kt). That is only correct
+        // while a category's demos are contiguous: an `order` that sends one AR
+        // Placement demo down among the Platform ones would draw the AR Placement
+        // header twice and split the section in two.
+        val runs = mutableListOf<String>()
+        for (demo in ALL_DEMOS) {
+            if (runs.lastOrNull() != demo.category) runs += demo.category
+        }
+        val split = runs.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        assertTrue(
+            "Categories are split across the editorial order and would draw a " +
+                "duplicate section header: $split",
+            split.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `categories run in DEMO_CATEGORIES order`() {
+        // DEMO_CATEGORIES is the chip-row order; the grid's section order comes
+        // from `order`. If the two disagree, tapping the third chip scrolls to the
+        // fifth section — the catalogue would be structured differently depending
+        // on which control you used.
+        val gridOrder = ALL_DEMOS.map { it.category }.distinct()
+        assertEquals(
+            "Section order on the grid must match DEMO_CATEGORIES",
+            DEMO_CATEGORIES.filter { it in gridOrder.toSet() },
+            gridOrder,
+        )
+    }
+
+    @Test
+    fun `every category has a filter chip`() {
+        // A category with no chip is unreachable by filter; a chip for a category
+        // with no demos filters to an empty grid. Both are #2239 regressions the
+        // 9-category split made easy to introduce.
+        assertEquals(
+            "CHIP_CATEGORIES must cover exactly DEMO_CATEGORIES, in the same order",
+            DEMO_CATEGORIES,
+            CHIP_CATEGORY_KEYS,
+        )
     }
 
     @Test

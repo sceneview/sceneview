@@ -153,6 +153,23 @@ internal object DeepLinkRouter {
         // consolidated demo has phases, not segmented tabs, and the mode it lands on is a
         // user choice the alias has no business overriding.
         "ar-instant-placement" to "ar-placement",
+        // #2239 catalogue regroup — `fog` merged into `lighting-lab` as its fifth
+        // mode. Both are the same per-Filament-`View` option family the lab's Post-FX
+        // mode already reaches through the `rememberView` handle, so the fold moved a
+        // 181-line card with no modes of its own under the card literally named
+        // "Lighting Lab". `ARFogNode` keeps `FogNode` demonstrated in AR (`ar-fog`).
+        "fog" to "lighting-lab",
+        // #2239 catalogue regroup — `gesture-feedback-preview` merged into
+        // `camera-gestures` as its third mode. The Gestures mode flips `isEditable`
+        // and draws no affordance; the preview drew the affordance with no controls.
+        // Same subject, cut in half.
+        "gesture-feedback-preview" to "camera-gestures",
+        // #2239 catalogue regroup — `ar-terrain` and `ar-rooftop` merged into
+        // `ar-geospatial-anchors`. 303 of ~485 lines were identical; the whole
+        // difference is `altitudeAboveTerrain` vs `altitudeAboveRooftop` on the
+        // resolve call and the `Anchor.*AnchorState` enum it answers with.
+        "ar-terrain" to "ar-geospatial-anchors",
+        "ar-rooftop" to "ar-geospatial-anchors",
     )
 
     /**
@@ -186,6 +203,14 @@ internal object DeepLinkRouter {
         // model-viewer — [Single Model, Multi-Model, Gallery]
         "multi-model" to 1,
         "scene-gallery" to 2,
+        // lighting-lab — [Sky, Environment, Reflections, Post-FX, Fog] (#2239)
+        "fog" to 4,
+        // camera-gestures — [Camera, Gestures, Feedback] (#2239)
+        "gesture-feedback-preview" to 2,
+        // ar-geospatial-anchors — [Terrain, Rooftop] (#2239). `ar-terrain` is the
+        // default first mode, so it is deliberately absent: an absent entry means
+        // "no pre-selection needed", which is exactly right for index 0.
+        "ar-rooftop" to 1,
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

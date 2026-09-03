@@ -88,6 +88,20 @@
 #   - Android: 53 fragments — 42 Working / 5 KnownIssue / 2 ComingSoon / 4 InReview.
 #   - This ledger carries 52 of those 53. `gesture-feedback-preview` has no row
 #     and never had one — a pre-existing gap, not something #3405 removed.
+#
+# Re-measured again 2026-09-03, after #2239's catalogue-regroup slice: `fog` ->
+# `lighting-lab`, `gesture-feedback-preview` -> `camera-gestures`, and
+# `ar-terrain` + `ar-rooftop` -> the new `ar-geospatial-anchors`. Counted, not
+# inherited:
+#   - Android: 50 fragments — 41 Working / 4 KnownIssue / 2 ComingSoon /
+#     3 InReview.
+#   - This ledger carries 50 of those 50: the `fog` and `ar-rooftop` rows were
+#     dropped (retired ids are dropped, not marked), the `ar-terrain` row became
+#     `ar-geospatial-anchors`, and the long-standing `gesture-feedback-preview`
+#     gap closed by itself when that id was retired.
+#   - Of the 50 rows: 31 working, 0 stub, 19 android-only.
+#   - iOS is untouched by the regroup: `allowedIds` still resolves every retired
+#     Android id, because the ids retired here were never iOS-side ids.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 56 (48 generated ∪ 8 legacy/
 #     umbrella aliases ∪ 0 residual ids). Every one of the 56 opens a real
 #     screen — the catalogue no longer carries an id that resolves to a
@@ -199,9 +213,6 @@ demos:
   - id: double-pendulum
     androidStatus: Working
     iosStatus: working
-  - id: fog
-    androidStatus: Working
-    iosStatus: working
   - id: geometry
     androidStatus: Working
     iosStatus: working
@@ -276,6 +287,19 @@ demos:
       No iOS screen — the AR-specific fog demo (#1717) is not ported; distinct
       from the non-AR `fog` id, which IS working on iOS. Its coming-soon Scene
       stub was deleted in #3231.
+  - id: ar-geospatial-anchors
+    androidStatus: KnownIssue
+    iosStatus: android-only
+    reason: >-
+      Platform-locked: ARCore Geospatial terrain and rooftop anchors are a
+      Google-backend service with no ARKit equivalent — not a port target.
+      Android itself is KnownIssue. #2239 merged the former `ar-terrain` and
+      `ar-rooftop` rows into this one card (Terrain / Rooftop modes); both
+      retired ids still resolve through DEMO_ID_ALIASES, and per this ledger's
+      own rule a retired id is DROPPED here rather than kept with a marker.
+      Their coming-soon Scene stubs, and the `ar-terrain-anchors` /
+      `ar-rooftop-anchors` rename aliases that pointed at them, were deleted in
+      #3231.
   - id: ar-hand-tracking
     androidStatus: ComingSoon
     iosStatus: android-only
@@ -317,14 +341,6 @@ demos:
     reason: >-
       No iOS screen — raw depth point cloud not ported (Phase 2 Wave B,
       #2798). Its coming-soon Scene stub was deleted in #3231.
-  - id: ar-rooftop
-    androidStatus: KnownIssue
-    iosStatus: android-only
-    reason: >-
-      Platform-locked: ARCore Geospatial rooftop anchors are a Google-backend
-      service with no ARKit equivalent — not a port target. Android itself is
-      KnownIssue. Its Android-only Scene stub, and the `ar-rooftop-anchors`
-      rename alias that pointed at it, were deleted in #3231.
   - id: ar-scene-semantics
     androidStatus: Working
     iosStatus: android-only
@@ -339,14 +355,6 @@ demos:
       Google-backend service with no ARKit equivalent — not a port target.
       Android itself is KnownIssue. Its Android-only Scene stub was deleted in
       #3231.
-  - id: ar-terrain
-    androidStatus: KnownIssue
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — Geospatial terrain anchors are a Google-backend service
-      with no ARKit equivalent. Android itself is KnownIssue. Its coming-soon
-      Scene stub, and the `ar-terrain-anchors` rename alias that pointed at
-      it, were deleted in #3231.
   - id: ar-xr-face
     androidStatus: ComingSoon
     iosStatus: android-only

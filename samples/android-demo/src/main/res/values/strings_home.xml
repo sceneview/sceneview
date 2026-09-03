@@ -15,14 +15,19 @@
     <string name="home_hero_subtitle">Any glTF, HDR lighting, one tap to AR</string>
     <string name="home_hero_open">Open</string>
 
-    <!-- Category filter chips (short labels) -->
+    <!-- Category filter chips (short labels). One per DemoCategory key, in
+         DEMO_CATEGORIES order; the four AR chips drop the "AR " prefix because the
+         chip row itself is the context and the prefix cost width four times over. -->
     <string name="category_short_all">All</string>
-    <string name="category_short_3d">3D</string>
-    <string name="category_short_lighting">Lighting</string>
-    <string name="category_short_content">Content</string>
+    <string name="category_short_viewer">Viewer</string>
+    <string name="category_short_geometry_materials">Geometry</string>
+    <string name="category_short_rendering">Rendering</string>
     <string name="category_short_interaction">Interaction</string>
-    <string name="category_short_advanced">Advanced</string>
-    <string name="category_short_ar">AR</string>
+    <string name="category_short_ar_placement">Placement</string>
+    <string name="category_short_ar_tracking">Tracking</string>
+    <string name="category_short_ar_understanding">Understanding</string>
+    <string name="category_short_ar_anchors">Anchors</string>
+    <string name="category_short_platform">Platform</string>
 
     <!-- Grid -->
     <string name="home_browse_title">Browse online models</string>

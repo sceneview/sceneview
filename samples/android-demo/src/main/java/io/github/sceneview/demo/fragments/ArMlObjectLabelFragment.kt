@@ -14,9 +14,9 @@ object ArMlObjectLabelFragment : DemoFragment {
         id = "ar-ml-object-label",
         titleRes = R.string.demo_ar_ml_title,
         subtitleRes = R.string.demo_ar_ml_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.Label,
-        order = 37,
+        order = 39,
         tags = setOf("ar", "ml", "mlkit", "object-detection", "label", "hit-test"),
     )
 

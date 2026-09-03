@@ -5,6 +5,11 @@
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+# #2239: `gesture-feedback-preview` is no longer a catalogue card — it is
+# `camera-gestures`' third mode. Its leg is kept and still drives the retired id,
+# which ALIAS_INITIAL_TAB lands on that mode, so the NodeEditingOverlay affordances
+# keep their own QA leg.
+#
 appId: io.github.sceneview.demo
 ---
 - runFlow:

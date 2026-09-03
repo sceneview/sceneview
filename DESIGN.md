@@ -93,6 +93,18 @@ the surface ramp above, not the M3 tonal ramp.
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid |
 | `outline-subtle` | #ebedf0 | #1f2937 | 1dp card and header hairline (see Borders) |
 
+Catalogue **section headers** (the full-span label above each group of demo cards)
+use `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because
+a header that tints itself competes with the cards it introduces. Geometry:
+
+| Token | Value | Usage |
+|---|---|---|
+| `section-header-top-gap` | 32px (`space-2xl`) | Above a section header |
+| `section-header-bottom-gap` | 16px (`space-sm`) | Header to its first card row |
+
+A header is drawn only when more than one section is visible: with a single category
+filtered, the chip already names it.
+
 ### Text
 
 | Token | Light | Dark | Usage |

@@ -14,9 +14,9 @@ object SecondaryCameraFragment : DemoFragment {
         id = "secondary-camera",
         titleRes = R.string.demo_secondary_camera_title,
         subtitleRes = R.string.demo_secondary_camera_subtitle,
-        category = DemoCategory.ADVANCED,
+        category = DemoCategory.PLATFORM,
         icon = Icons.Filled.PictureInPicture,
-        order = 18,
+        order = 47,
         tags = setOf("camera", "pip", "multi-view", "render-target"),
     )
 

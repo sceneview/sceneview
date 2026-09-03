@@ -98,6 +98,10 @@ object HomeTestTags {
     const val SEARCH_FIELD = "home-search-field"
     const val HERO = "home-hero"
     const val SEARCH_CLOSE = "home-search-close"
+
+    /** Test tag of the full-span header drawn above [category]'s first card (#2239). */
+    fun sectionHeader(category: String): String =
+        "home-section-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 }
 
 /**
@@ -159,6 +163,10 @@ fun HomeScreen(
         filterDemos(searchEntries, selectedCategory, query).mapNotNull { byId[it.id] }
     }
     val searching = query.isNotBlank()
+    // A header earns its row only when it separates something. With one category
+    // selected the chip already names it, and a lone header above a filtered grid
+    // is chrome repeating what the user just tapped.
+    val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
 
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
     val context = LocalContext.current
@@ -229,18 +237,38 @@ fun HomeScreen(
                     EmptySearchState(query = query, onClear = { onQueryChange("") })
                 }
             }
-            items(visible, key = { "demo-${it.id}" }) { demo ->
-                DemoMediaCard(
-                    demo = demo,
-                    onClick = { onDemoClick(demo.id) },
-                    modifier = Modifier.animateItem(
-                        fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
-                        placementSpec = spring(
-                            dampingRatio = SceneViewTokens.Spring.dampingRatio,
-                            stiffness = SceneViewTokens.Spring.stiffness,
+            // Sections. `visible` is already in editorial order, and the registry
+            // keeps a category's demos contiguous within it (asserted by
+            // DemoRegistryIntegrityTest), so a section boundary is simply "the
+            // category changed" — no grouping pass, no re-sort, and the cards keep
+            // the exact order the collator emitted.
+            var previousCategory: String? = null
+            visible.forEach { demo ->
+                if (showSections && demo.category != previousCategory) {
+                    item(
+                        key = "section-${demo.category}",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        SectionHeader(
+                            category = demo.category,
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+                previousCategory = demo.category
+                item(key = "demo-${demo.id}") {
+                    DemoMediaCard(
+                        demo = demo,
+                        onClick = { onDemoClick(demo.id) },
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
+                            placementSpec = spring(
+                                dampingRatio = SceneViewTokens.Spring.dampingRatio,
+                                stiffness = SceneViewTokens.Spring.stiffness,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
             }
             if (!searching) {
                 item(key = "browse-online") {
@@ -268,6 +296,36 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
+}
+
+/**
+ * A full-span catalogue section header (#2239).
+ *
+ * The catalogue shipped as one flat run of cards, which is what made 53 demos
+ * unnavigable: nothing told a scrolling thumb where one subject ended and the
+ * next began, so "features that belong together" read as scattered even when
+ * they were adjacent. This is the landmark — the section's display name, at
+ * title weight, spanning the grid.
+ *
+ * Type and spacing come from [SceneViewTokens.Home]; nothing here hardcodes a
+ * colour (see DESIGN.md).
+ */
+@Composable
+private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
+    val home = SceneViewTokens.Home
+    Text(
+        text = stringResource(categoryDisplayNameRes(category)),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                top = home.sectionHeaderTopGap - home.gridGutter,
+                bottom = home.sectionHeaderBottomGap - home.gridGutter,
+            )
+            .testTag(HomeTestTags.sectionHeader(category)),
+    )
 }
 
 /** The demo the hero opens. */
@@ -451,15 +509,28 @@ private fun SearchRow(
 }
 
 /** `null` = All. Order is the chip order. */
+/**
+ * The filter chips, in [io.github.sceneview.demo.DEMO_CATEGORIES] order after the
+ * leading "All". Short labels, because the chip row is one horizontal scroll and
+ * the long form is already carried by the section header the chip filters down to.
+ * [io.github.sceneview.demo.DemoRegistryIntegrityTest] asserts this list covers
+ * every registered category, so a new category can never ship without a chip.
+ */
 private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     null to R.string.category_short_all,
-    DemoCategory.BASICS_3D to R.string.category_short_3d,
-    DemoCategory.LIGHTING_ENVIRONMENT to R.string.category_short_lighting,
-    DemoCategory.CONTENT to R.string.category_short_content,
+    DemoCategory.VIEWER to R.string.category_short_viewer,
+    DemoCategory.GEOMETRY_MATERIALS to R.string.category_short_geometry_materials,
+    DemoCategory.RENDERING to R.string.category_short_rendering,
     DemoCategory.INTERACTION to R.string.category_short_interaction,
-    DemoCategory.ADVANCED to R.string.category_short_advanced,
-    DemoCategory.AUGMENTED_REALITY to R.string.category_short_ar,
+    DemoCategory.AR_PLACEMENT to R.string.category_short_ar_placement,
+    DemoCategory.AR_TRACKING to R.string.category_short_ar_tracking,
+    DemoCategory.AR_UNDERSTANDING to R.string.category_short_ar_understanding,
+    DemoCategory.AR_ANCHORS to R.string.category_short_ar_anchors,
+    DemoCategory.PLATFORM to R.string.category_short_platform,
 )
+
+/** The categories [CHIP_CATEGORIES] offers, minus the leading "All". */
+internal val CHIP_CATEGORY_KEYS: List<String> = CHIP_CATEGORIES.mapNotNull { it.first }
 
 @Composable
 private fun CategoryChipRow(

@@ -14,9 +14,9 @@ object ArDepthOcclusionFragment : DemoFragment {
         id = "ar-depth-occlusion",
         titleRes = R.string.demo_ar_depth_occlusion_title,
         subtitleRes = R.string.demo_ar_depth_occlusion_subtitle,
-        category = DemoCategory.AUGMENTED_REALITY,
+        category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.FilterCenterFocus,
-        order = 22,
+        order = 29,
         tags = setOf("ar", "depth", "occlusion", "arcore"),
     )
 
