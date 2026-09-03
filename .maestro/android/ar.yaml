@@ -1,4 +1,7 @@
-# Maestro flow — "Augmented Reality" demo category (33 demos).
+# Maestro flow — "Augmented Reality" demo category (32 demos).
+#
+# `ar-instant-placement` was folded into `ar-placement` (#3405) — its subject is a
+# mode of that demo now, and its deep link resolves through DEMO_ID_ALIASES.
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
@@ -64,11 +67,6 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-depth-occlusion
       DEMO_NAME: AR Depth Occlusion
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: ar-instant-placement
-      DEMO_NAME: AR Instant Placement
 - runFlow:
     file: flows/demo.yaml
     env:

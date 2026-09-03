@@ -11,6 +11,14 @@
 # is not an iOS-only artifact. It sits alongside other cross-cutting,
 # machine-readable root files (`llms.txt`, `smithery.yaml`).
 #
+# Retired Android ids are DROPPED from this ledger rather than kept with a
+# marker: the left-hand column is "Android's canonical id set", and an id that
+# is no longer canonical has no row to be in. `ar-instant-placement` left this
+# way (#3405 — folded into `ar-placement`, where it is a placement *mode*; the
+# deep link still resolves through `DeepLinkRouter.DEMO_ID_ALIASES`). iOS still
+# ships its own `ar-instant-placement` screen; aligning it with the Android fold
+# is tracked separately.
+#
 # `iosStatus` is a mechanically-checked CURRENT-STATE fact, not an aspiration:
 #   - working:      the id is a member of iOS's `DemoDeepLinkRegistry.allowedIds`
 #                    AND resolves to a real (non-placeholder) destination —
@@ -73,12 +81,18 @@
 # by putting the Android card back. Previous reading: 2026-08-17, after #3231
 # deleted every coming-soon card from the iOS demo — 54 Android ids,
 # 34 working / 0 stub / 20 android-only.
-#   - Android: 53 fragments — 43 Working / 5 KnownIssue / 2 ComingSoon / 3 InReview.
+# Re-measured 2026-09-03, after #3405 folded `ar-instant-placement` into
+# `ar-placement` (one AR placement flow, with instant placement as a mode).
+# Counted, not carried over — the 2026-08-23 reading above said "53 fragments"
+# while there were 54, so do not trust an inherited number here.
+#   - Android: 53 fragments — 42 Working / 5 KnownIssue / 2 ComingSoon / 4 InReview.
+#   - This ledger carries 52 of those 53. `gesture-feedback-preview` has no row
+#     and never had one — a pre-existing gap, not something #3405 removed.
 #   - iOS: `DemoDeepLinkRegistry.allowedIds` = 56 (48 generated ∪ 8 legacy/
 #     umbrella aliases ∪ 0 residual ids). Every one of the 56 opens a real
 #     screen — the catalogue no longer carries an id that resolves to a
 #     "Coming soon" card.
-#   - Of the 53 Android ids: 33 working, 0 stub, 20 android-only.
+#   - Of the 52 rows: 32 working, 0 stub, 20 android-only.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -116,7 +130,7 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (32) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -144,9 +158,6 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: ar-image
-    androidStatus: Working
-    iosStatus: working
-  - id: ar-instant-placement
     androidStatus: Working
     iosStatus: working
   - id: ar-orbital

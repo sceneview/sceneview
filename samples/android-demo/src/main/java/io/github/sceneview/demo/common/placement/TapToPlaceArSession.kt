@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
@@ -135,6 +136,17 @@ fun TapToPlaceArSession(
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
     snapToPlane: Boolean = true,
     showReticle: Boolean = true,
+    /**
+     * `true` ⇒ `Config.InstantPlacementMode.LOCAL_Y_UP`, and a tap that finds no acceptable
+     * plane falls back to `Frame.hitTestInstantPlacement` at
+     * [INSTANT_APPROXIMATE_DISTANCE_M] (#3405 — the folded `ar-instant-placement` demo).
+     *
+     * The fallback is a *fallback*, not a branch: a real plane under the reticle still wins,
+     * which is the one thing the retired demo got wrong (it disabled plane hits entirely
+     * whenever instant placement was on, so you could never get an accurate anchor while the
+     * feature was demonstrated).
+     */
+    instantPlacement: Boolean = false,
     playbackDataset: File? = rememberArPlaybackDataset(),
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
@@ -190,6 +202,14 @@ fun TapToPlaceArSession(
             // shadow (0.4 × 0.4 ≈ 0.16, near-black). Mirrors PlacementScene.fadePlaneOnFirstPlacement
             // + Google AR design guidance (stop decorating the floor once discovery is done).
             planeRenderer = shouldRenderPlaneGrid(state.placedCount),
+            // Typed, reactive `Config.InstantPlacementMode` param (#1766) — flipping the
+            // chooser's mode reconfigures the live session, no `sessionConfiguration`
+            // callback and no session restart.
+            instantPlacementMode = if (instantPlacement) {
+                Config.InstantPlacementMode.LOCAL_Y_UP
+            } else {
+                Config.InstantPlacementMode.DISABLED
+            },
             sessionConfiguration = sessionConfiguration,
             // Typed Config.*Mode params (#1766) — both planeFindingMode and
             // lightEstimationMode are already the ARSceneView defaults, so no
@@ -210,6 +230,19 @@ fun TapToPlaceArSession(
                 state.anyPlaneTracked = tracked.isNotEmpty()
                 // Change-only write (60 Hz path): drives the ShadowReceiverPlane set.
                 if (trackedPlanes != tracked) trackedPlanes = tracked
+
+                // #3405 — watch the latest placement's InstantPlacementPoint refine. Both
+                // writes are change-only: this runs at frame rate, and an unconditional
+                // `mutableStateOf` write here would recompose the whole overlay 60×/s.
+                val latestLabel = state.placedModels.lastOrNull()?.let { placed ->
+                    val point = placed.trackable as? InstantPlacementPoint
+                    instantTrackingLabel(
+                        isInstantPoint = point != null,
+                        isFullTracking = point?.trackingMethod ==
+                            InstantPlacementPoint.TrackingMethod.FULL_TRACKING,
+                    )
+                }
+                if (state.instantTracking != latestLabel) state.instantTracking = latestLabel
             },
             onARCoreAvailability = { state.arCoreAvailability = it },
             onTrackingFailureChanged = { reason ->
@@ -227,7 +260,7 @@ fun TapToPlaceArSession(
                     }
 
                     // Single-sourced acceptance policy (mirrors the reticle filter below).
-                    val hit = frame.hitTest(event).firstOrNull { result ->
+                    val planeHit = frame.hitTest(event).firstOrNull { result ->
                         val trackable = result.trackable
                         PlacementHitPolicy.accept(
                             isPlane = trackable is Plane,
@@ -239,6 +272,29 @@ fun TapToPlaceArSession(
                             snapToPlane = snapToPlane,
                         )
                     }
+                    // #3405 — the folded instant-placement mode. Only consulted when the
+                    // accurate answer came back empty; the precedence itself is the pure,
+                    // unit-tested [placementHitSource].
+                    val instantHit = if (instantPlacement && planeHit == null) {
+                        frame.hitTestInstantPlacement(
+                            event.x,
+                            event.y,
+                            INSTANT_APPROXIMATE_DISTANCE_M,
+                        ).firstOrNull()
+                    } else {
+                        null
+                    }
+                    val hit = when (
+                        placementHitSource(
+                            hasPlaneHit = planeHit != null,
+                            instantEnabled = instantPlacement,
+                            hasInstantHit = instantHit != null,
+                        )
+                    ) {
+                        PlacementHitSource.PLANE -> planeHit
+                        PlacementHitSource.INSTANT -> instantHit
+                        PlacementHitSource.NONE -> null
+                    }
                     if (hit != null) {
                         // Resolve the asset at tap time — the #2476 invariant. Return
                         // null to reject (asset still resolving, no fallback armed).
@@ -248,6 +304,10 @@ fun TapToPlaceArSession(
                                 id = state.nextId++,
                                 anchor = hit.createAnchor(),
                                 spec = spec,
+                                // Kept so the badge can watch this placement's
+                                // `InstantPlacementPoint` refine from an approximation to a
+                                // real pose — the one thing `ar-instant-placement` taught.
+                                trackable = hit.trackable,
                             )
                         )
                         // Confirm the commit in the hand, and open the one-shot
@@ -428,11 +488,16 @@ fun TapToPlaceArSession(
  *
  * @param state The hoisted session state to render from.
  * @param nextModelLabel The model the next tap will place, named in the coaching line.
+ * @param instantPlacement Whether the session is running in instant-placement mode. Changes
+ *   two things and nothing else: the coaching stops telling the user to keep aiming at a
+ *   surface when a tap would already land ([effectivePlacementUxState]), and the
+ *   "Approximating → Tracked" badge is allowed on screen.
  */
 @Composable
 fun BoxScope.TapToPlaceStatusOverlays(
     state: TapToPlaceState,
     nextModelLabel: String?,
+    instantPlacement: Boolean = false,
 ) {
     // The one-shot "drag / turn / pinch" window opened by the most recent placement. Keyed
     // on the placement timestamp, so a second placement restarts it rather than inheriting
@@ -453,7 +518,10 @@ fun BoxScope.TapToPlaceStatusOverlays(
     // has no affordance at all unless this one speaks. Keyed on the state, so leaving
     // INITIALIZING cancels the timer and clears the flag; a session that starts late can
     // never leave a stale "couldn't start" line behind it (#3326).
-    val initializing = state.uxState == TapToPlaceUxState.INITIALIZING
+    // #3405 — under instant placement, AIMING is not a refusal (a tap lands anyway), so the
+    // coaching must not keep asking the user to point at a surface. Pure, unit-tested.
+    val uxState = effectivePlacementUxState(state.uxState, instantPlacement)
+    val initializing = uxState == TapToPlaceUxState.INITIALIZING
     var startupStalled by remember { mutableStateOf(false) }
     LaunchedEffect(initializing) {
         if (!initializing) {
@@ -481,7 +549,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     )
 
     val coaching = placementCoaching(
-        uxState = state.uxState,
+        uxState = uxState,
         placedCount = state.placedCount,
         gestureHintVisible = gestureHintVisible,
         startupStalled = startupStalled,
@@ -537,6 +605,64 @@ fun BoxScope.TapToPlaceStatusOverlays(
             percent = state.scalePercent,
             isRealWorldSize = state.isRealWorldSize,
         )
+
+        // "Approximating → Tracked" (#3405). Only under instant placement, and only for a
+        // placement that actually landed on an InstantPlacementPoint — a plane-anchored one
+        // has no approximation to report, and a permanent "Tracked" pill would be chrome
+        // that says nothing.
+        PlacementInstantBadge(
+            label = state.instantTracking.takeIf { instantPlacement },
+        )
+    }
+}
+
+/**
+ * The one carried-over affordance of the retired `ar-instant-placement` demo: an
+ * instant-placed model arrives as a guess at [INSTANT_APPROXIMATE_DISTANCE_M] and becomes
+ * real, and the badge is how you can see that happen.
+ *
+ * The old demo drew this as a hardcoded `Color(0xFFE07B00)` / `Color(0xFF1B873B)` pill. It
+ * is the shared AR scrim now, like every other line the placement screen shows.
+ */
+@Composable
+private fun PlacementInstantBadge(label: InstantTrackingLabel?) {
+    // Latch the last value for the length of the exit fade, exactly as the scale read-out
+    // and `DemoStatusBanner` do — otherwise the pill blanks its own text on the frame the
+    // fade starts and reads as a flicker rather than a dismissal.
+    var lastLabel by remember { mutableStateOf(InstantTrackingLabel.APPROXIMATING) }
+    if (label != null) lastLabel = label
+
+    AnimatedVisibility(
+        visible = label != null,
+        enter = fadeIn(tween(SceneViewTokens.Duration.shortMillis)),
+        exit = fadeOut(tween(SceneViewTokens.Duration.shortMillis)),
+    ) {
+        Surface(
+            color = SceneViewTokens.ArOverlay.scrimDark,
+            contentColor = SceneViewTokens.ArOverlay.onScrim,
+            shape = RoundedCornerShape(50),
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.ar_placement_instant_badge,
+                    stringResource(
+                        when (lastLabel) {
+                            InstantTrackingLabel.TRACKED ->
+                                R.string.ar_placement_instant_tracked
+
+                            InstantTrackingLabel.APPROXIMATING ->
+                                R.string.ar_placement_instant_approximating
+                        }
+                    ),
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(
+                    horizontal = SceneViewTokens.Space.md,
+                    vertical = SceneViewTokens.Space.xs,
+                ),
+            )
+        }
     }
 }
 

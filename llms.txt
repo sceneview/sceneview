@@ -1100,6 +1100,13 @@ ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in t
 the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
 only declare *what* rides each placed anchor:
 
+> **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
+> `ar-placement` demo: a pre-AR chooser screen arms the model *and* the placement mode
+> (`On a plane` / `Instantly`), then the shared tap-to-place camera runs it. Instant placement is
+> that flow's `Instantly` mode, not a separate screen — `sceneview://demo/ar-instant-placement`
+> is an alias onto `ar-placement`. Prefer that shape when generating a placement UI: choose the
+> subject before opening the camera, and treat "how a tap resolves" as an option of one screen.
+
 ```kotlin
 import io.github.sceneview.ar.PlacementScene
 
@@ -5148,7 +5155,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Advanced
 
 - `materials` — Materials. PBR extensions and runtime material streaming.
-- `custom-geometry` — Custom Geometry. A torus knot generated vertex by vertex at runtime.
+- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
@@ -5158,10 +5165,9 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Augmented Reality
 
-- `ar-placement` — Tap to Place. Tap a plane to place and move a model.
+- `ar-placement` — Tap to Place. Pick a model, then tap a surface to place it.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR.
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
-- `ar-instant-placement` — Instant Placement. Place before plane detection converges.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
@@ -5173,7 +5179,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
 - `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
-- `ar-orbital` — Orbital AR. Models orbit around you in AR.
+- `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
 - `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
 - `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.
@@ -5299,7 +5305,7 @@ DemoScaffold(
 
 `settingsFabReservedSpace` resolves to the **measured** width of the Settings cluster, floored at `SETTINGS_FAB_RESERVED_SPACE` (104 dp), when the demo passes `controls`, and to `0.dp` when it does not. It is measured rather than assumed because the widest thing in that corner is the peek chip, and a chip is text — its width follows the font scale, the locale and the demo's own `peekHeader` — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`:
 
 ```kotlin notest demo-app pattern — SampleAssets/selectedSlug live in the demo app (samples/android-demo), not the SDK
 controls = {

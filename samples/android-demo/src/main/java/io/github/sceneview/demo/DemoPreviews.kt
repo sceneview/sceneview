@@ -35,7 +35,6 @@ object DemoPreviews {
         "ar-hand-tracking" to PreviewPair(R.drawable.preview_ar_hand_tracking_light, R.drawable.preview_ar_hand_tracking_dark),
         "ar-image" to PreviewPair(R.drawable.preview_ar_image_light, R.drawable.preview_ar_image_dark),
         "ar-image-stabilization" to PreviewPair(R.drawable.preview_ar_image_stabilization_light, R.drawable.preview_ar_image_stabilization_dark),
-        "ar-instant-placement" to PreviewPair(R.drawable.preview_ar_instant_placement_light, R.drawable.preview_ar_instant_placement_dark),
         "ar-measure" to PreviewPair(R.drawable.preview_ar_measure_light, R.drawable.preview_ar_measure_dark),
         "ar-ml-object-label" to PreviewPair(R.drawable.preview_ar_ml_object_label_light, R.drawable.preview_ar_ml_object_label_dark),
         "ar-orbital" to PreviewPair(R.drawable.preview_ar_orbital_light, R.drawable.preview_ar_orbital_dark),
