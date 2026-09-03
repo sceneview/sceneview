@@ -3,8 +3,8 @@
 package io.github.sceneview.demo.common.placement
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,8 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
@@ -139,26 +135,37 @@ fun PlacementChooserScreen(
 
             // The catalogue. Cards are the SAME composable the in-AR sheet draws, so a model
             // looks identical whichever surface you meet it on — the whole point of #3405.
-            // The grid is `heightIn`-capped rather than lazy-scrolling inside a scrolling
-            // column: nesting two scroll axes on the same gesture is the bug that ships.
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = CHOOSER_CARD_MIN_SIZE),
-                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                contentPadding = PaddingValues(bottom = SceneViewTokens.Space.sm),
-                userScrollEnabled = false,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = CHOOSER_GRID_MAX_HEIGHT)
-                    .semantics { testTag = "placement-chooser-grid" },
-            ) {
-                items(models.size) { index ->
-                    val model = models[index]
-                    PlacementModelCard(
-                        model = model,
-                        selected = model.id == picker.selectedId,
-                        onClick = { picker.selectedId = model.id },
-                    )
+            //
+            // A plain Column of Rows, NOT a `LazyVerticalGrid`. A lazy grid inside a
+            // scrolling column has to be given a bounded height, and any bound is a lie: the
+            // catalogue is 6 bundled rows plus however many streamed ones `SampleAssets`
+            // carries, so a `heightIn(max = …)` cap silently CLIPS the tail — with
+            // `userScrollEnabled = false` the models past the cap become unreachable, and
+            // with it enabled two scroll axes fight over the same vertical drag. Verified on
+            // `emulator-5554`: the capped version cut the catalogue off mid-way through the
+            // streamed rows. `ModelPickerSheet` reached the same conclusion for the same
+            // reason (#3324) — the whole screen scrolls, the grid does not.
+            models.chunked(CHOOSER_COLUMNS).forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = SceneViewTokens.Space.sm),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                ) {
+                    row.forEach { model ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            PlacementModelCard(
+                                model = model,
+                                selected = model.id == picker.selectedId,
+                                onClick = { picker.selectedId = model.id },
+                            )
+                        }
+                    }
+                    // A trailing odd row keeps its card at column width instead of stretching
+                    // it across the screen.
+                    repeat(CHOOSER_COLUMNS - row.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
 
@@ -329,9 +336,8 @@ private fun placementCtaHelpRes(state: PlacementCtaState): Int? = when (state) {
     PlacementCtaState.NO_MODEL -> R.string.ar_placement_cta_no_model
 }
 
-// Chooser geometry. Cards are a touch larger than the in-AR sheet's: this screen has the
-// whole viewport, and a model you are choosing deserves more pixels than one you are
-// swapping mid-session.
-private val CHOOSER_CARD_MIN_SIZE = 132.dp
-private val CHOOSER_GRID_MAX_HEIGHT = 560.dp
+// Chooser geometry. Two columns on a phone: the cards are a touch larger than the in-AR
+// sheet's, because this screen has the whole viewport and a model you are choosing deserves
+// more pixels than one you are swapping mid-session.
+private const val CHOOSER_COLUMNS = 2
 private val CTA_ICON_SIZE = 20.dp
