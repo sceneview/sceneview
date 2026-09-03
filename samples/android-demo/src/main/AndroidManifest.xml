@@ -181,13 +181,17 @@
             debug-only). Declaring the same entry here — main manifest, shipped
             in every build type — puts it in both variants' real manifest and
             resource-link pipeline. It has no launcher intent-filter and nothing
-            in the app calls it, so it never appears as an entry point; the
-            android:exported requirement to be resolvable by explicit intent is
-            the only reason it says `true`.
+            in the app calls it, so it never appears as an entry point.
+            `exported="false"`: `ActivityScenario`'s launch is an explicit intent
+            from inside the app's own process/package, which Android resolves
+            against non-exported components too — exported is only needed for a
+            *different* package to target this activity, which nothing
+            legitimate has a reason to do. Verified both `testDebugUnitTest` and
+            `testReleaseUnitTest` still resolve it with `exported="false"`.
         -->
         <activity
             android:name="androidx.activity.ComponentActivity"
-            android:exported="true"
+            android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>
