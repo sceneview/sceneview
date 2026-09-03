@@ -50,8 +50,11 @@ class CameraGestureMathTest {
     }
 
     @Test fun pinchZoomDelta_defaultConstants_haveExpectedValues() {
-        // DEFAULT_PINCH_ZOOM_SPEED re-tuned in #1427: 1/30 → 1/18 (pinch felt "hyper lent").
-        assertEquals(1f / 18f, CameraGestureDetector.DefaultCameraManipulator.DEFAULT_PINCH_ZOOM_SPEED, 1e-6f)
+        // #1427 re-tuned this 1/30 → 1/18 while the dolly step was still a fixed number of world
+        // units. #3426 made the step a *ratio* of the camera-to-target distance, so the constant's
+        // unit changed with it (log-distance per damped pixel) and 1/60 is the value that puts one
+        // full-screen pinch at ≈ ln 2. See RelativeZoomTest for the behaviour that pins it.
+        assertEquals(1f / 60f, CameraGestureDetector.DefaultCameraManipulator.DEFAULT_PINCH_ZOOM_SPEED, 1e-6f)
         assertEquals(0.7f, CameraGestureDetector.DefaultCameraManipulator.DEFAULT_PINCH_ZOOM_DAMPING, 1e-6f)
     }
 
