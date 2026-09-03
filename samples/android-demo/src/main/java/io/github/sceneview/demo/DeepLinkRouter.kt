@@ -106,10 +106,11 @@ internal object DeepLinkRouter {
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
         // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
-        // `video`, and `billboard` demos merged into `two-d-in-three-d` with a
-        // segmented-button toggle. `text` lands on the default Text tab; `image`,
-        // `video`, and `billboard` pre-select their matching tabs (#2315 — see
-        // [ALIAS_INITIAL_TAB]).
+        // `video`, and `billboard` demos merged into `two-d-in-three-d`.
+        // #3424 then rebuilt that demo from scratch around one annotated model
+        // and a set of `ViewNode` cards, so its four tabs are gone: all four
+        // aliases now land on the same (only) view and none of them carries an
+        // [ALIAS_INITIAL_TAB] entry. The deep links keep working.
         "text" to "two-d-in-three-d",
         "image" to "two-d-in-three-d",
         "video" to "two-d-in-three-d",
@@ -154,8 +155,9 @@ internal object DeepLinkRouter {
      *
      * The index is 0-based and matches the order of the demo's segmented-button modes.
      * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
-     * `text`) or to a demo that has no tabs at all (`shape`, since #3423) are
-     * intentionally omitted: they already land correctly, so an absent entry
+     * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
+     * and `billboard` since #3424) are intentionally omitted: they already land correctly,
+     * so an absent entry
      * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
@@ -164,10 +166,6 @@ internal object DeepLinkRouter {
         "movable-light" to 1,
         // camera-gestures — [Camera Modes, Node Gestures]
         "gesture-editing" to 1,
-        // two-d-in-three-d — [Text, Image, Video, Billboard]
-        "image" to 1,
-        "video" to 2,
-        "billboard" to 3,
         // lighting-lab — [Sky, Environment, Reflections, Post-FX]
         "environment" to 1,
         "reflection-probes" to 2,

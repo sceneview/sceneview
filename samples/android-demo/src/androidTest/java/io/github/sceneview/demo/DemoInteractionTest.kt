@@ -714,40 +714,62 @@ class DemoInteractionTest {
     // tab). Covered by `lightingLab_allTabs` above, which taps the Environment tab
     // and cycles the HDR chips.
 
-    // ── 12. Billboard — skipped until lib bug #XXX fixed ──────────────────────
+    // ── 12. 2D in 3D — Compose cards on ViewNode quads ────────────────────
+    //
+    // #3424 rebuilt this demo from scratch around `ViewNode`, so the four
+    // segmented tabs (Text / Image / Video / Billboard) that used to be driven
+    // from sections 20, 21 and 22b below are gone; the retired `text`, `image`,
+    // `video` and `billboard` deep-link ids still resolve here through
+    // `DEMO_ID_ALIASES`, but none of them pre-selects anything any more.
+    //
+    // What replaced them: one turntable scene with three world-anchored call-out
+    // cards and one live control card, plus the dock's Billboard toggle, the
+    // Always-on-top switch and two sliders.
+    //
+    // The retired Billboard tab was also the home of the `@Ignore`d
+    // `billboard_visibilityChips`, parked since 2026-04-23 on a Filament UAF
+    // (`Invalid texture still bound to MaterialInstance`, SIGABRT — #887) that
+    // fired when Compose dropped a `BillboardNode`/`ImageNode` and its
+    // `MaterialInstance` was destroyed with a texture still bound. Neither node
+    // type is in this demo any more, so the test goes with the scene it drove;
+    // #887 stays open on `sceneview/` and is not claimed fixed here.
 
-    /**
-     * **Library bug discovered by this test suite on 2026-04-23** — DO NOT UN-IGNORE until
-     * fixed in `sceneview/` (BillboardNode / ImageNode teardown):
-     *
-     * ```
-     * E Filament: Precondition in commit:240
-     *   reason: Invalid texture still bound to MaterialInstance: 'Transparent Textured'
-     * F libc: SIGABRT in io.github.sceneview.demo
-     * ```
-     *
-     * Reproducer: just open BillboardDemo and close it (or toggle the visibility chip).
-     * Root cause: when Compose drops the `BillboardNode` / `ImageNode` from the scene, its
-     * `MaterialInstance` is destroyed while a texture is still bound to it. The unbind must
-     * happen before destroy in the Node lifecycle.
-     *
-     * Visual validation of my framing fix (commit 34187a81) is confirmed elsewhere by the
-     * Pixel 9 screenshot `tools/qa-screenshots/pixel9/final/12_billboard.png` — no need to
-     * re-capture here.
-     */
     @Test
-    @org.junit.Ignore(
-        "Filament UAF on visibility toggle — `Invalid texture still bound to " +
-            "MaterialInstance` SIGABRT, see comment block above. Re-enable once the " +
-            "BillboardNode / ImageNode teardown order is fixed in sceneview/. (#887)"
-    )
-    fun billboard_visibilityChips() {
-        // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d`.
+    fun twoDInThreeD_billboardAndDepth() {
         openDemo("two-d-in-three-d")
-        tap("Billboard")
-        screenshot("49_billboard_both_visible")
-        tap("Billboard Panel"); screenshot("50_billboard_only_fixed")
-        tap("Fixed Image"); screenshot("51_billboard_none")
+        screenshot("49_twoDInThreeD_default")
+
+        // Billboard is a DockItem, not a sheet control — it lives in the bottom
+        // floating toolbar and is reached by its content description.
+        tapByDesc("Billboard")
+        screenshot("50_twoDInThreeD_fixed_orientation")
+
+        tapByDesc("Billboard")
+        screenshot("51_twoDInThreeD_billboarded_again")
+
+        // Depth: off, the model swallows the far card; on, the card floats over it.
+        tap("Always on top")
+        screenshot("52_twoDInThreeD_always_on_top")
+
+        tap("Always on top")
+        screenshot("52a_twoDInThreeD_depth_tested")
+    }
+
+    @Test
+    fun twoDInThreeD_cardSizeAndDistance() {
+        openDemo("two-d-in-three-d")
+
+        // Both sliders are LabeledSliders, so they are driven by contentDescription.
+        dragSliderByDesc("Card size", fraction = 1.0f)
+        screenshot("52b_twoDInThreeD_cards_max")
+        dragSliderByDesc("Card size", fraction = 0.0f)
+        screenshot("52c_twoDInThreeD_cards_min")
+        dragSliderByDesc("Card size", fraction = 0.5f)
+
+        dragSliderByDesc("Card distance", fraction = 1.0f)
+        screenshot("52d_twoDInThreeD_cards_far")
+        dragSliderByDesc("Card distance", fraction = 0.0f)
+        screenshot("52e_twoDInThreeD_cards_near")
     }
 
     // ── 13. Secondary Camera — 4 PiP angle chips ──────────────────────────────
@@ -833,50 +855,11 @@ class DemoInteractionTest {
     // #2239 Batch 2 — `reflection-probes` consolidated into `lighting-lab`
     // (Reflections tab). Covered by `lightingLab_allTabs` above.
 
-    // ── 20. Image — scale slider ──────────────────────────────────────────────
-
-    @Test
-    fun image_scaleSlider() {
-        // #2239 Batch 1 — `image` consolidated into `two-d-in-three-d`.
-        openDemo("two-d-in-three-d")
-        tap("Image")
-        screenshot("79_image_default_scale")
-
-        dragSlider("Scale:", fraction = 1.0f)
-        screenshot("80_image_max_scale")
-
-        dragSlider("Scale:", fraction = 0.0f)
-        screenshot("81_image_min_scale")
-
-        dragSlider("Scale:", fraction = 0.5f)
-        screenshot("81a_image_mid_scale")
-    }
-
-    // ── 21. Text Labels — font-size slider ────────────────────────────────────
-
-    @Test
-    fun textLabels_fontSizeSlider() {
-        // #2239 Batch 1 — `text` consolidated into `two-d-in-three-d` (Text is the
-        // default landing tab, so no extra tap is needed before the slider drives).
-        openDemo("two-d-in-three-d")
-        screenshot("82_text_default")
-
-        dragSlider("Font Size:", fraction = 1.0f)
-        screenshot("83_text_max_size")
-
-        dragSlider("Font Size:", fraction = 0.0f)
-        screenshot("84_text_min_size")
-
-        dragSlider("Font Size:", fraction = 0.5f)
-        screenshot("84b_text_mid_size")
-
-        // "Display Text" OutlinedTextField — the demo seeds it with "Hello SceneView",
-        // so we look up the field by that current value (not the label) to get the input
-        // itself rather than the floating label element.
-        typeInto("Hello SceneView", "SceneView Works")
-        Thread.sleep(600)
-        screenshot("84a_text_custom_input")
-    }
+    // ── 20/21. Image + Text Labels ─────────────────────────────
+    // #2239 Batch 1 consolidated `image` and `text` into `two-d-in-three-d`;
+    // #3424 then rebuilt that demo from scratch, so its Image and Text tabs — and
+    // the `Scale:` / `Font Size:` sliders and the "Display Text" field these two
+    // tests drove — no longer exist. Covered by `twoDInThreeD_*` in section 12.
 
     // ── 22a. ViewNode — visible toggle + coord-tap on the in-scene card ──────
 
@@ -912,21 +895,10 @@ class DemoInteractionTest {
         screenshot("91_viewNode_visible_back")
     }
 
-    // ── 22b. Video — just verify the scaffold + initial render ────────────────
-
-    @Test
-    fun video_initialRender() {
-        // #2239 Batch 1 — `video` consolidated into `two-d-in-three-d`.
-        openDemo("two-d-in-three-d")
-        tap("Video")
-        Thread.sleep(1500)  // let the video texture warm up
-        screenshot("92_video_initial")
-
-        // Play / Pause icon-only button (contentDescription toggles with state).
-        // After openDemo the player is auto-playing so the button is in "Pause" state.
-        tapByDesc("Pause"); screenshot("92a_video_paused")
-        tapByDesc("Play"); screenshot("92b_video_resumed")
-    }
+    // ── 22b. Video ─────────────────────────────────────
+    // #2239 Batch 1 consolidated `video` into `two-d-in-three-d`; #3424's rebuild
+    // dropped the `VideoNode` tab along with the rest of them. `VideoNode` itself
+    // is unchanged and still shipped — it simply has no demo driving it here.
 
     // ── 22c. Model Viewer — just verify the scaffold + initial render ────────
 

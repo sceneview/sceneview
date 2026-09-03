@@ -1,857 +1,649 @@
 package io.github.sceneview.demo.demos
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RadialGradient
-import android.graphics.RectF
-import android.graphics.Shader
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.filled.Portrait
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.google.android.filament.Skybox
-import dev.romainguy.kotlin.math.Float3
-import dev.romainguy.kotlin.math.lookAt
+import com.google.android.filament.LightManager
+import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
+import io.github.sceneview.components.PRIORITY_DEFAULT
+import io.github.sceneview.components.PRIORITY_LAST
+import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.demos.internal.Callout
+import io.github.sceneview.demo.demos.internal.CalloutLayout
 import io.github.sceneview.demo.rememberFirstFrameState
-import io.github.sceneview.environment.rememberHDREnvironment
-import io.github.sceneview.gesture.CameraGestureDetector
+import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
-import io.github.sceneview.math.Size
-import io.github.sceneview.math.Transform
+import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberCameraManipulator
+import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.safeDestroySkybox
-import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.rememberModelInstance
+import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberViewNodeManager
+import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.abs
 
 /**
- * Unified "2D in 3D" demo — consolidates the retired `text`, `image`, `video`,
- * and `billboard` demos behind a single segmented-button toggle (#2239 Batch 1).
+ * **2D in 3D** — Jetpack Compose UI living inside the 3D scene, in world space.
  *
- * Each sub-mode showcases one way to put 2D content into a 3D scene:
+ * A `ViewNode` renders a Compose hierarchy into an OpenGL texture and puts that texture on a
+ * quad in the scene. The result is not a picture of a card: it is the card, laid out by Compose,
+ * themed by `MaterialTheme`, and — since #2845 — **interactive**, because the scene's picking ray
+ * is converted back into a view pixel and the whole `DOWN → MOVE → UP` stream is dispatched into
+ * the embedded hierarchy.
  *
- * - **Text** — `TextNode` labels stacked at three world positions, with
- *   editable string + size. (Formerly `text`.)
- * - **Image** — `ImageNode` photo gallery with three angled framed pictures.
- *   (Formerly `image`.)
- * - **Video** — `VideoNode` streaming an MP4 with surface variants, cinematic
- *   camera, and play/mute. (Formerly `video`.)
- * - **Billboard** — `BillboardNode` (always faces camera) vs fixed `ImageNode`,
- *   planted on a ground plane. (Formerly `billboard`.)
+ * The scene is a product annotation: the Khronos *Damaged Helmet* on a slow turntable, with three
+ * call-out cards pinned around it and one live control card floating in front. Every question a
+ * developer actually has about 2D-in-3D is a control in the sheet.
  *
- * Each sub-mode keeps its own `SceneView` (different cameras, different
- * environments — video needs an HDR IBL, billboard needs an angled ground
- * camera). Old deep links route through
+ * ## The four decisions this demo exists to show
+ *
+ * | Question | Control | What changes |
+ * |---|---|---|
+ * | Should the card face the viewer? | **Billboard** (dock) | Off, the cards ride the turntable and go edge-on, then show their backs. On, they pivot to stay square. |
+ * | Should the model be able to hide it? | **Always on top** | Off, the Vents card is half-swallowed by the helmet. On, `setDepthCulling(false)` + `PRIORITY_LAST` float it over everything. |
+ * | How big is a card in metres? | **Card size** | A `ViewNode` renders at `pxPerUnits` = 250 px/m, so a 264 dp card is metres wide before you scale it. |
+ * | How far off the subject? | **Card distance** | Orbit radius of the three call-outs. |
+ *
+ * ## World-anchored labels, viewer-anchored controls
+ *
+ * The three call-outs are children of the turntable: they belong to the *object*, so they turn
+ * with it. The **Live Compose** card is not: a control the user may need has no business orbiting
+ * out of reach, so it is pinned in world space, billboarded every frame, and always drawn on top.
+ * Tap its button and the turntable stops — that is a real `Button.onClick`, through a Filament
+ * picking ray, in a `ComposeView` that is not on screen.
+ *
+ * ## Three things that bite every `ViewNode`
+ *
+ * 1. **Pass `viewNodeWindowManager` to the `SceneView`.** Without it the off-screen window is
+ *    never attached, `onLayout` never runs, the `SurfaceTexture` stays 0×0, and the quad renders
+ *    as a black rectangle (#801).
+ * 2. **`viewContent` inherits none of your `CompositionLocal`s.** It composes in its own window,
+ *    so `MaterialTheme` falls back to the M3 light defaults — a card that stayed pale in dark
+ *    mode while every other surface switched. Re-apply the theme inside, as [CalloutCard] does.
+ * 3. **One `WindowManager` sizes itself to its largest child.** All four cards here share one
+ *    manager, so all four are pinned to the same [CARD_WIDTH] × [CARD_HEIGHT] box. Let one grow
+ *    and every other quad silently resizes with it.
+ *
+ * And one that is not in the docs: a white Material card on an `unlit = true` `ViewNode` is a
+ * full-brightness block in an HDR pipeline, so SceneView's default bloom bleeds a halo around
+ * every label. These are shaded instead — see [AnnotationCard].
+ *
+ * Rebuilt from scratch for [#3424](https://github.com/sceneview/sceneview/issues/3424). The demo
+ * it replaces was four unrelated scenes behind a segmented button — `TextNode` labels, a gallery
+ * of procedurally-drawn `ImageNode`s, an MP4 on a `VideoNode` with a bespoke cinematic camera,
+ * and a `BillboardNode` — and used no `ViewNode` at all, so the app's headline "2D in 3D" entry
+ * never showed Compose in 3D. Its Billboard tab was also inert: both `BillboardNode` and
+ * `TextNode` billboard only when handed a `cameraPositionProvider`, and neither got one, so the
+ * sign the caption promised would "stay readable" never turned. The retired `text`, `image`,
+ * `video` and `billboard` deep links still resolve here through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  */
 @Composable
 fun TwoDInThreeDDemo(onBack: () -> Unit) {
-    var mode by remember {
-        mutableStateOf(initialDemoMode(TwoDInThreeDMode.entries, TwoDInThreeDMode.Text))
+    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): bypass the
+    // Filament-backed body BEFORE any rememberEngine() call — LayoutLib ships no .so files.
+    if (LocalInspectionMode.current) {
+        DemoPreviewPlaceholder(title = "2D in 3D", onBack = onBack)
+        return
     }
-    when (mode) {
-        TwoDInThreeDMode.Text -> TextSection(onBack, mode) { mode = it }
-        TwoDInThreeDMode.Image -> ImageSection(onBack, mode) { mode = it }
-        TwoDInThreeDMode.Video -> VideoSection(onBack, mode) { mode = it }
-        TwoDInThreeDMode.Billboard -> BillboardSection(onBack, mode) { mode = it }
-    }
-}
 
-private enum class TwoDInThreeDMode(val label: String) {
-    Text("Text"),
-    Image("Image"),
-    Video("Video"),
-    Billboard("Billboard"),
-}
-
-@Composable
-private fun ModeSelector(
-    current: TwoDInThreeDMode,
-    onModeChange: (TwoDInThreeDMode) -> Unit,
-) {
-    val modes = TwoDInThreeDMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(m.label) },
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-}
-
-// ─── Text section ──────────────────────────────────────────────────────────
-
-@Composable
-private fun TextSection(
-    onBack: () -> Unit,
-    mode: TwoDInThreeDMode,
-    onModeChange: (TwoDInThreeDMode) -> Unit,
-) {
-    var inputText by remember { mutableStateOf("Hello SceneView") }
-    var fontSize by remember { mutableFloatStateOf(48f) }
+    var billboard by remember { mutableStateOf(true) }
+    var alwaysOnTop by remember { mutableStateOf(false) }
+    var cardScale by remember { mutableFloatStateOf(CalloutLayout.DEFAULT_CARD_SCALE) }
+    var spread by remember { mutableFloatStateOf(CalloutLayout.DEFAULT_SPREAD) }
+    var spinning by remember { mutableStateOf(true) }
+    var turntableYaw by remember { mutableFloatStateOf(CalloutLayout.QA_SPIN_DEGREES) }
 
     val engine = rememberEngine()
-    val materialLoader = rememberMaterialLoader(engine)
-    val firstFrame = rememberFirstFrameState()
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_two_d_in_three_d_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Text("Text Content", style = MaterialTheme.typography.labelLarge)
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                label = { Text("Display Text") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            LabeledSlider(
-                label = "Font Size",
-                value = fontSize,
-                onValueChange = { fontSize = it },
-                valueRange = 16f..96f,
-                valueText = "${fontSize.toInt()}px",
-            )
-        }
-    ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            engine = engine,
-            materialLoader = materialLoader,
-            onFrame = firstFrame.onFrame,
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0f, 1.5f),
-                targetPosition = Position(0f, 0f, 0f),
-            ),
-        ) {
-            TextNode(
-                text = inputText,
-                fontSize = fontSize,
-                textColor = android.graphics.Color.WHITE,
-                backgroundColor = 0xCC000000.toInt(),
-                widthMeters = 0.7f,
-                heightMeters = 0.18f,
-                position = Position(x = 0f, y = 0.22f),
-                apply = { materialInstance.setDoubleSided(true) },
-            )
-            TextNode(
-                text = "SceneView 4.0",
-                fontSize = fontSize,
-                textColor = 0xFFA4C1FF.toInt(),
-                backgroundColor = 0xCC161B22.toInt(),
-                widthMeters = 0.7f,
-                heightMeters = 0.18f,
-                position = Position(x = 0f, y = 0f),
-                apply = { materialInstance.setDoubleSided(true) },
-            )
-            TextNode(
-                text = "3D Text Labels",
-                fontSize = fontSize,
-                textColor = 0xFFD2A8FF.toInt(),
-                backgroundColor = 0xCC161B22.toInt(),
-                widthMeters = 0.7f,
-                heightMeters = 0.18f,
-                position = Position(x = 0f, y = -0.22f),
-                apply = { materialInstance.setDoubleSided(true) },
-            )
-        }
-    }
-}
-
-// ─── Image section ─────────────────────────────────────────────────────────
-
-@Composable
-private fun ImageSection(
-    onBack: () -> Unit,
-    mode: TwoDInThreeDMode,
-    onModeChange: (TwoDInThreeDMode) -> Unit,
-) {
-    var scaleFactor by remember { mutableFloatStateOf(1f) }
-
-    val engine = rememberEngine()
-    val materialLoader = rememberMaterialLoader(engine)
-
-    val sunsetPhoto = remember { createScenePhoto(ImageScene.SUNSET) }
-    val noonPhoto = remember { createScenePhoto(ImageScene.NOON) }
-    val nightPhoto = remember { createScenePhoto(ImageScene.NIGHT) }
-
-    val firstFrame = rememberFirstFrameState()
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_two_d_in_three_d_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            LabeledSlider(
-                label = "Gallery scale",
-                value = scaleFactor,
-                onValueChange = { scaleFactor = it },
-                valueRange = 0.4f..2f,
-                valueText = "${"%.1f".format(Locale.US, scaleFactor)}x",
-            )
-        }
-    ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            materialLoader = materialLoader,
-            cameraManipulator = rememberCameraManipulator()
-        ) {
-            ImageNode(
-                bitmap = noonPhoto,
-                position = Position(x = 0f, y = 0.1f, z = 0f),
-                scale = Scale(0.8f * scaleFactor)
-            )
-            ImageNode(
-                bitmap = sunsetPhoto,
-                position = Position(x = -0.85f, y = -0.05f, z = -0.45f),
-                rotation = Rotation(y = 32f),
-                scale = Scale(0.62f * scaleFactor)
-            )
-            ImageNode(
-                bitmap = nightPhoto,
-                position = Position(x = 0.85f, y = -0.05f, z = -0.45f),
-                rotation = Rotation(y = -32f),
-                scale = Scale(0.62f * scaleFactor)
-            )
-        }
-    }
-}
-
-private enum class ImageScene(
-    val skyTop: Int,
-    val skyBottom: Int,
-    val sun: Int,
-    val sunY: Float,
-    val hillFront: Int,
-    val hillBack: Int,
-) {
-    SUNSET(0xFF1B2A52.toInt(), 0xFFF4A259.toInt(), 0xFFFFE3A3.toInt(), 0.62f, 0xFF1E2A38.toInt(), 0xFF3A4A63.toInt()),
-    NOON(0xFF2F6FB8.toInt(), 0xFFBFE3F5.toInt(), 0xFFFFFFFF.toInt(), 0.30f, 0xFF2F5D3A.toInt(), 0xFF4C8455.toInt()),
-    NIGHT(0xFF05060F.toInt(), 0xFF1E2747.toInt(), 0xFFEDEFF7.toInt(), 0.26f, 0xFF0A1019.toInt(), 0xFF1A2436.toInt()),
-}
-
-private fun createScenePhoto(scene: ImageScene): Bitmap {
-    val w = 512
-    val h = 384
-    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val frameInset = 18f
-    canvas.drawColor(0xFFEAE6DE.toInt())
-    val photo = RectF(frameInset, frameInset, w - frameInset, h - frameInset)
-    canvas.save()
-    canvas.clipRect(photo)
-    val skyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = LinearGradient(
-            0f, photo.top, 0f, photo.bottom,
-            scene.skyTop, scene.skyBottom, Shader.TileMode.CLAMP
-        )
-    }
-    canvas.drawRect(photo, skyPaint)
-    val sunX = photo.left + photo.width() * 0.68f
-    val sunY = photo.top + photo.height() * scene.sunY
-    val sunRadius = photo.width() * 0.16f
-    val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = RadialGradient(
-            sunX, sunY, sunRadius * 2.4f,
-            intArrayOf(scene.sun, scene.sun and 0x00FFFFFF),
-            floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
-        )
-    }
-    canvas.drawCircle(sunX, sunY, sunRadius * 2.4f, glowPaint)
-    canvas.drawCircle(sunX, sunY, sunRadius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = scene.sun
-    })
-    canvas.drawPath(hillPath(photo, 0.62f, 0.10f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = scene.hillBack
-    })
-    canvas.drawPath(hillPath(photo, 0.78f, 0.16f), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = scene.hillFront
-    })
-    canvas.restore()
-    canvas.drawRect(photo, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        color = 0x33000000
-    })
-    return bitmap
-}
-
-private fun hillPath(photo: RectF, baseY: Float, amplitude: Float): Path {
-    val crest = photo.top + photo.height() * baseY
-    val amp = photo.height() * amplitude
-    return Path().apply {
-        moveTo(photo.left, photo.bottom)
-        lineTo(photo.left, crest)
-        cubicTo(
-            photo.left + photo.width() * 0.30f, crest - amp,
-            photo.left + photo.width() * 0.55f, crest + amp,
-            photo.left + photo.width() * 0.78f, crest - amp * 0.4f
-        )
-        cubicTo(
-            photo.left + photo.width() * 0.90f, crest - amp * 0.9f,
-            photo.right, crest,
-            photo.right, crest
-        )
-        lineTo(photo.right, photo.bottom)
-        close()
-    }
-}
-
-// ─── Video section ─────────────────────────────────────────────────────────
-
-@Composable
-private fun VideoSection(
-    onBack: () -> Unit,
-    mode: TwoDInThreeDMode,
-    onModeChange: (TwoDInThreeDMode) -> Unit,
-) {
-    var isPlaying by rememberSaveable { mutableStateOf(true) }
-    var isReady by remember { mutableStateOf(false) }
-    var isMuted by remember { mutableStateOf(true) }
-    var surfaceMode by remember { mutableStateOf(VideoSurfaceMode.PLANE) }
-    var cinematic by remember { mutableStateOf(true) }
-
-    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    val hdrEnvironment = rememberHDREnvironment(
-        environmentLoader,
-        "environments/studio_warm_2k.hdr",
-        createSkybox = false,
-    )
-    val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val blackSkybox = remember(engine) {
-        Skybox.Builder()
-            .color(floatArrayOf(0f, 0f, 0f, 1f))
-            .build(engine)
-    }
-    DisposableEffect(blackSkybox) {
-        onDispose { engine.safeDestroySkybox(blackSkybox) }
-    }
-    val activeEnvironment = hdrEnvironment?.let { hdr ->
-        remember(hdr, blackSkybox) { hdr.copy(skybox = blackSkybox) }
-    } ?: fallbackEnvironment
-
-    val context = LocalContext.current
-    val playIntent = rememberUpdatedState(isPlaying)
-    val player = remember {
-        MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                    .build()
-            )
-            isLooping = true
-            setVolume(0f, 0f)
-            context.assets.openFd("videos/sample.mp4").use { afd ->
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-            }
-            setOnPreparedListener {
-                isReady = true
-                if (playIntent.value) start()
-            }
-            prepareAsync()
-        }
-    }
-    DisposableEffect(player) {
-        onDispose { player.release() }
+    // Owned explicitly, because the billboard needs to read the live eye position every frame —
+    // the user can orbit, so the camera's home is only where it starts.
+    val cameraNode = rememberCameraNode(engine)
+    var cameraPosition by remember {
+        mutableStateOf(CalloutLayout.cameraHomePosition(DemoSettings.cameraDistance ?: CalloutLayout.CAMERA_DISTANCE))
     }
 
-    LaunchedEffect(isMuted, isReady) {
-        if (isReady) {
-            val v = if (isMuted) 0f else 1f
-            player.setVolume(v, v)
-        }
-    }
+    // One manager for all four cards — see the class KDoc's third gotcha for the size contract
+    // that buys. It must also be handed to the SceneView below, or the quads render black (#801).
+    val viewNodeManager = rememberViewNodeManager()
 
-    val cinematicManipulator = rememberCinematicCameraManipulator(
-        trigger = isReady,
-        cinematic = cinematic,
-    )
-
+    val helmet = rememberModelInstance(modelLoader, HELMET_ASSET)
     val firstFrame = rememberFirstFrameState()
+
+    // Turntable off the Choreographer. `spinning` is a key, so the loop simply stops when the
+    // in-scene button is tapped rather than spinning a paused counter.
+    LifecycleAwareLaunchedEffect(spinning, DemoSettings.qaMode) {
+        if (!spinning || DemoSettings.qaMode) return@LifecycleAwareLaunchedEffect
+        var lastNanos = 0L
+        while (true) {
+            withFrameNanos { nanos ->
+                if (lastNanos != 0L) {
+                    turntableYaw = CalloutLayout.nextTurntableYaw(turntableYaw, nanos - lastNanos)
+                }
+                lastNanos = nanos
+            }
+        }
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_two_d_in_three_d_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Text("Playback", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                IconButton(onClick = {
-                    isPlaying = !isPlaying
-                    if (isReady) {
-                        if (isPlaying) player.start() else player.pause()
-                    }
-                }) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play"
-                    )
-                }
-                IconButton(onClick = { isMuted = !isMuted }) {
-                    Icon(
-                        if (isMuted) Icons.AutoMirrored.Filled.VolumeOff
-                        else Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = if (isMuted) "Unmute" else "Mute"
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Surface", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                VideoSurfaceMode.values().forEach { m ->
-                    FilterChip(
-                        selected = surfaceMode == m,
-                        onClick = { surfaceMode = m },
-                        label = { Text(m.label) },
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Camera", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = cinematic,
-                    onClick = { cinematic = true },
-                    label = { Text("Cinematic") },
-                )
-                FilterChip(
-                    selected = !cinematic,
-                    onClick = { cinematic = false },
-                    label = { Text("Orbit") },
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Big Buck Bunny — © Blender Foundation (CC-BY 3.0)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // The two facts a reader needs at a glance and cannot get from the picture: how wide the
+        // quads actually are in metres, and whether the depth buffer still applies to them.
+        peekHeader = statusLabel(cardScale, alwaysOnTop),
+        onResetSettings = {
+            billboard = true
+            alwaysOnTop = false
+            cardScale = CalloutLayout.DEFAULT_CARD_SCALE
+            spread = CalloutLayout.DEFAULT_SPREAD
+            spinning = true
+        },
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.Portrait,
+                label = BILLBOARD_LABEL,
+                onClick = { billboard = !billboard },
+                selected = billboard,
             )
-        }
+        ),
+        controls = {
+            TwoDInThreeDControls(
+                alwaysOnTop = alwaysOnTop,
+                onAlwaysOnTopChange = { alwaysOnTop = it },
+                cardScale = cardScale,
+                onCardScaleChange = { cardScale = it },
+                spread = spread,
+                onSpreadChange = { spread = it },
+            )
+        },
     ) {
         SceneView(
             modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
             engine = engine,
+            modelLoader = modelLoader,
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
-            environment = activeEnvironment,
-            cameraManipulator = cinematicManipulator,
-        ) {
-            VideoNode(player = player)
-
-            key(surfaceMode) {
-                when (surfaceMode) {
-                    VideoSurfaceMode.PLANE -> {
-                        // No companion geometry.
-                    }
-                    VideoSurfaceMode.CUBE -> {
-                        val chromeMaterial = rememberMaterialInstance(
-                            materialLoader,
-                            color = androidx.compose.ui.graphics.Color(
-                                0.92f, 0.92f, 0.95f, 1f
-                            ),
-                            metallic = 1f,
-                            roughness = 0.12f,
-                            reflectance = 0.8f,
-                        )
-                        CubeNode(
-                            size = Size(1.0f, 1.0f, 1.0f),
-                            materialInstance = chromeMaterial,
-                            position = Position(x = 1.6f, y = 0.0f, z = -0.2f),
-                            rotation = Rotation(x = 15f, y = 35f, z = 12f),
-                        )
-                    }
-                    VideoSurfaceMode.REFLECTIVE_FLOOR -> {
-                        val floorMaterial = rememberMaterialInstance(
-                            materialLoader,
-                            color = androidx.compose.ui.graphics.Color(
-                                0.04f, 0.04f, 0.05f, 1f
-                            ),
-                            metallic = 1f,
-                            roughness = 0.06f,
-                            reflectance = 0.95f,
-                        )
-                        PlaneNode(
-                            size = Size(5f, 0.001f, 5f),
-                            materialInstance = floorMaterial,
-                            position = Position(x = 0f, y = -0.55f, z = 0f),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private enum class VideoSurfaceMode(val label: String) {
-    PLANE("Plane"),
-    CUBE("Cube"),
-    REFLECTIVE_FLOOR("Reflective"),
-}
-
-private data class CameraPose(val eye: Position, val target: Position)
-
-private val CINEMATIC_POSES = listOf(
-    CameraPose(eye = Position(0f, 0.4f, 4.0f), target = Position(0f, 0f, 0f)),
-    CameraPose(eye = Position(0f, 0.0f, 0.6f), target = Position(0f, 0f, 0f)),
-    CameraPose(eye = Position(2.5f, 0.3f, 0.8f), target = Position(0f, 0f, 0f)),
-    CameraPose(eye = Position(-0.4f, 2.0f, 1.4f), target = Position(0f, 0f, 0f)),
-)
-
-private const val POSE_HOLD_MS = 1_600
-private const val POSE_TRANSITION_MS = 2_400
-private const val ORBIT_PERIOD_MS = 22_000
-private const val ORBIT_RADIUS = 3.5f
-private const val ORBIT_HEIGHT = 0.5f
-
-private class CinematicCameraManipulator(
-    private val eyeProvider: () -> Position,
-    private val targetProvider: () -> Position,
-) : CameraGestureDetector.CameraManipulator {
-
-    private var fallback: CameraGestureDetector.DefaultCameraManipulator? = null
-    private var viewportW = 1
-    private var viewportH = 1
-
-    private fun cinematicTransform(): Transform {
-        val eye = eyeProvider()
-        val target = targetProvider()
-        val mat = lookAt(eye = eye, target = target, up = Float3(0f, 1f, 0f))
-        return Transform(mat)
-    }
-
-    private fun ensureFallback() {
-        if (fallback == null) {
-            fallback = CameraGestureDetector.DefaultCameraManipulator(
-                eyePosition = eyeProvider(),
-                targetPosition = targetProvider(),
-            ).also { it.setViewport(viewportW, viewportH) }
-        }
-    }
-
-    override fun setViewport(width: Int, height: Int) {
-        viewportW = width.coerceAtLeast(1)
-        viewportH = height.coerceAtLeast(1)
-        fallback?.setViewport(viewportW, viewportH)
-    }
-
-    override fun getTransform(): Transform =
-        fallback?.getTransform() ?: cinematicTransform()
-
-    override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
-        ensureFallback(); fallback?.grabBegin(x, y, strafe)
-    }
-
-    override fun grabUpdate(x: Int, y: Int) {
-        fallback?.grabUpdate(x, y)
-    }
-
-    override fun grabEnd() {
-        fallback?.grabEnd()
-    }
-
-    override fun scrollBegin(x: Int, y: Int, separation: Float) {
-        ensureFallback(); fallback?.scrollBegin(x, y, separation)
-    }
-
-    override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
-        fallback?.scrollUpdate(x, y, prevSeparation, currSeparation)
-    }
-
-    override fun scrollEnd() {
-        fallback?.scrollEnd()
-    }
-
-    override fun update(deltaTime: Float) {
-        fallback?.update(deltaTime)
-    }
-}
-
-@Composable
-private fun rememberCinematicCameraManipulator(
-    trigger: Boolean,
-    cinematic: Boolean,
-): CinematicCameraManipulator {
-    val eyeX = remember { Animatable(CINEMATIC_POSES[0].eye.x) }
-    val eyeY = remember { Animatable(CINEMATIC_POSES[0].eye.y) }
-    val eyeZ = remember { Animatable(CINEMATIC_POSES[0].eye.z) }
-    val orbitPhase = remember { Animatable(0f) }
-    val cinematicState = rememberUpdatedState(cinematic)
-
-    LaunchedEffect(trigger, cinematic, DemoSettings.qaMode) {
-        if (!trigger || DemoSettings.qaMode) return@LaunchedEffect
-        if (cinematic) {
-            var i = 0
-            while (true) {
-                val next = CINEMATIC_POSES[(i + 1) % CINEMATIC_POSES.size]
-                val spec = tween<Float>(
-                    durationMillis = POSE_TRANSITION_MS,
-                    easing = FastOutSlowInEasing,
-                )
-                coroutineScope {
-                    launch { eyeX.animateTo(next.eye.x, spec) }
-                    launch { eyeY.animateTo(next.eye.y, spec) }
-                    launch { eyeZ.animateTo(next.eye.z, spec) }
-                }
-                delay(POSE_HOLD_MS.toLong())
-                i++
-            }
-        } else {
-            val orbitSpec = tween<Float>(
-                durationMillis = ORBIT_PERIOD_MS,
-                easing = LinearEasing,
-            )
-            while (true) {
-                orbitPhase.snapTo(0f)
-                orbitPhase.animateTo(1f, orbitSpec)
-            }
-        }
-    }
-
-    return remember {
-        CinematicCameraManipulator(
-            eyeProvider = {
-                if (cinematicState.value) {
-                    Position(eyeX.value, eyeY.value, eyeZ.value)
-                } else {
-                    val rad = (orbitPhase.value * 2.0 * Math.PI).toFloat()
-                    Position(
-                        x = sin(rad) * ORBIT_RADIUS,
-                        y = ORBIT_HEIGHT,
-                        z = cos(rad) * ORBIT_RADIUS,
-                    )
+            cameraNode = cameraNode,
+            // Required. See gotcha 1 in the class KDoc.
+            viewNodeWindowManager = viewNodeManager,
+            // The shared model-demo IBL (#2110), no skybox. SceneView's *default* environment
+            // pairs a neutral IBL with a solid black skybox, and the helmet's shell is metallic:
+            // with nothing bright to reflect it renders solid black, which is exactly the bug
+            // #2110 was filed for. Leaving the skybox off keeps the subject floating on the
+            // demo's own background, so one scene reads correctly in both light and dark.
+            environment = rememberModelDemoEnvironment(environmentLoader),
+            cameraManipulator = rememberCameraManipulator(
+                // The orbit distance is the LENGTH of `orbitHomePosition` (see GeometryLayout and
+                // #2930), and `camera_distance` (#2652) is honoured so a capture run can reframe
+                // the scene from adb.
+                orbitHomePosition = CalloutLayout.cameraHomePosition(
+                    DemoSettings.cameraDistance ?: CalloutLayout.CAMERA_DISTANCE
+                ),
+                targetPosition = CalloutLayout.targetPosition(),
+            ),
+            onFrame = { nanos ->
+                firstFrame.onFrame(nanos)
+                // Gate the state write on real movement. The camera is static until the user
+                // orbits, and writing an equal Position every frame would recompose the whole
+                // demo sixty times a second for nothing.
+                val eye = cameraNode.worldPosition
+                if (movedPerceptibly(cameraPosition, eye)) {
+                    cameraPosition = eye
                 }
             },
-            targetProvider = { Position(0f, 0f, 0f) },
-        )
+        ) {
+            // Warm key from the upper front-left, on top of SceneView's own 10 000-lux main and
+            // 3 000-lux fill. It rakes across the helmet's dents so the normal map the Shell card
+            // talks about is actually visible.
+            LightNode(
+                type = LightManager.Type.DIRECTIONAL,
+                apply = {
+                    color(1f, 0.96f, 0.9f)
+                    intensity(4_500f)
+                    direction(0.4f, -0.7f, -0.55f)
+                    castShadows(false)
+                },
+            )
+
+            // ── The turntable: the model and everything anchored to it ────────────────────────
+            Node(rotation = Rotation(y = turntableYaw)) {
+                helmet?.let { instance ->
+                    ModelNode(
+                        modelInstance = instance,
+                        scaleToUnits = CalloutLayout.MODEL_SIZE_METERS,
+                    )
+                }
+                CalloutLayout.CALLOUTS.forEach { callout ->
+                    key(callout.id) {
+                        AnnotationCard(
+                            callout = callout,
+                            windowManager = viewNodeManager,
+                            spread = spread,
+                            cardScale = cardScale,
+                            turntableYaw = turntableYaw,
+                            cameraPosition = cameraPosition,
+                            billboard = billboard,
+                            alwaysOnTop = alwaysOnTop,
+                        )
+                    }
+                }
+            }
+
+            // ── The control card: world-anchored, always facing, always on top ────────────────
+            ControlCard(
+                windowManager = viewNodeManager,
+                cardScale = cardScale,
+                cameraPosition = cameraPosition,
+                spinning = spinning,
+                onToggleSpin = { spinning = !spinning },
+            )
+        }
     }
 }
 
-// ─── Billboard section ─────────────────────────────────────────────────────
-
+/**
+ * One world-anchored annotation: a Compose card on a quad, parented to the turntable.
+ *
+ * Lift this function as-is. The three parts worth reading are the `rotation` (billboarding solved
+ * as arithmetic in [CalloutLayout], not as a per-frame `lookTowards`), the `apply` block (the two
+ * halves of "always on top"), and the `SceneViewDemoTheme` wrapper inside [CalloutCard].
+ */
 @Composable
-private fun BillboardSection(
-    onBack: () -> Unit,
-    mode: TwoDInThreeDMode,
-    onModeChange: (TwoDInThreeDMode) -> Unit,
+private fun SceneScope.AnnotationCard(
+    callout: Callout,
+    windowManager: ViewNode.WindowManager,
+    spread: Float,
+    cardScale: Float,
+    turntableYaw: Float,
+    cameraPosition: Position,
+    billboard: Boolean,
+    alwaysOnTop: Boolean,
 ) {
-    var showBillboard by remember { mutableStateOf(true) }
-    var showFixed by remember { mutableStateOf(true) }
+    // Read through a State: `apply` runs once, at construction, so the lambda installed then has
+    // to reach today's value through something whose identity is stable.
+    val onTop = rememberUpdatedState(alwaysOnTop)
 
-    val engine = rememberEngine()
-    val materialLoader = rememberMaterialLoader(engine)
-
-    val groundBitmap = remember { createGroundBitmap() }
-    val billboardBitmap = remember {
-        createSignBitmap("Billboard", "always faces you", 0xFF005BC1.toInt())
-    }
-    val fixedBitmap = remember {
-        createSignBitmap("Fixed sign", "turns away as you orbit", 0xFF6446CD.toInt())
+    val yaw = if (billboard) {
+        CalloutLayout.billboardYawDegrees(callout, spread, turntableYaw, cameraPosition)
+    } else {
+        CalloutLayout.fixedYawDegrees(callout)
     }
 
-    val firstFrame = rememberFirstFrameState()
+    ViewNode(
+        windowManager = windowManager,
+        // Lit, not `unlit = true`, and the reason is bloom rather than realism. An unlit
+        // ViewNode is full-brightness by definition, so a white Material card lands above the
+        // HDR pipeline's bloom threshold and every label wore a halo that ate its own contrast.
+        // Shading the quad brings it back under. The studio IBL is omnidirectional, so a card
+        // that turns away from the key light still reads — which is what makes this safe for a
+        // label, where `unlit` would otherwise be the obvious choice.
+        unlit = false,
+        position = CalloutLayout.localPosition(callout, spread),
+        rotation = Rotation(y = yaw),
+        scale = Scale(cardScale),
+        // These are labels, not controls, so touch forwarding is off: an inert Material `Card`
+        // still consumes the DOWN it is hit by — a Surface swallows touches whether or not
+        // anything inside is clickable — and orbiting the scene would stall every time a drag
+        // happened to start on a card.
+        apply = viewNodePolicy(alwaysOnTop = onTop, touchForwarding = false),
+        viewContent = { CalloutCard(callout) },
+    )
+}
 
-    DemoScaffold(
-        title = stringResource(R.string.demo_two_d_in_three_d_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
+/**
+ * The interactive card. Pinned in world space rather than to the turntable, so the only control
+ * in the scene never orbits out of reach, and always on top so the helmet can never swallow it.
+ */
+@Composable
+private fun SceneScope.ControlCard(
+    windowManager: ViewNode.WindowManager,
+    cardScale: Float,
+    cameraPosition: Position,
+    spinning: Boolean,
+    onToggleSpin: () -> Unit,
+) {
+    val alwaysOnTop = remember { mutableStateOf(true) }
+
+    ViewNode(
+        windowManager = windowManager,
+        // Lit, for the same bloom reason as the call-outs — see [AnnotationCard].
+        unlit = false,
+        position = CalloutLayout.CONTROL_CARD_POSITION,
+        rotation = Rotation(
+            y = CalloutLayout.billboardYawDegrees(
+                cardWorldPosition = CalloutLayout.CONTROL_CARD_POSITION,
+                cameraWorldPosition = cameraPosition,
+            )
+        ),
+        scale = Scale(cardScale),
+        // Touch forwarding stays on — this is the one card that must receive the stream — and the
+        // depth policy is not a toggle here: a control the helmet could swallow is a control the
+        // user cannot press.
+        apply = viewNodePolicy(alwaysOnTop = alwaysOnTop, touchForwarding = true),
+        viewContent = { LiveComposeCard(spinning = spinning, onToggleSpin = onToggleSpin) },
+    )
+}
+
+/**
+ * The `apply` block every card in this demo is built with: what it does with touches, and how it
+ * answers the depth buffer.
+ *
+ * "Always on top" is two settings, and neither works alone:
+ *
+ * - `MaterialInstance.setDepthCulling(false)` makes the quad ignore what is already in the depth
+ *   buffer, so the model cannot hide it. On its own it lets two overlapping cards resolve in
+ *   submission order, which is not the order the eye expects.
+ * - `setPriority(PRIORITY_LAST)` moves the renderable into the last of Filament's eight buckets,
+ *   so the cards are submitted after the model. On its own it changes nothing: draw ordering does
+ *   not defeat a depth test.
+ *
+ * Why a per-frame hook rather than a `SideEffect`: `SceneScope.ViewNode`'s `apply` lambda runs
+ * once, at construction, and the composable never hands the node back — so a switch flipped later
+ * has no other seam to reach the `MaterialInstance` through. Comparing against the last applied
+ * value keeps this at two JNI calls per *change*, not two per frame.
+ */
+private fun viewNodePolicy(
+    alwaysOnTop: State<Boolean>,
+    touchForwarding: Boolean,
+): ViewNode.() -> Unit = {
+    isTouchForwardingEnabled = touchForwarding
+    var applied: Boolean? = null
+    onFrame = {
+        val wanted = alwaysOnTop.value
+        if (applied != wanted) {
+            applied = wanted
+            materialInstance.setDepthCulling(!wanted)
+            setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
+        }
+    }
+}
+
+/**
+ * A world-anchored annotation, as it looks inside its quad.
+ *
+ * @see TwoDInThreeDDemo — gotcha 2. `SceneViewDemoTheme` is re-applied here because this composes
+ * in the `ViewNode`'s own off-screen window and inherits none of the caller's `CompositionLocal`s;
+ * without it the card resolves M3's light defaults and stays pale in dark mode.
+ */
+@Composable
+private fun CalloutCard(callout: Callout) {
+    SceneViewDemoTheme {
+        CardShell {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // The pin. A call-out with no visible attachment point reads as a floating
+                // tooltip; a dot in the accent role reads as "this names a part".
+                Surface(
+                    modifier = Modifier.size(SceneViewTokens.Space.sm),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    content = {},
+                )
+                Spacer(modifier = Modifier.width(SceneViewTokens.Space.sm))
+                Text(text = callout.title, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                "Orbit the scene — the billboard stays readable, the fixed sign turns edge-on.",
+                text = callout.body,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Visible Nodes", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    showBillboard,
-                    onClick = { showBillboard = !showBillboard },
-                    label = { Text("Billboard Panel") }
+        }
+    }
+}
+
+/**
+ * The live control, as it looks inside its quad. Everything here is ordinary Compose: the
+ * `Button` below is hit by a Filament picking ray, not by a touch on a view that is on screen.
+ */
+@Composable
+private fun LiveComposeCard(spinning: Boolean, onToggleSpin: () -> Unit) {
+    SceneViewDemoTheme {
+        CardShell(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+            Text(text = "Live Compose", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            Text(
+                text = "This card is a texture on a quad. The button is real.",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            Button(onClick = onToggleSpin) {
+                Icon(
+                    imageVector = if (spinning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
                 )
-                FilterChip(
-                    showFixed,
-                    onClick = { showFixed = !showFixed },
-                    label = { Text("Fixed Image") }
-                )
+                Spacer(modifier = Modifier.width(SceneViewTokens.Space.sm))
+                Text(text = if (spinning) SPIN_PAUSE_LABEL else SPIN_RESUME_LABEL)
             }
         }
-    ) {
-        SceneView(
+    }
+}
+
+/**
+ * The box every in-scene card lives in.
+ *
+ * Fixed [CARD_WIDTH] × [CARD_HEIGHT] on purpose, and not for looks: all four cards share one
+ * `ViewNode.WindowManager`, which measures itself to its largest child and re-sizes every other
+ * quad to match. A card left to wrap its content would move its neighbours whenever its text
+ * changed. The explicit size is also what makes `Modifier` sizing meaningful at all here — the
+ * off-screen window is `WRAP_CONTENT`, so `fillMaxWidth()` would resolve to the whole display.
+ */
+@Composable
+private fun CardShell(
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Box(modifier = Modifier.size(width = CARD_WIDTH, height = CARD_HEIGHT)) {
+        Card(
             modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            materialLoader = materialLoader,
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = Position(0f, 0.55f, 1.5f),
-                targetPosition = Position(0f, -0.05f, -0.8f),
-            )
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = containerColor),
         ) {
-            ImageNode(
-                bitmap = groundBitmap,
-                position = Position(x = 0f, y = -0.42f, z = -0.8f),
-                rotation = Rotation(x = -90f),
-                scale = Scale(2.4f)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(SceneViewTokens.Space.md),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                content = content,
             )
-
-            if (showBillboard) {
-                BillboardNode(
-                    bitmap = billboardBitmap,
-                    widthMeters = 0.62f,
-                    heightMeters = 0.40f,
-                    position = Position(x = -0.5f, y = -0.05f, z = -0.8f)
-                )
-            }
-
-            if (showFixed) {
-                ImageNode(
-                    bitmap = fixedBitmap,
-                    position = Position(x = 0.5f, y = -0.05f, z = -0.8f),
-                    scale = Scale(0.62f)
-                )
-            }
         }
     }
 }
 
-private fun createSignBitmap(title: String, caption: String, bgColor: Int): Bitmap {
-    val width = 320
-    val height = 200
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
+/**
+ * Controls panel for [TwoDInThreeDDemo] — stateless, so a Roborazzi snapshot test can capture it
+ * in pure JVM with no Filament Engine. Pattern from issue #880.
+ *
+ * Billboard is deliberately absent: it lives in the dock, one tap away, because it is the toggle
+ * whose effect a reader most needs to see while the turntable is turning.
+ */
+@Composable
+internal fun TwoDInThreeDControls(
+    alwaysOnTop: Boolean,
+    onAlwaysOnTopChange: (Boolean) -> Unit,
+    cardScale: Float,
+    onCardScaleChange: (Float) -> Unit,
+    spread: Float,
+    onSpreadChange: (Float) -> Unit,
+) {
+    Text(
+        text = stringResource(R.string.demo_two_d_in_three_d_explainer),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    // Without this the caption's last line sits on the first control and the two read as one
+    // paragraph. `space-md` is DESIGN.md's block separator.
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
 
-    val postPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF6B5B4A.toInt() }
-    canvas.drawRect(width / 2f - 8f, 150f, width / 2f + 8f, height.toFloat(), postPaint)
-
-    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
-    canvas.drawRoundRect(RectF(12f, 12f, width - 12f, 156f), 20f, 20f, bgPaint)
-
-    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        textSize = 44f
-        textAlign = Paint.Align.CENTER
-        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = alwaysOnTop, onValueChange = onAlwaysOnTopChange),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = ALWAYS_ON_TOP_LABEL, style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = alwaysOnTop, onCheckedChange = null)
     }
-    canvas.drawText(title, width / 2f, 78f, titlePaint)
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
-    val captionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFE8E8F4.toInt()
-        textSize = 26f
-        textAlign = Paint.Align.CENTER
-    }
-    canvas.drawText(caption, width / 2f, 122f, captionPaint)
+    LabeledSlider(
+        label = "Card size",
+        value = cardScale,
+        onValueChange = onCardScaleChange,
+        valueRange = CalloutLayout.MIN_CARD_SCALE..CalloutLayout.MAX_CARD_SCALE,
+        // Metres, not the raw scale factor: "0.12" says nothing, "38 cm wide" is the number a
+        // reader is trying to work out when they ask how big a ViewNode is.
+        valueText = cardWidthLabel(cardScale),
+    )
 
-    return bitmap
+    LabeledSlider(
+        label = "Card distance",
+        value = spread,
+        onValueChange = onSpreadChange,
+        valueRange = CalloutLayout.MIN_SPREAD..CalloutLayout.MAX_SPREAD,
+        decimals = 2,
+        unit = "m",
+    )
 }
 
-private fun createGroundBitmap(): Bitmap {
-    val size = 256
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    canvas.drawColor(0xFF2A2E3A.toInt())
-    val tilePaint = Paint().apply { color = 0xFF353A4A.toInt() }
-    val tiles = 8
-    val tile = size / tiles
-    for (row in 0 until tiles) {
-        for (col in 0 until tiles) {
-            if ((row + col) % 2 == 0) {
-                canvas.drawRect(
-                    (col * tile).toFloat(), (row * tile).toFloat(),
-                    ((col + 1) * tile).toFloat(), ((row + 1) * tile).toFloat(),
-                    tilePaint
-                )
-            }
-        }
+/** The scaffold's status pill: the two facts the picture cannot carry. */
+private fun statusLabel(cardScale: Float, alwaysOnTop: Boolean): String = String.format(
+    Locale.US,
+    "%s · %s",
+    cardWidthLabel(cardScale),
+    if (alwaysOnTop) "always on top" else "depth-tested",
+)
+
+/**
+ * A card's world width, in centimetres, for the given scale.
+ *
+ * `ViewNode` renders at `pxPerUnits` = 250 px/m, and [CARD_WIDTH] is a dp value, so the exact
+ * metre width depends on the display density. This uses the app's baseline density so the readout
+ * is a stable, honest order of magnitude rather than a per-device number the reader cannot check.
+ */
+internal fun cardWidthLabel(cardScale: Float): String = String.format(
+    Locale.US,
+    "%d cm wide",
+    (CARD_WIDTH.value * BASELINE_DENSITY / VIEW_NODE_PX_PER_UNIT * cardScale * 100f).toInt(),
+)
+
+/** True when two eye positions differ by more than a millimetre on any axis. */
+private fun movedPerceptibly(previous: Position, current: Position): Boolean =
+    abs(previous.x - current.x) > CAMERA_EPSILON ||
+        abs(previous.y - current.y) > CAMERA_EPSILON ||
+        abs(previous.z - current.z) > CAMERA_EPSILON
+
+/** Content description of the dock's billboard toggle — also its UI-test handle. */
+internal const val BILLBOARD_LABEL = "Billboard"
+
+/** Label of the depth toggle in the settings sheet — also its UI-test handle. */
+internal const val ALWAYS_ON_TOP_LABEL = "Always on top"
+
+/** Label on the in-scene button while the turntable is turning — also its UI-test handle. */
+internal const val SPIN_PAUSE_LABEL = "Pause spin"
+
+/** Label on the in-scene button once it has been tapped — the proof the tap landed. */
+internal const val SPIN_RESUME_LABEL = "Resume spin"
+
+/** Bundled subject. 2 048² PBR set with an emissive map — the three call-outs describe it. */
+private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
+
+/** @see CardShell */
+private val CARD_WIDTH = 264.dp
+
+/** @see CardShell */
+private val CARD_HEIGHT = 156.dp
+
+/** `ViewNode.pxPerUnits` default — the px-to-metre rate every card's world size divides by. */
+private const val VIEW_NODE_PX_PER_UNIT = 250f
+
+/** xhdpi. The density [cardWidthLabel]'s centimetre readout is quoted at. */
+private const val BASELINE_DENSITY = 2f
+
+/** A millimetre. Below this the camera has not really moved. */
+private const val CAMERA_EPSILON = 0.001f
+
+// ── Android Studio @Preview support ────────────────────────────────────────────
+
+@Preview(name = "Demo (light)", showBackground = true)
+@Composable
+private fun TwoDInThreeDDemoPreview_Light() {
+    SceneViewDemoTheme(darkTheme = false) {
+        TwoDInThreeDDemo(onBack = {})
     }
-    return bitmap
+}
+
+@Preview(
+    name = "Demo (dark)",
+    showBackground = true,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun TwoDInThreeDDemoPreview_Dark() {
+    SceneViewDemoTheme(darkTheme = true) {
+        TwoDInThreeDDemo(onBack = {})
+    }
 }
