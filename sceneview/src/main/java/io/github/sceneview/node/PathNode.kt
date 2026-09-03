@@ -13,6 +13,11 @@ import io.github.sceneview.math.Position
  * consecutive pair of points is connected by a line segment.  When [closed] is `true` the last
  * point is also connected back to the first.
  *
+ * **This draws one-device-pixel hairlines.** GL/Vulkan mobile backends expose no line width, so
+ * at 420 dpi the polyline is ~0.4 dp wide and effectively invisible (#3397). Use it for debug
+ * overlays and gizmos; for a polyline a user has to see, sweep the same points with
+ * [TubeNode][io.github.sceneview.node.TubeNode], which has a radius in meters.
+ *
  * ```kotlin
  * SceneView {
  *     val material = remember(materialLoader) {

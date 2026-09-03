@@ -905,6 +905,11 @@ Two consequences to keep in mind:
   which the touch callback does not receive. Do not rely on back-face interaction.
 
 ### LineNode — single line segment
+
+> **Draws a 1-device-pixel hairline.** Mobile GL/Vulkan backends expose no line width, so at
+> phone density this is effectively invisible. Use it for debug gizmos; for a stroke a user has
+> to see, use `TubeNode` below.
+
 ```kotlin
 @Composable fun LineNode(
     start: Position = Line.DEFAULT_START,
@@ -919,6 +924,9 @@ Two consequences to keep in mind:
 ```
 
 ### PathNode — polyline through points
+
+> Same 1-pixel caveat as `LineNode`. Use `TubeNode` for a visible polyline.
+
 ```kotlin
 @Composable fun PathNode(
     points: List<Position> = Path.DEFAULT_POINTS,
@@ -931,6 +939,34 @@ Two consequences to keep in mind:
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+
+### TubeNode — polyline with a real width
+
+The visible alternative to `LineNode` / `PathNode`: sweeps a circular cross-section of `radius`
+metres along `points`, so a line is ordinary lit geometry — it has a width, catches light,
+occludes correctly and anti-aliases. Frames are rotation-minimising (parallel transport), so the
+tube does not spin at inflection points, and a `closed` loop's residual twist is spread over the
+rings so the seam has no crease.
+
+```kotlin
+@Composable fun TubeNode(
+    points: List<Position> = Tube.DEFAULT_POINTS,
+    radius: Float = Tube.DEFAULT_RADIUS,          // metres — 0.02 default
+    radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,  // 8
+    closed: Boolean = false,                      // join the last point back to the first
+    caps: Boolean = true,                         // fill open ends with a disc
+    materialInstance: MaterialInstance? = null,
+    position: Position = Position(x = 0f),
+    rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),
+    apply: TubeNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
+)
+```
+
+Changing `points` or `radius` **without changing the point count** re-uploads into the buffers the
+tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
+them — keep sample counts constant across curve types if you switch shapes at runtime.
 
 ### MeshNode — custom geometry
 ```kotlin

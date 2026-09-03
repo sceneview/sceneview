@@ -34,6 +34,7 @@ import io.github.sceneview.geometries.Cylinder
 import io.github.sceneview.geometries.Plane
 import io.github.sceneview.geometries.Sphere
 import io.github.sceneview.geometries.Torus
+import io.github.sceneview.geometries.Tube
 import io.github.sceneview.geometries.UvScale
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
@@ -69,6 +70,7 @@ import io.github.sceneview.node.SphereNode as SphereNodeImpl
 import io.github.sceneview.node.SplatNode as SplatNodeImpl
 import io.github.sceneview.node.TextNode as TextNodeImpl
 import io.github.sceneview.node.TorusNode as TorusNodeImpl
+import io.github.sceneview.node.TubeNode as TubeNodeImpl
 import io.github.sceneview.node.VideoNode as VideoNodeImpl
 import io.github.sceneview.node.ViewNode as ViewNodeImpl
 
@@ -1505,6 +1507,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     /**
      * A node that renders a single line segment between two 3D points.
      *
+     * Draws a **one-device-pixel hairline** — mobile backends expose no line width, so this is
+     * near-invisible at phone density (#3397). For a visible stroke use [TubeNode] instead.
+     *
      * ```kotlin
      * SceneView {
      *     val mat = remember(materialLoader) { materialLoader.createColorInstance(Color.Red) }
@@ -1575,6 +1580,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     /**
      * A node that renders a polyline through a list of 3D points.
      *
+     * Draws **one-device-pixel hairlines** — mobile backends expose no line width, so this is
+     * near-invisible at phone density (#3397). For a visible stroke use [TubeNode] instead.
+     *
      * ```kotlin
      * SceneView {
      *     val mat = remember(materialLoader) { materialLoader.createColorInstance(Color.Green) }
@@ -1625,6 +1633,99 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             if (materialInstance != null && materialInstance != prevPathMaterial.value) {
                 node.setMaterialInstanceAt(0, materialInstance)
                 prevPathMaterial.value = materialInstance
+            }
+        }
+        // Component-keyed transform push — see SphereNode for rationale (#2653).
+        DisposableEffect(node, position.x, position.y, position.z) {
+            node.position = position; onDispose {}
+        }
+        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
+            node.rotation = rotation; onDispose {}
+        }
+        DisposableEffect(node, scale.x, scale.y, scale.z) {
+            node.scale = scale; onDispose {}
+        }
+        NodeLifecycle(node, content)
+    }
+
+    // ── TubeNode ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A polyline drawn as a tube with a **real, visible width**.
+     *
+     * Prefer this over [LineNode] / [PathNode] for anything a user has to see: those draw
+     * `PrimitiveType.LINES`, which every mobile backend rasterises at one device pixel with no
+     * width control — a hairline that disappears at phone density (#3397). A tube is ordinary
+     * lit geometry, so it has a radius in metres, occludes correctly and anti-aliases.
+     *
+     * ```kotlin
+     * SceneView {
+     *     val mat = rememberMaterialInstance(materialLoader, Color(0.16f, 0.44f, 0.96f))
+     *     TubeNode(
+     *         points = catmullRomSpline(controlPoints, segments = 24),
+     *         radius = 0.015f,
+     *         closed = true,
+     *         materialInstance = mat
+     *     )
+     * }
+     * ```
+     *
+     * Changing [points] or [radius] without changing the point count re-uploads vertices into the
+     * existing buffers, so animating a path frame by frame is affordable.
+     *
+     * @param points           Ordered polyline to sweep along (at least 2 points).
+     * @param radius           Cross-section radius in meters.
+     * @param radialSegments   Sides of the cross-section (at least 3). 8 reads as round.
+     * @param closed           When `true`, joins the last point back to the first seamlessly.
+     * @param caps             When `true` (and not [closed]), fills both ends with a disc.
+     * @param materialInstance The material instance to apply.
+     * @param position         Local position of the node's origin.
+     * @param rotation         Local rotation in Euler angles (degrees).
+     * @param scale            Uniform or non-uniform scale.
+     * @param apply            Additional configuration on the [TubeNodeImpl].
+     * @param content          Optional child nodes.
+     */
+    @Composable
+    fun TubeNode(
+        points: List<Position> = Tube.DEFAULT_POINTS,
+        radius: Float = Tube.DEFAULT_RADIUS,
+        radialSegments: Int = Tube.DEFAULT_RADIAL_SEGMENTS,
+        closed: Boolean = Tube.DEFAULT_CLOSED,
+        caps: Boolean = Tube.DEFAULT_CAPS,
+        materialInstance: MaterialInstance? = null,
+        position: Position = Position(x = 0f),
+        rotation: Rotation = Rotation(x = 0f),
+        scale: Scale = Scale(1f),
+        apply: TubeNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null
+    ) {
+        val node = remember(engine) {
+            TubeNodeImpl(
+                engine = engine,
+                points = points,
+                radius = radius,
+                radialSegments = radialSegments,
+                closed = closed,
+                caps = caps,
+                materialInstance = materialInstance
+            ).apply(apply)
+        }
+        val prevTubeGeometry = remember {
+            mutableStateOf(listOf<Any?>(points, radius, radialSegments, closed, caps))
+        }
+        val prevTubeMaterial = remember { mutableStateOf(materialInstance) }
+        SideEffect {
+            val current = listOf<Any?>(points, radius, radialSegments, closed, caps)
+            if (current != prevTubeGeometry.value) {
+                node.updateGeometry(
+                    points = points, radius = radius, radialSegments = radialSegments,
+                    closed = closed, caps = caps
+                )
+                prevTubeGeometry.value = current
+            }
+            if (materialInstance != null && materialInstance != prevTubeMaterial.value) {
+                node.setMaterialInstanceAt(0, materialInstance)
+                prevTubeMaterial.value = materialInstance
             }
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653).

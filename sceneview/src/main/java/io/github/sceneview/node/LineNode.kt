@@ -12,6 +12,11 @@ import io.github.sceneview.math.Position
  * Uses Filament's [RenderableManager.PrimitiveType.LINES] primitive type so no triangle mesh is
  * needed — just two vertices and two indices.
  *
+ * **This draws a one-device-pixel hairline.** GL/Vulkan mobile backends expose no line width, so
+ * at 420 dpi the segment is ~0.4 dp wide and effectively invisible (#3397). Use it for debug
+ * overlays and gizmos; for a line a user has to see, sweep the same points with
+ * [TubeNode][io.github.sceneview.node.TubeNode], which has a radius in meters.
+ *
  * ```kotlin
  * SceneView {
  *     val material = remember(materialLoader) {
