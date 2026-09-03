@@ -32,11 +32,11 @@ updates:
       # for the wrong reason — block them and let a contributor cut the bump
       # plus the matc recompile in a single manual PR.
       - dependency-name: "com.google.android.filament:*"
-      # Compose Material3 alphas now require AGP 9.1+ / compileSdk 37+ ahead
-      # of the rest of the toolchain. Re-enable when the project upgrades
-      # AGP (tracked separately in the maintenance dep-version-check report).
-      - dependency-name: "androidx.compose.material3:material3"
-        versions: [">=1.5.0-alpha19"]
+      # (The `androidx.compose.material3:material3 >=1.5.0-alpha19` ignore rule
+      # is gone: it existed only because those alphas require AGP 9.1+ /
+      # compileSdk 37+. compileSdk moved to 37 in #3385 and AGP to 9.x in #3440,
+      # so both halves of its stated reason are satisfied and the bumps are
+      # reviewable again.)
 
   # npm — MCP server
   - package-ecosystem: "npm"

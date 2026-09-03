@@ -17,9 +17,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_21
-    }
     buildFeatures {
         compose = true
     }
@@ -27,6 +24,15 @@ android {
         unitTests {
             includeAndroidResources = true
         }
+    }
+}
+
+// AGP 9 ships built-in Kotlin support, so `org.jetbrains.kotlin.android` is gone
+// and with it the `android { kotlinOptions { } }` block. The Kotlin JVM target
+// now lives in the top-level `kotlin { }` extension AGP registers itself.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
 
