@@ -11,7 +11,7 @@ fragmentKtx = "1.9.0"
 
 # Compose
 composeBom = "2026.06.01"
-composeMaterial3Expressive = "1.5.0-alpha18"
+composeMaterial3Expressive = "1.5.0-alpha27"
 activityCompose = "1.13.0"
 navigationCompose = "2.10.0"
 lifecycleRuntimeCompose = "2.10.0"
