@@ -375,7 +375,7 @@ fun PlacementModelPickerSheet(
 }
 
 @Composable
-private fun PlacementModelCard(
+internal fun PlacementModelCard(
     model: PlacementModel,
     selected: Boolean,
     onClick: () -> Unit,

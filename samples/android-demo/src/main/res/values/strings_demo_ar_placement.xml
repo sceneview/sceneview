@@ -3,12 +3,44 @@
      `ArPlacementFragment.kt`). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_ar_placement_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
+     this file or `strings.xml` — see #1870.
+
+     #3405 folded `ar-instant-placement` into this demo, so the placement-mode copy lives
+     here now. The four `demo_ar_placement_picker_*` keys that used to sit in this file were
+     only ever read by that retired demo — the canonical picker
+     (`common/placement/PlacementModelPicker.kt`) carries its own — and went with it. -->
 <resources>
     <string name="demo_ar_placement_title">Tap to Place</string>
-    <string name="demo_ar_placement_subtitle">Tap a plane to place and move a model</string>
-    <string name="demo_ar_placement_picker_bundled">Bundled cycle</string>
-    <string name="demo_ar_placement_picker_label">What to place</string>
-    <string name="demo_ar_placement_picker_streamed">%1$s</string>
-    <string name="demo_ar_placement_picker_subtitle">Bundled cycle ships with the APK · streamed entries are CC-BY models from Sketchfab.</string>
+    <string name="demo_ar_placement_subtitle">Pick a model, then tap a surface to place it</string>
+
+    <!-- Pre-AR chooser (#3405). The whole point of this screen is that the subject is
+         chosen before the camera opens, so its copy is about the choice, not about AR. -->
+    <string name="ar_placement_chooser_headline">Choose what to place</string>
+    <string name="ar_placement_teaches">Tap-to-place on a tracked ARCore surface: a centre reticle runs the hit test every frame, a tap creates an anchor, and each placed model is editable — drag to move, twist to rotate, pinch to resize against a real-world-size detent.</string>
+    <string name="ar_placement_cta">Place in AR</string>
+    <string name="ar_placement_cta_named">Place %1$s in AR</string>
+    <string name="ar_placement_cta_checking">Checking whether this device supports ARCore…</string>
+    <string name="ar_placement_cta_unsupported">This device does not support ARCore, so the camera half of this demo cannot run here.</string>
+    <string name="ar_placement_cta_no_model">Pick a model first.</string>
+
+    <!-- Placement mode — the axis that used to be the `ar-instant-placement` demo. -->
+    <string name="ar_placement_mode_heading">How a tap lands</string>
+    <string name="ar_placement_mode_plane">On a plane</string>
+    <string name="ar_placement_mode_instant">Instantly</string>
+    <string name="ar_placement_mode_plane_help">Config.InstantPlacementMode.DISABLED — a tap is only accepted once ARCore has converged a real plane under the reticle. The most accurate anchor.</string>
+    <string name="ar_placement_mode_instant_help">Config.InstantPlacementMode.LOCAL_Y_UP — a tap lands immediately at an estimated 1 m, before any plane exists, and the pose refines once ARCore catches up. Planes still win when there is one.</string>
+    <string name="ar_placement_instant_approximating">Approximating</string>
+    <string name="ar_placement_instant_tracked">Tracked</string>
+    <string name="ar_placement_instant_badge">Instant placement · %1$s</string>
+
+    <!-- Session toggles, moved onto the chooser with the rest of the setup (#1882/#1883). -->
+    <string name="ar_placement_snap_to_plane">Snap to plane</string>
+    <string name="ar_placement_snap_to_plane_on">Only detected planes accept placements (recommended).</string>
+    <string name="ar_placement_snap_to_plane_off">Free placement — any tracked surface accepts placements (points, depth).</string>
+    <string name="ar_placement_show_reticle">Show reticle (dev)</string>
+    <string name="ar_placement_show_reticle_help">Hides the centre disc without disabling the hit test underneath it.</string>
+
+    <!-- In-AR chrome. -->
+    <string name="ar_placement_change_model">Change model</string>
+    <string name="ar_placement_catalogue_note">Six models ship inside the APK; the rows marked Streamed are CC-BY models fetched from Sketchfab the first time you arm them, and fall back to a bundled stand-in until they land.</string>
 </resources>

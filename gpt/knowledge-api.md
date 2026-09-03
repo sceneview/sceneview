@@ -1070,6 +1070,13 @@ ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in t
 the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
 only declare *what* rides each placed anchor:
 
+> **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
+> `ar-placement` demo: a pre-AR chooser screen arms the model *and* the placement mode
+> (`On a plane` / `Instantly`), then the shared tap-to-place camera runs it. Instant placement is
+> that flow's `Instantly` mode, not a separate screen — `sceneview://demo/ar-instant-placement`
+> is an alias onto `ar-placement`. Prefer that shape when generating a placement UI: choose the
+> subject before opening the camera, and treat "how a tap resolves" as an option of one screen.
+
 ```kotlin
 import io.github.sceneview.ar.PlacementScene
 

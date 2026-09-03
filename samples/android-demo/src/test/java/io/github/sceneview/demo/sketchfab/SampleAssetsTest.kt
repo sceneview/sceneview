@@ -134,7 +134,7 @@ class SampleAssetsTest {
     fun `ar_placement fallbacks are pairwise distinct`() {
         // Mirrors iOS `testARPlacementFallbacksArePairwiseDistinct`
         // (SceneViewDemoTests/BundledAssetPrimBudgetTests.swift, #2973).
-        // ARPlacementDemo / ARInstantPlacementDemo ACCUMULATE placed models —
+        // ARPlacementDemo ACCUMULATEs placed models —
         // two chips sharing a fallback render as the identical asset, side by
         // side, under two labels (#2940 / #2355).
         assertFallbacksPairwiseDistinct("ar_placement")

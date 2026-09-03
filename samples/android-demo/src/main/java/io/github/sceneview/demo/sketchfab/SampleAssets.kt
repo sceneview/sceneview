@@ -32,7 +32,7 @@ package io.github.sceneview.demo.sketchfab
  *  - `animation` — skeletal-animated models for `AnimationDemo`.
  *  - `park` — outdoor tree set for the `MultiModelDemo` park composition.
  *  - `ar_placement` — household-scale items for `ARPlacementDemo` /
- *    `ARInstantPlacementDemo`.
+ *    `ARPlacementDemo` (which absorbed `ARInstantPlacementDemo` in #3405).
  *  - `physics` — crash-test bodies for `PhysicsDemo`.
  *  - `materials` — PBR-material showcase models for `MaterialsDemo`.
  *
@@ -268,7 +268,7 @@ object SampleAssets {
             tags = listOf("nature", "tree", "scan"),
         ),
 
-        // ── AR placement (ARPlacementDemo / ARInstantPlacementDemo) ────────
+        // ── AR placement (ARPlacementDemo — the one placement flow, #3405) ─
         // Real-world-scale household items + furniture so the placement reticle
         // reads as grounded. The "Pick what to place" sheet exposes this whole
         // category as a chip row — 6 entries balances variety against the

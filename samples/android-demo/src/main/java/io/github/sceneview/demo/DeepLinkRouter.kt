@@ -144,6 +144,14 @@ internal object DeepLinkRouter {
         // are referenced across docs) with a segmented-button toggle.
         "multi-model" to "model-viewer",
         "scene-gallery" to "model-viewer",
+        // #3405 — AR placement consolidation. `ar-instant-placement` was a second,
+        // hand-rolled implementation of the `ar-placement` screen whose only distinct
+        // subject — `Config.InstantPlacementMode.LOCAL_Y_UP` and the
+        // `SCREENSPACE_WITH_APPROXIMATE_DISTANCE → FULL_TRACKING` refinement — is now a mode
+        // chosen on that demo's pre-AR chooser. No [ALIAS_INITIAL_TAB] entry: the
+        // consolidated demo has phases, not segmented tabs, and the mode it lands on is a
+        // user choice the alias has no business overriding.
+        "ar-instant-placement" to "ar-placement",
     )
 
     /**

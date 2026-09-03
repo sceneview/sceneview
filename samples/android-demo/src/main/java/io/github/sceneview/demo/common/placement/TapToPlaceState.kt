@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.google.ar.core.Anchor
 import com.google.ar.core.HitResult
+import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -56,6 +57,16 @@ internal data class PlacedModel(
     val id: Int,
     val anchor: Anchor,
     val spec: PlacementSpec,
+    /**
+     * The ARCore [Trackable] the anchor was created against, or `null` for a placement made
+     * before #3405 taught the session to care.
+     *
+     * Only read to answer one question — is this an `InstantPlacementPoint`, and has it
+     * refined from `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` to `FULL_TRACKING` yet — which is
+     * the whole substance of the folded `ar-instant-placement` demo. See
+     * [instantTrackingLabel].
+     */
+    val trackable: Trackable? = null,
 )
 
 /**
@@ -148,6 +159,17 @@ class TapToPlaceState internal constructor() {
     var lastPlacedAtMillis: Long by mutableStateOf(0L)
         internal set
 
+    /**
+     * Whether the **most recent** placement is still an approximation, or `null` when it is
+     * anchored to a real plane and there is nothing to report (#3405).
+     *
+     * Deliberately the latest placement rather than a count across all of them: the badge
+     * answers "is the thing I just dropped real yet", which is a question about one object,
+     * and an aggregate ("2 of 5 approximating") reads as telemetry rather than as feedback.
+     */
+    var instantTracking: InstantTrackingLabel? by mutableStateOf(null)
+        internal set
+
     internal val placedModels = mutableStateListOf<PlacedModel>()
     internal var nextId: Int = 0
     val placedCount: Int get() = placedModels.size
@@ -178,6 +200,7 @@ class TapToPlaceState internal constructor() {
         scalePercent = null
         isRealWorldSize = false
         lastPlacedAtMillis = 0L
+        instantTracking = null
     }
 }
 
