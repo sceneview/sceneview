@@ -206,6 +206,21 @@ object SceneViewTokens {
         val scrimLight = Color(0xF0000000)
         val scrimDark = Color(0xE0000000)
         val onScrim = Color(0xFFFFFFFF)
+
+        /**
+         * `on-ar-scrim-dim` — secondary text on an AR overlay (labels, captions, the
+         * body of an explanation card). White at 72 % in both themes, like [onScrim],
+         * because the ground is a camera frame and not a `surface`.
+         */
+        val onScrimMuted = Color(0xB8FFFFFF)
+
+        /**
+         * Unlit track of a meter drawn on the scrim — the room-mapping segments of the
+         * Cloud Anchor demo. `Button glass` from `DESIGN.md`: white at 8 %, the same
+         * fill every other over-media element uses for "present but empty".
+         */
+        val meterTrack = Color(0x14FFFFFF)
+
         val borderLight = Color(0x29FFFFFF)
         val borderDark = Color(0x1AFFFFFF)
         val borderWidth = 1.dp

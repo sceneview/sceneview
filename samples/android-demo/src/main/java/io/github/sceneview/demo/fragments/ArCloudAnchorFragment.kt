@@ -18,7 +18,11 @@ object ArCloudAnchorFragment : DemoFragment {
         icon = Icons.Filled.CloudCircle,
         order = 41,
         tags = setOf("ar", "cloud-anchor", "multi-user", "persistence", "arcore"),
-        status = io.github.sceneview.demo.DemoStatus.KnownIssue,
+        // #3421 rebuilt this screen as an explicit two-step flow. The state machine is
+        // unit-tested and every visual state is captured on the emulator, but hosting and
+        // resolving themselves need ARCore and a live Cloud project, which no emulator
+        // has (#2754) — so it stays In review until a device pass signs it off.
+        status = io.github.sceneview.demo.DemoStatus.InReview,
     )
 
     @Composable
