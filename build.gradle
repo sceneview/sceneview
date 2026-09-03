@@ -1,7 +1,11 @@
 plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.kotlin.android) apply false
+    // AGP 9's KMP Android-library plugin, used by :sceneview-compose. Declared
+    // here (not only in the module) so the plugin marker is resolved once with an
+    // explicit version — otherwise Gradle sees it "already on the classpath with
+    // an unknown version" via the AGP jar the two plugins above already pulled in.
+    alias(libs.plugins.android.kotlin.multiplatform.library) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.compose.compiler) apply false
     alias(libs.plugins.compose.multiplatform) apply false

@@ -2,7 +2,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
+    // AGP 9: a KMP module's Android target comes from this plugin, not
+    // `com.android.library` (which AGP 9 refuses to apply next to the KMP plugin).
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.publish)
@@ -25,8 +27,15 @@ kotlin {
     // Desktop filament-kmp is FFM (JDK 22+). Android still emits JVM 21 bytecode.
     jvmToolchain(22)
 
-    androidTarget {
-        publishLibraryVariants("release")
+    // AGP 9's KMP Android target. It replaces `androidTarget()` + the separate
+    // `android { }` block: namespace / compileSdk / minSdk are declared here, and
+    // the target publishes a single release AAR (so the old
+    // `publishLibraryVariants("release")` is both unnecessary and unavailable).
+    androidLibrary {
+        namespace = "io.github.sceneview.compose"
+        compileSdk = 37
+        minSdk = 24
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_21)
         }
@@ -77,11 +86,13 @@ kotlin {
 
         // JVM family only — HttpURLConnection + the shared orbit math. iOS cannot
         // see this set. Both androidMain and desktopMain compile it into their target.
-        val androidAndDesktopMain by creating {
+        // `create` / `getByName` rather than the `by creating` / `by getting`
+        // delegates: Gradle 9.6 deprecated those Kotlin-DSL property delegates.
+        val androidAndDesktopMain = create("androidAndDesktopMain") {
             dependsOn(commonMain.get())
         }
 
-        val desktopMain by getting {
+        getByName("desktopMain") {
             dependsOn(androidAndDesktopMain)
             dependencies {
                 // Renderer only — never `api`. Same guardrail as androidMain.
@@ -90,7 +101,7 @@ kotlin {
             }
         }
 
-        val androidMain by getting {
+        getByName("androidMain") {
             dependsOn(androidAndDesktopMain)
         }
 
@@ -107,19 +118,5 @@ kotlin {
             // `implementation` after publishing is a source-breaking change.
             implementation(project(":sceneview"))
         }
-    }
-}
-
-android {
-    namespace = "io.github.sceneview.compose"
-    compileSdk = 37
-
-    defaultConfig {
-        minSdk = 24
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
     }
 }

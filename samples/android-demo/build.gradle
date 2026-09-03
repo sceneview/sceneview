@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
@@ -102,62 +101,9 @@ android {
         }
     }
 
-    // Build-time fail-loud guard for store secrets (#1915).
-    //
-    // An empty SKETCHFAB_API_KEY / ARCORE_API_KEY compiles silently — Gradle is
-    // happy with `""` — and ships a store APK whose Sketchfab carousels are
-    // invisible and whose Streetscape / Geospatial / Cloud Anchor demos are
-    // disabled, with nothing surfacing the cause. That is the exact silent-fail
-    // class that caused #1909 (empty carousels on Play Store for weeks).
-    //
-    // Refuse to assemble a RELEASE variant when either secret is empty. Debug
-    // builds stay permissive — developers without the keys still need to compile.
-    // Forks / PRs from forks (no access to org secrets) opt out by setting
-    // `SV_ALLOW_MISSING_SECRETS=1` in the environment, or pass
-    // `-PSV_ALLOW_MISSING_SECRETS=1` on the Gradle command line.
-    applicationVariants.configureEach { variant ->
-        if (variant.buildType.name != "release") {
-            return
-        }
-        def allowMissing = System.getenv("SV_ALLOW_MISSING_SECRETS") == "1" ||
-                (project.hasProperty("SV_ALLOW_MISSING_SECRETS") &&
-                        project.property("SV_ALLOW_MISSING_SECRETS").toString() == "1")
-        variant.assembleProvider.configure { assembleTask ->
-            assembleTask.doFirst {
-                if (allowMissing) {
-                    logger.warn("⚠️  SV_ALLOW_MISSING_SECRETS=1 — skipping release secret guard (#1915).")
-                    return
-                }
-                def missing = []
-                if (sketchfabApiKey == null || sketchfabApiKey.trim().isEmpty()) {
-                    missing << "SKETCHFAB_API_KEY"
-                }
-                if (arcoreApiKey == null || arcoreApiKey.trim().isEmpty()) {
-                    missing << "ARCORE_API_KEY"
-                }
-                if (!missing.isEmpty()) {
-                    throw new GradleException(
-                            "Release build refusing to ship without store secrets: " +
-                            "${missing.join(', ')}.\n" +
-                            "  An empty key compiles silently and ships a store APK with\n" +
-                            "  invisible Sketchfab carousels / disabled AR Geospatial demos\n" +
-                            "  (the #1909 silent-fail class).\n" +
-                            "  Fix: set the missing secret(s) as environment variables\n" +
-                            "  (CI: GitHub Secrets), or in the repo-root local.properties\n" +
-                            "  (SKETCHFAB_API_KEY -> sketchfab.api.key, ARCORE_API_KEY -> ARCORE_API_KEY).\n" +
-                            "  Forks without org secrets: pass -PSV_ALLOW_MISSING_SECRETS=1\n" +
-                            "  or export SV_ALLOW_MISSING_SECRETS=1 to override.")
-                }
-                logger.lifecycle("✅ Release secret guard (#1915): SKETCHFAB_API_KEY + ARCORE_API_KEY present.")
-            }
-        }
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
-    }
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_21
     }
     buildFeatures {
         compose = true
@@ -205,6 +151,66 @@ android {
                 timeout = java.time.Duration.ofMinutes(25)
             }
         }
+    }
+}
+
+// Build-time fail-loud guard for store secrets (#1915).
+//
+// An empty SKETCHFAB_API_KEY / ARCORE_API_KEY compiles silently — Gradle is
+// happy with `""` — and ships a store APK whose Sketchfab carousels are
+// invisible and whose Streetscape / Geospatial / Cloud Anchor demos are
+// disabled, with nothing surfacing the cause. That is the exact silent-fail
+// class that caused #1909 (empty carousels on Play Store for weeks).
+//
+// Refuse to assemble a RELEASE variant when either secret is empty. Debug
+// builds stay permissive — developers without the keys still need to compile.
+// Forks / PRs from forks (no access to org secrets) opt out by setting
+// `SV_ALLOW_MISSING_SECRETS=1` in the environment, or pass
+// `-PSV_ALLOW_MISSING_SECRETS=1` on the Gradle command line.
+//
+// AGP 9 removed the legacy `android { applicationVariants }` container this used
+// to iterate, so the guard now hangs off the release assemble task by name. This
+// module declares no product flavors, so `assembleRelease` IS the release
+// variant's assemble task — the same task `variant.assembleProvider` returned.
+def allowMissingStoreSecrets = System.getenv("SV_ALLOW_MISSING_SECRETS") == "1" ||
+        (project.hasProperty("SV_ALLOW_MISSING_SECRETS") &&
+                project.property("SV_ALLOW_MISSING_SECRETS").toString() == "1")
+tasks.matching { it.name == "assembleRelease" }.configureEach { assembleTask ->
+    assembleTask.doFirst {
+        if (allowMissingStoreSecrets) {
+            logger.warn("⚠️  SV_ALLOW_MISSING_SECRETS=1 — skipping release secret guard (#1915).")
+            return
+        }
+        def missing = []
+        if (sketchfabApiKey == null || sketchfabApiKey.trim().isEmpty()) {
+            missing << "SKETCHFAB_API_KEY"
+        }
+        if (arcoreApiKey == null || arcoreApiKey.trim().isEmpty()) {
+            missing << "ARCORE_API_KEY"
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                    "Release build refusing to ship without store secrets: " +
+                    "${missing.join(', ')}.\n" +
+                    "  An empty key compiles silently and ships a store APK with\n" +
+                    "  invisible Sketchfab carousels / disabled AR Geospatial demos\n" +
+                    "  (the #1909 silent-fail class).\n" +
+                    "  Fix: set the missing secret(s) as environment variables\n" +
+                    "  (CI: GitHub Secrets), or in the repo-root local.properties\n" +
+                    "  (SKETCHFAB_API_KEY -> sketchfab.api.key, ARCORE_API_KEY -> ARCORE_API_KEY).\n" +
+                    "  Forks without org secrets: pass -PSV_ALLOW_MISSING_SECRETS=1\n" +
+                    "  or export SV_ALLOW_MISSING_SECRETS=1 to override.")
+        }
+        logger.lifecycle("✅ Release secret guard (#1915): SKETCHFAB_API_KEY + ARCORE_API_KEY present.")
+    }
+}
+
+// AGP 9 ships built-in Kotlin support, so `org.jetbrains.kotlin.android` is gone
+// and with it the `android { kotlinOptions { } }` block. The Kotlin JVM target
+// now lives in the top-level `kotlin { }` extension AGP registers itself.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
 

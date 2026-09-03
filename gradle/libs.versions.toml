@@ -1,6 +1,6 @@
 [versions]
 # Build tools
-agp = "8.13.2"
+agp = "9.4.0"
 kotlin = "2.4.10"
 composeMultiplatform = "1.11.1"
 
@@ -271,6 +271,10 @@ detekt-gradlePlugin = { group = "dev.detekt", name = "detekt-gradle-plugin", ver
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+# AGP 9 forbids `com.android.library` on a project that also applies the Kotlin
+# Multiplatform plugin. A KMP module with an Android target uses this plugin
+# instead, and declares the target as `kotlin { androidLibrary { } }`.
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
