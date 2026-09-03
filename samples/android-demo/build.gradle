@@ -56,7 +56,7 @@ android {
     // Accepted values: "4k" (default), "16k", "64k".
     experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
 
-    compileSdk 36
+    compileSdk 37
 
 
     defaultConfig {
@@ -297,14 +297,19 @@ dependencies {
     // every existing check: a Roborazzi golden only fails if a human looks at
     // the diff, and the overlap it captures is 4 dp.
     testImplementation libs.androidx.compose.ui.test.junit4
-    // `debugImplementation`, not `testImplementation`, and that is not a slip:
-    // this artifact is nothing but a manifest declaring the bare
-    // `ComponentActivity` the compose rule launches into, and a unit test reads
-    // the *debug variant's merged manifest*. On `testImplementation` it is on
-    // the classpath but not in the manifest, and every test dies with
-    // "Unable to resolve activity for Intent … ComponentActivity". Debug-only,
-    // so it never reaches the release APK Play ships.
-    debugImplementation libs.androidx.compose.ui.test.manifest
+    // No `androidx.compose.ui:ui-test-manifest` dependency here (#3410): that
+    // artifact's sole content is a manifest declaring the bare
+    // `ComponentActivity` `createComposeRule()` launches into, and it is
+    // documented to be added `debugImplementation`-only. That works for
+    // `testDebugUnitTest` but not `testReleaseUnitTest` — AGP links the
+    // release variant's unit-test resource package from the release
+    // implementation graph, which a `debugImplementation` dependency never
+    // reaches, so every compose-rule Robolectric test failed to resolve
+    // `ComponentActivity` in the release variant only (CI never ran it to
+    // notice: `verifyRoborazziDebug` is debug-only). The same manifest entry
+    // is declared directly in `src/main/AndroidManifest.xml` instead, so it
+    // reaches both variants' real manifest/resource-link pipeline — see the
+    // comment there.
 
     testImplementation libs.kotlin.coroutines.test
     // Local HTTP double for SketchfabService's cooperative-cancellation test

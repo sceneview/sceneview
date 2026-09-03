@@ -31,7 +31,7 @@ apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 android {
     namespace 'io.github.sceneview.flutter'
-    compileSdk 35
+    compileSdk 37
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

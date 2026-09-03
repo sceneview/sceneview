@@ -2,7 +2,11 @@ buildscript {
     ext {
         buildToolsVersion = "34.0.0"
         minSdkVersion = 21
-        compileSdkVersion = 34
+        // 37, not 34 (#3385): the `@sceneview-sdk/react-native` bridge module
+        // this demo consumes from source compiles against SDK 37, and a host
+        // app must compile against at least the highest SDK any of its modules
+        // uses. `targetSdkVersion` deliberately stays put — see the PR.
+        compileSdkVersion = 37
         targetSdkVersion = 34
         ndkVersion = "25.1.8937393"
         kotlinVersion = "1.8.0"

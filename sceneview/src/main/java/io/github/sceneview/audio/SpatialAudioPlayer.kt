@@ -24,9 +24,13 @@ import io.github.sceneview.math.Position
  * handler binds to the constructing thread's `Looper`; building it on a Looper-less pool
  * thread silently breaks every callback-driven feature). Only opening the asset file
  * descriptor — which [AudioSource.openFd] does — touches the file system, and it is cheap
- * enough to run inline. Every public method is `@MainThread`. The class is constructed
- * inside a composable `remember { … }` block, registered with [SpatialAudioEngine] in a
- * `DisposableEffect`, and fully released on dispose.
+ * enough to run inline. Preparation itself is `prepareAsync()`, not the blocking `prepare()`
+ * (#3427): even a short in-`assets` clip's container parse + decoder setup is enough to drop
+ * a frame when it runs synchronously on the exact composition pass that also calls `play()`
+ * — that stall is what the beep's "légers lag" bug report was. [PreparePlayGate] defers
+ * `play()` until the async `onPrepared` callback fires. Every public method is `@MainThread`.
+ * The class is constructed inside a composable `remember { … }` block, registered with
+ * [SpatialAudioEngine] in a `DisposableEffect`, and fully released on dispose.
  *
  * Phase 1 backend: `MediaPlayer` + manual L/R pan via `setVolume(left, right)`. Falloff
  * gain is multiplied into both channels. Phase 2 will introduce a `Spatializer` path
@@ -61,6 +65,13 @@ internal class SpatialAudioPlayer
     private var destroyed = false
 
     /**
+     * Deferred-play state machine (#3427) — see [PreparePlayGate]. Every call that reaches
+     * the `MediaPlayer` before `onPrepared` fires goes through this gate instead of the
+     * native player directly.
+     */
+    private val prepareGate = PreparePlayGate()
+
+    /**
      * This player's private [MediaPlayer]. Built on the constructing (main) thread so its
      * event handler has a live `Looper`. `null` only if construction failed.
      */
@@ -74,27 +85,45 @@ internal class SpatialAudioPlayer
                     .build()
             )
             afd.use { setDataSource(it.fileDescriptor, it.startOffset, it.length) }
-            // Synchronous prepare — the asset is a short, in-`assets` clip so the blocking
-            // initialise is sub-millisecond. Running it on the main thread is intentional:
-            // construction MUST stay main-thread so the event handler binds to a Looper.
-            prepare()
+            setOnPreparedListener { onPrepared() }
+            setOnErrorListener { _, what, extra ->
+                Log.w(TAG, "MediaPlayer error for ${source.assetPath}: what=$what extra=$extra")
+                true
+            }
+            // Async prepare (#3427) — the container parse + decoder setup this triggers is
+            // NOT the "sub-millisecond" no-op a short in-`assets` clip suggests: on a real
+            // device it lands squarely inside the same composition pass that also calls
+            // `play()` (autoPlay), i.e. main-thread work landing on the exact frame the
+            // sound is meant to start — a dropped frame heard as a hitch on the beep itself.
+            // `prepareAsync()` still requires construction on a Looper thread (main, here),
+            // but returns immediately and reports readiness through `onPrepared` instead of
+            // blocking it. `play()` before that point only records [pendingPlay]; the actual
+            // `start()` happens from [onPrepared].
+            prepareAsync()
         }
     }.onFailure {
         Log.w(TAG, "Failed to create MediaPlayer for ${source.assetPath}: ${it.message}")
     }.getOrNull()
 
-    init {
+    /** Runs on the main thread once the async `prepareAsync()` above completes. */
+    private fun onPrepared() {
+        if (destroyed) return
         applyLoop()
         applyPitch()
         // Default gain — silenced until the engine pushes a real listener pose. Prevents a
         // half-second of full-volume audio bleeding through during the first compose pass.
-        mediaPlayer?.runCatching { setVolume(0f, 0f) }
+        runCatching { mediaPlayer?.setVolume(0f, 0f) }
+        if (prepareGate.markPrepared()) play()
     }
 
     @MainThread
     fun play() {
         if (destroyed) return
         val mp = mediaPlayer ?: return
+        if (!prepareGate.requestPlay()) {
+            // Preparing is still in flight — start() as soon as onPrepared fires instead.
+            return
+        }
         runCatching {
             if (!mp.isPlaying) mp.start()
             isPlayingState.value = mp.isPlaying
@@ -106,6 +135,8 @@ internal class SpatialAudioPlayer
     @MainThread
     fun pause() {
         if (destroyed) return
+        prepareGate.cancelPendingPlay()
+        if (!prepareGate.isPrepared) return
         runCatching {
             mediaPlayer?.takeIf { it.isPlaying }?.pause()
             isPlayingState.value = mediaPlayer?.isPlaying ?: false
@@ -115,6 +146,8 @@ internal class SpatialAudioPlayer
     @MainThread
     fun stop() {
         if (destroyed) return
+        prepareGate.cancelPendingPlay()
+        if (!prepareGate.isPrepared) return
         // MediaPlayer.stop() requires a re-prepare() before next start(); we instead pause
         // + seekTo(0) so the caller can hit play() again immediately. This matches the
         // expectation from AudioController.stop() docs ("rewinds to 0").
@@ -128,7 +161,7 @@ internal class SpatialAudioPlayer
 
     @MainThread
     fun seekTo(positionMs: Long) {
-        if (destroyed) return
+        if (destroyed || !prepareGate.isPrepared) return
         runCatching {
             val clamped = positionMs.coerceIn(0L, source.durationMs.coerceAtLeast(0L))
             mediaPlayer?.seekTo(clamped.toInt())
@@ -218,5 +251,49 @@ internal class SpatialAudioPlayer
 
     internal companion object {
         const val TAG = "SpatialAudio"
+    }
+}
+
+/**
+ * Deferred-play state machine for [SpatialAudioPlayer] (#3427).
+ *
+ * `MediaPlayer.prepareAsync()` returns immediately and reports readiness later via
+ * `onPrepared`; a `play()` requested before that (as `autoPlay` always does — it fires from
+ * the same `DisposableEffect` that constructs the player) must wait rather than call
+ * `start()` on a player that is not ready yet. This class holds only that one decision —
+ * "start now, or remember to start once prepared" — with no `MediaPlayer` reference, so it
+ * is plain-JVM testable independently of the JNI-bound class around it (see the class KDoc
+ * on `SpatialAudioNodeTest` for why `SpatialAudioPlayer` itself is not).
+ */
+internal class PreparePlayGate {
+    var isPrepared: Boolean = false
+        private set
+    private var pendingPlay = false
+
+    /**
+     * Call when `play()` is requested. Returns `true` if the caller should start the native
+     * player immediately; if `false`, the request has been recorded and will be honoured by
+     * the next [markPrepared] call instead.
+     */
+    fun requestPlay(): Boolean {
+        if (isPrepared) return true
+        pendingPlay = true
+        return false
+    }
+
+    /** Call when `pause()` or `stop()` is requested — clears any deferred play request. */
+    fun cancelPendingPlay() {
+        pendingPlay = false
+    }
+
+    /**
+     * Call from `onPrepared`. Returns `true` if a [requestPlay] call arrived before this one
+     * and is still pending — the caller should start the native player now.
+     */
+    fun markPrepared(): Boolean {
+        isPrepared = true
+        val shouldPlay = pendingPlay
+        pendingPlay = false
+        return shouldPlay
     }
 }

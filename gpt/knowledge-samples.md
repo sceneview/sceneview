@@ -279,6 +279,86 @@ fun ComposeIn3D() {
 }
 ```
 
+### Billboard a `ViewNode` card at the camera
+
+`ViewNode` has no billboard flag — `BillboardNode`'s per-frame `lookTowards` is on
+`ImageNode`, not on it. Solve the yaw yourself and pass it as `rotation`, which keeps the
+orientation declarative and unit-testable. Yaw only: a card that also pitched toward a
+camera looking down leans backwards, and a wall of leaning labels reads as a bug.
+
+```kotlin
+import kotlin.math.atan2
+
+val windowManager = rememberViewNodeManager()
+val cameraNode = rememberCameraNode(engine)
+var eye by remember { mutableStateOf(Position(0f, 0.3f, 2f)) }
+
+// atan2(x, z) — a heading measured from +Z toward +X, which is the frame Rotation(y = …)
+// turns in. NOT the usual atan2(y, x).
+fun facingYaw(card: Position, camera: Position): Float {
+    val dx = camera.x - card.x
+    val dz = camera.z - card.z
+    if (dx * dx + dz * dz < 1e-4f) return 0f      // camera sitting on the card: atan2(0,0)
+    return Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
+}
+
+SceneView(
+    engine = engine,
+    cameraNode = cameraNode,
+    viewNodeWindowManager = windowManager,
+    onFrame = { eye = cameraNode.worldPosition },   // the user can orbit
+) {
+    val card = Position(0f, 0.4f, 0f)
+    ViewNode(
+        windowManager = windowManager,
+        position = card,
+        rotation = Rotation(y = facingYaw(card, eye)),
+        scale = Scale(0.12f),
+    ) { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } }
+}
+```
+
+Under a rotating parent, subtract the parent's yaw — the value you pass is a **local**
+rotation, so the card has to undo the parent's turn before adding its own heading.
+
+### Draw a `ViewNode` on top of everything
+
+Two settings, and neither works alone: `setDepthCulling(false)` makes the quad ignore the
+depth buffer so the model cannot hide it, and `setPriority(PRIORITY_LAST)` submits it after
+the model. Priority alone does not defeat a depth test; depth alone leaves two overlapping
+cards resolving in submission order.
+
+`SceneScope.ViewNode`'s `apply` lambda runs **once**, at construction, and the composable
+never hands the node back — so read a reactive toggle through a `State` from inside a
+per-frame hook, and compare against the last applied value so it costs two JNI calls per
+*change*, not per frame.
+
+```kotlin
+val windowManager = rememberViewNodeManager()
+var alwaysOnTop by remember { mutableStateOf(false) }
+val onTop = rememberUpdatedState(alwaysOnTop)
+
+ViewNode(
+    windowManager = windowManager,
+    unlit = true,                      // a label that dims in shadow is a legibility bug
+    apply = {
+        isTouchForwardingEnabled = false   // decorative: never steal a camera drag
+        var applied: Boolean? = null
+        onFrame = {
+            val wanted = onTop.value
+            if (applied != wanted) {
+                applied = wanted
+                materialInstance.setDepthCulling(!wanted)
+                setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
+            }
+        }
+    },
+) { Card { Text("Always readable") } }
+```
+
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
+arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`.
+
 ### Animated model with play/pause
 
 ```kotlin
@@ -595,7 +675,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Content
 
-- `two-d-in-three-d` — 2D in 3D. Text, image, video and billboard quads in 3D.
+- `two-d-in-three-d` — 2D in 3D. Interactive Compose cards anchored in world space.
 - `lines-paths` — Lines & Paths. Splines, polylines and point sets.
 
 ### Interaction
@@ -607,7 +687,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Advanced
 
 - `materials` — Materials. PBR extensions and runtime material streaming.
-- `custom-geometry` — Custom Geometry. Composite meshes and shape extrusion.
+- `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
 - `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
@@ -617,10 +697,9 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Augmented Reality
 
-- `ar-placement` — Tap to Place. Tap a plane to place and move a model.
+- `ar-placement` — Tap to Place. Pick a model, then tap a surface to place it.
 - `placement-scene` — Placement Scene. One-line tap-to-place AR.
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
-- `ar-instant-placement` — Instant Placement. Place before plane detection converges.
 - `ar-image` — Image Tracking. Detect and track reference images.
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
@@ -758,7 +837,7 @@ DemoScaffold(
 
 `settingsFabReservedSpace` resolves to the **measured** width of the Settings cluster, floored at `SETTINGS_FAB_RESERVED_SPACE` (104 dp), when the demo passes `controls`, and to `0.dp` when it does not. It is measured rather than assumed because the widest thing in that corner is the peek chip, and a chip is text — its width follows the font scale, the locale and the demo's own `peekHeader` — computed once, scaffold-side, from the same condition that composes the FAB. A demo whose `controls` is itself conditional (`controls = if (DemoSettings.qaMode) { … } else null`) therefore gets the correct inset with no duplicated condition to drift.
 
-**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`, `ARPlacementDemo`, `ARInstantPlacementDemo`:
+**Picker pattern.** The horizontal-scroll FilterChip row in the controls sheet picks between bundled / streamed assets. Used in `OrbitalARDemo`, `ModelViewerDemo`, `AnimationPhysicsDemo`, `MaterialsDemo`:
 
 ```kotlin notest demo-app pattern — SampleAssets/selectedSlug live in the demo app (samples/android-demo), not the SDK
 controls = {

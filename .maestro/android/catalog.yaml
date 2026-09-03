@@ -17,12 +17,12 @@
 # demos AND every merged-in capability gets its own QA leg. Flow entries:
 #   3D Basics ............ 5
 #   Lighting & Environment 4
-#   Content .............. 5
+#   Content .............. 2
 #   Interaction .......... 4
 #   Advanced ............. 14
 #   Augmented Reality .... 33
 #                          --
-#   Total entries ........ 65  (covering 51 registered demos, 65 capabilities)
+#   Total entries ........ 62  (covering 51 registered demos, 62 capabilities)
 #
 # Crash detection:
 #   - Per-demo: flows/demo.yaml asserts the "Navigate back" button is visible

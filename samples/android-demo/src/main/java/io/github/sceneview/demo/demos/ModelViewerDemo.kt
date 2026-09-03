@@ -1,5 +1,10 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
@@ -14,16 +19,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.outlined.CenterFocusStrong
-import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.Animation
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,7 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.compose.BackHandler
 import io.github.sceneview.environment.Environment
-import io.github.sceneview.demo.DemoPreviews
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
@@ -92,7 +95,11 @@ import io.github.sceneview.demo.demos.internal.PARK_SLOTS
 import io.github.sceneview.demo.demos.internal.ParkSlot
 import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
+import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
+import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
@@ -174,6 +181,15 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  */
 private const val MODEL_COVER_FRAMES = 3
 
+/**
+ * Length of the camera fly-in when the model lands (#3406). Twice `duration-medium`:
+ * a screen transition is 350 ms, but this one is the subject arriving rather than a
+ * surface changing, and under 500 ms the dolly reads as a stutter instead of a move.
+ * Long enough to be seen, short enough that the first drag is never waiting on it —
+ * and a touch cancels it outright.
+ */
+private const val CAMERA_ENTRANCE_MILLIS = 700
+
 private enum class ModelViewerMode(val label: String) {
     Single("Single Model"),
     Multi("Multi-Model"),
@@ -248,11 +264,21 @@ private fun SingleModelSection(
     var selectedModel by remember { mutableStateOf(bundledModels.first()) }
     var modelSheetOpen by remember { mutableStateOf(false) }
     var environmentSheetOpen by remember { mutableStateOf(false) }
+    // Chinese Garden leads, and the flagship viewer opens on it (#3402). The old default —
+    // `studio_2k` — is a grey box with white softboxes: correct light, no colour, and on the
+    // near-black stage the hero read as a grey object on a black field. Measured on the
+    // emulator against every bundled HDR: `studio_warm` is the same picture a shade warmer,
+    // `sunset` reflects mostly pale sky and washes the model out, `outdoor_cloudy` is flat
+    // by construction, and the two night maps are darker than the stage. The garden is the
+    // one that makes a PBR viewer look like a PBR viewer — green canopy and blue sky across
+    // the chrome, a hard sun glint, real depth in the visor — and it is bright enough that
+    // the model never sinks into the stage in either theme. The list still leads with the
+    // default so "Reset lighting" is the first tile.
     val viewerEnvironments = remember { listOf(
+        ViewerEnvironment("environments/chinese_garden_2k.hdr", "Chinese Garden"),
+        ViewerEnvironment("environments/sunset_2k.hdr", "Sunset"),
         ViewerEnvironment("environments/studio_2k.hdr", "Studio"),
         ViewerEnvironment("environments/studio_warm_2k.hdr", "Studio Warm"),
-        ViewerEnvironment("environments/sunset_2k.hdr", "Sunset"),
-        ViewerEnvironment("environments/chinese_garden_2k.hdr", "Chinese Garden"),
         ViewerEnvironment("environments/outdoor_cloudy_2k.hdr", "Outdoor Cloudy"),
         ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
@@ -278,6 +304,15 @@ private fun SingleModelSection(
     // surprise-coroutine flips it back to `false` regardless of success so
     // the button doesn't get stuck in the loading state.
     var surpriseInFlight by remember { mutableStateOf(false) }
+
+    // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
+    // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
+    // now a pinch does too, so the section has to clean up after itself or a two-finger gesture
+    // here would silently re-frame an unrelated demo three taps later. A cold launch never passes
+    // through the dispose, so the `--ef camera_distance` / `?cameraDistance=` deep link is intact.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { DemoSettings.cameraDistance = null }
+    }
 
     val context = LocalContext.current
     val arSupported by produceState<Boolean?>(initialValue = null, context) {
@@ -357,13 +392,14 @@ private fun SingleModelSection(
     // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
     // "Camera distance" slider below can display it. 1.4 m until the bounds are measurable.
     var autoFitRadius by remember { mutableStateOf(1.4f) }
-    // Re-run the settle animation for every newly measured instance and on Recenter.
+    // Settle drop — the model rises the last few centimetres into its resting pose.
+    // Driven, with the camera entrance below, by one effect gated on the first frame
+    // that actually shows the model.
     val fitProgress = remember { Animatable(0f) }
-    LaunchedEffect(bounds, recenterGeneration) {
-        if (bounds == null) return@LaunchedEffect
-        fitProgress.snapTo(0f)
-        fitProgress.animateTo(1f, SceneViewTokens.Motion.spring())
-    }
+    // Camera entrance (#3406). One tween on `ease-expressive`: the camera starts wide,
+    // swung off-axis and lifted, and flies to the resting framing while the model settles
+    // under it. See [EntranceCameraManipulator] for the geometry.
+    val entranceProgress = remember { Animatable(0f) }
     val modelYaw = rememberHeroYaw(trigger = spinScene && activeModelInstance != null, durationMillis = 20_000, staticYaw = 0f)
 
     // Camera-distance slider state. Wired directly to [DemoSettings.cameraDistance]
@@ -445,6 +481,38 @@ private fun SingleModelSection(
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
     }
+    // The arrival (#3406) — camera fly-in and model settle, started together and gated on
+    // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
+    // settle used to do) spent the whole animation behind the loading cover: the model was
+    // measured seconds before the backend finished linking its materials, so by the time
+    // anything was on screen the spring had long since come to rest. `firstModelFrame` is
+    // the same latch the cover releases on, so the entrance plays *as* the scene appears.
+    // In `qaMode` both snap to their resting values — a screenshot taken mid-flight frames
+    // the model differently every run.
+    val modelPresented = firstModelFrame.value
+    LaunchedEffect(bounds, recenterGeneration, modelPresented, DemoSettings.qaMode) {
+        if (bounds == null) return@LaunchedEffect
+        if (DemoSettings.qaMode) {
+            entranceProgress.snapTo(1f)
+            fitProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (!modelPresented) {
+            entranceProgress.snapTo(0f)
+            fitProgress.snapTo(0f)
+            return@LaunchedEffect
+        }
+        entranceProgress.snapTo(0f)
+        fitProgress.snapTo(0f)
+        launch { fitProgress.animateTo(1f, SceneViewTokens.Motion.spring()) }
+        entranceProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = CAMERA_ENTRANCE_MILLIS,
+                easing = SceneViewTokens.Ease.expressive,
+            ),
+        )
+    }
     // Back closes transient chrome before leaving the demo.
     BackHandler(enabled = animationBarOpen || modelSheetOpen || environmentSheetOpen) {
         animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
@@ -455,44 +523,75 @@ private fun SingleModelSection(
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstModelFrame,
-        // #3324 — this was hardcoded `dark = true`, so a light-theme device flashed the
-        // DARK preview edge-to-edge as the loading cover: a visibly wrong (mismatched)
-        // image before the sample's first real Filament frame took over. Every other
-        // preview consumer (`DemoEntry.previewPainter`) already keys off the live
-        // scheme; this is the one that didn't.
-        previewRes = DemoPreviews.resourceFor("model-viewer", dark = isSystemInDarkTheme()),
+        // No preview image on the cover any more (#3402). It used to draw
+        // `preview_model_viewer_<scheme>.webp` edge-to-edge: a white-field studio photo,
+        // cropped to fill a phone, of a helmet lit and framed nothing like the scene that
+        // replaced it half a second later — the "picture of the previous card" the report
+        // describes. The cover now says what is happening instead of guessing at a frame
+        // that has not been rendered.
+        loadingLabel = stringResource(R.string.demo_model_viewer_loading),
         controls = {
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
+            // #3426 — the range used to be a fixed `0.5f..10f`, which is meaningless for a model
+            // that auto-fits at 0.4 m (the slider could only ever push it away) or at 90 m (the
+            // slider could not reach it at all). It is now the same bounds-relative window the
+            // pinch is clamped to, so both controls span the subject rather than a guessed metre
+            // range.
             LabeledSlider(
                 label = "Camera distance",
-                value = sliderDistance ?: autoFitRadius,
+                value = (sliderDistance ?: autoFitRadius)
+                    .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
                 onValueChange = { DemoSettings.cameraDistance = it },
-                valueRange = 0.5f..10f,
-                valueText = "%.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
+                valueRange = (autoFitRadius * VIEWER_MIN_ZOOM_FACTOR)..(autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
+                valueText = "%.2f m".format(Locale.US, sliderDistance ?: autoFitRadius),
             )
             Row(Modifier.fillMaxWidth().toggleable(spinScene) { spinScene = it }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Spin scene")
                 Switch(spinScene, null)
             }
         },
+        // Dock order reads left to right as the questions a viewer answers: *what* am I
+        // looking at, *under what light*, *does it move*, and *put it back where it was*
+        // (#3402). Every icon changed with it. `ViewInAr` outlined was "Models" while
+        // `ViewInAr` filled was the AR accent right beside it — the same cube twice, which
+        // is what made the row unreadable; `Category` (three solids) says "pick a model"
+        // and leaves the cube to mean AR. `CenterFocusStrong`'s reticle read as a zoom or
+        // a camera-focus control, so Recenter is `RestartAlt` — an action, not a viewfinder.
         dock = listOf(
-            DockItem(Icons.Outlined.CenterFocusStrong, "Recenter", { recenterGeneration++ }),
-            DockItem(Icons.Outlined.WbSunny, "Environment", { environmentSheetOpen = true }),
-            DockItem(Icons.Outlined.ViewInAr, "Models", { modelSheetOpen = true }),
-        ) + if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.PlayCircle, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList(),
-        bottomOverlay = if (animationBarOpen && animationNames.isNotEmpty()) {{
-            AnimationBar(animationNames, selectedAnimation, animationPlaying, animationProgress,
-                onPlayingChange = { animationPlaying = it },
-                onClipChange = { selectedAnimation = it; animationProgress = 0f },
-                onProgressChange = {
-                    animationProgress = it
-                    activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }?.let { animator ->
-                        animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))
-                        animator.updateBoneMatrices()
-                    }
-                })
+            DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true }),
+            DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true }),
+        ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.Animation, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
+            listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", {
+                // Recenter drops the zoom override too (#3403) — the camera returning to its
+                // framed home pose while keeping a 4x zoom is not "recentred".
+                DemoSettings.cameraDistance = null
+                recenterGeneration++
+            })),
+        // Always composed when the model has clips, so the bar can slide in and out with
+        // the standard M3 enter/exit instead of appearing and vanishing between frames
+        // (#3406). An `AnimatedVisibility` that is not visible measures zero, so the
+        // scaffold's measured bottom band is unchanged while it is closed.
+        bottomOverlay = if (animationNames.isNotEmpty()) {{
+            AnimatedVisibility(
+                visible = animationBarOpen,
+                enter = fadeIn(SceneViewTokens.Motion.fade()) +
+                    expandVertically(SceneViewTokens.Motion.spring(), expandFrom = Alignment.Bottom),
+                exit = fadeOut(SceneViewTokens.Motion.fade()) +
+                    shrinkVertically(SceneViewTokens.Motion.spring(), shrinkTowards = Alignment.Bottom),
+            ) {
+                AnimationBar(animationNames, selectedAnimation, animationPlaying, animationProgress,
+                    onPlayingChange = { animationPlaying = it },
+                    onClipChange = { selectedAnimation = it; animationProgress = 0f },
+                    onProgressChange = {
+                        animationProgress = it
+                        activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }?.let { animator ->
+                            animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))
+                            animator.updateBoneMatrices()
+                        }
+                    })
+            }
         }} else null,
         dockAccent = DockItem(Icons.Filled.ViewInAr, "View in AR", {
             DemoSettings.requestedRoute = "demo/ar-placement?model=${selectedModel.assetPath}"
@@ -516,25 +615,41 @@ private fun SingleModelSection(
                 )
             }
             LaunchedEffect(framing) { framing?.let { autoFitRadius = it.distance } }
-            // Camera orbits; model stays fixed at its glTF pose. Recenter rebuilds the same
-            // manipulator, which snaps the camera back to exactly this home pose. A non-null
-            // `DemoSettings.cameraDistance` (slider or deep link) scales the eye along the
-            // same view ray so the pitch and the band centring survive the override.
-            val cameraManipulator = remember(framing, modelCenter, recenterGeneration, sliderDistance) {
-                val f = framing ?: return@remember createDefaultCameraManipulator(
-                    orbitHomePosition = Position(modelCenter.x, modelCenter.y, sliderDistance ?: 1.4f),
-                    targetPosition = modelCenter,
-                )
-                val (_, ty, tz) = f.targetOffset
-                val (_, ey, ez) = f.eyeOffset
-                val zoom = sliderDistance?.let { it / f.distance } ?: 1f
-                createDefaultCameraManipulator(
-                    orbitHomePosition = Position(
-                        modelCenter.x,
-                        modelCenter.y + ty + (ey - ty) * zoom,
-                        modelCenter.z + tz + (ez - tz) * zoom,
-                    ),
-                    targetPosition = Position(modelCenter.x, modelCenter.y + ty, modelCenter.z + tz),
+            // Camera orbits; the model stays fixed at its glTF pose. The resting pose is flown
+            // to when the model lands (#3406) and then held live.
+            //
+            // #3403 / #3404 — the manipulator is deliberately keyed on the CONTENT ONLY. A
+            // Filament manipulator carries the whole camera pose, so rebuilding it discards the
+            // user's orbit and snaps the camera back to the front view. The previous
+            // `remember(framing, modelCenter, recenterGeneration, sliderDistance)` did exactly
+            // that on every zoom-slider step (#3403), and again the first time the chrome measured
+            // its identity row and moved the framing insets (#3404) — a visible "décroché" from a
+            // control that must not touch the camera at all. Framing, pivot and zoom are read live
+            // through providers now, so a settling inset or a zoom change moves the distance and
+            // nothing else.
+            val liveFraming = androidx.compose.runtime.rememberUpdatedState(framing)
+            val liveCenter = androidx.compose.runtime.rememberUpdatedState(modelCenter)
+            val livePivot = {
+                val f = liveFraming.value
+                val c = liveCenter.value
+                if (f == null) c
+                else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
+            }
+            val cameraManipulator = remember(activeModelInstance, recenterGeneration) {
+                EntranceCameraManipulator(
+                    eye = {
+                        val f = liveFraming.value
+                        val c = liveCenter.value
+                        if (f == null) Position(c.x, c.y, c.z + 1.4f)
+                        else Position(c.x, c.y + f.eyeOffset.second, c.z + f.eyeOffset.third)
+                    },
+                    target = livePivot,
+                    progress = { entranceProgress.value },
+                    fitDistance = { liveFraming.value?.distance ?: 1.4f },
+                    distanceOverride = { DemoSettings.cameraDistance },
+                    // A pinch publishes its distance to the SAME state the slider writes, so the
+                    // two controls agree and the readout follows the gesture.
+                    onDistanceChange = { DemoSettings.cameraDistance = it },
                 )
             }
             SceneView(
@@ -838,7 +953,7 @@ private fun MultiModelSection(
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstFrame.rendered,
-        dock = listOf(DockItem(Icons.Outlined.ViewInAr, "Models", { modelSheetOpen = true })),
+        dock = listOf(DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true })),
         controls = {
             Text("Visibility", style = MaterialTheme.typography.labelLarge)
             // Labels come from the resolved slug's curated-English `displayName`
@@ -1182,9 +1297,19 @@ private fun GallerySection(
         // bound to a different model. yHeight = 0 keeps the model centered in
         // portrait without the empty-top-band artefact (QA finding
         // 2026-05-11).
+        //
+        // #3426 — the radius used to be a flat `1.6f` for *every* chip, while the gallery's slugs
+        // are normalised anywhere from 0.20 to 0.85 units. The same shot therefore ranged from a
+        // model overflowing the frame to one filling a sixth of it, purely by which chip was
+        // tapped. It is now fitted per chip, so switching chips changes the model and not its
+        // apparent size.
         val cameraManipulator = rememberHeroOrbitCameraManipulator(
             trigger = modelInstance != null,
-            radius = 1.6f,
+            radius = rememberFitOrbitRadius(
+                extentX = selectedSlug?.scaleToUnits ?: 0.5f,
+                extentY = selectedSlug?.scaleToUnits ?: 0.5f,
+                extentZ = selectedSlug?.scaleToUnits ?: 0.5f,
+            ),
             yHeight = 0f,
             durationMillis = 24_000,
         )

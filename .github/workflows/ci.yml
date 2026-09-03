@@ -464,6 +464,24 @@ jobs:
         # was already in the `android` path filter that gates this job, so the
         # module was compiled on every relevant PR while its 5 tests were not.
         # Local run before wiring: 5 tests, 0 failures, 7s.
+        #
+        # `:samples:android-demo:testReleaseUnitTest` (#3410): the demo's JVM
+        # tests otherwise only ever reach CI as a dependency of
+        # `verifyRoborazziDebug` above, which is `debug`-only — the `release`
+        # variant of the same unit tests had no coverage at all. That hid a
+        # real divergence: 13 compose-rule tests (`DemoScaffold*BandTest`,
+        # `DemoBackgroundRoleTest`) failed on `testReleaseUnitTest` while
+        # passing on debug, because `createComposeRule()`'s bare
+        # `ComponentActivity` host was declared only via a
+        # `debugImplementation` dependency (`androidx.compose.ui:ui-test-manifest`)
+        # — invisible to the release variant's own resource-link pipeline. Fixed
+        # by declaring that manifest entry directly in
+        # `samples/android-demo/src/main/AndroidManifest.xml` so both variants
+        # see it; this task is what makes a regression of that fix (or any
+        # other release-only divergence) fail a PR instead of sitting silent
+        # on `main`. Plain task, not a Roborazzi verify — the demo has no
+        # release-specific goldens, so no second screenshot pass to duplicate.
+        # Local run: 591 tests, 0 failures, ~2 min warm.
         run: |
           # The goldens under samples/android-demo/src/test/snapshots/ are a
           # declared input of the demo's test task (`roborazziGoldens` in its
@@ -480,6 +498,7 @@ jobs:
             :samples:common:testDebugUnitTest \
             :samples:android-tv-demo:testDebugUnitTest \
             :samples:android-demo:verifyRoborazziDebug \
+            :samples:android-demo:testReleaseUnitTest \
             --stacktrace
 
       - name: Upload unit test reports

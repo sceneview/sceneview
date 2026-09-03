@@ -311,16 +311,16 @@ class DeepLinkRouterTest {
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────
     //
     // Consolidated demos open on their default first tab unless an alias (e.g.
-    // `shape`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
+    // `physics`) or an explicit `--es tab` / `?tab=` value pre-selects another. The
     // resolution is pure (raw id + raw param → index); the bad-index clamp lives in
     // the demo composable (initialDemoMode), out of this unit's reach.
 
     @Test
     fun `resolveInitialTab maps a non-default alias to its tab`() {
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", null))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", null))
         assertEquals(1, DeepLinkRouter.resolveInitialTab("movable-light", null))
         assertEquals(2, DeepLinkRouter.resolveInitialTab("scene-gallery", null))
-        assertEquals(3, DeepLinkRouter.resolveInitialTab("billboard", null))
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("occlusion-material", null))
     }
 
     @Test
@@ -328,6 +328,14 @@ class DeepLinkRouterTest {
         // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
         assertNull(DeepLinkRouter.resolveInitialTab("text", null))
+        // `shape` joined them in #3423: `custom-geometry` was rebuilt around a single
+        // runtime-generated mesh and has no tabs left to pre-select.
+        assertNull(DeepLinkRouter.resolveInitialTab("shape", null))
+        // `image`, `video` and `billboard` joined them in #3424: `two-d-in-three-d` was
+        // rebuilt around a single annotated scene and has no tabs left to pre-select.
+        assertNull(DeepLinkRouter.resolveInitialTab("image", null))
+        assertNull(DeepLinkRouter.resolveInitialTab("video", null))
+        assertNull(DeepLinkRouter.resolveInitialTab("billboard", null))
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
@@ -335,20 +343,20 @@ class DeepLinkRouterTest {
 
     @Test
     fun `explicit tab param wins over the alias default`() {
-        // `?tab=0` forces the default tab even when launched via the `shape` alias.
-        assertEquals(0, DeepLinkRouter.resolveInitialTab("shape", "0"))
+        // `?tab=0` forces the default tab even when launched via the `physics` alias.
+        assertEquals(0, DeepLinkRouter.resolveInitialTab("physics", "0"))
         // An explicit integer index on a plain id.
         assertEquals(2, DeepLinkRouter.resolveInitialTab("custom-geometry", "2"))
         // An explicit alias-token tab value resolves through ALIAS_INITIAL_TAB.
-        assertEquals(3, DeepLinkRouter.resolveInitialTab("two-d-in-three-d", "billboard"))
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("materials", "occlusion-material"))
     }
 
     @Test
     fun `resolveInitialTab falls back to the alias when the tab param is unusable`() {
         // A negative / unparseable / blank explicit value is ignored; the alias applies.
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "-1"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "garbage"))
-        assertEquals(1, DeepLinkRouter.resolveInitialTab("shape", "  "))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "-1"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "garbage"))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("physics", "  "))
     }
 
     @Test
@@ -458,5 +466,72 @@ class DeepLinkRouterTest {
                 index >= 1,
             )
         }
+    }
+
+    /**
+     * The invariant `DEMO_ID_ALIASES`' own KDoc states and nothing was actually checking:
+     * a key must be RETIRED (absent from the live catalogue) and a value must be LIVE.
+     *
+     * Both halves fail loudly for a reason. A key that is still registered means the alias
+     * is dead code the router never consults; a value that is not registered means every
+     * link through that alias 404s to the demo list — which is exactly the failure a
+     * consolidation is supposed to prevent.
+     */
+    @Test
+    fun `every retired alias id is gone from the catalogue and points at a live demo`() {
+        val liveIds = ALL_DEMOS.map { it.id }.toSet()
+        DeepLinkRouter.DEMO_ID_ALIASES.forEach { (retired, live) ->
+            assertTrue(
+                "'$retired' is an alias key, so it must no longer be a registered demo id",
+                retired !in liveIds,
+            )
+            assertTrue(
+                "alias '$retired' -> '$live', but '$live' is not a registered demo id",
+                live in liveIds,
+            )
+        }
+    }
+
+    /**
+     * #3405 — `ar-instant-placement` was folded into `ar-placement` (instant placement is a
+     * mode of the one flow now). Its deep link is part of the public surface: an
+     * `sceneview://demo/ar-instant-placement` link in a doc, a QR code or a store listing
+     * has to keep opening the screen that absorbed it.
+     */
+    @Test
+    fun `the retired instant-placement link resolves onto the consolidated flow`() {
+        val consolidated = listOf(
+            DemoEntry(
+                "ar-placement",
+                R.string.demo_ar_placement_title,
+                R.string.demo_ar_placement_subtitle,
+                "Augmented Reality",
+                Icons.Filled.ViewInAr,
+                order = 6,
+                tags = setOf("test"),
+            ),
+        )
+        assertEquals(
+            "ar-placement",
+            DeepLinkRouter.parse(
+                Uri.parse("sceneview://demo/ar-instant-placement"),
+                consolidated,
+            ),
+        )
+        // And through the QA / intent-extra ingress, which shares `validate`.
+        assertEquals(
+            "ar-placement",
+            DeepLinkRouter.validate("ar-instant-placement", consolidated),
+        )
+    }
+
+    /**
+     * The consolidated demo has *phases*, not segmented tabs, so the alias must not try to
+     * pre-select one — a mode is the user's choice on the chooser, and a link that silently
+     * forced instant placement would be answering a question it was never asked.
+     */
+    @Test
+    fun `the instant-placement alias carries no tab pre-selection`() {
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-instant-placement"])
     }
 }

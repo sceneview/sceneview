@@ -34,9 +34,10 @@ public final class io/github/sceneview/BuildConfig {
 }
 
 public final class io/github/sceneview/CameraFramingKt {
+	public static final field DEFAULT_FRAMING_ELEVATION_DEGREES D
 	public static final field DEFAULT_FRAMING_PADDING F
-	public static final fun fitDistanceForBounds (Lio/github/sceneview/Aabb;DDF)F
-	public static synthetic fun fitDistanceForBounds$default (Lio/github/sceneview/Aabb;DDFILjava/lang/Object;)F
+	public static final fun fitDistanceForBounds (Lio/github/sceneview/Aabb;DDFDZ)F
+	public static synthetic fun fitDistanceForBounds$default (Lio/github/sceneview/Aabb;DDFDZILjava/lang/Object;)F
 	public static final fun fitDistanceForContent (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;F)F
 	public static synthetic fun fitDistanceForContent$default (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;FILjava/lang/Object;)F
 	public static final fun frameToBounds (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/Aabb;Ldev/romainguy/kotlin/math/Float3;F)Z
@@ -1506,6 +1507,9 @@ public final class io/github/sceneview/gesture/CameraGestureDetector$Companion {
 public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator : io/github/sceneview/gesture/CameraGestureDetector$CameraManipulator {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator$Companion;
+	public static final field DEFAULT_MAX_ZOOM_DISTANCE_FACTOR F
+	public static final field DEFAULT_MIN_ZOOM_DISTANCE_FACTOR F
+	public static final field DEFAULT_ORBIT_ZOOM_SPEED F
 	public static final field DEFAULT_PINCH_ZOOM_DAMPING F
 	public static final field DEFAULT_PINCH_ZOOM_SPEED F
 	public fun <init> ()V
@@ -1517,13 +1521,17 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;)V
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;F)V
 	public fun <init> (Lcom/google/android/filament/utils/Manipulator;FF)V
-	public synthetic fun <init> (Lcom/google/android/filament/utils/Manipulator;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/utils/Manipulator;FFF)V
+	public synthetic fun <init> (Lcom/google/android/filament/utils/Manipulator;FFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;)V
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)V
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FF)V
 	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	protected final fun getManipulator ()Lcom/google/android/filament/utils/Manipulator;
+	protected final fun getManipulatorZoomSpeed ()F
+	public final fun getMaxZoomDistanceFactor ()F
+	public final fun getMinZoomDistanceFactor ()F
 	protected final fun getPinchZoomDamping ()F
 	protected final fun getPinchZoomSpeed ()F
 	public fun getTransform ()Ldev/romainguy/kotlin/math/Mat4;
@@ -1533,11 +1541,20 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public fun scrollBegin (IIF)V
 	public fun scrollEnd ()V
 	public fun scrollUpdate (IIFF)V
+	public final fun setMaxZoomDistanceFactor (F)V
+	public final fun setMinZoomDistanceFactor (F)V
 	public fun setViewport (II)V
 	public fun update (F)V
 }
 
 public final class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator$Companion {
+}
+
+public final class io/github/sceneview/gesture/CameraGestureMathKt {
+	public static final fun zoomedDistanceForPinch (FFFFF)F
+	public static final fun zoomedDistanceForPinch (FFFFFF)F
+	public static final fun zoomedDistanceForPinch (FFFFFFF)F
+	public static synthetic fun zoomedDistanceForPinch$default (FFFFFFFILjava/lang/Object;)F
 }
 
 public final class io/github/sceneview/gesture/CameraManipulatorKt {

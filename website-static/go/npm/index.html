@@ -4,6 +4,9 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
   <title>SceneView on npm</title>
   <meta name="description" content="SceneView packages on npm — sceneview-web, sceneview-mcp, and more.">
   <meta http-equiv="refresh" content="1;url=https://www.npmjs.com/package/sceneview-web">
@@ -46,9 +49,34 @@
     <p class="fallback">Not working? <a href="https://www.npmjs.com/package/sceneview-web">Click here</a> or go <a href="/go/">back</a></p>
   </div>
   <script>
-    setTimeout(function() {
-      window.location.href = 'https://www.npmjs.com/package/sceneview-web';
-    }, 1000);
+    // Attribute the /go/ hub before leaving. `go_redirect` is what turns
+    // "someone hit /go/npm" into a funnel step in GA4 — the interstitial used to
+    // navigate away without ever reporting itself.
+    //
+    // Ordering matters: the shared loader in <head> defines `gtag` synchronously, so the
+    // event is queued here, and `event_callback` fires the redirect the moment the hit is
+    // on the wire (`transport_type: 'beacon'` → navigator.sendBeacon, which survives the
+    // navigation). `event_timeout` bounds the wait when the tag is blocked or slow, the
+    // setTimeout below bounds it when gtag never loads at all, and the 1s
+    // `<meta http-equiv="refresh">` in <head> is the final no-JS fallback. `redirect()`
+    // is idempotent, so whichever path wins, the visitor navigates exactly once.
+    var DESTINATION = 'https://www.npmjs.com/package/sceneview-web';
+    var redirected = false;
+    function redirect() {
+      if (redirected) return;
+      redirected = true;
+      window.location.href = DESTINATION;
+    }
+    if (typeof gtag === 'function') {
+      gtag('event', 'go_redirect', {
+        target: 'npm',
+        destination: DESTINATION,
+        transport_type: 'beacon',
+        event_timeout: 600,
+        event_callback: redirect
+      });
+    }
+    setTimeout(redirect, 700);
   </script>
 </body>
 </html>

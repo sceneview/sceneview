@@ -980,6 +980,32 @@ them — keep sample counts constant across curve types if you switch shapes at 
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+Build the buffers with `Geometry.Builder`, which takes plain `Geometry.Vertex(position, normal, uvCoordinate, color)` records — generate them however you like:
+```kotlin
+SceneView(...) {
+    val vertices = remember(resolution) { myGenerator(resolution) }   // List<Geometry.Vertex>
+    // Key the Geometry on the vertex COUNT, not on the values: same count = same buffers.
+    val geometry = remember(engine, resolution) {
+        Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
+            .vertices(vertices)
+            .indices(myIndices(resolution))          // List<Int>, 3 per triangle
+            .build(engine)
+    }
+    // Animate by rewriting the existing buffers — no reallocation, no leak.
+    SideEffect { geometry.update(engine, vertices) }
+    // MeshNode does NOT own buffers it was handed: free them yourself.
+    DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
+
+    MeshNode(
+        primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+        vertexBuffer = geometry.vertexBuffer,
+        indexBuffer = geometry.indexBuffer,
+        boundingBox = geometry.boundingBox,
+        materialInstance = material,
+    )
+}
+```
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
 
 ### ShapeNode — 2D polygon shape
 ```kotlin
@@ -1079,6 +1105,13 @@ with plane rendering, a built-in centre-screen **ring reticle** that brightens w
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
 the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
 only declare *what* rides each placed anchor:
+
+> **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
+> `ar-placement` demo: a pre-AR chooser screen arms the model *and* the placement mode
+> (`On a plane` / `Instantly`), then the shared tap-to-place camera runs it. Instant placement is
+> that flow's `Instantly` mode, not a separate screen — `sceneview://demo/ar-instant-placement`
+> is an alias onto `ar-placement`. Prefer that shape when generating a placement UI: choose the
+> subject before opening the camera, and treat "how a tap resolves" as an option of one screen.
 
 ```kotlin
 import io.github.sceneview.ar.PlacementScene
@@ -3430,13 +3463,24 @@ Library-level helper (`io.github.sceneview`, #1439) that frames a model so it fi
 viewport regardless of its intrinsic glTF size — no per-model `scaleToUnits` tuning.
 
 ```kotlin
-// Pure trigonometry — bounds + camera projection → orbit distance. Fits the content
-// bounding SPHERE, so the result is yaw-invariant (an orbiting camera never clips).
+// Pure trigonometry — bounds + camera projection → orbit distance. Each FOV axis is
+// fitted with its OWN half-angle (#3426), so a tall subject on a portrait viewport is
+// no longer pushed back by a width constraint it never hits. Yaw-invariant by default:
+// it frames the box's sweep about world +Y, so an orbiting or auto-rotating camera
+// never clips — set `azimuthInvariant = false` for a static head-on scene that should
+// not pay for a rotation it never performs.
 fun fitDistanceForBounds(
     bounds: Aabb, verticalFovDegrees: Double, aspect: Double,
-    padding: Float = DEFAULT_FRAMING_PADDING  // 0.15 = 15% breathing room
+    padding: Float = DEFAULT_FRAMING_PADDING,           // 0.15 = 15% breathing room
+    elevationDegrees: Double = DEFAULT_FRAMING_ELEVATION_DEGREES,  // 0.0 = level with the target
+    azimuthInvariant: Boolean = true
 ): Float
 ```
+
+Before v4.34.0 this fitted the content bounding *sphere* — half the AABB's space diagonal —
+and charged both axes the worse of the two. The result was never wrong, only always too far;
+the new fit is never further and up to 2× closer for tall or compact subjects. Same fix as
+iOS #3383.
 
 Usage:
 

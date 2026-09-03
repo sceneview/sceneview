@@ -17,6 +17,9 @@
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
   <title>Privacy Policy — SceneView</title>
   <meta name="description" content="Privacy Policy for the SceneView Demo app. No tracking, offline by default, and an opt-in in-app feedback feature.">
   <meta name="robots" content="index, follow">
@@ -333,6 +336,9 @@
 
       <h2>Data Sharing</h2>
       <p>Outside the feedback feature, no data is shared with third parties. For the feedback feature, data is shared only with the processors above, and the feedback transcript and context become public on a GitHub issue. No data is sold or used for advertising.</p>
+
+      <h2>This Website (sceneview.github.io)</h2>
+      <p>Everything above describes the <strong>SceneView Demo app</strong> and the SceneView SDK, neither of which contains any analytics SDK. The documentation and marketing <strong>website</strong> is a separate surface: it uses Google Analytics 4 (measurement ID <code>G-HX1JWGSMTH</code>) to count page views and which links visitors follow, so we know which docs and platforms are worth maintaining. IP addresses are anonymised by Google Analytics, no advertising features are enabled, and no data collected on the website is linked to app usage. Browser &ldquo;Do Not Track&rdquo; and content blockers are respected &mdash; the site works fully without the tag.</p>
 
       <h2>Children's Privacy</h2>
       <p>The app does not knowingly collect any data from children under 13. The app is rated for ages 13 and older.</p>

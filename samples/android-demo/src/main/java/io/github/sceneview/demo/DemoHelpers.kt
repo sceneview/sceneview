@@ -802,6 +802,118 @@ fun rememberHeroOrbitCameraManipulator(
     }
 }
 
+/**
+ * Fraction of the frame a demo's subject should span. `0.92` is the value the Model Viewer's own
+ * framing (`DemoMath.VIEWER_HORIZONTAL_FILL`) settled on after on-device QA: on a portrait phone
+ * the *horizontal* axis is what binds an orbiting subject, and anything tighter than ~0.9 there
+ * reads as a small object floating in a large empty frame. Expressed as a *padding* fraction to
+ * [io.github.sceneview.fitDistanceForBounds]: `1 / 0.92 - 1 ≈ 0.087`.
+ */
+const val DEMO_FRAMING_FILL: Float = 0.92f
+
+/**
+ * Orbit radius that frames a subject of the given world-space extents on **this** viewport
+ * (#3426).
+ *
+ * Every non-AR sample used to carry a hand-tuned literal — `radius = 2.0f`, `2.2f`, `2.4f`,
+ * `Position(0f, 0.1f, 2f)`, or nothing at all, which left the library's stock 2.78 m pose. None of
+ * them looked at the aspect ratio, so the same number that framed a subject on a 16:9 phone either
+ * cropped it or shrank it to a quarter of the frame elsewhere, and the numbers had drifted apart
+ * between demos showing the *same* subject at the *same* scale. This is the one place that answers
+ * "how far back" now; the per-demo constants that survive are the ones describing the *content*,
+ * not the camera.
+ *
+ * The aspect comes from the device configuration rather than a `BoxWithConstraints`, because the
+ * demos that need this render their scene edge-to-edge and most are not inside one.
+ *
+ * @param extentX          Content width, world units (full extent, not half).
+ * @param extentY          Content height, world units.
+ * @param extentZ          Content depth, world units.
+ * @param elevationDegrees Camera elevation above the content centre — pass the same pitch the
+ *                         demo's camera uses, since projected height shrinks as the camera rises.
+ * @param fill             Fraction of the binding axis the subject should span.
+ * @param azimuthInvariant `true` when the camera orbits (auto-orbit or user drag) and the subject
+ *                         must never clip as it turns broadside; `false` for a fixed head-on shot.
+ * @param focalLengthMm    Lens the demo's camera uses. SceneView's default is 28 mm.
+ */
+@Composable
+fun rememberFitOrbitRadius(
+    extentX: Float,
+    extentY: Float,
+    extentZ: Float,
+    elevationDegrees: Float = 0f,
+    fill: Float = DEMO_FRAMING_FILL,
+    azimuthInvariant: Boolean = true,
+    focalLengthMm: Double = 28.0,
+): Float {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val aspect = androidx.compose.runtime.remember(
+        configuration.screenWidthDp,
+        configuration.screenHeightDp,
+    ) {
+        val w = configuration.screenWidthDp.toFloat()
+        val h = configuration.screenHeightDp.toFloat()
+        if (w > 0f && h > 0f) w / h else 0.47f
+    }
+    return androidx.compose.runtime.remember(
+        extentX, extentY, extentZ, elevationDegrees, fill, azimuthInvariant, aspect,
+    ) {
+        fitOrbitRadius(
+            extentX, extentY, extentZ, aspect, elevationDegrees, fill, azimuthInvariant,
+            focalLengthMm,
+        )
+    }
+}
+
+/**
+ * Elevation, in degrees above the target, of the eye the library's `orbitRadius` overloads place
+ * the camera at — `io.github.sceneview.gesture.DEFAULT_ORBIT_DIRECTION` is `(0, 0.4, 2.75)`
+ * normalised, i.e. `asin(0.4 / 2.7789) ≈ 8.27°`. Pass it to [rememberFitOrbitRadius] whenever the
+ * result feeds `rememberCameraManipulator(orbitRadius = …)`, so the fit knows the pose it is
+ * fitting for.
+ */
+const val DEFAULT_ORBIT_ELEVATION_DEGREES: Float = 8.27f
+
+/**
+ * Non-Compose form of [rememberFitOrbitRadius] — the pure function, so it can be unit-tested on
+ * the JVM and called from a `remember` block that already knows its viewport.
+ */
+fun fitOrbitRadius(
+    extentX: Float,
+    extentY: Float,
+    extentZ: Float,
+    aspect: Float,
+    elevationDegrees: Float = 0f,
+    fill: Float = DEMO_FRAMING_FILL,
+    azimuthInvariant: Boolean = true,
+    focalLengthMm: Double = 28.0,
+): Float {
+    val safeFill = if (fill.isFinite() && fill > 0f) fill else DEMO_FRAMING_FILL
+    val radius = io.github.sceneview.fitDistanceForBounds(
+        bounds = io.github.sceneview.Aabb(
+            halfExtent = Position(
+                x = maxOf(extentX, 0f) / 2f,
+                y = maxOf(extentY, 0f) / 2f,
+                z = maxOf(extentZ, 0f) / 2f,
+            )
+        ),
+        verticalFovDegrees = io.github.sceneview.verticalFovDegreesForFocalLength(focalLengthMm),
+        aspect = aspect.toDouble(),
+        padding = 1f / safeFill - 1f,
+        elevationDegrees = elevationDegrees.toDouble(),
+        azimuthInvariant = azimuthInvariant,
+    )
+    // A degenerate content box must not put the camera on the subject; fall back to the library's
+    // stock 2.78 m pose rather than 0.
+    return if (radius.isFinite() && radius > 0f) radius.coerceIn(0.2f, 900f) else 2.78f
+}
+
+/** Closest the Model Viewer's pinch may take the camera, as a fraction of the auto-fit distance. */
+const val VIEWER_MIN_ZOOM_FACTOR: Float = 0.25f
+
+/** Furthest the Model Viewer's pinch may take the camera, as a multiple of the auto-fit distance. */
+const val VIEWER_MAX_ZOOM_FACTOR: Float = 4f
+
 /** Default polar-angle floor (degrees from world +Y) used by [clampOrbitEyePitch]. */
 internal const val DEFAULT_MIN_ORBIT_POLAR_DEGREES: Float = 1f
 
@@ -874,4 +986,178 @@ internal fun clampOrbitEyePitch(
         y = target.y + newDy,
         z = target.z + hz * newHorizontal,
     )
+}
+
+/**
+ * A [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator] that flies
+ * the camera **in** to its resting pose when the model arrives, then behaves exactly
+ * like the stock `DefaultCameraManipulator` (#3406).
+ *
+ * At `progress() == 0` the eye sits [startDistanceScale]× further from [target], swung
+ * [startYawDegrees] around world +Y and lifted by [startLiftFraction] of the orbit
+ * radius; at `progress() == 1` it is exactly [eye]. The caller animates that progress —
+ * one `tween(duration, ease-expressive)` is the whole effect — so the model is not
+ * merely displayed, it is arrived at. The model itself never moves, which is what keeps
+ * lights and reflections landing on the surfaces the resting frame will show.
+ *
+ * The first touch hands off to a stock manipulator seeded with the eye the flight had
+ * reached, so interrupting the entrance is seamless rather than a snap — the same
+ * hand-off [HeroOrbitCameraManipulator] does, for the same reason. There is no resume:
+ * once the user has taken the camera it is theirs, and replaying a fly-in under their
+ * fingers would be a bug, not a flourish.
+ *
+ * In [DemoSettings.qaMode] the caller pins progress at `1f`: a screenshot taken
+ * mid-flight is a different framing every run.
+ */
+class EntranceCameraManipulator(
+    private val eye: () -> Position,
+    private val target: () -> Position,
+    private val progress: () -> Float,
+    private val fitDistance: () -> Float = { 1f },
+    private val distanceOverride: () -> Float? = { null },
+    private val onDistanceChange: (Float) -> Unit = {},
+    private val startDistanceScale: Float = 1.55f,
+    private val startYawDegrees: Float = 24f,
+    private val startLiftFraction: Float = 0.22f,
+) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
+    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
+        null
+    private var viewportW = 1
+    private var viewportH = 1
+
+    /** Eye position for the current [progress] — [eye] itself once the flight is over. */
+    private fun currentEye(): Position {
+        val eye = eye()
+        val target = target()
+        val p = progress().coerceIn(0f, 1f)
+        if (p >= 1f) return eye
+        val remaining = 1f - p
+        val dx = eye.x - target.x
+        val dy = eye.y - target.y
+        val dz = eye.z - target.z
+        val radius = sqrt(dx * dx + dy * dy + dz * dz)
+        // Degenerate framing: nothing to fly along, sit at the resting pose.
+        if (!radius.isFinite() || radius <= 1e-6f) return eye
+        // Swing the offset around world +Y, push it out along itself, and lift it.
+        val yaw = Math.toRadians((startYawDegrees * remaining).toDouble()).toFloat()
+        val c = cos(yaw)
+        val s = sin(yaw)
+        val scale = 1f + (startDistanceScale - 1f) * remaining
+        val lift = radius * startLiftFraction * remaining
+        return Position(
+            x = target.x + (dx * c + dz * s) * scale,
+            y = target.y + (dy + lift) * scale,
+            z = target.z + (dz * c - dx * s) * scale,
+        )
+    }
+
+    private fun flightTransform(): io.github.sceneview.math.Transform = aimedAt(currentEye())
+
+    /** `lookAt` from [from] to the live target, with world +Y up. */
+    private fun aimedAt(from: Position): io.github.sceneview.math.Transform =
+        io.github.sceneview.math.Transform(
+            dev.romainguy.kotlin.math.lookAt(
+                eye = from,
+                target = target(),
+                up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
+            )
+        )
+
+    /**
+     * Re-places [from] at [distance] from the live target **along the current view ray** (#3403).
+     * Changing the zoom therefore never disturbs the yaw and pitch the user dragged to — which is
+     * exactly what rebuilding the manipulator on every slider step used to do.
+     */
+    private fun atDistance(from: Position, distance: Float): Position {
+        val t = target()
+        val dx = from.x - t.x
+        val dy = from.y - t.y
+        val dz = from.z - t.z
+        val length = sqrt(dx * dx + dy * dy + dz * dz)
+        if (!length.isFinite() || length <= 1e-5f || !distance.isFinite() || distance <= 0f) return from
+        val k = distance / length
+        return Position(t.x + dx * k, t.y + dy * k, t.z + dz * k)
+    }
+
+    /** Camera-to-target distance on screen right now. */
+    private fun effectiveDistance(): Float {
+        distanceOverride()?.takeIf { it.isFinite() && it > 0f }?.let { return it }
+        val t = target()
+        val e = fallback?.getTransform()?.position ?: currentEye()
+        val d = sqrt(
+            (e.x - t.x) * (e.x - t.x) + (e.y - t.y) * (e.y - t.y) + (e.z - t.z) * (e.z - t.z)
+        )
+        return if (d.isFinite() && d > 0f) d else fitDistance()
+    }
+
+    private fun ensureFallback() {
+        if (fallback == null) {
+            // Hand off at the exact pose on screen — flight position and zoom override included —
+            // so the first drag continues from where the user was looking, with no snap.
+            fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
+                eyePosition = getTransform().position,
+                targetPosition = target(),
+            ).also { it.setViewport(viewportW, viewportH) }
+        }
+    }
+
+    override fun setViewport(width: Int, height: Int) {
+        viewportW = width.coerceAtLeast(1)
+        viewportH = height.coerceAtLeast(1)
+        fallback?.setViewport(viewportW, viewportH)
+    }
+
+    override fun getTransform(): io.github.sceneview.math.Transform {
+        val override = distanceOverride()?.takeIf { it.isFinite() && it > 0f }
+        val fb = fallback
+            ?: return if (override == null) flightTransform()
+            else aimedAt(atDistance(currentEye(), override))
+        // Same polar clamp as the hero orbit (#2487): the stock manipulator lets a drag
+        // carry the eye onto the orbit pole, where `lookAt`'s fixed world-up collapses
+        // and the model flips upside-down.
+        val eyeNow = clampOrbitEyePitch(fb.getTransform().position, target())
+        return aimedAt(if (override == null) eyeNow else atDistance(eyeNow, override))
+    }
+
+    override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+        ensureFallback()
+        fallback?.grabBegin(x, y, strafe)
+    }
+
+    override fun grabUpdate(x: Int, y: Int) {
+        fallback?.grabUpdate(x, y)
+    }
+
+    override fun grabEnd() {
+        fallback?.grabEnd()
+    }
+
+    override fun scrollBegin(x: Int, y: Int, separation: Float) {
+        ensureFallback()
+    }
+
+    override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
+        // The pinch PUBLISHES a distance instead of translating the delegate, so it and the
+        // "Camera distance" slider drive the same number (#3403). The step is a fraction of the
+        // current distance, so the gesture feels the same on a 5 cm model and a 150 m one, and the
+        // clamps are relative to the model's own fitted distance (#3426).
+        val fit = fitDistance().takeIf { it.isFinite() && it > 0f } ?: 1f
+        onDistanceChange(
+            io.github.sceneview.gesture.zoomedDistanceForPinch(
+                distance = effectiveDistance(),
+                prevSeparation = prevSeparation,
+                currSeparation = currSeparation,
+                minDistance = fit * VIEWER_MIN_ZOOM_FACTOR,
+                maxDistance = fit * VIEWER_MAX_ZOOM_FACTOR,
+            )
+        )
+    }
+
+    override fun scrollEnd() {
+        fallback?.scrollEnd()
+    }
+
+    override fun update(deltaTime: Float) {
+        fallback?.update(deltaTime)
+    }
 }

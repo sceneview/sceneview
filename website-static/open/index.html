@@ -17,6 +17,9 @@
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
   <title>Open in SceneView Demo</title>
   <meta name="description" content="Open this demo in the SceneView Demo app.">
   <meta name="robots" content="noindex">
@@ -296,7 +299,9 @@
       'ar-rerun': 'Rerun Debug',
       'ar-record-playback': 'Record & Playback',
       'ar-depth-occlusion': 'Depth Occlusion',
-      'ar-instant-placement': 'Instant Placement',
+      // #3405 — folded into `ar-placement`; the app resolves the old id through
+      // DeepLinkRouter.DEMO_ID_ALIASES, so the link still opens the right screen.
+      'ar-instant-placement': 'Tap to Place',
       'ar-terrain': 'Terrain Anchors',
       'ar-rooftop': 'Rooftop Anchors',
       'ar-image-stabilization': 'Image Stabilization (EIS)',
