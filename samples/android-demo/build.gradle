@@ -155,6 +155,21 @@ android {
     }
 }
 
+// Keep the RELEASE variant's JVM unit tests (#3410, restored for AGP 9 in #3440).
+//
+// AGP 9 no longer creates host (unit) tests for every variant: only the default
+// one gets them, so `testReleaseUnitTest` silently stopped existing and the CI
+// "Unit tests" job — which invokes that exact task — would have failed with
+// "task not found". Losing it would also undo #3410: the release variant is where
+// 13 compose-rule tests once failed while passing on debug, because
+// `createComposeRule()`'s activity host came from a `debugImplementation`-only
+// manifest. That task is the regression guard for the fix.
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) { variantBuilder ->
+        variantBuilder.enableUnitTest = true
+    }
+}
+
 // Build-time fail-loud guard for store secrets (#1915).
 //
 // An empty SKETCHFAB_API_KEY / ARCORE_API_KEY compiles silently — Gradle is
