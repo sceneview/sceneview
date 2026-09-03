@@ -37,7 +37,10 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.DEFAULT_ORBIT_ELEVATION_DEGREES
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.rememberFitOrbitRadius
+import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.ModelInstance
@@ -252,6 +255,16 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
             environmentLoader = environmentLoader,
             environment = environment,
             onFrame = firstFrame.onFrame,
+            // #3426 — the main view passed no manipulator, so it inherited the library's stock
+            // 2.78 m pose for a subject normalised to 0.5 units: the helmet the demo is *about*
+            // read as a small object adrift in the frame, and smaller than the same helmet in the
+            // picture-in-picture inset beside it. Fitted to the subject.
+            cameraManipulator = rememberCameraManipulator(
+                orbitRadius = rememberFitOrbitRadius(
+                    extentX = 0.5f, extentY = 0.5f, extentZ = 0.5f,
+                    elevationDegrees = DEFAULT_ORBIT_ELEVATION_DEGREES,
+                )
+            ),
         ) {
             mainInstance?.let { instance ->
                 ModelNode(

@@ -62,6 +62,16 @@ object DemoSettings {
     var qaDemoState: String? by mutableStateOf(null)
 
     /**
+     * QA-only Point & Ask card override (#3407). `--es qa_ask_state <id>` pins the demo's
+     * bottom card to one state — see [io.github.sceneview.demo.ai.askStepForQaOverride] and
+     * [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] — so a light + dark screenshot of every
+     * state can be taken on an emulator that has neither ARCore nor AICore (#2754). `null`
+     * (default) leaves the demo running its real state machine; an unrecognised id is
+     * ignored the same way.
+     */
+    var qaAskState: String? by mutableStateOf(null)
+
+    /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
      * when they start — i.e. a zoom level. When non-null, the shared hero-orbit camera
      * ([rememberHeroOrbitCameraManipulator]) uses this value as its orbit radius instead of

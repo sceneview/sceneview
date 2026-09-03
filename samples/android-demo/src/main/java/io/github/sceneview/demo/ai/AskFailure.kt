@@ -17,44 +17,104 @@ import io.github.sceneview.demo.R
  *
  * Each value therefore carries:
  *  - [messageRes], one sentence saying what happened;
- *  - [isTerminal], whether retrying on this device can plausibly change the outcome.
- *    A terminal failure retires the retry affordance and shows the "not available here"
- *    explanation instead — the honest answer, and the one #2648 promised (on-device only,
- *    no cloud fallback).
+ *  - [isTerminal], whether the **platform** reported that this device cannot run the model
+ *    at all. Only a terminal failure may retire the demo (`AskAvailability.Unsupported`);
+ *    a pile of non-terminal ones may not, however tall (#3407);
+ *  - [recovery], the one next step the card offers — a real button, not a sentence.
  */
 enum class AskFailure(
     @StringRes val messageRes: Int,
     val isTerminal: Boolean,
+    val recovery: AskRecovery,
 ) {
-    /** The composited frame never arrived (PixelCopy failure/timeout, or a transparent hole). */
-    CaptureFailed(R.string.demo_point_and_ask_error_capture, isTerminal = false),
+    /** The frame never arrived (read-back failure or timeout). */
+    CaptureFailed(
+        R.string.demo_point_and_ask_error_capture,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
+
+    /**
+     * The read-back came back with the AR viewport punched out — a fully transparent region
+     * where the camera + virtual objects should be (#2654/#3276). Retrying is worth one shot
+     * (compositor state changes frame to frame), and the message says what is missing rather
+     * than blaming the model.
+     */
+    CaptureMissingArLayer(
+        R.string.demo_point_and_ask_error_capture_layer,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
+
+    /**
+     * The frame was read back intact but is essentially one flat colour — a black viewport,
+     * a covered lens, or a lost AR layer in its opaque form. Sending it produced exactly the
+     * "the model sees nothing" report in #3407, so it is now caught before it leaves.
+     */
+    CaptureBlank(
+        R.string.demo_point_and_ask_error_capture_blank,
+        isTerminal = false,
+        recovery = AskRecovery.AimAndRetry,
+    ),
 
     /**
      * The model ran and returned nothing. Not an exception — a completed stream with no
      * text, which the pre-#3343 code reported with the same wording as a hard failure.
      */
-    EmptyAnswer(R.string.demo_point_and_ask_error_empty, isTerminal = false),
+    EmptyAnswer(
+        R.string.demo_point_and_ask_error_empty,
+        isTerminal = false,
+        recovery = AskRecovery.Rephrase,
+    ),
 
     /** `NOT_AVAILABLE` / `NOT_SUPPORTED` / `AICORE_INCOMPATIBLE`. */
-    ModelUnavailable(R.string.demo_point_and_ask_error_unavailable, isTerminal = true),
+    ModelUnavailable(
+        R.string.demo_point_and_ask_error_unavailable,
+        isTerminal = true,
+        recovery = AskRecovery.OpenAicoreSettings,
+    ),
 
     /** `NEEDS_SYSTEM_UPDATE` — AICore is behind the ML Kit client. */
-    NeedsSystemUpdate(R.string.demo_point_and_ask_error_system_update, isTerminal = true),
+    NeedsSystemUpdate(
+        R.string.demo_point_and_ask_error_system_update,
+        isTerminal = true,
+        recovery = AskRecovery.OpenAicoreSettings,
+    ),
 
     /** `NOT_ENOUGH_DISK_SPACE`. */
-    NotEnoughDiskSpace(R.string.demo_point_and_ask_error_disk_space, isTerminal = false),
+    NotEnoughDiskSpace(
+        R.string.demo_point_and_ask_error_disk_space,
+        isTerminal = false,
+        recovery = AskRecovery.FreeStorage,
+    ),
 
     /** `BUSY` / battery quota / background-use block — transient, retry genuinely helps. */
-    Busy(R.string.demo_point_and_ask_error_busy, isTerminal = false),
+    Busy(
+        R.string.demo_point_and_ask_error_busy,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
 
     /** `REQUEST_TOO_LARGE` / `REQUEST_TOO_SMALL` — the prompt itself is out of bounds. */
-    RequestTooLarge(R.string.demo_point_and_ask_error_too_large, isTerminal = false),
+    RequestTooLarge(
+        R.string.demo_point_and_ask_error_too_large,
+        isTerminal = false,
+        recovery = AskRecovery.Rephrase,
+    ),
 
     /** `INVALID_INPUT_IMAGE` — the captured frame was rejected by the model. */
-    InvalidImage(R.string.demo_point_and_ask_error_image, isTerminal = false),
+    InvalidImage(
+        R.string.demo_point_and_ask_error_image,
+        isTerminal = false,
+        recovery = AskRecovery.AimAndRetry,
+    ),
 
     /** Anything else, including a non-ML-Kit throwable. */
-    Unknown(R.string.demo_point_and_ask_error, isTerminal = false),
+    Unknown(
+        R.string.demo_point_and_ask_error,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
     ;
 
     companion object {
@@ -119,8 +179,29 @@ enum class AskFailure(
 }
 
 /**
- * Consecutive failures after which the demo stops offering "tap to try again" and explains
- * itself instead. A terminal failure escalates on the first occurrence; this covers the
- * non-terminal codes that nonetheless never recover in practice on a given device.
+ * The one concrete next step a failure card offers, as a button (#3407).
+ *
+ * The #3343 card ended at a sentence — and once a retry counter tripped, at a sentence that
+ * told a working Pixel 9 it could not run the model. Every failure now names an action the
+ * user can actually take, and [openable] says whether taking it leaves the app.
  */
-const val ASK_FAILURE_ESCALATION_THRESHOLD = 3
+enum class AskRecovery(@StringRes val labelRes: Int, val openable: Boolean = false) {
+    /** Just try the round again — nothing about the device needs to change. */
+    Retry(R.string.demo_point_and_ask_action_retry),
+
+    /** Point at something with a bit of texture and light, then ask again. */
+    AimAndRetry(R.string.demo_point_and_ask_action_aim),
+
+    /** The question, not the frame, is the problem — put the cursor back in the field. */
+    Rephrase(R.string.demo_point_and_ask_action_rephrase),
+
+    /** Free space, then retry — opens the storage settings screen. */
+    FreeStorage(R.string.demo_point_and_ask_action_storage, openable = true),
+
+    /**
+     * Opens the system app details for Android System Intelligence / AICore, where the user
+     * can check for an update. The only action offered for the two terminal causes: there is
+     * no cloud fallback by design (#2648), so the honest next step is a platform one.
+     */
+    OpenAicoreSettings(R.string.demo_point_and_ask_action_aicore, openable = true),
+}

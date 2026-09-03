@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
         // Optional name of a visual state a demo should pin itself to (#3421). Only honoured
         // in QA mode — a forced state makes a demo show something that never happened.
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
+        DemoSettings.qaAskState = intent?.getStringExtra("qa_ask_state")
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
         // (`/data/data/...`, photos, configs). The path is consumed once by
@@ -145,6 +146,7 @@ class MainActivity : ComponentActivity() {
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
+        DemoSettings.qaAskState = intent.getStringExtra("qa_ask_state")
         DemoSettings.arPendingPlaybackFile = intent.getStringExtra("ar_playback_file")
             ?.takeIf { isWithinAppFilesDir(it) }
         DemoSettings.cameraDistance = resolveCameraDistance(intent)

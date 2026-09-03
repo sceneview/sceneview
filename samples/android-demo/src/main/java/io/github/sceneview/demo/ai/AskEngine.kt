@@ -149,6 +149,22 @@ class CannedAskEngine : AskEngine {
 }
 
 /**
+ * Projects the ML Kit-flavoured [AskEngineStatus] onto the plain-Kotlin [AskAvailability] the
+ * state machine speaks. The seam exists so `AskFlow` — and its JVM tests — never has to touch
+ * an ML Kit type (#3407).
+ *
+ * [AskEngineStatus.Unavailable] is the one and only route to [AskAvailability.Unsupported]
+ * that does not come from a terminal inference error: both are the **platform** reporting
+ * that this device cannot run the model. Nothing else in the demo may reach that state.
+ */
+fun AskEngineStatus.toAvailability(): AskAvailability = when (this) {
+    AskEngineStatus.Ready -> AskAvailability.Ready
+    AskEngineStatus.Downloadable -> AskAvailability.Downloadable
+    is AskEngineStatus.Downloading -> AskAvailability.Downloading(totalBytesDownloaded)
+    AskEngineStatus.Unavailable -> AskAvailability.Unsupported
+}
+
+/**
  * Engine for the current run: [CannedAskEngine] under QA mode, [GeminiNanoAskEngine] otherwise.
  * Closed automatically when it leaves composition (or when QA mode is toggled mid-session).
  */

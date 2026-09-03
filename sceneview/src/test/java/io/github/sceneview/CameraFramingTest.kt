@@ -72,15 +72,17 @@ class CameraFramingTest {
 
     @Test
     fun distanceMatchesClosedFormForSquareViewport() {
-        // Square viewport (aspect 1) → vertical and horizontal fits are equal, so the distance is
-        // exactly r·(1+padding)/sin(vfov/2).
+        // #3426 replaced the bounding-sphere fit with a per-FOV-axis one, so the closed form is no
+        // longer `r / sin(vfov/2)`. On a square viewport at elevation 0 the binding axis is the
+        // vertical one, whose support for a cube of side `e` is `e/2 · 1/tan(vfov/2) + R`, with
+        // `R = hypot(e/2, e/2)` the radius of the cube's sweep about Y.
         val extent = 2f
-        val radius = 0.5f * sqrt(3f * extent * extent) // bounding sphere of a 2×2×2 cube
+        val half = extent / 2f
+        val sweptRadius = sqrt(2f) * half
         val vfov = 60.0
-        val padding = 0f
-        val expected = radius / kotlin.math.sin(Math.toRadians(vfov / 2.0)).toFloat()
+        val expected = half / kotlin.math.tan(Math.toRadians(vfov / 2.0)).toFloat() + sweptRadius
         val actual = fitDistanceForBounds(
-            box(extent, extent, extent), verticalFovDegrees = vfov, aspect = 1.0, padding = padding
+            box(extent, extent, extent), verticalFovDegrees = vfov, aspect = 1.0, padding = 0f
         )
         assertEquals(expected, actual, 1e-3f)
     }
@@ -102,16 +104,36 @@ class CameraFramingTest {
     }
 
     @Test
-    fun fitUsesTheBoundingSphereSoFramingIsYawInvariant() {
-        // A flat, wide plate and a cube with the same space diagonal share the same bounding
-        // sphere — both must frame to the same distance so an orbiting camera never clips.
-        val plate = box(2f, 0.1f, 2f)
-        val plateDiagonal = sqrt(2f * 2f + 0.1f * 0.1f + 2f * 2f)
-        val cubeEdge = plateDiagonal / sqrt(3f)
-        val cube = box(cubeEdge, cubeEdge, cubeEdge)
+    fun equalSpaceDiagonalsNoLongerMeanEqualFraming() {
+        // #3426 — this used to assert that a wide flat plate and a cube of the same *space
+        // diagonal* frame identically. They share a bounding sphere, which is exactly the
+        // over-charge the issue is about: the cube is 1.16 m across and was billed for the plate's
+        // 2 m reach. The plate keeps its distance (it really is 2 m wide, there is no slack to
+        // recover); the cube comes closer.
+        val plate = box(2f, 0.1f, 0.1f)
+        val diagonal = sqrt(2f * 2f + 0.1f * 0.1f + 0.1f * 0.1f)
+        val edge = diagonal / sqrt(3f)
+        val cube = box(edge, edge, edge)
         val dPlate = fitDistanceForBounds(plate, 46.4, aspect = 1.0)
         val dCube = fitDistanceForBounds(cube, 46.4, aspect = 1.0)
-        assertEquals(dPlate, dCube, 1e-3f)
+        assertTrue(
+            "the compact cube must no longer pay the plate's width — $dCube vs $dPlate",
+            dCube < dPlate * 0.9f,
+        )
+    }
+
+    @Test
+    fun framingIsInvariantToTheSubjectsYaw() {
+        // What must still hold after #3426: an orbiting camera never clips, because the fit frames
+        // the subject's sweep about Y. Turning a subject 90° about Y swaps its X and Z extents and
+        // must not change the distance by a hair.
+        val subject = box(2f, 0.6f, 0.4f)
+        val turned = box(0.4f, 0.6f, 2f)
+        assertEquals(
+            fitDistanceForBounds(subject, 46.4, aspect = 0.4455),
+            fitDistanceForBounds(turned, 46.4, aspect = 0.4455),
+            1e-4f,
+        )
     }
 
     @Test
@@ -123,15 +145,19 @@ class CameraFramingTest {
 
     @Test
     fun framedModelSubtendsTheExpectedAngle() {
-        // Sanity check on the geometry: at the computed distance, the bounding-sphere radius must
-        // subtend exactly half the (padded-adjusted) vertical FOV for a square viewport.
+        // Sanity check on the geometry. Post-#3426 the fit measures the subject's *projected*
+        // extent, not its bounding sphere, so the angle to check is the one subtended by the
+        // nearest top corner — half the height, at the depth of the near face.
         val extent = 1f
-        val radius = 0.5f * sqrt(3f) * extent
+        val half = extent / 2f
         val vfov = 50.0
         val d = fitDistanceForBounds(box(extent, extent, extent), vfov, aspect = 1.0, padding = 0f)
-        val subtendedHalfAngle = Math.toDegrees(atan((radius / d).toDouble()))
-        // asin form was used in the helper (r/d = sin θ); atan(r/d) is therefore slightly under
-        // vfov/2 — assert it is in the right ballpark and strictly below the half-FOV.
-        assertTrue(subtendedHalfAngle in 15.0..(vfov / 2.0))
+        // Distance to the near face, which is where the swept silhouette is tallest on screen.
+        val nearDepth = d - sqrt(2f) * half
+        val subtendedHalfAngle = Math.toDegrees(atan((half / nearDepth).toDouble()))
+        assertTrue(
+            "the subject must fill the frame's height without exceeding it — was $subtendedHalfAngle°",
+            subtendedHalfAngle in 20.0..(vfov / 2.0 + 1e-3),
+        )
     }
 }

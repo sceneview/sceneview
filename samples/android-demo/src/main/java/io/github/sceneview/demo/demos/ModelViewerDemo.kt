@@ -97,6 +97,9 @@ import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
+import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
+import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.rememberHeroYaw
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
@@ -301,6 +304,15 @@ private fun SingleModelSection(
     // surprise-coroutine flips it back to `false` regardless of success so
     // the button doesn't get stuck in the loading state.
     var surpriseInFlight by remember { mutableStateOf(false) }
+
+    // `DemoSettings.cameraDistance` is process-global — Geometry, Camera & Gestures and the Park
+    // section all read it. Until #3426 only the slider could write it, which is a deliberate act;
+    // now a pinch does too, so the section has to clean up after itself or a two-finger gesture
+    // here would silently re-frame an unrelated demo three taps later. A cold launch never passes
+    // through the dispose, so the `--ef camera_distance` / `?cameraDistance=` deep link is intact.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { DemoSettings.cameraDistance = null }
+    }
 
     val context = LocalContext.current
     val arSupported by produceState<Boolean?>(initialValue = null, context) {
@@ -522,12 +534,18 @@ private fun SingleModelSection(
             // Camera-distance slider — makes zoom discoverable without a pinch
             // gesture (and Maestro-testable, see #1571). The displayed value is
             // the slider override when set, otherwise the live auto-fit radius.
+            // #3426 — the range used to be a fixed `0.5f..10f`, which is meaningless for a model
+            // that auto-fits at 0.4 m (the slider could only ever push it away) or at 90 m (the
+            // slider could not reach it at all). It is now the same bounds-relative window the
+            // pinch is clamped to, so both controls span the subject rather than a guessed metre
+            // range.
             LabeledSlider(
                 label = "Camera distance",
-                value = sliderDistance ?: autoFitRadius,
+                value = (sliderDistance ?: autoFitRadius)
+                    .coerceIn(autoFitRadius * VIEWER_MIN_ZOOM_FACTOR, autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
                 onValueChange = { DemoSettings.cameraDistance = it },
-                valueRange = 0.5f..10f,
-                valueText = "%.1f m".format(Locale.US, sliderDistance ?: autoFitRadius),
+                valueRange = (autoFitRadius * VIEWER_MIN_ZOOM_FACTOR)..(autoFitRadius * VIEWER_MAX_ZOOM_FACTOR),
+                valueText = "%.2f m".format(Locale.US, sliderDistance ?: autoFitRadius),
             )
             Row(Modifier.fillMaxWidth().toggleable(spinScene) { spinScene = it }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Spin scene")
@@ -545,7 +563,12 @@ private fun SingleModelSection(
             DockItem(Icons.Outlined.Category, "Models", { modelSheetOpen = true }),
             DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true }),
         ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.Animation, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
-            listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", { recenterGeneration++ })),
+            listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", {
+                // Recenter drops the zoom override too (#3403) — the camera returning to its
+                // framed home pose while keeping a 4x zoom is not "recentred".
+                DemoSettings.cameraDistance = null
+                recenterGeneration++
+            })),
         // Always composed when the model has clips, so the bar can slide in and out with
         // the standard M3 enter/exit instead of appearing and vanishing between frames
         // (#3406). An `AnimatedVisibility` that is not visible measures zero, so the
@@ -592,31 +615,41 @@ private fun SingleModelSection(
                 )
             }
             LaunchedEffect(framing) { framing?.let { autoFitRadius = it.distance } }
-            // Camera orbits; model stays fixed at its glTF pose. Recenter rebuilds the same
-            // manipulator, which snaps the camera back to exactly this home pose. A non-null
-            // `DemoSettings.cameraDistance` (slider or deep link) scales the eye along the
-            // same view ray so the pitch and the band centring survive the override.
+            // Camera orbits; the model stays fixed at its glTF pose. The resting pose is flown
+            // to when the model lands (#3406) and then held live.
             //
-            // The resting pose is wrapped in an [EntranceCameraManipulator] so the camera
-            // *flies to* it when the model lands (#3406); `entranceProgress` at 1 makes it
-            // behave exactly like the stock manipulator it replaced, and the first touch
-            // hands off at whatever eye the flight had reached.
-            val cameraManipulator = remember(framing, modelCenter, recenterGeneration, sliderDistance) {
-                val f = framing ?: return@remember createDefaultCameraManipulator(
-                    orbitHomePosition = Position(modelCenter.x, modelCenter.y, sliderDistance ?: 1.4f),
-                    targetPosition = modelCenter,
-                )
-                val (_, ty, tz) = f.targetOffset
-                val (_, ey, ez) = f.eyeOffset
-                val zoom = sliderDistance?.let { it / f.distance } ?: 1f
+            // #3403 / #3404 — the manipulator is deliberately keyed on the CONTENT ONLY. A
+            // Filament manipulator carries the whole camera pose, so rebuilding it discards the
+            // user's orbit and snaps the camera back to the front view. The previous
+            // `remember(framing, modelCenter, recenterGeneration, sliderDistance)` did exactly
+            // that on every zoom-slider step (#3403), and again the first time the chrome measured
+            // its identity row and moved the framing insets (#3404) — a visible "décroché" from a
+            // control that must not touch the camera at all. Framing, pivot and zoom are read live
+            // through providers now, so a settling inset or a zoom change moves the distance and
+            // nothing else.
+            val liveFraming = androidx.compose.runtime.rememberUpdatedState(framing)
+            val liveCenter = androidx.compose.runtime.rememberUpdatedState(modelCenter)
+            val livePivot = {
+                val f = liveFraming.value
+                val c = liveCenter.value
+                if (f == null) c
+                else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
+            }
+            val cameraManipulator = remember(activeModelInstance, recenterGeneration) {
                 EntranceCameraManipulator(
-                    eye = Position(
-                        modelCenter.x,
-                        modelCenter.y + ty + (ey - ty) * zoom,
-                        modelCenter.z + tz + (ez - tz) * zoom,
-                    ),
-                    target = Position(modelCenter.x, modelCenter.y + ty, modelCenter.z + tz),
+                    eye = {
+                        val f = liveFraming.value
+                        val c = liveCenter.value
+                        if (f == null) Position(c.x, c.y, c.z + 1.4f)
+                        else Position(c.x, c.y + f.eyeOffset.second, c.z + f.eyeOffset.third)
+                    },
+                    target = livePivot,
                     progress = { entranceProgress.value },
+                    fitDistance = { liveFraming.value?.distance ?: 1.4f },
+                    distanceOverride = { DemoSettings.cameraDistance },
+                    // A pinch publishes its distance to the SAME state the slider writes, so the
+                    // two controls agree and the readout follows the gesture.
+                    onDistanceChange = { DemoSettings.cameraDistance = it },
                 )
             }
             SceneView(
@@ -1264,9 +1297,19 @@ private fun GallerySection(
         // bound to a different model. yHeight = 0 keeps the model centered in
         // portrait without the empty-top-band artefact (QA finding
         // 2026-05-11).
+        //
+        // #3426 — the radius used to be a flat `1.6f` for *every* chip, while the gallery's slugs
+        // are normalised anywhere from 0.20 to 0.85 units. The same shot therefore ranged from a
+        // model overflowing the frame to one filling a sixth of it, purely by which chip was
+        // tapped. It is now fitted per chip, so switching chips changes the model and not its
+        // apparent size.
         val cameraManipulator = rememberHeroOrbitCameraManipulator(
             trigger = modelInstance != null,
-            radius = 1.6f,
+            radius = rememberFitOrbitRadius(
+                extentX = selectedSlug?.scaleToUnits ?: 0.5f,
+                extentY = selectedSlug?.scaleToUnits ?: 0.5f,
+                extentZ = selectedSlug?.scaleToUnits ?: 0.5f,
+            ),
             yHeight = 0f,
             durationMillis = 24_000,
         )

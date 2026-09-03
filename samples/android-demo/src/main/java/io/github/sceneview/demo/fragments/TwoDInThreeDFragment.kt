@@ -9,10 +9,12 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.TwoDInThreeDDemo
 
 /**
- * Unified "2D in 3D" demo — consolidates the retired `text`, `image`, `video`,
- * and `billboard` demos behind one entry with an internal segmented-button
- * toggle (#2239 Batch 1). The old deep-link ids stay routable through
- * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ * "2D in 3D" — Compose UI on `ViewNode` quads anchored in world space, rebuilt from
+ * scratch in #3424 around one annotated model instead of the four unrelated scenes it
+ * used to hold. It still owns the retired `text`, `image`, `video` and `billboard` ids
+ * (#2239 Batch 1), which stay routable through
+ * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES] — but the demo no longer has
+ * tabs, so none of them carries an initial-tab hint any more.
  */
 object TwoDInThreeDFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -22,7 +24,10 @@ object TwoDInThreeDFragment : DemoFragment {
         category = DemoCategory.CONTENT,
         icon = Icons.Filled.Layers,
         order = 11,
-        tags = setOf("2d", "text", "image", "video", "billboard", "quad", "viewnode"),
+        tags = setOf(
+            "2d", "viewnode", "compose", "billboard", "quad", "label", "annotation",
+            "text", "image", "video", "occlusion",
+        ),
     )
 
     @Composable

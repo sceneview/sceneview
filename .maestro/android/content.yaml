@@ -1,34 +1,27 @@
-# Maestro flow — "Content" demo category (5 demos).
+# Maestro flow — "Content" demo category (2 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/content.yaml
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+#
+# This file used to list four ids — `text`, `image`, `billboard`, `video` —
+# which #2239 Batch 1 had already merged into the single `two-d-in-three-d`
+# demo; each leg then landed on a different segmented tab of that one screen.
+# #3424 rebuilt the demo from scratch as one scene with no tabs at all, so the
+# four legs became four identical launches. They are one leg now, launched by
+# the live id. The retired ids still resolve through `DEMO_ID_ALIASES` — that
+# contract is covered by `DeepLinkRouterTest`, which is the right place for it.
 appId: io.github.sceneview.demo
 ---
 - runFlow:
     file: flows/demo.yaml
     env:
-      DEMO_ID: text
-      DEMO_NAME: Text Labels
+      DEMO_ID: two-d-in-three-d
+      DEMO_NAME: 2D in 3D
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: lines-paths
       DEMO_NAME: Lines & Paths
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: image
-      DEMO_NAME: Image
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: billboard
-      DEMO_NAME: Billboard
-- runFlow:
-    file: flows/demo.yaml
-    env:
-      DEMO_ID: video
-      DEMO_NAME: Video

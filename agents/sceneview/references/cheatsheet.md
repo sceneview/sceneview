@@ -115,10 +115,10 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `ModelNode(modelInstance, scaleToUnits, centerOrigin, isEditable)` | `ModelViewerDemo.kt` | Render a GLB. `isEditable = true` enables drag/scale/rotate |
 | `LightNode(type, intensity, direction, position, color, apply = { … })` | `LightingDemo.kt` | `type` is `LightManager.Type.POINT / SPOT / DIRECTIONAL / FOCUSED_SPOT / SUN` |
 | `CubeNode / SphereNode / CylinderNode / PlaneNode / CapsuleNode / TorusNode / ConeNode` | `GeometryDemo.kt`, `LightingDemo.kt` (Sphere) | Each takes `materialInstance` and shape-specific dimensions (e.g. `SphereNode(radius, ...)`) |
-| `BillboardNode` | `TwoDInThreeDDemo.kt` | Always faces the camera (Billboard tab of unified 2D in 3D demo) |
-| `ImageNode` | `TwoDInThreeDDemo.kt` | 2D image quad (Image tab of unified 2D in 3D demo) |
-| `TextNode` | `TwoDInThreeDDemo.kt` | 3D text (Text tab of unified 2D in 3D demo). Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits` |
-| `ViewNode` | `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D (the floating card of the unified Picking & Collision demo). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false` |
+| `BillboardNode` | `ARMLObjectLabelDemo.kt` | Always faces the camera — but ONLY when handed a `cameraPositionProvider`. Without one it never turns |
+| `ImageNode` | `ARImageDemo.kt`, `LightingLabDemo.kt` | 2D image quad. `size = null` normalises the bitmap's longest edge to 1 unit |
+| `TextNode` | `ARMeasureDemo.kt` | 3D text. Uses `widthMeters` / `heightMeters`, NOT `scaleToUnits`. Billboards only with a `cameraPositionProvider`, same as `BillboardNode` |
+| `ViewNode` | `TwoDInThreeDDemo.kt`, `PickingAndCollisionDemo.kt` | Embeds a Compose UI inside 3D. Requires `viewNodeWindowManager` on the `SceneView`, an explicit content size, and the theme re-applied inside (it inherits no `CompositionLocal`). Interactive since #2845: `Button.onClick` fires. A `Surface`/`Card` consumes the touch even when nothing inside is clickable, and a consumed touch never reaches `onSingleTapUp` — opt out per node with `isTouchForwardingEnabled = false`. Always-on-top = `materialInstance.setDepthCulling(false)` **and** `setPriority(PRIORITY_LAST)` |
 | `LineNode / PathNode` | `LinesPathsDemo.kt` | Procedural lines/paths |
 | `PhysicsNode(node, mass, restitution, …)` | `AnimationPhysicsDemo.kt` | Wraps an existing node; experimental (Physics tab of unified Animation & Physics demo) |
 | `ReflectionProbeNode` | `LightingLabDemo.kt` | Local IBL probe (Reflections tab of unified Lighting Lab demo) |
