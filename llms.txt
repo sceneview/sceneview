@@ -4758,6 +4758,9 @@ orientation declarative and unit-testable. Yaw only: a card that also pitched to
 camera looking down leans backwards, and a wall of leaning labels reads as a bug.
 
 ```kotlin
+import kotlin.math.atan2
+
+val windowManager = rememberViewNodeManager()
 val cameraNode = rememberCameraNode(engine)
 var eye by remember { mutableStateOf(Position(0f, 0.3f, 2f)) }
 
@@ -4782,7 +4785,7 @@ SceneView(
         position = card,
         rotation = Rotation(y = facingYaw(card, eye)),
         scale = Scale(0.12f),
-    ) { MyAppTheme { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } } }
+    ) { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } }
 }
 ```
 
@@ -4802,6 +4805,8 @@ per-frame hook, and compare against the last applied value so it costs two JNI c
 *change*, not per frame.
 
 ```kotlin
+val windowManager = rememberViewNodeManager()
+var alwaysOnTop by remember { mutableStateOf(false) }
 val onTop = rememberUpdatedState(alwaysOnTop)
 
 ViewNode(
@@ -4819,7 +4824,7 @@ ViewNode(
             }
         }
     },
-) { MyAppTheme { Card { Text("Always readable") } } }
+) { Card { Text("Always readable") } }
 ```
 
 Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
