@@ -4,6 +4,7 @@
 //  See ARSceneView.kt for the full migration checklist.
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
     id 'filament-tools-plugin'
     alias(libs.plugins.dokka)
     alias(libs.plugins.compose.compiler)

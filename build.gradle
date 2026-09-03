@@ -6,6 +6,9 @@ plugins {
     // explicit version — otherwise Gradle sees it "already on the classpath with
     // an unknown version" via the AGP jar the two plugins above already pulled in.
     alias(libs.plugins.android.kotlin.multiplatform.library) apply false
+    // Kept under AGP 9 via `android.builtInKotlin=false` — see gradle.properties
+    // for why the Kotlin Gradle plugin still has to be the one applied.
+    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.compose.compiler) apply false
     alias(libs.plugins.compose.multiplatform) apply false
