@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,7 +30,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
-import io.github.sceneview.demo.DemoPreviews
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
@@ -190,10 +188,10 @@ fun LinesPathsDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lines_paths_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        // The demo's own card art doubles as the loading cover, so the transition from the home
-        // grid reads as the card coming alive instead of a spinner over black (#1022) — the same
-        // wiring ModelViewerDemo uses, theme-matched so the cover matches the card tapped.
-        previewRes = DemoPreviews.resourceFor("lines-paths", dark = isSystemInDarkTheme()),
+        // A named cover, because this screen's old one was a bare spinner over black that
+        // crossfaded into an equally black scene: loading and loaded were indistinguishable
+        // (#3397). The scene itself is now the fix; the label just says what is coming.
+        loadingLabel = stringResource(R.string.demo_lines_paths_loading),
         peekHeader = stringResource(
             R.string.demo_lines_paths_status,
             curve.label,

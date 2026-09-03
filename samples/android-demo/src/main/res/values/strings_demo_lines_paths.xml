@@ -10,4 +10,6 @@
     <!-- Live status pill: curve family, sample count, stroke width.
          e.g. "Spline · 192 samples · 12 mm". -->
     <string name="demo_lines_paths_status">%1$s · %2$d samples · %3$d mm</string>
+    <!-- Loading cover label, shown until the first Filament frame lands. -->
+    <string name="demo_lines_paths_loading">Building the route…</string>
 </resources>

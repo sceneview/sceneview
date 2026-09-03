@@ -481,6 +481,10 @@ Draw strokes with `TubeNode`, not `LineNode` / `PathNode`: those use `PrimitiveT
 every mobile backend rasterises at one device pixel with no width control — invisible on a phone.
 
 ```kotlin
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
 @Composable
 fun LinesAndPaths() {
     val engine = rememberEngine()
