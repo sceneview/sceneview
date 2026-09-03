@@ -27,6 +27,22 @@
 
   var MEASUREMENT_ID = 'G-HX1JWGSMTH';
 
+  // Honour the browser's opt-out signals BEFORE anything is fetched — privacy.html
+  // promises it, so it has to be true in code: Do Not Track (`navigator.doNotTrack`,
+  // legacy `window.doNotTrack` / `navigator.msDoNotTrack`) and Global Privacy Control.
+  // When opted out, `gtag` stays a stub that still runs `event_callback` so the /go/*
+  // interstitials redirect immediately instead of waiting for their timeout.
+  var optedOut =
+    navigator.doNotTrack === '1' || window.doNotTrack === '1' ||
+    navigator.msDoNotTrack === '1' || navigator.globalPrivacyControl === true;
+  if (optedOut) {
+    window.gtag = function () {
+      var params = arguments[2];
+      if (params && typeof params.event_callback === 'function') params.event_callback();
+    };
+    return;
+  }
+
   window.dataLayer = window.dataLayer || [];
   function gtag() { window.dataLayer.push(arguments); }
   window.gtag = gtag;
@@ -53,7 +69,11 @@
   gtag('js', new Date());
   gtag('config', MEASUREMENT_ID, {
     page_title: document.title,
-    content_group: contentGroup()
+    content_group: contentGroup(),
+    // First-party measurement only — no Google Signals, no ad personalisation. This is
+    // what lets privacy.html say "no advertising features are enabled".
+    allow_google_signals: false,
+    allow_ad_personalization_signals: false
   });
 
   function onReady(fn) {
