@@ -22,7 +22,11 @@
   `sceneview-compose`, `android-demo_release` — which is the name KGP used before 2.4. It
   covers `kotlin-android` modules and the multiplatform ones (`androidTarget()`, AGP 9's
   `androidLibrary { }` and `jvm()` targets) alike; Kotlin/Native and Kotlin/JS compilations
-  are untouched. The published `.api` dumps are unchanged (`apiCheck` passes).
+  are untouched. The only trace in the binary-compatibility dumps is `arsceneview.api`, where
+  the mangled accessors of seven `internal` Compose lambda singletons move from
+  `…$SceneView_arsceneview_release` to `…$arsceneview_release` — the module name is part of
+  the JVM mangling of `internal` members, which are not public API; the dump merely records
+  them. No public declaration changes, in any module.
 
   `:samples:android-demo:bundleRelease` — the exact task the Play deploys run — joins the
   local verification list for build-system changes alongside the `assembleDebug` /

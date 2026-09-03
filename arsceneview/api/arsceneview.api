@@ -624,23 +624,23 @@ public final class io/github/sceneview/ar/CloudAnchorRegistry$DefaultImpls {
 public final class io/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt;
 	public fun <init> ()V
-	public final fun getLambda$1192742845$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$1192742845$arsceneview_release ()Lkotlin/jvm/functions/Function3;
 }
 
 public final class io/github/sceneview/ar/ComposableSingletons$ARSceneViewKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneViewKt;
 	public fun <init> ()V
-	public final fun getLambda$473211439$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function4;
-	public final fun getLambda$478031680$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function4;
+	public final fun getLambda$473211439$arsceneview_release ()Lkotlin/jvm/functions/Function4;
+	public final fun getLambda$478031680$arsceneview_release ()Lkotlin/jvm/functions/Function4;
 }
 
 public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt;
 	public fun <init> ()V
-	public final fun getLambda$-245446278$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
-	public final fun getLambda$-608761358$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function2;
-	public final fun getLambda$-705560747$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function3;
-	public final fun getLambda$1423115325$SceneView_arsceneview_release ()Lkotlin/jvm/functions/Function2;
+	public final fun getLambda$-245446278$arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$-608761358$arsceneview_release ()Lkotlin/jvm/functions/Function2;
+	public final fun getLambda$-705560747$arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$1423115325$arsceneview_release ()Lkotlin/jvm/functions/Function2;
 }
 
 public final class io/github/sceneview/ar/FloorWallSeam {
