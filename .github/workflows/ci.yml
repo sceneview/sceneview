@@ -114,6 +114,10 @@ jobs:
       # skipped on every run — which GitHub reports as success. A gate that
       # can never fire looks exactly like a gate that always passes.
       compose: ${{ steps.filter.outputs.compose }}
+      # Build-system-only changes (the `shared` anchor). Gates the demo's
+      # release bundle in `build` — the task the Play deploys run and the one
+      # the AGP 9 move never exercised (#3467).
+      build-system: ${{ steps.filter.outputs.build-system }}
     steps:
       # Checked out only on `push`. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; it
@@ -187,6 +191,12 @@ jobs:
               - 'gradle.properties'
               - 'gradlew'
               - 'gradlew.bat'
+            # Exactly `shared`, exposed as its own verdict: a PR that changes
+            # the build system also builds the demo's RELEASE bundle (#3467),
+            # which no per-PR job did before — the AGP 9 move merged green and
+            # broke every Play deploy from `main` at `buildReleasePreBundle`.
+            build-system:
+              - *shared
             android:
               - *shared
               - 'sceneview/**'
@@ -255,6 +265,7 @@ jobs:
             flutter=${{ steps.filter.outputs.flutter }}
             kmp=${{ steps.filter.outputs.kmp }}
             compose=${{ steps.filter.outputs.compose }}
+            build-system=${{ steps.filter.outputs.build-system }}
         run: |
           set -euo pipefail
           bad=0
@@ -343,6 +354,22 @@ jobs:
             :samples:android-demo:assembleDebug \
             :samples:android-tv-demo:assembleDebug \
             --stacktrace
+
+      # The release BUNDLE is a different packaging path from the debug APK:
+      # R8 rewrites the Kotlin metadata resources and AGP 9's pre-bundle step
+      # validates every zip entry name. The AGP 9 move (#3459) passed every
+      # per-PR job and then failed the first Play deploy from `main` there
+      # (#3467). Only on build-system changes — ~3 extra minutes of R8 on the
+      # PRs that can actually break this, nothing on the rest. Unsigned: the
+      # `release` signing config is only attached when the keystore env var is
+      # set, and `bundleRelease` is fine without it. `SV_ALLOW_MISSING_SECRETS`
+      # skips the #1915 store-secret guard, which is a deploy concern, not a
+      # packaging one.
+      - name: Build demo release bundle (build-system change)
+        if: inputs.force-all || needs.changes.outputs.build-system == 'true'
+        env:
+          SV_ALLOW_MISSING_SECRETS: "1"
+        run: ./gradlew :samples:android-demo:bundleRelease --stacktrace
 
   lint:
     name: Lint
