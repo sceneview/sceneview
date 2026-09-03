@@ -22,13 +22,18 @@ does not load (#3438).
 
 | Ref | What it is | How it was made |
 |---|---|---|
-| `hero.webp` | Stylised sci-fi helmet | The original hero render. **Does not match** `khronos_damaged_helmet.glb` — see #3438. |
+| `hero.webp` | Stylised sci-fi helmet | The original hero render. **No `prompts.json` item uses it any more** (#3454): it is a helmet `khronos_damaged_helmet.glb` does not render. Kept only because the store-listing graphics READMEs record it as the source of their hero art. |
 | `damaged_helmet.webp` | The helmet the app actually loads | Cropped from `samples/android-demo/src/androidTest/assets/render-goldens/modelviewer_default.png`, i.e. a real capture of the demo on the pinned CI profile. |
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
 
 The last two are rendered from the demos' own generator code rather than captured, so the
 card shows the exact curve the app computes rather than an invented knot or loop.
+
+`damaged_helmet.webp` is the reference for every helmet card. All ten of them —
+`model-viewer`, `two-d-in-three-d`, `lighting`, `lighting-lab`, `fog`, `camera-gestures`,
+`materials`, `debug-overlay`, `video-recording`, `secondary-camera` — load the same GLB, so
+they must show the same helmet; eight of them were still drawn from `hero.webp` until #3454.
 
 ## Home hero banner
 
