@@ -329,8 +329,29 @@ fun CloudAnchorFlowState.allows(action: CloudAnchorAction): Boolean {
     }
 }
 
-/** The one sentence the coaching pill shows, and how loud it is. */
-data class CloudAnchorStatus(val text: String, val tone: DemoStatusTone)
+/**
+ * Which leading indicator the coaching pill shows.
+ *
+ * [DemoStatusTone] alone cannot say this. A completed host and "walk around the anchor"
+ * are both [DemoStatusTone.Guidance] — the user has something to do next in each case —
+ * but the tone's default glyph is a *move-the-device* icon, so "Hosted. Share the code…"
+ * shipped under a rotate-your-phone symbol. An enum rather than an `ImageVector` keeps
+ * this file free of Compose types, so the whole flow stays JVM-testable.
+ */
+enum class CloudAnchorStatusIcon {
+    /** Whatever the tone's own indicator is. */
+    Default,
+
+    /** A step that just completed — a check, never a coaching glyph. */
+    Success,
+}
+
+/** The one sentence the coaching pill shows, how loud it is, and what leads it. */
+data class CloudAnchorStatus(
+    val text: String,
+    val tone: DemoStatusTone,
+    val icon: CloudAnchorStatusIcon = CloudAnchorStatusIcon.Default,
+)
 
 /**
  * The complete sentence for a failed request. Short, in the app's voice, and it always
@@ -384,8 +405,11 @@ private fun CloudAnchorFlowState.hostStatus(): CloudAnchorStatus = when {
         CloudAnchorStatus("Hosting the anchor…", DemoStatusTone.Progress)
     host is CloudAnchorTask.Failed ->
         CloudAnchorStatus(host.failure.message(), DemoStatusTone.Blocked)
-    host is CloudAnchorTask.Succeeded ->
-        CloudAnchorStatus("Hosted. Share the code to open it elsewhere.", DemoStatusTone.Guidance)
+    host is CloudAnchorTask.Succeeded -> CloudAnchorStatus(
+        "Hosted. Share the code to open it elsewhere.",
+        DemoStatusTone.Guidance,
+        CloudAnchorStatusIcon.Success,
+    )
     !tracking -> notTrackingStatus()
     !anchorPlaced ->
         CloudAnchorStatus("Tap a surface to place the anchor.", DemoStatusTone.Guidance)
@@ -402,8 +426,11 @@ private fun CloudAnchorFlowState.resolveStatus(): CloudAnchorStatus = when {
         CloudAnchorStatus("Resolving the code…", DemoStatusTone.Progress)
     resolve is CloudAnchorTask.Failed ->
         CloudAnchorStatus(resolve.failure.message(), DemoStatusTone.Blocked)
-    resolve is CloudAnchorTask.Succeeded ->
-        CloudAnchorStatus("Resolved. Look around to find the anchor.", DemoStatusTone.Guidance)
+    resolve is CloudAnchorTask.Succeeded -> CloudAnchorStatus(
+        "Resolved. Look around to find the anchor.",
+        DemoStatusTone.Guidance,
+        CloudAnchorStatusIcon.Success,
+    )
     !tracking -> notTrackingStatus()
     trimmedCode.isEmpty() ->
         CloudAnchorStatus("Paste a code shared from another device.", DemoStatusTone.Guidance)

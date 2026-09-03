@@ -4,6 +4,7 @@ import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,7 @@ import io.github.sceneview.demo.demos.internal.CLOUD_ANCHOR_TTL_DAYS
 import io.github.sceneview.demo.demos.internal.CloudAnchorAction
 import io.github.sceneview.demo.demos.internal.CloudAnchorBlocker
 import io.github.sceneview.demo.demos.internal.CloudAnchorFlowState
+import io.github.sceneview.demo.demos.internal.CloudAnchorStatusIcon
 import io.github.sceneview.demo.demos.internal.CloudAnchorStep
 import io.github.sceneview.demo.demos.internal.CloudAnchorTask
 import io.github.sceneview.demo.demos.internal.RoomQuality
@@ -387,7 +389,16 @@ fun ARCloudAnchorDemo(onBack: () -> Unit) {
                 flow.blocker == CloudAnchorBlocker.NoNetwork ->
                     CloudServiceStatusBanner(CloudServiceStatus.NoNetwork)
                 flow.blocker?.needsExplanationCard == true -> Unit
-                else -> DemoStatusBanner(text = status.text, tone = status.tone)
+                else -> DemoStatusBanner(
+                    text = status.text,
+                    tone = status.tone,
+                    // A completed step keeps the Guidance tone — there is still something
+                    // to do next — but must not wear the tone's move-your-device glyph.
+                    icon = when (status.icon) {
+                        CloudAnchorStatusIcon.Success -> Icons.Rounded.CheckCircle
+                        CloudAnchorStatusIcon.Default -> null
+                    },
+                )
             }
 
             CloudAnchorFlowCard(

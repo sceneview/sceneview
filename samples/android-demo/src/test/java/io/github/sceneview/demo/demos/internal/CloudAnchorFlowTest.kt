@@ -230,6 +230,36 @@ class CloudAnchorFlowTest {
     }
 
     @Test
+    fun `a completed step gets a check, not the tone's coaching glyph`() {
+        // Both of these keep the Guidance tone — there is still a next step — but the
+        // tone's default indicator is a move-your-device icon, which read as nonsense
+        // over "Hosted."
+        val hosted = tracking.copy(
+            anchorPlaced = true,
+            host = CloudAnchorTask.Succeeded("ua-1"),
+        ).status()
+        assertEquals(DemoStatusTone.Guidance, hosted.tone)
+        assertEquals(CloudAnchorStatusIcon.Success, hosted.icon)
+
+        val resolved = resolving.copy(resolve = CloudAnchorTask.Succeeded("ua-1")).status()
+        assertEquals(CloudAnchorStatusIcon.Success, resolved.icon)
+    }
+
+    @Test
+    fun `every other state keeps its tone's own indicator`() {
+        listOf(
+            tracking,
+            tracking.copy(anchorPlaced = true),
+            tracking.copy(anchorPlaced = true, host = CloudAnchorTask.Running),
+            tracking.copy(host = CloudAnchorTask.Failed(CloudAnchorFailure.Internal)),
+            resolving,
+            resolving.copy(blocker = CloudAnchorBlocker.NoNetwork),
+        ).forEach {
+            assertEquals("${it.step}/${it.host}", CloudAnchorStatusIcon.Default, it.status().icon)
+        }
+    }
+
+    @Test
     fun `Copy and Share do not exist before there is a code`() {
         assertFalse(tracking.allows(CloudAnchorAction.CopyCode))
         assertFalse(tracking.allows(CloudAnchorAction.ShareCode))
