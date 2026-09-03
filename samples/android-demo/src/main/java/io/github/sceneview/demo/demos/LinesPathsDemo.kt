@@ -285,8 +285,11 @@ fun LinesPathsDemo(onBack: () -> Unit) {
             // would have the library re-centring the scene continuously and the whole
             // composition would breathe. LinesPathsScene.SCENE_LIFT centres it instead, once.
             autoCenterContent = false,
+            // Keyed on `animating` so the Animate control stops the camera as well as the
+            // marker: a toggle labelled "Animate" that leaves the scene turning is a lie, and a
+            // still frame is what someone reaches for the pause for.
             cameraManipulator = rememberHeroOrbitCameraManipulator(
-                trigger = true,
+                trigger = animating,
                 radius = LinesPathsScene.orbitRadius(),
                 yHeight = LinesPathsScene.orbitHeight(),
             ),

@@ -401,10 +401,15 @@ internal object LinesPathsScene {
     const val CAMERA_DISTANCE = 3.9f
 
     /**
-     * Sine of the camera's elevation above the scene centre: ~18°, high enough to show the
-     * ground track as a separate plane below the route rather than as a line through it.
+     * Sine of the camera's elevation above the scene centre — ~27°.
+     *
+     * Measured on the QA emulator, not chosen: at 18° the loop went nearly edge-on for part of
+     * every orbit and read as an arc rather than a closed path, and the dashed ground track
+     * collapsed onto the route instead of sitting below it. 27° keeps both readable through a
+     * full revolution while still showing the loop's depth rather than flattening it into a
+     * plan view.
      */
-    const val ELEVATION_RATIO = 0.31f
+    const val ELEVATION_RATIO = 0.46f
 
     /**
      * Horizontal orbit radius to pass to `rememberHeroOrbitCameraManipulator` for a camera
