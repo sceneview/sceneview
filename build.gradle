@@ -92,6 +92,47 @@ subprojects {
         }
     }
 
+    // Colon-free Kotlin module names (#3467).
+    //
+    // Kotlin Gradle plugin 2.4 names every JVM/Android compilation
+    // `<project.group>:<project.name>` (+ `_<compilation>` off `main`), and a
+    // subproject's default Gradle group is the root project's name — so each
+    // module here compiled as `SceneView:<module>`. The compiler writes the
+    // `.kotlin_module` file under a sanitised name (`SceneView_sceneview_release`),
+    // which is why debug APKs and the AARs never showed it; but the raw name is
+    // recorded in every class's Kotlin metadata, and R8 re-emits the resource
+    // under it on minified release builds. AGP 9's bundle packaging validates
+    // zip entry names, and `:samples:android-demo:buildReleasePreBundle` died
+    // on `root/META-INF/SceneView:sceneview_release.kotlin_module`, breaking
+    // every Play deploy from `main`. The app's `META-INF/*.kotlin_module`
+    // packaging exclude is no fallback: it is not applied on the bundle path
+    // at all (the AAB still carries every library's `.kotlin_module`).
+    //
+    // Pin the pre-2.4 convention instead: `<project.name>` for `main`,
+    // `<project.name>_<compilation>` otherwise (`sceneview_release`,
+    // `sceneview-core`, `android-demo_release`). Applied through the
+    // compilation API so it reaches `kotlin-android` modules and every
+    // multiplatform JVM-flavoured target alike — `androidTarget()`, AGP 9's
+    // `androidLibrary { }` and `jvm()`. Native and JS compilations do not have
+    // JVM compiler options and are left as they are. Check with
+    // `./gradlew :samples:android-demo:bundleRelease` (the task the deploys run).
+    def colonFreeModuleName = { compilation ->
+        def options = compilation.compilerOptions.options
+        if (options instanceof org.jetbrains.kotlin.gradle.dsl.KotlinJvmCompilerOptions) {
+            options.moduleName = compilation.name == "main"
+                ? project.name
+                : "${project.name}_${compilation.name}".toString()
+        }
+    }
+    plugins.withId("org.jetbrains.kotlin.android") {
+        kotlin.target.compilations.configureEach(colonFreeModuleName)
+    }
+    plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        kotlin.targets.configureEach { target ->
+            target.compilations.configureEach(colonFreeModuleName)
+        }
+    }
+
     // Apply detekt to all subprojects that use Kotlin.
     //
     // NOTE: we use `pluginManager.apply("dev.detekt")` instead of the legacy
