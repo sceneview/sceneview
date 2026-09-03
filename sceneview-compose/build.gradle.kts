@@ -49,10 +49,11 @@ kotlin {
     }
 
     // Device + Apple-silicon simulator only. `iosX64` (the Intel simulator) is
-    // deliberately absent: Compose Multiplatform 1.11.1 publishes no iosX64
-    // variant, so declaring it fails dependency resolution for every Compose
-    // artifact. `sceneview-core` still targets iosX64 because it has no Compose
-    // dependency — the two are not inconsistent.
+    // deliberately absent: Compose Multiplatform publishes no iosX64 variant, so
+    // declaring it fails dependency resolution for every Compose artifact. Still
+    // true at 1.12.0 — `org.jetbrains.compose.ui:ui:1.12.0`'s Gradle module
+    // metadata lists iosArm64 and iosSimulatorArm64 only. `sceneview-core` still
+    // targets iosX64 because it has no Compose dependency — not inconsistent.
     iosArm64()
     iosSimulatorArm64()
 
