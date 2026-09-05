@@ -33,6 +33,14 @@
 #
 # Common opts: --label NAME  --model M  --timeout SECS  --dir PATH
 #              --new-worktree BRANCH   --here   --schema FILE   --file F
+#              --effort low|medium|high|xhigh   (default: the model's own)
+#
+# MODEL POLICY
+#   The default model is pinned below (DEFAULT_MODEL) and passed explicitly on
+#   every call. A Codex CLI update that changes its own bundled default — 0.153.4
+#   makes gpt-6-astra the default when nothing is configured — must not silently
+#   move every delegation onto a scarcer allowance. Opt in per call with --model
+#   (e.g. --model gpt-6-astra), or globally with CODEX_DELEGATE_MODEL.
 #
 # Exit codes: 0 ok · 1 codex failed · 2 preflight refused (auth/binary/flags)
 #             3 quota or rate limit hit — tell Thomas, never work around it
@@ -253,12 +261,14 @@ invoke() {
 CMD="${1:-}"; shift || true
 reject_banned_flags ${1+"$@"}
 
-LABEL="" MODEL="" TIMEOUT="" DIR="" NEW_WT="" HERE="" SCHEMA="" FILE=""
+DEFAULT_MODEL="${CODEX_DELEGATE_MODEL:-gpt-5.6-sol}"
+LABEL="" MODEL="" EFFORT="" TIMEOUT="" DIR="" NEW_WT="" HERE="" SCHEMA="" FILE=""
 REST=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --label)        LABEL="$2"; shift 2 ;;
     --model)        MODEL="$2"; shift 2 ;;
+    --effort)       EFFORT="$2"; shift 2 ;;
     --timeout)      TIMEOUT="$2"; shift 2 ;;
     --dir)          DIR="$2"; shift 2 ;;
     --new-worktree) NEW_WT="$2"; shift 2 ;;
@@ -269,8 +279,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-CODEX_ARGS=()
-[ -n "$MODEL" ]  && CODEX_ARGS+=(-m "$MODEL")
+# The model is always passed explicitly (see MODEL POLICY above), never left to
+# the CLI's own default. `codex review` takes no -m, so it gets the same choice
+# through -c model="..." further down.
+CODEX_ARGS=(-m "${MODEL:-$DEFAULT_MODEL}")
+[ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=\"$EFFORT\"")
 [ -n "$SCHEMA" ] && CODEX_ARGS+=(--output-schema "$SCHEMA")
 
 get_prompt() {
@@ -324,9 +337,13 @@ case "$CMD" in
     if [ -n "$HAS_SEL" ] && [ -n "$HAS_PROMPT" ]; then
       die "codex review rejects free-text instructions combined with --uncommitted/--base/--commit. Use 'review --base main' alone, or pass instructions through 'ask'." 2
     fi
-    info "Codex → review (read-only, cwd=$RDIR)"
+    # `codex review` has no -m flag (0.149.0 .. 0.153.x): the model goes through
+    # the generic -c override, so the pinned default applies here too.
+    REVIEW_ARGS=(-c "model=\"${MODEL:-$DEFAULT_MODEL}\"")
+    [ -n "$EFFORT" ] && REVIEW_ARGS+=(-c "model_reasoning_effort=\"$EFFORT\"")
+    info "Codex → review (read-only, cwd=$RDIR, model=${MODEL:-$DEFAULT_MODEL})"
     ( cd "$RDIR" && PATH="$CODEX_PATH_PREFIX:$PATH" timeout --foreground "${TIMEOUT:-900}" \
-        env "${UNSET_ARGS[@]}" "$CODEX_BIN" review ${REST[@]+"${REST[@]}"} ) 2>&1 | tee "$LOG"
+        env "${UNSET_ARGS[@]}" "$CODEX_BIN" review "${REVIEW_ARGS[@]}" ${REST[@]+"${REST[@]}"} ) 2>&1 | tee "$LOG"
     RC="${PIPESTATUS[0]}"
     [ "$RC" -eq 124 ] && die "codex review timed out. Log: $LOG" 4
     check_quota_and_exit "$LOG" "$RC"
@@ -373,7 +390,7 @@ case "$CMD" in
     ;;
 
   ""|-h|--help|help)
-    sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 
   *)
