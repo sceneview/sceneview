@@ -822,7 +822,7 @@ run_ar() {
         record ar failed "ar-replay-qa.sh exited 0 without a positive marker — harness aborted mid-run" "$kept" "$(( $(date +%s) - started ))"
       fi
       ;;
-    2) record ar skipped "no device for ar-replay-qa.sh" "$kept" "$(( $(date +%s) - started ))" ;;
+    2) record ar skipped "ar-replay-qa.sh could not run — no device, or python3 missing (see ar-output.txt)" "$kept" "$(( $(date +%s) - started ))" ;;
     # rc=3: no demo crashed, but one or more demos were not validated —
     # `ar-record-playback` replayed 0 frames (ARCore dataset playback unsupported
     # on this emulator, #1645) and/or a shard was severed under emulator pressure

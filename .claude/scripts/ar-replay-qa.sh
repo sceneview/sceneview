@@ -64,7 +64,8 @@
 #      OR the harness died before writing ANY verdict for ANY shard (a setUp /
 #      asset-deploy crash). The merged summary names the crashed demo(s) and the
 #      captured logcat holds the crash signature (#2620)
-#   2  no device / emulator connected
+#   2  could not run — no device / emulator connected, or python3 (which merges
+#      the shard verdicts) is unavailable on this host. Never a verdict about AR
 #   3  SKIPPED — no demo crashed, but one or more demos were not validated:
 #      `ar-record-playback` advanced 0 frames (ARCore dataset playback is
 #      unsupported on this emulator — #1645), and/or a shard was severed under
@@ -103,6 +104,17 @@ while [[ $# -gt 0 ]]; do
     *) echo "[ar-replay-qa] unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# ── Host check ─────────────────────────────────────────────────────────────
+# The per-shard verdicts are merged with python3 at the end of the run. Checked
+# up front so a host without it does not spend a full emulator sweep first, and
+# reported as exit 2 (could not run) — never exit 1, which this script reserves
+# for "a demo crashed" (#3192).
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[ar-replay-qa] CANNOT RUN: python3 unavailable — the shard verdicts cannot be merged." >&2
+  echo "[ar-replay-qa] Tooling gap on this host, not an AR regression." >&2
+  exit 2
+fi
 
 # ── Device check ───────────────────────────────────────────────────────────
 # Remember whether a parent (device-qa.sh) handed us the serial: it already
@@ -336,8 +348,8 @@ fi
 # (its process was severed early) is recorded `skipped` with an environmental
 # reason — accounted for, never lost silently, never folded into `passed`.
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "[ar-replay-qa] python3 unavailable — cannot merge shard verdicts." >&2
-  exit 1
+  echo "[ar-replay-qa] CANNOT RUN: python3 unavailable — cannot merge shard verdicts." >&2
+  exit 2
 fi
 
 MERGE_VERDICT="$(

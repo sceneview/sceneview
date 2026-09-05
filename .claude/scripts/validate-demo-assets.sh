@@ -20,7 +20,7 @@
 # Exit codes:
 #   0  all references resolve and the catalog has no drift
 #   1  at least one broken reference, or a bundled asset missing from catalog.json
-#   2  invalid arguments
+#   2  could not run — invalid arguments, or curl is unavailable while CDN checks are enabled
 
 set -euo pipefail
 
@@ -59,6 +59,18 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+# A missing `curl` used to come back as HTTP 000 on every CDN URL, which the
+# transient classifier below reads as a rate limit: 23 s of backoff per URL,
+# every CDN reference reported "not checked (transient)", exit 0. A tool this
+# leg cannot do without is "could not run" (exit 2) — never a network hiccup
+# and never a pass (#3192). `--no-cdn` never touches curl and is not gated.
+if [ "$check_cdn" = true ] && ! command -v curl >/dev/null 2>&1; then
+    echo -e "${RED}CANNOT RUN: 'curl' is not available — every CDN reachability probe is a curl.${NC}" >&2
+    echo "  This is a tooling gap on this host, NOT evidence about the asset references." >&2
+    echo "  Install curl, or pass --no-cdn to run the bundled-file half on its own." >&2
+    exit 2
+fi
 
 total_bundled=0
 total_cdn=0
