@@ -138,13 +138,16 @@ if [[ ! -f "$FLOW_FILE" ]]; then
 fi
 
 # --- Host check ------------------------------------------------------------
+# A host that cannot run this leg at all is "could not run" — exit 2, the same
+# code a bad invocation gets above — never exit 1, which is what a flow that
+# really failed on a simulator returns (#3192).
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "[ios-qa] ERROR: the iOS simulator only runs on macOS." >&2
-  exit 1
+  echo "[ios-qa] CANNOT RUN: the iOS simulator only runs on macOS." >&2
+  exit 2
 fi
 if ! command -v xcrun >/dev/null 2>&1; then
-  echo "[ios-qa] ERROR: xcrun not found — install Xcode + command-line tools." >&2
-  exit 1
+  echo "[ios-qa] CANNOT RUN: xcrun not found — install Xcode + command-line tools." >&2
+  exit 2
 fi
 
 # --- Boot a simulator ------------------------------------------------------

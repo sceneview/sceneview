@@ -59,6 +59,8 @@ on:
       - '**/package.json'
       - '.claude/scripts/check-test-suites-reachable.sh'
       - '.claude/scripts/test-check-test-suites-reachable.sh'
+      - '.claude/scripts/validate-demo-assets.sh'
+      - '.claude/scripts/test-validate-demo-assets.sh'
   workflow_dispatch:
 
 concurrency:
@@ -192,6 +194,12 @@ jobs:
 
       - name: Self-test the test-suite reachability gate
         run: bash .claude/scripts/test-check-test-suites-reachable.sh
+
+      # Same shape, next gate over: the demo-asset validator must refuse to
+      # run without curl (exit 2) rather than report every CDN URL as a
+      # transient miss and exit 0 (#3192).
+      - name: Self-test the demo-asset validator's could-not-run contract
+        run: bash .claude/scripts/test-validate-demo-assets.sh
 
       - name: Check every test suite is reachable from a workflow
         run: bash .claude/scripts/check-test-suites-reachable.sh

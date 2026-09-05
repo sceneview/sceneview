@@ -206,7 +206,18 @@ if $INSTALL; then
     # cold build on a 2-core CI runner looked like a 40-min silent hang.
     # `timeout` bounds it so a genuinely stuck build/daemon fails fast with a
     # clear diagnostic instead of eating the whole CI job budget (#1560).
-    timeout "${ANDROID_BUILD_TIMEOUT:-1800}" \
+    # It is GNU coreutils, absent from a stock macOS host: a bare call there is
+    # `command not found` (127), which the `||` below reported as "APK build
+    # failed or timed out" without Gradle ever starting. Resolved the way
+    # lib/maestro.sh does — timeout, else gtimeout, else unbounded — so a
+    # missing tool can never read as a failed build (#3192).
+    build_timeout=()
+    if command -v timeout >/dev/null 2>&1; then
+      build_timeout=(timeout "${ANDROID_BUILD_TIMEOUT:-1800}")
+    elif command -v gtimeout >/dev/null 2>&1; then
+      build_timeout=(gtimeout "${ANDROID_BUILD_TIMEOUT:-1800}")
+    fi
+    ${build_timeout[@]+"${build_timeout[@]}"} \
       ./gradlew :samples:android-demo:assembleDebug --console=plain || {
         echo "[qa] ERROR: APK build failed or timed out (>${ANDROID_BUILD_TIMEOUT:-1800}s)" >&2
         exit 1

@@ -219,7 +219,7 @@ clean checkout of `main` (validated in session 34, 2026-04-11).
 
 ## Asset integrity
 
-All demo apps are continuously verified by
+All demo apps are verified by
 `.claude/scripts/validate-demo-assets.sh`, which:
 
 - Scans every Kotlin, Swift, Dart, and TypeScript source file under
@@ -232,15 +232,12 @@ All demo apps are continuously verified by
   `Models/`, `src/jsMain/resources/`, and similar platform-specific
   asset directories.
 
-The script runs in three enforcement gates:
-
-1. **Local pre-push**: `bash .claude/scripts/pre-push-check.sh` runs it
-   with `--no-cdn` (fast) after all other checks.
-2. **Quality gate**: `bash .claude/scripts/quality-gate.sh` runs it with
-   full CDN checks unless `--quick` is passed.
-3. **CI on every PR**: `.github/workflows/pr-check.yml` runs both
-   `test-validate-demo-assets.sh` (self-test on a synthetic fixture)
-   and the full validator with live CDN checks.
+Nothing runs the validator automatically since #3244 removed the local
+harness (`pre-push-check.sh`, `quality-gate.sh`) — run it by hand before
+touching demo assets. Its could-not-run contract (no `curl` → exit 2, never
+a pass and never a "broken CDN") is self-tested by
+`.claude/scripts/test-validate-demo-assets.sh`, which `mcp-tests.yml` runs
+next to the other shell self-test.
 
 To run it manually:
 
