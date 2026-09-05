@@ -350,6 +350,23 @@ internal object DeepLinkRouter {
     }
 
     /**
+     * Resolves the `--es qa_state <id>` intent extra to the state id a demo may pin itself
+     * to, or `null` for "run the real state machine" (#3421, #3455).
+     *
+     * One extra carries every demo's vocabulary — Cloud Anchors resolves its ids with
+     * `cloudAnchorScenarioOf`, Point & Ask with `askStepForQaOverride` — and this is the
+     * single place the gate lives: the id is returned **only when [qaMode] is on**. A
+     * pinned state makes a screen claim something that never happened (a hosted anchor
+     * code, a streamed answer), so unlike `qa_backdrop`, which only changes what is behind
+     * the scene, an intent extra alone must never be enough to reach it. Blank ids are
+     * dropped so a demo never has to distinguish `""` from absent. Never throws.
+     */
+    fun resolveQaState(qaMode: Boolean, raw: String?): String? {
+        if (!qaMode) return null
+        return raw?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
      * Extracts the raw id token from a URI without validating it against
      * a registry. Exposed so tests can verify the URI parser separately
      * from the registry lookup.

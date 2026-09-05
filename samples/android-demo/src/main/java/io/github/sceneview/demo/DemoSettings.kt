@@ -43,33 +43,32 @@ object DemoSettings {
     var qaBackdrop: Boolean? by mutableStateOf(null)
 
     /**
-     * QA-only name of the visual state a demo should force itself into (`--es qa_state
-     * <name>`), or `null` for the demo's real, live state (#3421).
+     * QA-only id of the visual state a demo should force itself into (`--es qa_state
+     * <id>`), or `null` for the demo's real, live state (#3421, #3455).
      *
      * The generic seam for a problem `qaBackdrop` does not solve. The backdrop gives an AR
      * demo a *background* on a device without a camera; it cannot give it a *state*. Cloud
-     * Anchors is the first demo whose interesting states — hosting, hosted, code expired —
+     * Anchors was the first demo whose interesting states — hosting, hosted, code expired —
      * need a live cloud service and a second phone, so none of them can be reached on
      * `emulator-5554` (#2754) and the smoke suite could only ever capture the empty first
-     * frame. That is precisely the frame that looked fine while #3421 was open.
+     * frame. That is precisely the frame that looked fine while #3421 was open. Point & Ask
+     * has the same problem with AICore: without it, every card past "checking" is
+     * unreachable (#3407).
      *
-     * Each demo owns its own vocabulary of names and resolves them itself (Cloud Anchors:
-     * [io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf]); an unknown name
-     * leaves the demo alone rather than guessing. Only read where
-     * [io.github.sceneview.demo.common.qaStateOverridesAllowed] is honoured, so a release
-     * build cannot be steered into a fake state by an intent.
+     * One extra, per-demo vocabularies. Each demo resolves the ids it knows and ignores the
+     * rest, so an unknown id leaves the demo alone rather than guessing:
+     *  - Cloud Anchors: [io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf]
+     *    (`placing`, `hosted`, `resolve_not_found`, …);
+     *  - Point & Ask: [io.github.sceneview.demo.ai.askStepForQaOverride], ids listed in
+     *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …).
+     *
+     * Set only through [io.github.sceneview.demo.DeepLinkRouter.resolveQaState], which
+     * returns `null` unless [qaMode] is on, and only read where
+     * [io.github.sceneview.demo.common.qaStateOverridesAllowed] is honoured — so a release
+     * build cannot be steered into a fake state by an intent, and toggling QA mode off from
+     * the sheet drops the pin at once.
      */
     var qaDemoState: String? by mutableStateOf(null)
-
-    /**
-     * QA-only Point & Ask card override (#3407). `--es qa_ask_state <id>` pins the demo's
-     * bottom card to one state — see [io.github.sceneview.demo.ai.askStepForQaOverride] and
-     * [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] — so a light + dark screenshot of every
-     * state can be taken on an emulator that has neither ARCore nor AICore (#2754). `null`
-     * (default) leaves the demo running its real state machine; an unrecognised id is
-     * ignored the same way.
-     */
-    var qaAskState: String? by mutableStateOf(null)
 
     /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at

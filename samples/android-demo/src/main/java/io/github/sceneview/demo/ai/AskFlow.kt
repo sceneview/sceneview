@@ -238,9 +238,11 @@ class AskFlow(
 }
 
 /**
- * QA-only step override (`--es qa_ask_state <id>`), so every card can be screenshot in light
- * and dark on an emulator that has neither ARCore nor AICore (#2754). Returns `null` for an
- * absent or unrecognised id, which leaves the demo running its real state machine.
+ * QA-only step override (`--es qa_state <id>`, the shared QA state seam — see
+ * `DemoSettings.qaDemoState`), so every card can be screenshot in light and dark on an
+ * emulator that has neither ARCore nor AICore (#2754). Returns `null` for an absent or
+ * unrecognised id, which leaves the demo running its real state machine — including the
+ * Cloud Anchor ids that travel through the same extra.
  *
  * Pure lookup — unit-tested rather than trusted, because a typo here would silently produce
  * a QA sweep of the wrong card.

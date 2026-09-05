@@ -107,6 +107,7 @@ import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -260,7 +261,7 @@ private class AnswerPanel(
  * Under `DemoSettings.qaMode` the engine is a deterministic canned stand-in, and a capture
  * the emulator cannot produce falls back to a synthetic (textured, so it passes the real
  * validation) frame — the tap → capture → answer UI flow stays device-QA-able. Every card
- * can additionally be pinned for screenshots with `--es qa_ask_state <id>`
+ * can additionally be pinned for screenshots with `--ez qa_mode true --es qa_state <id>`
  * (`ASK_QA_STATE_IDS`), because an emulator has neither ARCore nor AICore (#2754).
  *
  * P1+P2+P3 of [#2648](https://github.com/sceneview/sceneview/issues/2648), plus the
@@ -311,10 +312,13 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     var step by remember { mutableStateOf<AskStep>(AskStep.CheckingAvailability) }
     val syncStep: () -> Unit = { step = flow.step }
 
-    // QA-only card override (`--es qa_ask_state <id>`): pins the bottom card to one state so
-    // an emulator with neither ARCore nor AICore (#2754) can still screenshot every state in
-    // light and dark. `null` for every normal launch.
-    val qaStep = remember(DemoSettings.qaAskState) { askStepForQaOverride(DemoSettings.qaAskState) }
+    // QA-only card override (`--es qa_state <id>`, the shared seam of #3421 / #3455): pins
+    // the bottom card to one state so an emulator with neither ARCore nor AICore (#2754)
+    // can still screenshot every state in light and dark. `null` for every normal launch:
+    // MainActivity only sets the id under `qa_mode`, and the runtime gate here drops the pin
+    // the moment QA mode is toggled off from the sheet, exactly like Cloud Anchors.
+    val qaStateId = DemoSettings.qaDemoState?.takeIf { qaStateOverridesAllowed() }
+    val qaStep = remember(qaStateId) { askStepForQaOverride(qaStateId) }
     val shownStep = qaStep ?: step
 
     LaunchedEffect(askEngine) {

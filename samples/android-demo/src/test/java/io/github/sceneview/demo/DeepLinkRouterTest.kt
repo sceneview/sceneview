@@ -592,4 +592,36 @@ class DeepLinkRouterTest {
     fun `the instant-placement alias carries no tab pre-selection`() {
         assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-instant-placement"])
     }
+
+    // ── `--es qa_state <id>` — the one QA state seam (#3421, #3455) ────────────────────
+
+    /**
+     * Under `qa_mode` the extra is passed through verbatim (trimmed): the router does not
+     * know any demo's vocabulary, so both Cloud Anchor and Point & Ask ids must survive it
+     * unchanged for each demo's own resolver to recognise them.
+     */
+    @Test
+    fun `qa_state is accepted when qa_mode is on`() {
+        assertEquals("placing", DeepLinkRouter.resolveQaState(qaMode = true, raw = "placing"))
+        assertEquals("resolve_not_found", DeepLinkRouter.resolveQaState(qaMode = true, raw = "resolve_not_found"))
+        assertEquals("failed-persistent", DeepLinkRouter.resolveQaState(qaMode = true, raw = "failed-persistent"))
+        assertEquals("ready", DeepLinkRouter.resolveQaState(qaMode = true, raw = "  ready "))
+    }
+
+    /**
+     * Without `qa_mode` the extra is ignored outright — a pinned state makes a screen claim
+     * something that never happened, so `adb shell am start --es qa_state hosted` against a
+     * production install must be a no-op. This is the path that keeps the seam out of
+     * release builds; a blank id is dropped on either path.
+     */
+    @Test
+    fun `qa_state is ignored when qa_mode is off`() {
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = false, raw = "placing"))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = false, raw = "hosted"))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = false, raw = "answered"))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = false, raw = null))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = true, raw = null))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = true, raw = ""))
+        assertNull(DeepLinkRouter.resolveQaState(qaMode = true, raw = "   "))
+    }
 }

@@ -186,6 +186,12 @@ and pass `--allow-offline` to acknowledge a deliberately offline run.
    (the same closed-registry allow-list as the `sceneview://demo/<id>` scheme),
    and `qa_mode` freezes auto-rotation for a deterministic screenshot. Maestro
    `launchApp` has no `deepLink` property — that key aborts flow parsing.
+   State-driven flows (`flows/ar-cloud-anchor.yaml`) add one more argument,
+   `qa_state: <id>` — the single seam that pins a demo to a named state the
+   emulator cannot reach on its own ([#3421](https://github.com/sceneview/sceneview/issues/3421),
+   [#3455](https://github.com/sceneview/sceneview/issues/3455)). It is ignored
+   unless `qa_mode` is also set; the per-demo id lists live in
+   `samples/android-demo/README.md`.
 2. Orbit the camera (two opposite horizontal drags + one vertical drag).
 3. Tap the viewport centre (node pick / harmless empty-space tap).
 4. Capture **exactly one** screenshot (`demo-<id>`).

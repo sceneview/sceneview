@@ -58,6 +58,23 @@ within 1.5 s, and switches itself off as soon as one does. The photos are genera
 `python3 tools/demo-previews/backdrops.py` into `src/debug/res/drawable-nodpi/` and are
 never shipped in release builds. The Maestro flows under `.maestro/android/` pass it.
 
+A backdrop gives an AR demo a background; it cannot give it a *state*. Demos whose
+interesting states need something the emulator does not have (a live Cloud Anchors project
+and a second phone, AICore) can be pinned to one named state with `--es qa_state <id>`,
+which is **ignored unless `qa_mode` is on** (`DeepLinkRouter.resolveQaState`,
+`DemoSettings.qaDemoState`). One extra, one vocabulary per demo — an id a demo does not
+know leaves it in its real state:
+
+```bash
+adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo ar-cloud-anchor --ez qa_mode true --es qa_state hosted
+adb shell am start -n io.github.sceneview.demo/.MainActivity --es demo point-and-ask --ez qa_mode true --es qa_state streaming
+```
+
+| Demo | `qa_state` ids | Resolver |
+|---|---|---|
+| `ar-cloud-anchor` | `placing` `mapping` `ready_to_host` `hosting` `hosted` `host_failed` `resolve_empty` `resolve_ready` `resolving` `resolved` `resolve_not_found` `api_key_missing` `api_key_rejected` `no_network` (case- and separator-insensitive) | `cloudAnchorScenarioOf` |
+| `point-and-ask` | `checking` `downloadable` `downloading` `unsupported` `ready` `capturing` `thinking` `streaming` `answered` `failed` `failed-persistent` | `askStepForQaOverride` (`ASK_QA_STATE_IDS`) |
+
 ## Requirements
 
 - Android device or emulator (API 28+) — this is the demo app's `minSdk`; the SceneView library itself supports API 24+
