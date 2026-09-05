@@ -17,6 +17,12 @@ export interface ToolResult {
   content: ToolTextContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+  /**
+   * Result-level metadata forwarded verbatim to the client. Used by widget
+   * tools to point the host at the MCP Apps resource that renders
+   * `structuredContent` (`_meta.ui.resourceUri`, see `../widgets.ts`).
+   */
+  _meta?: Record<string, unknown>;
 }
 
 /**
@@ -83,6 +89,13 @@ export interface ToolDefinition {
    * `{ readOnlyHint: true, openWorldHint: false, destructiveHint: false }`.
    */
   annotations?: ToolAnnotations;
+  /**
+   * Declaration-level metadata forwarded verbatim in `tools/list`. Hosts that
+   * render MCP Apps widgets decide from the declaration alone, so a widget
+   * tool carries `_meta.ui.resourceUri` (MCP Apps) and the OpenAI Apps SDK
+   * spellings (`openai/outputTemplate`, `openai/toolInvocation/*`) here.
+   */
+  _meta?: Record<string, unknown>;
 }
 
 /**

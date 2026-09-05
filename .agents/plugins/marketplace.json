@@ -1,0 +1,20 @@
+{
+  "name": "sceneview-local",
+  "interface": {
+    "displayName": "SceneView (local checkout)"
+  },
+  "plugins": [
+    {
+      "name": "sceneview",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

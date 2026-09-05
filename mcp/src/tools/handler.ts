@@ -64,6 +64,7 @@ import { buildPreviewUrl, formatPreviewResponse, validatePreviewInput } from "..
 import { getSample, SAMPLE_IDS, SAMPLES } from "../samples.js";
 import { formatSearchResults, searchModels } from "../search-models.js";
 import { formatValidationReport, validateCode } from "../validator.js";
+import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
 import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 
 // ─── Legal disclaimer (identical to index.ts 4.0.0) ─────────────────────
@@ -1030,6 +1031,55 @@ export async function dispatchTool(
       return {
         content: withDisclaimer([{ type: "text", text }]),
         isError: docResult.ok ? undefined : true,
+      };
+    }
+
+    // ── view_3d_model (MCP Apps widget) ──────────────────────────────────────
+    //
+    // Returns nothing the model must reason about beyond a one-line summary:
+    // the payload lives in `structuredContent`, which the host hands to the
+    // `ui://widget/3d-viewer.html` resource (see `../widgets.ts`). No
+    // disclaimer here — nothing is generated, the viewer just loads a URL.
+    case "view_3d_model": {
+      const modelUrl = typeof args?.modelUrl === "string" ? args.modelUrl.trim() : "";
+      if (!modelUrl) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "view_3d_model requires a `modelUrl` argument (a public HTTPS URL to a .glb or .gltf file).",
+            },
+          ],
+          isError: true,
+        };
+      }
+      const title =
+        typeof args?.title === "string" && args.title.trim() ? args.title.trim() : "3D model";
+      const autoRotate = args?.autoRotate !== false;
+      const ar = args?.ar !== false;
+      const alt = typeof args?.alt === "string" && args.alt.trim() ? args.alt.trim() : title;
+      const posterUrl =
+        typeof args?.posterUrl === "string" && args.posterUrl ? args.posterUrl : undefined;
+
+      // The text block is for clients that do not render the widget: it
+      // gives the assistant something to say about what was shown.
+      const summary = `Loading 3D viewer for ${title} (${modelUrl}).${
+        ar ? " AR mode is available on supported mobile devices." : ""
+      }`;
+
+      return {
+        content: [{ type: "text", text: summary }],
+        // `posterUrl` is omitted rather than `undefined`: the outputSchema has
+        // `additionalProperties: false` and hosts validate against it.
+        structuredContent: {
+          modelUrl,
+          title,
+          autoRotate,
+          ar,
+          alt,
+          ...(posterUrl === undefined ? {} : { posterUrl }),
+        },
+        _meta: { ui: { resourceUri: WIDGET_3D_VIEWER_URI } },
       };
     }
 

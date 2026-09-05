@@ -2691,7 +2691,7 @@
       if (platform === 'claude') {
         return {
           file: 'prompt.md', lang: 'Markdown',
-          code: '# MCP / Claude — ' + title + '\n\n## Prompt to Claude:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 26 tools\nfor AI-assisted 3D/AR development:\n\n- `create_scene` — scaffold a project\n- `add_model` — add 3D model nodes\n- `configure_camera` — camera setup\n- `set_environment` — HDR lighting\n- `add_ar_plane_detection` — AR features\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add to claude_desktop_config.json:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```'
+          code: '# MCP / Claude — ' + title + '\n\n## Prompt to Claude:\n\n> Help me implement \"' + title + '\" using SceneView.\n> Use the SceneView SDK for Android with\n> Jetpack Compose.\n\n## SceneView MCP Server:\n\nThe sceneview-mcp server provides 32 tools\nfor AI-assisted 3D/AR development:\n\n- `get_setup` — Gradle + manifest setup\n- `get_sample` — compilable code samples\n- `get_node_reference` — node type API reference\n- `validate_code` — check generated code\n- `get_ar_setup` — AR permissions and session\n\n## Install MCP:\n```bash\nnpx sceneview-mcp\n```\n\nOr add to claude_desktop_config.json:\n```json\n{\n  \"mcpServers\": {\n    \"sceneview\": {\n      \"command\": \"npx\",\n      \"args\": [\"sceneview-mcp\"]\n    }\n  }\n}\n```'
         };
       }
       return ex.android;

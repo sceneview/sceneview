@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/sceneview-mcp?color=6c35aa)](https://www.npmjs.com/package/sceneview-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/sceneview-mcp?color=blue)](https://www.npmjs.com/package/sceneview-mcp)
-[![Tests](https://img.shields.io/badge/tests-1898%20passing-brightgreen)](#quality)
+[![Tests](https://img.shields.io/badge/tests-2001%20passing-brightgreen)](#quality)
 [![MCP](https://img.shields.io/badge/MCP-v1.12-blue)](https://modelcontextprotocol.io/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-listed-blueviolet)](https://registry.modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
@@ -12,7 +12,7 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) server for **[SceneView](https://sceneview.github.io)** — the cross-platform 3D & AR SDK for Android (Jetpack Compose + Filament), iOS / macOS / visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR).
 
-Connect it to Claude, Cursor, Windsurf, or any MCP client. Your AI assistant gets specialized tools, compilable code samples, the full API reference, and a code validator — so it writes correct, working 3D/AR code on the first try.
+Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio, or remotely over Streamable HTTP for ChatGPT, Codex and the OpenAI API (see [Remote server](#remote-server-streamable-http--chatgpt-codex-openai-api)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
 
 > **Disclaimer:** Generated code is provided "as is" without warranty. Always review before production use. See [TERMS.md](./TERMS.md) and [PRIVACY.md](./PRIVACY.md).
 
@@ -79,6 +79,42 @@ Open **Settings > MCP**, add a new server named `sceneview` with command `npx -y
 
 Same JSON config as above. The server communicates via **stdio** using the standard MCP protocol.
 
+### Remote server (Streamable HTTP) — ChatGPT, Codex, OpenAI API
+
+The ChatGPT / Codex Plugins Directory and the OpenAI API `mcp` tool cannot spawn a local process: they need MCP's **Streamable HTTP** transport at a public URL. The same package serves it:
+
+```bash
+npx sceneview-mcp --http
+# [sceneview-mcp] v4.x — HTTP (free tools only)
+# [sceneview-mcp] MCP endpoint: http://127.0.0.1:3333/mcp
+```
+
+| Route | What it does |
+|---|---|
+| `POST /mcp` | MCP JSON-RPC (Streamable HTTP, stateless — no sessions, safe behind any load balancer) |
+| `GET` / `DELETE /mcp` | `405` (no standalone SSE stream, no session to delete) |
+| `GET /health` | `{"status":"ok","version":"4.x.y"}` |
+| `GET /.well-known/openai-apps-challenge` | OpenAI domain verification — returns `OPENAI_APPS_CHALLENGE_TOKEN` as `text/plain`, `404` when unset |
+| anything else | `404` |
+
+Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
+
+**Free tier only.** The remote surface lists and serves the free tools — there is no API key on a shared endpoint, so Pro tool names are refused at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` + `SCENEVIEW_API_KEY` path. stdio keeps listing everything as before.
+
+**Inline 3D viewer.** `view_3d_model` returns `structuredContent` plus `_meta.ui.resourceUri = ui://widget/3d-viewer.html`; the widget (SceneView.js + Filament.js, served by `resources/read` with the `text/html;profile=mcp-app` mime type and its `_meta.ui.csp`) renders the model inline in ChatGPT and any MCP Apps host.
+
+Smoke test with curl (the `Accept` header is required by the spec):
+
+```bash
+curl -s http://127.0.0.1:3333/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+# {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"resources":{},"tools":{}},"serverInfo":{"name":"sceneview-mcp","version":"4.x.y"}}}
+```
+
+Point the ChatGPT connector / OpenAI `mcp` tool at `https://<your-host>/mcp`.
+
 ---
 
 ## What you get
@@ -129,12 +165,21 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 | `search_android_docs` | Searches Google's stock Android docs knowledge base (needs the `android` CLI on PATH) |
 | `fetch_android_doc` | Fetches a full Android docs entry by its `kb://...` URI (needs the `android` CLI on PATH) |
 
-### 2 resources
+#### Inline 3D viewer (MCP Apps widget)
+
+| Tool | What it does |
+|---|---|
+| `view_3d_model` | Renders a public GLB / glTF URL in an interactive SceneView.js + Filament.js viewer inline in ChatGPT and any MCP Apps host (orbit, auto-rotate). Returns `structuredContent` + `_meta.ui.resourceUri` |
+
+### 5 resources
 
 | Resource URI | What it provides |
 |---|---|
-| `sceneview://api` | Complete SceneView 4.0.x API reference (the full `llms.txt`) |
+| `sceneview://api` | Complete SceneView 4.x API reference (the full `llms.txt`) |
 | `sceneview://known-issues` | Live open issues from GitHub (cached 10 min) |
+| `examples://demo-with-settings` | DemoScaffold v2 pattern — full-screen scene + Material 3 bottom sheet |
+| `examples://sketchfab-streaming` | Streaming Sketchfab CC-BY models into a demo instead of bundling GLBs |
+| `ui://widget/3d-viewer.html` | The 3D viewer widget (`text/html;profile=mcp-app`) that `view_3d_model` renders into |
 
 ---
 
@@ -249,17 +294,18 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 
 ## Quality
 
-The MCP server is tested with **1,965 unit tests** across 83 test suites covering:
+The MCP server is tested with **2,001 unit tests** across 86 test suites covering:
 
 - Every tool response (correct output, error handling, edge cases)
 - All 33 code samples (compilable structure, correct imports, no deprecated APIs)
 - Code validator rules (true positives and false-positive resistance)
 - Node reference parsing (all node types extracted correctly from `llms.txt`)
-- Resource responses (API reference, GitHub issues integration)
+- Resource responses (API reference, GitHub issues integration, the 3D viewer widget)
+- The Streamable HTTP surface end to end (initialize, free-only tools/list, widget resource, health, OpenAI challenge)
 
 ```
- Test Files  83 passed (83)
-      Tests  1965 passed (1965)
+ Test Files  86 passed (86)
+      Tests  2001 passed (2001)
 ```
 
 All tools work **fully offline** except `sceneview://known-issues` (GitHub API, cached 10 min), `search_models` (Sketchfab, BYOK), and `generate_3d_model` (Tripo AI, BYOK).
@@ -337,7 +383,7 @@ Enabled by default on the free tier (MCP client name/version and tool names — 
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 1965 tests
+npm test         # 2001 tests
 npm run lint     # Biome (repo-root biome.json) — lint + format + import assists
 npm run lint:fix # same, applying the safe fixes
 npm run dev      # Start with tsx (hot reload)
@@ -348,7 +394,10 @@ npm run dev      # Start with tsx (hot reload)
 ```
 mcp/
   src/
-    index.ts             # MCP server entry point
+    index.ts             # CLI entry point — stdio, or Streamable HTTP with --http
+    server.ts            # The MCP Server (resources + tools), shared by both transports
+    http.ts              # Streamable HTTP entrypoint (/mcp, /health, OpenAI challenge)
+    widgets.ts           # MCP Apps widget: ui://widget/3d-viewer.html (SceneView.js + Filament.js)
     tools/handler.ts     # Tool dispatcher (free + pro)
     tiers.ts             # Free vs Pro tier mapping
     samples.ts           # 33 compilable code samples (Kotlin + Swift)
@@ -371,7 +420,7 @@ mcp/
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new tools or rules
-4. Run `npm test` — all 1898+ tests must pass
+4. Run `npm test` — all 2001+ tests must pass
 5. Submit a pull request
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.

@@ -1,8 +1,8 @@
 /**
  * Multiplexed MCP tool registry for the SceneView hosted gateway.
  *
- * This module takes the five upstream tool libraries (sceneview-mcp plus
- * the four verticals) and exposes them as a single flat registry:
+ * This module takes the six upstream tool libraries (sceneview-mcp plus
+ * the five verticals) and exposes them as a single flat registry:
  *
  *   - `getAllTools()` returns the concatenated list of tool definitions.
  *   - `dispatch(toolName, args, ctx)` routes a call to the owning library.
@@ -25,7 +25,6 @@ import * as GamingTools from "../../../mcp/packages/gaming/src/tools.js";
 import * as HealthcareTools from "../../../mcp/packages/healthcare/src/tools.js";
 import * as InteriorTools from "../../../mcp/packages/interior/src/tools.js";
 import * as RerunTools from "../../../mcp/packages/rerun/src/tools.js";
-import * as WidgetTools from "./widget-tools.js";
 
 import type {
   DispatchContext,
@@ -73,15 +72,10 @@ const LIBRARIES: ToolLibrary[] = [
     definitions: RerunTools.TOOL_DEFINITIONS,
     dispatch: (name, args, ctx) => RerunTools.dispatchTool(name, args, ctx),
   },
-  {
-    // Gateway-native widget tools — only meaningful in the hosted HTTP
-    // transport because they reference resource URIs the stdio package
-    // cannot serve. See `mcp/widget-tools.ts` for the full rationale.
-    id: "widgets",
-    label: "sceneview-widgets",
-    definitions: WidgetTools.TOOL_DEFINITIONS,
-    dispatch: (name, args, ctx) => WidgetTools.dispatchTool(name, args, ctx),
-  },
+  // The MCP Apps widget tool (`view_3d_model`) is part of `sceneview-mcp`
+  // above: the upstream package ships both the declaration and the widget
+  // HTML (`mcp/src/widgets.ts`), so there is no gateway-native library any
+  // more. See `./widget-tools.ts`.
 ];
 
 // ── Build a name → library lookup and fail fast on collisions ──────────────

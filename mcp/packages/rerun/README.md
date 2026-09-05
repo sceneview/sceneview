@@ -25,7 +25,7 @@ Or configure as a Claude Code MCP server:
 
 ### Option B — hosted HTTP MCP URL (ChatGPT, Claude Desktop "Remote MCP", Cursor URL)
 
-The 5 rerun tools are also exposed (along with sceneview-mcp + automotive/gaming/healthcare/interior verticals and the gateway's widget tool — 67 tools total) on the shared SceneView gateway:
+The 5 rerun tools are also exposed (along with sceneview-mcp + automotive/gaming/healthcare/interior verticals, `view_3d_model` included — 67 tools total) on the shared SceneView gateway:
 
 ```
 https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public
