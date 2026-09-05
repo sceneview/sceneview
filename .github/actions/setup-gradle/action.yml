@@ -38,11 +38,29 @@ runs:
     # build cache (compiled task outputs) for richer hit rates across
     # ci/build-apks/render-tests.
     # `cache-read-only` on every non-push event so PRs (incl. forks) read
-    # but never write the cache; pushes to main repopulate it.
+    # but never write the cache; pushes to main repopulate it — from hosted
+    # runners only.
+    #
+    # A self-hosted runner never writes (#3469). Its Gradle User Home is the
+    # machine's own `~/.gradle`, which the action refuses to restore into
+    # anyway ("Gradle User Home already exists: will not restore from cache"),
+    # so nothing saved from it is ever consumed by that machine — yet on every
+    # `main` push the post-step tarred and uploaded that whole home. On
+    # `sceneview-mac` that meant a 2.2 GB + 3.0 GB upload still at
+    # `Sent 1073741824 of 2201734690 (48.8%), 0.6 MBs/sec` when the job's
+    # 30 min timeout fired (job 100769714909), or a transfer stuck at
+    # `Sent 0 of 1269721491 (0.0%), 0.0 MBs/sec` for the full 30 min (job
+    # 100796430540): every `main` push that reached the iOS-sim job ended
+    # `cancelled` in `Post Run ./.github/actions/setup-gradle` with the tests
+    # green in ~20 s, while the same commits' PR runs (read-only) spent 0 s
+    # there. The save also ran `gradle --stop` against the developer's live
+    # daemons and pushed multi-GB macOS entries into a repo cache already at
+    # 14.5 GB active against the 10 GB quota, evicting the Linux entries every
+    # hosted job restores.
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v6
       with:
-        cache-read-only: ${{ github.event_name != 'push' }}
+        cache-read-only: ${{ github.event_name != 'push' || runner.environment == 'self-hosted' }}
 
     # Verify the checked-in gradle-wrapper.jar matches the SHA of a known-good
     # Gradle distribution. A malicious PR can otherwise sneak a tampered
