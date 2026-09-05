@@ -48,8 +48,10 @@ refuses Pro tool names, and the skills link to Apache-2.0 sources.
   <https://github.com/sceneview/sceneview/issues>
 - **Privacy policy:** <https://sceneview.github.io/privacy> · **Terms:**
   <https://github.com/sceneview/sceneview/blob/main/mcp/TERMS.md>
-- **Logo / composer icon:** `website-static/favicon-192.png` (192 px PNG). A dedicated
-  512 px logo and at least one screenshot of the 3D widget are still to produce.
+- **Logo:** `branding/exports/logo/logo-512.png` (512 px PNG, the manifest's `logo`);
+  **composer icon:** `website-static/favicon-192.png`. One screenshot of the 3D widget
+  (DamagedHelmet, 800 × 600, headless Chrome + SwiftShader) exists for the listing form;
+  it is kept with the maintainer's listing assets, not in the repository.
 
 ## Starter prompts (minimum 5)
 
@@ -91,10 +93,21 @@ Test credentials: none — every tool on the remote surface is anonymous and rea
 
 ## Local testing (what could and could not be verified here)
 
-- The manifest, marketplace and symlinks follow the published schema verbatim; `codex`
-  is not installed on the maintainer's Mac, so the local-marketplace install was **not**
-  exercised. First thing to do on a machine with Codex:
-  `codex` → `/plugins` → source "SceneView (local checkout)" → install → `$sceneview`.
+- The local-marketplace install **was exercised** with Codex CLI 0.149.0 from a clean
+  checkout, and Codex listed the three skills as `sceneview:sceneview`, `sceneview:sceneview-ios`
+  and `sceneview:sceneview-web` when asked what it had available:
+
+  ```bash
+  codex plugin marketplace add "$PWD"          # registers marketplace `sceneview-local`
+  codex plugin add sceneview@sceneview-local   # → ~/.codex/plugins/cache/sceneview-local/sceneview/<version>/
+  codex plugin list                            # sceneview@sceneview-local  installed, enabled  4.34.0
+  ```
+
+  Two things the install taught us: `codex plugin marketplace add ./` with a relative
+  path does not resolve, pass an absolute path; and the install copies the repository
+  into the cache **without** the `.agents/skills` symlinks, so the skills resolve through
+  the manifest's `"skills": "./agents/"` — the symlinks only serve discovery inside a
+  checkout, never inside an installed plugin.
 - The `path` in `marketplace.json` is relative to the repository root (documented example
   is `./plugins/my-plugin`); this repo is the plugin itself, hence `./`.
 - The remote server was exercised with `curl` against `node dist/index.js --http`
