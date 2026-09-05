@@ -1,0 +1,34 @@
+{
+  "items": {
+    "ar-feature-graphic": {
+      "prompt": "The battle-damaged sci-fi helmet of the attached reference — this exact model, and no other: a large curved visor of dark teal-green glass carrying faint cyan HUD glyphs, a glowing cyan ring lens and a small orange triangle marker, scuffed off-white armour plates with gold-brass trim along the jaw, and a segmented ear module with ribbed cables tucked behind. Three-quarter front-left view with the visor turned towards the camera, the same pose as the reference. It is anchored by an AR session on the wooden floor of a real photographed living room at dusk, seen through a handheld phone camera from slightly above: a warm floor lamp lit in the background, a sofa and a window of blue evening light behind, the room softly out of focus while the helmet is sharp. The helmet is real-world scale (about 30 cm tall), grounded by a soft contact shadow, the lamp faintly reflected in its visor — a solid object in the room, no glow, no hologram effect. Very wide landscape banner frame: the helmet sits a little right of centre, entirely inside the central 70% of the frame, taking about 60% of the frame height with clear floor below it and clear room above it, the room opening up on the left. Nothing is cropped or touching a border — in particular the chin and the top of the visor stay well inside the frame. No text, no letters, no UI, no device frame, no hands, no people, no watermark. Faithful to the attached reference: keep the real model shapes, colours and materials; relight and recompose only.",
+      "ref": "damaged_helmet.webp",
+      "aspect": "21:9",
+      "size": "2K",
+      "outputs": [
+        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png", "size": [1024, 500]}
+      ]
+    },
+    "ar-phone": {
+      "prompt": "The battle-damaged sci-fi helmet of the attached reference — this exact model, and no other: a large curved visor of dark teal-green glass carrying faint cyan HUD glyphs, a glowing cyan ring lens and a small orange triangle marker, scuffed off-white armour plates with gold-brass trim along the jaw, and a segmented ear module with ribbed cables tucked behind. Three-quarter front-left view with the visor turned towards the camera, the same pose as the reference. It is anchored by an AR session on the wooden floor of a real photographed living room at dusk, seen through a handheld phone camera from slightly above: a warm floor lamp lit in the background, a sofa and a window of blue evening light behind, the room softly out of focus while the helmet is sharp. The helmet is real-world scale (about 30 cm tall), grounded by a soft contact shadow, the lamp faintly reflected in its visor — a solid object in the room, no glow, no hologram effect. Tall portrait phone frame: the helmet is centred horizontally and sits just below the middle of the frame, taking about 55% of the frame width, with clear room above it and floor below it. Nothing is cropped or touching a border. No text, no letters, no UI, no device frame, no hands, no people, no watermark. Faithful to the attached reference: keep the real model shapes, colours and materials; relight and recompose only.",
+      "ref": "damaged_helmet.webp",
+      "aspect": "9:16",
+      "size": "2K",
+      "outputs": [
+        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png", "size": [1080, 2304]},
+        {"dest": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-ar.png", "size": [1320, 2868]}
+      ]
+    },
+    "ar-tablet": {
+      "prompt": "The battle-damaged sci-fi helmet of the attached reference — this exact model, and no other: a large curved visor of dark teal-green glass carrying faint cyan HUD glyphs, a glowing cyan ring lens and a small orange triangle marker, scuffed off-white armour plates with gold-brass trim along the jaw, and a segmented ear module with ribbed cables tucked behind. Three-quarter front-left view with the visor turned towards the camera, the same pose as the reference. It is anchored by an AR session on the wooden floor of a real photographed living room at dusk, seen through a handheld phone camera from slightly above: a warm floor lamp lit in the background, a sofa and a window of blue evening light behind, the room softly out of focus while the helmet is sharp. The helmet is real-world scale (about 30 cm tall), grounded by a soft contact shadow, the lamp faintly reflected in its visor — a solid object in the room, no glow, no hologram effect. Portrait tablet frame: the helmet is centred horizontally and sits just below the middle of the frame, taking about 45% of the frame width, with clear room above it and floor below it. Nothing is cropped or touching a border. No text, no letters, no UI, no device frame, no hands, no people, no watermark. Faithful to the attached reference: keep the real model shapes, colours and materials; relight and recompose only.",
+      "ref": "damaged_helmet.webp",
+      "aspect": "3:4",
+      "size": "2K",
+      "outputs": [
+        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet7-screenshot-1.png", "size": [1200, 1872]},
+        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet10-screenshot-1.png", "size": [1600, 2512]},
+        {"dest": "samples/ios-demo/appstore-screenshots/ipad-13/00-ar.png", "size": [2064, 2752]}
+      ]
+    }
+  }
+}
