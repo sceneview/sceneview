@@ -55,7 +55,13 @@ Full API reference: [`llms.txt`](./llms.txt).
 - **Codex is a delegation lever, not a rule** — it bills a quota separate from Claude's.
   Always `.claude/scripts/codex-delegate.sh` (`ask` · `review` · `implement
   --new-worktree`), never a raw `codex`, never an OpenAI API key. Commits, merges and
-  releases stay with the lead session.
+  releases stay with the lead session. Route to Codex what it does as well for less: an
+  independent review of a merged PR, a whole-module read to draft an inventory, unit
+  tests and mechanical refactors from a closed brief. Keep with Claude: product
+  decisions, UI validated by capture, anything touching secrets, billing or irreversible
+  steps — and the reading of whatever Codex returns. The script pins the model
+  (`gpt-5.6-sol`) so a CLI update cannot change it silently; `--model gpt-6-astra` is
+  opt-in, per call.
 - **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
   every other job and `changes-verdict` ("Path filter completed") is the required check.
   Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).
