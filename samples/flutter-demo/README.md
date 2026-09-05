@@ -63,6 +63,11 @@ flutter pub get
 flutter run
 ```
 
+`pubspec.lock` is committed (the Flutter team's recommendation for applications) and
+is refreshed by `flutter pub get` — never hand-edit it. After bumping the plugin's
+`version` in `flutter/sceneview_flutter/pubspec.yaml`, re-run `flutter pub get` here
+and commit the lockfile so a fresh clone and CI resolve the same `flutter_sceneview`.
+
 ## Integration Tests
 
 ```bash
