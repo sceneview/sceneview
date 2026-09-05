@@ -91,16 +91,27 @@ for its class.
 
 The listing text sells AR and no image showed any. `00-ar.png` in both classes
 is an **AI-generated marketing visual** (Gemini `gemini-3.1-flash-image`,
-image-to-image from the committed hero-model reference
-`tools/demo-previews/refs/hero.webp`, dark variant, centre-cropped to each
-class's exact pixel spec): the sci-fi helmet anchored in a real photographed
-room, per DESIGN.md's "Preview Image Art Direction" (real camera background,
-no text/UI/device frame/people). It is **not** a simulator capture — the
+image-to-image, centre-cropped to each class's exact pixel spec): the
+`khronos_damaged_helmet.glb` helmet anchored in a real photographed room, per
+DESIGN.md's "Preview Image Art Direction" (real camera background, no
+text/UI/device frame/people). It is **not** a simulator capture — the
 simulator has no camera and cannot run an AR session — and no procedure in
 this README reproduces it. The `00-` prefix is load-bearing: the upload
 scripts order slots lexicographically by filename, so it takes slot 1 on the
 live listing without renaming the captured frames. Replace it with a real
 device capture whenever an authorized device session produces a better one.
+
+| File | Source reference | Prompt | Generated |
+|---|---|---|---|
+| `iphone-6.9/00-ar.png` (1320 × 2868) | `tools/demo-previews/refs/damaged_helmet.webp` — the crop of the real `modelviewer_default` render golden | `tools/demo-previews/store.json` → `ar-phone` (9:16 raw, shared with Play's `phone-screenshot-1.png`) | 2026-09-05, #3461 |
+| `ipad-13/00-ar.png` (2064 × 2752) | same | `store.json` → `ar-tablet` (3:4 raw, shared with Play's two tablet slots) | 2026-09-05, #3461 |
+
+Until #3461 both were drawn from `refs/hero.webp`, a stylised rusty helmet the
+app never renders (the defect #3454 fixed on the Android catalog cards). That
+file is deleted; the helmet in slot 1 is now the same teal-visor model
+`02-dynamic-sky` shows two slots later. To refresh, run
+`tools/demo-previews/gen.py … --kind store` (see that directory's README) and
+look at both outputs by eye before committing.
 
 ## Demos captured (#2854, #2896)
 

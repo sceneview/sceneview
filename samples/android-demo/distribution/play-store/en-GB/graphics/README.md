@@ -21,20 +21,31 @@ they are **not in sync today**. Read the next section before assuming parity.
 
 The listing text sells AR, and until #2844 no image showed any. Slot 1 of every
 screenshot class and `feature-graphic.png` are now **AI-generated marketing
-visuals** (Gemini `gemini-3.1-flash-image`, image-to-image from the committed
-hero-model reference `tools/demo-previews/refs/hero.webp`, dark variant,
-centre-cropped to each slot's exact pixel spec) showing the sci-fi helmet
-anchored in a real photographed room, per DESIGN.md's "Preview Image Art
-Direction" (real camera background, no text/UI/device frame/people). They are
-**not** app captures, and no capture procedure in this README reproduces them.
+visuals** (Gemini `gemini-3.1-flash-image`, image-to-image, centre-cropped to
+each slot's exact pixel spec) showing the helmet anchored in a real
+photographed room, per DESIGN.md's "Preview Image Art Direction" (real camera
+background, no text/UI/device frame/people). They are **not** app captures, and
+no capture procedure in this README reproduces them.
+
+| File | Source reference | Prompt | Generated |
+|---|---|---|---|
+| `feature-graphic.png` (1024×500) | `tools/demo-previews/refs/damaged_helmet.webp` — the crop of the real `modelviewer_default` render golden | `tools/demo-previews/store.json` → `ar-feature-graphic` (21:9 raw, side-cropped) | 2026-09-05, #3461 |
+| `phone-screenshot-1.png` (1080×2304) | same | `store.json` → `ar-phone` (9:16 raw, shared with the iOS `iphone-6.9/00-ar.png`) | 2026-09-05, #3461 |
+| `tablet7-screenshot-1.png` (1200×1872) · `tablet10-screenshot-1.png` (1600×2512) | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
+
+Until #3461 these were drawn from `refs/hero.webp`, a stylised rusty helmet the
+app never renders — the same defect #3454 fixed on the catalog cards, one
+surface further out. That file is gone; every helmet the listing shows is now
+the teal-visor `khronos_damaged_helmet.glb` the Showcase hero banner and the
+Model Viewer show on the app's first screen.
 
 Why generated: a real AR capture needs a device camera. ARCore's emulator
 recording/playback path fails on the QA AVDs — session creation probes camera
 HAL id 0 before it ever consults the playback dataset, and the arm64 AVD has no
-HAL id 0 — and routine QA never targets a personal device. Regenerate with
-`tools/demo-previews/gen.py`'s `generate()` if these ever need a refresh, and
-judge the result by eye; replace them with real device captures whenever an
-authorized device session produces better ones.
+HAL id 0 — and routine QA never targets a personal device. To refresh them, run
+`tools/demo-previews/gen.py … --kind store` (see that directory's README), look
+at every output by eye before committing, and replace them with real device
+captures whenever an authorized device session produces better ones.
 
 The previous captured slots were **shifted, not deleted** (git renames: old
 slot N is now slot N+1 in every class). Two consequences for any future manual
@@ -96,7 +107,7 @@ and neutralises the status bar.
 | `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **No** — manual since #3244        |
 | `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **No** — manual since #3244        |
 | `icon-512.png`                | `icon`                 | Store icon, 512x512   | Sourced from `branding/`           |
-| `feature-graphic.png`         | `featureGraphic`       | Feature graphic       | Generated AR visual (#2844, see above) — replaced the `branding/` export |
+| `feature-graphic.png`         | `featureGraphic`       | Feature graphic, 1024x500 | Generated AR visual (#2844, regenerated from the real helmet in #3461, see above) — replaced the `branding/` export |
 
 The `imageType` column is the Play `AppImageType` enum value that
 `store-sync/play_listing.py` uploads each pattern to. Those names are not

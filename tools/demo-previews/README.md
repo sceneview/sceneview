@@ -22,7 +22,6 @@ does not load (#3438).
 
 | Ref | What it is | How it was made |
 |---|---|---|
-| `hero.webp` | Stylised sci-fi helmet | The original hero render. **No `prompts.json` item uses it any more** (#3454): it is a helmet `khronos_damaged_helmet.glb` does not render. Kept only because the store-listing graphics READMEs record it as the source of their hero art. |
 | `damaged_helmet.webp` | The helmet the app actually loads | Cropped from `samples/android-demo/src/androidTest/assets/render-goldens/modelviewer_default.png`, i.e. a real capture of the demo on the pinned CI profile. |
 | `torus_knot.webp` | The Custom Geometry ribbon knot | Offline render of `TorusKnot.vertices()` at its default parameters (168 segments, 2.5 turns, 0.3 ripple) under the demo's own camera and tilt. |
 | `lines_paths_route.webp` | The Lines & Paths route | Offline render of `LinesPathsScene` — the eight control points, the Smooth route, the marker, the trail and the dashed ground track — under the demo's own camera. |
@@ -33,7 +32,9 @@ card shows the exact curve the app computes rather than an invented knot or loop
 `damaged_helmet.webp` is the reference for every helmet card. All ten of them —
 `model-viewer`, `two-d-in-three-d`, `lighting`, `lighting-lab`, `fog`, `camera-gestures`,
 `materials`, `debug-overlay`, `video-recording`, `secondary-camera` — load the same GLB, so
-they must show the same helmet; eight of them were still drawn from `hero.webp` until #3454.
+they must show the same helmet. The original stylised `hero.webp` render — a helmet the GLB
+does not look like — fed eight of these cards until #3454 and the store listings until #3461;
+it is deleted, so nothing can be generated from it again.
 
 ## Home hero banner
 
@@ -69,3 +70,26 @@ Entries use `refUrl` rather than a committed `ref`: the reference is each asset'
 upstream render (the Khronos `screenshot/screenshot.jpg`), itself a CC-BY work, and
 caching it under `refs/` would add third-party binaries the repo would then owe an
 attribution line for. It is fetched into the out dir instead, which is not tracked.
+
+## Store AR visuals
+
+`store.json` + `--kind store` generates the AR marketing visuals that lead both store
+listings (#2844): the Play feature graphic and slot 1 of every screenshot class, i.e. the
+helmet anchored in a real photographed room. Prompts are used verbatim, dark-only, and
+each item names its own `aspect`, `size` (`2K`, so the iPad slot is not upscaled from a
+1K raw) and the store `outputs` it feeds. One raw feeds every slot that shares its aspect —
+`ar-phone` is cut to Play's phone slot and the iPhone 6.9" class, `ar-tablet` to both Play
+tablet slots and the iPad 13" class — so a listing never shows two different rooms.
+`crop_save` centre-crops to each slot's exact pixel spec, which is what App Store Connect
+and the Play Console reject when off by a pixel.
+
+```bash
+GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
+  tools/demo-previews/store.json /tmp/store-art --kind store --refs tools/demo-previews/refs
+cp -R /tmp/store-art/store/samples .   # the out dir mirrors the repo paths
+```
+
+Look at every output before committing (the graphics READMEs next to the files record the
+source, prompt and date of what ships). Committing is not uploading: the Play listing sync
+runs on minor releases (`play-store.yml`), the App Store screenshots only through
+`app-store-screenshots.yml` with `confirm=true`.
