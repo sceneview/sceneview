@@ -33,7 +33,7 @@
     ],
     "brandColor": "#005bc1",
     "composerIcon": "./website-static/favicon-192.png",
-    "logo": "./website-static/favicon-192.png",
+    "logo": "./branding/exports/logo/logo-512.png",
     "screenshots": []
   }
 }
