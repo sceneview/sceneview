@@ -32,6 +32,17 @@ export interface SessionState {
     name?: string;
     version?: string;
   };
+  /**
+   * MCP Apps extension settings the client declared at `initialize`
+   * (`capabilities.extensions["io.modelcontextprotocol/ui"]`, SEP-1724).
+   *
+   * Absent means the client named no extension — which is NOT the same as
+   * refusing widgets, since every host predating the extension framework is
+   * silent here. See `serveWidgetsTo` in `mcp/src/widgets.ts` (#3192).
+   */
+  uiExtension?: {
+    mimeTypes: string[];
+  };
   /** Unix epoch ms the session was created. */
   createdAt: number;
 }

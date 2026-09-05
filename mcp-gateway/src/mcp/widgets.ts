@@ -23,14 +23,30 @@
 
 import {
   MCP_APP_MIME_TYPE,
+  UI_EXTENSION_ID,
   WIDGET_3D_VIEWER_HTML,
   WIDGET_3D_VIEWER_URI,
   listWidgetResources as listUpstreamWidgetResources,
   readWidgetResource as readUpstreamWidgetResource,
+  readUiExtension,
+  serveWidgetsTo,
+  uiExtensionSettings,
+  type UiExtensionSettings,
 } from "../../../mcp/src/widgets.js";
 
 /** Canonical mime type for MCP Apps widget resources (re-exported upstream value). */
 export const APPS_SDK_MIME_TYPE: string = MCP_APP_MIME_TYPE;
+
+// The MCP Apps extension identity and its negotiation helpers come from the
+// same upstream module as the widget HTML, so the gateway and `npx
+// sceneview-mcp` can never disagree about what MCP Apps means here (#3192).
+export {
+  UI_EXTENSION_ID,
+  readUiExtension,
+  serveWidgetsTo,
+  uiExtensionSettings,
+  type UiExtensionSettings,
+};
 
 /**
  * Scene showcase widget — exercises the FULL SceneView.js API, not just

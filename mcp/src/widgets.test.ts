@@ -10,7 +10,11 @@ import { dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 import {
   listWidgetResources,
   MCP_APP_MIME_TYPE,
+  readUiExtension,
   readWidgetResource,
+  serveWidgetsTo,
+  UI_EXTENSION_ID,
+  uiExtensionSettings,
   WIDGET_3D_VIEWER_HTML,
   WIDGET_3D_VIEWER_URI,
   WIDGET_UI_META,
@@ -150,5 +154,73 @@ describe("view_3d_model tool", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain("modelUrl");
     expect(result.structuredContent).toBeUndefined();
+  });
+});
+
+describe("MCP Apps extension negotiation (#3192)", () => {
+  it("uses the spec's extension identifier", () => {
+    // SEP-1724 / ext-apps 2026-01-26. A typo here is invisible at runtime —
+    // the host simply never sees a widget — so it is pinned literally.
+    expect(UI_EXTENSION_ID).toBe("io.modelcontextprotocol/ui");
+  });
+
+  it("advertises the mime type it actually serves", () => {
+    const settings = uiExtensionSettings();
+    expect(settings.mimeTypes).toEqual([MCP_APP_MIME_TYPE]);
+    // The value the widget resource is really served with, so the declaration
+    // and the resource cannot promise different content types.
+    expect(settings.mimeTypes).toContain(readWidgetResource(WIDGET_3D_VIEWER_URI)?.mimeType);
+  });
+
+  it("hands out a fresh settings object each call", () => {
+    uiExtensionSettings().mimeTypes.push("text/plain");
+    expect(uiExtensionSettings().mimeTypes).toEqual([MCP_APP_MIME_TYPE]);
+  });
+
+  it("reads a peer's declaration out of its capabilities", () => {
+    const settings = readUiExtension({
+      roots: {},
+      extensions: { [UI_EXTENSION_ID]: { mimeTypes: [MCP_APP_MIME_TYPE] } },
+    });
+    expect(settings).toEqual({ mimeTypes: [MCP_APP_MIME_TYPE] });
+  });
+
+  it("returns null when the peer named no extension", () => {
+    expect(readUiExtension(undefined)).toBeNull();
+    expect(readUiExtension({})).toBeNull();
+    expect(readUiExtension({ extensions: {} })).toBeNull();
+    expect(readUiExtension({ extensions: { "io.modelcontextprotocol/tasks": {} } })).toBeNull();
+  });
+
+  it("survives a malformed declaration instead of throwing", () => {
+    expect(readUiExtension({ extensions: { [UI_EXTENSION_ID]: {} } })).toEqual({ mimeTypes: [] });
+    expect(readUiExtension({ extensions: { [UI_EXTENSION_ID]: { mimeTypes: "html" } } })).toEqual({
+      mimeTypes: [],
+    });
+    expect(readUiExtension({ extensions: { [UI_EXTENSION_ID]: { mimeTypes: [1, "a"] } } })).toEqual(
+      {
+        mimeTypes: ["a"],
+      }
+    );
+    expect(readUiExtension("nonsense")).toBeNull();
+  });
+
+  it("keeps serving widgets to a peer that declared nothing", () => {
+    // ChatGPT today: no `extensions` block, drives the widget off `openai/*`.
+    // Gating on silence would dark-ship the live listing.
+    expect(serveWidgetsTo(null)).toBe(true);
+    expect(serveWidgetsTo(undefined)).toBe(true);
+    expect(serveWidgetsTo({ mimeTypes: [] })).toBe(true);
+  });
+
+  it("serves widgets to a peer that negotiated our mime type", () => {
+    expect(serveWidgetsTo({ mimeTypes: [MCP_APP_MIME_TYPE] })).toBe(true);
+    expect(serveWidgetsTo({ mimeTypes: ["text/uri-list", MCP_APP_MIME_TYPE] })).toBe(true);
+  });
+
+  it("degrades to text only when the peer excluded our mime type itself", () => {
+    expect(serveWidgetsTo({ mimeTypes: ["text/uri-list"] })).toBe(false);
+    // `text/html+skybridge` is the WITHDRAWN OpenAI spelling, not ours (#3189).
+    expect(serveWidgetsTo({ mimeTypes: ["text/html+skybridge"] })).toBe(false);
   });
 });
