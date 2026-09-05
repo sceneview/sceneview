@@ -397,7 +397,7 @@ There are **three runtimes**, so three pins in [`gradle/libs.versions.toml`](gra
 | Blob group | Pin | Runtime | MATERIAL_VERSION |
 |---|---|---|---|
 | `sceneview/`, `arsceneview/` assets | `filament` | Filament AAR (Android) | 72 |
-| `website-static/materials/` | `filamentWebsite` | Filament.js vendored at `website-static/js/filament/` | 70 |
+| `website-static/materials/` | `filamentWebsite` | Filament.js vendored at `website-static/js/filament/` | 72 |
 | `sceneview-web/materials/` | `filamentWeb` | npm `filament` (Kotlin/JS bundle) | 52 |
 
 Wiring a group to the wrong pin is the same defect as forgetting to recompile: #2783 found the 3 `website-static` blobs at v72 (they rode the Android pin) against a v70 runtime — latent only because nothing on the site calls `createMaterial()` yet.

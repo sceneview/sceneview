@@ -15,7 +15,7 @@ export const LATEST_FLUTTER_PUB_RELEASE = "4.24.0" as const;
 // FILAMENT_WEB_NPM_VERSION is the npm `filament` pin (CDN artifacts, Kotlin/JS);
 // FILAMENT_WEBSITE_VERSION is the runtime vendored for sceneview.js.
 export const FILAMENT_WEB_NPM_VERSION = "1.52.3" as const;
-export const FILAMENT_WEBSITE_VERSION = "1.70.1" as const;
+export const FILAMENT_WEBSITE_VERSION = "1.72.1" as const;
 // SceneViewSwift node types: every `public struct *Node` under
 // SceneViewSwift/Sources (#2999). Enum namespaces are not nodes.
 export const IOS_NODE_TYPES = ["AnchorNode","AugmentedImageNode","BillboardNode","CameraNode","DynamicSkyNode","FogNode","GeometryNode","ImageNode","LightNode","LineNode","MeshNode","ModelNode","PathNode","PhysicsNode","ReflectionProbeNode","ShapeNode","SpatialAudioNode","TextNode","VideoNode","ViewNode"] as const;
