@@ -35,7 +35,14 @@
 
 import type { DispatchContext } from "./types.js";
 import { dispatch as registryDispatch, getAllTools } from "./registry.js";
-import { listWidgetResources, readWidgetResource } from "./widgets.js";
+import {
+  listWidgetResources,
+  readWidgetResource,
+  readUiExtension,
+  serveWidgetsTo,
+  UI_EXTENSION_ID,
+  uiExtensionSettings,
+} from "./widgets.js";
 import { widgetResourceFor } from "./widget-tools.js";
 import {
   loadSession,
@@ -111,9 +118,51 @@ const SERVER_INFO = {
 
 /**
  * Protocol revisions implemented by this server, newest first.
+ *
+ * This list says what the transport below *implements*, never what the ecosystem
+ * has published — announcing a revision we cannot serve is the worse bug, and
+ * the same rule is written down in `mcp/src/discover.ts` (#3349). 2026-07-28
+ * removes the `initialize` handshake, moves version and client capabilities into
+ * per-request `_meta`, and wraps every result in a `resultType` envelope; none of
+ * that is implemented here, so it is not listed here. What a 2026-07-28 client
+ * does get is `server/discover` (below), which tells it exactly this list in one
+ * round trip instead of a bare `-32601`.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26"] as const;
 export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+
+/**
+ * Capabilities this server declares — one object, used by both `initialize` and
+ * `server/discover` so the two answers cannot drift.
+ *
+ * A function rather than a const: each answer gets its own object graph, so a
+ * caller mutating one response cannot corrupt the next.
+ */
+export function serverCapabilities(): Record<string, unknown> {
+  return {
+    tools: { listChanged: false },
+    // Resources advertise the MCP Apps widget templates served by
+    // `widgets.ts` (currently the 3D viewer at `ui://widget/3d-viewer.html`).
+    // Without this capability a host never asks `resources/read`, so the
+    // widget pointer attached to tool results would be silently ignored.
+    resources: { listChanged: false, subscribe: false },
+    // Empty prompts capability — keeps clients that probe for it happy
+    // without inventing prompt content.
+    prompts: { listChanged: false },
+    // MCP Apps is opt-in and negotiated through the extensions mechanism
+    // (SEP-1724). The gateway served widget resources, the
+    // `text/html;profile=mcp-app` mime type and `_meta.ui.resourceUri` on both
+    // declarations and results while naming the extension nowhere, so a host
+    // playing by the negotiation rules had nothing to switch on (#3192).
+    extensions: { [UI_EXTENSION_ID]: uiExtensionSettings() },
+  };
+}
+
+/** How long a client may cache the `server/discover` answer. */
+export const DISCOVER_TTL_MS = 3_600_000;
+
+/** Method name defined by MCP 2026-07-28 for handshake-free discovery. */
+export const DISCOVER_METHOD = "server/discover";
 
 /** Default origins always allowed even when a caller passes an allowlist. */
 const DEFAULT_ORIGIN_ALLOWLIST = [
@@ -293,8 +342,14 @@ async function routeMethod(
     case "ping":
       return {};
 
+    // Handshake-free discovery (MCP 2026-07-28). Deliberately routed before
+    // any session state is consulted: the whole point is that it works without
+    // an `initialize`.
+    case DISCOVER_METHOD:
+      return handleDiscover();
+
     case "tools/list":
-      return handleToolsList();
+      return handleToolsList(session);
 
     case "tools/call":
       return handleToolsCall(req, ctx);
@@ -349,21 +404,45 @@ function handleInitialize(
         typeof clientInfo.version === "string" ? clientInfo.version : undefined,
     };
   }
+  // Remember what the client said about MCP Apps. `undefined` means it named
+  // no extension at all, which is not the same as refusing widgets — see
+  // `handleToolsList`.
+  const uiExtension = readUiExtension(params.capabilities);
+  session.uiExtension = uiExtension ?? undefined;
   return {
     protocolVersion,
-    capabilities: {
-      tools: { listChanged: false },
-      // Resources advertise the OpenAI Apps SDK widget templates served
-      // by `widgets.ts` (currently the 3D viewer at
-      // `ui://widget/3d-viewer.html`). Without this capability ChatGPT
-      // never asks `resources/read`, so the widget pointer attached to
-      // tool results would be silently ignored.
-      resources: { listChanged: false, subscribe: false },
-      // Empty prompts capability — keeps clients that probe for it happy
-      // without inventing prompt content.
-      prompts: { listChanged: false },
-    },
+    capabilities: serverCapabilities(),
     serverInfo: SERVER_INFO,
+  };
+}
+
+/**
+ * Handles `server/discover` — the handshake-free discovery request MCP
+ * 2026-07-28 lets a client send *before* (or instead of) `initialize`, with no
+ * session and no negotiated version.
+ *
+ * Answering a 2026-07-28 method while serving 2025-06-18 is deliberate, and it
+ * is what makes the MCP Apps declaration reachable at all: a modern client never
+ * sends `initialize`, so an `extensions` block that lives only in the handshake
+ * result is invisible to it. One cheap, purely informational round trip replaces
+ * a `-32601` that would have told it nothing. Same reasoning, and same shape, as
+ * `mcp/src/discover.ts` (#3349).
+ */
+function handleDiscover(): unknown {
+  return {
+    resultType: "complete",
+    ttlMs: DISCOVER_TTL_MS,
+    // Nothing here is user-specific: identity, capabilities and the revision
+    // list are the same for an anonymous caller and a Pro key, so a shared
+    // proxy may serve one cached copy to everyone.
+    cacheScope: "public",
+    supportedVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
+    capabilities: serverCapabilities(),
+    serverInfo: { ...SERVER_INFO },
+    instructions:
+      "SceneView MCP gateway — the full SceneView SDK (Android/Compose + Filament, " +
+      "iOS/SwiftUI + RealityKit, AR via ARCore/ARKit) as tools, with an inline 3D " +
+      "viewer widget for hosts that negotiate the MCP Apps extension.",
   };
 }
 
@@ -394,16 +473,37 @@ function handleResourcesRead(req: JsonRpcRequest): unknown {
  * Widget-bearing tools carry `_meta.ui.resourceUri` on the DECLARATION as
  * well as on the result (see `handleToolsCall`): a host that decides from
  * `tools/list` whether a tool has a UI never sees a result first, so a
- * pointer that only rides on results is invisible to it (#3192).
+ * pointer that only rides on results is invisible to it (#3279).
+ *
+ * The pointer is withheld only from a client that negotiated MCP Apps and
+ * listed mime types excluding ours — the one case the client stated itself.
+ * A client that named no extension keeps the pointer: ChatGPT declares none
+ * and drives the widget off the `openai/*` keys, so gating on silence would
+ * dark-ship the live listing (#3192).
  */
-function handleToolsList(): unknown {
+function handleToolsList(session: SessionState): unknown {
+  const withWidgets = serveWidgetsTo(session.uiExtension);
   const tools = getAllTools().map((def) => {
     const widgetUri = widgetResourceFor(def.name);
-    // Merge rather than replace: the upstream declaration already carries
-    // the pointer plus the OpenAI Apps SDK keys (`openai/outputTemplate`…).
-    return widgetUri
-      ? { ...def, _meta: { ...(def._meta ?? {}), ui: { resourceUri: widgetUri } } }
-      : def;
+    if (!widgetUri) return def;
+    const meta = { ...(def._meta ?? {}) } as Record<string, unknown>;
+    if (!withWidgets) {
+      // The client negotiated MCP Apps and listed mime types excluding ours:
+      // it cannot render this widget, so it must not be pointed at one. The
+      // tool stays listed and callable and still returns its text content —
+      // the graceful degradation the extension spec asks for. The `openai/*`
+      // keys are left alone: they are a different vendor's mechanism, and a
+      // client that speaks the extension is not the host that reads them.
+      delete meta.ui;
+      return { ...def, _meta: meta };
+    }
+    // Merge both levels rather than replace: the upstream declaration already
+    // carries the pointer, any other `ui` keys, and the OpenAI Apps SDK
+    // spellings (`openai/outputTemplate`…). Overwriting `_meta` — or `ui`
+    // itself — would silently drop whatever the declaration adds to it next.
+    const prevUi = (def._meta as { ui?: Record<string, unknown> } | undefined)?.ui;
+    meta.ui = { ...(prevUi ?? {}), resourceUri: widgetUri };
+    return { ...def, _meta: meta };
   });
   return { tools };
 }

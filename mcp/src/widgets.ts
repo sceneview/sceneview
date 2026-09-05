@@ -34,6 +34,74 @@ import { LATEST_SCENEVIEW_RELEASE, PACKAGE_VERSION } from "./generated/version.j
 /** Canonical MCP Apps mime type for widget resources. */
 export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
+/**
+ * Extension identifier under which MCP Apps is negotiated (SEP-1724, `ext-apps`
+ * spec 2026-01-26).
+ *
+ * MCP Apps is an *extension*, not core protocol: a party that never names it in
+ * `capabilities.extensions` has, as far as the other side can tell, no widget
+ * support at all. Declaring the widget resource and hanging `_meta.ui` off tool
+ * declarations is necessary but not sufficient — the extension has to be
+ * advertised, or a spec-following host has no reason to look for either (#3192).
+ */
+export const UI_EXTENSION_ID = "io.modelcontextprotocol/ui";
+
+/** Settings object for the MCP Apps extension, as declared by a party. */
+export interface UiExtensionSettings {
+  /** Content types this party can serve or render. REQUIRED by the spec. */
+  mimeTypes: string[];
+}
+
+/**
+ * The settings SceneView advertises under
+ * `capabilities.extensions["io.modelcontextprotocol/ui"]`.
+ *
+ * A fresh object every call: the value is spread into handshake results that
+ * callers are free to mutate, and a shared array would let one of them corrupt
+ * every later handshake.
+ */
+export function uiExtensionSettings(): UiExtensionSettings {
+  return { mimeTypes: [MCP_APP_MIME_TYPE] };
+}
+
+/**
+ * Reads the peer's MCP Apps settings out of a `capabilities` object, or `null`
+ * when it declared none.
+ *
+ * `null` means "did not say", NOT "does not support": hosts predating the
+ * extension framework (ChatGPT today, which drives the widget off the
+ * `openai/*` `_meta` keys) declare nothing and still render widgets. Callers
+ * must treat `null` as unknown and keep their pre-extension behaviour — see
+ * `serveWidgetsTo`.
+ */
+export function readUiExtension(capabilities: unknown): UiExtensionSettings | null {
+  if (!capabilities || typeof capabilities !== "object") return null;
+  const extensions = (capabilities as { extensions?: unknown }).extensions;
+  if (!extensions || typeof extensions !== "object") return null;
+  const settings = (extensions as Record<string, unknown>)[UI_EXTENSION_ID];
+  if (!settings || typeof settings !== "object") return null;
+  const mimeTypes = (settings as { mimeTypes?: unknown }).mimeTypes;
+  return {
+    mimeTypes: Array.isArray(mimeTypes) ? mimeTypes.filter((m) => typeof m === "string") : [],
+  };
+}
+
+/**
+ * Whether to attach widget pointers for a peer that declared `settings`.
+ *
+ * The spec asks servers to check client capabilities before advertising
+ * UI-enabled tools and to degrade to text otherwise. The only case that
+ * degrades here is the one the client stated itself: it negotiated MCP Apps
+ * *and* listed mime types that exclude ours. Silence stays permissive, because
+ * the live ChatGPT listing is silent and withholding the pointer from it would
+ * turn a spec conformance fix into an outage.
+ */
+export function serveWidgetsTo(settings: UiExtensionSettings | null | undefined): boolean {
+  if (!settings) return true;
+  if (settings.mimeTypes.length === 0) return true;
+  return settings.mimeTypes.includes(MCP_APP_MIME_TYPE);
+}
+
 /** Resource URI of the 3D viewer widget (`ui://widget/<name>.html` convention). */
 export const WIDGET_3D_VIEWER_URI = "ui://widget/3d-viewer.html";
 

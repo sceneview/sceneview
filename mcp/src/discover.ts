@@ -35,6 +35,7 @@
 import { RequestSchema, SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { PACKAGE_VERSION } from "./generated/version.js";
+import { UI_EXTENSION_ID, uiExtensionSettings } from "./widgets.js";
 
 /** JSON-RPC method name defined by MCP 2026-07-28. */
 export const DISCOVER_METHOD = "server/discover";
@@ -50,8 +51,22 @@ export const DiscoverRequestSchema = RequestSchema.extend({
 /**
  * Server capabilities, declared once and shared between the `Server`
  * constructor and `server/discover` so the two can never drift apart.
+ *
+ * `extensions` carries the MCP Apps declaration (#3192). The server has shipped
+ * the widget resource, its `text/html;profile=mcp-app` mime type and the
+ * `_meta.ui.resourceUri` pointers on tool declarations for several releases —
+ * but never named the extension, so a host that follows the negotiation rules
+ * had nothing to switch on. The extension *framework* is versioned into
+ * 2026-07-28, yet the `ext-apps` spec advertises the very same capability over
+ * `protocolVersion: "2024-11-05"` in its own example: a party declares what it
+ * supports, and a peer that does not know the key ignores it. So this is
+ * additive on every revision we serve, and does not wait on an SDK bump.
  */
-export const SERVER_CAPABILITIES = { resources: {}, tools: {} } as const;
+export const SERVER_CAPABILITIES = {
+  resources: {},
+  tools: {},
+  extensions: { [UI_EXTENSION_ID]: uiExtensionSettings() },
+} as const;
 
 /** Server identity, likewise shared with the `Server` constructor. */
 export const SERVER_INFO = { name: "sceneview-mcp", version: PACKAGE_VERSION } as const;

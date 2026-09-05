@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   handleMcpRequest,
   JSON_RPC_ERRORS,
+  SUPPORTED_PROTOCOL_VERSIONS,
   type JsonRpcResponse,
 } from "../src/mcp/transport.js";
 import { MockKv } from "./helpers/mock-kv.js";
@@ -137,6 +138,82 @@ describe("transport: tools/list", () => {
     expect(plain?._meta).toBeUndefined();
   });
 
+  it("keeps the OpenAI Apps SDK keys alongside the MCP Apps pointer", async () => {
+    // The transport re-affirms `_meta.ui.resourceUri` on top of the upstream
+    // declaration; overwriting `_meta` (or `_meta.ui`) wholesale would strip
+    // the `openai/*` spellings the live ChatGPT listing renders from.
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 3, method: "tools/list" }),
+      { kv: new MockKv().asKv() },
+    );
+    const body = await asJsonRpc(res);
+    const result = body.result as {
+      tools: { name: string; _meta?: Record<string, unknown> }[];
+    };
+    const widget = result.tools.find((t) => t.name === "view_3d_model");
+    expect(widget?._meta?.["openai/outputTemplate"]).toBe("ui://widget/3d-viewer.html");
+  });
+
+  it("still declares the widget to a client that named no extension", async () => {
+    // Every host predating SEP-1724 — ChatGPT included — sends no `extensions`
+    // block. Silence must stay permissive or the live listing goes dark.
+    const kv = new MockKv();
+    const init = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {} },
+      }),
+      { kv: kv.asKv() },
+    );
+    const sessionId = init.headers.get("mcp-session-id") as string;
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }, {
+        "mcp-session-id": sessionId,
+      }),
+      { kv: kv.asKv() },
+    );
+    const result = (await asJsonRpc(res)).result as {
+      tools: { name: string; _meta?: { ui?: { resourceUri?: string } } }[];
+    };
+    const widget = result.tools.find((t) => t.name === "view_3d_model");
+    expect(widget?._meta?.ui?.resourceUri).toBe("ui://widget/3d-viewer.html");
+  });
+
+  it("degrades to text for a client that negotiated MCP Apps without our mime type", async () => {
+    const kv = new MockKv();
+    const init = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {
+            extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/uri-list"] } },
+          },
+        },
+      }),
+      { kv: kv.asKv() },
+    );
+    const sessionId = init.headers.get("mcp-session-id") as string;
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }, {
+        "mcp-session-id": sessionId,
+      }),
+      { kv: kv.asKv() },
+    );
+    const result = (await asJsonRpc(res)).result as {
+      tools: { name: string; _meta?: { ui?: { resourceUri?: string } } }[];
+    };
+    // The tool stays listed and callable — only the UI pointer is withheld,
+    // which is the graceful degradation the extension spec asks for.
+    const widget = result.tools.find((t) => t.name === "view_3d_model");
+    expect(widget).toBeDefined();
+    expect(widget?._meta?.ui?.resourceUri).toBeUndefined();
+  });
+
   it("advertises outputSchema only for structured tools", async () => {
     const res = await handleMcpRequest(
       mcpRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
@@ -162,6 +239,110 @@ describe("transport: tools/list", () => {
       "validate_medical_code",
       "view_3d_model",
     ]);
+  });
+});
+
+describe("transport: MCP Apps extension + server/discover (#3192)", () => {
+  it("declares the MCP Apps extension in the initialize result", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {} },
+      }),
+      { kv: new MockKv().asKv() },
+    );
+    const result = (await asJsonRpc(res)).result as {
+      capabilities: { extensions?: Record<string, { mimeTypes?: string[] }> };
+    };
+    expect(result.capabilities.extensions).toBeDefined();
+    expect(result.capabilities.extensions?.["io.modelcontextprotocol/ui"]).toEqual({
+      mimeTypes: ["text/html;profile=mcp-app"],
+    });
+  });
+
+  it("declares it on the OLDEST revision it serves too", async () => {
+    // The extensions framework is versioned into 2026-07-28, but the ext-apps
+    // spec advertises the very same capability over `2024-11-05` in its own
+    // example: it is additive, and a peer that does not know the key ignores
+    // it. Backward compatibility is the point, not a caveat.
+    const res = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-03-26" },
+      }),
+      { kv: new MockKv().asKv() },
+    );
+    const result = (await asJsonRpc(res)).result as {
+      protocolVersion: string;
+      capabilities: { extensions?: Record<string, unknown> };
+    };
+    expect(result.protocolVersion).toBe("2025-03-26");
+    expect(result.capabilities.extensions?.["io.modelcontextprotocol/ui"]).toBeDefined();
+  });
+
+  it("answers server/discover with no session and no handshake", async () => {
+    // A 2026-07-28 client never sends `initialize`, so this is the only place
+    // it can read the extension declaration — and it beats a bare -32601.
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 1, method: "server/discover", params: {} }),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(200);
+    const body = await asJsonRpc(res);
+    expect(body.error).toBeUndefined();
+    const result = body.result as {
+      resultType: string;
+      ttlMs: number;
+      cacheScope: string;
+      supportedVersions: string[];
+      capabilities: { extensions?: Record<string, unknown> };
+      serverInfo: { name: string };
+    };
+    // The five fields the 2026-07-28 DiscoverResult schema requires.
+    for (const field of ["cacheScope", "capabilities", "resultType", "supportedVersions", "ttlMs"]) {
+      expect(result, `missing required field: ${field}`).toHaveProperty(field);
+    }
+    expect(result.resultType).toBe("complete");
+    expect(result.cacheScope).toBe("public");
+    expect(result.ttlMs).toBeGreaterThan(0);
+    expect(result.serverInfo.name).toBe("sceneview-mcp-gateway");
+    expect(result.capabilities.extensions?.["io.modelcontextprotocol/ui"]).toBeDefined();
+  });
+
+  it("advertises through discover only the revisions it really implements", async () => {
+    // Announcing 2026-07-28 here would be the actual bug: none of its
+    // per-request `_meta` versioning or result envelopes is implemented.
+    const res = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 1, method: "server/discover" }),
+      { kv: new MockKv().asKv() },
+    );
+    const result = (await asJsonRpc(res)).result as { supportedVersions: string[] };
+    expect(result.supportedVersions).toEqual([...SUPPORTED_PROTOCOL_VERSIONS]);
+    expect(result.supportedVersions).not.toContain("2026-07-28");
+  });
+
+  it("gives discover and initialize the same capabilities, from one source", async () => {
+    const kv = new MockKv();
+    const init = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18" },
+      }),
+      { kv: kv.asKv() },
+    );
+    const discover = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 2, method: "server/discover" }),
+      { kv: kv.asKv() },
+    );
+    const initCaps = ((await asJsonRpc(init)).result as { capabilities: unknown }).capabilities;
+    const discCaps = ((await asJsonRpc(discover)).result as { capabilities: unknown }).capabilities;
+    expect(discCaps).toEqual(initCaps);
   });
 });
 

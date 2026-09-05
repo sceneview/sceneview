@@ -90,6 +90,12 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(body.error).toBeUndefined();
     expect(body.result?.serverInfo).toEqual({ name: "sceneview-mcp", version: PACKAGE_VERSION });
     expect(body.result?.capabilities).toMatchObject({ tools: {}, resources: {} });
+    // #3192 — end-to-end, over a real handshake: MCP Apps is opt-in via the
+    // extensions mechanism, so a host that follows the spec learns the widget
+    // exists from this block and nowhere else.
+    expect(body.result?.capabilities).toMatchObject({
+      extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } },
+    });
   });
 
   it("tools/list exposes the free tier only, with view_3d_model bound to the widget", async () => {

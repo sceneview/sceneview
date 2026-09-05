@@ -9,6 +9,7 @@ import {
   SERVER_INFO,
 } from "./discover.js";
 import { PACKAGE_VERSION } from "./generated/version.js";
+import { MCP_APP_MIME_TYPE, UI_EXTENSION_ID } from "./widgets.js";
 
 // The conformance suite (@hasmcp/mcp-spec-test) checks these five fields on the
 // `server/discover` result; `serverInfo` is expected on top of them. Keep this
@@ -75,6 +76,18 @@ describe("buildDiscoverResult", () => {
     expect(result.capabilities).toEqual({ ...SERVER_CAPABILITIES });
     expect(result.capabilities).toHaveProperty("tools");
     expect(result.capabilities).toHaveProperty("resources");
+  });
+
+  it("declares the MCP Apps extension, with the mime type it serves", () => {
+    // #3192: the widget resource, its mime type and the `_meta.ui` pointers
+    // all shipped while the extension itself was named nowhere, so a host
+    // following the negotiation rules had nothing to switch on. A modern
+    // client never sends `initialize`, so `server/discover` is the ONLY place
+    // it can read this.
+    const extensions = buildDiscoverResult().capabilities.extensions as Record<string, unknown>;
+    expect(extensions).toBeDefined();
+    expect(extensions[UI_EXTENSION_ID]).toEqual({ mimeTypes: [MCP_APP_MIME_TYPE] });
+    expect(MCP_APP_MIME_TYPE).toBe("text/html;profile=mcp-app");
   });
 
   it("includes instructions that point at the API resource", () => {
