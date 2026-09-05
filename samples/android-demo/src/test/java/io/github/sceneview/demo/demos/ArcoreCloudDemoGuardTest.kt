@@ -31,7 +31,9 @@ import java.io.File
  * Cloud demos now live in four files and the guard failed on a merge that
  * removed nothing. The check is now "every file we know to be a Cloud demo is
  * still discovered", which catches a marker that stopped matching without
- * caring how the demos are packed into files.
+ * caring how the demos are packed into files. #3463 packed two more together
+ * (`ar-scene-mesh` + `ar-streetscape` → `ARSceneGeometryDemo.kt`), and the
+ * guard was unmoved, which is the property it was rewritten for.
  */
 class ArcoreCloudDemoGuardTest {
 
@@ -60,8 +62,10 @@ class ArcoreCloudDemoGuardTest {
         val knownCloudSources = setOf(
             "ARCloudAnchorDemo.kt",
             "ARGeospatialAnchorsDemo.kt",
-            "ARSceneMeshDemo.kt",
-            "ARStreetscapeDemo.kt",
+            // #3463 merged `ar-scene-mesh` + `ar-streetscape` into this one file, the
+            // same way #2239 merged the two geospatial-anchor demos above. Both Cloud
+            // capabilities are still here — as two modes of one file.
+            "ARSceneGeometryDemo.kt",
         )
         val discovered = cloudDemos.map { it.name }.toSet()
         assertTrue(

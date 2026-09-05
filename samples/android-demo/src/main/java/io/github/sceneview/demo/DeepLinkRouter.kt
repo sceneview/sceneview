@@ -170,6 +170,16 @@ internal object DeepLinkRouter {
         // resolve call and the `Anchor.*AnchorState` enum it answers with.
         "ar-terrain" to "ar-geospatial-anchors",
         "ar-rooftop" to "ar-geospatial-anchors",
+        // #2239 catalogue regroup (#3463) — `ar-streetscape` merged into the
+        // `ar-scene-mesh` card, now titled "Scene Geometry", as its second mode.
+        // 246 of 445 lines were identical and both call the same primary API
+        // (`Config.StreetscapeGeometryMode.ENABLED` +
+        // `frame.getUpdatedTrackables(StreetscapeGeometry)`); the whole difference is
+        // which node consumes the trackable — the classified `SceneMeshNode` or its raw
+        // `StreetscapeGeometryNode` base. The live id stays `ar-scene-mesh` because iOS
+        // ships a screen under it too. `ar-streetscape` pre-selects mode 1 (#2315 — see
+        // [ALIAS_INITIAL_TAB]).
+        "ar-streetscape" to "ar-scene-mesh",
     )
 
     /**
@@ -211,6 +221,10 @@ internal object DeepLinkRouter {
         // default first mode, so it is deliberately absent: an absent entry means
         // "no pre-selection needed", which is exactly right for index 0.
         "ar-rooftop" to 1,
+        // ar-scene-mesh — [Mesh, Streetscape] (#3463). The Mesh mode is what the
+        // surviving `ar-scene-mesh` id already opened, so only the retired id needs
+        // an entry.
+        "ar-streetscape" to 1,
     )
 
     fun parse(data: Uri?, registry: List<DemoEntry> = ALL_DEMOS): String? {

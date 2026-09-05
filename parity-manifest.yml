@@ -108,6 +108,25 @@
 #     "Coming soon" card.
 #   - Of the 52 rows: 32 working, 0 stub, 20 android-only.
 #
+# Re-measured 2026-09-06, after #3463 folded `ar-streetscape` into the
+# `ar-scene-mesh` card (now titled "Scene Geometry", Mesh / Streetscape modes).
+# Counted from the fragments and from this file, not carried over — and the two
+# disagreed on more than the merge:
+#   - Android: 49 fragments — 40 Working / 3 KnownIssue / 2 ComingSoon /
+#     4 InReview. `ar-scene-mesh` is the one that moved to KnownIssue: it keeps
+#     the badge its absorbed half carried.
+#   - This ledger carries 49 of those 49. The `ar-streetscape` row was dropped
+#     (retired ids are dropped, not marked).
+#   - Of the 49 rows: 31 working, 0 stub, 18 android-only. The banners below
+#     said 32 / 0 / 20 before this pass and had said so since before #3405 —
+#     the two paragraphs above were both wrong, in different directions, which
+#     is what "recount, never inherit" is for. No script recounts them today:
+#     `check-demo-id-parity.sh`, named further down as the CI guard, does not
+#     exist in the repository.
+#   - `ar-cloud-anchor`'s `androidStatus` was corrected here too (KnownIssue →
+#     InReview): #3451 rebuilt that screen and moved the fragment to InReview
+#     without touching this row.
+#
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
 # resolve to SOMETHING honest on iOS (a real screen, an alias to an existing
@@ -144,7 +163,7 @@
 # platform's registry — that's what keeps it honest.
 
 demos:
-  # ─── working (32) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -152,7 +171,7 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: ar-cloud-anchor
-    androidStatus: KnownIssue
+    androidStatus: InReview
     iosStatus: working
     reason: >-
       Capability caveat on a `working` row (#2864): iOS resolves this id to a
@@ -199,8 +218,15 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: ar-scene-mesh
-    androidStatus: Working
+    androidStatus: KnownIssue
     iosStatus: working
+    reason: >-
+      Context only (this row is `working` on iOS). #3463 folded the retired
+      `ar-streetscape` demo into this card as its Streetscape mode, and the
+      merged card keeps that half's `KnownIssue` badge: both modes need an
+      outdoor location with Street View coverage plus a Cloud API key, which no
+      CI device has. iOS is untouched — its own `ar-scene-mesh` screen is the
+      LiDAR scene-reconstruction one, which has neither mode.
   - id: camera-gestures
     androidStatus: Working
     iosStatus: working
@@ -256,7 +282,7 @@ demos:
   # value (`check-demo-id-parity.sh` still enforces it) so a future id that
   # must be *accepted* without having a screen has somewhere to go.
 
-  # ─── android-only (20) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -347,14 +373,6 @@ demos:
     reason: >-
       No iOS screen — scene semantics not ported (Phase 3, #2798). Its
       coming-soon Scene stub was deleted in #3231.
-  - id: ar-streetscape
-    androidStatus: KnownIssue
-    iosStatus: android-only
-    reason: >-
-      Platform-locked: ARCore Streetscape Geometry (Geospatial/VPS) is a
-      Google-backend service with no ARKit equivalent — not a port target.
-      Android itself is KnownIssue. Its Android-only Scene stub was deleted in
-      #3231.
   - id: ar-xr-face
     androidStatus: ComingSoon
     iosStatus: android-only

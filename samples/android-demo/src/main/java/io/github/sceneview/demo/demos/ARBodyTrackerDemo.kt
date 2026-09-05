@@ -195,8 +195,9 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
         //
         // Side effect of the move: the slot draws above the whole scene Box, so the hint
         // is now visible over ARCameraInitScrim during the cold start instead of behind
-        // it. That matches ARStreetscapeDemo, where the status pill has always drawn on
-        // top of the same scrim (#2484) — status copy should not be hidden by it.
+        // it. That matches ARSceneGeometryDemo (formerly ARStreetscapeDemo), where the
+        // status pill has always drawn on top of the same scrim (#2484) — status copy
+        // should not be hidden by it.
         //
         // Renders through the shared `DemoStatusBanner` (`ar-scrim` dark pill, #3265) —
         // this demo hand-rolled its own `primary` / `error` @ 82 % alpha pill instead,

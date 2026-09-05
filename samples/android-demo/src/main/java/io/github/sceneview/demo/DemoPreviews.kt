@@ -50,7 +50,6 @@ object DemoPreviews {
         "ar-rerun" to PreviewPair(R.drawable.preview_ar_rerun_light, R.drawable.preview_ar_rerun_dark),
         "ar-scene-mesh" to PreviewPair(R.drawable.preview_ar_scene_mesh_light, R.drawable.preview_ar_scene_mesh_dark),
         "ar-scene-semantics" to PreviewPair(R.drawable.preview_ar_scene_semantics_light, R.drawable.preview_ar_scene_semantics_dark),
-        "ar-streetscape" to PreviewPair(R.drawable.preview_ar_streetscape_light, R.drawable.preview_ar_streetscape_dark),
         "ar-xr-face" to PreviewPair(R.drawable.preview_ar_xr_face_light, R.drawable.preview_ar_xr_face_dark),
         "camera-gestures" to PreviewPair(R.drawable.preview_camera_gestures_light, R.drawable.preview_camera_gestures_dark),
         "contact-shadow-preview" to PreviewPair(R.drawable.preview_contact_shadow_preview_light, R.drawable.preview_contact_shadow_preview_dark),

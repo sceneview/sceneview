@@ -135,8 +135,8 @@
     <string name="featured_ar_face_subtitle">Face mesh tracking and overlays</string>
     <string name="featured_ar_cloud_anchor_title">Cloud Anchors</string>
     <string name="featured_ar_cloud_anchor_subtitle">Persistent multi-user anchors</string>
-    <string name="featured_ar_streetscape_title">Streetscape Geometry</string>
-    <string name="featured_ar_streetscape_subtitle">Geospatial building and terrain meshes</string>
+    <string name="featured_ar_scene_geometry_title">Scene Geometry</string>
+    <string name="featured_ar_scene_geometry_subtitle">Geospatial building and terrain meshes</string>
     <string name="featured_ar_depth_occlusion_title">Depth Occlusion</string>
     <string name="featured_ar_depth_occlusion_subtitle">Real-world depth masks virtual objects</string>
     <string name="featured_ar_pose_title">Pose Placement</string>

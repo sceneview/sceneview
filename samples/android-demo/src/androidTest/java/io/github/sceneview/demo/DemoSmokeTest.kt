@@ -163,9 +163,13 @@ class DemoSmokeTest {
         screenshot("s06_ar_rerun")
     }
 
+    // #3463 — `ar-streetscape` is now the second mode of the Scene Geometry card. The
+    // leg deliberately keeps driving the RETIRED id: that is what proves the alias and
+    // its ALIAS_INITIAL_TAB entry still land on the Streetscape mode. The title on
+    // screen is the merged card's.
     @Test
     fun a07_arStreetscape_smokeOpen() {
-        openDemoTolerant("ar-streetscape", "Streetscape Geometry")
+        openDemoTolerant("ar-streetscape", "Scene Geometry")
         screenshot("s07_ar_streetscape")
     }
 
