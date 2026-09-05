@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import {
   AR_SETUP_GUIDE,
   BEST_PRACTICES,
   PLATFORM_ROADMAP,
   TROUBLESHOOTING_GUIDE,
 } from "./guides.js";
-import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 
 // A `v` prefix is a word character, so a leading \b never matches "v4.0.0" — the
 // spelling the roadmap actually uses. Match the prefix explicitly and capture the
@@ -65,7 +65,7 @@ function versionChecks(guides: Record<string, string>) {
         for (const [, version] of line.matchAll(SEMVER)) {
           expect(
             compareSemver(version, LATEST_SCENEVIEW_RELEASE),
-            `${name}: Upcoming ${version} must be newer than ${LATEST_SCENEVIEW_RELEASE}`,
+            `${name}: Upcoming ${version} must be newer than ${LATEST_SCENEVIEW_RELEASE}`
           ).toBeGreaterThan(0);
         }
       }
@@ -76,7 +76,11 @@ function versionChecks(guides: Record<string, string>) {
 describe("BEST_PRACTICES", () => {
   it("has exactly the supported topic keys", () => {
     expect(Object.keys(BEST_PRACTICES).sort()).toEqual([
-      "all", "architecture", "memory", "performance", "threading",
+      "all",
+      "architecture",
+      "memory",
+      "performance",
+      "threading",
     ]);
   });
 
@@ -113,8 +117,12 @@ describe("PLATFORM_ROADMAP", () => {
 
   it("names every shipped platform row", () => {
     for (const platform of [
-      "Android (Compose)", "Android (AR)", "iOS (SwiftUI)",
-      "macOS (SwiftUI)", "visionOS (SwiftUI)", "KMP Core",
+      "Android (Compose)",
+      "Android (AR)",
+      "iOS (SwiftUI)",
+      "macOS (SwiftUI)",
+      "visionOS (SwiftUI)",
+      "KMP Core",
     ]) {
       expect(PLATFORM_ROADMAP).toContain(`| **${platform}** |`);
     }
