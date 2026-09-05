@@ -15,11 +15,11 @@
     "Regenerate the hashes after a runtime bump:",
     "  shasum -a 256 website-static/js/filament/filament.js website-static/js/filament/filament.wasm"
   ],
-  "version": "1.70.1",
-  "materialVersion": 70,
-  "source": "https://github.com/google/filament/releases/download/v1.70.1/filament-v1.70.1-web.tgz",
+  "version": "1.72.1",
+  "materialVersion": 72,
+  "source": "https://github.com/google/filament/releases/download/v1.72.1/filament-v1.72.1-web.tgz",
   "files": {
-    "filament.js": "27433e67c83b215160c9cbe3d219f9759f0047556ecefe1b30ae9ce08d6ed8d8",
-    "filament.wasm": "4f43e17f6ef9bcfd7a4cff79cdd9d1d4c705a9358c3d6c6414714d48a2f03cac"
+    "filament.js": "2ce3bd306d1a28fe02238268b17ee8c56538128353249c47bff06228865ab520",
+    "filament.wasm": "4fd4d298afba5fdb9df61def28ebf2906c668a65e1c89f5deab661ee9f0069f3"
   }
 }

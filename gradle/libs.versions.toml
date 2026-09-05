@@ -63,9 +63,14 @@ filament = "1.72.1"
 filamentWeb = "1.52.3"
 # The WEBSITE Filament runtime — MUST match the Filament.js build vendored at
 # website-static/js/filament/{filament.js,filament.wasm}, which is a THIRD track,
-# independent of both `filament` (Android, v72) and `filamentWeb` (npm, v52).
+# independent of both `filament` (Android, v72) and `filamentWeb` (npm, v52) —
+# it currently happens to sit on the same 1.72.1 release as the Android AAR,
+# but it moves on its own schedule (bumped 1.70.1 → 1.72.1 for #3456: 1.72.1 is
+# the first tagged release with google/filament#10116, the Embind `quatf`
+# registration that `LightManager.setShadowOptions` / `Builder.shadowOptions`
+# need; every earlier build threw UnboundTypeError on both).
 # tools/GenerateFilamat.sh compiles the website-static/materials/*.filamat blobs
-# with the matc matching THIS version (1.70.x → MATERIAL_VERSION 70), so the
+# with the matc matching THIS version (1.72.x → MATERIAL_VERSION 72), so the
 # static site could load them without the exact-version parse failure that made
 # v4.1.0 SIGABRT. Before #2783 those 3 blobs silently rode the Android pin and
 # were v72 against a v70 runtime — armed but never fired, because nothing on the
@@ -75,7 +80,7 @@ filamentWeb = "1.52.3"
 # the runtime without moving this pin (or vice versa) fails the quality gate.
 # Bumping the vendored Filament.js ⇒ bump this together and regenerate the 3
 # blobs in the same PR (the CONTRIBUTING.md invariant, applied to the site).
-filamentWebsite = "1.70.1"
+filamentWebsite = "1.72.1"
 # Desktop Filament via filament-kmp on Maven. Independent of the three Filament
 # runtime pins above — this artifact vendors its own native Filament
 # (0.4.0 ships 1.75.0). Used only by sceneview-compose desktopMain.

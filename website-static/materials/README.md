@@ -17,8 +17,8 @@ tracked by the unified `tools/GenerateFilamat.sh` inventory and drift gate.
 
 They are compiled with the **`filamentWebsite`** pin in
 `gradle/libs.versions.toml` — the Filament.js build vendored at
-`website-static/js/filament/` (currently matc 1.70.1 → MATERIAL_VERSION 70),
-**not** the Android `filament` pin (1.72.1 → v72). Filament requires an *exact*
+`website-static/js/filament/` (currently matc 1.72.1 → MATERIAL_VERSION 72),
+**not** the Android `filament` pin (also 1.72.1 today, but a separate track). Filament requires an *exact*
 MATERIAL_VERSION match, so riding the Android pin made them unloadable by the
 only runtime that would ever load them: #2783 found all three at v72 against a
 v70 runtime — armed, never fired, because nothing calls `createMaterial()` yet.
@@ -29,7 +29,7 @@ Three pins, three runtimes, three material versions — keep them straight:
 | Blob group | Pin | Runtime | MATERIAL_VERSION |
 |---|---|---|---|
 | `sceneview/`, `arsceneview/` assets | `filament` | Filament AAR (Android) | 72 |
-| `website-static/materials/` | `filamentWebsite` | vendored `js/filament/` | 70 |
+| `website-static/materials/` | `filamentWebsite` | vendored `js/filament/` | 72 |
 | `sceneview-web/materials/` | `filamentWeb` | npm `filament` | 52 |
 
 `.claude/scripts/check-web-filamat-abi.sh` fails the quality gate if a web blob
