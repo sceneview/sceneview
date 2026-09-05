@@ -35,6 +35,16 @@ Re-run a script after pulling new commits to refresh the installed copy.
 against the live library source (frontmatter, API identifiers, demo refs) and
 runs manually; the CI workflows that used to invoke it have been removed.
 
+## OpenAI Plugins Directory (ChatGPT + Codex)
+
+The same three skills ship as an OpenAI **plugin** — the manifest is
+[`.codex-plugin/plugin.json`](../.codex-plugin/plugin.json) at the repo root, and
+Codex discovers the skills in any checkout through the
+[`.agents/skills/`](../.agents/skills) symlinks. Each skill carries its display
+metadata in `agents/<skill>/agents/openai.yaml`. Listing copy, starter prompts, test
+cases and the owner gestures for the submission portal live in
+[`OPENAI-PLUGIN.md`](OPENAI-PLUGIN.md).
+
 ## Google `android-cli` registry submission (#1082)
 
 Getting the skills into Google's **hosted** `android-cli` skill registry would

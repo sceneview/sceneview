@@ -1,0 +1,10 @@
+# OpenAI skill metadata (ChatGPT + Codex). Optional: the skill works without it,
+# this only shapes how the skill is displayed and invoked. Schema:
+# https://developers.openai.com/plugins/build/skills
+interface:
+  display_name: "SceneView — Apple 3D & AR"
+  short_description: "SwiftUI + RealityKit code for iOS, macOS and visionOS with SceneViewSwift"
+  brand_color: "#005bc1"
+  default_prompt: "Use the SceneView iOS skill to write the 3D / AR part of this SwiftUI app with SceneViewSwift."
+policy:
+  allow_implicit_invocation: true

@@ -11,6 +11,7 @@
 import { DEBUG_CATEGORIES } from "../debug-issue.js";
 import { PLATFORM_IDS } from "../platform-setup.js";
 import { SAMPLE_IDS, SAMPLES } from "../samples.js";
+import { WIDGET_3D_VIEWER_URI } from "../widgets.js";
 import type { ToolDefinition } from "./types.js";
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -796,6 +797,74 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: true,
       destructiveHint: false,
+    },
+  },
+  {
+    name: "view_3d_model",
+    description:
+      "Render an interactive 3D model viewer inline in ChatGPT. Pass a public GLB / GLTF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', or after `search_models` to render the chosen result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        modelUrl: {
+          type: "string",
+          description:
+            "Public HTTPS URL to a .glb or .gltf 3D model file. Must be CORS-enabled. Works with assets from sceneview.github.io, model-viewer-textured CDN, Sketchfab download URLs, or any CORS-friendly host.",
+        },
+        title: {
+          type: "string",
+          description: "Optional title shown above the viewer (e.g. the model name).",
+        },
+        autoRotate: {
+          type: "boolean",
+          description: "Whether the model should slowly auto-rotate when idle. Default: true.",
+        },
+        ar: {
+          type: "boolean",
+          description:
+            "Whether to expose the AR button on supported mobile devices. Default: true.",
+        },
+        alt: {
+          type: "string",
+          description: "Accessibility text describing what the model represents.",
+        },
+        posterUrl: {
+          type: "string",
+          description: "Optional preview image URL shown while the model is loading.",
+        },
+      },
+      required: ["modelUrl"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        modelUrl: { type: "string" },
+        title: { type: "string" },
+        autoRotate: { type: "boolean" },
+        ar: { type: "boolean" },
+        alt: { type: "string" },
+        posterUrl: { type: "string" },
+      },
+      required: ["modelUrl", "title", "autoRotate", "ar", "alt"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      // The model URL is fetched by the user's browser inside the widget
+      // iframe, not by this server. Still, the widget pulls a third-party
+      // asset, so openWorldHint is true to be honest about it.
+      openWorldHint: true,
+      destructiveHint: false,
+      title: "View 3D model",
+    },
+    // Widget binding on the DECLARATION: hosts decide from `tools/list` which
+    // resource renders this tool's result. `ui.resourceUri` is the MCP Apps
+    // key; the `openai/*` keys are the ChatGPT Apps SDK spellings.
+    _meta: {
+      ui: { resourceUri: WIDGET_3D_VIEWER_URI },
+      "openai/outputTemplate": WIDGET_3D_VIEWER_URI,
+      "openai/toolInvocation/invoking": "Rendering 3D model with SceneView",
+      "openai/toolInvocation/invoked": "3D model rendered",
     },
   },
 ];

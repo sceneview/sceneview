@@ -1,0 +1,10 @@
+# OpenAI skill metadata (ChatGPT + Codex). Optional: the skill works without it,
+# this only shapes how the skill is displayed and invoked. Schema:
+# https://developers.openai.com/plugins/build/skills
+interface:
+  display_name: "SceneView — Android 3D & AR"
+  short_description: "Jetpack Compose + Filament + ARCore code that compiles on the first try"
+  brand_color: "#005bc1"
+  default_prompt: "Use the SceneView skill to write the 3D / AR part of this Android app with the 4.x composable API."
+policy:
+  allow_implicit_invocation: true

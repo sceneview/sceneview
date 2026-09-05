@@ -26,6 +26,8 @@ export interface ToolResult {
   content: ToolTextContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+  /** Result-level metadata (MCP Apps `_meta.ui.resourceUri`), forwarded verbatim. */
+  _meta?: Record<string, unknown>;
 }
 
 /**
@@ -65,6 +67,12 @@ export interface ToolDefinition {
    * the runtime test refuses to ship a registry where any tool omits them.
    */
   annotations?: ToolAnnotations;
+  /**
+   * Declaration-level metadata forwarded verbatim in `tools/list` — the MCP
+   * Apps widget pointer (`ui.resourceUri`) and the OpenAI Apps SDK keys.
+   * Mirror of `mcp/src/tools/types.ts`.
+   */
+  _meta?: Record<string, unknown>;
 }
 
 /**

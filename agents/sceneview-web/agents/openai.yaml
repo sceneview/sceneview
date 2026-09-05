@@ -1,0 +1,10 @@
+# OpenAI skill metadata (ChatGPT + Codex). Optional: the skill works without it,
+# this only shapes how the skill is displayed and invoked. Schema:
+# https://developers.openai.com/plugins/build/skills
+interface:
+  display_name: "SceneView — Web 3D & WebXR"
+  short_description: "Filament.js + WebXR code with sceneview-web, from a GLB viewer to an AR button"
+  brand_color: "#005bc1"
+  default_prompt: "Use the SceneView web skill to render 3D in the browser with sceneview-web."
+policy:
+  allow_implicit_invocation: true

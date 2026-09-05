@@ -27,7 +27,7 @@ For the best experience with Claude, install the SceneView MCP server:
 npx sceneview-mcp
 ```
 
-This gives Claude direct access to 31 tools: code generation, validation,
+This gives Claude direct access to 32 tools: code generation, validation,
 samples, model search (Sketchfab), and the complete API reference.
 
 ## Industry-specific MCPs

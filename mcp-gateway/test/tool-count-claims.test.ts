@@ -77,11 +77,13 @@ describe("tier map entries all resolve to mounted tools (no phantoms)", () => {
     ).toEqual([]);
   });
 
-  it("view_3d_model (gateway-only widget tool) is mounted and free", () => {
-    // Documents the intent behind keeping `view_3d_model` in FREE_TOOLS even
-    // though the stdio package never serves it: the anonymous ChatGPT widget
-    // path relies on the tier gate resolving it to "free".
+  it("view_3d_model (upstream MCP Apps widget tool) is mounted once and free", () => {
+    // The widget tool now lives in `mcp/src/tools/definitions.ts` and is
+    // mounted through the `sceneview` library — not a gateway-native copy.
+    // The anonymous ChatGPT widget path relies on the tier gate resolving it
+    // to "free".
     expect(mountedNames().has("view_3d_model")).toBe(true);
+    expect(getAllTools().filter((t) => t.name === "view_3d_model")).toHaveLength(1);
     expect(getToolTier("view_3d_model")).toBe("free");
   });
 

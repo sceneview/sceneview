@@ -1,0 +1,39 @@
+{
+  "name": "sceneview",
+  "version": "4.34.0",
+  "description": "Build 3D and AR apps with the SceneView SDK — Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the free sceneview-mcp server.",
+  "author": {
+    "name": "SceneView",
+    "url": "https://github.com/sceneview"
+  },
+  "homepage": "https://sceneview.github.io",
+  "repository": "https://github.com/sceneview/sceneview",
+  "license": "Apache-2.0",
+  "keywords": ["3d", "ar", "augmented-reality", "android", "ios", "visionos", "web", "jetpack-compose", "swiftui", "filament", "realitykit", "arcore", "webxr", "gltf", "glb", "usdz"],
+  "skills": "./agents/",
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "interface": {
+    "displayName": "SceneView 3D & AR",
+    "shortDescription": "Write working 3D and AR code for Android, Apple and the web on the first try",
+    "longDescription": "SceneView is an AI-first 3D and AR SDK. This plugin gives ChatGPT and Codex the exact API contract, compilable recipes and migration guides for every SceneView platform — Android (Jetpack Compose + Filament + ARCore), Apple (SwiftUI + RealityKit on iOS, macOS and visionOS) and the web (Filament.js + WebXR) — plus the free sceneview-mcp tools: 38 compilable samples, setup guides, a code validator, node references and an inline 3D model viewer. Nothing is sold inside the plugin: SceneView is Apache-2.0 and the MCP tools it declares are the free tier.",
+    "developerName": "SceneView",
+    "category": "Developer Tools",
+    "capabilities": ["Read"],
+    "websiteURL": "https://sceneview.github.io",
+    "supportURL": "https://github.com/sceneview/sceneview/issues",
+    "privacyPolicyURL": "https://sceneview.github.io/privacy",
+    "termsOfServiceURL": "https://github.com/sceneview/sceneview/blob/main/mcp/TERMS.md",
+    "defaultPrompt": [
+      "Build a Jetpack Compose screen that loads a .glb model with SceneView, orbit camera and a light.",
+      "Add ARCore plane detection with SceneView and place the model where the user taps.",
+      "Write a SwiftUI view that shows a USDZ model with SceneViewSwift on iOS and visionOS.",
+      "Render a GLB in the browser with sceneview-web and add a WebXR 'View in AR' button.",
+      "Migrate this SceneView 2.x snippet to the 4.x composable API.",
+      "Show me this 3D model URL inline and tell me how to load it in Compose."
+    ],
+    "brandColor": "#005bc1",
+    "composerIcon": "./website-static/favicon-192.png",
+    "logo": "./website-static/favicon-192.png",
+    "screenshots": []
+  }
+}

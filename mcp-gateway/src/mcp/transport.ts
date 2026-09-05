@@ -399,7 +399,11 @@ function handleResourcesRead(req: JsonRpcRequest): unknown {
 function handleToolsList(): unknown {
   const tools = getAllTools().map((def) => {
     const widgetUri = widgetResourceFor(def.name);
-    return widgetUri ? { ...def, _meta: { ui: { resourceUri: widgetUri } } } : def;
+    // Merge rather than replace: the upstream declaration already carries
+    // the pointer plus the OpenAI Apps SDK keys (`openai/outputTemplate`…).
+    return widgetUri
+      ? { ...def, _meta: { ...(def._meta ?? {}), ui: { resourceUri: widgetUri } } }
+      : def;
   });
   return { tools };
 }
