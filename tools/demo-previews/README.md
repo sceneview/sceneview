@@ -30,11 +30,52 @@ The last two are rendered from the demos' own generator code rather than capture
 card shows the exact curve the app computes rather than an invented knot or loop.
 
 `damaged_helmet.webp` is the reference for every helmet card. All ten of them —
-`model-viewer`, `two-d-in-three-d`, `lighting`, `lighting-lab`, `fog`, `camera-gestures`,
-`materials`, `debug-overlay`, `video-recording`, `secondary-camera` — load the same GLB, so
-they must show the same helmet. The original stylised `hero.webp` render — a helmet the GLB
+`model-viewer`, `two-d-in-three-d`, `lighting`, `lighting-lab`, `fog` (iOS-only since #3464,
+see below), `camera-gestures`, `materials`, `debug-overlay`, `video-recording`,
+`secondary-camera` — load the same GLB, so they must show the same helmet. The original stylised `hero.webp` render — a helmet the GLB
 does not look like — fed eight of these cards until #3454 and the store listings until #3461;
 it is deleted, so nothing can be generated from it again.
+
+## iOS imagesets
+
+The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/
+preview_<scene_id>.imageset/` — one universal JPEG per appearance (`preview_<id>.jpg` for
+light, `preview_<id>_dark.jpg` for dark; no 1x/2x/3x scales), 800×640 like the Android cards,
+plus the dark-only `preview_hero_model_viewer.jpg` at 1600×1000. `--format jpg` writes the
+same crop of the same raw as a JPEG (q85) instead of a WebP, so an iOS imageset is one
+`gen.py` run plus a rename. iOS scene ids do not all match Android demo ids — the table is
+the mapping, and it is the only place it is written down:
+
+| Imageset | Files | `gen.py` item | Notes |
+|---|---|---|---|
+| `preview_hero_model_viewer` | `preview_hero_model_viewer.jpg` (1600×1000, dark only) | `heroes.json` → `model-viewer`, `--kind hero` | Also the `BrowseOnlineModelsCard` artwork. |
+| `preview_model_viewer` | `preview_model_viewer.jpg`, `_dark.jpg` | `prompts.json` → `model-viewer` | Same scene as the Android card. |
+| `preview_dynamic_sky` | `preview_dynamic_sky.jpg`, `_dark.jpg` | `prompts.json` → `lighting-lab` | iOS `dynamic-sky` is Android's Lighting Lab Sky tab (`DemoDeepLinkRegistry`), so it takes the Lighting Lab card. |
+| `preview_materials` | `preview_materials.jpg`, `_dark.jpg` | `prompts.json` → `materials` | Same scene as the Android card. |
+| `preview_fog` | `preview_fog.jpg`, `_dark.jpg` | `prompts.json` → `fog` | iOS still lists `fog` as its own card (`FogScene.swift`); Android folded it into Lighting Lab in #3464, so `fog` is an iOS-only item and nothing under `drawable-nodpi/` consumes it. |
+
+```bash
+GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
+  tools/demo-previews/prompts.json /tmp/ios --refs tools/demo-previews/refs --format jpg \
+  --only model-viewer,materials,lighting-lab,fog
+GEMINI_ENV_FILE=~/path/to/env-with-GEMINI_API_KEY python3 tools/demo-previews/gen.py \
+  tools/demo-previews/heroes.json /tmp/ios --kind hero --refs tools/demo-previews/refs --format jpg
+X=samples/ios-demo/SceneViewDemo/Assets.xcassets
+cp /tmp/ios/jpg/preview_model_viewer_light.jpg  $X/preview_model_viewer.imageset/preview_model_viewer.jpg
+cp /tmp/ios/jpg/preview_model_viewer_dark.jpg   $X/preview_model_viewer.imageset/preview_model_viewer_dark.jpg
+cp /tmp/ios/jpg/preview_lighting_lab_light.jpg  $X/preview_dynamic_sky.imageset/preview_dynamic_sky.jpg
+cp /tmp/ios/jpg/preview_lighting_lab_dark.jpg   $X/preview_dynamic_sky.imageset/preview_dynamic_sky_dark.jpg
+cp /tmp/ios/jpg/preview_materials_light.jpg     $X/preview_materials.imageset/preview_materials.jpg
+cp /tmp/ios/jpg/preview_materials_dark.jpg      $X/preview_materials.imageset/preview_materials_dark.jpg
+cp /tmp/ios/jpg/preview_fog_light.jpg           $X/preview_fog.imageset/preview_fog.jpg
+cp /tmp/ios/jpg/preview_fog_dark.jpg            $X/preview_fog.imageset/preview_fog_dark.jpg
+cp /tmp/ios/jpg/preview_hero_model_viewer.jpg   $X/preview_hero_model_viewer.imageset/
+```
+
+The other iOS imagesets (`preview_lighting`, `preview_camera_controls`, the AR cards, …) were
+not produced by this pipeline and are not in the table; regenerate one only once its prompt is
+recorded here, so the recorded prompt is always the one that produced the committed image
+(#3474).
 
 ## Home hero banner
 

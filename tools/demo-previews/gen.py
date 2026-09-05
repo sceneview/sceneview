@@ -2,7 +2,7 @@
 """Generate demo preview images with Gemini image models (image-to-image from real captures).
 
 Usage:
-  gen.py prompts.json out_dir [--refs DIR] [--only id,id] [--variants light,dark] [--model M]
+  gen.py prompts.json out_dir [--refs DIR] [--only id,id] [--variants light,dark] [--model M] [--format webp|jpg]
   gen.py model-thumbs.json out_dir --kind thumb --refs DIR   # square model/environment tiles
   gen.py heroes.json out_dir --kind hero --refs DIR          # the wide home hero banner
   gen.py store.json out_dir --kind store --refs DIR          # the store-listing AR visuals
@@ -10,6 +10,8 @@ Usage:
 prompts.json: {"style": "...shared suffix...", "items": {"<demo-id>": {"prompt": "...", "ref": "file.png", "ar": bool}}}
 Output (--kind preview, the default):
   out_dir/raw/<id>_<variant>.png and out_dir/webp/preview_<id_>_<variant>.webp (800x640, q80).
+  `--format jpg` writes out_dir/jpg/...jpg instead (q85) — the encoding the iOS demo's asset
+  catalog imagesets use (see README "iOS imagesets"); the raw and the crop are the same.
 Output (--kind thumb):
   out_dir/raw/<id>_dark.png and out_dir/webp/model_thumb_<id>.webp (320x320, q80) — the
   sheet-and-picker tile size `ModelThumbnails` maps by asset stem. Thumbs are dark-only:
@@ -70,6 +72,7 @@ def crop_save(png, out, tw, th, width, q=80):
     else: nh = int(w * th / tw); im = im.crop((0, (h - nh) // 2, w, (h - nh) // 2 + nh))
     im = im.resize((width, width * th // tw), Image.LANCZOS)
     if out.endswith(".png"): im.save(out, "PNG", optimize=True)
+    elif out.endswith(".jpg"): im.save(out, "JPEG", quality=85, optimize=True)
     else: im.save(out, "WEBP", quality=q, method=6)
 
 def main():
@@ -77,8 +80,10 @@ def main():
     ap.add_argument("--model", default="gemini-3.1-flash-image"); ap.add_argument("--refs")
     ap.add_argument("--only"); ap.add_argument("--variants", default="light,dark")
     ap.add_argument("--kind", default="preview", choices=("preview", "thumb", "hero", "store"))
+    ap.add_argument("--format", default="webp", choices=("webp", "jpg"))
     a = ap.parse_args(); spec = json.load(open(a.prompts)); style = spec.get("style", "")
-    os.makedirs(os.path.join(a.out, "raw"), exist_ok=True); os.makedirs(os.path.join(a.out, "webp"), exist_ok=True)
+    ext = a.format; enc = os.path.join(a.out, ext)  # out/webp or out/jpg
+    os.makedirs(os.path.join(a.out, "raw"), exist_ok=True); os.makedirs(enc, exist_ok=True)
     only = set(a.only.split(",")) if a.only else None; failed = []
     thumb = a.kind == "thumb"
     hero = a.kind == "hero"
@@ -126,11 +131,11 @@ def main():
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
                     crop_save(png, dest, w, h, w)
             elif thumb:
-                crop_save(png, os.path.join(a.out, "webp", f"model_thumb_{did}.webp"), 1, 1, 320)
+                crop_save(png, os.path.join(enc, f"model_thumb_{did}.{ext}"), 1, 1, 320)
             elif hero:
-                crop_save(png, os.path.join(a.out, "webp", f"preview_hero_{did.replace('-', '_')}.webp"), 16, 10, 1600)
+                crop_save(png, os.path.join(enc, f"preview_hero_{did.replace('-', '_')}.{ext}"), 16, 10, 1600)
             else:
-                crop_save(png, os.path.join(a.out, "webp", f"preview_{did.replace('-', '_')}_{variant}.webp"), 5, 4, 800)
+                crop_save(png, os.path.join(enc, f"preview_{did.replace('-', '_')}_{variant}.{ext}"), 5, 4, 800)
     print("failed:", failed)
 
 if __name__ == "__main__": main()
