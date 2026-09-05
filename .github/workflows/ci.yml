@@ -896,6 +896,15 @@ jobs:
     # whole cost: measured locally on an M-series Mac at 9 min 46 s from cold,
     # and 33 s to re-link and re-run after a one-file change. The 30 min is
     # headroom for a slower hosted runner, not an expected duration.
+    #
+    # If this job shows `cancelled` again with the test step green in ~20 s,
+    # read `Post Run ./.github/actions/setup-gradle` before touching this
+    # value: on `main` pushes that post-step used to upload the self-hosted
+    # Mac's entire `~/.gradle` to the Actions cache until this timeout fired
+    # (#3469, jobs 100769714909 and 100796430540 — `Sent 1073741824 of
+    # 2201734690 (48.8%), 0.6 MBs/sec` at minute 30). The composite action
+    # is now read-only on self-hosted runners; the timeout was never the
+    # problem and is unchanged.
     timeout-minutes: 30
 
     steps:
