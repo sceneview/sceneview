@@ -58,8 +58,12 @@ Shared Kotlin Multiplatform module providing:
 
 ## Upcoming
 
-- **v4.0.0**: SceneViewSwift stabilization, API parity with Android core nodes, KMP core XCFramework consumption
-- **v4.0.0**: Android XR, visionOS spatial computing, cross-framework bridges (Flutter, React Native)
+- **SceneViewSwift stabilization** — API parity with the Android core nodes, KMP core consumed as an XCFramework
+- **Android XR and visionOS spatial computing**
+- **Cross-framework bridges** — Flutter and React Native over the same native cores
+
+These are not tied to a version number: \`4\` is the current major line, and \`5.0.0\` is a
+deliberate milestone rather than an automatic bump.
 
 ## How to Stay Updated
 
