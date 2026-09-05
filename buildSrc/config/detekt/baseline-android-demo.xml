@@ -1,0 +1,97 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:DemoHelpers.kt:EntranceCameraManipulator$!length.isFinite() || length &lt;= 1e-5f || !distance.isFinite() || distance &lt;= 0f</ID>
+    <ID>ComplexCondition:OrbitalARDemo.kt:anchor != null &amp;&amp; isTracking &amp;&amp; projectedTargets.isNotEmpty() &amp;&amp; projectedTargets.size != offscreenTargets.size</ID>
+    <ID>CyclomaticComplexMethod:CloudAnchorFlow.kt:fun CloudAnchorFlowState.allows: Boolean</ID>
+    <ID>LongMethod:RawDepthCloud.kt:RawDepthCloud$@Suppress("NestedBlockDepth") // y→x→confidence→depth nested loops are the canonical depth-cloud pattern fun buildCloud: IntArray</ID>
+    <ID>LoopWithTooManyJumpStatements:DemoScaffold.kt:while</ID>
+    <ID>LoopWithTooManyJumpStatements:WhatsNewChangelog.kt:for</ID>
+    <ID>LoopWithTooManyJumpStatements:WhatsNewSinceSheet.kt:while</ID>
+    <ID>MatchingDeclarationName:AskCaptureGeometry.kt:AskCaptureRegion</ID>
+    <ID>MatchingDeclarationName:AskFrameCheck.kt:AskFrameVerdict</ID>
+    <ID>MatchingDeclarationName:DemoStatusBanner.kt:DemoStatusTone</ID>
+    <ID>MatchingDeclarationName:EnvironmentSheet.kt:ViewerEnvironment</ID>
+    <ID>MatchingDeclarationName:HomeFilter.kt:HomeSearchEntry</ID>
+    <ID>MatchingDeclarationName:HomeScreen.kt:HomeTestTags</ID>
+    <ID>MatchingDeclarationName:ModelPickerSheet.kt:BundledViewerModel</ID>
+    <ID>MatchingDeclarationName:ParkFraming.kt:ParkSlot</ID>
+    <ID>MatchingDeclarationName:PointAndAskDemo.kt:PointAndAskTestTags</ID>
+    <ID>MatchingDeclarationName:RerunSaveUx.kt:RerunSaveActionUx</ID>
+    <ID>MaxLineLength:ARStreetscapeDemo.kt:"${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"</ID>
+    <ID>MaxLineLength:AnimationBar.kt:@Composable</ID>
+    <ID>MaxLineLength:AnimationBar.kt:Box { TextButton(onClick = { menu = true }) { Text(clipNames.getOrNull(selectedClip) ?: "Clip ${selectedClip + 1}") }; DropdownMenu(menu, { menu = false }) { clipNames.forEachIndexed { i, name -> DropdownMenuItem({ Text(name) }, { onClipChange(i); menu = false }) } } }</ID>
+    <ID>MaxLineLength:AnimationBar.kt:IconButton(onClick = { onPlayingChange(!playing) }, modifier = Modifier.size(SceneViewTokens.Layout.viewerAnimationButton)) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play") }</ID>
+    <ID>MaxLineLength:AnimationBar.kt:Row</ID>
+    <ID>MaxLineLength:AnimationBar.kt:Surface</ID>
+    <ID>MaxLineLength:CatchTargetTest.kt:CatchTargetTest$assertEquals("one second after release the flyer has advanced by one second of orbit", expected, justAfter, 1e-3f)</ID>
+    <ID>MaxLineLength:DemoMath.kt:DemoMath$val safeHorizontalFill = if (horizontalFill.isFinite() &amp;&amp; horizontalFill > 0f) horizontalFill else VIEWER_HORIZONTAL_FILL</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"animation-physics" to PreviewPair(R.drawable.preview_animation_physics_light, R.drawable.preview_animation_physics_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-body-tracker" to PreviewPair(R.drawable.preview_ar_body_tracker_light, R.drawable.preview_ar_body_tracker_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-cloud-anchor" to PreviewPair(R.drawable.preview_ar_cloud_anchor_light, R.drawable.preview_ar_cloud_anchor_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-collaborative" to PreviewPair(R.drawable.preview_ar_collaborative_light, R.drawable.preview_ar_collaborative_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-depth-collider" to PreviewPair(R.drawable.preview_ar_depth_collider_light, R.drawable.preview_ar_depth_collider_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-depth-occlusion" to PreviewPair(R.drawable.preview_ar_depth_occlusion_light, R.drawable.preview_ar_depth_occlusion_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-depth-of-field" to PreviewPair(R.drawable.preview_ar_depth_of_field_light, R.drawable.preview_ar_depth_of_field_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-depth-visualization" to PreviewPair(R.drawable.preview_ar_depth_visualization_light, R.drawable.preview_ar_depth_visualization_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-geospatial-anchors" to PreviewPair(R.drawable.preview_ar_geospatial_anchors_light, R.drawable.preview_ar_geospatial_anchors_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-hand-tracking" to PreviewPair(R.drawable.preview_ar_hand_tracking_light, R.drawable.preview_ar_hand_tracking_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-image-stabilization" to PreviewPair(R.drawable.preview_ar_image_stabilization_light, R.drawable.preview_ar_image_stabilization_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-ml-object-label" to PreviewPair(R.drawable.preview_ar_ml_object_label_light, R.drawable.preview_ar_ml_object_label_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-people-occlusion" to PreviewPair(R.drawable.preview_ar_people_occlusion_light, R.drawable.preview_ar_people_occlusion_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-plane-renderer-v2" to PreviewPair(R.drawable.preview_ar_plane_renderer_v2_light, R.drawable.preview_ar_plane_renderer_v2_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-point-cloud" to PreviewPair(R.drawable.preview_ar_point_cloud_light, R.drawable.preview_ar_point_cloud_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-raw-depth-point-cloud" to PreviewPair(R.drawable.preview_ar_raw_depth_point_cloud_light, R.drawable.preview_ar_raw_depth_point_cloud_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-record-playback" to PreviewPair(R.drawable.preview_ar_record_playback_light, R.drawable.preview_ar_record_playback_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-scene-semantics" to PreviewPair(R.drawable.preview_ar_scene_semantics_light, R.drawable.preview_ar_scene_semantics_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-streetscape" to PreviewPair(R.drawable.preview_ar_streetscape_light, R.drawable.preview_ar_streetscape_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"camera-gestures" to PreviewPair(R.drawable.preview_camera_gestures_light, R.drawable.preview_camera_gestures_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"contact-shadow-preview" to PreviewPair(R.drawable.preview_contact_shadow_preview_light, R.drawable.preview_contact_shadow_preview_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"custom-geometry" to PreviewPair(R.drawable.preview_custom_geometry_light, R.drawable.preview_custom_geometry_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"double-pendulum" to PreviewPair(R.drawable.preview_double_pendulum_light, R.drawable.preview_double_pendulum_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"picking-collision" to PreviewPair(R.drawable.preview_picking_collision_light, R.drawable.preview_picking_collision_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"placement-scene" to PreviewPair(R.drawable.preview_placement_scene_light, R.drawable.preview_placement_scene_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"secondary-camera" to PreviewPair(R.drawable.preview_secondary_camera_light, R.drawable.preview_secondary_camera_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"two-d-in-three-d" to PreviewPair(R.drawable.preview_two_d_in_three_d_light, R.drawable.preview_two_d_in_three_d_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"video-recording" to PreviewPair(R.drawable.preview_video_recording_light, R.drawable.preview_video_recording_dark)</ID>
+    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"wall-placement" to PreviewPair(R.drawable.preview_wall_placement_light, R.drawable.preview_wall_placement_dark)</ID>
+    <ID>MaxLineLength:DemoRegistryIntegrityTest.kt:DemoRegistryIntegrityTest$assertTrue("Tag '$tag' on '${demo.id}' must be lowercase and non-blank", tag.isNotBlank() &amp;&amp; tag == tag.lowercase())</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:.</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:@Composable</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:LabeledSlider("IBL intensity", intensity, onIntensity, 0f..2f, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md), valueText = "%.1f×".format(intensity))</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:ModalBottomSheet</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:Modifier.size(SceneViewTokens.Layout.dockIconSize).background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraLarge).padding(SceneViewTokens.Space.xs)</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:Row</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:Row(Modifier.fillMaxWidth().padding(horizontal = SceneViewTokens.Space.md), horizontalArrangement = Arrangement.SpaceBetween) { Text("Show environment"); Switch(showEnvironment, onShowEnvironment) }</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:Text("Lighting", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:TextButton(onClick = onReset, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm)) { Text("Reset lighting") }</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:ViewerEnvironment</ID>
+    <ID>MaxLineLength:EnvironmentSheet.kt:color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
+    <ID>MaxLineLength:IcosaGalleryService.kt:IcosaAsset$listOf(GalleryThumbnail(it, thumbnail.width.takeIf { w -> w > 0 } ?: 1024, thumbnail.height.takeIf { h -> h > 0 } ?: 1024))</ID>
+    <ID>MaxLineLength:MainActivity.kt:popEnterTransition = { slideInHorizontally(navMotion()) { -it / NAV_SLIDE_FRACTION } + fadeIn(navMotion()) }</ID>
+    <ID>MaxLineLength:ModelPickerSheet.kt:.</ID>
+    <ID>MaxLineLength:ModelPickerSheet.kt:Box</ID>
+    <ID>MaxLineLength:ModelPickerSheet.kt:ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }</ID>
+    <ID>MaxLineLength:ModelPickerSheet.kt:Text("Models", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md))</ID>
+    <ID>MaxLineLength:ModelPickerSheet.kt:Text(model.displayName, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = SceneViewTokens.Space.xs))</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:(0 until animator.animationCount).map { animator.getAnimationName(it).takeIf(String::isNotBlank) ?: "Clip ${it + 1}" }</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:)</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:Row</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:derivedStateOf { firstFrame.rendered.value &amp;&amp; firstEnvironmentLoaded &amp;&amp; modelFramesSeen.value >= MODEL_COVER_FRAMES }</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:onSelect = { requestedEnvironment = it }</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:onSurprise = { if (!surpriseInFlight) { surpriseInFlight = true; scope.launch { streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull(); surpriseInFlight = false; modelSheetOpen = false } } }</ID>
+    <ID>MaxLineLength:ModelViewerDemo.kt:val modelYaw = rememberHeroYaw(trigger = spinScene &amp;&amp; activeModelInstance != null, durationMillis = 20_000, staticYaw = 0f)</ID>
+    <ID>MaxLineLength:SceneViewTokens.kt:SceneViewTokens.Type$val display = TextStyle(fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em)</ID>
+    <ID>MaxLineLength:SceneViewTokens.kt:SceneViewTokens.Type$val title = TextStyle(fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.02).em)</ID>
+    <ID>MaxLineLength:SketchfabAssetResolverTest.kt:SketchfabAssetResolverTest$assertFalse("a streamed download must not be reported as bundled", SketchfabAssetResolver.isBundledFallback(streamed))</ID>
+    <ID>MaxLineLength:WallPlacementDemo.kt:CubeNode(size = Size(1.20f, 0.68f, 0.01f), position = Position(z = 0.045f), materialInstance = screen)</ID>
+    <ID>MaxLineLength:WallPlacementDemo.kt:CubeNode(size = Size(1.26f, 0.74f, 0.04f), position = Position(z = 0.02f), materialInstance = body)</ID>
+    <ID>ThrowsCount:NetworkModelDownloader.kt:NetworkModelDownloader$@Suppress("NestedBlockDepth") // use{} + temp-file try/catch + streaming loop is inherently nested private suspend fun streamTo</ID>
+    <ID>TooManyFunctions:CloudAnchorCardsPreviews.kt:io.github.sceneview.demo.common.CloudAnchorCardsPreviews.kt</ID>
+    <ID>UnusedParameter:ModelViewerDemo.kt:mode: ModelViewerMode</ID>
+    <ID>UnusedParameter:ModelViewerDemo.kt:onModeChange: (ModelViewerMode) -> Unit</ID>
+  </CurrentIssues>
+</SmellBaseline>

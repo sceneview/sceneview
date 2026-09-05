@@ -387,8 +387,10 @@ jobs:
         run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
-      # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml),
-      # scoped to the four library modules.
+      # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
+      # Runs on the four library modules plus the Play Store demo (#3450): the
+      # demo's task used to be scheduled nowhere, so its missing dependency on
+      # `generateDemoRegistry` and its 93 grandfathered findings went unseen.
       #
       # BLOCKING: detekt was upgraded from 1.23.8 (which silently no-op'd task
       # registration on Kotlin 2.3.x / AGP 8.13.x) to detekt 2.0.0-alpha.0 in
@@ -398,7 +400,7 @@ jobs:
       # cleanup PR, run `./gradlew :<module>:detektBaseline` locally and commit
       # the regenerated XML.
       - name: Detekt
-        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt --stacktrace
+        run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :samples:android-demo:detekt --stacktrace
 
       - name: Upload detekt reports
         if: always()
@@ -410,6 +412,7 @@ jobs:
             arsceneview/build/reports/detekt/
             sceneview-core/build/reports/detekt/
             sceneview-compose/build/reports/detekt/
+            samples/android-demo/build/reports/detekt/
           if-no-files-found: ignore
 
       - name: Upload lint reports

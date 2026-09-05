@@ -388,6 +388,14 @@ tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.c
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(generateDemoRegistry)
 }
+// detekt reads the same `src/main/java` tree kotlinc does, so every detekt task
+// (`detekt`, `detektBaseline`, ...) consumes `GeneratedDemos.kt` too. Without this
+// edge Gradle fails validation with "implicit dependency on generateDemoRegistry"
+// as soon as both tasks are in the graph (#3450) — which is also why the demo's
+// detekt task must run in CI: it was never scheduled, so nobody saw it.
+tasks.matching { it.name.startsWith("detekt") }.configureEach {
+    dependsOn(generateDemoRegistry)
+}
 
 // ─── Bundled "What's new" changelog ──────────────────────────────────────
 //
