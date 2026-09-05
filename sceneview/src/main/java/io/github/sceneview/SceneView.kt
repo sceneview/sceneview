@@ -179,7 +179,13 @@ import io.github.sceneview.node.findActivity
  * @param onTouchEvent          Raw touch event callback with optional hit-test result.
  * @param activity              Host [ComponentActivity] (auto-resolved from [LocalContext]).
  * @param lifecycle             Lifecycle that drives rendering resume/pause.
- * @param onFrame               Called once per rendered frame, immediately before rendering.
+ * @param onFrame               Called once per **presented** frame, right after it reached the
+ *                              surface. A tick on which `Renderer.beginFrame` refused the frame —
+ *                              which is most of them while the GPU warms a heavy material up — is
+ *                              not a rendered frame and does not call this back (#3444), so "I was
+ *                              called" is a sound signal that there are pixels on screen. Use it to
+ *                              drop a loading cover or drive per-frame logic; it does not fire
+ *                              while `isRendering` is `false`.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -821,7 +827,21 @@ fun SceneView(
                             manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
                             cameraNode.transform = manipulator.getTransform()
                         }
+                    }
 
+                    // `onFrame` fires only for a frame that actually reached the surface (#3444).
+                    // Everything above runs on every tick — `updateLoad`, the node ticks, the
+                    // framing passes and the manipulator must keep advancing or a stalled surface
+                    // would never recover — but the CALLER's callback means "a frame was
+                    // rendered", and `Renderer.beginFrame` refuses frames while the GPU is behind.
+                    // On emulator-5554 the Materials demo presents 4 frames in its first 6.3 s
+                    // (Filament warming the ToyCar's clearcoat / sheen / transmission variants)
+                    // and then runs at 60 fps; firing `onFrame` on the refused attempts told the
+                    // demo scaffold the scene was up while the surface was still black, so it
+                    // dropped its loading cover and every capture in that window — the Maestro
+                    // screenshot included — recorded a blank viewport.
+                    val presented = sceneRenderer.presentedFrameCount != presentedBefore
+                    if (presented) {
                         currentOnFrame.value?.invoke(frameTimeNanos)
                     }
 
@@ -831,9 +851,7 @@ fun SceneView(
                     // the *attempt* would park with a blank surface, which is the bug this guards.
                     // Guarded by the read so a rendering scene does not write snapshot state every
                     // frame.
-                    if (needsPresent.value &&
-                        sceneRenderer.presentedFrameCount != presentedBefore
-                    ) {
+                    if (needsPresent.value && presented) {
                         needsPresent.value = false
                     }
 

@@ -294,6 +294,7 @@
     <string name="demo_source_bundled">Offline</string>
     <!-- Settings-sheet actions + stalled-load card (DemoScaffold). -->
     <string name="demo_menu_qa_mode">QA mode</string>
+    <string name="demo_loading_scene_cd">Scene loading</string>
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
     <string name="demo_loading_retry">Retry</string>

@@ -840,6 +840,15 @@ private val DOCK_CAPTION_GAP = 2.dp
  * After [FIRST_FRAME_SCRIM_TIMEOUT_MS] without a frame the cover fades and an
  * explicit "Still loading…" card takes its place, with Retry wired to the
  * demo's reset when it has one — a stalled demo must say so, not go blank.
+ *
+ * **[firstFrameRendered] means "pixels reached the surface" (#3444).** It is fed
+ * by `SceneView(onFrame = …)`, which since #3444 fires only for a frame
+ * `Renderer.beginFrame` actually accepted. Before that it fired on every tick,
+ * including the ones Filament refused while it warmed a heavy material up — so
+ * this cover lifted on frame 1 and the Materials demo showed a bare black
+ * viewport for ~10 s with no spinner, no label and no stalled card. The cover is
+ * the only thing standing between a slow first frame and a blank capture, so its
+ * signal has to be the honest one.
  */
 @Composable
 private fun BoxScope.FirstFrameCover(
@@ -854,6 +863,12 @@ private fun BoxScope.FirstFrameCover(
     }
     val rendered = firstFrameRendered.value
     val dismissed = rendered || timedOut
+    // The cover's accessibility name. TalkBack announces it, and it is also the handle the
+    // device-QA flow waits on: `SceneView(onFrame = …)` fires only for a frame that reached the
+    // surface (#3444), so "this node is gone and the stalled card is not up" is the app's own
+    // statement that the viewport has real pixels — the thing `.maestro/android/flows/demo.yaml`
+    // asserts before it captures a demo's screenshot.
+    val loadingContentDescription = stringResource(R.string.demo_loading_scene_cd)
     val alpha by animateFloatAsState(
         targetValue = if (dismissed) 0f else 1f,
         animationSpec = tween(durationMillis = SceneViewTokens.Duration.mediumMillis),
@@ -873,7 +888,8 @@ private fun BoxScope.FirstFrameCover(
                     if (dismissed) Modifier
                     else Modifier.pointerInput(Unit) { detectTapGestures { } }
                 )
-                .testTag(DemoScaffoldTestTags.FIRST_FRAME_SCRIM),
+                .testTag(DemoScaffoldTestTags.FIRST_FRAME_SCRIM)
+                .semantics { contentDescription = loadingContentDescription },
             contentAlignment = Alignment.Center,
         ) {
             Column(

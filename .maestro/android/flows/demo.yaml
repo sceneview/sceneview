@@ -40,6 +40,10 @@
 #   - Capture exactly ONE screenshot per demo (no screenshot-by-screenshot
 #     loop — that was the slow pattern in the old qa-android-demos.sh). The
 #     optional zoom section adds two more (near + far) when CAMERA_DISTANCE set.
+#   - Before capturing, assert the viewport is NOT blank (#3444): wait for the
+#     scaffold's first-frame cover and its stalled-load card to be gone. The
+#     cover lifts on a frame that actually reached the surface, so this is the
+#     app's own "there are pixels" signal — liveness alone passed a black demo.
 #   - Assert the app process is still foregrounded afterwards. A crash would
 #     drop us out of the app; `assertVisible` on any app element then fails the
 #     flow. A FATAL/ANR sweep of logcat is done once, globally, by catalog.yaml.
@@ -101,6 +105,34 @@ appId: io.github.sceneview.demo
 # a moment to settle before the screenshot.
 - waitForAnimationToEnd:
     timeout: 3000
+
+# --- The captured frame must not be blank (#3444) --------------------------
+# Liveness alone let a BLANK demo pass: `materials` renders a black viewport for
+# the first ~10-14 s on emulator-5554 (Filament refuses frames — 4 presented in
+# 6.3 s — while the GPU warms the ToyCar's clearcoat / sheen / transmission
+# variants), and the screenshot below lands at ~11 s. Nothing here noticed,
+# because the Activity was perfectly alive the whole time.
+#
+# The app now states the difference honestly: `SceneView(onFrame = …)` fires only
+# for a frame that actually reached the surface, so the scaffold's first-frame
+# cover ("Scene loading") stays up until there are real pixels, and after 12 s
+# without one it gives way to the "Still loading…" card. Waiting for BOTH to be
+# gone, then asserting it, is a non-blank-frame assertion made of the app's own
+# signal — no pixel reader, no script. A demo that never presents a frame now
+# fails here instead of passing on liveness.
+#
+# AR demos pass `firstFrameRendered = null` (their viewport is the camera feed),
+# so neither node ever exists and both steps pass through instantly.
+- extendedWaitUntil:
+    notVisible: "Scene loading"
+    timeout: 25000
+    label: "Wait for the scene's first presented frame"
+- extendedWaitUntil:
+    notVisible: "Still loading.*"
+    timeout: 25000
+    label: "Wait out the stalled-load card if one appeared"
+- assertNotVisible: "Scene loading"
+- assertNotVisible: "Still loading.*"
 
 # --- One screenshot per demo ----------------------------------------------
 # Maestro writes screenshots to its output dir; the file name keys off DEMO_ID

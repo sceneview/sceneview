@@ -365,7 +365,7 @@ fun rememberArPlaybackDataset(): File? {
  * Cold-starting a SceneView demo leaves the viewport jet-black for 5–12 s while
  * Filament compiles shaders and uploads buffers — it reads as a crash to a
  * first-time user (#1022). [rememberFirstFrameState] returns this pair so a demo
- * can flip the scrim off exactly when the first Filament frame is presented:
+ * can flip the scrim off exactly when the scene is really on screen:
  *
  * ```kotlin
  * val firstFrame = rememberFirstFrameState()
@@ -374,18 +374,81 @@ fun rememberArPlaybackDataset(): File? {
  * }
  * ```
  *
- * @property rendered Read in the scaffold — `false` until the first frame, then `true`.
- * @property onFrame Pass straight to `SceneView(onFrame = …)`. Cheap after the first call.
+ * ### Why the FIRST presented frame is not the signal (#3444)
+ *
+ * `SceneView` calls back only for frames that Filament accepted, but accepting a
+ * frame means it was **submitted**, not that the driver has drawn it. During
+ * warm-up the driver runs far behind: measured on `emulator-5554`, the Materials
+ * demo submits 4 frames in its first 6.3 s — ~1.5 s of GPU each, compiling the
+ * ToyCar's clearcoat / sheen / transmission variants — and only then settles at
+ * 60 fps. Lifting the cover on submission #1 uncovered a surface the driver would
+ * not paint for another ~8 s: a black viewport with no spinner, no label and no
+ * "Still loading…" card, which is what the QA screenshot (taken at ~11 s), the
+ * store capture and the bug reporter all recorded.
+ *
+ * So the signal is **sustained cadence**, not count:
+ * [READY_FRAME_STREAK] presented frames in a row, each within
+ * [CAUGHT_UP_INTERVAL_MILLIS] of the one before, mean the loop is no longer
+ * waiting on the driver — so what the surface shows is current. A single close
+ * pair is not enough: a warming driver still emits one now and then between its
+ * long stalls, which is why a one-interval test lifted the cover at ~3 s while the
+ * viewport stayed black to ~10 s. A device that never reaches that cadence is not
+ * left under the cover forever — `DemoScaffold` still gives way to its
+ * "Still loading…" card after 12 s.
+ *
+ * @property rendered Read in the scaffold — `false` until the scene is really on
+ *                    screen, then `true`. Never goes back to `false`.
+ * @property onFrame Pass straight to `SceneView(onFrame = …)`. Cheap after the
+ *                   first call.
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
 ) {
+    /** Timestamp of the previous presented frame, or `0L` before the first one. */
+    private var previousFrameTimeNanos: Long = 0L
+
+    /** How many presented frames in a row have arrived within [CAUGHT_UP_INTERVAL_MILLIS]. */
+    private var streak: Int = 0
+
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
-    val onFrame: (frameTimeNanos: Long) -> Unit = {
-        if (!renderedState.value) renderedState.value = true
+    val onFrame: (frameTimeNanos: Long) -> Unit = { frameTimeNanos ->
+        if (!renderedState.value) {
+            val previous = previousFrameTimeNanos
+            previousFrameTimeNanos = frameTimeNanos
+            // `previous == 0L` is the very first presented frame — there is no interval to
+            // judge yet, so it only seeds the comparison.
+            streak = if (previous != 0L &&
+                frameTimeNanos - previous <= CAUGHT_UP_INTERVAL_MILLIS * 1_000_000L
+            ) {
+                streak + 1
+            } else {
+                0
+            }
+            if (streak >= READY_FRAME_STREAK) renderedState.value = true
+        }
     }
 }
+
+/**
+ * Longest gap between two presented frames that still counts as "the render loop has caught
+ * up with the driver" ([FirstFrameState]).
+ *
+ * 250 ms — 4 fps — sits far below the ~1.5 s per frame a warming Filament driver produces and
+ * far above any frame rate a device would sustain in normal use, so it separates the two
+ * regimes without stranding a genuinely slow device under the loading cover.
+ */
+private const val CAUGHT_UP_INTERVAL_MILLIS = 250L
+
+/**
+ * Consecutive on-cadence presented frames [FirstFrameState] needs before it calls the scene
+ * visible.
+ *
+ * 8 frames is ~133 ms once the loop runs at 60 fps — imperceptible — but unreachable for a
+ * driver that is presenting 4 frames in 6 s, which is what the warm-up regime looks like.
+ * The streak resets on every long gap, so one lucky close pair mid-warm-up cannot satisfy it.
+ */
+private const val READY_FRAME_STREAK = 8
 
 /**
  * Remembers a [FirstFrameState] for wiring the [DemoScaffold] loading scrim to a
