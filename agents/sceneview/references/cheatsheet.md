@@ -96,11 +96,11 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | Helper | Returns | Notes |
 | --- | --- | --- |
 | `rememberEngine()` | `Engine` | One per SceneView |
-| `rememberModelLoader(engine)` | `ModelLoader` | Async GLB/GLTF loader |
+| `rememberModelLoader(engine)` | `ModelLoader` | Async GLB/GLTF **and `.3mf`** loader — 3MF is detected by ZIP magic and converted in memory, so there is no separate call (#3482) |
 | `rememberMaterialLoader(engine)` | `MaterialLoader` | `.filamat` loader |
 | `rememberEnvironmentLoader(engine)` | `EnvironmentLoader` | IBL loader |
 | `rememberCameraNode(engine) { … }` | `CameraNode` | Configure in trailing lambda |
-| `rememberModelInstance(modelLoader, "asset.glb")` | `ModelInstance?` | **Nullable while loading** |
+| `rememberModelInstance(modelLoader, "asset.glb")` | `ModelInstance?` | **Nullable while loading**. Takes `.glb`, `.gltf` or `.3mf` — asset path, URL, or a `file://` / `content://` URI shared in from another app |
 | `rememberMainLightNode(engine) { … }` | `LightNode` | Default key light (use `null` to disable) |
 | `rememberFillLightNode(engine) { … }` | `LightNode` | Default fill (use `null` to disable) |
 | `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `orbitHomePosition = Position(…)` for an explicit eye (no "home" gesture exists despite the name) |
