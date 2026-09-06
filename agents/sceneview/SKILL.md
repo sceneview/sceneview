@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-08-06'
+  last-updated: '2026-09-06'
   keywords:
   - sceneview
   - 3d
@@ -17,6 +17,8 @@ metadata:
   - swiftui
   - model viewer
   - augmented reality
+  - 3mf
+  - 3d printing
   - kotlin multiplatform
   - kmp
   - webxr
@@ -62,7 +64,8 @@ NOT improvise an API.
 Trigger on any of:
 
 - "Build me a 3D viewer / AR app in Compose / SwiftUI."
-- "Load a `.glb` / `.gltf` / `.usdz` model in Compose."
+- "Load a `.glb` / `.gltf` / `.usdz` / `.3mf` model in Compose."
+- "Open the `.3mf` that ChatGPT / a slicer gave me, in 3D or in AR."
 - "Place a model on a detected AR plane / image / face."
 - "Render 3D on the web with Filament.js or WebXR."
 - "Bridge a 3D scene to Flutter or React Native."
@@ -239,9 +242,17 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    shared `.3mf` routinely arrives as `application/octet-stream` with no name at all.
    If you genuinely need to identify a buffer, `ThreeMfLoader.isThreeMf(bytes)` in
    `sceneview-core` reads the bytes, on every platform. See
-   `references/recipes.md § Recipe: open a .3mf print`.
+   `references/recipes.md § Recipe: open a .3mf print`. The conversion also scales
+   the file's declared unit to metres and rotates the printer's Z-up to Y-up, so a
+   60 mm print is life-size and upright in AR — never add a scale factor of your own
+   to "fix" it.
 
-7. **Don't recompose-thrash the loaders.** `rememberEngine` / `rememberModelLoader`
+7. **Only glTF/GLB, 3MF (Android) and USDZ (Apple) load.** STL, PLY meshes and
+   OBJ + MTL are open issues (sceneview/sceneview#3486, #3487, #3488), and 3MF is not
+   wired into `sceneview-web` yet (#3491). Say the format is not supported and name
+   the issue rather than inventing a loader for it.
+
+8. **Don't recompose-thrash the loaders.** `rememberEngine` / `rememberModelLoader`
    / `rememberMaterialLoader` / `rememberEnvironmentLoader` belong at the top of
    the screen-level composable, NOT inside scroll lists or item composables.
 

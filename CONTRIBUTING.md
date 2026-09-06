@@ -173,6 +173,23 @@ for full API context in any chat:
 }
 ```
 
+### ChatGPT / Codex
+
+The repository is also an OpenAI plugin — `.codex-plugin/plugin.json` points at the three
+skills under [`agents/`](agents/). Install it into Codex from your checkout:
+
+```bash
+codex plugin marketplace add "$PWD"    # absolute path — a relative one does not resolve
+codex plugin add sceneview@sceneview-local
+```
+
+[AGENTS.md](AGENTS.md) carries the rules a delegated Codex session must respect — it
+implements, investigates and critiques, but does not own version control. Maintainers
+delegate through `.claude/scripts/codex-delegate.sh` (`ask` · `review` ·
+`implement --new-worktree`) rather than a raw `codex` invocation, so a delegation always
+lands in its own worktree with the repository conventions attached. Commits, merges and
+releases stay with the lead session.
+
 ---
 
 ## Pull request guidelines

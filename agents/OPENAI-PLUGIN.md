@@ -62,8 +62,10 @@ refuses Pro tool names, and the skills link to Apache-2.0 sources.
 4. Render a GLB in the browser with `sceneview-web` and add a WebXR "View in AR" button.
 5. Migrate this SceneView 2.x snippet to the 4.x composable API.
 6. Show me this 3D model URL inline and tell me how to load it in Compose.
+7. Open the `.3mf` file a print flow gave me in a Compose viewer, then place it in AR at its
+   real size.
 
-## Test cases (5 positive, 3 negative — OpenAI's format)
+## Test cases (6 positive, 3 negative — OpenAI's format)
 
 | # | Prompt | Expected behaviour | Result shape |
 |---|---|---|---|
@@ -72,6 +74,7 @@ refuses Pro tool names, and the skills link to Apache-2.0 sources.
 | P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM tag `4.34.0` | Swift snippet |
 | P4 | "Show me `https://…/DamagedHelmet.glb` in 3D" (MCP shape only) | Tool `view_3d_model` is called; the widget renders the model inline; text names the URL | `structuredContent.modelUrl` + widget |
 | P5 | "Which SceneView sample fits an AR anchor demo?" (MCP shape only) | `list_samples` then `get_sample` | Sample id + Kotlin source |
+| P6 | "Open this `.3mf` in Compose and place it in AR at its real size" | Skill `sceneview` triggers; the answer uses the ordinary `rememberModelInstance(modelLoader, uri)` path and invents no `loadThreeMf` API; the millimetre → metre scaling is named | Kotlin snippet |
 | N1 | "Write this with Unity / Unreal / raw ARCore" | Skill does not trigger (its description scopes it out); the assistant answers generically or asks | No SceneView code |
 | N2 | "Call `generate_3d_model` to make me a chair" (MCP shape only) | Remote server refuses the Pro tool with an `isError` result naming the free tier | Error result, no charge, no external call |
 | N3 | "Show this model: `file:///Users/me/model.glb`" (MCP shape only) | `view_3d_model` returns an error for a non-HTTPS URL; nothing is fetched | Error result |

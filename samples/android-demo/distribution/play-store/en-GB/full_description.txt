@@ -1,22 +1,31 @@
-SceneView lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
+SceneView lets you open 3D models — including the .3mf files AI and 3D-printing tools hand back — and bring them into your real world with augmented reality.
+
+OPEN ANY MODEL YOU ARE SENT
+Got a 3D file from a chat assistant, a slicer, a message or your Downloads folder? Tap it and pick SceneView. It opens .3mf, .glb and .gltf straight from the app chooser or the share sheet, under its own name, with no conversion step and no account. A printable part arrives at its real size and the right way up, so "View in AR" puts it on your actual table at the size it would print.
 
 EXPLORE 3D MODELS
-Browse a curated gallery of high-quality 3D models rendered in real-time. Rotate, zoom, and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting affects materials — from studio setups to outdoor scenes.
+Browse a curated gallery of high-quality models rendered in real time. Rotate, zoom and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting changes materials — from studio setups to outdoor scenes.
 
 AUGMENTED REALITY
-Place 3D objects in your real world using your camera. Point your camera at a flat surface, tap to place, then drag, pinch, and twist to position your model perfectly. Supports depth occlusion and environmental light estimation for a natural look.
+Point your camera at a flat surface, tap to place, then drag, pinch and twist to position your model exactly. Real-world depth lets furniture sit behind a real chair, people walk in front of virtual objects, and environmental light estimation keeps the result believable. Mount a TV on a wall with floor-to-wall alignment, or measure a real distance by tapping two points.
 
-DISCOVER MORE
-Explore interactive showcases:
-- Dynamic Sky: Watch the sky shift from dawn to dusk with atmospheric scattering
-- Volumetric Fog: Height-based atmospheric fog for immersive scenes
-- Physics: Rigid body simulation with bouncing balls
-- Post-Processing: Bloom, SSAO, FXAA, tone mapping
-- Image Detection: ARCore image recognition with 3D overlay
-- And more: geometry, animations, lighting, camera controls, reflection probes
+50 INTERACTIVE DEMOS
+Every demo is a screen you can actually use:
+- Tap to Place, Placement Scene and Wall Placement — the AR placement flows
+- Depth Occlusion, People Occlusion and Depth Collider — virtual objects that respect the real room
+- Measure — tap two points, read the distance
+- Image Tracking and Augmented Faces — detect a poster, or a face
+- Cloud Anchors, Geospatial Anchors and Streetscape Geometry — anchors that outlive the session, pinned to real places
+- Scene Semantics and Point Cloud — what the camera understands about the world
+- Lighting Lab — sky, HDR environments, reflections and post-processing on one screen
+- Gaussian Splatting — radiance-field rendering on a phone
+- Materials, Geometry, Lines & Paths, Custom Geometry — the building blocks
+- Animation & Physics and Double Pendulum — skeletal clips and rigid-body simulation
+- 2D in 3D — interactive UI cards anchored in world space
+- Spatial Audio, Video Recording, Secondary Camera and Debug Overlay
 
-EFFECTS PLAYGROUND
-Experiment with real-time rendering effects. Adjust time of day, toggle volumetric fog, tune atmospheric haze, and enable screen-space ambient occlusion — all with instant visual feedback.
+BUILT ON THE SCENEVIEW SDK
+This app is the live showcase for SceneView, the open-source 3D and AR SDK for Jetpack Compose, SwiftUI and the web. Everything you see here is a few lines of code in your own app — every screen's source is public.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

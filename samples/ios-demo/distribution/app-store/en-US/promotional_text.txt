@@ -1,1 +1,1 @@
-Browse stunning 3D models, place them in AR with ARKit, and explore real-time rendering effects in SwiftUI.
+Browse stunning 3D models, place them in AR with ARKit, and explore nearly fifty real-time rendering and AR screens built in SwiftUI.

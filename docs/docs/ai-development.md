@@ -12,7 +12,8 @@ SceneView solves this with three layers:
 
 1. **`llms.txt`** — a machine-readable API reference at the repo root
 2. **`sceneview-mcp`** — an MCP server that gives AI tools full API context
-3. **Claude Code skills** — guided workflows for contributing, reviewing, and documenting
+3. **Skills** — the same API contract packaged for Claude Code and for the
+   ChatGPT / Codex plugin directory
 
 ---
 
@@ -58,7 +59,32 @@ The AI will generate correct SceneView code — no hallucinated methods, no outd
 
 Copy `llms.txt` from the SceneView repo into your project root, or add the MCP server to your editor's MCP config. The AI tools will pick it up automatically.
 
-### Use with ChatGPT / Claude web
+### Use with ChatGPT / Codex
+
+The SceneView repository *is* an OpenAI plugin: `.codex-plugin/plugin.json` at its root
+points at the three skills under `agents/` — `sceneview` (Compose), `sceneview-ios`
+(SwiftUI) and `sceneview-web` (Filament.js / WebXR). From a checkout:
+
+```bash
+codex plugin marketplace add "$PWD"    # an absolute path — a relative one does not resolve
+codex plugin add sceneview@sceneview-local
+codex plugin list
+```
+
+Codex also picks the skills up on its own from `.agents/skills/` inside a checkout.
+
+For ChatGPT, the same MCP server speaks the **Streamable HTTP** transport — a hosted
+process, not a spawned one:
+
+```bash
+npx sceneview-mcp --http        # MCP at /mcp, health at /health
+```
+
+It exposes the free tools plus `view_3d_model`, an MCP Apps widget that renders a public
+GLB/glTF URL inline in the conversation. Package, listing copy and submission notes live in
+[`agents/OPENAI-PLUGIN.md`](https://github.com/sceneview/sceneview/blob/main/agents/OPENAI-PLUGIN.md).
+
+### Use with Claude web / any chat
 
 Paste the contents of [`llms.txt`](https://github.com/sceneview/sceneview/blob/main/llms.txt) into your conversation, then ask your question. The AI will use the correct API.
 

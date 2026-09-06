@@ -112,7 +112,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
 ### Model Viewer
 
-Load glTF/GLB (Android, Web) and USDZ (Apple) models with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls.
+Load glTF/GLB (Android, Web), USDZ (Apple) and `.3mf` — the format AI print flows emit — with PBR materials, HDR environment lighting, and automatic animations. Built-in orbit camera with gesture controls. See [Model Formats](formats.md).
 
 </div>
 

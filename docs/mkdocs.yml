@@ -58,6 +58,7 @@ nav:
     - API Cheatsheet: cheatsheet.md
     - API Cheatsheet (Apple): cheatsheet-ios.md
     - Nodes Reference: nodes.md
+    - Model Formats: formats.md
     - Recipes:
       - Overview: recipes.md
       - Blender asset pipeline: recipes/blender-pipeline.md
