@@ -27,7 +27,7 @@ internal object ThreeMfGlb {
         return builder.toGlb()
     }
 
-    private class GltfBuilder {
+    internal class GltfBuilder(private val generator: String = Generator) {
         private val bin = ByteArrayBuilder()
         private val bufferViews = ArrayList<String>()
         private val accessors = ArrayList<String>()
@@ -40,6 +40,25 @@ internal object ThreeMfGlb {
 
         /** Packed colour → glTF material index. */
         private val materialIndexByColor = HashMap<Int, Int>()
+
+        /** Shared assembly for Y-up formats: one named mesh/node per group, then a scaled root. */
+        fun addMesh(name: String, primitives: List<String>) {
+            meshes += """{"name":${name.toJsonString()},"primitives":${primitives.joinToString(",", "[", "]")}}"""
+            nodes += """{"name":${name.toJsonString()},"mesh":${meshes.size - 1}}"""
+        }
+
+        fun addScaledRoot(name: String, scale: Float) {
+            val children = nodes.indices.joinToString(",", "[", "]")
+            nodes += """{"name":${name.toJsonString()},"scale":${floatArrayOf(scale, scale, scale).toJsonArray()},"children":$children}"""
+        }
+
+        /** Positions and supplied normals are already de-indexed; UVs are optional VEC2 values. */
+        fun addPrimitive(positions: FloatArray, normals: FloatArray, uv: FloatArray?, material: Int): String {
+            val position = addFloatAccessor(positions, withBounds = true)
+            val normal = addFloatAccessor(normals, withBounds = false)
+            val texture = uv?.let { ",\"TEXCOORD_0\":" + addFloatAccessor(it, false, 2) }.orEmpty()
+            return """{"attributes":{"POSITION":$position,"NORMAL":$normal$texture},"material":$material}"""
+        }
 
         fun addRootNode(model: ThreeMfModel) {
             val children = model.items.mapNotNull { item ->
@@ -122,26 +141,31 @@ internal object ThreeMfGlb {
                 """"material":${materialIndex(color)}}"""
         }
 
-        private fun addFloatAccessor(values: FloatArray, withBounds: Boolean): Int {
+        private fun addFloatAccessor(values: FloatArray, withBounds: Boolean, components: Int = 3): Int {
             val byteOffset = bin.size
             for (value in values) bin.addFloatLe(value)
             bufferViews += """{"buffer":0,"byteOffset":$byteOffset,""" +
                 """"byteLength":${values.size * Float.SIZE_BYTES},"target":$ARRAY_BUFFER}"""
-            val count = values.size / 3
+            val count = values.size / components
             val bounds = if (withBounds) ""","min":${min(values)},"max":${max(values)}""" else ""
             accessors += """{"bufferView":${bufferViews.size - 1},"componentType":$FLOAT,""" +
-                """"count":$count,"type":"VEC3"$bounds}"""
+                """"count":$count,"type":"VEC$components"$bounds}"""
             return accessors.size - 1
         }
 
         private fun materialIndex(color: Int): Int = materialIndexByColor.getOrPut(color) {
             val factor = if (color == NoColor) DefaultBaseColor else color.toLinearRgba()
+            addMaterial(factor)
+        }
+
+        /** Linear RGBA factors also support OBJ's floating-point Kd and fully transparent black. */
+        fun addMaterial(factor: FloatArray): Int {
             materials += """{"pbrMetallicRoughness":{"baseColorFactor":${factor.toJsonArray()},""" +
                 """"metallicFactor":0,"roughnessFactor":$PrintRoughness},""" +
                 // 3MF requires outward-facing counter-clockwise winding, but generated files often
                 // get it wrong; a one-sided material would then render the print inside-out.
                 """"doubleSided":true${alphaMode(factor[3])}}"""
-            materials.size - 1
+            return materials.size - 1
         }
 
         private fun alphaMode(alpha: Float) = if (alpha < 1f) ""","alphaMode":"BLEND"""" else ""
@@ -152,7 +176,7 @@ internal object ThreeMfGlb {
         }
 
         private fun buildJson(): String = buildString {
-            append("""{"asset":{"version":"2.0","generator":"$Generator"},""")
+            append("""{"asset":{"version":"2.0","generator":${generator.toJsonString()}},""")
             append(""""scene":0,"scenes":[{"nodes":[${nodes.size - 1}]}],""")
             append(""""nodes":${nodes.joinToString(",", "[", "]")},""")
             append(""""meshes":${meshes.joinToString(",", "[", "]")},""")

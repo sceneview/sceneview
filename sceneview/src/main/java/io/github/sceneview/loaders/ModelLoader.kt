@@ -12,6 +12,7 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
+import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
@@ -578,9 +579,10 @@ internal suspend fun <T : Any> destroyOnCancel(
 
 /**
  * Normalises whatever the caller handed us into something Filament's glTF loader accepts: a 3MF is
- * converted to GLB, then WebP textures are transcoded.
+ * converted to GLB, OBJ geometry is converted next, then WebP textures are transcoded.
  */
-private fun Buffer.toFilamentModelSource(): Buffer = convertThreeMfToGlb().transcodeWebPTextures()
+private fun Buffer.toFilamentModelSource(): Buffer =
+    convertThreeMfToGlb().convertObjToGlb().transcodeWebPTextures()
 
 /**
  * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class
@@ -600,6 +602,36 @@ private fun Buffer.convertThreeMfToGlb(): Buffer {
     val glb = ThreeMfLoader.toGlb(bytes)
     // Direct, like every other buffer Filament's JNI layer reads (see WebPTextureTranscoder).
     return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
+}
+
+/**
+ * OBJ has no magic: inspect only a bounded prefix before copying the full payload. Absolute reads
+ * and a duplicate preserve the caller's position/limit, including sliced and read-only buffers.
+ * Automatic loading assumes millimetres and grey; use ObjLoader.toGlb with a resolver for MTL.
+ */
+private fun Buffer.convertObjToGlb(): Buffer {
+    val source = this as? ByteBuffer ?: return this
+    if (!source.startsWithObjGeometry()) return this
+    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
+    val glb = ObjLoader.toGlb(bytes)
+    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
+}
+
+/** JSON and binary GLB fail the cheap gate; other candidates cost at most a 4 KB prefix copy. */
+private fun ByteBuffer.startsWithObjGeometry(): Boolean {
+    if (!hasRemaining()) return false
+    val start = position()
+    val first = get(start).toInt() and 0xff
+    if (first !in 9..13 && first != 32 && first != 35 && first != 0xef &&
+        first != 'v'.code && first != 'f'.code && first != 'o'.code && first != 'g'.code &&
+        first != 'm'.code && first != 'u'.code && first != 's'.code && first != 'l'.code && first != 'p'.code
+    ) return false
+    if (remaining() >= 4 && get(start) == 'g'.code.toByte() && get(start + 1) == 'l'.code.toByte() &&
+        get(start + 2) == 'T'.code.toByte() && get(start + 3) == 'F'.code.toByte()
+    ) return false
+    // Include one extra byte so isObj can distinguish a truncated line from a real EOF at 4096.
+    val prefix = ByteArray(minOf(remaining(), 4097)).also { duplicate().get(it) }
+    return ObjLoader.isObj(prefix)
 }
 
 /** `PK` — the local-file-header magic every ZIP, and so every 3MF, starts with. */
