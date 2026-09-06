@@ -174,6 +174,14 @@ that arrived through a share sheet or a download often has the wrong one.
 | `.stl` (ASCII + binary) | ModelIO | **millimetres** |
 | `.obj` (+ `.mtl` sidecar) | ModelIO | metres |
 | `.ply` (ASCII + binary, vertex colours) | ModelIO | metres |
+| `.3mf` | SceneViewSwift's own parser | declared by the file |
+
+3MF is parsed here rather than by Apple: `MDLAsset` reads OBJ, STL, PLY and USD, Quick
+Look reads USDZ and Reality, and nothing on the platform opens the format 3D printing
+standardised on. `ThreeMFDocument` covers the core spec — units, meshes, components with
+row-vector transforms, build items, `<basematerials>` and `<colorgroup>` resolved per
+triangle — plus the Production extension's `p:path` references, which is how Bambu Studio
+and Orca write project files. External XML entities are refused.
 
 glTF (`.glb` / `.gltf`) is not supported on Apple platforms — neither RealityKit nor
 ModelIO reads it. Convert to USDZ first.

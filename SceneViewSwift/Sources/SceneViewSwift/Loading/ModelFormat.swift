@@ -41,6 +41,13 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// No unit.
     case ply
 
+    // MARK: Parsed by SceneViewSwift
+
+    /// 3D Manufacturing Format — a zip container around an XML mesh description.
+    /// The only mesh format in this list that carries its own unit, and the only one
+    /// neither RealityKit nor ModelIO reads. See ``ThreeMFDocument``.
+    case threeMF = "3mf"
+
     /// The canonical lowercase file extension, without a dot.
     public var fileExtension: String { rawValue }
 
@@ -50,6 +57,8 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
         case realityKit
         /// `MDLAsset` — Apple's ModelIO importer.
         case modelIO
+        /// SceneViewSwift's own parser.
+        case sceneView
     }
 
     /// The reader used for this format.
@@ -57,6 +66,7 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
         switch self {
         case .usdz, .reality, .usda, .usdc, .usd: return .realityKit
         case .stl, .obj, .ply: return .modelIO
+        case .threeMF: return .sceneView
         }
     }
 
@@ -68,11 +78,13 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// - `.obj`, `.ply` → ``ModelUnit/meters``: also unitless, but their common sources
     ///   (photogrammetry, scanners, DCC exports) author in metres. Pass `unit:`
     ///   explicitly when you know better — that is what the parameter is for.
+    /// - `.threeMF` → ``ModelUnit/millimeters``: the 3MF core spec's own default for a
+    ///   missing `unit` attribute. A 3MF that *declares* a unit overrides this.
     /// - USD / Reality → ``ModelUnit/meters``: RealityKit has already applied the
     ///   asset's `metersPerUnit`.
     public var defaultUnit: ModelUnit {
         switch self {
-        case .stl: return .millimeters
+        case .stl, .threeMF: return .millimeters
         case .obj, .ply, .usdz, .reality, .usda, .usdc, .usd: return .meters
         }
     }
@@ -81,10 +93,10 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// ``ModelUnit`` a correction rather than a guess.
     ///
     /// Drives the "what unit is this?" prompt a viewer should show: ask for `.stl`,
-    /// `.obj` and `.ply`; stay quiet for USD.
+    /// `.obj` and `.ply`; stay quiet for `.3mf` and USD.
     public var carriesUnit: Bool {
         switch self {
-        case .usdz, .reality, .usda, .usdc, .usd: return true
+        case .threeMF, .usdz, .reality, .usda, .usdc, .usd: return true
         case .stl, .obj, .ply: return false
         }
     }
@@ -105,13 +117,15 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     /// Identifies the format of a file, by content first and file extension second.
     ///
     /// Content wins because the extension is the least reliable thing about a file that
-    /// reached the app through a share sheet, a download, or a messaging app.
+    /// reached the app through a share sheet, a download, or a messaging app — and
+    /// because two of these formats share a container: **USDZ and 3MF are both zip
+    /// archives**, told apart here by the name of the archive's first entry.
     ///
     /// The signatures that are treated as decisive:
     ///
     /// | Format | Evidence |
     /// |---|---|
-    /// | `.usdz` | `PK\x03\x04` — a zip whose first entry is a `.usd*` |
+    /// | `.usdz` / `.3mf` | `PK\x03\x04`, then the first entry's name (`*.usd*` → USDZ, else 3MF) |
     /// | `.stl` (binary) | `84 + 50 × triangleCount == fileSize` — checked **before** the ASCII test, because binary STLs routinely start with the word `solid` too |
     /// | `.stl` (ASCII) | starts with `solid` and the header is printable text |
     /// | `.ply` | starts with `ply` + newline |
@@ -162,15 +176,14 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
         guard !header.isEmpty else { return nil }
         let bytes = [UInt8](header)
 
-        // --- Zip container --------------------------------------------------------
-        // USDZ is a zip archive, and so are other 3D containers SceneViewSwift does not
-        // read, so the first entry's name decides rather than the `PK` magic alone.
+        // --- Zip container: USDZ and 3MF both live here ---------------------------
+        // USDZ stores its `.usdc` first and uncompressed; a 3MF's first entry is
+        // `[Content_Types].xml` or a `_rels`/`3D` part. Neither has a magic number of its
+        // own, so the first entry's name is the only evidence inside the probe window.
         if bytes.starts(with: [0x50, 0x4B, 0x03, 0x04]) {  // "PK\3\4"
-            if let name = zipFirstEntryName(bytes),
-               (name as NSString).pathExtension.lowercased().hasPrefix("usd") {
-                return .usdz
-            }
-            return nil
+            return zipFirstEntryName(bytes).map { name in
+                (name as NSString).pathExtension.lowercased().hasPrefix("usd") ? .usdz : .threeMF
+            } ?? .threeMF
         }
 
         // --- Binary STL: arithmetic, not a magic number ------------------------
@@ -206,7 +219,8 @@ public enum ModelFormat: String, Sendable, CaseIterable, Codable {
     ///
     /// Only the fixed 30-byte header is needed: bytes 26–27 are the name length and the
     /// name follows the header. Returns `nil` if the probe window does not contain the
-    /// whole name.
+    /// whole name — in which case ``sniff(header:fileSize:)`` falls back to 3MF, the
+    /// format for which a long first entry name is plausible.
     private static func zipFirstEntryName(_ bytes: [UInt8]) -> String? {
         guard bytes.count >= 30 else { return nil }
         let nameLength = Int(bytes[26]) | Int(bytes[27]) << 8
