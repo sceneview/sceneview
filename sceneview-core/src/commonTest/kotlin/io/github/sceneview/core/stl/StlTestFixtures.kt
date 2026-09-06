@@ -57,4 +57,7 @@ internal object StlTestFixtures {
  * Platform-stable float text: Kotlin/JVM prints 70f as "70.0" but Kotlin/JS prints "70", and the
  * malformed-input test edits the fixture by replacing "70.0" — so the fixture must write it.
  */
-private fun Float.stl(): String = toString().let { if (it.any { c -> c == '.' || c == 'e' || c == 'E' }) it else "$it.0" }
+private fun Float.stl(): String {
+    val text = toString()
+    return if (text.any { it == '.' || it == 'e' || it == 'E' }) text else "$text.0"
+}
