@@ -244,6 +244,21 @@ reject_banned_flags() {
 check_quota_and_exit() {
   local log="$1" rc="$2"
   [ "$rc" -eq 0 ] && return 0
+  # An oversized prompt must NOT be read as a quota block. Measured 2026-09-06:
+  # a 2,043,968-character prompt was refused by the CLI itself with
+  #   turn/start failed: Input exceeds the maximum length of 1048576 characters
+  # and the tail of that log also carried the words "session limit" and
+  # "rate_limit" — because they were inside the PROMPT (a transcript quoting an
+  # earlier error). The quota grep matched the prompt's own text and reported a
+  # plan limit that did not exist. Named causes are checked before word-matching.
+  if tail -40 "$log" 2>/dev/null | grep -qE "input_too_large|Input exceeds the maximum length"; then
+    printf '\033[31m✗ Prompt rejected by Codex: too large for the CLI.\033[0m\n' >&2
+    printf '  The CLI caps one turn at %s characters, whatever the model window is.\n' \
+      "$CLI_MAX_PROMPT_CHARS" >&2
+    printf '  Split the input, or narrow it, and try again. This is NOT a quota block.\n' >&2
+    printf '  Log: %s\n' "$log" >&2
+    exit 1
+  fi
   if tail -25 "$log" 2>/dev/null | grep -qiE "usage limit|rate limit|quota|too many requests|plan limit|429"; then
     printf '\033[33m⚠ Codex reports a quota limit. No workaround will be attempted.\033[0m\n' >&2
     printf '  Log: %s\n' "$log" >&2
@@ -309,6 +324,16 @@ done
 ASK_ESCALATE_BYTES="${CODEX_DELEGATE_ASK_ESCALATE_BYTES:-800000}"
 LONG_CONTEXT_MODEL="${CODEX_DELEGATE_LONG_CONTEXT_MODEL:-gpt-6-astra}"
 
+# The CLI's own hard cap on one turn's input, in characters. Measured 2026-09-06
+# against codex-cli 0.153.4: a 2,043,968-character prompt is refused outright with
+#   Input exceeds the maximum length of 1048576 characters (code -32602)
+# This is a CLI limit, NOT the model's window: gpt-6-astra advertises ~922K tokens
+# of input, and this cap stops the prompt around 260-300K. Astra's real advantage
+# through `codex exec` is therefore much smaller than its spec sheet suggests —
+# roughly "a bit more than Sol", not "four times Sol". Refuse early and say why,
+# rather than spend minutes uploading a prompt that will bounce.
+CLI_MAX_PROMPT_CHARS="${CODEX_DELEGATE_MAX_PROMPT_CHARS:-1048576}"
+
 # resolve_model_args — fills EFFECTIVE_MODEL and CODEX_ARGS from MODEL/EFFORT.
 # Called once up front, and again by `ask` if the prompt turns out to need the
 # long-context model. The model is always passed explicitly (see MODEL POLICY),
@@ -359,6 +384,9 @@ case "$CMD" in
     # answer looks complete. Escalate rather than lose the tail. See MODEL
     # POLICY note 2. An explicit --model always wins.
     PROMPT_BYTES=${#PROMPT}
+    if [ "$PROMPT_BYTES" -gt "$CLI_MAX_PROMPT_CHARS" ]; then
+      die "Prompt is $PROMPT_BYTES characters; the Codex CLI refuses more than $CLI_MAX_PROMPT_CHARS in one turn (this is the CLI's cap, not the model's window). Split it or narrow it." 2
+    fi
     if [ -z "$MODEL" ] && [ "$PROMPT_BYTES" -gt "$ASK_ESCALATE_BYTES" ]; then
       info "Prompt is $PROMPT_BYTES bytes (> $ASK_ESCALATE_BYTES): $DEFAULT_MODEL would truncate it."
       MODEL="$LONG_CONTEXT_MODEL"
