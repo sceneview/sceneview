@@ -130,7 +130,7 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 
 | Type | Description |
 |---|---|
-| `ModelNode` | USDZ model loading with animations and collision |
+| `ModelNode` | Model loading (USDZ, STL, OBJ, PLY) with animations and collision |
 | `GeometryNode` | Procedural shapes (cube, sphere, cylinder, cone, plane) |
 | `MeshNode` | Custom mesh geometry from raw vertex data |
 | `ShapeNode` | 2D polygon shapes (flat or extruded) with ear-clipping triangulation |
@@ -158,6 +158,54 @@ let title = TextNode(text: "SceneView", fontSize: 0.08, depth: 0.02)
 | `SceneEnvironment` | 6 HDR presets: studio, outdoor, sunset, night, warm, autumn |
 | `CameraControls` | Orbit camera with inertia and auto-rotation |
 | `GeometryMaterial` | PBR material: `.simple`, `.pbr`, `.unlit` |
+| `ModelFormat` | Supported formats + content-based sniffing |
+| `ModelUnit` | The unit a file's coordinates are in |
+| `MeshAsset` | Parsed geometry, before RealityKit — measurable off the main actor |
+
+## Model Formats
+
+`ModelNode.load(contentsOf:unit:)` opens every supported format from one call. The
+format is decided by reading the file's bytes, not by trusting its extension — a model
+that arrived through a share sheet or a download often has the wrong one.
+
+| Format | Reader | Default unit |
+|---|---|---|
+| `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit | metres (already metric) |
+| `.stl` (ASCII + binary) | ModelIO | **millimetres** |
+| `.obj` (+ `.mtl` sidecar) | ModelIO | metres |
+| `.ply` (ASCII + binary, vertex colours) | ModelIO | metres |
+
+glTF (`.glb` / `.gltf`) is not supported on Apple platforms — neither RealityKit nor
+ModelIO reads it. Convert to USDZ first.
+
+### Units matter
+
+STL, OBJ and PLY store bare numbers with no unit. A slicer STL means millimetres; a
+photogrammetry OBJ means metres. RealityKit works in metres, so guessing wrong puts a
+21 cm print in the room at 210 m. The conversion is baked into the vertex positions, so
+your own `.scale(_:)` stays yours.
+
+```swift
+// Millimetres by default — a 210 mm print is 0.21 m in AR.
+let printed = try await ModelNode.load(contentsOf: stlURL)
+
+// Override when you know better.
+let scan = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
+```
+
+`ModelFormat.carriesUnit` is `false` for exactly those three formats — the signal to show
+a mm/cm/in picker rather than guess.
+
+### Measure before rendering
+
+Parsing has no RealityKit dependency, so a file can be inspected off the main actor:
+
+```swift
+let asset = try MeshAsset.load(contentsOf: url)
+print(asset.format, asset.unit, asset.triangleCount)
+print(asset.boundsInMeters?.extents ?? .zero)   // real-world size
+let node = try await ModelNode(asset)           // then display it
+```
 
 ## Platform Support
 
