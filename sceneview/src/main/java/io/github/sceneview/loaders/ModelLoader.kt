@@ -46,6 +46,13 @@ import java.nio.ByteBuffer
  * (usually millimetres) to metres and rotates it from 3MF's Z-up to glTF's Y-up. A payload that is
  * not a ZIP costs one 4-byte comparison.
  *
+ * **Binary and ASCII `.stl` also load through every entry point** (#3486):
+ * `rememberModelInstance(modelLoader, "part.stl")`. Payload sniffing checks binary size/count
+ * before ASCII solid/facet tokens, without copying other formats. STL has no units: the default
+ * is millimetres, converted to metres, with the file's axes preserved. For another unit, first use
+ * `StlLoader.toGlb(bytes, unit = ThreeMfUnit.INCH)` from `sceneview-core` and load that GLB.
+ * Valid facet normals are kept; zero/invalid normals are repaired with smooth vertex normals.
+ *
  * The `suspend` [loadModel] converts off the main thread; the [createModel] overloads convert on
  * the calling (main) thread, like the rest of their work.
  */
@@ -578,11 +585,11 @@ internal suspend fun <T : Any> destroyOnCancel(
 }
 
 /**
- * Normalises whatever the caller handed us into something Filament's glTF loader accepts: a 3MF is
- * converted to GLB, OBJ geometry is converted next, then WebP textures are transcoded.
+ * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF, STL
+ * and OBJ are converted to GLB, then WebP textures are transcoded.
  */
 private fun Buffer.toFilamentModelSource(): Buffer =
-    convertThreeMfToGlb().convertObjToGlb().transcodeWebPTextures()
+    convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().transcodeWebPTextures()
 
 /**
  * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class

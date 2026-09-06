@@ -832,6 +832,30 @@ public final class io/github/sceneview/core/splat/SplatParser {
 	public final fun parse ([B)Lio/github/sceneview/core/splat/SplatCloud;
 }
 
+public final class io/github/sceneview/core/stl/StlLoader {
+	public static final field DEFAULT_MAX_BYTES I
+	public static final field DEFAULT_MAX_TRIANGLES I
+	public static final field INSTANCE Lio/github/sceneview/core/stl/StlLoader;
+	public final fun isStl ([B)Z
+	public final fun parse ([BLio/github/sceneview/core/threemf/ThreeMfUnit;II)Lio/github/sceneview/core/stl/StlModel;
+	public static synthetic fun parse$default (Lio/github/sceneview/core/stl/StlLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;IIILjava/lang/Object;)Lio/github/sceneview/core/stl/StlModel;
+	public final fun toGlb ([BLio/github/sceneview/core/threemf/ThreeMfUnit;II)[B
+	public static synthetic fun toGlb$default (Lio/github/sceneview/core/stl/StlLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;IIILjava/lang/Object;)[B
+}
+
+public final class io/github/sceneview/core/stl/StlModel {
+	public final fun getIndices ()[I
+	public final fun getNormals ()[F
+	public final fun getPositions ()[F
+	public final fun getTriangleCount ()I
+	public final fun getUnit ()Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public final fun getVertexCount ()I
+}
+
+public final class io/github/sceneview/core/stl/StlParseException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class io/github/sceneview/core/threemf/ThreeMfComponent {
 	public fun <init> (I[F)V
 	public final fun getObjectId ()I

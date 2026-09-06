@@ -27,6 +27,25 @@ internal object ThreeMfGlb {
         return builder.toGlb()
     }
 
+    /**
+     * Shared STL path: positions are welded by the parser; per-corner normals preserve valid
+     * facet normals and carry smooth repairs. Split only (position, normal) seams for glTF's
+     * single index stream. Bake units into positions and preserve axes (STL declares no up axis).
+     * Accessors, materials, JSON and aligned GLB assembly remain shared with the flat 3MF path.
+     */
+    fun encodeIndexed(
+        positions: FloatArray,
+        indices: IntArray,
+        cornerNormals: FloatArray,
+        meters: Float
+    ): ByteArray {
+        val builder = GltfBuilder("SceneView STL loader")
+        builder.addIndexedMesh(positions, indices, cornerNormals, meters)
+        return builder.toGlb()
+    }
+
+    private data class NormalVertex(val position: Int, val x: Float, val y: Float, val z: Float)
+
     internal class GltfBuilder(private val generator: String = Generator) {
         private val bin = ByteArrayBuilder()
         private val bufferViews = ArrayList<String>()
@@ -76,6 +95,48 @@ internal object ThreeMfGlb {
             )
             nodes += """{"name":"3mf","matrix":${root.toJsonArray()},""" +
                 """"children":${children.joinToString(",", "[", "]")}}"""
+        }
+
+        fun addIndexedMesh(
+            source: FloatArray,
+            indices: IntArray,
+            cornerNormals: FloatArray,
+            meters: Float
+        ) {
+            val vertices = HashMap<NormalVertex, Int>()
+            val positions = FloatArrayBuilder()
+            val normals = FloatArrayBuilder()
+            val renderIndices = IntArray(indices.size)
+            for (corner in indices.indices) {
+                val at = corner * 3
+                val key = NormalVertex(
+                    indices[corner], cornerNormals[at], cornerNormals[at + 1], cornerNormals[at + 2]
+                )
+                renderIndices[corner] = vertices.getOrPut(key) {
+                    val index = positions.size / 3
+                    repeat(3) { axis ->
+                        positions.add(source[key.position * 3 + axis] * meters)
+                        normals.add(cornerNormals[at + axis])
+                    }
+                    index
+                }
+            }
+            val positionAccessor = addFloatAccessor(positions.toArray(), withBounds = true)
+            val normalAccessor = addFloatAccessor(normals.toArray(), withBounds = false)
+            val indexAccessor = addIndexAccessor(renderIndices)
+            meshes += """{"primitives":[{"attributes":{"POSITION":$positionAccessor,"NORMAL":$normalAccessor},""" +
+                """"indices":$indexAccessor,"material":${materialIndex(NoColor)}}]}"""
+            nodes += """{"name":"stl","mesh":0}"""
+        }
+
+        private fun addIndexAccessor(indices: IntArray): Int {
+            val byteOffset = bin.size
+            for (index in indices) bin.addIntLe(index)
+            bufferViews += """{"buffer":0,"byteOffset":$byteOffset,""" +
+                """"byteLength":${indices.size * Int.SIZE_BYTES},"target":34963}"""
+            accessors += """{"bufferView":${bufferViews.size - 1},"componentType":5125,""" +
+                """"count":${indices.size},"type":"SCALAR"}"""
+            return accessors.size - 1
         }
 
         /** Emits the node for [object3mf] placed by [transform], recursing into its components. */
@@ -318,6 +379,10 @@ internal object ThreeMfGlb {
         if (!isFinite() || this == 0f) return "0"
         val magnitude = kotlin.math.abs(toDouble())
         val exponent = kotlin.math.floor(kotlin.math.log10(magnitude)).toInt()
+        if (exponent < -MAX_DECIMALS || exponent > 9) {
+            val mantissa = (toDouble() / 10.0.pow(exponent)).toFloat()
+            return "${mantissa.toJsonNumber()}e$exponent"
+        }
         val decimals = (SIGNIFICANT_DIGITS - 1 - exponent).coerceIn(0, MAX_DECIMALS)
         val scale = POWERS_OF_TEN[decimals]
         val scaled = kotlin.math.round(magnitude * scale.toDouble()).toLong()
