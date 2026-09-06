@@ -36,6 +36,31 @@ Browse all sample sources in [`samples/`](samples/) — Android · iOS · Web ·
 
 > **Tip** — every demo opens directly via `https://sceneview.github.io/open?demo=<id>`. For example, `…/open?demo=ar-rerun` lands straight on the AR Rerun debug screen with a single tap from any QR code or link.
 
+## Open any 3D file, at real size
+
+SceneView reads the files people actually receive — from a download, a chat, a 3D-printing site or
+an AI assistant — and shows them at their real size, in 3D and in AR.
+
+| Format | Android | Apple | Web |
+|---|---|---|---|
+| glTF / GLB | ✅ Filament | ✅ RealityKit | ✅ |
+| 3MF | ✅ pure Kotlin → GLB in memory, millimetres honoured | — | — |
+| STL (binary + ASCII) | ✅ pure Kotlin → GLB | — | — |
+| OBJ + MTL | ✅ pure Kotlin → GLB, material colours | — | — |
+| USDZ / Reality | — | ✅ RealityKit | — |
+
+The format is decided by the bytes, not the extension: a `.3mf` that arrives as
+`application/octet-stream` with no file name still opens. The Android demo app is an "Open with"
+target for these files, so a file tapped anywhere on the phone lands in the viewer, then in AR.
+
+Two apps built on SceneView are on Google Play:
+
+- **[AR Model Viewer](https://play.google.com/store/apps/details?id=com.gorisse.thomas.arcamera)** —
+  open any 3D file (GLB, glTF, 3MF, STL, OBJ, PLY) or browse thousands of free models, and see
+  them in your room at real size.
+- **[Will It Fit](https://play.google.com/store/apps/details?id=com.gorisse.thomas.willitfit)** —
+  type a sofa's dimensions, or pick a stand-in, and see whether it fits before you buy.
+
 ---
 
 ## Quick look
