@@ -61,7 +61,12 @@ Full API reference: [`llms.txt`](./llms.txt).
   decisions, UI validated by capture, anything touching secrets, billing or irreversible
   steps — and the reading of whatever Codex returns. The script pins the model
   (`gpt-5.6-sol`) so a CLI update cannot change it silently; `--model gpt-6-astra` is
-  opt-in, per call.
+  opt-in, per call, and now implies `--effort high` — Astra at its own default effort
+  reports nothing. `ask` escalates to Astra on its own when the prompt outgrows Sol's
+  272K window, because Sol truncates such a prompt instead of refusing it. Astra is
+  **not** the default for `implement`: three parallel Astra implements at effort high
+  exhausted a whole ChatGPT Plus five-hour window — for every model, Sol included — in
+  nine minutes.
 - **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
   every other job and `changes-verdict` ("Path filter completed") is the required check.
   Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).

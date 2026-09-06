@@ -42,6 +42,29 @@
 #   move every delegation onto a scarcer allowance. Opt in per call with --model
 #   (e.g. --model gpt-6-astra), or globally with CODEX_DELEGATE_MODEL.
 #
+#   Two corrections applied on 2026-09-06, both from measurement, not preference:
+#
+#   1. ASTRA IMPLIES effort=high. Measured on 2026-09-06: at its own default
+#      effort, gpt-6-astra returned "no actionable regressions" on a diff where
+#      it finds two real bugs at effort high. Astra without high is the scarce
+#      allowance bought at the cheap reasoning — the worst of both. So an
+#      explicit --model gpt-6-astra with no --effort now gets high, out loud.
+#
+#   2. A PROMPT TOO BIG FOR SOL ESCALATES TO ASTRA, for `ask` only. Every
+#      gpt-5.6-* model tops out at 272K tokens of context; gpt-6-astra takes
+#      ~922K of input. Reading a dead session transcript, a whole module or a
+#      log dump is the one job Astra can do that nothing else here can. Handing
+#      such a prompt to Sol does not fail loudly — it truncates. Above
+#      ASK_ESCALATE_BYTES the script switches, says so, and stays switchable off
+#      with an explicit --model.
+#
+#   What did NOT change, and why. `implement` stays on Sol. On the ChatGPT Plus
+#   plan, three parallel Astra implements at effort high burned 206K tokens in
+#   nine minutes and exhausted the whole 5-hour window — for EVERY model, Sol
+#   included (measured 2026-09-06 02:19 → 02:27, reset announced for 04:15).
+#   Astra on `implement` is a deliberate, one-at-a-time choice for a hard issue
+#   on a fresh window, never a default.
+#
 # Exit codes: 0 ok · 1 codex failed · 2 preflight refused (auth/binary/flags)
 #             3 quota or rate limit hit — tell Thomas, never work around it
 #             4 timed out
@@ -279,12 +302,34 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# The model is always passed explicitly (see MODEL POLICY above), never left to
-# the CLI's own default. `codex review` takes no -m, so it gets the same choice
-# through -c model="..." further down.
-CODEX_ARGS=(-m "${MODEL:-$DEFAULT_MODEL}")
-[ -n "$EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=\"$EFFORT\"")
-[ -n "$SCHEMA" ] && CODEX_ARGS+=(--output-schema "$SCHEMA")
+# Prompt size, in bytes, above which `ask` moves from Sol to Astra. Sol's window
+# is 272K tokens; at the ~3.5 bytes/token this repo's Kotlin and transcripts
+# actually measure, 800K bytes is already ~230K tokens, which leaves room for the
+# reply and for the harness's own preamble. Override with the env var to test.
+ASK_ESCALATE_BYTES="${CODEX_DELEGATE_ASK_ESCALATE_BYTES:-800000}"
+LONG_CONTEXT_MODEL="${CODEX_DELEGATE_LONG_CONTEXT_MODEL:-gpt-6-astra}"
+
+# resolve_model_args — fills EFFECTIVE_MODEL and CODEX_ARGS from MODEL/EFFORT.
+# Called once up front, and again by `ask` if the prompt turns out to need the
+# long-context model. The model is always passed explicitly (see MODEL POLICY),
+# never left to the CLI's own default.
+EFFECTIVE_MODEL="" EFFECTIVE_EFFORT=""
+resolve_model_args() {
+  EFFECTIVE_MODEL="${MODEL:-$DEFAULT_MODEL}"
+  EFFECTIVE_EFFORT="$EFFORT"
+  # Astra implies high: see MODEL POLICY note 1.
+  if [ -z "$EFFECTIVE_EFFORT" ]; then
+    case "$EFFECTIVE_MODEL" in
+      gpt-6-*) EFFECTIVE_EFFORT="high"
+               info "$EFFECTIVE_MODEL: reasoning effort defaulted to high (policy)" ;;
+    esac
+  fi
+  CODEX_ARGS=(-m "$EFFECTIVE_MODEL")
+  [ -n "$EFFECTIVE_EFFORT" ] && CODEX_ARGS+=(-c "model_reasoning_effort=\"$EFFECTIVE_EFFORT\"")
+  [ -n "$SCHEMA" ] && CODEX_ARGS+=(--output-schema "$SCHEMA")
+  return 0
+}
+resolve_model_args
 
 get_prompt() {
   if [ -n "$FILE" ]; then
@@ -310,6 +355,16 @@ case "$CMD" in
     preflight quiet
     PROMPT="$(get_prompt)" || exit 2
     [ -n "$PROMPT" ] || die "Empty prompt." 2
+    # A prompt Sol cannot hold does not fail on Sol — it truncates, and the
+    # answer looks complete. Escalate rather than lose the tail. See MODEL
+    # POLICY note 2. An explicit --model always wins.
+    PROMPT_BYTES=${#PROMPT}
+    if [ -z "$MODEL" ] && [ "$PROMPT_BYTES" -gt "$ASK_ESCALATE_BYTES" ]; then
+      info "Prompt is $PROMPT_BYTES bytes (> $ASK_ESCALATE_BYTES): $DEFAULT_MODEL would truncate it."
+      MODEL="$LONG_CONTEXT_MODEL"
+      resolve_model_args
+      info "Escalated to $EFFECTIVE_MODEL for this call. Pass --model to override."
+    fi
     printf '%s' "$PROMPT" | invoke "${LABEL:-ask}" read-only "${TIMEOUT:-600}" "${DIR:-$REPO_ROOT}" \
       exec ${CODEX_ARGS[@]+"${CODEX_ARGS[@]}"} -
     ;;
@@ -339,9 +394,9 @@ case "$CMD" in
     fi
     # `codex review` has no -m flag (0.149.0 .. 0.153.x): the model goes through
     # the generic -c override, so the pinned default applies here too.
-    REVIEW_ARGS=(-c "model=\"${MODEL:-$DEFAULT_MODEL}\"")
-    [ -n "$EFFORT" ] && REVIEW_ARGS+=(-c "model_reasoning_effort=\"$EFFORT\"")
-    info "Codex → review (read-only, cwd=$RDIR, model=${MODEL:-$DEFAULT_MODEL})"
+    REVIEW_ARGS=(-c "model=\"$EFFECTIVE_MODEL\"")
+    [ -n "$EFFECTIVE_EFFORT" ] && REVIEW_ARGS+=(-c "model_reasoning_effort=\"$EFFECTIVE_EFFORT\"")
+    info "Codex → review (read-only, cwd=$RDIR, model=$EFFECTIVE_MODEL)"
     ( cd "$RDIR" && PATH="$CODEX_PATH_PREFIX:$PATH" timeout --foreground "${TIMEOUT:-900}" \
         env "${UNSET_ARGS[@]}" "$CODEX_BIN" review "${REVIEW_ARGS[@]}" ${REST[@]+"${REST[@]}"} ) 2>&1 | tee "$LOG"
     RC="${PIPESTATUS[0]}"
