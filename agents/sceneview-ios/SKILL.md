@@ -26,6 +26,7 @@ metadata:
   - ply
   - mesh formats
   - 3d printing
+  - 3mf
 ---
 
 ## What SceneViewSwift is
@@ -67,7 +68,7 @@ Android-centric — prefer `cheatsheet-ios.md` for Swift.
 Trigger on any of:
 
 - "Build me a 3D viewer / AR app in SwiftUI."
-- "Load a `.usdz` / `.reality` / `.stl` / `.obj` / `.ply` model on iOS."
+- "Load a `.usdz` / `.reality` / `.stl` / `.obj` / `.ply` / `.3mf` model on iOS."
 - "Open an STL from Files / show a 3D print at real size in AR."
 - "Place a model on a detected AR plane in ARKit + SwiftUI."
 - "Add 3D content to a visionOS / macOS app with SceneView."
@@ -175,6 +176,11 @@ the wrong one.
 | `.stl` | ModelIO | **millimetres** |
 | `.obj` (+ `.mtl`) | ModelIO | metres |
 | `.ply` | ModelIO | metres |
+| `.3mf` | SceneViewSwift's own parser | **declared by the file** |
+
+`.3mf` is parsed by SceneViewSwift, not by Apple — `MDLAsset` does not read it and
+neither does Quick Look, even though it is the format 3D printing standardised
+on. It is also the only mesh format here that states its own unit.
 
 **glTF (`.glb` / `.gltf`) is NOT supported on Apple platforms.** Neither
 RealityKit nor ModelIO reads it. Convert to USDZ (Reality Converter,
@@ -202,6 +208,9 @@ let panel = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
 
 // PLY from a phone scanner, bundled with the app.
 let bust = try await ModelNode.load("scans/bust.ply", unit: .meters)
+
+// 3MF from a slicer — the file states its own unit, so pass none.
+let plate = try await ModelNode.load(contentsOf: threeMFURL)
 ```
 
 Measure before you render — parsing has no RealityKit dependency:

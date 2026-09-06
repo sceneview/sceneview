@@ -7431,7 +7431,7 @@ ARSceneView(
 
 ### Node types
 
-#### ModelNode — 3D model (USDZ / Reality / STL / OBJ / PLY)
+#### ModelNode — 3D model (USDZ / Reality / STL / OBJ / PLY / 3MF)
 
 ```swift
 public struct ModelNode: @unchecked Sendable {
@@ -7478,10 +7478,11 @@ public struct ModelNode: @unchecked Sendable {
 ```
 
 Key behaviors:
-- Supports `.usdz` / `.usda` / `.usdc` / `.usd` / `.reality` through RealityKit, and
-  `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO. glTF is **not** supported.
-- `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.stl` / `.obj` / `.ply`
-  is resolved to a URL and read by ModelIO instead.
+- Supports `.usdz` / `.usda` / `.usdc` / `.usd` / `.reality` through RealityKit,
+  `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO, and `.3mf` through SceneViewSwift's
+  own parser. glTF is **not** supported.
+- `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.stl` / `.obj` / `.ply` /
+  `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
 - `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
@@ -7500,6 +7501,16 @@ extension only when the content is not decisive.
 | `.stl` | ModelIO | **millimetres** | ASCII and binary; no unit, no materials |
 | `.obj` | ModelIO | metres | `.mtl` sidecar picked up when next to the file; quad faces triangulated |
 | `.ply` | ModelIO | metres | ASCII and binary; per-vertex colours preserved |
+| `.3mf` | SceneViewSwift's own parser | **from the file** | Zip + XML; the only mesh format here that declares its own unit |
+
+**3MF is parsed by SceneViewSwift, not by Apple.** `MDLAsset` reads OBJ, STL, PLY and
+USD; Quick Look reads USDZ and Reality; nothing on the platform opens a `.3mf` — which is
+the format 3D printing standardised on. `ThreeMFDocument` is a minimal zip reader plus an
+`XMLParser` over the package's `.model` parts, covering `<model unit>`, `<mesh>`,
+`<components>` with row-vector transforms, `<build><item>`, `<basematerials>` and the
+materials extension's `<colorgroup>` resolved per triangle, and Production-extension
+`p:path` references into other parts (how Bambu Studio and Orca write project files).
+External XML entities are refused — an untrusted file must not become a file read.
 
 **The unit is the whole point.** STL, OBJ and PLY store bare numbers with no unit, and a
 slicer STL means millimetres while a photogrammetry OBJ means metres. RealityKit works in
@@ -7535,12 +7546,21 @@ let node = try await ModelNode(asset)                // then display it
 ```swift
 public enum ModelFormat: String, Sendable, CaseIterable {
     case usdz, reality, usda, usdc, usd, stl, obj, ply
+    case threeMF = "3mf"
     public var fileExtension: String                 // == rawValue
-    public var loader: Loader                        // .realityKit | .modelIO
+    public var loader: Loader                        // .realityKit | .modelIO | .sceneView
     public var defaultUnit: ModelUnit
     public var carriesUnit: Bool                     // false for stl/obj/ply — ask the user
     public init?(fileExtension: String)
     public static func sniff(contentsOf url: URL) throws -> ModelFormat
+}
+
+public struct ThreeMFDocument: Sendable {
+    public let unit: ModelUnit                       // as declared by the file
+    public let parts: [MeshGeometry]                 // one per object-and-material
+    public var triangleCount: Int
+    public static func read(contentsOf url: URL) throws -> ThreeMFDocument
+    public static func read(data: Data) throws -> ThreeMFDocument
 }
 
 public enum ModelUnit: String, Sendable, CaseIterable {
@@ -7588,6 +7608,11 @@ Gotchas worth knowing:
 - **A binary STL's 80-byte header often starts with the word `solid`.** Detecting ASCII by
   that prefix reads a binary file as empty; `sniff` uses the size arithmetic
   (`84 + 50 × triangleCount == fileSize`) first.
+- **USDZ and 3MF are both zip archives.** `sniff` tells them apart by the name of the
+  archive's first entry (`*.usd*` → USDZ, anything else → 3MF), not by the `PK` magic.
+- **A 3MF `transform` is twelve numbers in row-vector order** (`v' = v · M`, last row =
+  translation). Reading them as column-major transposes every placed part — the symptom is
+  scattered geometry, not a parse error.
 - **RealityKit's `MeshDescriptor` has no vertex-colour channel.** A coloured PLY keeps its
   full `colors` array on `MeshGeometry`, and `ModelNode` folds the *average* into the
   material tint so the model is not uniformly grey.
