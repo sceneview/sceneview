@@ -21,6 +21,12 @@ metadata:
   - visionos
   - swift package manager
   - usdz
+  - stl
+  - obj
+  - ply
+  - mesh formats
+  - 3d printing
+  - 3mf
 ---
 
 ## What SceneViewSwift is
@@ -62,7 +68,8 @@ Android-centric — prefer `cheatsheet-ios.md` for Swift.
 Trigger on any of:
 
 - "Build me a 3D viewer / AR app in SwiftUI."
-- "Load a `.usdz` / `.glb` / `.gltf` / `.reality` model on iOS."
+- "Load a `.usdz` / `.reality` / `.stl` / `.obj` / `.ply` / `.3mf` model on iOS."
+- "Open an STL from Files / show a 3D print at real size in AR."
 - "Place a model on a detected AR plane in ARKit + SwiftUI."
 - "Add 3D content to a visionOS / macOS app with SceneView."
 - "Convert this SceneKit / RealityView code to SceneViewSwift."
@@ -156,6 +163,71 @@ SceneView {
 .cameraControls(.orbit)
 ```
 
+## Model formats and units
+
+`ModelNode.load(contentsOf:unit:)` is the **one entry point for every supported
+format**. It sniffs the format from the file's own bytes before believing the
+extension — a model that arrived through a share sheet or a download often has
+the wrong one.
+
+| Format | Reader | Default unit |
+|---|---|---|
+| `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit | metres (already metric) |
+| `.stl` | ModelIO | **millimetres** |
+| `.obj` (+ `.mtl`) | ModelIO | metres |
+| `.ply` | ModelIO | metres |
+| `.3mf` | SceneViewSwift's own parser | **declared by the file** |
+
+`.3mf` is parsed by SceneViewSwift, not by Apple — `MDLAsset` does not read it and
+neither does Quick Look, even though it is the format 3D printing standardised
+on. It is also the only mesh format here that states its own unit.
+
+**glTF (`.glb` / `.gltf`) is NOT supported on Apple platforms.** Neither
+RealityKit nor ModelIO reads it. Convert to USDZ (Reality Converter,
+`usdzconvert`) or use the Android/web SDK. Do not emit Swift that loads a `.glb`.
+
+**Always reason about the unit.** STL, OBJ and PLY store bare numbers with no
+unit: a slicer STL means millimetres, a photogrammetry OBJ means metres.
+RealityKit works in metres, so getting this wrong puts a 21 cm print in the room
+at 210 m. `ModelFormat.carriesUnit` is `false` for exactly those three — that is
+the signal to ask the user, or to offer a mm/cm/in picker.
+
+One example per format — each compiles as written:
+
+```swift
+import SceneViewSwift
+
+// USDZ — already metric, `unit:` is ignored.
+let helmet = try await ModelNode.load("models/helmet.usdz")
+
+// STL — millimetres by default, so a 210 mm print is 0.21 m in AR.
+let printed = try await ModelNode.load(contentsOf: stlURL)
+
+// OBJ + .mtl sidecar, authored in centimetres.
+let panel = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
+
+// PLY from a phone scanner, bundled with the app.
+let bust = try await ModelNode.load("scans/bust.ply", unit: .meters)
+
+// 3MF from a slicer — the file states its own unit, so pass none.
+let plate = try await ModelNode.load(contentsOf: threeMFURL)
+```
+
+Measure before you render — parsing has no RealityKit dependency:
+
+```swift
+let asset = try MeshAsset.load(contentsOf: url)
+print(asset.format, asset.unit, asset.triangleCount)
+if let size = asset.boundsInMeters?.extents {
+    print("real size in metres:", size)   // the "will it fit?" number
+}
+let node = try await ModelNode(asset)     // then display it
+```
+
+Failures name the format: `ModelLoadingError.unsupportedFormat(fileExtension:)`
+carries the extension the user actually tried, so surface it
+("SceneView cannot open .fbx files yet") instead of a generic "load failed".
+
 ## The minimal correct AR example
 
 Verified against `samples/ios-demo/.../ARPlacementDemo.swift`. `ARSceneView` is
@@ -185,28 +257,33 @@ ARSceneView(
    nullable. Call it inside a SwiftUI `.task { }` (or another async context)
    and `try`/`try?` it. Store the result in `@State`.
 
-2. **RealityKit entities are `@MainActor`-isolated.** Never mutate an `Entity`
+2. **A unitless mesh format needs a `unit:`.** `.stl`, `.obj` and `.ply` carry no
+   unit; RealityKit is metric. Pass `unit:` when you know it, and default to the
+   format's own convention otherwise (mm for STL — see "Model formats and
+   units"). Never emit code that loads a `.glb` / `.gltf` on Apple platforms.
+
+3. **RealityKit entities are `@MainActor`-isolated.** Never mutate an `Entity`
    from `DispatchQueue.global()`. Use `await MainActor.run { }` to cross back.
    SwiftUI `.task` already runs on the main actor for view work.
 
-3. **`AnchorNode` factories are iOS-specific** — `AnchorNode.world(position:)`
+4. **`AnchorNode` factories are iOS-specific** — `AnchorNode.world(position:)`
    and `AnchorNode.plane(alignment:minimumBounds:)`. This differs from Android,
    where `AnchorNode` wraps a `com.google.ar.core.Anchor`. Do NOT translate the
    Android `AnchorNode(anchor:)` shape to Swift.
 
-4. **`GeometryNode` factories** are static methods: `.cube(size:color:)`,
+5. **`GeometryNode` factories** are static methods: `.cube(size:color:)`,
    `.sphere(radius:color:)`, `.cylinder(radius:height:color:)`,
    `.plane(width:depth:color:)`, `.cone(height:radius:color:)`, `.torus(...)`,
    `.capsule(...)`. There are NO `CubeNode` / `SphereNode` types — that naming
    is Android-only.
 
-5. **`LightNode` factories** are `.directional(color:intensity:castsShadow:)`,
+6. **`LightNode` factories** are `.directional(color:intensity:castsShadow:)`,
    `.point(color:intensity:attenuationRadius:)`,
    `.spot(color:intensity:innerAngle:outerAngle:)`. Position/aim via the fluent
    `.position(_:)` / `.lookAt(_:)` modifiers — not Android's `LightManager.Type`
    enum + `apply` lambda.
 
-6. **Some Android APIs do not port to RealityKit.** Before re-attacking a
+7. **Some Android APIs do not port to RealityKit.** Before re-attacking a
    deprecated symbol, consult the "iOS parity status (#1036)" tables in
    `cheatsheet-ios.md`: `CameraNode.exposure`, `CameraNode.depthOfField`, and
    `LightNode.shadowColor` are compile-warning no-ops on iOS;
@@ -216,10 +293,10 @@ ARSceneView(
    `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (in-app scene→MP4 recording,
    #2626) is **Android-only** — on iOS record the scene via that same ReplayKit path.
 
-7. **`SceneView` is cross-platform (iOS/macOS/visionOS); `ARSceneView` is iOS
+8. **`SceneView` is cross-platform (iOS/macOS/visionOS); `ARSceneView` is iOS
    only.** macOS and visionOS get 3D but not the ARKit camera view.
 
-8. **Cloud Anchors on iOS are a wrapper you complete — not a missing feature.**
+9. **Cloud Anchors on iOS are a wrapper you complete — not a missing feature.**
    `CloudAnchorNode.host(ttlDays:completion:operation:)` /
    `.resolve(cloudAnchorId:completion:operation:)` and the cancellable
    `CloudAnchorFuture` are REAL SceneViewSwift API. By design the core library

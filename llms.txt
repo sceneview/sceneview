@@ -6064,9 +6064,11 @@ public struct ModelNode: @unchecked Sendable {
     public var rotation: simd_quatf
     public var scale: SIMD3<Float>
 
-    public static func load(_ path: String, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(contentsOf url: URL, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(from remoteURL: URL, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
+    // Every loader sniffs the format from the file's own bytes and applies `unit`
+    // (STL/OBJ/PLY carry none). See "SceneViewSwift → Model formats and units".
+    public static func load(_ path: String, unit: ModelUnit? = nil, enableCollision: Bool = true, bundle: Bundle = .main) async throws -> ModelNode
+    public static func load(contentsOf url: URL, unit: ModelUnit? = nil, enableCollision: Bool = true) async throws -> ModelNode
+    public static func load(from remoteURL: URL, unit: ModelUnit? = nil, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
 
     // Transform (fluent)
     public func position(_ position: SIMD3<Float>) -> ModelNode
@@ -7453,16 +7455,18 @@ ARSceneView(
 
 ### Node types
 
-#### ModelNode — 3D model (USDZ / Reality)
+#### ModelNode — 3D model (USDZ / Reality / STL / OBJ / PLY / 3MF)
 
 ```swift
 public struct ModelNode: @unchecked Sendable {
     public let entity: ModelEntity
 
-    // Loading (always @MainActor, async)
-    public static func load(_ path: String, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(contentsOf url: URL, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(from remoteURL: URL, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
+    // Loading (always @MainActor, async). One entry point per source; each sniffs the
+    // format from the file's own bytes, then applies `unit`. See "Model formats and units".
+    public static func load(_ path: String, unit: ModelUnit? = nil, enableCollision: Bool = true, bundle: Bundle = .main) async throws -> ModelNode
+    public static func load(contentsOf url: URL, unit: ModelUnit? = nil, enableCollision: Bool = true) async throws -> ModelNode
+    public static func load(from remoteURL: URL, unit: ModelUnit? = nil, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
+    public init(_ asset: MeshAsset, enableCollision: Bool = true) async throws
 
     // Transform (fluent / chainable)
     public func position(_ position: SIMD3<Float>) -> ModelNode
@@ -7498,11 +7502,148 @@ public struct ModelNode: @unchecked Sendable {
 ```
 
 Key behaviors:
-- Supports `.usdz` and `.reality` files natively. glTF support planned via GLTFKit2.
-- `load(_:)` calls `Entity(named:)` — file must be in the app bundle or an accessible URL.
+- Supports `.usdz` / `.usda` / `.usdc` / `.usd` / `.reality` through RealityKit,
+  `.stl` / `.obj` (+ `.mtl`) / `.ply` through ModelIO, and `.3mf` through SceneViewSwift's
+  own parser. glTF is **not** supported.
+- `load(_:)` calls `Entity(named:)` for USD/Reality; a bundled `.stl` / `.obj` / `.ply` /
+  `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
 - `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
+
+#### Model formats and units (`ModelFormat`, `ModelUnit`, `MeshAsset`)
+
+`ModelNode.load(contentsOf:unit:)` is the **single entry point for every supported
+format**. It never trusts the file extension on its own — a model that arrived through a
+share sheet, AirDrop or a download routinely has the wrong one — so
+`ModelFormat.sniff(contentsOf:)` reads the file's bytes first and falls back to the
+extension only when the content is not decisive.
+
+| Format | Reader | Default unit | Notes |
+|---|---|---|---|
+| `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit | metres | Already metric; `unit:` is ignored |
+| `.stl` | ModelIO | **millimetres** | ASCII and binary; no unit, no materials |
+| `.obj` | ModelIO | metres | `.mtl` sidecar picked up when next to the file; quad faces triangulated |
+| `.ply` | ModelIO | metres | ASCII and binary; per-vertex colours preserved |
+| `.3mf` | SceneViewSwift's own parser | **from the file** | Zip + XML; the only mesh format here that declares its own unit |
+
+**3MF is parsed by SceneViewSwift, not by Apple.** `MDLAsset` reads OBJ, STL, PLY and
+USD; Quick Look reads USDZ and Reality; nothing on the platform opens a `.3mf` — which is
+the format 3D printing standardised on. `ThreeMFDocument` is a minimal zip reader plus an
+`XMLParser` over the package's `.model` parts, covering `<model unit>`, `<mesh>`,
+`<components>` with row-vector transforms, `<build><item>`, `<basematerials>` and the
+materials extension's `<colorgroup>` resolved per triangle, and Production-extension
+`p:path` references into other parts (how Bambu Studio and Orca write project files).
+External XML entities are refused — an untrusted file must not become a file read.
+
+**The unit is the whole point.** STL, OBJ and PLY store bare numbers with no unit, and a
+slicer STL means millimetres while a photogrammetry OBJ means metres. RealityKit works in
+metres, so loading either without saying which is meant puts a 21 cm print in the room at
+210 m. The conversion is **baked into the vertex positions**, not left as an entity scale,
+so a later `.scale(_:)` is yours and does not destroy the correction.
+
+```swift
+import SceneViewSwift
+
+// A 3D-printing STL — millimetres by default, so this is 21 cm tall in AR.
+let part = try await ModelNode.load(contentsOf: stlURL)
+
+// A photogrammetry OBJ authored in centimetres.
+let scan = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
+
+// A PLY from a phone scanner, straight from the app bundle.
+let bust = try await ModelNode.load("scans/bust.ply")
+```
+
+Measure a file **before** rendering it — parsing has no RealityKit dependency and runs off
+the main actor:
+
+```swift
+let asset = try MeshAsset.load(contentsOf: url)      // sniffs the format
+print(asset.format, asset.unit, asset.triangleCount) // e.g. stl millimeters 15234
+if let size = asset.boundsInMeters?.extents {
+    print("real size:", size)                        // metres, unit applied
+}
+let node = try await ModelNode(asset)                // then display it
+```
+
+```swift
+public enum ModelFormat: String, Sendable, CaseIterable {
+    case usdz, reality, usda, usdc, usd, stl, obj, ply
+    case threeMF = "3mf"
+    public var fileExtension: String                 // == rawValue
+    public var loader: Loader                        // .realityKit | .modelIO | .sceneView
+    public var defaultUnit: ModelUnit
+    public var carriesUnit: Bool                     // false for stl/obj/ply — ask the user
+    public init?(fileExtension: String)
+    public static func sniff(contentsOf url: URL) throws -> ModelFormat
+}
+
+public struct ThreeMFDocument: Sendable {
+    public let unit: ModelUnit                       // as declared by the file
+    public let parts: [MeshGeometry]                 // one per object-and-material
+    public var triangleCount: Int
+    public static func read(contentsOf url: URL) throws -> ThreeMFDocument
+    public static func read(data: Data) throws -> ThreeMFDocument
+}
+
+public enum ModelUnit: String, Sendable, CaseIterable {
+    case micrometers, millimeters, centimeters, inches, feet, meters
+    public var metersPerUnit: Float
+    public var symbol: String                        // "mm", "cm", "in", "ft", "m", "µm"
+    public func convert(_ value: Float, to other: ModelUnit) -> Float
+}
+
+public struct MeshAsset: Sendable {
+    public let format: ModelFormat
+    public let unit: ModelUnit
+    public let parts: [MeshGeometry]                 // one per material
+    public var vertexCount: Int
+    public var triangleCount: Int
+    public var bounds: MeshBounds?                   // in `unit`
+    public var boundsInMeters: MeshBounds?           // real-world size
+    public func inMeters() -> MeshAsset
+    public static func load(contentsOf url: URL, unit: ModelUnit? = nil) throws -> MeshAsset
+}
+
+public struct MeshGeometry: Sendable {
+    public var name: String
+    public var positions: [SIMD3<Float>]
+    public var normals: [SIMD3<Float>]?              // nil when the file carried none
+    public var textureCoordinates: [SIMD2<Float>]?
+    public var colors: [SIMD4<Float>]?               // PLY per-vertex colours
+    public var indices: [UInt32]                     // always triangles
+    public var material: MeshMaterialDescription?
+    public var triangleCount: Int
+    public var bounds: MeshBounds?
+    public func generatingNormals() -> MeshGeometry  // flat-shaded, keeps vertices welded
+}
+
+public enum ModelLoadingError: Error, Equatable {
+    case unsupportedFormat(fileExtension: String)    // carries what the user tried to open
+    case unreadableFile(URL)
+    case malformed(reason: String)
+    case emptyMesh
+    case unreadableGeometry(reason: String)
+}
+```
+
+Gotchas worth knowing:
+- **A binary STL's 80-byte header often starts with the word `solid`.** Detecting ASCII by
+  that prefix reads a binary file as empty; `sniff` uses the size arithmetic
+  (`84 + 50 × triangleCount == fileSize`) first.
+- **USDZ and 3MF are both zip archives.** `sniff` tells them apart by the name of the
+  archive's first entry (`*.usd*` → USDZ, anything else → 3MF), not by the `PK` magic.
+- **A 3MF `transform` is twelve numbers in row-vector order** (`v' = v · M`, last row =
+  translation). Reading them as column-major transposes every placed part — the symptom is
+  scattered geometry, not a parse error.
+- **RealityKit's `MeshDescriptor` has no vertex-colour channel.** A coloured PLY keeps its
+  full `colors` array on `MeshGeometry`, and `ModelNode` folds the *average* into the
+  material tint so the model is not uniformly grey.
+- **Normals are generated when a file has none** — by `MeshGeometry.generatingNormals()`,
+  not `MDLMesh.addNormals`, which unwelds the mesh (a 4-vertex quad comes back as 6).
+- `ModelLoadingError.unsupportedFormat` carries the extension, so a viewer can say
+  "SceneView cannot open .fbx files yet" and an app can count what its users actually try.
 
 #### LightNode — light source
 

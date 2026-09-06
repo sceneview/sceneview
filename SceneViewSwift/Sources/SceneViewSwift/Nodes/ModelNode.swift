@@ -80,18 +80,33 @@ public struct ModelNode: @unchecked Sendable {
 
     /// Loads a 3D model from a bundle resource path.
     ///
-    /// Supports `.usdz` and `.reality` files natively.
+    /// Supports every format ``load(contentsOf:unit:enableCollision:)`` does — `.usdz`
+    /// and `.reality` through RealityKit, `.stl`, `.obj` and `.ply` through ModelIO.
     ///
     /// - Parameters:
-    ///   - path: Bundle resource name (e.g. `"models/car.usdz"`).
+    ///   - path: Bundle resource name (e.g. `"models/car.usdz"`, `"parts/bracket.stl"`).
+    ///   - unit: The unit a unitless mesh file is authored in — see
+    ///     ``load(contentsOf:unit:enableCollision:)``.
     ///   - enableCollision: Whether to generate a collision shape for hit testing.
+    ///   - bundle: Bundle to search. Defaults to `.main`.
     /// - Returns: A `ModelNode` wrapping the loaded entity.
     /// - Throws: If the file cannot be found or loaded.
     @MainActor
     public static func load(
         _ path: String,
-        enableCollision: Bool = true
+        unit: ModelUnit? = nil,
+        enableCollision: Bool = true,
+        bundle: Bundle = .main
     ) async throws -> ModelNode {
+        // ModelIO formats are not part of `Entity(named:)`'s vocabulary, so they have to
+        // be resolved to a URL first. USD/Reality keep the RealityKit path, which also
+        // resolves Reality Composer Pro scene names that are not plain files.
+        if let format = ModelFormat(fileExtension: (path as NSString).pathExtension),
+           format.loader != .realityKit,
+           let url = resourceURL(for: path, in: bundle) {
+            return try await load(contentsOf: url, unit: unit, enableCollision: enableCollision)
+        }
+
         let loadedEntity = try await Entity(named: path)
         let modelEntity = loadedEntity as? ModelEntity ?? {
             let me = ModelEntity()
@@ -108,18 +123,69 @@ public struct ModelNode: @unchecked Sendable {
         return ModelNode(modelEntity)
     }
 
-    /// Loads a 3D model from a URL.
+    /// Resolves a bundle resource path like `"models/part.stl"` to a file URL.
+    ///
+    /// Two lookups because Xcode's two ways of adding resources produce two layouts: a
+    /// folder reference keeps `models/` as a real subdirectory, while a group flattens
+    /// everything into the bundle root under its bare file name.
+    @MainActor
+    private static func resourceURL(for path: String, in bundle: Bundle) -> URL? {
+        let ns = path as NSString
+        let ext = ns.pathExtension
+        let withoutExtension = ns.deletingPathExtension
+        let directory = (withoutExtension as NSString).deletingLastPathComponent
+        let name = (withoutExtension as NSString).lastPathComponent
+
+        if !directory.isEmpty,
+           let url = bundle.url(forResource: name, withExtension: ext, subdirectory: directory) {
+            return url
+        }
+        return bundle.url(forResource: name, withExtension: ext)
+    }
+
+    /// Loads a 3D model from a URL — **the one entry point that opens every supported
+    /// format**.
+    ///
+    /// The format is decided by ``ModelFormat/sniff(contentsOf:)``, which reads the
+    /// file's own bytes before believing its extension, then the file goes down one of
+    /// two paths:
+    ///
+    /// | Formats | Path |
+    /// |---|---|
+    /// | `.usdz` `.usda` `.usdc` `.usd` `.reality` | RealityKit's `Entity(contentsOf:)` — already metric |
+    /// | `.stl` `.obj` `.ply` | ModelIO → ``MeshAsset`` → `MeshResource`, with `unit` applied |
+    ///
+    /// ```swift
+    /// // A slicer STL — millimetres, so this is 21 cm tall in AR, not 210 m.
+    /// let print = try await ModelNode.load(contentsOf: stlURL)
+    ///
+    /// // A scan authored in centimetres.
+    /// let scan = try await ModelNode.load(contentsOf: objURL, unit: .centimeters)
+    /// ```
     ///
     /// - Parameters:
     ///   - url: File URL to the model.
+    ///   - unit: The unit the file's coordinates are in, for the formats that do not say
+    ///     (STL, OBJ, PLY). `nil` uses ``ModelFormat/defaultUnit`` — millimetres for STL,
+    ///     metres for OBJ and PLY. Ignored for USD and Reality files, which RealityKit
+    ///     has already converted to metres.
     ///   - enableCollision: Whether to generate collision shapes.
-    /// - Returns: A `ModelNode` wrapping the loaded entity.
-    /// - Throws: If the file cannot be loaded.
+    /// - Returns: A `ModelNode` wrapping the loaded entity, at real-world scale.
+    /// - Throws: ``ModelLoadingError/unsupportedFormat(fileExtension:)`` — carrying the
+    ///   extension, so a viewer can say which format it was asked for — or the underlying
+    ///   read error.
     @MainActor
     public static func load(
         contentsOf url: URL,
+        unit: ModelUnit? = nil,
         enableCollision: Bool = true
     ) async throws -> ModelNode {
+        let format = try ModelFormat.sniff(contentsOf: url)
+        guard format.loader == .realityKit else {
+            let asset = try MeshAsset.load(contentsOf: url, format: format, unit: unit)
+            return try await ModelNode(asset, enableCollision: enableCollision)
+        }
+
         let loadedEntity = try await Entity(contentsOf: url)
         let modelEntity = loadedEntity as? ModelEntity ?? {
             let me = ModelEntity()
@@ -137,8 +203,9 @@ public struct ModelNode: @unchecked Sendable {
 
     /// Loads a 3D model from a remote HTTP/HTTPS URL.
     ///
-    /// Downloads the file to a temporary directory, then loads it with RealityKit.
-    /// Supports USDZ and Reality files. The temporary file is cleaned up after loading.
+    /// Downloads the file to a temporary directory, then hands it to
+    /// ``load(contentsOf:unit:enableCollision:)`` — so it opens every supported format,
+    /// not just USDZ. The temporary file is cleaned up after loading.
     ///
     /// ```swift
     /// let model = try await ModelNode.load(
@@ -147,7 +214,9 @@ public struct ModelNode: @unchecked Sendable {
     /// ```
     ///
     /// - Parameters:
-    ///   - remoteURL: An HTTP or HTTPS URL pointing to a USDZ or Reality file. Any other
+    ///   - unit: The unit a unitless mesh file is authored in — see
+    ///     ``load(contentsOf:unit:enableCollision:)``.
+    ///   - remoteURL: An HTTP or HTTPS URL pointing to a model file. Any other
     ///     scheme throws `URLError(.unsupportedURL)` — this is now enforced, not merely
     ///     documented. `URLSession` will happily fetch a `file://` URL, so a caller
     ///     forwarding a user- or network-supplied string could otherwise turn this into
@@ -163,6 +232,7 @@ public struct ModelNode: @unchecked Sendable {
     @MainActor
     public static func load(
         from remoteURL: URL,
+        unit: ModelUnit? = nil,
         enableCollision: Bool = true,
         timeout: TimeInterval = 60.0,
         maxBytes: Int64 = 64 * 1024 * 1024
@@ -242,7 +312,11 @@ public struct ModelNode: @unchecked Sendable {
         }
         try FileManager.default.moveItem(at: tempURL, to: namedTempURL)
 
-        return try await load(contentsOf: namedTempURL, enableCollision: enableCollision)
+        return try await load(
+            contentsOf: namedTempURL,
+            unit: unit,
+            enableCollision: enableCollision
+        )
     }
 
     // MARK: - Transform helpers (mirrors Android's Node API)
