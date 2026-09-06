@@ -52,7 +52,11 @@ class StlModelSourceTest {
 
     @Test
     fun otherFormatsAreReturnedByIdentity() {
-        for (text in listOf("glTF", "{\"asset\":{}}", "PK\u0003\u0004", "solid", "solidarity facet", "solid x\n multifacet")) {
+        val otherFormats = listOf(
+            "glTF", "{\"asset\":{}}", "PK\u0003\u0004", "solid", "solidarity facet",
+            "solid x\n multifacet"
+        )
+        for (text in otherFormats) {
             val buffer = ByteBuffer.wrap(text.encodeToByteArray())
             assertFalse(buffer.looksLikeStlPayload())
             assertSame(buffer, buffer.convertStlToGlb())

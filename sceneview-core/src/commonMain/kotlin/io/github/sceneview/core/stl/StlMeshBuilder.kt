@@ -38,6 +38,15 @@ internal class StlMeshBuilder(private val unit: ThreeMfUnit, private val maxTria
         val points = positions.toArray()
         val triangles = indices.toArray()
         val faces = faceNormals.toArray()
+        val sums = smoothNormalSums(points, triangles)
+        val normals = FloatArray(triangles.size * 3)
+        for (corner in triangles.indices) {
+            writeNormal(normals, corner, faces, triangles, sums)
+        }
+        return StlModel(points, triangles, normals, unit)
+    }
+
+    private fun smoothNormalSums(points: FloatArray, triangles: IntArray): DoubleArray {
         // Double intermediates avoid overflow/underflow for finite float32 positions and normals.
         val sums = DoubleArray(points.size)
         for (triangle in 0 until triangleCount) {
@@ -58,30 +67,36 @@ internal class StlMeshBuilder(private val unit: ThreeMfUnit, private val maxTria
                 sums[vertex + 2] += ux * vy - uy * vx
             }
         }
-        val normals = FloatArray(triangles.size * 3)
-        for (corner in triangles.indices) {
-            val face = corner / 3 * 3
-            var x = faces[face].toDouble()
-            var y = faces[face + 1].toDouble()
-            var z = faces[face + 2].toDouble()
-            var length = sqrt(x * x + y * y + z * z)
-            if (length == 0.0 || !length.isFinite()) {
-                val vertex = triangles[corner] * 3
-                x = sums[vertex]
-                y = sums[vertex + 1]
-                z = sums[vertex + 2]
-                length = sqrt(x * x + y * y + z * z)
-            }
-            val at = corner * 3
-            if (length > 0.0 && length.isFinite()) {
-                normals[at] = (x / length).toFloat()
-                normals[at + 1] = (y / length).toFloat()
-                normals[at + 2] = (z / length).toFloat()
-            } else {
-                normals[at + 1] = 1f
-            }
+        return sums
+    }
+
+    private fun writeNormal(
+        normals: FloatArray,
+        corner: Int,
+        faces: FloatArray,
+        triangles: IntArray,
+        sums: DoubleArray
+    ) {
+        val face = corner / 3 * 3
+        var x = faces[face].toDouble()
+        var y = faces[face + 1].toDouble()
+        var z = faces[face + 2].toDouble()
+        var length = sqrt(x * x + y * y + z * z)
+        if (length == 0.0 || !length.isFinite()) {
+            val vertex = triangles[corner] * 3
+            x = sums[vertex]
+            y = sums[vertex + 1]
+            z = sums[vertex + 2]
+            length = sqrt(x * x + y * y + z * z)
         }
-        return StlModel(points, triangles, normals, unit)
+        val at = corner * 3
+        if (length > 0.0 && length.isFinite()) {
+            normals[at] = (x / length).toFloat()
+            normals[at + 1] = (y / length).toFloat()
+            normals[at + 2] = (z / length).toFloat()
+        } else {
+            normals[at + 1] = 1f
+        }
     }
 
     private fun coordinate(value: Float): Float {
