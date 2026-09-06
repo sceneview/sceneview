@@ -274,4 +274,44 @@ class WhatsNewSinceTest {
         // The card has always shown code spans stripped.
         assertEquals("Shipped in 4.31", releases.first().highlights.single().headline)
     }
+
+    @Test
+    fun `the sheet opens itself once, when there is something to show`() {
+        assertTrue(
+            shouldAutoOpenWhatsNew(
+                qaMode = false,
+                hasUnseen = true,
+                alreadyShownThisProcess = false,
+            )
+        )
+        assertFalse(
+            "nothing pending, nothing to open",
+            shouldAutoOpenWhatsNew(
+                qaMode = false,
+                hasUnseen = false,
+                alreadyShownThisProcess = false,
+            )
+        )
+        assertFalse(
+            "once per process: returning from a demo must not re-open it",
+            shouldAutoOpenWhatsNew(
+                qaMode = false,
+                hasUnseen = true,
+                alreadyShownThisProcess = true,
+            )
+        )
+    }
+
+    @Test
+    fun `a QA launch never lands on the sheet`() {
+        // #3444: `--ez qa_mode true` deep-links into one demo. A modal that opens
+        // itself over that demo eats the flow's gestures and ends up in the capture.
+        assertFalse(
+            shouldAutoOpenWhatsNew(
+                qaMode = true,
+                hasUnseen = true,
+                alreadyShownThisProcess = false,
+            )
+        )
+    }
 }

@@ -40,10 +40,11 @@
 #   - Capture exactly ONE screenshot per demo (no screenshot-by-screenshot
 #     loop — that was the slow pattern in the old qa-android-demos.sh). The
 #     optional zoom section adds two more (near + far) when CAMERA_DISTANCE set.
-#   - Before capturing, assert the viewport is NOT blank (#3444): wait for the
-#     scaffold's first-frame cover and its stalled-load card to be gone. The
-#     cover lifts on a frame that actually reached the surface, so this is the
-#     app's own "there are pixels" signal — liveness alone passed a black demo.
+#   - Wait for the viewport's own "Scene ready" node BEFORE interacting, and
+#     assert it again before capturing (#3444). The scaffold publishes it only
+#     once a frame has actually reached the surface, so it is the app's own
+#     "there are pixels" signal — liveness alone passed a black demo, and the
+#     loading cover swallows touches, so swiping before it lifts orbited nothing.
 #   - Assert the app process is still foregrounded afterwards. A crash would
 #     drop us out of the app; `assertVisible` on any app element then fails the
 #     flow. A FATAL/ANR sweep of logcat is done once, globally, by catalog.yaml.
@@ -71,11 +72,33 @@ appId: io.github.sceneview.demo
       qa_mode: true
       qa_backdrop: true
 
-# Let the first frame render. The demo scaffold shows a scrim for up to 12 s
-# while the engine warms up; 6 s is plenty for the deep-linked demo to be
-# interactive on the ARCore emulator.
+# --- Wait for real pixels, then interact (#3444) ---------------------------
+# Liveness alone let a BLANK demo pass: `materials` renders a black viewport for
+# its first ~10-14 s on the QA emulator (Filament refuses frames — 4 presented in
+# 6.3 s — while the GPU warms the ToyCar's clearcoat / sheen / transmission
+# variants). Nothing here noticed, because the Activity was perfectly alive the
+# whole time, and the screenshot below landed in that window.
+#
+# The app now states the difference honestly: `SceneView(onFrame = …)` fires only
+# for a frame that actually reached the surface, and the viewport names its own
+# state — "Scene loading" while the cover is up, "Scene ready" once there are
+# real pixels. Waiting for the POSITIVE node is what makes this a gate: waiting
+# for the cover to be *absent* passed in the instant between `launchApp` and the
+# first composition, and the flow then swiped at a covered viewport and captured
+# a black frame anyway (measured on emulator-5554 — that run is why this is not
+# a `notVisible` step). It also has to come BEFORE the swipes: the cover swallows
+# touches, so interacting first orbited nothing.
+#
+# AR demos pass `firstFrameRendered = null` (their viewport is the camera feed),
+# so they publish "Scene ready" as soon as they compose and this passes at once.
+- extendedWaitUntil:
+    visible: "Scene ready"
+    timeout: 30000
+    label: "Wait for the scene's first presented frame"
+
+# Settle the cover's cross-fade before touching the viewport.
 - waitForAnimationToEnd:
-    timeout: 6000
+    timeout: 3000
 
 # --- Real user interaction -------------------------------------------------
 # Orbit the camera: drag across the viewport. Two opposite drags so we exercise
@@ -106,33 +129,11 @@ appId: io.github.sceneview.demo
 - waitForAnimationToEnd:
     timeout: 3000
 
-# --- The captured frame must not be blank (#3444) --------------------------
-# Liveness alone let a BLANK demo pass: `materials` renders a black viewport for
-# the first ~10-14 s on emulator-5554 (Filament refuses frames — 4 presented in
-# 6.3 s — while the GPU warms the ToyCar's clearcoat / sheen / transmission
-# variants), and the screenshot below lands at ~11 s. Nothing here noticed,
-# because the Activity was perfectly alive the whole time.
-#
-# The app now states the difference honestly: `SceneView(onFrame = …)` fires only
-# for a frame that actually reached the surface, so the scaffold's first-frame
-# cover ("Scene loading") stays up until there are real pixels, and after 12 s
-# without one it gives way to the "Still loading…" card. Waiting for BOTH to be
-# gone, then asserting it, is a non-blank-frame assertion made of the app's own
-# signal — no pixel reader, no script. A demo that never presents a frame now
-# fails here instead of passing on liveness.
-#
-# AR demos pass `firstFrameRendered = null` (their viewport is the camera feed),
-# so neither node ever exists and both steps pass through instantly.
-- extendedWaitUntil:
-    notVisible: "Scene loading"
-    timeout: 25000
-    label: "Wait for the scene's first presented frame"
-- extendedWaitUntil:
-    notVisible: "Still loading.*"
-    timeout: 25000
-    label: "Wait out the stalled-load card if one appeared"
-- assertNotVisible: "Scene loading"
-- assertNotVisible: "Still loading.*"
+# --- The captured frame is not blank (#3444) -------------------------------
+# The wait above already held for a presented frame; assert it at capture time,
+# so a demo that stopped presenting fails HERE instead of passing on liveness
+# with a black PNG.
+- assertVisible: "Scene ready"
 
 # --- One screenshot per demo ----------------------------------------------
 # Maestro writes screenshots to its output dir; the file name keys off DEMO_ID
@@ -216,18 +217,19 @@ appId: io.github.sceneview.demo
           timeout: 20000
           optional: true
           label: "Zoom-near: wait for model-load scrim to clear"
-      # 2) Fixed render warm-up. The scrim clears when the model INSTANCE
-      #    exists, not when a lit frame is presented — IBL load + shader
-      #    compilation still follow. Maestro has no sleep command and
-      #    `waitForAnimationToEnd` can't wait on a qa_mode-frozen scene, so
-      #    wait on a marker that never exists: the full timeout elapses
-      #    deterministically and `optional` turns the "failure" into the
-      #    intended no-op.
+      # 2) Wait for a frame that actually reached the surface (#3444). The
+      #    scrim clears when the model INSTANCE exists, not when a lit frame is
+      #    presented — IBL load and shader compilation still follow, which is
+      #    why this step used to be a fixed 9 s guess (a wait on a marker that
+      #    never exists, `optional` turning the timeout into a sleep). The
+      #    scaffold's "Scene loading" cover now lifts exactly on that lit
+      #    frame, so the guess becomes a measurement: the leg waits no longer
+      #    than it must, and a zoom capture with nothing on screen fails
+      #    instead of being taken.
       - extendedWaitUntil:
-          visible: "__sceneview-zoom-qa-render-warmup__"
-          timeout: 9000
-          optional: true
-          label: "Zoom-near: 9 s render warm-up (IBL + shaders + first lit frame)"
+          visible: "Scene ready"
+          timeout: 30000
+          label: "Zoom-near: wait for the first presented frame"
       # 3) Settle any scrim cross-fade still in flight (mirrors the base
       #    path's pre-screenshot settle).
       - waitForAnimationToEnd:
@@ -258,10 +260,9 @@ appId: io.github.sceneview.demo
           optional: true
           label: "Zoom-far: wait for model-load scrim to clear"
       - extendedWaitUntil:
-          visible: "__sceneview-zoom-qa-render-warmup__"
-          timeout: 9000
-          optional: true
-          label: "Zoom-far: 9 s render warm-up (IBL + shaders + first lit frame)"
+          visible: "Scene ready"
+          timeout: 30000
+          label: "Zoom-far: wait for the first presented frame"
       - waitForAnimationToEnd:
           timeout: 3000
       - assertVisible: "Navigate back"

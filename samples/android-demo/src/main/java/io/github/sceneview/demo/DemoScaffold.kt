@@ -345,6 +345,16 @@ fun DemoScaffold(
                 .padding(padding)
                 .consumeWindowInsets(padding),
         ) {
+            // The viewport names its own state (#3444): "Scene loading" while the cover
+            // is up, "Scene ready" once a frame has actually reached the surface.
+            // TalkBack gets a viewport that says whether there is anything to look at,
+            // and device QA gets a POSITIVE signal to wait on — waiting for the cover to
+            // be *absent* passes trivially in the instant between `launchApp` and the
+            // first composition, which is how a black `materials` frame was captured and
+            // shipped as a passing QA screenshot. A demo with no first-frame state (AR:
+            // the viewport is the camera feed) is ready as soon as it is composed.
+            val sceneReady = demoSceneReady(firstFrameRendered?.value)
+            val sceneReadyContentDescription = stringResource(R.string.demo_scene_ready_cd)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -354,7 +364,16 @@ fun DemoScaffold(
                     // Observe taps without taking them: the 3D view keeps its drags.
                     .sceneTapToggle(enabled = chromeToggleOnTap && !touchExploration) {
                         chromeToggled = !chromeToggled
-                    },
+                    }
+                    .then(
+                        if (sceneReady) {
+                            Modifier.semantics {
+                                contentDescription = sceneReadyContentDescription
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,

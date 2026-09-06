@@ -451,6 +451,21 @@ private const val CAUGHT_UP_INTERVAL_MILLIS = 250L
 private const val READY_FRAME_STREAK = 8
 
 /**
+ * Is the viewport showing something worth looking at?
+ *
+ * `null` means the demo has no first-frame state at all — an AR demo, whose viewport is the
+ * camera feed and never goes through the loading cover. Those are ready as soon as they are
+ * composed; everything else is ready only once [FirstFrameState] says a frame reached the
+ * surface (#3444).
+ *
+ * This is the predicate behind the viewport's "Scene ready" accessibility name, which TalkBack
+ * announces and device QA waits on, so the AR pass-through is part of the contract rather than
+ * an accident: a flow that waited on a signal AR demos never publish would hang on every one
+ * of them.
+ */
+internal fun demoSceneReady(firstFrameRendered: Boolean?): Boolean = firstFrameRendered ?: true
+
+/**
  * Remembers a [FirstFrameState] for wiring the [DemoScaffold] loading scrim to a
  * SceneView's first presented frame. See [FirstFrameState] for the usage pattern.
  */

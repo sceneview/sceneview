@@ -20,9 +20,21 @@
   the loop runs at 60 fps, unreachable during warm-up); the 12 s "Still loading…" card remains the
   backstop for a device that never gets there.
 
+- **The demo viewport names its own state.** It is "Scene loading" while the cover is up and
+  "Scene ready" once a frame has reached the surface, so TalkBack announces whether there is
+  anything to look at instead of leaving an unlabelled rectangle.
+- **A QA launch (`--ez qa_mode true`) no longer lands on the "What's new" sheet.** A QA run
+  deep-links into a single demo; a modal that opens itself over it swallowed the gestures and could
+  end up in the capture. It stays silent rather than acknowledging itself, so the badge still has
+  its list waiting for the next human who opens the app.
+
 <!-- category: Tests -->
-- **The Android device-QA flow asserts the captured frame is not blank.** Liveness alone passed a
-  black demo — the Activity was perfectly alive the whole time. `.maestro/android/flows/demo.yaml`
-  now waits for the first-frame cover **and** the stalled-load card to be gone before it takes the
-  screenshot, and asserts it. That is the app's own "there are pixels" signal, so it needs no pixel
-  reader and no new script; a demo that never presents a frame now fails QA instead of passing it.
+- **The Android device-QA flow waits for real pixels before it interacts, and asserts them before
+  it captures.** Liveness alone passed a black demo — the Activity was perfectly alive the whole
+  time — and waiting for the loading cover to be *absent* passed just as trivially, in the instant
+  between `launchApp` and the first composition. `.maestro/android/flows/demo.yaml` now waits for
+  the viewport's positive "Scene ready" node **before** the orbit swipes (the cover swallows
+  touches, so swiping under it orbited nothing) and asserts it again at capture time. That is the
+  app's own "there are pixels" signal, so it needs no pixel reader and no new script; a demo that
+  never presents a frame now fails QA instead of passing it. The same signal replaces the zoom
+  legs' fixed 9 s render-warm-up guess, which waited on a marker that never existed.
