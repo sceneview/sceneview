@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
   <script>
     (function() {
       try {
@@ -39,6 +39,7 @@
       --color-outline-variant: #9fb2dd;
       --gradient-hero: linear-gradient(135deg, #005bc1 0%, #6446cd 100%);
       --shadow-card: 0 12px 32px rgba(30, 50, 86, 0.08);
+      --color-stage: #0b0f16;
       --font-body: 'Inter', system-ui, -apple-system, sans-serif;
     }
     [data-theme="dark"] {
@@ -51,6 +52,7 @@
       --color-surface: #0d1117;
       --color-surface-container: #21262d;
       --color-outline-variant: #484f58;
+      --color-stage: #0b0f16;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -168,6 +170,62 @@
       color: var(--color-on-surface-variant);
       margin: 0;
     }
+    /* ── Model viewer (#3482) ────────────────────────────────────────────
+       A `?url=` model, or one dropped on the page, is rendered right here
+       rather than sent to the app: a .3mf out of ChatGPT has nowhere else to
+       go on the web. The stage colour is DESIGN.md `stage-background`
+       (#0B0F16) — identical in both themes, like every other SceneView
+       model stage. */
+    #viewer-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      max-height: 60vh;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--color-stage);
+      border: 1px solid var(--color-outline-variant);
+      margin-bottom: 16px;
+    }
+    #viewer-canvas { width: 100%; height: 100%; display: block; }
+    #viewer-status {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; padding: 24px;
+      color: #f9f8ff;
+      background: var(--color-stage);
+      font-size: 13px;
+      text-align: center;
+    }
+    #viewer-status[hidden] { display: none; }
+    #viewer-status .spinner { margin: 0; border-color: rgba(249, 248, 255, 0.25); border-top-color: #f9f8ff; }
+    .file-name {
+      font-family: ui-monospace, 'JetBrains Mono', monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    /* Drop target. The overlay only appears while a file is over the page, so
+       the interstitial keeps its own layout when nothing is being dragged. */
+    #drop-hint {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--color-on-surface-variant);
+    }
+    #drop-overlay {
+      position: fixed; inset: 12px;
+      display: none;
+      align-items: center; justify-content: center;
+      border: 2px dashed var(--color-primary);
+      border-radius: 16px;
+      background: var(--color-surface-container);
+      color: var(--color-primary);
+      font-size: 15px; font-weight: 600;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #drop-overlay.show { display: flex; }
+
     .platform-detected { display: none; }
     .platform-detected.show { display: block; }
     code.url {
@@ -229,17 +287,38 @@
       </div>
     </div>
 
+    <div id="content-viewer" class="platform-detected">
+      <h1 id="viewer-title">3D model</h1>
+      <div id="viewer-stage">
+        <canvas id="viewer-canvas"></canvas>
+        <div id="viewer-status">
+          <div class="spinner"></div>
+          <div id="viewer-status-text">Loading the model…</div>
+        </div>
+      </div>
+      <p id="viewer-source" class="file-name"></p>
+      <div class="actions">
+        <a class="btn" href="https://sceneview.github.io/">Browse SceneView</a>
+      </div>
+    </div>
+
     <div id="content-invalid" class="platform-detected">
       <div class="err">
         <strong>Missing or unknown demo id.</strong><br>
         Open this page with <code class="url">?demo=&lt;id&gt;</code> — for
-        example <code class="url">?demo=ar-rerun</code>.
+        example <code class="url">?demo=ar-rerun</code> — or with
+        <code class="url">?url=&lt;model&gt;</code> to view a
+        <code class="url">.3mf</code>, <code class="url">.glb</code> or
+        <code class="url">.gltf</code> right here.
       </div>
+      <p id="drop-hint">…or drop a <code class="url">.3mf</code> file anywhere on this page.</p>
       <div class="actions">
         <a class="btn btn-primary" href="https://sceneview.github.io/">Browse SceneView</a>
       </div>
     </div>
   </main>
+
+  <div id="drop-overlay">Drop a .3mf, .glb or .gltf file to view it</div>
 
   <script type="module">
     // ─── Config ──────────────────────────────────────────────────────────
@@ -333,7 +412,24 @@
       document.getElementById(id).classList.add('show');
     };
 
-    if (!demoId) {
+    // ─── Model viewer route (#3482) ──────────────────────────────────────
+    // `?url=` wins over `?demo=`: it names a specific file to look at, which
+    // is never satisfied by opening the demo list in the app.
+    const urlParam = (params.get('url') || '').trim();
+    const modelUrl = urlParam ? safeModelUrl(urlParam) : null;
+
+    // A file can be dropped whatever panel is showing — the interstitial is
+    // where a .3mf out of ChatGPT lands, and a dead-end error page is the worst
+    // possible answer to it.
+    installFileDrop();
+
+    if (modelUrl) {
+      viewModel(modelUrl, lastPathSegment(modelUrl));
+    } else if (urlParam) {
+      document.getElementById('content-loading').style.display = 'none';
+      show('content-invalid');
+      console.warn('open: refused a non-http(s) ?url= value');
+    } else if (!demoId) {
       // Invalid request — hide loading and show the error panel.
       document.getElementById('content-loading').style.display = 'none';
       show('content-invalid');
@@ -399,6 +495,205 @@
         document.getElementById('qr').innerHTML =
           '<p class="err">QR rendering unavailable in this browser.</p>';
       }
+    }
+
+    // ─── Model viewer (#3482) ────────────────────────────────────────────
+    //
+    // ChatGPT emits a `.3mf` when it turns a drawing into a printable model,
+    // and so does every slicer. Nothing on the web opened one in 3D, so this
+    // page — the one an app link already sends people to — renders it.
+    //
+    // The conversion is NOT reimplemented here. `sceneview-web.js` is the
+    // compiled SceneView KMP core: the same `ThreeMfLoader` Android runs,
+    // exposed as `sceneview.threeMfToGlb(bytes)`. It is loaded ONLY for that
+    // call — never to create a viewer — so the site's own Filament build
+    // (`filamentWebsite`, a different pin from the one the bundle compiles
+    // against) is the only renderer on the page, and the two never meet.
+    const VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.34.0'];
+    const THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
+
+    let viewerScriptsPromise = null;
+    let threeMfScriptPromise = null;
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.onload = () => resolve();
+        el.onerror = () => reject(new Error('failed to load ' + src));
+        document.head.appendChild(el);
+      });
+    }
+
+    function loadViewerScripts() {
+      if (!viewerScriptsPromise) {
+        viewerScriptsPromise = VIEWER_SCRIPTS.reduce(
+          (chain, src) => chain.then(() => loadScript(src)),
+          Promise.resolve(),
+        );
+      }
+      return viewerScriptsPromise;
+    }
+
+    function loadThreeMfConverter() {
+      if (!threeMfScriptPromise) threeMfScriptPromise = loadScript(THREEMF_SCRIPT);
+      return threeMfScriptPromise;
+    }
+
+    /**
+     * `PK\x03\x04` — the ZIP magic every 3MF starts with. The same cheap gate
+     * the Android `ModelLoader` applies before it copies anything: a GLB costs
+     * a four-byte comparison instead of a 238 kB script download.
+     */
+    function looksLikeZip(buffer) {
+      if (buffer.byteLength < 4) return false;
+      const b = new Uint8Array(buffer, 0, 4);
+      return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+    }
+
+    /**
+     * A URL the viewer can load: the 3MF converted to a GLB blob, or
+     * `fallbackUrl` untouched for anything else — a glTF's external buffers and
+     * textures resolve against their own URL, so re-wrapping one as a blob
+     * would break it.
+     */
+    async function toViewableUrl(buffer, fallbackUrl) {
+      if (!looksLikeZip(buffer)) return fallbackUrl;
+      // `filament.js` FIRST: the Kotlin bundle declares Filament as a webpack
+      // external and reads the global as it initialises, so loading it on a
+      // bare page throws. It never *renders* with it — `sceneview.js` owns the
+      // canvas — it only needs the symbol to exist.
+      await loadViewerScripts();
+      await loadThreeMfConverter();
+      if (!window.sceneview || typeof window.sceneview.threeMfToGlb !== 'function') {
+        throw viewerError('converter', 'the 3MF converter did not load');
+      }
+      if (!window.sceneview.isThreeMf(buffer)) {
+        throw viewerError('not-3mf', 'a ZIP archive that is not a 3MF package');
+      }
+      const glb = window.sceneview.threeMfToGlb(buffer);
+      return URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+    }
+
+    /** An error carrying the reason, so the panel says something true (never a guess). */
+    function viewerError(code, message) {
+      const err = new Error(message);
+      err.code = code;
+      return err;
+    }
+
+    /** Only http(s) — never a `javascript:` or `data:` URL from the query string. */
+    function safeModelUrl(raw) {
+      try {
+        const parsed = new URL(raw, location.href);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function lastPathSegment(url) {
+      try {
+        const path = new URL(url, location.href).pathname;
+        return decodeURIComponent(path.substring(path.lastIndexOf('/') + 1)) || url;
+      } catch (e) {
+        return url;
+      }
+    }
+
+    function viewerStatus(text, isError) {
+      const box = document.getElementById('viewer-status');
+      const spinner = box.querySelector('.spinner');
+      const label = document.getElementById('viewer-status-text');
+      if (text === null) { box.hidden = true; return; }
+      box.hidden = false;
+      spinner.style.display = isError ? 'none' : '';
+      label.textContent = text;
+      label.className = isError ? 'err' : '';
+    }
+
+    /** Fetch → sniff → convert → render, for a URL or a dropped file. */
+    async function viewModel(url, label, prefetched) {
+      document.getElementById('content-loading').style.display = 'none';
+      show('content-viewer');
+      document.getElementById('viewer-title').textContent = label || '3D model';
+      document.getElementById('viewer-source').textContent = '';
+      viewerStatus('Loading the model…', false);
+
+      try {
+        let buffer = prefetched;
+        if (!buffer) {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          buffer = await response.arrayBuffer();
+        }
+        const viewableUrl = await toViewableUrl(buffer, url);
+        const converted = viewableUrl !== url;
+
+        viewerStatus('Starting the 3D renderer…', false);
+        await loadViewerScripts();
+        try {
+          await SceneView.modelViewer('viewer-canvas', viewableUrl, {
+            autoRotate: true,
+            // DESIGN.md `stage-background` (#0B0F16), in the linear space
+            // Filament clears with — so the canvas matches the stage frame
+            // around it in both themes.
+            backgroundColor: [0.0033, 0.0047, 0.0074, 1.0],
+          });
+        } catch (renderError) {
+          console.error('open: the renderer refused the model', renderError);
+          throw viewerError('render', String(renderError && renderError.message));
+        }
+
+        viewerStatus(null);
+        document.getElementById('viewer-source').textContent =
+          converted ? (label || '3D model') + ' — 3MF converted in your browser' : (label || '3D model');
+      } catch (e) {
+        console.error('open: could not display the model', e);
+        viewerStatus(VIEWER_ERRORS[e && e.code] || VIEWER_ERRORS.fetch, true);
+      }
+    }
+
+    // One sentence per failure, because "something went wrong" sends nobody
+    // anywhere. `fetch` is the default: it covers a 404, a dead link and the
+    // overwhelmingly common CORS refusal.
+    const VIEWER_ERRORS = {
+      fetch: 'Could not load this model. Check the link, and that its host allows ' +
+        'cross-origin requests.',
+      'not-3mf': 'This file is a ZIP archive, but not a 3MF package.',
+      converter: 'The 3MF converter could not be loaded. Try again in a moment.',
+      render: 'This model could not be rendered. It may be corrupt, or use a glTF ' +
+        'feature this viewer does not support.',
+    };
+
+    // ─── Drag and drop ───────────────────────────────────────────────────
+    function installFileDrop() {
+      const overlay = document.getElementById('drop-overlay');
+      let depth = 0;
+
+      window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        depth++;
+        overlay.classList.add('show');
+      });
+      window.addEventListener('dragover', (e) => { e.preventDefault(); });
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        if (--depth <= 0) { depth = 0; overlay.classList.remove('show'); }
+      });
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        depth = 0;
+        overlay.classList.remove('show');
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        // A local file has no URL the viewer can fetch, so its bytes are read
+        // here and handed straight to the same fetch → sniff → convert path.
+        file.arrayBuffer().then(
+          (buffer) => viewModel(URL.createObjectURL(file), file.name, buffer),
+          (err) => console.error('open: could not read the dropped file', err),
+        );
+      });
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────

@@ -209,4 +209,45 @@ class ContentCenteringTest {
         assertEquals(0.0, ContentCentering.diagonal(scaled), "Non-positive scale -> zero-extent box.")
         assertFalse(ContentCentering.isStable(scaled), "A degenerate box is not framable.")
     }
+
+    @Test
+    fun translatingByTheCenteringOffsetPutsTheBoxOnTheOrigin() {
+        // The auto-dolly aims at the centre of the box it is given. The union is
+        // measured BEFORE the content-root pivot moves it, so the fit must be
+        // handed the moved box or it aims at where the content used to be.
+        // A 3MF is authored in the positive octant by specification — 150 mm
+        // spanning 0..0.15 m on every axis — which is exactly the case that made
+        // the old code render the part a third of a frame off-centre (#3482).
+        val authored = aabb(doubleArrayOf(0.0, 0.0, -0.15), doubleArrayOf(0.15, 0.15, 0.0))
+        val offset = ContentCentering.centeringOffset(authored)!!
+        val moved = ContentCentering.translated(authored, offset)!!
+        val centre = ContentCentering.center(moved)
+        assertEquals(0.0, centre[0], 1e-12, "Centred box must sit on the origin in x.")
+        assertEquals(0.0, centre[1], 1e-12, "Centred box must sit on the origin in y.")
+        assertEquals(0.0, centre[2], 1e-12, "Centred box must sit on the origin in z.")
+    }
+
+    @Test
+    fun translatingKeepsTheExtentsSoTheDollyDistanceIsUnchanged() {
+        // Only the centroid moves: the fit distance is derived from the diagonal,
+        // which a translation must leave alone.
+        val box = aabb(doubleArrayOf(0.0, 0.0, 0.0), doubleArrayOf(2.0, 4.0, 6.0))
+        val moved = ContentCentering.translated(box, doubleArrayOf(-1.0, -2.0, -3.0))!!
+        assertEquals(
+            ContentCentering.diagonal(box),
+            ContentCentering.diagonal(moved),
+            1e-12,
+            "A translation must not change the box diagonal.",
+        )
+    }
+
+    @Test
+    fun alreadyCentredContentIsUnmovedByItsOwnOffset() {
+        // The regression guard in the other direction: the overwhelmingly common
+        // case — a glTF authored around the origin — must be byte-identical
+        // before and after, so this fix changes nothing for existing models.
+        val box = aabb(doubleArrayOf(-1.0, -1.0, -1.0), doubleArrayOf(1.0, 1.0, 1.0))
+        val offset = ContentCentering.centeringOffset(box)!!
+        assertEquals(box, ContentCentering.translated(box, offset))
+    }
 }

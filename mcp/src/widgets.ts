@@ -149,6 +149,12 @@ export const WIDGET_RESOURCE_META = {
 const CDN_BASE = "https://sceneview.github.io";
 const FILAMENT_JS_URL = `${CDN_BASE}/js/filament/filament.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 const SCENEVIEW_JS_URL = `${CDN_BASE}/js/sceneview.js?v=${LATEST_SCENEVIEW_RELEASE}`;
+/**
+ * The compiled SceneView KMP core, loaded by the widget ONLY to convert a `.3mf` to GLB
+ * (`sceneview.threeMfToGlb`) — never to render, which stays `sceneview.js` + the site's own
+ * Filament build. Fetched lazily, so a GLB preview never pays for it (#3482).
+ */
+const SCENEVIEW_WEB_URL = `${CDN_BASE}/js/sceneview-web.js?v=${LATEST_SCENEVIEW_RELEASE}`;
 const NEUTRAL_IBL_URL = `${CDN_BASE}/environments/neutral_ibl.ktx`;
 
 /**
@@ -292,6 +298,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
     (function () {
       var WIDGET_VERSION = "${PACKAGE_VERSION}";
       var IBL_URL = "${NEUTRAL_IBL_URL}";
+      // The 3MF converter (#3482), fetched only when a payload needs it.
+      var CONVERTER_URL = "${SCENEVIEW_WEB_URL}";
 
       var titleEl = document.getElementById("title");
       var loader = document.getElementById("loader");
@@ -430,13 +438,90 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         whenSceneViewReady(function () { start(data); });
       }
 
+      // ── 3MF (#3482) ──────────────────────────────────────────────────────
+      //
+      // ChatGPT emits a \`.3mf\` when it turns a drawing into a printable model.
+      // The conversion is NOT reimplemented here: \`sceneview-web.js\` is the
+      // compiled SceneView KMP core, the same \`ThreeMfLoader\` Android runs,
+      // exposed as \`sceneview.threeMfToGlb(bytes)\`. It is loaded lazily and
+      // only for that call, so a GLB preview never downloads it.
+
+      var threeMfScriptPromise = null;
+      function loadThreeMfConverter() {
+        if (!threeMfScriptPromise) {
+          threeMfScriptPromise = new Promise(function (resolve, reject) {
+            var el = document.createElement("script");
+            el.src = CONVERTER_URL;
+            el.onload = function () { resolve(); };
+            el.onerror = function () { reject(new Error("could not load the 3MF converter")); };
+            document.head.appendChild(el);
+          });
+        }
+        return threeMfScriptPromise;
+      }
+
+      /** \`PK\\x03\\x04\` — the ZIP magic every 3MF starts with. Four bytes, no parse. */
+      function looksLikeZip(buffer) {
+        if (!buffer || buffer.byteLength < 4) return false;
+        var b = new Uint8Array(buffer, 0, 4);
+        return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+      }
+
+      /**
+       * The URL the renderer should load: a \`blob:\` GLB for a 3MF, or the URL
+       * unchanged for anything else.
+       *
+       * Only a \`.3mf\` URL — or one with no recognised model extension, which is
+       * what a generated-file link usually looks like — is fetched and sniffed
+       * here. A \`.glb\` / \`.gltf\` goes straight through, so the common case
+       * still costs exactly one download, and a glTF keeps resolving its own
+       * external buffers and textures against its own URL.
+       */
+      function resolveModelUrl(url) {
+        var path = String(url).split("?")[0].split("#")[0].toLowerCase();
+        var isThreeMfUrl = /\.3mf$/.test(path);
+        var isKnownGltf = /\.(glb|gltf)$/.test(path);
+        if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);
+
+        return fetch(url)
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status + " loading the model");
+            var type = (r.headers.get("content-type") || "").toLowerCase();
+            return r.arrayBuffer().then(function (buffer) {
+              return { buffer: buffer, isThreeMfType: type.indexOf("model/3mf") !== -1 };
+            });
+          })
+          .then(function (payload) {
+            if (!looksLikeZip(payload.buffer) && !payload.isThreeMfType) return url;
+            return loadThreeMfConverter().then(function () {
+              if (!window.sceneview || typeof window.sceneview.threeMfToGlb !== "function") {
+                throw new Error("the 3MF converter did not load");
+              }
+              if (!window.sceneview.isThreeMf(payload.buffer)) {
+                if (isThreeMfUrl) throw new Error("this file is not a readable 3MF");
+                return url;
+              }
+              var glb = window.sceneview.threeMfToGlb(payload.buffer);
+              formatEl.textContent = "3MF";
+              return URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+            });
+          });
+      }
+
       function start(data) {
         if (pending !== data) return; // superseded by a newer payload
+        resolveModelUrl(data.modelUrl).then(function (url) {
+          if (pending !== data) return; // superseded while the 3MF was converting
+          startWith(data, url);
+        }).catch(fail);
+      }
+
+      function startWith(data, url) {
         if (viewer && typeof viewer.loadModel === "function") {
-          viewer.loadModel(data.modelUrl).then(function () { reveal(data); }).catch(fail);
+          viewer.loadModel(url).then(function () { reveal(data); }).catch(fail);
           return;
         }
-        SceneView.modelViewer(canvas, data.modelUrl, {
+        SceneView.modelViewer(canvas, url, {
           backgroundColor: [0, 0, 0, 0],
           // Match the sceneview.github.io playground hero settings.
           lightIntensity: 150000,

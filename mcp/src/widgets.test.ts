@@ -89,9 +89,33 @@ describe("3D viewer widget HTML", () => {
   });
 
   it("renders with SceneView.modelViewer and an absolute IBL", () => {
-    expect(WIDGET_3D_VIEWER_HTML).toContain("SceneView.modelViewer(canvas, data.modelUrl");
+    // `url`, not `data.modelUrl`: a 3MF is converted to a blob GLB first (#3482),
+    // and the renderer must be handed the resolved URL, never the raw one.
+    expect(WIDGET_3D_VIEWER_HTML).toContain("SceneView.modelViewer(canvas, url");
     expect(WIDGET_3D_VIEWER_HTML).toContain(
       'IBL_URL = "https://sceneview.github.io/environments/neutral_ibl.ktx"'
+    );
+  });
+
+  it("converts a 3MF in the browser rather than handing it to the glTF renderer (#3482)", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    // The converter is the compiled KMP core, loaded from the CDN — never a
+    // second parser written into this widget.
+    expect(html).toContain("sceneview-web.js");
+    expect(html).toContain("window.sceneview.threeMfToGlb(payload.buffer)");
+    expect(html).toContain("window.sceneview.isThreeMf(payload.buffer)");
+    // The MIME type routes a payload to the converter just as the extension does.
+    expect(html).toContain('indexOf("model/3mf")');
+    // The result reaches Filament as a GLB blob, and the format pill says so.
+    expect(html).toContain('new Blob([glb], { type: "model/gltf-binary" })');
+    expect(html).toContain('formatEl.textContent = "3MF"');
+  });
+
+  it("does not download the converter for a plain GLB", () => {
+    // The lazy-load gate: a `.glb` / `.gltf` URL short-circuits before any
+    // fetch, so the common preview costs one download and no extra script.
+    expect(WIDGET_3D_VIEWER_HTML).toContain(
+      "if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);"
     );
   });
 });
@@ -103,6 +127,15 @@ describe("view_3d_model tool", () => {
     expect(def).toBeDefined();
     expect(getToolTier("view_3d_model")).toBe("free");
     expect(def?.inputSchema.required).toEqual(["modelUrl"]);
+    // 3MF is a first-class input, not a footnote: the assistant only reaches for
+    // this tool on a `.3mf` if the schema says it is accepted (#3482).
+    expect(def?.description).toContain("3MF");
+    const properties = (def as NonNullable<typeof def>).inputSchema.properties as Record<
+      string,
+      { description: string }
+    >;
+    expect(properties.modelUrl.description).toContain(".3mf");
+    expect(properties.modelUrl.description).toContain("model/3mf");
     expect(def?.annotations).toMatchObject({
       readOnlyHint: true,
       openWorldHint: true,

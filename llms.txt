@@ -3317,6 +3317,22 @@ Conversion happens off the main thread for `loadModel*` / `rememberModelInstance
 on the calling thread for the synchronous `createModel*` overloads. A payload that is not a ZIP
 costs a 4-byte comparison.
 
+**On the web it is the same story — no new call:**
+```js
+// `sceneview-web` sniffs the payload it fetched, so a .3mf URL goes where a .glb URL goes.
+sceneview.modelViewer("canvas", "print.3mf");
+
+// When you hold the BYTES instead — a dropped file, a fetch you made yourself:
+const buffer = await file.arrayBuffer();
+if (sceneview.isThreeMf(buffer)) {
+  const glb = sceneview.threeMfToGlb(buffer);           // Uint8Array, self-contained GLB
+  const url = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
+  sceneview.modelViewer("canvas", url);
+}
+```
+`isThreeMf` never throws; `threeMfToGlb` throws when the payload is not a readable 3MF. Both take an
+`ArrayBuffer` or any `ArrayBufferView`.
+
 **Direct access (all platforms — Android, iOS, web; `sceneview-core`, no platform dependency):**
 ```kotlin
 import io.github.sceneview.core.threemf.ThreeMfLoader
@@ -6720,6 +6736,10 @@ sceneview.modelViewer(canvasId, modelUrl)
 // Model viewer with autoRotate toggle
 sceneview.modelViewerAutoRotate(canvasId, modelUrl, autoRotate)
   .then(sv => { /* SceneViewer instance */ })
+
+// 3MF (#3482) — a `.3mf` URL needs nothing extra; these are for raw bytes.
+sceneview.isThreeMf(bytes)      // ArrayBuffer | ArrayBufferView -> boolean, never throws
+sceneview.threeMfToGlb(bytes)   // -> Uint8Array (GLB); throws if not a readable 3MF
 
 // Full viewer (camera + light customization)
 sceneview.createViewer(canvasId)          // autoRotate=true, cameraControls=true

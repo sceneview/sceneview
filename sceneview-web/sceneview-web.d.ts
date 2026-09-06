@@ -279,3 +279,31 @@ export function modelViewerAutoRotate(
   modelUrl: string,
   autoRotate: boolean
 ): Promise<SceneViewer>;
+
+/**
+ * `true` when `bytes` is a **3MF** package — the format ChatGPT emits for a printable model,
+ * and what every slicer reads and writes (#3482).
+ *
+ * Never throws: anything that is not a 3MF — a GLB, a plain ZIP, a truncated file — is `false`.
+ * A payload without the ZIP magic costs a 4-byte comparison.
+ */
+export function isThreeMf(bytes: ArrayBuffer | ArrayBufferView): boolean;
+
+/**
+ * Converts a **3MF** to a self-contained GLB: metres, Y-up, flat-shaded, one material per 3MF
+ * colour. Throws when `bytes` is not a readable 3MF — call {@link isThreeMf} first to branch
+ * without an exception.
+ *
+ * You rarely need this: {@link modelViewer} and `SceneViewer.loadModel` already accept a `.3mf`
+ * URL. Reach for it when the page holds the *bytes* — a dropped file, a fetch it made itself —
+ * and wants the GLB, e.g. to build a `blob:` URL for another glTF viewer.
+ *
+ * ```js
+ * const buf = await file.arrayBuffer();
+ * if (sceneview.isThreeMf(buf)) {
+ *   const glb = sceneview.threeMfToGlb(buf);
+ *   const url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+ * }
+ * ```
+ */
+export function threeMfToGlb(bytes: ArrayBuffer | ArrayBufferView): Uint8Array;

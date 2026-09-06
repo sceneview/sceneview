@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SceneView Kotlin/JS bundle — 3MF smoke test</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #101418; }
+    #scene-canvas { width: 640px; height: 480px; display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    3MF (#3482) harness for the COMPILED Kotlin/JS bundle (`sceneview-web.js`)
+    — the real npm/CDN artifact, NOT the hand-authored `js/sceneview.js`.
+    Staged alongside a version-matched `filament.js`/`.wasm` by
+    `.claude/scripts/web-bundle-smoke.sh`. Driven by `tests/threemf-bundle.spec.ts`.
+
+    What it proves: `loadModel(url)` takes a `.3mf` with no new call — the
+    format ChatGPT emits for a printable model — converts it through the shared
+    KMP `ThreeMfLoader`, and renders it on the existing Filament.js GLB path.
+
+    Two assets, on purpose:
+      · `two-colour-cube.3mf` is byte-identical to the fixture the `sceneview-core`
+        3MF unit tests parse (a 20 mm two-coloured cube written by Python's
+        `zipfile` with ZIP_DEFLATED) — it drives the byte-level surface.
+      · `printed-icosahedron.3mf` is a 150 mm two-coloured part, the size an
+        actual desk print comes off the bed at, and is the one rendered: the
+        viewer's camera stops 0.5 m out with a 0.1 m near plane, so a 20 mm part
+        is a speck there. That is real-world scale doing its job, not a bug.
+  -->
+  <canvas id="scene-canvas" width="640" height="480"></canvas>
+
+  <script src="./filament.js"></script>
+  <script src="./sceneview-web.js"></script>
+  <script>
+    // Same globals shape as the splat + base bundle fixtures, so the specs
+    // share the "did the bundle boot" assertions.
+    window.__smoke = {
+      status: 'pending',      // pending | resolved | rejected | no-api
+      error: null,
+      version: null,
+      modelLoaded: false,     // loadModel('...3mf') resolved
+      sniffed: null,          // sceneview.isThreeMf(bytes) on the same file
+      glbMagic: null,         // first 4 bytes of sceneview.threeMfToGlb(bytes)
+      convertError: null,
+    };
+
+    window.addEventListener('load', function () {
+      if (!window.sceneview || typeof window.sceneview.createViewer !== 'function') {
+        window.__smoke.status = 'no-api';
+        return;
+      }
+      window.__smoke.version = window.sceneview.version;
+
+      // 1. The byte-level surface (`isThreeMf` / `threeMfToGlb`), exercised on
+      //    the very same file the viewer loads below. Independent of Filament,
+      //    so it reports even if the WebGL context never comes up.
+      fetch('../models/two-colour-cube.3mf')
+        .then(function (r) { return r.arrayBuffer(); })
+        .then(function (buf) {
+          window.__smoke.sniffed = window.sceneview.isThreeMf(buf);
+          var glb = window.sceneview.threeMfToGlb(buf);
+          // "glTF" — the GLB magic. Anything else means the converter returned
+          // something Filament could not have read.
+          window.__smoke.glbMagic = String.fromCharCode(glb[0], glb[1], glb[2], glb[3]);
+        })
+        .catch(function (err) {
+          window.__smoke.convertError = (err && err.message) ? err.message : String(err);
+        });
+
+      // 2. The end-to-end path: a `.3mf` URL through `loadModel`, no new API.
+      //    Auto-rotate ON: the render gate (#2332) idles a *static* scene after
+      //    its settle tail, and `setCameraOrbit` alone does not mark it dirty —
+      //    a still viewer would keep presenting the frame from before the model
+      //    was framed. A turning camera keeps the gate active, which is also
+      //    what a real product page does.
+      window.sceneview.createViewer('scene-canvas')
+        .then(function (sv) {
+          window.__smoke.status = 'resolved';
+          window.__sv = sv;
+          sv.setBackgroundColor(0.063, 0.078, 0.094, 1.0);
+          return sv.loadModel('../models/printed-icosahedron.3mf');
+        })
+        .then(function () {
+          window.__smoke.modelLoaded = true;
+          // The auto-centre pass has already pulled the part to the origin (a
+          // 3MF is authored in the positive octant, so it arrives offset), so
+          // only the distance matters: 0.5 m is the orbit controller's near
+          // limit, where a 150 mm print fills about a third of the frame.
+          window.__orbitTo(0.9, 1.2, 0.5);
+        })
+        .catch(function (err) {
+          window.__smoke.status = 'rejected';
+          window.__smoke.error = (err && err.message) ? err.message : String(err);
+        });
+    });
+
+    /** Fixed spherical pose (radians, metres) so the spec can sample reproducible frames. */
+    window.__orbitTo = function (theta, phi, distance) {
+      if (window.__sv && typeof window.__sv.setCameraOrbit === 'function') {
+        window.__sv.setCameraOrbit(theta, phi, distance);
+      }
+    };
+  </script>
+</body>
+</html>
