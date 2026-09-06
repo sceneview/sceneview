@@ -720,10 +720,14 @@ private val FEATURED_AR_DEMOS = listOf(
         subtitleRes = R.string.featured_ar_cloud_anchor_subtitle,
         icon = Icons.Filled.Cloud,
     ),
+    // #3463 — `ar-streetscape` became the second mode of the Scene Geometry card. The
+    // featured tile names the live id, not the retired one: the "All AR demos" grid below
+    // filters on ALL_DEMOS minus the featured ids, so a retired id here would have shown
+    // the same demo twice under two different names.
     FeaturedArDemo(
-        id = "ar-streetscape",
-        titleRes = R.string.featured_ar_streetscape_title,
-        subtitleRes = R.string.featured_ar_streetscape_subtitle,
+        id = "ar-scene-mesh",
+        titleRes = R.string.featured_ar_scene_geometry_title,
+        subtitleRes = R.string.featured_ar_scene_geometry_subtitle,
         icon = Icons.Filled.LocationCity,
     ),
     FeaturedArDemo(

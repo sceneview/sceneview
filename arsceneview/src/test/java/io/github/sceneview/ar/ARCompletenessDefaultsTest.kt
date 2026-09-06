@@ -186,7 +186,8 @@ class ARCompletenessDefaultsTest {
             "demos/ARRecordPlaybackDemo.kt",
             "demos/ARRerunDemo.kt",
             "demos/ARRooftopAnchorDemo.kt",
-            "demos/ARStreetscapeDemo.kt",
+            // #3463 merged ARSceneMeshDemo + ARStreetscapeDemo into this one file.
+            "demos/ARSceneGeometryDemo.kt",
             "demos/ARTerrainAnchorDemo.kt",
             "demos/OrbitalARDemo.kt",
             "ui/ArViewTab.kt",

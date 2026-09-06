@@ -2862,7 +2862,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: `samples/android-demo/.../ARStreetscapeDemo.kt`. Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
+Demo: the **Streetscape** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
 ### SceneMeshNode — classified building / terrain mesh (ARKit ARMeshAnchor parity)
 
@@ -2902,7 +2902,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: `samples/android-demo/.../ARSceneMeshDemo.kt`.
+Demo: the **Mesh** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Its Streetscape mode renders the same trackables through the raw `StreetscapeGeometryNode`, so the two are one screen away from each other.
 
 ### Geospatial Depth — extend environment depth accuracy to ~65 m
 

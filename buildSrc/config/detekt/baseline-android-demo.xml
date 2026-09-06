@@ -19,7 +19,6 @@
     <ID>MatchingDeclarationName:ParkFraming.kt:ParkSlot</ID>
     <ID>MatchingDeclarationName:PointAndAskDemo.kt:PointAndAskTestTags</ID>
     <ID>MatchingDeclarationName:RerunSaveUx.kt:RerunSaveActionUx</ID>
-    <ID>MaxLineLength:ARStreetscapeDemo.kt:"${geospatialUnavailable!!} \u2014 needs outdoor area with Street View coverage + Cloud API key"</ID>
     <ID>MaxLineLength:AnimationBar.kt:@Composable</ID>
     <ID>MaxLineLength:AnimationBar.kt:Box { TextButton(onClick = { menu = true }) { Text(clipNames.getOrNull(selectedClip) ?: "Clip ${selectedClip + 1}") }; DropdownMenu(menu, { menu = false }) { clipNames.forEachIndexed { i, name -> DropdownMenuItem({ Text(name) }, { onClipChange(i); menu = false }) } } }</ID>
     <ID>MaxLineLength:AnimationBar.kt:IconButton(onClick = { onPlayingChange(!playing) }, modifier = Modifier.size(SceneViewTokens.Layout.viewerAnimationButton)) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play") }</ID>
@@ -45,7 +44,6 @@
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-raw-depth-point-cloud" to PreviewPair(R.drawable.preview_ar_raw_depth_point_cloud_light, R.drawable.preview_ar_raw_depth_point_cloud_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-record-playback" to PreviewPair(R.drawable.preview_ar_record_playback_light, R.drawable.preview_ar_record_playback_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-scene-semantics" to PreviewPair(R.drawable.preview_ar_scene_semantics_light, R.drawable.preview_ar_scene_semantics_dark)</ID>
-    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-streetscape" to PreviewPair(R.drawable.preview_ar_streetscape_light, R.drawable.preview_ar_streetscape_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"camera-gestures" to PreviewPair(R.drawable.preview_camera_gestures_light, R.drawable.preview_camera_gestures_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"contact-shadow-preview" to PreviewPair(R.drawable.preview_contact_shadow_preview_light, R.drawable.preview_contact_shadow_preview_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"custom-geometry" to PreviewPair(R.drawable.preview_custom_geometry_light, R.drawable.preview_custom_geometry_dark)</ID>

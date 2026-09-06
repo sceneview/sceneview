@@ -49,6 +49,13 @@ class DeepLinkRouterTest {
         DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test")),
     )
 
+    // Registry holding the Scene Geometry card the #3463 merge redirects onto. Unlike the
+    // other regroup merges this one kept the absorbing demo's own id (`ar-scene-mesh`) —
+    // iOS ships a screen under it — so the registry is a single entry.
+    private val sceneGeometryRegistry = listOf(
+        DemoEntry("ar-scene-mesh", R.string.demo_ar_scene_mesh_title, R.string.demo_ar_scene_mesh_subtitle, "AR Understanding", Icons.Filled.ViewInAr, order = 9, tags = setOf("test")),
+    )
+
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
 
     @Test
@@ -364,6 +371,55 @@ class DeepLinkRouterTest {
         // "already lands correctly".
         assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-terrain"])
         assertNull(DeepLinkRouter.resolveInitialTab("ar-terrain", null))
+    }
+
+    // ── #3463 — Scene Geometry: `ar-streetscape` folded into `ar-scene-mesh` ──
+    //
+    // The card is now "Scene Geometry" with a Mesh / Streetscape toggle. The absorbing
+    // demo kept its own id, so this merge retires exactly one id — and that one id is on
+    // the public deep-link surface (docs, QR codes, `.maestro/android/ar.yaml`, which
+    // drives it deliberately to reach the Streetscape mode).
+
+    @Test
+    fun `the retired streetscape link resolves onto the Scene Geometry card`() {
+        assertEquals(
+            "validate('ar-streetscape') must redirect to 'ar-scene-mesh'",
+            "ar-scene-mesh",
+            DeepLinkRouter.validate("ar-streetscape", sceneGeometryRegistry),
+        )
+        assertEquals(
+            "sceneview://demo/ar-streetscape must resolve to 'ar-scene-mesh'",
+            "ar-scene-mesh",
+            DeepLinkRouter.parse(Uri.parse("sceneview://demo/ar-streetscape"), sceneGeometryRegistry),
+        )
+        assertEquals(
+            "the App-Links form must resolve identically",
+            "ar-scene-mesh",
+            DeepLinkRouter.parse(
+                Uri.parse("https://sceneview.github.io/open?demo=ar-streetscape"),
+                sceneGeometryRegistry,
+            ),
+        )
+        assertNull(
+            "'ar-streetscape' must be gone from the real catalogue — it is a retired id",
+            ALL_DEMOS.find { it.id == "ar-streetscape" },
+        )
+        assertTrue(
+            "'ar-scene-mesh' must still be a live card — it is what absorbed the merge",
+            ALL_DEMOS.any { it.id == "ar-scene-mesh" },
+        )
+    }
+
+    @Test
+    fun `the streetscape alias pre-selects the Streetscape mode`() {
+        // ar-scene-mesh — [Mesh, Streetscape]
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("ar-streetscape", null))
+        // The surviving id already opens Mesh, so it carries no entry: an absent entry
+        // means "already lands correctly".
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["ar-scene-mesh"])
+        assertNull(DeepLinkRouter.resolveInitialTab("ar-scene-mesh", null))
+        // `?tab=ar-streetscape` reaches the same mode through the explicit param channel.
+        assertEquals(1, DeepLinkRouter.parseTabValue("ar-streetscape"))
     }
 
     // ── Initial-tab pre-selection: alias + ?tab= deep-link param (#2315) ──────

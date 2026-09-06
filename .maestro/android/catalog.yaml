@@ -3,7 +3,7 @@
 #   maestro test .maestro/android/catalog.yaml
 #
 # This is the Android leg of the autonomous device-QA harness (umbrella #1560,
-# slice #1562). It drives every one of the 50 registered demos in
+# slice #1562). It drives every one of the 49 registered demos in
 # `samples/android-demo` like a real user — deep-link launch, camera orbit
 # drag, viewport tap, one screenshot per demo, navigate back — and asserts
 # each demo's Activity stays alive (a crash drops the "Navigate back"
@@ -22,9 +22,9 @@
 # retired-alias ids (DeepLinkRouter.DEMO_ID_ALIASES) that pre-select the modes
 # of the consolidated demos that absorbed them — so every registered demo AND
 # every merged-in capability gets its own QA leg. That is why `fog`,
-# `gesture-feedback-preview`, `ar-terrain` and `ar-rooftop` still appear below
-# after #2239 retired their cards: driving the retired id is how the merged
-# mode gets exercised. Flow entries:
+# `gesture-feedback-preview`, `ar-terrain`, `ar-rooftop` and `ar-streetscape`
+# still appear below after #2239 / #3463 retired their cards: driving the
+# retired id is how the merged mode gets exercised. Flow entries:
 #   3d-basics.yaml ....... 5
 #   lighting.yaml ........ 5
 #   content.yaml ......... 2
@@ -32,7 +32,7 @@
 #   advanced.yaml ........ 14
 #   ar.yaml .............. 33
 #                          --
-#   Total entries ........ 63  (covering 50 registered demos, 63 capabilities)
+#   Total entries ........ 63  (covering 49 registered demos, 63 capabilities)
 #
 # Crash detection:
 #   - Per-demo: flows/demo.yaml asserts the "Navigate back" button is visible

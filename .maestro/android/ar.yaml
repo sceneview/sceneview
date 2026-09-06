@@ -12,6 +12,12 @@
 # on the Terrain and Rooftop modes respectively, so both capabilities keep their
 # own QA leg.
 #
+# `ar-streetscape` was folded into `ar-scene-mesh` — the "Scene Geometry" card,
+# Mesh / Streetscape modes (#3463). Same treatment: the `ar-streetscape` leg is
+# KEPT and drives the retired id, which ALIAS_INITIAL_TAB lands on the
+# Streetscape mode, while the `ar-scene-mesh` leg exercises the Mesh mode. Two
+# legs, two capabilities, one card — so the leg count is unchanged by the merge.
+#
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/ar.yaml
 #
@@ -60,7 +66,7 @@ appId: io.github.sceneview.demo
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-streetscape
-      DEMO_NAME: AR Streetscape
+      DEMO_NAME: AR Scene Geometry - Streetscape mode
 - runFlow:
     file: flows/demo.yaml
     env:
@@ -152,7 +158,7 @@ appId: io.github.sceneview.demo
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-scene-mesh
-      DEMO_NAME: Scene Mesh
+      DEMO_NAME: AR Scene Geometry - Mesh mode
 - runFlow:
     file: flows/demo.yaml
     env:

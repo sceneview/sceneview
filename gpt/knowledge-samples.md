@@ -719,8 +719,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered raw depth point cloud.
 - `ar-point-cloud` — Point Cloud. World-space feature points as a point cloud.
-- `ar-scene-mesh` — Scene Mesh. Color-coded Streetscape terrain and buildings.
-- `ar-streetscape` — Streetscape Geometry. Geospatial building and terrain meshes.
+- `ar-scene-mesh` — Scene Geometry. Streetscape meshes, classified or raw.
 - `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling HUD.
 - `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
