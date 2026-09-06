@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import io.github.sceneview.demo.BuildConfig
+import io.github.sceneview.demo.DemoSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -44,9 +45,25 @@ class WhatsNewSinceState internal constructor(
     /**
      * Should the sheet open by itself right now? True at most once per process,
      * and only when there is something to show.
+     *
+     * Never in QA mode (#3444). A `--ez qa_mode true` launch is a device-QA run
+     * deep-linking into one demo; a modal that opens itself over that demo eats
+     * the flow's gestures and can end up in the screenshot. It stays silent
+     * rather than being acknowledged, so the badge still has its list waiting
+     * for the human who opens the app next. CI installs a fresh app and adopts
+     * the running build as its baseline, so nothing is pending there — this is
+     * the local loop, where the app is updated in place and every QA launch
+     * would otherwise land on the sheet.
      */
     fun consumeAutoOpen(): Boolean {
-        if (!hasUnseen || WhatsNewAutoOpen.shownThisProcess) return false
+        if (!shouldAutoOpenWhatsNew(
+                qaMode = DemoSettings.qaMode,
+                hasUnseen = hasUnseen,
+                alreadyShownThisProcess = WhatsNewAutoOpen.shownThisProcess,
+            )
+        ) {
+            return false
+        }
         WhatsNewAutoOpen.shownThisProcess = true
         return true
     }
@@ -54,6 +71,21 @@ class WhatsNewSinceState internal constructor(
     /** Writes the marker. The only thing that does. */
     fun markSeen() = onMarkSeen()
 }
+
+/**
+ * The auto-open decision, split out from [WhatsNewSinceState.consumeAutoOpen] so it can be
+ * stated once and tested without a process-lifetime flag standing in the way.
+ *
+ * [qaMode] is the one that is not obvious: a `--ez qa_mode true` launch is a device-QA run
+ * deep-linking into a single demo, and a modal that opens itself over that demo eats the
+ * flow's gestures and can end up in the screenshot (#3444). Staying silent — rather than
+ * acknowledging — leaves the badge and its list waiting for the human who opens the app next.
+ */
+internal fun shouldAutoOpenWhatsNew(
+    qaMode: Boolean,
+    hasUnseen: Boolean,
+    alreadyShownThisProcess: Boolean,
+): Boolean = !qaMode && hasUnseen && !alreadyShownThisProcess
 
 /**
  * Loads the bundled changelog, establishes the fresh-install baseline, and
