@@ -240,15 +240,14 @@ and pass `--allow-offline` to acknowledge a deliberately offline run.
   expose (back enumerates as `10`), and the `_x86_for_emulator` APK carries
   x86/x86_64 native libs only. On the arm64 QA AVD every AR flow therefore
   runs in `qa_mode` fallback (canned engines, synthetic frames) — that is a
-  UI/state check, not a live-camera check. The x86_64-under-Rosetta rig
-  (`setup-ar-emulator.sh --rosetta`,
-  [#2758](https://github.com/sceneview/sceneview/issues/2758)) was built to
-  close that gap and was **measured not to**: on a quiet host it does boot
-  (~45 min under pure-software TCG), but it exposes the *same* camera topology
+  UI/state check, not a live-camera check. An x86_64-under-Rosetta rig
+  ([#2758](https://github.com/sceneview/sceneview/issues/2758)) was built to
+  close that gap and was **measured not to**: on a quiet host it did boot
+  (~45 min under pure-software TCG), but it exposed the *same* camera topology
   as arm64 (HAL ids `1`/`10`, still no `0` — so that numbering comes from the
-  emulator's camera HAL, not the guest ABI), installing the ARCore APK kills
-  `system_server`, and nothing renders. It ships as a reproducible probe — and
-  as the evidence that this is a dead end — not as a live-camera QA path. Real
+  emulator's camera HAL, not the guest ABI), installing the ARCore APK killed
+  `system_server`, and nothing rendered. The rig and its `--rosetta` flag were
+  removed once that dead end was established; the finding is what remains. Real
   ARCore-session QA (tracking, hit-tests, anchors) needs a physical device.
 - **No pinch gesture.** Maestro cannot pinch, so 3D camera zoom cannot be
   driven by touch. On **Android** this is solved by the `camera_distance`
