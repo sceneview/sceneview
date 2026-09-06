@@ -9,7 +9,10 @@ internal inline fun objLines(bytes: ByteArray, consume: (ObjTokens, Int) -> Unit
         val start = at
         while (at < bytes.size && bytes[at] != 10.toByte() && bytes[at] != 13.toByte()) at++
         val text = bytes.decodeToString(start, at).trimEnd()
-        if (at < bytes.size && bytes[at++] == 13.toByte() && at < bytes.size && bytes[at] == 10.toByte()) at++
+        if (at < bytes.size) {
+            val carriageReturn = bytes[at++] == 13.toByte()
+            if (carriageReturn && at < bytes.size && bytes[at] == 10.toByte()) at++
+        }
         line++
         if (text.endsWith('\\')) {
             val pending = continued ?: StringBuilder().also { continued = it }
@@ -22,10 +25,11 @@ internal inline fun objLines(bytes: ByteArray, consume: (ObjTokens, Int) -> Unit
     if (continued != null) objError("OBJ line $line: unfinished line continuation")
 }
 
-internal fun objStart(bytes: ByteArray): Int =
-    if (bytes.size >= 3 && bytes[0] == 0xef.toByte() && bytes[1] == 0xbb.toByte() &&
-        bytes[2] == 0xbf.toByte()
-    ) 3 else 0
+internal fun objStart(bytes: ByteArray): Int {
+    val bom = byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte())
+    val hasBom = bytes.size >= bom.size && bom.indices.all { bytes[it] == bom[it] }
+    return if (hasBom) bom.size else 0
+}
 
 /** Whitespace tokens with inline comments; quoting is opt-in for library paths only. */
 internal class ObjTokens(private val line: String) {

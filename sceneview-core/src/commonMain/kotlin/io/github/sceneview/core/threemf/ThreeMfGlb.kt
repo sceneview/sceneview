@@ -49,7 +49,8 @@ internal object ThreeMfGlb {
 
         fun addScaledRoot(name: String, scale: Float) {
             val children = nodes.indices.joinToString(",", "[", "]")
-            nodes += """{"name":${name.toJsonString()},"scale":${floatArrayOf(scale, scale, scale).toJsonArray()},"children":$children}"""
+            val scaleJson = floatArrayOf(scale, scale, scale).toJsonArray()
+            nodes += """{"name":${name.toJsonString()},"scale":$scaleJson,"children":$children}"""
         }
 
         /** Positions and supplied normals are already de-indexed; UVs are optional VEC2 values. */

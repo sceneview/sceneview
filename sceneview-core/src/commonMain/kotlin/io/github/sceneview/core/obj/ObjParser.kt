@@ -83,9 +83,8 @@ internal object ObjParser {
             val vertex = index(token.substring(0, first), positions.size / 3, line)
             val texture = token.substring(first + 1, if (second < 0) token.length else second)
             val normal = if (second < 0) "" else token.substring(second + 1)
-            if ((second < 0 && texture.isEmpty()) || (second >= 0 && normal.isEmpty())) {
-                objError("OBJ line $line: incomplete face index '$token'")
-            }
+            val incomplete = if (second < 0) texture.isEmpty() else normal.isEmpty()
+            if (incomplete) objError("OBJ line $line: incomplete face index '$token'")
             return Corner(
                 vertex,
                 if (texture.isEmpty()) -1 else index(texture, uv.size / 2, line),

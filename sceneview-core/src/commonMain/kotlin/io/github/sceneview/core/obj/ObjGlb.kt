@@ -48,11 +48,15 @@ internal object ObjGlb {
         }
 
     private fun validate(group: ObjGroup) {
-        if (group.positions.isEmpty() || group.positions.size % 9 != 0 ||
-            group.normals.size != group.positions.size || group.triangleMaterials.size != group.triangleCount ||
-            (group.textureCoordinates != null && group.textureCoordinates.size != group.triangleCount * 6) ||
-            group.positions.any { !it.isFinite() } || group.normals.any { !it.isFinite() } ||
-            group.textureCoordinates?.any { !it.isFinite() } == true
-        ) objError("OBJ group '${group.name}': inconsistent or non-finite triangle data")
+        val positions = group.positions
+        val uvs = group.textureCoordinates
+        val sizesMatch = positions.isNotEmpty() && positions.size % 9 == 0 && group.normals.size == positions.size
+        val countsMatch = group.triangleMaterials.size == group.triangleCount &&
+            (uvs == null || uvs.size == group.triangleCount * 6)
+        val finite = positions.all { it.isFinite() } && group.normals.all { it.isFinite() } &&
+            (uvs == null || uvs.all { it.isFinite() })
+        if (!sizesMatch || !countsMatch || !finite) {
+            objError("OBJ group '${group.name}': inconsistent or non-finite triangle data")
+        }
     }
 }

@@ -622,17 +622,18 @@ private fun ByteBuffer.startsWithObjGeometry(): Boolean {
     if (!hasRemaining()) return false
     val start = position()
     val first = get(start).toInt() and 0xff
-    if (first !in 9..13 && first != 32 && first != 35 && first != 0xef &&
-        first != 'v'.code && first != 'f'.code && first != 'o'.code && first != 'g'.code &&
-        first != 'm'.code && first != 'u'.code && first != 's'.code && first != 'l'.code && first != 'p'.code
-    ) return false
-    if (remaining() >= 4 && get(start) == 'g'.code.toByte() && get(start + 1) == 'l'.code.toByte() &&
-        get(start + 2) == 'T'.code.toByte() && get(start + 3) == 'F'.code.toByte()
-    ) return false
+    if (first !in OBJ_LEAD_BYTES) return false
+    if (startsWithAscii(start, "glTF")) return false
     // Include one extra byte so isObj can distinguish a truncated line from a real EOF at 4096.
     val prefix = ByteArray(minOf(remaining(), 4097)).also { duplicate().get(it) }
     return ObjLoader.isObj(prefix)
 }
+
+/** Whitespace, '#', the UTF-8 BOM lead byte, and the first letter of every OBJ keyword. */
+private val OBJ_LEAD_BYTES: Set<Int> = (9..13).toSet() + setOf(32, 35, 0xef) + "vfogmuslp".map { it.code }
+
+private fun ByteBuffer.startsWithAscii(start: Int, text: String): Boolean =
+    remaining() >= text.length && text.indices.all { get(start + it) == text[it].code.toByte() }
 
 /** `PK` — the local-file-header magic every ZIP, and so every 3MF, starts with. */
 private fun ByteBuffer.startsWithZipMagic(): Boolean {

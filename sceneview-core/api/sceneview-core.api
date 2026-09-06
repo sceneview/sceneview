@@ -1645,3 +1645,4 @@ public final class io/github/sceneview/utils/DurationKt {
 public final class io/github/sceneview/utils/TimeSourceKt {
 	public static final fun nanoTime ()J
 }
+
