@@ -76,6 +76,22 @@ internal object ContentCentering {
         (box.min[2] + box.max[2]) / 2.0,
     )
 
+    /**
+     * [box] moved by the translation [by] — same extents, centroid shifted.
+     *
+     * Used to read a box *after* the content-root pivot has moved it: the union is measured
+     * before the centring translation is written, so anything that then aims a camera at the
+     * content (the auto-dolly fit) must aim at where the content ended up, not where it was
+     * measured. A model authored around the origin has an offset of ~0 and is unaffected; one
+     * authored in the positive octant — every 3MF, by specification — is not (#3482).
+     */
+    fun translated(box: Aabb?, by: DoubleArray): Aabb? = box?.let {
+        Aabb(
+            doubleArrayOf(it.min[0] + by[0], it.min[1] + by[1], it.min[2] + by[2]),
+            doubleArrayOf(it.max[0] + by[0], it.max[1] + by[1], it.max[2] + by[2]),
+        )
+    }
+
     /** Per-axis extents `(max - min)` of [box], `[ex, ey, ez]`. */
     fun extents(box: Aabb): DoubleArray = doubleArrayOf(
         box.max[0] - box.min[0],

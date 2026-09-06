@@ -481,16 +481,19 @@ class SceneView private constructor(
     }
 
     /**
-     * Load a glTF/GLB model from a URL and add it to the scene.
+     * Load a glTF/GLB — or a **3MF** (`.3mf`) — model from a URL and add it to the scene.
      *
      * This performs the full loading pipeline:
-     * 1. Fetch the .glb/.gltf file as an ArrayBuffer
+     * 1. Fetch the .glb/.gltf/.3mf file as an ArrayBuffer
+     * 1b. Convert it to GLB when it is a 3MF (#3482), through the shared KMP
+     *    `ThreeMfLoader` — the same conversion Android runs, so no second parser
      * 2. Create a FilamentAsset via the AssetLoader
      * 3. Add all renderable entities to the scene
      * 4. Call loadResources() to fetch external textures/buffers
      * 5. Release source data to free memory
      *
-     * @param url URL to the .glb or .gltf file
+     * @param url URL to the .glb, .gltf or .3mf file — including a `blob:` URL, which is how a
+     *   file the user dropped on the page is loaded
      * @param onLoaded Optional callback when the model is fully loaded (with resources)
      * @param autoAnimate When `true` (default, matching Android `ModelNode`) the
      *   render loop plays the model's animation 0; `false` renders it static (#2432).
@@ -570,11 +573,16 @@ class SceneView private constructor(
                 settleLoad()
                 return@then null
             }
+            // #3482: a `.3mf` — what ChatGPT emits for a printable model, and what every slicer
+            // writes — is converted to GLB here, so the rest of this pipeline is unchanged and
+            // every caller of `loadModel` accepts the format with no new API. Anything that is
+            // not a ZIP costs a 4-byte comparison and is passed through as the same instance.
+            val payload = ThreeMfConverter.convert(buffer.unsafeCast<ArrayBuffer>())
             // #3085: Filament.js registers no `image/webp` texture provider, so a glTF using
             // EXT_texture_webp renders untextured. Re-encode its embedded WebP images to PNG
             // BEFORE createAsset — the browser decode is async, hence the extra `then` hop.
             // A model without WebP resolves the very same ArrayBuffer instance, untouched.
-            WebPTextureTranscoder.transcode(buffer.unsafeCast<ArrayBuffer>())
+            WebPTextureTranscoder.transcode(payload)
         }.then { transcoded ->
             // `null` is the destroyed-before-fetch bail-out above, already settled.
             val modelBytes = transcoded.unsafeCast<ArrayBuffer?>() ?: return@then
@@ -1305,10 +1313,14 @@ class SceneView private constructor(
             offset[2].toFloat(),
         )
 
-        // Auto-dolly: fit the orbit camera to the content size (#1540). The
-        // union is already centred on the origin by the offset above, so the
-        // fit's own target re-aims at the (now origin) centroid harmlessly.
-        fitToBounds(union)
+        // Auto-dolly: fit the orbit camera to the content size (#1540). Fit the
+        // union AS MOVED by the pivot above — `union` was measured before the
+        // translation, so passing it raw aims the camera at where the content
+        // *used to be*. Harmless for a model authored around the origin (offset
+        // ≈ 0), which is why it went unnoticed; a **3MF** is authored in the
+        // positive octant by definition, so its centroid is a third of a frame
+        // off and the part rendered visibly off-centre (#3482).
+        fitToBounds(ContentCentering.translated(union, offset))
 
         // Record this framing — latches the gate once the diagonal stabilises.
         autoCenterGate.recordFraming(diagonal)

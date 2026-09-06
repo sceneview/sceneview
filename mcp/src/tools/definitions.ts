@@ -802,14 +802,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "view_3d_model",
     description:
-      "Render an interactive 3D model viewer inline in ChatGPT. Pass a public GLB / GLTF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', or after `search_models` to render the chosen result.",
+      "Render an interactive 3D model viewer inline in ChatGPT. Pass a public GLB / GLTF / 3MF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download.",
     inputSchema: {
       type: "object",
       properties: {
         modelUrl: {
           type: "string",
           description:
-            "Public HTTPS URL to a .glb or .gltf 3D model file. Must be CORS-enabled. Works with assets from sceneview.github.io, model-viewer-textured CDN, Sketchfab download URLs, or any CORS-friendly host.",
+            "Public HTTPS URL to a .glb, .gltf or .3mf 3D model file (`model/gltf-binary`, `model/gltf+json`, `model/3mf`). Must be CORS-enabled. Works with assets from sceneview.github.io, model-viewer-textured CDN, Sketchfab download URLs, or any CORS-friendly host. A 3MF — what a 3D-print flow or a slicer produces — is converted to glTF inside the widget, in real-world units.",
         },
         title: {
           type: "string",

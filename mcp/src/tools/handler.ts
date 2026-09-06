@@ -1047,7 +1047,7 @@ export async function dispatchTool(
           content: [
             {
               type: "text",
-              text: "view_3d_model requires a `modelUrl` argument (a public HTTPS URL to a .glb or .gltf file).",
+              text: "view_3d_model requires a `modelUrl` argument (a public HTTPS URL to a .glb, .gltf or .3mf file).",
             },
           ],
           isError: true,

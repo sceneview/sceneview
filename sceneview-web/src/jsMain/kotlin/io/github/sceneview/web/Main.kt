@@ -1,6 +1,10 @@
 package io.github.sceneview.web
 
+import io.github.sceneview.core.threemf.ThreeMfLoader
 import kotlinx.browser.document
+import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Int8Array
+import org.khronos.webgl.Uint8Array
 import org.w3c.dom.HTMLCanvasElement
 import kotlin.js.Promise
 
@@ -28,6 +32,13 @@ fun main() {
     api["createViewerFull"] = ::jsCreateViewerFull
     api["modelViewer"] = ::jsModelViewer
     api["modelViewerAutoRotate"] = ::jsModelViewerAutoRotate
+
+    // #3482 — 3MF, the format ChatGPT and every slicer emit for a printable model.
+    // `loadModel` / `modelViewer` already accept a `.3mf` URL with no extra call; these two
+    // are for a page that holds the *bytes* (a dropped file, a fetch it made itself) and
+    // wants the GLB — e.g. to hand it to another glTF viewer, or to a Blob URL.
+    api["isThreeMf"] = ::jsIsThreeMf
+    api["threeMfToGlb"] = ::jsThreeMfToGlb
 
     // Cross-platform haptic facade (mirrors Android `SceneViewHaptic` and iOS
     // `SceneViewSwift.SceneViewHaptic`) — exposed as `sceneview.haptic.*` so
@@ -75,6 +86,49 @@ fun jsModelViewerAutoRotate(canvasId: String, modelUrl: String, autoRotate: Bool
         viewer.loadModel(modelUrl)
         viewer
     }
+}
+
+/**
+ * `true` when [bytes] is a 3MF package — ZIP magic, then a `3D/3dmodel.model` part (#3482).
+ *
+ * Accepts an `ArrayBuffer` or any `ArrayBufferView` (`Uint8Array`, the `Int8Array` a
+ * `File.arrayBuffer()` gives you once viewed, …). Returns `false` for anything else, never throws.
+ */
+fun jsIsThreeMf(bytes: dynamic): Boolean =
+    asArrayBuffer(bytes)?.let { ThreeMfConverter.isThreeMf(it) } ?: false
+
+/**
+ * Converts a 3MF to a self-contained GLB — metres, Y-up, flat-shaded, one material per 3MF colour
+ * — and returns it as a `Uint8Array` (#3482).
+ *
+ * Accepts an `ArrayBuffer` or any `ArrayBufferView`. **Throws** when [bytes] is not a readable 3MF,
+ * so a caller can tell "not a 3MF" from "a broken 3MF"; use [jsIsThreeMf] first to branch without
+ * an exception.
+ */
+fun jsThreeMfToGlb(bytes: dynamic): Uint8Array {
+    val buffer = asArrayBuffer(bytes)
+        ?: throw IllegalArgumentException(
+            "threeMfToGlb expects an ArrayBuffer or an ArrayBufferView (Uint8Array, …)",
+        )
+    val glb = ThreeMfLoader.toGlb(Int8Array(buffer).unsafeCast<ByteArray>())
+    return Uint8Array(glb.toArrayBuffer())
+}
+
+/**
+ * The `ArrayBuffer` behind a JS value, or `null` when it is neither a buffer nor a view of one.
+ *
+ * A view is narrowed to the bytes it actually spans: `new Uint8Array(buf, 8, 4)` must convert those
+ * four bytes, not the whole buffer.
+ */
+private fun asArrayBuffer(value: dynamic): ArrayBuffer? = when {
+    value == null || value == undefined -> null
+    value is ArrayBuffer -> value
+    js("ArrayBuffer.isView")(value) as Boolean ->
+        (value.buffer as ArrayBuffer).slice(
+            value.byteOffset as Int,
+            (value.byteOffset as Int) + (value.byteLength as Int),
+        )
+    else -> null
 }
 
 // --- Internal implementation ---
