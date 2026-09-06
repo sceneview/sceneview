@@ -41,7 +41,8 @@ class PlyLoaderTest {
         val model = PlyLoader.parse(PlyTestFixtures.ascii())
         assertContentEquals(intArrayOf(0, 1, 2, 0, 2, 3), model.indices)
         assertContentEquals(floatArrayOf(1f, 0f, 0f, 1f), model.colors?.copyOfRange(0, 4))
-        assertEquals(128f / 255f, model.colors?.get(7))
+        // Tolerance: Kotlin/JS evaluates 128f / 255f in double precision, the loader stores a Float.
+        assertEquals(128f / 255f, model.colors?.get(7) ?: -1f, 0.000001f)
         val glb = PlyLoader.toGlb(PlyTestFixtures.ascii())
         assertEquals("glTF", glb.decodeToString(0, 4))
         assertTrue(glb.decodeToString().contains("COLOR_0"))
