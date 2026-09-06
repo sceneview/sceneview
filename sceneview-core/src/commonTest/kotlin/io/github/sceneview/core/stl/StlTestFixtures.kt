@@ -38,10 +38,10 @@ internal object StlTestFixtures {
     fun ascii(facets: List<FloatArray> = box): ByteArray = buildString {
         append("solid test part\n")
         for (facet in facets) {
-            append("facet normal ${facet[0]} ${facet[1]} ${facet[2]}\nouter loop\n")
+            append("facet normal ${facet[0].stl()} ${facet[1].stl()} ${facet[2].stl()}\nouter loop\n")
             repeat(3) {
                 val at = 3 + it * 3
-                append("vertex ${facet[at]} ${facet[at + 1]} ${facet[at + 2]}\n")
+                append("vertex ${facet[at].stl()} ${facet[at + 1].stl()} ${facet[at + 2].stl()}\n")
             }
             append("endloop\nendfacet\n")
         }
@@ -52,3 +52,9 @@ internal object StlTestFixtures {
         repeat(4) { bytes[at + it] = (value ushr (it * 8)).toByte() }
     }
 }
+
+/**
+ * Platform-stable float text: Kotlin/JVM prints 70f as "70.0" but Kotlin/JS prints "70", and the
+ * malformed-input test edits the fixture by replacing "70.0" — so the fixture must write it.
+ */
+private fun Float.stl(): String = toString().let { if (it.any { c -> c == '.' || c == 'e' || c == 'E' }) it else "$it.0" }
