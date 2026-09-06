@@ -193,3 +193,57 @@ Pick the `ContactShadowContext` rather than tuning numbers: `Floor` is centred a
 is fainter, wider than tall and pushed below the object, `TableTop` is tight and crisp. It lives
 in `sceneview`, not `arsceneview` — plain 3D scenes ground models the same way. Non-AR preview
 demo: [`ContactShadowPreviewDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ContactShadowPreviewDemo.kt).
+
+## Recipe: open a `.3mf` print (#3482)
+
+A `.3mf` is what ChatGPT, every slicer and every image-to-print flow emit for a printable model.
+**There is no 3MF API to learn.** `ModelLoader` sniffs the payload by its ZIP magic and converts it
+to GLB in memory, so the file goes through the loader entry point you already use — the code below
+is the same code you would write for a `.glb`:
+
+```kotlin
+@Composable
+fun PrintViewer(location: String) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+
+    SceneView(modifier = Modifier.fillMaxSize(), engine = engine, modelLoader = modelLoader) {
+        // `location` is a .3mf, a .glb or a .gltf — an asset path, a URL, or a file:// / content://
+        // URI shared in from another app. Same call for all of them.
+        rememberModelInstance(modelLoader, location)?.let { instance ->
+            ModelNode(modelInstance = instance, scaleToUnits = 0.3f)
+        }
+    }
+}
+```
+
+Identical in AR: an anchored `ModelNode` takes the same instance, because by the time a node sees
+it a 3MF *is* a glTF model.
+
+**Do not** add a format check, a branch, or a "3MF support" flag before calling the loader — and do
+not decide the format from the file's extension or its MIME type. Android does not reliably report
+either: measured on an emulator, a `.3mf` arriving through the share sheet has
+`application/octet-stream` as its type *and* no queryable display name at all. When you genuinely
+need to know what a buffer holds, ask its bytes, on any platform:
+
+```kotlin
+import io.github.sceneview.core.threemf.ThreeMfLoader
+
+fun describe(bytes: ByteArray): String =
+    if (ThreeMfLoader.isThreeMf(bytes)) {
+        val model = ThreeMfLoader.parse(bytes)
+        "a print: ${model.triangleCount} triangles, unit ${model.unit.id}"
+    } else {
+        "not a 3MF"
+    }
+```
+
+**Drop `scaleToUnits` when the real size is the point.** Conversion scales the file's declared unit
+to metres, so a 60 mm print is 0.06 scene units and lands life-size in AR with no magic number;
+`scaleToUnits` overrides that to frame the model at a fixed size, which is what a viewer wants and
+what an AR preview of a real object does not.
+
+Full behaviour — Z-up to Y-up, flat per-face normals, `<basematerials>` and `<colorgroup>` colours,
+`ThreeMfModel` — is in `llms.txt § 3MF`. The demo app's "Open with" path
+([`OpenedModel.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/OpenedModel.kt))
+is the worked example of receiving one of these files from another app.

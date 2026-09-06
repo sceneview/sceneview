@@ -231,7 +231,17 @@ lambda — there is NO `rememberARSession()` helper, do NOT invent one.
    3D-only → `io.github.sceneview:sceneview`. AR → `io.github.sceneview:arsceneview`
    (it transitively includes `sceneview`).
 
-6. **Don't recompose-thrash the loaders.** `rememberEngine` / `rememberModelLoader`
+6. **`.3mf` needs no special handling — do not write any.** A 3MF (what ChatGPT and
+   every slicer emit for a printable model) goes through the same
+   `rememberModelInstance` / `loadModel*` call as a GLB: `ModelLoader` detects it by
+   its ZIP magic and converts it to GLB in memory (#3482). Never branch on the file
+   extension or the MIME type to decide — Android reports neither reliably, and a
+   shared `.3mf` routinely arrives as `application/octet-stream` with no name at all.
+   If you genuinely need to identify a buffer, `ThreeMfLoader.isThreeMf(bytes)` in
+   `sceneview-core` reads the bytes, on every platform. See
+   `references/recipes.md § Recipe: open a .3mf print`.
+
+7. **Don't recompose-thrash the loaders.** `rememberEngine` / `rememberModelLoader`
    / `rememberMaterialLoader` / `rememberEnvironmentLoader` belong at the top of
    the screen-level composable, NOT inside scroll lists or item composables.
 
