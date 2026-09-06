@@ -105,9 +105,11 @@ EMU_LEASE_STICKY_TTL="${EMU_LEASE_STICKY_TTL:-14400}"
 # When non-empty, only an emulator whose AVD name matches is considered
 # leasable (#2862). `emu_running_serials` filters by PORT alone, so any
 # `emulator-NNNN` under the exclusion cutoff used to qualify — a stray
-# `Tablet10_QA` on 5554 would be leased and driven as if it were the
+# hand-created AVD on 5554 would be leased and driven as if it were the
 # ARCore-ready `Pixel_7a`, and the QA verdict would describe a device nobody
-# meant to test. Callers that care set this to their AVD name.
+# meant to test. `Pixel_7a` is the ONLY AVD this machine keeps, so anything
+# else on a pool port is by definition not ours. Callers set this to their
+# AVD name.
 EMU_REQUIRE_AVD="${EMU_REQUIRE_AVD:-}"
 
 # Canonical pool AVD name — the QA emulator `setup-ar-emulator.sh` provisions.
@@ -139,12 +141,11 @@ EMU_LEASE_HANDOFF_WINDOW="${EMU_LEASE_HANDOFF_WINDOW:-900}"
 # 2 (5554, 5556, 5558, …) so multiple emulators coexist.
 EMU_BASE_PORT="${EMU_BASE_PORT:-5554}"
 
-# Ports AT OR ABOVE this are OUTSIDE the QA pool — reserved for special rigs
-# (e.g. the x86_64-under-Rosetta ARCore rig, #2758, which boots on port 5584).
-# Excluded serials are invisible to the pool: never leased as a "free running
-# emulator", never counted against the RAM-budgeted cap, never handed to a
-# standard QA run (a Maestro sweep on a ~10x-slower TCG guest would time out
-# everywhere and poison the QA verdict).
+# Ports AT OR ABOVE this are OUTSIDE the QA pool — a reserved range for any
+# one-off emulator someone boots by hand alongside the pool. Excluded serials
+# are invisible to the pool: never leased as a "free running emulator", never
+# counted against the RAM-budgeted cap, never handed to a standard QA run (a
+# Maestro sweep against a device nobody meant to test poisons the verdict).
 EMU_POOL_PORT_EXCLUDE_FROM="${EMU_POOL_PORT_EXCLUDE_FROM:-5584}"
 
 _emu_log() { echo "[emu-select] $*" >&2; }
@@ -247,8 +248,8 @@ emu_recommended_memory_mb() {
 # --- Running-emulator detection ---------------------------------------------
 # emu_running_serials [adb_bin] — newline-separated list of every POOL
 # emulator-* device currently in "device" state. Empty output means none is up.
-# Serials on ports >= EMU_POOL_PORT_EXCLUDE_FROM (special rigs, e.g. the
-# Rosetta ARCore rig on 5584) are filtered out — they are not pool members.
+# Serials on ports >= EMU_POOL_PORT_EXCLUDE_FROM (hand-booted one-off
+# emulators) are filtered out — they are not pool members.
 emu_running_serials() {
   local adb_bin="${1:-adb}"
   "$adb_bin" devices 2>/dev/null \
@@ -646,7 +647,7 @@ emu_lease_free_serial() {
   while IFS= read -r serial; do
     [[ -n "$serial" ]] || continue
     # Wrong AVD on a pool port → never leasable (#2862). Checked before the
-    # lease state: a stray `Tablet10_QA` on 5554 is not "a free pool emulator",
+    # lease state: a stray non-`Pixel_7a` on 5554 is not "a free pool emulator",
     # it is a device this harness must not drive at all.
     emu_serial_avd_matches "$serial" "$adb_bin" || continue
     # A live sticky lease reserves the emulator for its own session, even

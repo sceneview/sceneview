@@ -37,7 +37,10 @@ Full API reference: [`llms.txt`](./llms.txt).
   submission is automated but Apple's review is not — "submitted" ≠ "live". Maven
   Central / npm / SPM are irreversible once published.
 - **Never QA on a personal device.** `bash .claude/scripts/setup-ar-emulator.sh` boots
-  the reusable emulator; `.claude/scripts/device-qa.sh` drives the harness.
+  the reusable emulator; `.claude/scripts/device-qa.sh` drives the harness. There is
+  exactly **one AVD**, `Pixel_7a` on `emulator-5554` — every other AVD (the tablet
+  rigs, the x86_64-under-Rosetta probe of #2758) was deleted. If it is missing, that
+  same script recreates it; `--seed-snapshot` re-seeds the warm `qa-clean` snapshot.
 - **Major version `4` is frozen.** `5.0.0` is a deliberate milestone, never automatic.
   Never sync `mcp/` or the Flutter/RN *consumed* dependency to `VERSION_NAME` — both
   are independent tracks.
