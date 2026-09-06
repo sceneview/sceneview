@@ -585,19 +585,11 @@ internal suspend fun <T : Any> destroyOnCancel(
 }
 
 /**
-<<<<<<< HEAD
- * Normalises whatever the caller handed us into something Filament's glTF loader accepts: a 3MF is
- * converted to GLB, OBJ geometry is converted next, then WebP textures are transcoded.
+ * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF, STL
+ * and OBJ are converted to GLB, then WebP textures are transcoded.
  */
 private fun Buffer.toFilamentModelSource(): Buffer =
-    convertThreeMfToGlb().convertObjToGlb().transcodeWebPTextures()
-=======
- * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF and
- * STL are converted to GLB, then WebP textures are transcoded.
- */
-private fun Buffer.toFilamentModelSource(): Buffer =
-    convertThreeMfToGlb().convertStlToGlb().transcodeWebPTextures()
->>>>>>> 084ae99b2 (feat(core): STL loader, binary and ASCII, to GLB in memory (#3486))
+    convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().transcodeWebPTextures()
 
 /**
  * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class

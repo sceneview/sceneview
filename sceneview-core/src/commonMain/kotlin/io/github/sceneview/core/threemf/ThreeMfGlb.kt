@@ -27,9 +27,6 @@ internal object ThreeMfGlb {
         return builder.toGlb()
     }
 
-<<<<<<< HEAD
-    internal class GltfBuilder(private val generator: String = Generator) {
-=======
     /**
      * Shared STL path: positions are welded by the parser; per-corner normals preserve valid
      * facet normals and carry smooth repairs. Split only (position, normal) seams for glTF's
@@ -49,8 +46,7 @@ internal object ThreeMfGlb {
 
     private data class NormalVertex(val position: Int, val x: Float, val y: Float, val z: Float)
 
-    private class GltfBuilder(private val generator: String = Generator) {
->>>>>>> 084ae99b2 (feat(core): STL loader, binary and ASCII, to GLB in memory (#3486))
+    internal class GltfBuilder(private val generator: String = Generator) {
         private val bin = ByteArrayBuilder()
         private val bufferViews = ArrayList<String>()
         private val accessors = ArrayList<String>()
@@ -242,11 +238,7 @@ internal object ThreeMfGlb {
         }
 
         private fun buildJson(): String = buildString {
-<<<<<<< HEAD
             append("""{"asset":{"version":"2.0","generator":${generator.toJsonString()}},""")
-=======
-            append("""{"asset":{"version":"2.0","generator":"$generator"},""")
->>>>>>> 084ae99b2 (feat(core): STL loader, binary and ASCII, to GLB in memory (#3486))
             append(""""scene":0,"scenes":[{"nodes":[${nodes.size - 1}]}],""")
             append(""""nodes":${nodes.joinToString(",", "[", "]")},""")
             append(""""meshes":${meshes.joinToString(",", "[", "]")},""")
