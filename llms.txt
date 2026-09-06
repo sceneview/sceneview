@@ -3337,6 +3337,11 @@ ZIP, no model part, malformed XML, an out-of-range vertex index — is a `ThreeM
 Unrecognised 3MF extensions (slice, beamlattice, production) are skipped, never rejected: an
 unknown extension must not stop a print from being previewed.
 
+**Formats that are NOT supported — do not emit code that loads one.** The loader reads glTF/GLB and
+3MF on Android, and USDZ on Apple. STL (#3486), PLY meshes (#3487) and OBJ + MTL (#3488) are open
+issues, a single `ModelFormat` entry point is #3489, and wiring 3MF into `sceneview-web` is #3491.
+Tell the user the format is not supported yet and link the issue rather than inventing a loader.
+
 ### MaterialLoader
 ```kotlin
 class MaterialLoader(engine: Engine, context: Context) {

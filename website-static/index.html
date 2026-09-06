@@ -21,8 +21,8 @@
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
   <title>SceneView — 3D & AR SDK for Android, iOS, Web, and more</title>
-  <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native. Powered by Filament and RealityKit.">
-  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, USDZ, visionOS, cross-platform 3D, AI-first SDK, MCP server, Claude 3D, ChatGPT AR, AI code generation, LLM 3D development, Copilot 3D, Gemini AR, model context protocol">
+  <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native. Ships as a ChatGPT and Codex plugin, and opens the .3mf files AI print flows emit. Powered by Filament and RealityKit.">
+  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, USDZ, 3MF, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, Claude 3D, ChatGPT AR, AI code generation, LLM 3D development, Copilot 3D, Gemini AR, model context protocol, ChatGPT plugin, Codex plugin, OpenAI plugin">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#005bc1">
@@ -131,6 +131,22 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude, ChatGPT, Cursor, and other MCP-compatible AI tools."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I open a .3mf file on Android?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SceneView reads 3MF — the format ChatGPT, slicers and image-to-print flows emit. There is no separate API: ModelLoader detects the payload by its ZIP magic and converts it to GLB in memory, so rememberModelInstance(modelLoader, uri) opens a .3mf exactly like a .glb, in 3D and in AR. Millimetres are scaled to metres and the printer's Z-up is rotated to Y-up, so a 60 mm print is life-size and upright."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is there a SceneView plugin for ChatGPT or Codex?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes — the SceneView repository is itself an OpenAI plugin. Its manifest at .codex-plugin/plugin.json points at three skills (Jetpack Compose, SwiftUI, web) carrying the full API contract. Install it into Codex with codex plugin marketplace add followed by codex plugin add sceneview@sceneview-local. For ChatGPT, npx sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
         }
       },
       {
@@ -416,6 +432,18 @@
 
                 <div class="mcp-tool-card">
                   <div class="mcp-tool-card__header">
+                    <span class="material-symbols-outlined mcp-tool-card__glyph" aria-hidden="true">extension</span>
+                    <span class="mcp-tool-card__name">ChatGPT &amp; Codex</span>
+                    <span class="mcp-tool-card__badge">Plugin</span>
+                  </div>
+                  <div class="mcp-tool-card__file">.codex-plugin/plugin.json</div>
+                  <pre class="code-block mcp-tool-card__code"><code><span class="syn-purple">codex</span> plugin marketplace add <span class="syn-green-light">"$PWD"</span>
+<span class="syn-purple">codex</span> plugin add <span class="syn-green-light">sceneview@sceneview-local</span>
+<span class="syn-green"># ChatGPT:</span> <span class="syn-blue">npx</span> <span class="syn-green-light">sceneview-mcp</span> --http</code></pre>
+                </div>
+
+                <div class="mcp-tool-card">
+                  <div class="mcp-tool-card__header">
                     <img src="assets/brand/windsurf.svg" alt="" width="18" height="18" class="mcp-tool-card__logo">
                     <span class="mcp-tool-card__name">Windsurf</span>
                   </div>
@@ -490,7 +518,7 @@
         <div class="ai-section__content reveal">
           <div class="ai-section__badge">AI-first SDK</div>
           <h2 class="ai-section__title">Built for AI assistants</h2>
-          <p class="ai-section__text">SceneView is the first 3D SDK designed so AI assistants generate correct, working code on the first try. One MCP server gives your AI full access to the API reference, 3D samples, and best practices &mdash; across every major AI coding tool.</p>
+          <p class="ai-section__text">SceneView is the first 3D SDK designed so AI assistants generate correct, working code on the first try. One MCP server gives your AI full access to the API reference, 3D samples, and best practices &mdash; across every major AI coding tool. The repository ships as a ChatGPT and Codex plugin too, so the same API contract travels wherever you work.</p>
 
           <div class="ai-tools-strip">
             <div class="ai-tool-chip">
@@ -512,6 +540,13 @@
               <div class="ai-tool-chip__body">
                 <div class="ai-tool-chip__name">Windsurf</div>
                 <div class="ai-tool-chip__tagline">Agentic IDE</div>
+              </div>
+            </div>
+            <div class="ai-tool-chip">
+              <span class="ai-tool-chip__glyph material-symbols-outlined" aria-hidden="true">extension</span>
+              <div class="ai-tool-chip__body">
+                <div class="ai-tool-chip__name">ChatGPT &amp; Codex</div>
+                <div class="ai-tool-chip__tagline">OpenAI plugin</div>
               </div>
             </div>
           </div>
@@ -868,11 +903,23 @@
         <div class="feature-card reveal">
           <span class="feature-card__icon material-symbols-outlined">smart_toy</span>
           <h3 class="feature-card__title">AI-First MCP Server</h3>
-          <p class="feature-card__text">32 MCP tools incl. <code>view_3d_model</code> (inline 3D viewer), <code>debug_issue</code>, <code>search_models</code> (Sketchfab), <code>analyze_project</code>, and <code>validate_code</code>. 33 compilable samples + full <code>llms.txt</code> reference.</p>
+          <p class="feature-card__text">32 MCP tools incl. <code>view_3d_model</code> (inline 3D viewer), <code>debug_issue</code>, <code>search_models</code> (Sketchfab), <code>analyze_project</code>, and <code>validate_code</code>. 38 compilable samples + full <code>llms.txt</code> reference.</p>
           <div class="feature-card__chips">
             <span class="feature-card__chip">Claude</span>
+            <span class="feature-card__chip">ChatGPT &amp; Codex</span>
             <span class="feature-card__chip">Cursor</span>
             <span class="feature-card__chip">Windsurf</span>
+          </div>
+        </div>
+
+        <div class="feature-card reveal">
+          <span class="feature-card__icon material-symbols-outlined">deployed_code</span>
+          <h3 class="feature-card__title">Opens the <code>.3mf</code> AI makes</h3>
+          <p class="feature-card__text">Ask a chat assistant for a 3D print and it hands back a <code>.3mf</code> &mdash; a file nothing else on Android views in 3D, let alone in AR. SceneView reads it with no new API: the payload is detected by its ZIP magic and converted to GLB in memory, scaled from millimetres to metres and rotated upright, so a 60&nbsp;mm print is life-size on a real table. The Android demo registers for the type, so a shared file opens straight from the chooser.</p>
+          <div class="feature-card__chips">
+            <span class="feature-card__chip">3MF</span>
+            <span class="feature-card__chip">glTF / GLB</span>
+            <span class="feature-card__chip">USDZ</span>
           </div>
         </div>
       </div>
@@ -1205,7 +1252,7 @@
           <p class="involved-card__text">Show your support and help others discover SceneView.</p>
         </a>
 
-        <a href="https://discord.gg/sceneview" class="involved-card reveal" target="_blank" rel="noopener">
+        <a href="https://discord.gg/UbNDDBTNqb" class="involved-card reveal" target="_blank" rel="noopener">
           <span class="material-symbols-outlined involved-card__icon">forum</span>
           <h3 class="involved-card__name">Join Discord</h3>
           <p class="involved-card__text">Chat with developers, get help, share your projects.</p>
@@ -1242,7 +1289,7 @@
               <span class="material-symbols-outlined" style="font-size:18px">menu_book</span>
               Docs
             </a>
-            <a href="https://discord.gg/sceneview" class="cta__btn cta__btn--glass" target="_blank" rel="noopener">
+            <a href="https://discord.gg/UbNDDBTNqb" class="cta__btn cta__btn--glass" target="_blank" rel="noopener">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" style="flex-shrink:0"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
               Discord
             </a>
@@ -1298,8 +1345,7 @@
           <h4 class="footer__col-title">Community</h4>
           <ul class="footer__col-list">
             <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
-            <li><a href="https://discord.gg/sceneview" target="_blank" rel="noopener">Discord</a></li>
-            <li><a href="https://twitter.com/nicoadams_" target="_blank" rel="noopener">Twitter</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
           </ul>
         </div>
         <div class="footer__col">

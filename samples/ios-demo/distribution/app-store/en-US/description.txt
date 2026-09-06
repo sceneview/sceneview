@@ -1,21 +1,31 @@
 SceneView lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
 
 EXPLORE 3D MODELS
-Browse a curated gallery of high-quality 3D models rendered in real-time with RealityKit. Rotate, zoom, and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting affects materials — from studio setups to outdoor scenes.
+Browse a curated gallery of high-quality 3D models rendered in real time with RealityKit. Rotate, zoom and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting changes materials — from studio setups to outdoor scenes.
 
 AUGMENTED REALITY
-Place 3D objects in your real world using your camera. Point your camera at a flat surface, tap to place, then drag, pinch, and twist to position your model perfectly. Powered by ARKit with plane detection, image detection, and environmental light estimation.
+Place 3D objects in your real world using your camera. Point at a flat surface, tap to place, then drag, pinch and twist to position your model perfectly. Powered by ARKit with plane detection, instant placement, image tracking, face tracking and environmental light estimation. Real-world depth lets virtual objects sit behind real furniture, and people occlusion keeps someone walking past in front of the scene instead of behind it.
 
 DISCOVER MORE
-Explore interactive showcases:
-- Dynamic Sky: Watch the sky shift from dawn to dusk with atmospheric scattering
-- Volumetric Fog: Height-based atmospheric fog for immersive scenes
-- Physics: Rigid body simulation with bouncing balls
-- Image Detection: ARKit image recognition with 3D overlay
-- And more: geometry, animations, lighting, camera controls, reflection probes
+Nearly fifty interactive screens, each one a feature you can try:
+- Tap to Place, Instant Placement and Wall Placement — the AR placement flows
+- Depth Occlusion, People Occlusion and Depth Collider — virtual objects that respect the real room
+- Image Tracking and Augmented Faces — detect a poster, or a face
+- Cloud Anchors and Scene Mesh — anchors that outlive the session, and the mesh of the room itself
+- Dynamic Sky: watch the sky shift from dawn to dusk with atmospheric scattering
+- Volumetric Fog: height-based atmospheric fog for immersive scenes
+- Reflection Probes and HDR Environments: local reflections and image-based lighting
+- Physics and Double Pendulum: rigid-body simulation and chaotic motion
+- Geometry, Materials, Lines & Paths, Custom Mesh, Extruded Shapes — the building blocks
+- Text, Images, Video Textures and Billboards — surfaces in world space
+- Spatial Audio: positional sound that pans as you orbit
+- AR Recording and Debug Overlay: capture a session, watch the render stats
 
 EFFECTS PLAYGROUND
-Experiment with real-time rendering effects. Adjust time of day, toggle volumetric fog, tune atmospheric haze, and enable screen-space ambient occlusion — all with instant visual feedback.
+Experiment with real-time rendering effects. Adjust time of day, toggle volumetric fog, tune atmospheric haze and enable screen-space ambient occlusion — all with instant visual feedback.
+
+BUILT ON THE SCENEVIEW SDK
+This app is the live showcase for SceneView, the open-source 3D and AR SDK for SwiftUI, Jetpack Compose and the web. Everything you see here is a few lines of SwiftUI in your own app — every screen's source is public.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

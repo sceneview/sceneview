@@ -1479,6 +1479,15 @@ ul { list-style: none; }
   font-weight: 700;
 }
 
+/* Same role as .mcp-tool-card__logo, for a tool whose brand mark we do not
+   redistribute. Sized to the 18px logo box; colour comes from the header. */
+.mcp-tool-card__glyph {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+}
+
 .mcp-tool-card__badge {
   font-size: 0.625rem;
   font-weight: 600;
@@ -1611,6 +1620,21 @@ ul { list-style: none; }
 
 .ai-tool-chip__body {
   min-width: 0;
+}
+
+/* Glyph stand-in for an AI tool with no distributable brand mark (OpenAI).
+   Same 40px footprint as .ai-tool-chip__logo so the strip stays on one rhythm,
+   and it inherits the theme's own colours in both light and dark. */
+.ai-tool-chip__glyph {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 22px;
+  color: var(--color-on-primary-container);
+  background: var(--color-secondary-container);
 }
 
 .ai-tool-chip__name {

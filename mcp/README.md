@@ -400,7 +400,7 @@ mcp/
     widgets.ts           # MCP Apps widget: ui://widget/3d-viewer.html (SceneView.js + Filament.js)
     tools/handler.ts     # Tool dispatcher (free + pro)
     tiers.ts             # Free vs Pro tier mapping
-    samples.ts           # 33 compilable code samples (Kotlin + Swift)
+    samples.ts           # 38 compilable code samples (Kotlin + Swift)
     validator.ts         # Code validator (30+ rules)
     node-reference.ts    # Node type parser
     guides.ts            # Best practices, AR setup, roadmap, troubleshooting

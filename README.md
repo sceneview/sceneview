@@ -148,10 +148,20 @@ claude mcp add sceneview -- npx sceneview-mcp
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
 
-**ChatGPT / Codex:** this repository is a plugin (`.codex-plugin/plugin.json`) — three
-skills + the free MCP server. In a checkout, Codex discovers the skills from
-`.agents/skills/` automatically; the remote server for ChatGPT is `npx sceneview-mcp --http`.
-Package and submission notes: [agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md).
+**ChatGPT / Codex:** this repository *is* a plugin — the manifest lives at
+`.codex-plugin/plugin.json` and points at the three skills under [`agents/`](agents/).
+Install it into Codex from a checkout:
+
+```bash
+codex plugin marketplace add "$PWD"          # absolute path — a relative one does not resolve
+codex plugin add sceneview@sceneview-local
+codex plugin list                            # sceneview@sceneview-local  installed, enabled
+```
+
+Codex also discovers the skills on its own from `.agents/skills/` inside a checkout. For
+ChatGPT, the same MCP server speaks Streamable HTTP — `npx sceneview-mcp --http` — and
+carries the inline `view_3d_model` viewer widget. Package, listing copy and submission
+notes: [agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md).
 
 **Desktop** / **Flutter** / **React Native**: see [samples/](samples/)
 
@@ -294,6 +304,58 @@ What you can do across all 3D and AR scenes — beyond placing nodes.
 
 ---
 
+## Model formats
+
+| Format | Where it works | How you load it |
+|---|---|---|
+| **glTF / GLB** (`.gltf`, `.glb`) | Android · Web · Desktop · TV · Flutter · React Native | `rememberModelInstance(modelLoader, "model.glb")` |
+| **USDZ / Reality** (`.usdz`, `.reality`) | Apple (iOS / macOS / visionOS) | `ModelNode(named: "model.usdz")` |
+| **3MF** (`.3mf`) | Android — parser is Kotlin Multiplatform in `sceneview-core` | *the same call as GLB* — see below |
+
+### 3MF — the format AI print flows emit
+
+Ask ChatGPT for a 3D print from a sketch and it hands back a `.3mf`: an OPC/ZIP package
+whose `3D/3dmodel.model` part is XML, in millimetres and Z-up. Until now nothing on
+Android opened one in 3D, let alone in AR.
+
+**There is no new API.** `ModelLoader` sniffs the payload by its ZIP magic and converts it
+to GLB in memory, so every existing entry point already accepts a 3MF and the whole glTF
+path — materials, gestures, AR placement — is reused:
+
+```kotlin
+// A .3mf shared into your app (ChatGPT, Files, a slicer). This is the whole of it.
+rememberModelInstance(modelLoader, uri.toString())?.let {
+    ModelNode(modelInstance = it, scaleToUnits = 1.0f)
+}
+```
+
+Conversion scales the file's declared unit to metres (a 60 mm print is life-size in AR
+without a magic number), rotates the printer's Z-up to glTF's Y-up, gives every face its
+own normal — flat shading is what a printed part looks like — and turns `<basematerials>`
+and `<colorgroup>` into one glTF material per colour. For a custom pipeline,
+`ThreeMfLoader.parse()`, `.toGlb()` and `.isThreeMf()` are public in `sceneview-core`.
+Full section in [`llms.txt`](./llms.txt).
+
+The [Android demo](https://play.google.com/store/apps/details?id=io.github.sceneview.demo)
+registers as a handler for `.3mf`, `.glb` and `.gltf`, so a file opened from Downloads or
+sent through the share sheet lands in the viewer and then in AR at the size it would print
+([#3510](https://github.com/sceneview/sceneview/pull/3510)). The format is decided by the
+bytes, not the file name — a shared `.3mf` arrives as `application/octet-stream` with no
+queryable display name at all.
+
+### Coming next
+
+The 3MF parser is deliberately dependency-free Kotlin so the same shape carries the rest.
+Tracked, not yet shipped:
+
+[STL](https://github.com/sceneview/sceneview/issues/3486) ·
+[PLY](https://github.com/sceneview/sceneview/issues/3487) ·
+[OBJ + MTL](https://github.com/sceneview/sceneview/issues/3488) ·
+[one `ModelFormat` entry point](https://github.com/sceneview/sceneview/issues/3489) ·
+[every format on the web](https://github.com/sceneview/sceneview/issues/3491)
+
+---
+
 ## Apple (iOS / macOS / visionOS)
 
 Native Swift Package built on RealityKit, with a node set mirroring the Android API.
@@ -380,7 +442,7 @@ SceneView is **AI-first** — every API, doc, and sample is designed so AI assis
 
 ### MCP Server (Claude, Cursor, Windsurf, etc.)
 
-The official [MCP server](./mcp/) provides **32 tools** (29 free), **33 compilable samples**, a full API reference, and a code validator:
+The official [MCP server](./mcp/) provides **32 tools** (29 free), **38 compilable samples**, a full API reference, and a code validator:
 
 ```bash
 # Claude Code — one command
@@ -412,11 +474,27 @@ You get:
 |---|---|---|
 | **Automotive** — car configurators, HUD, dashboards | `npx automotive-3d-mcp` | 9 |
 | **Healthcare** — anatomy, DICOM, surgical planning | `npx healthcare-3d-mcp` | 7 |
-| **Gaming** — characters, physics, particles, levels | `npx gaming-3d-mcp` | 7 |
-| **Interior Design** — room planning, AR furniture | `npx interior-design-3d-mcp` | 7 |
 | **Rerun.io** — AR debug logging, visualization | `npx rerun-3d-mcp` | 5 |
 
-### ChatGPT / GitHub Copilot / Other AI
+### ChatGPT / Codex plugin
+
+OpenAI's unit of distribution is the **plugin** — a manifest, skills, an optional MCP
+server — listed in one directory shared by ChatGPT and Codex. This repository *is* that
+plugin: `.codex-plugin/plugin.json` at the root points at the three skills under
+[`agents/`](agents/) (`sceneview`, `sceneview-ios`, `sceneview-web`), each carrying the API
+contract, the recipes and the migration guide.
+
+```bash
+codex plugin marketplace add "$PWD"    # absolute path
+codex plugin add sceneview@sceneview-local
+```
+
+For ChatGPT, `npx sceneview-mcp --http` serves the MCP Streamable HTTP transport at `/mcp`
+and the inline `view_3d_model` widget (MCP Apps) that renders a public GLB/glTF URL right
+in the conversation. Listing copy, starter prompts and test cases:
+[agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md).
+
+### GitHub Copilot / Cursor / Other AI
 
 - **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI)
 - **GitHub Copilot** — Custom instructions in [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
@@ -430,7 +508,9 @@ You get:
 - **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
 - **46+ node types** as declarative composables
-- **MCP server** with 32 tools — no other 3D SDK has this
+- **MCP server** with 32 tools, plus a ChatGPT / Codex plugin — no other 3D SDK has this
+- **Opens the `.3mf` an AI print flow emits** — the file every model-generating chat hands
+  back, and that nothing else on Android views in 3D or AR
 
 Listed on the [MCP Registry](https://registry.modelcontextprotocol.io). See the [MCP README](./mcp/README.md) for full setup and tool reference.
 
