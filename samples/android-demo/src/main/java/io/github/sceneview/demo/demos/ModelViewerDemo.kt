@@ -299,7 +299,7 @@ private fun SingleModelSection(
     // Restored via remember (savedStateRegistry would survive config change
     // but we want the helmet back on every cold start so screenshots / Play
     // Store store-page assets stay deterministic).
-    // "Open with SceneView" (#3482) — a `.3mf` / `.glb` / `.gltf` another app handed over,
+    // "Open with SceneView" — a `.3mf` / `.glb` / `.gltf` / `.stl` / `.obj` / `.ply` file,
     // already staged into the cache as a `file://` path by `OpenedModelIntent`. It rides the
     // same override the Sketchfab stream uses (`rememberModelInstance` resolves a `file://`
     // location exactly like an http one), so an opened file arrives on the flagship viewer with
