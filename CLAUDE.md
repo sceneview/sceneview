@@ -69,7 +69,10 @@ Full API reference: [`llms.txt`](./llms.txt).
   272K window, because Sol truncates such a prompt instead of refusing it. Astra is
   **not** the default for `implement`: three parallel Astra implements at effort high
   exhausted a whole ChatGPT Plus five-hour window — for every model, Sol included — in
-  nine minutes.
+  nine minutes. And the CLI caps **one turn at 1,048,576 characters** whatever the model
+  window is, so Astra's advertised ~922K-token input is not reachable from `codex exec`:
+  a corpus bigger than that has to be split, and the script refuses it up front instead
+  of letting the upload bounce.
 - **CI**: `.github/workflows/ci.yml` is the one PR workflow; its `changes` job gates
   every other job and `changes-verdict` ("Path filter completed") is the required check.
   Heavy suites and their path gates: [CONTRIBUTING.md](CONTRIBUTING.md).
