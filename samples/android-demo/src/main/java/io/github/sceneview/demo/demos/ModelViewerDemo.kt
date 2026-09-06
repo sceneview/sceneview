@@ -616,6 +616,9 @@ private fun SingleModelSection(
                     maxOf(extents.x, extents.y, extents.z).takeIf { it > 0f }
                 }
             }
+            // The staged file is called `opened-model` on disk, so AR cannot recover the user's
+            // file name from the location it is handed. Carry it across explicitly.
+            DemoSettings.openedModelDisplayName = openedModel?.displayName
             val model = openedModel?.location ?: selectedModel.assetPath
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
