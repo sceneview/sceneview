@@ -3246,6 +3246,67 @@ The cost is one decode + PNG encode per WebP texture — on the calling thread f
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.
 
+### 3MF — open a printable model (`.3mf`) (#3482)
+
+**Every loader entry point above also accepts a `.3mf` file. There is no separate API.** 3MF is what
+ChatGPT, every slicer and every image-to-print flow emit for a printable model; SceneView detects the
+payload by its ZIP magic and converts it to GLB in memory before Filament sees it, so the format is
+one more thing you can pass to the code you already write:
+
+```kotlin
+// A 3MF shared into your app (ChatGPT, Files, a slicer) — this is the whole of it.
+@Composable
+fun PrintViewer(uri: Uri) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    SceneView(modifier = Modifier.fillMaxSize()) {
+        rememberModelInstance(modelLoader, uri.toString())?.let { instance ->
+            ModelNode(modelInstance = instance, scaleToUnits = 0.3f)
+        }
+    }
+}
+```
+
+Works identically in AR — `ARScene { … }`, `PlacementScene`, an anchored `ModelNode` — because by
+the time a node sees it, a 3MF *is* a glTF model.
+
+**What conversion does, and why each part matters:**
+- **Millimetres → metres.** 3MF carries real-world size (`unit="millimeter"` unless stated
+  otherwise). A 60 mm print becomes 0.06 scene units, so AR placement is life-size without a magic
+  number. Pass `scaleToUnits` on the node if you want it framed to a fixed size instead.
+- **Z-up → Y-up.** 3MF uses the printer's build-plate axes; glTF and SceneView use Y-up. The print
+  stands upright instead of lying on its back.
+- **Flat normals.** 3MF stores no normals. Faces are de-indexed and given per-face normals, which is
+  what a printed part actually looks like — a smoothed normal would round over the facets the slicer
+  will extrude.
+- **Colours.** `<basematerials>` and the materials extension's `<colorgroup>` become one glTF
+  material per colour, per object *and* per triangle. Materials are `doubleSided`, because generated
+  3MF meshes are often inconsistently wound and a one-sided print renders inside-out.
+
+Conversion happens off the main thread for `loadModel*` / `rememberModelInstance(fileLocation)`, and
+on the calling thread for the synchronous `createModel*` overloads. A payload that is not a ZIP
+costs a 4-byte comparison.
+
+**Direct access (all platforms — Android, iOS, web; `sceneview-core`, no platform dependency):**
+```kotlin
+import io.github.sceneview.core.threemf.ThreeMfLoader
+
+// isThreeMf is a cheap sniff — ZIP magic plus a 3D/3dmodel.model part — so it is safe to call on
+// any buffer before deciding what to do with it. toGlb returns a self-contained GLB.
+fun asGlb(bytes: ByteArray): ByteArray =
+    if (ThreeMfLoader.isThreeMf(bytes)) ThreeMfLoader.toGlb(bytes) else bytes
+
+// parse() instead, when you want the file's own data rather than a renderable model.
+fun triangleCount(bytes: ByteArray): Int = ThreeMfLoader.parse(bytes).triangleCount
+```
+`ThreeMfModel` keeps the file's own frame — `unit: ThreeMfUnit` (with `.meters`), `objects`
+(`ThreeMfObject`: `mesh`, `components`, `color`), `items` (build-plate placements, each a 16-float
+column-major matrix), `objectsById`, `triangleCount`. Meshes are `positions` (xyz triplets),
+`indices` and an optional per-triangle `triangleColors` packed `0xRRGGBBAA`. Every failure — not a
+ZIP, no model part, malformed XML, an out-of-range vertex index — is a `ThreeMfParseException`.
+Unrecognised 3MF extensions (slice, beamlattice, production) are skipped, never rejected: an
+unknown extension must not stop a print from being previewed.
+
 ### MaterialLoader
 ```kotlin
 class MaterialLoader(engine: Engine, context: Context) {

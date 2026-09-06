@@ -64,6 +64,17 @@ internal object Inflate {
         return output
     }
 
+    /**
+     * Decompress a **raw** DEFLATE stream (RFC 1951, no gzip or zlib wrapper) starting at [start]
+     * in [input]. [sizeHint] is the expected uncompressed size when the container knows it — a ZIP
+     * central directory does — and is only an allocation hint: it is clamped against a sane
+     * expansion ratio and never trusted as a length.
+     *
+     * Used by the ZIP reader behind the 3MF loader, where every entry is a raw DEFLATE member.
+     */
+    fun raw(input: ByteArray, start: Int, sizeHint: Int = 0): ByteArray =
+        Inflater(input, start).inflate(sizeHint)
+
     private fun skipZeroTerminated(data: ByteArray, start: Int): Int {
         var p = start
         while (p < data.size && data[p].toInt() != 0) p++

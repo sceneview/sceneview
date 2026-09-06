@@ -12,6 +12,7 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
+import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
@@ -35,6 +36,17 @@ import java.nio.ByteBuffer
  * a bundle of Filament textures, vertex buffers, index buffers, etc.
  *
  * A [Model] is composed of 1 or more [ModelInstance] objects which contain entities and components.
+ *
+ * **`.3mf` is loaded too, through every entry point on this class** (#3482). 3MF is what ChatGPT,
+ * every slicer and every image-to-print flow emit for a printable model; a 3MF payload is detected
+ * by its ZIP magic and converted to GLB in memory by [ThreeMfLoader] before it reaches Filament, so
+ * `loadModel("print.3mf")`, `createModelInstance(uri)` and `rememberModelInstance(...)` need no
+ * separate API and no separate code path. Conversion scales the model from its declared unit
+ * (usually millimetres) to metres and rotates it from 3MF's Z-up to glTF's Y-up. A payload that is
+ * not a ZIP costs one 4-byte comparison.
+ *
+ * The `suspend` [loadModel] converts off the main thread; the [createModel] overloads convert on
+ * the calling (main) thread, like the rest of their work.
  */
 class ModelLoader(
     val engine: Engine,
@@ -78,7 +90,7 @@ class ModelLoader(
         buffer: Buffer,
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
-    ): Model = (assetLoader.createAsset(buffer.transcodeWebPTextures())
+    ): Model = (assetLoader.createAsset(buffer.toFilamentModelSource())
         ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
         models += model
         loadResources(model, resourceResolver)
@@ -143,7 +155,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): Model? = context.loadFileBuffer(fileLocation)?.let { buffer ->
         // Transcoding decodes and re-encodes images: keep it off the main thread.
-        val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
+        val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
         val model = createOrDestroyOnCancel(::destroyModel) {
             assetLoader.createAsset(source)
         } ?: return@let null
@@ -288,7 +300,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
-            (assetLoader.createInstancedAsset(buffer.transcodeWebPTextures(), this)
+            (assetLoader.createInstancedAsset(buffer.toFilamentModelSource(), this)
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, resourceResolver)
@@ -377,7 +389,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
     ): List<ModelInstance> = context.loadFileBuffer(fileLocation)?.let { buffer ->
         val instances = arrayOfNulls<ModelInstance>(count)
-        val source = withContext(Dispatchers.Default) { buffer.transcodeWebPTextures() }
+        val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
         val model = createOrDestroyOnCancel(::destroyModel) {
             assetLoader.createInstancedAsset(source, instances)
         } ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
@@ -562,6 +574,42 @@ internal suspend fun <T : Any> destroyOnCancel(
         withContext(NonCancellable + dispatcher) { destroy(created) }
         throw cancellation
     }
+}
+
+/**
+ * Normalises whatever the caller handed us into something Filament's glTF loader accepts: a 3MF is
+ * converted to GLB, then WebP textures are transcoded.
+ */
+private fun Buffer.toFilamentModelSource(): Buffer = convertThreeMfToGlb().transcodeWebPTextures()
+
+/**
+ * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class
+ * with no separate API — the format ChatGPT and every slicer emit for a printable model, which no
+ * Android app opened in 3D before (#3482).
+ *
+ * The sniff is a ZIP-magic check plus a central-directory lookup for `3D/3dmodel.model`, so a glTF,
+ * a GLB or anything else costs one 4-byte comparison and is returned untouched.
+ */
+private fun Buffer.convertThreeMfToGlb(): Buffer {
+    val source = this as? ByteBuffer ?: return this
+    // Cheap gate first: no ZIP magic, no copy. A 100 MB GLB must not be duplicated in memory just
+    // to find out it is not a 3MF.
+    if (!source.startsWithZipMagic()) return this
+    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
+    if (!ThreeMfLoader.isThreeMf(bytes)) return this
+    val glb = ThreeMfLoader.toGlb(bytes)
+    // Direct, like every other buffer Filament's JNI layer reads (see WebPTextureTranscoder).
+    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
+}
+
+/** `PK` — the local-file-header magic every ZIP, and so every 3MF, starts with. */
+private fun ByteBuffer.startsWithZipMagic(): Boolean {
+    val at = position()
+    return remaining() >= 4 &&
+        get(at) == 'P'.code.toByte() &&
+        get(at + 1) == 'K'.code.toByte() &&
+        get(at + 2) == 0x03.toByte() &&
+        get(at + 3) == 0x04.toByte()
 }
 
 /**

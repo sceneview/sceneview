@@ -795,6 +795,84 @@ public final class io/github/sceneview/core/splat/SplatParser {
 	public final fun parse ([B)Lio/github/sceneview/core/splat/SplatCloud;
 }
 
+public final class io/github/sceneview/core/threemf/ThreeMfComponent {
+	public fun <init> (I[F)V
+	public final fun getObjectId ()I
+	public final fun getTransform ()[F
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfItem {
+	public fun <init> (I[F)V
+	public final fun getObjectId ()I
+	public final fun getTransform ()[F
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfLoader {
+	public static final field INSTANCE Lio/github/sceneview/core/threemf/ThreeMfLoader;
+	public final fun isThreeMf ([B)Z
+	public final fun parse ([B)Lio/github/sceneview/core/threemf/ThreeMfModel;
+	public final fun toGlb (Lio/github/sceneview/core/threemf/ThreeMfModel;)[B
+	public final fun toGlb ([B)[B
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfMesh {
+	public fun <init> ([F[I[I)V
+	public synthetic fun <init> ([F[I[IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getIndices ()[I
+	public final fun getPositions ()[F
+	public final fun getTriangleColors ()[I
+	public final fun getTriangleCount ()I
+	public final fun getVertexCount ()I
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfModel {
+	public fun <init> (Lio/github/sceneview/core/threemf/ThreeMfUnit;Ljava/util/List;Ljava/util/List;)V
+	public final fun getItems ()Ljava/util/List;
+	public final fun getObjects ()Ljava/util/List;
+	public final fun getObjectsById ()Ljava/util/Map;
+	public final fun getTriangleCount ()I
+	public final fun getUnit ()Lio/github/sceneview/core/threemf/ThreeMfUnit;
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfModelKt {
+	public static final field NoColor I
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfObject {
+	public fun <init> (ILjava/lang/String;Lio/github/sceneview/core/threemf/ThreeMfMesh;Ljava/util/List;I)V
+	public synthetic fun <init> (ILjava/lang/String;Lio/github/sceneview/core/threemf/ThreeMfMesh;Ljava/util/List;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getColor ()I
+	public final fun getComponents ()Ljava/util/List;
+	public final fun getId ()I
+	public final fun getMesh ()Lio/github/sceneview/core/threemf/ThreeMfMesh;
+	public final fun getName ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfParseException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfUnit : java/lang/Enum {
+	public static final field CENTIMETER Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static final field Companion Lio/github/sceneview/core/threemf/ThreeMfUnit$Companion;
+	public static final field FOOT Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static final field INCH Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static final field METER Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static final field MICRON Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static final field MILLIMETER Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getMeters ()F
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static fun values ()[Lio/github/sceneview/core/threemf/ThreeMfUnit;
+}
+
+public final class io/github/sceneview/core/threemf/ThreeMfUnit$Companion {
+	public final fun fromId (Ljava/lang/String;)Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public final fun getDefault ()Lio/github/sceneview/core/threemf/ThreeMfUnit;
+}
+
 public final class io/github/sceneview/geometries/BoundingBox {
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
