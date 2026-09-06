@@ -387,4 +387,10 @@
     <string name="feedback_report_no_app">No app available to send the report</string>
     <string name="feedback_report_voice_cd">Dictate description</string>
     <string name="feedback_report_voice_prompt">Describe the issue</string>
+
+    <!-- "Open with SceneView" (#3482): the label Android shows in the app chooser and the
+         share sheet when another app hands over a .3mf / .glb / .gltf file. -->
+    <string name="open_model_filter_label">Open in SceneView</string>
+    <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
+    <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb and .gltf</string>
 </resources>

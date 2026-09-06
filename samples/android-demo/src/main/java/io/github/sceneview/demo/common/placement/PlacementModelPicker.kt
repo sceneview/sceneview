@@ -107,10 +107,19 @@ data class PlacementModel(
      * are declared per row rather than trusted from the glTF because these assets are not
      * authored in metres (the Khronos Fox is ~140 units long).
      */
-    val realWorldSizeMeters: Float = 0.3f,
+    val realWorldSizeMeters: Float = DEFAULT_REAL_WORLD_SIZE_METERS,
     val source: PlacementModelSource = PlacementModelSource.Bundled,
     val pending: Boolean = false,
-)
+) {
+    companion object {
+        /**
+         * Fallback real-world size, in metres, for a model whose true size nothing knows — a file
+         * the user opened whose bounds have not been measured yet (#3482). Every catalogue row
+         * declares its own; this is only ever the last resort.
+         */
+        const val DEFAULT_REAL_WORLD_SIZE_METERS: Float = 0.3f
+    }
+}
 
 /**
  * The one bundled catalogue both tap-to-place entry points offer.

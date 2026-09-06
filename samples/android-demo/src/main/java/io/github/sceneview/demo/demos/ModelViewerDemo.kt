@@ -299,7 +299,14 @@ private fun SingleModelSection(
     // Restored via remember (savedStateRegistry would survive config change
     // but we want the helmet back on every cold start so screenshots / Play
     // Store store-page assets stay deterministic).
-    var streamedFileUrl by remember { mutableStateOf<String?>(null) }
+    // "Open with SceneView" (#3482) — a `.3mf` / `.glb` / `.gltf` another app handed over,
+    // already staged into the cache as a `file://` path by `OpenedModelIntent`. It rides the
+    // same override the Sketchfab stream uses (`rememberModelInstance` resolves a `file://`
+    // location exactly like an http one), so an opened file arrives on the flagship viewer with
+    // its framing, lighting, animation bar and View-in-AR handoff already working — rather than
+    // on a second, poorer screen written to say the same thing.
+    val openedModel = remember { DemoSettings.openedModel.also { DemoSettings.openedModel = null } }
+    var streamedFileUrl by remember { mutableStateOf<String?>(openedModel?.location) }
     // Last-tapped state — when it's `true` the FAB shows a spinner. The
     // surprise-coroutine flips it back to `false` regardless of success so
     // the button doesn't get stuck in the loading state.
@@ -429,6 +436,9 @@ private fun SingleModelSection(
     // exist. The other four sites go through `SketchfabAssetResolver`, whose every
     // failure path DOES end at a fallback file, and they do share the probe.
     val assetSource = when {
+        // The user's own file is neither streamed nor bundled: its origin is the title bar,
+        // which names the file. A "Streamed" chip over a local file would simply be false.
+        openedModel != null -> null
         streamedFileUrl == null -> null
         streamedModelInstance == null -> AssetSourceState.Streaming
         else -> AssetSourceState.Streamed
@@ -519,7 +529,9 @@ private fun SingleModelSection(
     }
 
     DemoScaffold(
-        title = stringResource(R.string.demo_model_viewer_screen_title),
+        // An opened file is titled with its own name: the user came here from their file
+        // manager or a share sheet, and "Model Viewer" would not tell them it worked.
+        title = openedModel?.displayName ?: stringResource(R.string.demo_model_viewer_screen_title),
         onBack = onBack,
         assetSource = assetSource,
         firstFrameRendered = firstModelFrame,
@@ -594,7 +606,18 @@ private fun SingleModelSection(
             }
         }} else null,
         dockAccent = DockItem(Icons.Filled.ViewInAr, "View in AR", {
-            DemoSettings.requestedRoute = "demo/ar-placement?model=${selectedModel.assetPath}"
+            // An opened file goes to AR as itself, at the size it actually is. That measurement
+            // is the point for a 3MF: the format carries true manufacturing size, so a 60 mm
+            // print must arrive in the room as 60 mm, not as the catalogue's default 30 cm.
+            DemoSettings.openedModelSizeMeters = openedModel?.let {
+                bounds?.extents?.let { extents ->
+                    // `Aabb.extents` is already the FULL size (halfExtent * 2), so the longest
+                    // dimension is the object's real length — no second doubling.
+                    maxOf(extents.x, extents.y, extents.z).takeIf { it > 0f }
+                }
+            }
+            val model = openedModel?.location ?: selectedModel.assetPath
+            DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),
         chromeToggleOnTap = true,
     ) {

@@ -120,8 +120,24 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // answered "what are we placing?", so it skips the chooser and opens the camera — which
     // is the same contract, reached from a different door.
     val requestedModel = remember { DemoSettings.requestedModel.also { DemoSettings.requestedModel = null } }
+    // "Open with SceneView" (#3482): the handoff may name a file the user opened rather than a
+    // catalogue row — a `file://` path staged by `OpenedModelIntent`. It becomes a row of its own,
+    // first in the picker, at the size the viewer measured on the loaded model. That size is the
+    // whole point for a 3MF: the format carries true manufacturing size, so a 60 mm print has to
+    // arrive in the room as 60 mm rather than as the catalogue's default.
+    val openedRow = remember(requestedModel) {
+        val location = requestedModel?.takeIf { it.startsWith("file://") } ?: return@remember null
+        PlacementModel(
+            id = "opened-file",
+            displayName = location.substringAfterLast('/').ifBlank { "Your file" },
+            assetLocation = location,
+            realWorldSizeMeters = DemoSettings.openedModelSizeMeters
+                ?.takeIf { it.isFinite() && it > 0f }
+                ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+        )
+    }
     val requestedRow = remember(requestedModel) {
-        BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
+        openedRow ?: BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
             model.assetLocation == requestedModel ||
                 model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == requestedModel
         }
@@ -180,8 +196,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
     // places that slug's stand-in rather than nothing — and the row is flagged `pending`
     // so the bar and the card both say "Streaming …" instead of lying about it.
-    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile) {
-        BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
+    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile, openedRow) {
+        listOfNotNull(openedRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
             val isArmed = slug.uid == armedSlug?.uid
             PlacementModel(
                 id = streamedModelId(slug),
@@ -212,7 +228,10 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // tap actually places. `loaded` is the FILE here, not a parsed `ModelInstance`: a tap
     // places whatever `armedFile` holds, so that is the moment the chip has something true
     // to say. See [AssetSourceProbe].
-    val assetSource = if (armedSlug == null) {
+    val assetSource = if (openedRow != null && picker.selectedId == openedRow.id) {
+        // The user's own file: neither bundled nor streamed. No chip rather than a wrong one.
+        null
+    } else if (armedSlug == null) {
         AssetSourceState.Bundled
     } else {
         AssetSourceProbe.of(
