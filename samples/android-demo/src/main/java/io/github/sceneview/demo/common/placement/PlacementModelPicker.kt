@@ -193,6 +193,77 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
 )
 
 /**
+ * Resolves the Model Viewer's "View in AR" handoff (#3493) — and "Open with SceneView"'s
+ * (#3482) — into the extra picker row AR must arm immediately when the model it names is NOT
+ * already in [catalogue]. Returns `null` when there is nothing to add: either no model was
+ * handed off, or it already matches a catalogue row by full asset path or bare file stem (that
+ * row's own curated name and size win instead).
+ *
+ * Before this existed, an uncatalogued handoff — the Model Viewer's Damaged Helmet, deliberately
+ * left out of [BUNDLED_PLACEMENT_MODELS] by #2023 ("a helmet hovering over a floor reads as a
+ * test payload") — silently produced no armed row at all: the caller's `requestedRow` stayed
+ * `null`, `flow.enterAr()` never fired, and the user landed on the chooser instead of the camera
+ * they explicitly asked for by tapping "View in AR" on a model they were already looking at. The
+ * catalogue's curation is a rule about what the chooser offers a fresh visitor; it must never be
+ * read as a veto over an explicit "take me to AR with THIS model" request.
+ *
+ * [requestedModel] is the raw route argument: a bundled asset path, its bare file stem, or a
+ * `file://` location for an opened/streamed file (recognised by the scheme, not a flag). A
+ * `file://` location prefers [openedDisplayName] for its label — the location's own basename is
+ * the staged copy's fixed name (`opened-model`), which would tell the user nothing — and carries
+ * whatever real-world size the viewer measured, in [openedSizeMeters] (the whole point for a
+ * 3MF, which carries true manufacturing size). Any other unmatched location falls back to
+ * [requestedDisplayName] (the viewer's own name for the model it was showing), then to a name
+ * derived from the location itself — the full basename for a user's file (extension included,
+ * because that is how they named it) and the bare stem for a bundled asset path (whose
+ * extension is an implementation detail).
+ *
+ * [openedSizeMeters] is honoured for a `file://` location only: it is a measurement of the
+ * file the viewer had loaded, and must never leak onto a bundled row whose catalogue size —
+ * or the default — is the truthful one.
+ */
+fun resolveRequestedExtraPlacementRow(
+    requestedModel: String?,
+    catalogue: List<PlacementModel> = BUNDLED_PLACEMENT_MODELS,
+    requestedDisplayName: String? = null,
+    openedDisplayName: String? = null,
+    openedSizeMeters: Float? = null,
+): PlacementModel? {
+    val location = requestedModel?.takeIf { it.isNotBlank() } ?: return null
+    val matchesCatalogue = catalogue.any { model ->
+        model.assetLocation == location ||
+            model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == location
+    }
+    if (matchesCatalogue) return null
+    val isOpenedFile = location.startsWith("file://")
+    val basename = location.substringAfterLast('/')
+    return PlacementModel(
+        id = if (isOpenedFile) OPENED_FILE_PLACEMENT_ROW_ID else REQUESTED_MODEL_PLACEMENT_ROW_ID,
+        displayName = (if (isOpenedFile) openedDisplayName else null)
+            ?: requestedDisplayName
+            ?: (if (isOpenedFile) basename else basename.substringBeforeLast('.'))
+                .ifBlank { "Your file" },
+        assetLocation = location,
+        realWorldSizeMeters = openedSizeMeters
+            ?.takeIf { isOpenedFile && it.isFinite() && it > 0f }
+            ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+    )
+}
+
+/**
+ * Row id for a file the user opened ("Open with SceneView", #3482). Its bytes are neither
+ * bundled nor streamed, so the origin chip must stay silent on it rather than claim either.
+ */
+const val OPENED_FILE_PLACEMENT_ROW_ID: String = "opened-file"
+
+/**
+ * Row id for a bundled model the handoff named but the curated catalogue does not carry —
+ * the Model Viewer's Damaged Helmet (#3493). Bundled like any catalogue row, so the origin
+ * chip reports it as such.
+ */
+const val REQUESTED_MODEL_PLACEMENT_ROW_ID: String = "requested-model"
+
+/**
  * Selection + sheet visibility for the canonical picker, hoisted out of both hosts.
  *
  * Hoisted rather than kept inside [TapToPlaceExperience] because the hosts read the
