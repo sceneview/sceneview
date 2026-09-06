@@ -294,7 +294,13 @@
       'ar-image': 'Image Detection',
       'ar-face': 'Face Tracking',
       'ar-cloud-anchor': 'Cloud Anchors',
-      'ar-streetscape': 'Streetscape',
+      'ar-scene-mesh': 'Scene Geometry',
+      // #3463 — folded into `ar-scene-mesh`, the "Scene Geometry" card, as its
+      // Streetscape mode; the app resolves the old id through
+      // DeepLinkRouter.DEMO_ID_ALIASES and pre-selects that mode via
+      // ALIAS_INITIAL_TAB, so the link still opens the right screen on the right
+      // half of it.
+      'ar-streetscape': 'Scene Geometry',
       'ar-pose': 'Pose Tracking',
       'ar-rerun': 'Rerun Debug',
       'ar-record-playback': 'Record & Playback',
