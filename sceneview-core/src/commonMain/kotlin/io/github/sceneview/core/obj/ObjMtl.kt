@@ -8,8 +8,9 @@ internal object ObjMtl {
                 "newmtl" -> {
                     val name = tokens.rest()
                     if (name.isEmpty()) objError("MTL line $line: newmtl needs a name")
-                    factor = defaultObjColor()
-                    materials[name] = ObjMaterial(factor!!)
+                    val color = defaultObjColor()
+                    factor = color
+                    materials[name] = ObjMaterial(color)
                 }
                 "Kd" -> factor?.let { rgba ->
                     repeat(3) { rgba[it] = tokens.number(line).coerceIn(0f, 1f) }

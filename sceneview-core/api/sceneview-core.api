@@ -773,6 +773,43 @@ public final class io/github/sceneview/collision/Vector3$Companion {
 	public final fun zero ()Lio/github/sceneview/collision/Vector3;
 }
 
+public final class io/github/sceneview/core/obj/ObjGroup {
+	public fun <init> (Ljava/lang/String;[F[F[FLjava/util/List;)V
+	public final fun getName ()Ljava/lang/String;
+	public final fun getNormals ()[F
+	public final fun getPositions ()[F
+	public final fun getTextureCoordinates ()[F
+	public final fun getTriangleCount ()I
+	public final fun getTriangleMaterials ()Ljava/util/List;
+}
+
+public final class io/github/sceneview/core/obj/ObjLoader {
+	public static final field INSTANCE Lio/github/sceneview/core/obj/ObjLoader;
+	public final fun isObj ([B)Z
+	public final fun parse ([BLio/github/sceneview/core/threemf/ThreeMfUnit;Lkotlin/jvm/functions/Function1;)Lio/github/sceneview/core/obj/ObjModel;
+	public static synthetic fun parse$default (Lio/github/sceneview/core/obj/ObjLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/core/obj/ObjModel;
+	public final fun toGlb (Lio/github/sceneview/core/obj/ObjModel;)[B
+	public final fun toGlb ([BLio/github/sceneview/core/threemf/ThreeMfUnit;Lkotlin/jvm/functions/Function1;)[B
+	public static synthetic fun toGlb$default (Lio/github/sceneview/core/obj/ObjLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)[B
+}
+
+public final class io/github/sceneview/core/obj/ObjMaterial {
+	public fun <init> ([F)V
+	public final fun getBaseColorFactor ()[F
+}
+
+public final class io/github/sceneview/core/obj/ObjModel {
+	public fun <init> (Lio/github/sceneview/core/threemf/ThreeMfUnit;Ljava/util/List;Ljava/util/Map;)V
+	public final fun getGroups ()Ljava/util/List;
+	public final fun getMaterials ()Ljava/util/Map;
+	public final fun getTriangleCount ()I
+	public final fun getUnit ()Lio/github/sceneview/core/threemf/ThreeMfUnit;
+}
+
+public final class io/github/sceneview/core/obj/ObjParseException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class io/github/sceneview/core/splat/SplatCloud {
 	public fun <init> (I[F[F[F[F[F)V
 	public final fun getColors ()[F
@@ -1608,4 +1645,3 @@ public final class io/github/sceneview/utils/DurationKt {
 public final class io/github/sceneview/utils/TimeSourceKt {
 	public static final fun nanoTime ()J
 }
-

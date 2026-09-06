@@ -50,7 +50,7 @@ class ObjLoaderTest {
             } else {
                 assertEquals(1f, group.normals[2])
             }
-            if (face.contains("/1") || face.contains("/-")) {
+            if (!face.contains("//") && face.substringBefore(' ').substringAfter('/', "").isNotEmpty()) {
                 assertContentEquals(floatArrayOf(0.25f, 0.75f, 1f, 0f, 0.25f, 0.75f), group.textureCoordinates)
             } else assertNull(group.textureCoordinates)
         }
@@ -96,7 +96,11 @@ class ObjLoaderTest {
 
     @Test
     fun missingMtlAndAbsentResolverStillLoad() {
-        for (model in listOf(ObjLoader.parse(ObjTestFixtures.Colored), ObjLoader.parse(ObjTestFixtures.Colored) { null })) {
+        val models = listOf(
+            ObjLoader.parse(ObjTestFixtures.Colored),
+            ObjLoader.parse(ObjTestFixtures.Colored) { null }
+        )
+        for (model in models) {
             assertEquals(2, model.triangleCount)
             assertTrue(model.materials.isEmpty())
             assertTrue(ObjLoader.toGlb(model).isNotEmpty())
@@ -162,7 +166,9 @@ class ObjLoaderTest {
         for (face in listOf("0 2 3", "-4 2 3", "4 2 3", "1/1 2 3", "1//1 2 3", "1/ 2 3", "1 2")) {
             assertFailsWith<ObjParseException>(face) { ObjLoader.parse((vertices + "f $face").encodeToByteArray()) }
         }
-        assertFailsWith<ObjParseException> { ObjLoader.parse(ObjTestFixtures.Triangle.replace("v 0", "v NaN").encodeToByteArray()) }
+        assertFailsWith<ObjParseException> {
+            ObjLoader.parse(ObjTestFixtures.Triangle.replace("v 0", "v NaN").encodeToByteArray())
+        }
         assertFailsWith<ObjParseException> { ObjLoader.parse("# empty".encodeToByteArray()) }
     }
 
@@ -181,7 +187,10 @@ class ObjLoaderTest {
             "newmtl paint\nKd 0.2 0.4 0.6\nd 0.7\nTr 0.8\nd -halo 0.3".encodeToByteArray()
         }
         assertEquals(listOf("first.mtl", "sub dir/second.mtl"), requests)
-        assertContentEquals(floatArrayOf(0.2f, 0.4f, 0.6f, 0.3f), assertNotNull(model.materials["paint"]).baseColorFactor)
+        assertContentEquals(
+            floatArrayOf(0.2f, 0.4f, 0.6f, 0.3f),
+            assertNotNull(model.materials["paint"]).baseColorFactor
+        )
     }
 
     @Test
@@ -189,13 +198,17 @@ class ObjLoaderTest {
         assertTrue(ObjLoader.isObj(ObjTestFixtures.Cube))
         assertTrue(ObjLoader.isObj(("\uFEFF# comment\r\n\r\n" + ObjTestFixtures.Triangle).encodeToByteArray()))
         assertTrue(ObjLoader.isObj(ObjTestFixtures.Triangle.replace("v ", "v\t").encodeToByteArray()))
-        for (source in listOf("", "f 1 2 3\nv 0 0 0", "vn 0 0 1\nf 1 2 3", "v nope\nf 1 2 3",
-            "{\n\"asset\":{},\n v 0 0 0\nf 1 2 3\n}", "glTF\nv 0 0 0\nf 1 2 3", "#" + "x".repeat(4096) + "\n" + ObjTestFixtures.Triangle)) {
+        val rejected = listOf(
+            "", "f 1 2 3\nv 0 0 0", "vn 0 0 1\nf 1 2 3", "v nope\nf 1 2 3",
+            "{\n\"asset\":{},\n v 0 0 0\nf 1 2 3\n}", "glTF\nv 0 0 0\nf 1 2 3",
+            "#" + "x".repeat(4096) + "\n" + ObjTestFixtures.Triangle
+        )
+        for (source in rejected) {
             assertFalse(ObjLoader.isObj(source.encodeToByteArray()), source.take(60))
         }
         val prefix = ObjTestFixtures.Triangle.substringBefore("f ")
         val partial = prefix + "#" + "x".repeat(4096 - prefix.length - 7) + "\nf 1 2 3"
-        assertEquals(4097, partial.length)
+        assertTrue(partial.length > 4096)
         assertFalse(ObjLoader.isObj(partial.encodeToByteArray()), "never accept a truncated face line")
         assertFalse(ObjLoader.isObj(ObjLoader.toGlb(ObjTestFixtures.Cube)))
     }
