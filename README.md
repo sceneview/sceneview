@@ -47,6 +47,7 @@ an AI assistant — and shows them at their real size, in 3D and in AR.
 | 3MF | ✅ pure Kotlin → GLB in memory, millimetres honoured | — | — |
 | STL (binary + ASCII) | ✅ pure Kotlin → GLB | — | — |
 | OBJ + MTL | ✅ pure Kotlin → GLB, material colours | — | — |
+| PLY (binary + ASCII) | ✅ pure Kotlin → GLB, vertex colours | — | — |
 | USDZ / Reality | — | ✅ RealityKit | — |
 
 The format is decided by the bytes, not the extension: a `.3mf` that arrives as
@@ -362,7 +363,7 @@ and `<colorgroup>` into one glTF material per colour. For a custom pipeline,
 Full section in [`llms.txt`](./llms.txt).
 
 The [Android demo](https://play.google.com/store/apps/details?id=io.github.sceneview.demo)
-registers as a handler for `.3mf`, `.glb` and `.gltf`, so a file opened from Downloads or
+registers as a handler for `.3mf`, `.glb`, `.gltf`, `.stl`, `.obj` and `.ply`, so a file opened from Downloads or
 sent through the share sheet lands in the viewer and then in AR at the size it would print
 ([#3510](https://github.com/sceneview/sceneview/pull/3510)). The format is decided by the
 bytes, not the file name — a shared `.3mf` arrives as `application/octet-stream` with no
@@ -370,12 +371,11 @@ queryable display name at all.
 
 ### Coming next
 
-The 3MF parser is deliberately dependency-free Kotlin so the same shape carries the rest.
-Tracked, not yet shipped:
+The 3MF parser is deliberately dependency-free Kotlin, and the same shape now carries
+[STL](https://github.com/sceneview/sceneview/pull/3517),
+[OBJ + MTL](https://github.com/sceneview/sceneview/pull/3518) and
+[PLY](https://github.com/sceneview/sceneview/pull/3525). Tracked, not yet shipped:
 
-[STL](https://github.com/sceneview/sceneview/issues/3486) ·
-[PLY](https://github.com/sceneview/sceneview/issues/3487) ·
-[OBJ + MTL](https://github.com/sceneview/sceneview/issues/3488) ·
 [one `ModelFormat` entry point](https://github.com/sceneview/sceneview/issues/3489) ·
 [every format on the web](https://github.com/sceneview/sceneview/issues/3491)
 
