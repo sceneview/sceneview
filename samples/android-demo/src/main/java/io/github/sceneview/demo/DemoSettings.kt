@@ -46,6 +46,17 @@ object DemoSettings {
      * `null` when nothing has been measured yet.
      */
     var openedModelSizeMeters: Float? by mutableStateOf(null)
+
+    /**
+     * The opened model's own file name, for the AR placement row's label.
+     *
+     * AR receives the file as a `file://` location, and the staged copy is deliberately named
+     * `opened-model` on disk (a display name comes from whichever app shared the file, so putting
+     * it on a path would mean sanitising untrusted text). The basename is therefore *not* the
+     * user's file name, and a picker row reading "opened-model" tells them nothing about the file
+     * they just opened. `null` when nothing has been opened.
+     */
+    var openedModelDisplayName: String? by mutableStateOf(null)
     /**
      * `true` = deterministic mode (no auto-orbit, no idle camera drift, no implicit
      * motion). `false` = full "wow" showcase mode. Default `false`.

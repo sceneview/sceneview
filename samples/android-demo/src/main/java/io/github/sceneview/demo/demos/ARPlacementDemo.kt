@@ -129,7 +129,10 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         val location = requestedModel?.takeIf { it.startsWith("file://") } ?: return@remember null
         PlacementModel(
             id = "opened-file",
-            displayName = location.substringAfterLast('/').ifBlank { "Your file" },
+            // The viewer carries the user's own file name across; the location's basename is the
+            // staged copy's fixed name (`opened-model`), which would tell the user nothing.
+            displayName = DemoSettings.openedModelDisplayName
+                ?: location.substringAfterLast('/').ifBlank { "Your file" },
             assetLocation = location,
             realWorldSizeMeters = DemoSettings.openedModelSizeMeters
                 ?.takeIf { it.isFinite() && it > 0f }
