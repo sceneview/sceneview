@@ -29,6 +29,23 @@ object DemoSettings {
 
     /** One-shot in-app route request used by demos that cannot own a NavController. */
     var requestedRoute: String? by mutableStateOf(null)
+
+    /**
+     * A model file another app handed to this one — "Open with SceneView" (#3482), staged into the
+     * cache by [OpenedModelIntent]. Consumed once by the Model Viewer, which shows it instead of
+     * the bundled hero, then nulled so a configuration change does not re-open it.
+     */
+    var openedModel: OpenedModel? by mutableStateOf(null)
+
+    /**
+     * The opened model's real-world size in metres — its longest dimension, measured from the
+     * loaded model by the viewer and handed to AR placement.
+     *
+     * It matters most for the format this whole path exists for: a 3MF carries true manufacturing
+     * size, so a 60 mm print placed in a room must be 60 mm, not the catalogue's default 30 cm.
+     * `null` when nothing has been measured yet.
+     */
+    var openedModelSizeMeters: Float? by mutableStateOf(null)
     /**
      * `true` = deterministic mode (no auto-orbit, no idle camera drift, no implicit
      * motion). `false` = full "wow" showcase mode. Default `false`.

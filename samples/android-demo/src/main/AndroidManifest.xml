@@ -163,6 +163,78 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="sceneview.github.io" android:pathPrefix="/open" />
             </intent-filter>
+
+            <!--
+                "Open with SceneView" (#3482) — a model file handed over by another app:
+                a file manager, Downloads, Drive, or the ChatGPT share sheet.
+
+                3MF is the reason this exists. Ask ChatGPT for a 3D print and it
+                produces a `.3mf`; on Android nothing opened one in 3D, let alone in
+                AR. GLB/glTF ride along because a viewer that opens the exotic format
+                and not the standard one makes no sense to a user.
+
+                THREE filters, because Android's file typing is three different
+                unreliable signals and a share sheet uses whichever it feels like:
+
+                1. By MIME type — the correct, declared route. `model/3mf` is the
+                   registered type; the long `vnd.ms-package...` one is what the 3MF
+                   consortium's own OPC content type is, and what Windows-authored
+                   files carry.
+                2. By MIME type with `android:host="*"` — required for `content://`
+                   URIs, where there is no file name to match a pattern against.
+                3. By path pattern on `application/octet-stream` and `*/*` — the case
+                   that actually happens. Most senders label a `.3mf` as
+                   octet-stream, so the EXTENSION is the only signal left. The
+                   pattern must be spelled once per case combination
+                   (`pathPattern` is literal, not case-insensitive) and per scheme.
+
+                `OpenedModelIntent.looksLikeModel` applies the same name-or-MIME test
+                in code, so a file that slips through a broad `*/*` filter is dropped
+                there instead of failing to load with no explanation. Both layers must
+                be widened together or not at all.
+            -->
+            <intent-filter android:label="@string/open_model_filter_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="model/3mf" />
+                <data android:mimeType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+                <data android:mimeType="model/gltf-binary" />
+                <data android:mimeType="model/gltf+json" />
+            </intent-filter>
+
+            <intent-filter android:label="@string/open_model_filter_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.3mf" />
+                <data android:pathPattern=".*\\.3MF" />
+                <data android:pathPattern=".*\\.glb" />
+                <data android:pathPattern=".*\\.GLB" />
+                <data android:pathPattern=".*\\.gltf" />
+                <data android:pathPattern=".*\\.GLTF" />
+            </intent-filter>
+
+            <!--
+                Share sheet: "Share → SceneView" from ChatGPT, Files or Drive. Same
+                type list as the VIEW filter above; the URI arrives as EXTRA_STREAM.
+            -->
+            <intent-filter android:label="@string/open_model_filter_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="model/3mf" />
+                <data android:mimeType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+                <data android:mimeType="model/gltf-binary" />
+                <data android:mimeType="model/gltf+json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
 
         <!--

@@ -57,6 +57,9 @@ import io.github.sceneview.demo.feedback.ReportScreen
 import io.github.sceneview.demo.feedback.captureBugReportInfo
 import io.github.sceneview.demo.feedback.captureBugReportScreenshot
 import io.github.sceneview.demo.feedback.sweepStaleFeedbackMedia
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
 
@@ -76,6 +79,18 @@ class MainActivity : ComponentActivity() {
      */
     private val pendingDemoId = MutableStateFlow<String?>(null)
     val pendingDemoIdFlow: StateFlow<String?> get() = pendingDemoId.asStateFlow()
+
+    /**
+     * A model file another app asked this one to open — `ACTION_VIEW` on a `.3mf` / `.glb` /
+     * `.gltf`, or an `ACTION_SEND` from a share sheet (#3482).
+     *
+     * Staging copies the bytes into the cache off the main thread, so this arrives *after* the
+     * first composition; the UI observes it and navigates to the Model Viewer when it lands.
+     * Nulled by [consumePendingOpenedModel] once navigated, so a configuration change does not
+     * re-open the same file.
+     */
+    private val pendingOpenedModel = MutableStateFlow<OpenedModel?>(null)
+    val pendingOpenedModelFlow: StateFlow<OpenedModel?> get() = pendingOpenedModel.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +112,8 @@ class MainActivity : ComponentActivity() {
         // navigation through PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent?.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent?.data)
+        // "Open with SceneView": a `.3mf` / `.glb` / `.gltf` handed over by another app (#3482).
+        stageOpenedModel(intent)
         // QA mode ingress: `--ez qa_mode true` freezes auto-rotation / orbit / animations
         // so screenshot tests get a deterministic frame. Same setting reachable via the
         // long-press gesture on the demo title bar (see DemoScaffold). Off by default.
@@ -143,6 +160,7 @@ class MainActivity : ComponentActivity() {
         // dropped rather than routed to PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent.data)
+        stageOpenedModel(intent)
         DemoSettings.qaMode = intent.getBooleanExtra("qa_mode", false)
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
@@ -223,6 +241,44 @@ class MainActivity : ComponentActivity() {
         return fromExtra ?: DeepLinkRouter.parseCameraDistance(intent.data)
     }
 
+    /**
+     * Copies a model handed over by another app into the cache, then publishes it for the UI.
+     *
+     * Off the main thread, because the file is read and rewritten byte for byte and a shared print
+     * can be tens of megabytes — doing it in `onCreate` would drop frames before the first one is
+     * ever drawn. The intent is inspected synchronously (cheap, and the read grant is live now);
+     * only the copy is deferred. An intent that carries no model, or a file that turns out not to
+     * be one, leaves the app on its normal start destination.
+     */
+    private fun stageOpenedModel(intent: Intent?) {
+        val uri = OpenedModelIntent.modelUri(intent) ?: return
+        val mimeType = intent?.type
+        lifecycleScope.launch {
+            val opened = withContext(Dispatchers.IO) {
+                OpenedModelIntent.stage(this@MainActivity, uri, mimeType)
+            }
+            if (opened == null) {
+                // Silence would read as "the app is broken": the user tapped a file and landed on
+                // the demo list with no explanation. Say what did not happen, once.
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.open_model_failed),
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
+            withContext(Dispatchers.IO) {
+                OpenedModelIntent.sweep(this@MainActivity, opened.file())
+            }
+            DemoSettings.openedModelSizeMeters = null
+            pendingOpenedModel.value = opened
+        }
+    }
+
+    fun consumePendingOpenedModel() {
+        pendingOpenedModel.value = null
+    }
+
     fun consumePendingDemo() {
         pendingDemoId.value = null
     }
@@ -281,6 +337,22 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // start destination on first composition. The LaunchedEffect below still
     // handles subsequent intents (onNewIntent → pendingDemoIdFlow updates).
     val initialDemo = remember { activity?.pendingDemoIdFlow?.value }
+    // "Open with SceneView" (#3482). Staging is async, so this always arrives after the first
+    // composition — never as a NavHost start destination. The Model Viewer is the target because
+    // it is the app's flagship viewer: framing, lighting, animation and the View-in-AR handoff are
+    // all already there, and an opened file deserves the same screen a bundled one gets.
+    val openedModel by (activity?.pendingOpenedModelFlow?.collectAsState()
+        ?: remember { MutableStateFlow<OpenedModel?>(null) }.collectAsState())
+    LaunchedEffect(openedModel) {
+        val opened = openedModel ?: return@LaunchedEffect
+        DemoSettings.openedModel = opened
+        navController.navigate("demo/model-viewer") {
+            // One viewer on the stack however many files are opened in a row.
+            popUpTo("demo/model-viewer") { inclusive = true }
+        }
+        activity?.consumePendingOpenedModel()
+    }
+
     LaunchedEffect(pendingId) {
         val id = pendingId ?: return@LaunchedEffect
         // If the cold-start `initialDemo` already matches `pendingId`, NavHost picked the
