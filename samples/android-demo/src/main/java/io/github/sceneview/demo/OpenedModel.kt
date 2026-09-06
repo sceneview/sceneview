@@ -38,7 +38,7 @@ data class OpenedModel(val location: String, val displayName: String) {
 object OpenedModelIntent {
 
     /** File extensions this app advertises in its manifest and accepts here. */
-    val SupportedExtensions: Set<String> = setOf("3mf", "glb", "gltf")
+    val SupportedExtensions: Set<String> = setOf("3mf", "glb", "gltf", "stl", "obj", "ply")
 
     /**
      * MIME types that name a model on their own. `application/octet-stream` is deliberately NOT
@@ -51,6 +51,13 @@ object OpenedModelIntent {
         "application/vnd.ms-package.3dmanufacturing-3dmodel+xml",
         "model/gltf-binary",
         "model/gltf+json",
+        "model/stl",
+        "model/x.stl-ascii",
+        "model/x.stl-binary",
+        "application/sla",
+        "application/vnd.ms-pki.stl",
+        "model/obj",
+        "application/x-ply",
     )
 
     /** The URI an `ACTION_VIEW` or `ACTION_SEND` intent carries a model in, if any. */
@@ -188,6 +195,10 @@ object OpenedModelIntent {
         mimeType?.contains("3mf", ignoreCase = true) == true -> "3mf"
         mimeType?.contains("3dmanufacturing", ignoreCase = true) == true -> "3mf"
         mimeType?.contains("gltf+json", ignoreCase = true) == true -> "gltf"
+        mimeType?.contains("stl", ignoreCase = true) == true -> "stl"
+        mimeType?.contains("sla", ignoreCase = true) == true -> "stl"
+        mimeType?.contains("obj", ignoreCase = true) == true -> "obj"
+        mimeType?.contains("ply", ignoreCase = true) == true -> "ply"
         else -> "glb"
     }
 

@@ -810,6 +810,32 @@ public final class io/github/sceneview/core/obj/ObjParseException : java/lang/Ru
 	public fun <init> (Ljava/lang/String;)V
 }
 
+public final class io/github/sceneview/core/ply/PlyLoader {
+	public static final field DEFAULT_MAX_BYTES I
+	public static final field DEFAULT_MAX_TRIANGLES I
+	public static final field DEFAULT_MAX_VERTICES I
+	public static final field INSTANCE Lio/github/sceneview/core/ply/PlyLoader;
+	public final fun isPly ([B)Z
+	public final fun parse ([BLio/github/sceneview/core/threemf/ThreeMfUnit;III)Lio/github/sceneview/core/ply/PlyModel;
+	public static synthetic fun parse$default (Lio/github/sceneview/core/ply/PlyLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;IIIILjava/lang/Object;)Lio/github/sceneview/core/ply/PlyModel;
+	public final fun toGlb ([BLio/github/sceneview/core/threemf/ThreeMfUnit;III)[B
+	public static synthetic fun toGlb$default (Lio/github/sceneview/core/ply/PlyLoader;[BLio/github/sceneview/core/threemf/ThreeMfUnit;IIIILjava/lang/Object;)[B
+}
+
+public final class io/github/sceneview/core/ply/PlyModel {
+	public final fun getColors ()[F
+	public final fun getIndices ()[I
+	public final fun getNormals ()[F
+	public final fun getPositions ()[F
+	public final fun getTriangleCount ()I
+	public final fun getUnit ()Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public final fun getVertexCount ()I
+}
+
+public final class io/github/sceneview/core/ply/PlyParseException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class io/github/sceneview/core/splat/SplatCloud {
 	public fun <init> (I[F[F[F[F[F)V
 	public final fun getColors ()[F
@@ -1669,4 +1695,3 @@ public final class io/github/sceneview/utils/DurationKt {
 public final class io/github/sceneview/utils/TimeSourceKt {
 	public static final fun nanoTime ()J
 }
-

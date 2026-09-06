@@ -203,6 +203,13 @@
                 <data android:mimeType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
                 <data android:mimeType="model/gltf-binary" />
                 <data android:mimeType="model/gltf+json" />
+                <data android:mimeType="model/stl" />
+                <data android:mimeType="model/x.stl-ascii" />
+                <data android:mimeType="model/x.stl-binary" />
+                <data android:mimeType="application/sla" />
+                <data android:mimeType="application/vnd.ms-pki.stl" />
+                <data android:mimeType="model/obj" />
+                <data android:mimeType="application/x-ply" />
             </intent-filter>
 
             <intent-filter android:label="@string/open_model_filter_label">
@@ -220,6 +227,12 @@
                 <data android:pathPattern=".*\\.GLB" />
                 <data android:pathPattern=".*\\.gltf" />
                 <data android:pathPattern=".*\\.GLTF" />
+                <data android:pathPattern=".*\\.stl" />
+                <data android:pathPattern=".*\\.STL" />
+                <data android:pathPattern=".*\\.obj" />
+                <data android:pathPattern=".*\\.OBJ" />
+                <data android:pathPattern=".*\\.ply" />
+                <data android:pathPattern=".*\\.PLY" />
             </intent-filter>
 
             <!--
@@ -233,6 +246,13 @@
                 <data android:mimeType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
                 <data android:mimeType="model/gltf-binary" />
                 <data android:mimeType="model/gltf+json" />
+                <data android:mimeType="model/stl" />
+                <data android:mimeType="model/x.stl-ascii" />
+                <data android:mimeType="model/x.stl-binary" />
+                <data android:mimeType="application/sla" />
+                <data android:mimeType="application/vnd.ms-pki.stl" />
+                <data android:mimeType="model/obj" />
+                <data android:mimeType="application/x-ply" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>

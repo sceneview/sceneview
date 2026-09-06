@@ -81,8 +81,8 @@ class MainActivity : ComponentActivity() {
     val pendingDemoIdFlow: StateFlow<String?> get() = pendingDemoId.asStateFlow()
 
     /**
-     * A model file another app asked this one to open — `ACTION_VIEW` on a `.3mf` / `.glb` /
-     * `.gltf`, or an `ACTION_SEND` from a share sheet (#3482).
+     * A model file another app asked this one to open through `ACTION_VIEW`, or an `ACTION_SEND`
+     * from a share sheet (#3482).
      *
      * Staging copies the bytes into the cache off the main thread, so this arrives *after* the
      * first composition; the UI observes it and navigates to the Model Viewer when it lands.
@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
         // navigation through PlaceholderDemo. See #958.
         pendingDemoId.value = DeepLinkRouter.validate(intent?.getStringExtra("demo"))
             ?: DeepLinkRouter.parse(intent?.data)
-        // "Open with SceneView": a `.3mf` / `.glb` / `.gltf` handed over by another app (#3482).
+        // "Open with SceneView": a supported model file handed over by another app (#3482).
         stageOpenedModel(intent)
         // QA mode ingress: `--ez qa_mode true` freezes auto-rotation / orbit / animations
         // so screenshot tests get a deterministic frame. Same setting reachable via the

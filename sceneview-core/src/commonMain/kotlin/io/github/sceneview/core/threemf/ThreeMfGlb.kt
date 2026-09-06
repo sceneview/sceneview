@@ -37,10 +37,13 @@ internal object ThreeMfGlb {
         positions: FloatArray,
         indices: IntArray,
         cornerNormals: FloatArray,
-        meters: Float
+        meters: Float,
+        colors: FloatArray? = null,
+        generator: String = "SceneView STL loader",
+        nodeName: String = "stl"
     ): ByteArray {
-        val builder = GltfBuilder("SceneView STL loader")
-        builder.addIndexedMesh(positions, indices, cornerNormals, meters)
+        val builder = GltfBuilder(generator)
+        builder.addIndexedMesh(positions, indices, cornerNormals, meters, colors, nodeName)
         return builder.toGlb()
     }
 
@@ -101,11 +104,14 @@ internal object ThreeMfGlb {
             source: FloatArray,
             indices: IntArray,
             cornerNormals: FloatArray,
-            meters: Float
+            meters: Float,
+            sourceColors: FloatArray? = null,
+            nodeName: String = "stl"
         ) {
             val vertices = HashMap<NormalVertex, Int>()
             val positions = FloatArrayBuilder()
             val normals = FloatArrayBuilder()
+            val colors = sourceColors?.let { FloatArrayBuilder() }
             val renderIndices = IntArray(indices.size)
             for (corner in indices.indices) {
                 val at = corner * 3
@@ -118,15 +124,23 @@ internal object ThreeMfGlb {
                         positions.add(source[key.position * 3 + axis] * meters)
                         normals.add(cornerNormals[at + axis])
                     }
+                    sourceColors?.let { input ->
+                        colors?.let { output ->
+                            repeat(4) { output.add(input[key.position * 4 + it]) }
+                        }
+                    }
                     index
                 }
             }
             val positionAccessor = addFloatAccessor(positions.toArray(), withBounds = true)
             val normalAccessor = addFloatAccessor(normals.toArray(), withBounds = false)
+            val colorAccessor = colors?.let { addFloatAccessor(it.toArray(), false, 4) }
+            val colorAttribute = colorAccessor?.let { ",\"COLOR_0\":$it" }.orEmpty()
             val indexAccessor = addIndexAccessor(renderIndices)
-            meshes += """{"primitives":[{"attributes":{"POSITION":$positionAccessor,"NORMAL":$normalAccessor},""" +
+            meshes += """{"primitives":[{"attributes":{"POSITION":$positionAccessor,""" +
+                """"NORMAL":$normalAccessor$colorAttribute},""" +
                 """"indices":$indexAccessor,"material":${materialIndex(NoColor)}}]}"""
-            nodes += """{"name":"stl","mesh":0}"""
+            nodes += """{"name":${nodeName.toJsonString()},"mesh":0}"""
         }
 
         private fun addIndexAccessor(indices: IntArray): Int {

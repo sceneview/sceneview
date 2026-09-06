@@ -138,9 +138,11 @@ public struct ModelNode: @unchecked Sendable {
     public var rotation: simd_quatf
     public var scale: SIMD3<Float>
 
-    public static func load(_ path: String, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(contentsOf url: URL, enableCollision: Bool = true) async throws -> ModelNode
-    public static func load(from remoteURL: URL, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
+    // Every loader sniffs the format from the file's own bytes and applies `unit`
+    // (STL/OBJ/PLY carry none). See "SceneViewSwift → Model formats and units".
+    public static func load(_ path: String, unit: ModelUnit? = nil, enableCollision: Bool = true, bundle: Bundle = .main) async throws -> ModelNode
+    public static func load(contentsOf url: URL, unit: ModelUnit? = nil, enableCollision: Bool = true) async throws -> ModelNode
+    public static func load(from remoteURL: URL, unit: ModelUnit? = nil, enableCollision: Bool = true, timeout: TimeInterval = 60.0) async throws -> ModelNode
 
     // Transform (fluent)
     public func position(_ position: SIMD3<Float>) -> ModelNode

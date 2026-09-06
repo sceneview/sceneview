@@ -98,6 +98,22 @@ class OpenedModelIntentTest {
     }
 
     @Test
+    fun `STL OBJ and PLY are recognised by extension and MIME type`() {
+        for (extension in listOf("stl", "obj", "ply")) {
+            assertTrue(
+                OpenedModelIntent.looksLikeModel("part.$extension", "application/octet-stream")
+            )
+            assertTrue(OpenedModelIntent.looksLikeModel("PART.${extension.uppercase()}", null))
+        }
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "model/stl"))
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "model/x.stl-binary"))
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "application/sla"))
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "application/vnd.ms-pki.stl"))
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "model/obj"))
+        assertTrue(OpenedModelIntent.looksLikeModel(null, "application/x-ply"))
+    }
+
+    @Test
     fun `anything else is refused`() {
         // The manifest's octet-stream filter is broad by necessity; this is the layer that
         // keeps a PDF or a ZIP from reaching the loader and failing with no explanation.

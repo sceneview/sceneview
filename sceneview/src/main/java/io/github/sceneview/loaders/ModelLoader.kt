@@ -13,6 +13,7 @@ import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
+import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
@@ -585,11 +586,12 @@ internal suspend fun <T : Any> destroyOnCancel(
 }
 
 /**
- * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF, STL
- * and OBJ are converted to GLB, then WebP textures are transcoded.
+ * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF,
+ * STL, OBJ and PLY are converted to GLB, then WebP textures are transcoded.
  */
 private fun Buffer.toFilamentModelSource(): Buffer =
-    convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().transcodeWebPTextures()
+    convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().convertPlyToGlb()
+        .transcodeWebPTextures()
 
 /**
  * Converts a **3MF** payload to GLB, so `.3mf` is loadable through every entry point on this class
@@ -622,6 +624,21 @@ private fun Buffer.convertObjToGlb(): Buffer {
     val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
     val glb = ObjLoader.toGlb(bytes)
     return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
+}
+
+/** PLY has an exact first line, so other formats cost at most a six-byte absolute comparison. */
+private fun Buffer.convertPlyToGlb(): Buffer {
+    val source = this as? ByteBuffer ?: return this
+    if (!source.startsWithPlyHeader()) return this
+    val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
+    val glb = PlyLoader.toGlb(bytes)
+    return ByteBuffer.allocateDirect(glb.size).put(glb).apply { rewind() }
+}
+
+private fun ByteBuffer.startsWithPlyHeader(): Boolean {
+    val at = position()
+    if (!startsWithAscii(at, "ply\n") && !startsWithAscii(at, "ply\r\n")) return false
+    return true
 }
 
 /** JSON and binary GLB fail the cheap gate; other candidates cost at most a 4 KB prefix copy. */
