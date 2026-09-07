@@ -136,7 +136,7 @@ dokka = "2.2.0"
 # the shared commonMain API; native/JS klib ABI validation stays disabled
 # (experimental + not buildable on the ubuntu CI runner). See CONTRIBUTING.md
 # "Public API changes".
-binaryCompatibilityValidator = "0.18.1"
+binaryCompatibilityValidator = "0.18.2"
 
 # Testing
 androidxTestJunit = "1.3.0"
