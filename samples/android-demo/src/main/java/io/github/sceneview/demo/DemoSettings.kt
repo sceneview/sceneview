@@ -57,6 +57,17 @@ object DemoSettings {
      * they just opened. `null` when nothing has been opened.
      */
     var openedModelDisplayName: String? by mutableStateOf(null)
+
+    /**
+     * Display name for the model named by [requestedModel], when that model is neither a
+     * curated [io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS] row (whose
+     * own name wins) nor an opened file (which uses [openedModelDisplayName]) — e.g. the Model
+     * Viewer's Damaged Helmet, deliberately left out of the placement catalogue (#2023) but
+     * still a model the "View in AR" handoff must be able to name (#3493). `null` when the
+     * handoff has nothing extra to say, in which case the receiving screen derives a label from
+     * the asset path itself.
+     */
+    var requestedModelDisplayName: String? by mutableStateOf(null)
     /**
      * `true` = deterministic mode (no auto-orbit, no idle camera drift, no implicit
      * motion). `false` = full "wow" showcase mode. Default `false`.

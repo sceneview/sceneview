@@ -619,6 +619,13 @@ private fun SingleModelSection(
             // The staged file is called `opened-model` on disk, so AR cannot recover the user's
             // file name from the location it is handed. Carry it across explicitly.
             DemoSettings.openedModelDisplayName = openedModel?.displayName
+            // #3493 — whatever the viewer is showing must be what AR opens on, never a picker.
+            // `selectedModel.assetPath` covers every bundled row, including ones the AR
+            // placement catalogue itself doesn't curate (the Damaged Helmet, #2023) — its name
+            // has to ride along too, for AR to label a row the catalogue has no entry for. Set
+            // unconditionally: a match against the curated catalogue uses ITS OWN name instead,
+            // and this value is consumed once then cleared.
+            DemoSettings.requestedModelDisplayName = openedModel?.displayName ?: selectedModel.displayName
             val model = openedModel?.location ?: selectedModel.assetPath
             DemoSettings.requestedRoute = "demo/ar-placement?model=$model"
         }, enabled = arSupported == true),

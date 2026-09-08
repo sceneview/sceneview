@@ -21,6 +21,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
 import io.github.sceneview.demo.common.placement.PlacementChooserScreen
+import io.github.sceneview.demo.common.placement.OPENED_FILE_PLACEMENT_ROW_ID
 import io.github.sceneview.demo.common.placement.PlacementFlowPhase
 import io.github.sceneview.demo.common.placement.PlacementModel
 import io.github.sceneview.demo.common.placement.PlacementModelBar
@@ -32,6 +33,7 @@ import io.github.sceneview.demo.common.placement.placementBackAction
 import io.github.sceneview.demo.common.placement.rememberPlacementFlowState
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
+import io.github.sceneview.demo.common.placement.resolveRequestedExtraPlacementRow
 import io.github.sceneview.demo.sketchfab.AssetSourceProbe
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -120,27 +122,33 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // answered "what are we placing?", so it skips the chooser and opens the camera — which
     // is the same contract, reached from a different door.
     val requestedModel = remember { DemoSettings.requestedModel.also { DemoSettings.requestedModel = null } }
-    // "Open with SceneView" (#3482): the handoff may name a file the user opened rather than a
-    // catalogue row — a `file://` path staged by `OpenedModelIntent`. It becomes a row of its own,
-    // first in the picker, at the size the viewer measured on the loaded model. That size is the
-    // whole point for a 3MF: the format carries true manufacturing size, so a 60 mm print has to
-    // arrive in the room as 60 mm rather than as the catalogue's default.
-    val openedRow = remember(requestedModel) {
-        val location = requestedModel?.takeIf { it.startsWith("file://") } ?: return@remember null
-        PlacementModel(
-            id = "opened-file",
-            // The viewer carries the user's own file name across; the location's basename is the
-            // staged copy's fixed name (`opened-model`), which would tell the user nothing.
-            displayName = DemoSettings.openedModelDisplayName
-                ?: location.substringAfterLast('/').ifBlank { "Your file" },
-            assetLocation = location,
-            realWorldSizeMeters = DemoSettings.openedModelSizeMeters
-                ?.takeIf { it.isFinite() && it > 0f }
-                ?: PlacementModel.DEFAULT_REAL_WORLD_SIZE_METERS,
+    val requestedDisplayName = remember(requestedModel) {
+        DemoSettings.requestedModelDisplayName.also { DemoSettings.requestedModelDisplayName = null }
+    }
+    // The handoff must win even when the model it names is not one of the curated six —
+    // notably the Model Viewer's Damaged Helmet, deliberately left out of
+    // [BUNDLED_PLACEMENT_MODELS] by #2023 ("a helmet hovering over a floor reads as a test
+    // payload"). That curation is a rule about what the CHOOSER offers a fresh visitor, not
+    // a veto over an explicit "take me to AR with THIS model" request (#3493) — before this,
+    // an uncatalogued model silently produced no [requestedRow] below, so [flow.enterAr]
+    // never fired and the user landed on the picker instead of the camera.
+    //
+    // "Open with SceneView" (#3482) is the special case of this: the handoff may name a file
+    // the user opened rather than any bundled asset — a `file://` path staged by
+    // `OpenedModelIntent`. Both cases become a row of its own, first in the picker; the opened
+    // file additionally carries the real-world size the viewer measured on the loaded model —
+    // the whole point for a 3MF, which carries true manufacturing size, so a 60 mm print has
+    // to arrive in the room as 60 mm rather than as the catalogue's default.
+    val requestedExtraRow = remember(requestedModel) {
+        resolveRequestedExtraPlacementRow(
+            requestedModel = requestedModel,
+            requestedDisplayName = requestedDisplayName,
+            openedDisplayName = DemoSettings.openedModelDisplayName,
+            openedSizeMeters = DemoSettings.openedModelSizeMeters,
         )
     }
     val requestedRow = remember(requestedModel) {
-        openedRow ?: BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
+        requestedExtraRow ?: BUNDLED_PLACEMENT_MODELS.firstOrNull { model ->
             model.assetLocation == requestedModel ||
                 model.assetLocation.substringAfterLast('/').substringBeforeLast('.') == requestedModel
         }
@@ -199,8 +207,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
     // places that slug's stand-in rather than nothing — and the row is flagged `pending`
     // so the bar and the card both say "Streaming …" instead of lying about it.
-    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile, openedRow) {
-        listOfNotNull(openedRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
+    val models: List<PlacementModel> = remember(placementSlugs, armedSlug, armedFile, requestedExtraRow) {
+        listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
             val isArmed = slug.uid == armedSlug?.uid
             PlacementModel(
                 id = streamedModelId(slug),
@@ -231,7 +239,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // tap actually places. `loaded` is the FILE here, not a parsed `ModelInstance`: a tap
     // places whatever `armedFile` holds, so that is the moment the chip has something true
     // to say. See [AssetSourceProbe].
-    val assetSource = if (openedRow != null && picker.selectedId == openedRow.id) {
+    val assetSource = if (requestedExtraRow?.id == OPENED_FILE_PLACEMENT_ROW_ID &&
+        picker.selectedId == requestedExtraRow.id
+    ) {
         // The user's own file: neither bundled nor streamed. No chip rather than a wrong one.
         null
     } else if (armedSlug == null) {
