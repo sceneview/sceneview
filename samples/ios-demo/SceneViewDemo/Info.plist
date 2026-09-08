@@ -47,6 +47,173 @@
 	<dict/>
 	<key>UISupportsDocumentBrowser</key>
 	<false/>
+	<!--
+		Open a 3D file from Files, Mail, Messages or any share sheet.
+
+		`LSSupportsOpeningDocumentsInPlace` means the system hands over a
+		security-scoped URL to the original file instead of copying it into the
+		app's Inbox — so opening a 500 MB scan does not duplicate it, and the
+		document browser shows the app as a handler. `OpenedFileViewer` still
+		copies to a temp file before parsing (see its doc comment): the scoped
+		URL is only valid for the duration of the access, and a parse can outlive
+		it.
+	-->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<!--
+				The mesh formats SceneViewSwift parses itself. No system app on
+				iOS opens an STL or a 3MF, which is the whole point: Quick Look
+				reads USDZ and Reality only.
+			-->
+			<key>CFBundleTypeName</key>
+			<string>3D Mesh File</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.standard-tesselated-geometry-format</string>
+				<string>public.geometry-definition-format</string>
+				<string>public.polygon-file-format</string>
+				<string>io.3mf.3mf</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+				USD and Reality. `Alternate`, not `Default`: Quick Look is the
+				system handler for these and should stay the one a tap opens.
+			-->
+			<key>CFBundleTypeName</key>
+			<string>3D Scene</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.pixar.universal-scene-description-mobile</string>
+				<string>com.pixar.universal-scene-description</string>
+				<string>com.apple.reality</string>
+			</array>
+		</dict>
+	</array>
+	<!--
+		Imported, not exported: SceneView understands these formats, it does not
+		define them. `public.standard-tesselated-geometry-format`,
+		`public.geometry-definition-format` and `public.polygon-file-format` are
+		the identifiers Apple's own ModelIO uses for STL, OBJ and PLY; they have
+		no `UTType` constant in `UniformTypeIdentifiers`, so an app that wants to
+		be offered for those files has to declare them. In every case it is the
+		filename-extension tag below that actually routes a file, so a differing
+		identifier elsewhere in the system costs nothing. 3MF is declared just
+		below, exported rather than imported — nothing else on the system defines
+		it.
+	-->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>public.standard-tesselated-geometry-format</string>
+			<key>UTTypeDescription</key>
+			<string>STL 3D Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>stl</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/stl</string>
+					<string>application/sla</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>public.geometry-definition-format</string>
+			<key>UTTypeDescription</key>
+			<string>Wavefront OBJ 3D Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>obj</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/obj</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>public.polygon-file-format</string>
+			<key>UTTypeDescription</key>
+			<string>PLY 3D Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ply</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/x-ply</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<!--
+		Exported, not imported: no other party on this system declares 3MF at all — it
+		has no Apple identifier, and no stock app opens one. `io.3mf.3mf` is reverse-DNS
+		on the 3MF Consortium's domain (3mf.io), and this declaration is the one that
+		binds the `.3mf` extension and the `model/3mf` MIME type for the whole device.
+	-->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.3mf.3mf</string>
+			<key>UTTypeDescription</key>
+			<string>3D Manufacturing Format</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.zip-archive</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>3mf</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/3mf</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.entertainment</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

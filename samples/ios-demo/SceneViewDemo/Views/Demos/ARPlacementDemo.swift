@@ -40,6 +40,18 @@ struct ARPlacementDemo: View {
     /// `demo/ar-placement?model=` route. `nil` keeps the bundled cycle.
     var initialModel: String? = nil
 
+    /// A file URL to place instead of a bundled asset — the "Open with" handoff from
+    /// ``OpenedFileViewer``.
+    ///
+    /// Placed at its **real-world size**, not normalised to the bundled cycle's 0.3 m.
+    /// That is the entire point of opening a print or a scan in AR: a 21 cm part has to
+    /// stand 21 cm tall on the floor, or the answer to "will it fit?" is a guess.
+    var initialModelURL: URL? = nil
+
+    /// The unit the user picked in the viewer for a format that carries none (STL, OBJ,
+    /// PLY). `nil` uses the format's default.
+    var initialModelUnit: ModelUnit? = nil
+
     /// Bundled cycle preserved from the previous iOS AR demos — gives a
     /// deterministic 5-model rotation when no Sketchfab key is configured.
     /// Each entry is the bundle name without `.usdz`.
@@ -161,6 +173,23 @@ struct ARPlacementDemo: View {
                 url = resolved
                 displayName = slug.displayName
                 scaleToUnits = slug.scaleToUnits
+            } else if let opened = initialModelURL {
+                // An opened file stands at the size its unit says. No `scaleToUnits`:
+                // shrinking it to a tidy 0.3 m would answer a different question than
+                // the one the user opened it to ask.
+                let node = try await ModelNode.load(contentsOf: opened, unit: initialModelUnit)
+                // Bottom-aligned so the model sits ON the detected plane rather than
+                // straddling it — `-1` on Y selects the bounding box's floor.
+                _ = node.centerOrigin(normalized: SIMD3<Float>(0, -1, 0))
+                let anchor = AnchorNode.world(position: worldPosition)
+                anchor.add(node.entity)
+                arView.scene.addAnchor(anchor.entity)
+                arViewRef.value = arView
+                placedAnchors.append(anchor.entity)
+                #if os(iOS)
+                SceneViewHaptic.shared.light()
+                #endif
+                return
             } else {
                 // The handed-off viewer model, else the bundled round-robin cycle.
                 let assetName: String
