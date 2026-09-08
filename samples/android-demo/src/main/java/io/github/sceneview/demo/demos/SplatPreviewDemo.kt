@@ -35,6 +35,9 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Bundled synthetic 3D Gaussian Splatting scene — a dense rainbow sphere shell (8 000 splats). */
 private const val SPLAT_ASSET = "splats/rainbow_sphere.ply"
@@ -160,8 +163,72 @@ internal fun SplatPreviewControls(
     )
 }
 
-/** Orbit home: pulled back on +Z so the 0.5 m-radius sphere frames comfortably in portrait. */
-private val HOME_CAMERA_POSITION = Position(x = 0f, y = 0.1f, z = 1.6f)
+// ── Orbit home framing ─────────────────────────────────────────────────────────
+
+/**
+ * Geometry of the bundled cloud, from `tools/generate-splat-sphere.py`: a shell of centres at
+ * `radius = 0.5` whose splats are drawn as billboard discs of `3 * sigma = 3 * 0.012` m. The
+ * silhouette the camera has to contain is therefore the shell radius **plus** one disc radius —
+ * framing on 0.5 alone clips the outermost splats.
+ */
+private const val SHELL_RADIUS = 0.5f
+private const val SPLAT_DISC_RADIUS = 0.036f
+private const val SILHOUETTE_RADIUS = SHELL_RADIUS + SPLAT_DISC_RADIUS
+
+/**
+ * Filament derives its projection from a **35 mm-equivalent focal length against a 24 mm-high
+ * sensor** (`CameraNode.focalLength` defaults to 28 mm, applied via `setLensProjection`), so the
+ * vertical half-angle is `atan((24 / 2) / focalLength)` and the horizontal one is the vertical
+ * scaled by the aspect ratio. In portrait that makes **width the binding constraint**, which is
+ * why the previous hand-picked `z = 1.6` clipped: it left a half-width of only 0.309 m at the
+ * subject against a 0.536 m silhouette, so the shell overflowed both edges by ~1.7x.
+ */
+private const val SENSOR_HEIGHT_MM = 24.0f
+private const val DEFAULT_FOCAL_LENGTH_MM = 28.0f
+
+/** Pixel-class portrait viewport (1080x2400). The SceneView band is shorter, hence wider — using
+ *  the full-screen ratio is the conservative choice: any real viewport has more horizontal room. */
+private const val PORTRAIT_ASPECT = 9f / 20f
+
+/** Fraction of the frame's half-width the silhouette is allowed to fill — the "small margin". */
+private const val FRAME_FILL = 0.88f
+
+/** Elevation of the orbit home above the equator, preserved from the original framing (~3.6°). */
+private const val HOME_TILT_RADIANS = 0.06241f
+
+/**
+ * Distance at which a sphere of [radius] is fully contained with a [fill] margin, for a vertical-fit
+ * perspective camera of [focalLengthMm] at [aspect].
+ *
+ * The sphere is bounded by the frustum where the view ray is **tangent** to it, so the containing
+ * distance is `radius / sin(halfAngle)` — not `radius / tan(halfAngle)`, which frames the flat disc
+ * through the centre and still clips a sphere's silhouette. `internal` so the arithmetic is
+ * unit-testable without a Filament engine.
+ */
+internal fun splatFramingDistance(
+    radius: Float = SILHOUETTE_RADIUS,
+    aspect: Float = PORTRAIT_ASPECT,
+    focalLengthMm: Float = DEFAULT_FOCAL_LENGTH_MM,
+    fill: Float = FRAME_FILL,
+): Float {
+    val tanHalfVertical = (SENSOR_HEIGHT_MM / 2f) / focalLengthMm
+    // Portrait: aspect < 1, so the horizontal angle is the narrower of the two and binds first.
+    val tanHalfHorizontal = aspect * tanHalfVertical
+    val sinHalfHorizontal = tanHalfHorizontal / sqrt(1f + tanHalfHorizontal * tanHalfHorizontal)
+    return radius / (sinHalfHorizontal * fill)
+}
+
+/**
+ * Orbit home: far enough back on +Z that the whole shell fits in portrait with a small margin,
+ * computed by [splatFramingDistance] rather than guessed, and lifted to the original ~3.6° tilt.
+ */
+private val HOME_CAMERA_POSITION = splatFramingDistance().let { distance ->
+    Position(
+        x = 0f,
+        y = distance * sin(HOME_TILT_RADIANS),
+        z = distance * cos(HOME_TILT_RADIANS),
+    )
+}
 
 // ── Android Studio @Preview support ────────────────────────────────────────────
 
