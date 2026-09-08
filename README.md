@@ -532,7 +532,7 @@ in the conversation. Listing copy, starter prompts and test cases:
 - **Only** Compose-native 3D/AR SDK for Android — no alternative exists
 - **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
-- **46+ node types** as declarative composables
+- **48+ node types** as declarative composables
 - **MCP server** with 32 tools, plus a ChatGPT / Codex plugin — no other 3D SDK has this
 - **Opens the `.3mf` an AI print flow emits** — the file every model-generating chat hands
   back, and that nothing else on Android views in 3D or AR

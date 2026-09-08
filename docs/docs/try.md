@@ -41,7 +41,7 @@ Run `./tools/try-demo.sh --help` for the full list.
 
 <div class="try-download-card">
 <h3>Android Demo</h3>
-<p>Full showcase: 4 tabs, 47 interactive demos, 46+ node types, animations, physics, post-processing.</p>
+<p>Full showcase: 4 tabs, 47 interactive demos, 48+ node types, animations, physics, post-processing.</p>
 <a href="https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk" class="md-button md-button--primary">
 Download APK
 </a>
@@ -120,7 +120,7 @@ Night, studio, warm, sunset, outdoor, autumn
 </div>
 
 <div class="try-feature">
-<strong>46+ node types</strong><br>
+<strong>48+ node types</strong><br>
 Model, Light, Cube, Sphere, Text, Path, Video, View...
 </div>
 
