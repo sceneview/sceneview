@@ -1,0 +1,46 @@
+// studio_glass.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The refractive entry of the `materials` demo gallery (#3495). Split out of
+//             studio_pbr.mat because Filament's sheen lobe and its refraction path are
+//             mutually exclusive in one shader — asking for both silently drops one.
+// Used by:    samples/android-demo MaterialsDemo — nothing in the SDK.
+// Parameters:
+//   color        — float4, the tint light picks up on its way through.
+//   roughness    — float [0,1]. Drives both the specular lobe and the blur of what is seen
+//                  through the surface.
+//   reflectance  — float [0,1], dielectric Fresnel at normal incidence.
+//   transmission — float [0,1], how much light passes through instead of scattering back.
+//   ior          — index of refraction. Glass 1.5, water 1.33, diamond 2.42.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+//
+// `refractionMode: cubemap` refracts the IBL rather than the framebuffer: it costs no extra
+// render pass, needs no screen-space colour buffer, and — the reason it is the right pick
+// here — it is stable under the gallery's camera sweep, where a screen-space refraction would
+// swim as neighbouring spheres entered and left the source buffer.
+material {
+    "name" : "Studio Glass",
+    "parameters" : [
+        { "type" : "float4", "name" : "color" },
+        { "type" : "float",  "name" : "roughness" },
+        { "type" : "float",  "name" : "reflectance" },
+        { "type" : "float",  "name" : "transmission" },
+        { "type" : "float",  "name" : "ior" }
+    ],
+    "requires" : [ "position", "uv0" ],
+    "shadingModel" : "lit",
+    "blending" : "transparent",
+    "refractionMode" : "cubemap",
+    "refractionType" : "solid",
+    "doubleSided" : false
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = materialParams.color;
+        material.metallic = 0.0;
+        material.roughness = materialParams.roughness;
+        material.reflectance = materialParams.reflectance;
+        material.transmission = materialParams.transmission;
+        material.ior = materialParams.ior;
+    }
+}

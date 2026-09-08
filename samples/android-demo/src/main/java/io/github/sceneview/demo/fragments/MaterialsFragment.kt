@@ -18,10 +18,13 @@ object MaterialsFragment : DemoFragment {
         category = DemoCategory.GEOMETRY_MATERIALS,
         icon = Icons.Filled.Palette,
         order = 9,
-        tags = setOf("pbr", "material", "clearcoat", "sheen", "transmission", "occlusion", "streaming"),
-        // The `materials` Sketchfab slugs are now real, validated, downloadable
-        // models (#2095) — the demo streams them successfully and falls back to
-        // bundled assets when offline. The #2088 known-issue chip is removed.
+        tags = setOf(
+            "pbr", "material", "metallic", "roughness", "clearcoat",
+            "sheen", "transmission", "emissive", "occlusion",
+        ),
+        // #3495 rebuilt the demo as a procedural material studio: nothing is
+        // streamed and nothing is downloaded, so there is no network path left to
+        // fail. The #2088 known-issue chip stays removed.
         status = DemoStatus.Working,
     )
 

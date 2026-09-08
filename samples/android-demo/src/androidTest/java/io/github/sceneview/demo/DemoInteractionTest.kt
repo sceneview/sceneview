@@ -624,35 +624,37 @@ class DemoInteractionTest {
         screenshot("35_lab_postFx_back_to_defaults")
     }
 
-    // ── 8b. Materials — all 3 segmented tabs ──────────────────────────────────
+    // ── 8b. Materials — all 3 segmented tabs ─────────────────────────
 
     @Test
     fun materials_allTabs() {
-        // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated
-        // into the existing `materials` entry with a 3-way segmented toggle. One test
-        // taps through every tab so each merged half is exercised (the unified demo
-        // opens on its default PBR Materials tab).
+        // #3495 rebuilt the demo as a material studio: a nine-sphere Gallery, an Inspect
+        // mode with live metallic / roughness / extension sliders, and the Occlusion
+        // section carried over by #2239 Batch 4. One test walks every tab so each is
+        // exercised (the demo opens on Gallery).
         openDemo("materials")
 
-        // ── PBR Materials tab (default landing tab) — KHR_materials_* chips ────
-        screenshot("38_materials_pbr_default")
+        // ── Gallery (default landing tab) — the nine-material wall ─────────────
+        screenshot("38_materials_gallery_default")
 
-        // ── Streaming tab — runtime material-set swap on a sphere ─────────────
-        tap("Streaming")
-        screenshot("38a_materials_streaming_default")
-        tap("Copper")
-        screenshot("38b_materials_streaming_copper")
-        tap("Matte Plastic")
-        screenshot("38c_materials_streaming_plastic")
+        // ── Inspect — one sphere, its parameters on live sliders ────────────
+        tap("Inspect")
+        screenshot("38a_materials_inspect_default")
+        // Picking a second material is also what arms Compare: the chip tap is the
+        // interaction, and it re-seeds the three sliders from the new material.
+        tap("Crystal")
+        screenshot("38b_materials_inspect_crystal")
+        tap("Night")
+        screenshot("38c_materials_inspect_night_environment")
 
-        // ── Occlusion tab — invisible depth-writing occluder plane ────────────
-        // The "Occluder visible" Switch is the only interactive control; it sits in a
-        // plain Row (not a `toggleable` row like the Post-FX switches), so `tap(text)`
-        // can't reach the Switch from its sibling label. Capturing the default-state
-        // frame is enough to exercise the merged Occlusion section here; the toggle
-        // behaviour is verified visually during device-QA.
+        // ── Occlusion — invisible depth-writing occluder plane ──────────────
+        // The "Occluder visible" row is `toggleable`, so `tap(text)` reaches the Switch
+        // from its label — the section opens on the occluding state and the tap shows
+        // the ground-truth plate.
         tap("Occlusion")
         screenshot("38d_materials_occlusion_default")
+        tap("Occluder visible")
+        screenshot("38e_materials_occlusion_plate_visible")
     }
 
     // ── 9. Debug Overlay — preset reset ───────────────────────────────────────

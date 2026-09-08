@@ -195,14 +195,13 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun materialsDemo_default_state() {
-        // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into
-        // the existing `materials` entry. Default landing tab is PBR Materials, which
-        // streams a Sketchfab CC-BY model and falls back to a bundled asset offline; the
-        // Streaming / Occlusion sub-modes are reachable via segmented-button taps but
-        // covered only via DemoInteractionTest (a dedicated capture would need a tab-aware
-        // deep-link parameter — follow-up). The streamed model resolves asynchronously and
-        // the studio HDR IBL has cold/warm cache variance, so a generous tolerance handles
-        // both; the test still catches "nothing rendered at all".
+        // #3495 rebuilt the demo as a procedural material studio. The default landing tab
+        // is the nine-sphere Gallery; Inspect / Occlusion are reachable via segmented-button
+        // taps but covered only via DemoInteractionTest (a dedicated capture would need a
+        // tab-aware deep-link parameter — follow-up). Nothing is streamed any more, but the
+        // HDR IBL prefilter still has cold/warm cache variance and nine mirrored spheres
+        // magnify it, so the tolerance stays generous; the test still catches "nothing
+        // rendered at all".
         captureAndCompare(demoSlug = "materials", goldenName = "materials_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
@@ -234,7 +233,7 @@ class DemoRenderingScreenshotTest {
     // would need a tab-aware deep-link parameter (follow-up).
 
     // #2239 Batch 4 — `texture-streaming` and `occlusion-material` consolidated into
-    // `materials` (covered by `materialsDemo_default_state` above). The Streaming /
+    // `materials` (covered by `materialsDemo_default_state` above). The Inspect /
     // Occlusion sub-modes are reachable via segmented-button taps; dedicated sub-mode
     // captures would need a tab-aware deep-link parameter (follow-up).
 
@@ -625,7 +624,12 @@ class DemoRenderingScreenshotTest {
             "geometry_default",
             "lighting_default",
             "lightinglab_default",
-            "materials_default",
+            // "materials_default" — deliberately NOT baselined right now. #3495 rebuilt the
+            // demo from scratch (a nine-sphere procedural material wall replaced a single
+            // streamed Sketchfab subject), so the committed golden depicted a scene that no
+            // longer exists and was deleted with it. The case above therefore takes the
+            // first-run path: the next suite run saves a fresh capture for promotion and
+            // skips. Put the slug back here in the SAME commit that adds the new PNG.
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
