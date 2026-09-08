@@ -277,9 +277,8 @@ class DemoRenderingScreenshotTest {
      * bump that reships a mismatched blob turns the viewport blank, and a blank viewport is
      * exactly what `hasRenderedContent` refuses to capture.
      *
-     * The slug is deliberately absent from [BASELINED_GOLDENS] — no golden has ever been
-     * recorded for it, so this takes the documented first-run path: save the capture for
-     * review and skip. Promote the PNG and add the slug in the same commit.
+     * The golden was recorded after #2646's framing fix (the shell used to overflow both edges
+     * in portrait), reviewed, and promoted with the slug in the same commit.
      *
      * 14 s settle, not 3: the demo reads a 448 KB `.ply` off the main thread, decodes 8 000
      * gaussians through `SplatParser`, then uploads two RGBA16F data textures before the first
@@ -663,6 +662,7 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
+            "splatpreview_default",
             // "twodinthreed_default" — deliberately NOT baselined right now. #3424 rebuilt
             // the demo from scratch (Compose `ViewNode` cards around an annotated model
             // replaced three `TextNode` labels), so the committed golden depicted a scene
