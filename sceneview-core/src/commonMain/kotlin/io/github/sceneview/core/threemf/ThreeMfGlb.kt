@@ -230,7 +230,7 @@ internal object ThreeMfGlb {
         }
 
         private fun materialIndex(color: Int): Int = materialIndexByColor.getOrPut(color) {
-            val factor = if (color == NoColor) DefaultBaseColor else color.toLinearRgba()
+            val factor = if (color == NoColor) defaultBaseColor() else color.toLinearRgba()
             addMaterial(factor)
         }
 
@@ -420,7 +420,32 @@ internal object ThreeMfGlb {
     }
 
     private const val Generator = "SceneView 3MF loader"
-    private val DefaultBaseColor = floatArrayOf(0.62f, 0.64f, 0.68f, 1f)
+
+    /**
+     * The albedo every loader here falls back to when its file declares no colour at all: a 3MF
+     * with no `<basematerials>`, a plain STL, a PLY without `red`/`green`/`blue`, an OBJ whose MTL
+     * omits `Kd`.
+     *
+     * **18% neutral grey, in linear space** — the photographic mid-grey a light meter is calibrated
+     * to, and the reference clay every 3D print viewer falls back to. It is written linear because
+     * that is the space glTF defines `baseColorFactor` in.
+     *
+     * #3548 is what the previous value cost: `0.62, 0.64, 0.68` are *sRGB* numbers that were
+     * written straight into that linear field, so the fallback was not the light grey it read as
+     * but an sRGB 0.81 near-white — and SceneView's camera runs about two stops over sunny-16 by
+     * design (the f/12, 1/200 s, ISO 200 defaults that match RealityKit). Under the viewer's
+     * 30,000-lux IBL that albedo clipped to flat white and crossed the bloom threshold: an
+     * untinted print rendered as an unlit solid wearing a yellow halo instead of a shaded grey.
+     */
+    private const val DefaultGrey = 0.18f
+
+    /**
+     * The neutral fallback as glTF wants it: linear RGB, opaque alpha.
+     *
+     * A fresh array every call — `ObjMtl` mutates its copy in place as it reads `Kd`, `d` and `Tr`.
+     */
+    internal fun defaultBaseColor(): FloatArray =
+        floatArrayOf(DefaultGrey, DefaultGrey, DefaultGrey, 1f)
 
     /** A printed part is matte, never a mirror — written literally so no float formatting applies. */
     private const val PrintRoughness = "0.55"
