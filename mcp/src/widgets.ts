@@ -95,6 +95,12 @@ export function readUiExtension(capabilities: unknown): UiExtensionSettings | nu
  * *and* listed mime types that exclude ours. Silence stays permissive, because
  * the live ChatGPT listing is silent and withholding the pointer from it would
  * turn a spec conformance fix into an outage.
+ *
+ * An explicit `mimeTypes: []` counts as silence, deliberately (#3485): the
+ * spec makes `mimeTypes` REQUIRED, so an empty one is a malformed declaration
+ * rather than a stated refusal, and reading a malformed declaration as "render
+ * nothing" would dark-ship the widget on a client bug. Pinned by a test in
+ * `widgets.test.ts` so the choice cannot drift silently.
  */
 export function serveWidgetsTo(settings: UiExtensionSettings | null | undefined): boolean {
   if (!settings) return true;
@@ -479,8 +485,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
        */
       function resolveModelUrl(url) {
         var path = String(url).split("?")[0].split("#")[0].toLowerCase();
-        var isThreeMfUrl = /\.3mf$/.test(path);
-        var isKnownGltf = /\.(glb|gltf)$/.test(path);
+        var isThreeMfUrl = /.3mf$/.test(path);
+        var isKnownGltf = /.(glb|gltf)$/.test(path);
         if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);
 
         return fetch(url)

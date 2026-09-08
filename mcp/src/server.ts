@@ -42,7 +42,12 @@ import { recordClientInit, recordToolCall } from "./telemetry.js";
 import { getToolTier, isProTool, TOOL_TIERS } from "./tiers.js";
 import { API_DOCS, dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 import type { ToolDefinition } from "./tools/types.js";
-import { listWidgetResources, readWidgetResource } from "./widgets.js";
+import {
+  listWidgetResources,
+  readUiExtension,
+  readWidgetResource,
+  serveWidgetsTo,
+} from "./widgets.js";
 
 /** Which transport the server is being built for. See the file header. */
 export type ServerSurface = "stdio" | "remote";
@@ -60,6 +65,7 @@ export interface SceneViewServerOptions {
 type SdkCallToolResult = {
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
 };
 
 /** Tool declarations the remote surface publishes: the free tier, nothing else. */
@@ -74,6 +80,20 @@ export function remoteProToolRefusal(toolName: string): string {
     `which exposes only the free SceneView tools. To use Pro tools, run the ` +
     `package locally (\`npx sceneview-mcp\`) with a \`SCENEVIEW_API_KEY\`.`
   );
+}
+
+/**
+ * Strips the MCP Apps `_meta.ui` pointer off a definition or a result.
+ *
+ * Everything else in `_meta` survives, the `openai/*` keys included: those are
+ * a different vendor's mechanism, and a client that speaks the extension is
+ * not the host that reads them.
+ */
+function withoutWidgetPointer<T extends { _meta?: Record<string, unknown> }>(value: T): T {
+  if (!value._meta || !("ui" in value._meta)) return value;
+  const meta = { ...value._meta };
+  delete meta.ui;
+  return { ...value, _meta: meta };
 }
 
 export function createSceneViewServer(options: SceneViewServerOptions = {}): Server {
@@ -185,10 +205,25 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
 
   // ─── Tools ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Whether this session gets MCP Apps widget pointers.
+   *
+   * The client's declared mime types arrive in the `initialize` handshake and
+   * the SDK keeps them on the server, so both tool handlers can ask the same
+   * question the HTTP gateway asks — otherwise the two transports drift and
+   * the stdio server hands a widget to a host that declared it cannot render
+   * one (#3485). Silence stays permissive: see `serveWidgetsTo`.
+   */
+  const widgetsEnabled = () => serveWidgetsTo(readUiExtension(server.getClientCapabilities()));
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const withWidgets = widgetsEnabled();
+    const negotiate = <T extends { _meta?: Record<string, unknown> }>(tool: T): T =>
+      withWidgets ? tool : withoutWidgetPointer(tool);
+
     // Remote surface: the free tier only. There is no key on a shared
     // endpoint, so a `[PRO]` prefix would advertise tools nobody can call.
-    if (remote) return { tools: remoteToolDefinitions() };
+    if (remote) return { tools: remoteToolDefinitions().map(negotiate) };
 
     // v4 lite mode: we trust the gateway to enforce Pro access at call time,
     // so listing is purely cosmetic here. If no API key is set we still prefix
@@ -197,13 +232,20 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
     // list unmodified.
     const unlocked = isProxyConfigured();
     const tools = TOOL_DEFINITIONS.map((tool) => {
-      if (unlocked || !isProTool(tool.name)) return tool;
-      return { ...tool, description: `[PRO] ${tool.description}` };
+      if (unlocked || !isProTool(tool.name)) return negotiate(tool);
+      return negotiate({ ...tool, description: `[PRO] ${tool.description}` });
     });
     return { tools };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    // Same decision as the declaration above, so a host that discovers
+    // widgets from RESULTS rather than declarations cannot be handed a
+    // pointer the session negotiated away (#3485). The tool still runs and
+    // still answers with its text content: degradation, not failure.
+    const negotiateResult = (result: SdkCallToolResult): SdkCallToolResult =>
+      widgetsEnabled() ? result : withoutWidgetPointer(result);
+
     const toolName = request.params.name;
     const args = request.params.arguments as Record<string, unknown> | undefined;
 
@@ -234,7 +276,7 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
         }
       } else {
         const result = await dispatchProxyToolCall(toolName, args);
-        return result as unknown as SdkCallToolResult;
+        return negotiateResult(result as unknown as SdkCallToolResult);
       }
     }
 
@@ -242,7 +284,7 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
     // structurally matches the MCP SDK's `CallToolResult` but TS can't prove
     // it (the SDK's zod-derived type has additional optional members).
     const result = await dispatchTool(toolName, args);
-    return result as unknown as SdkCallToolResult;
+    return negotiateResult(result as unknown as SdkCallToolResult);
   });
 
   return server;
