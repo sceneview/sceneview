@@ -1,5 +1,7 @@
 package io.github.sceneview.core.obj
 
+import io.github.sceneview.core.threemf.ThreeMfGlb
+
 internal object ObjMtl {
     fun read(bytes: ByteArray, materials: MutableMap<String, ObjMaterial>) {
         var factor: FloatArray? = null
@@ -26,4 +28,8 @@ internal object ObjMtl {
     }
 }
 
-internal fun defaultObjColor(): FloatArray = floatArrayOf(0.62f, 0.64f, 0.68f, 1f)
+/**
+ * The shared neutral fallback, in linear space — identical to the one the 3MF, STL and PLY paths
+ * use, so a colourless file reads the same grey whatever format it arrived in (#3548).
+ */
+internal fun defaultObjColor(): FloatArray = ThreeMfGlb.defaultBaseColor()
