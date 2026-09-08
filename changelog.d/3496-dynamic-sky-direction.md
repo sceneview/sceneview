@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- `DynamicSkyNode` pointed its sun light at the sky instead of at the scene: Filament's light direction is the direction the light *travels*, but the node set it to the vector *toward* the sun. A noon sun therefore lit the scene from underneath the ground — no cast shadow at any hour, and the time-of-day slider only changed the light's colour. The direction is now negated, so the sun rises, casts and sets as documented.

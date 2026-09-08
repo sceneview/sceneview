@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the unified `lighting-lab` demo (registered by
-     `LightingLabFragment.kt`). Consolidates the retired `dynamic-sky`,
-     `environment`, `reflection-probes`, and `post-processing` demos
-     (#2239 Batch 2). Old ids continue to deep-link through
-     `DeepLinkRouter.DEMO_ID_ALIASES`. -->
+<!-- Strings for the `lighting-lab` demo (registered by `LightingLabFragment.kt`).
+
+     Rebuilt from scratch in #3496: the five modes (Sky, Environment, Reflections,
+     Post-FX, Fog) are gone and every knob is live at once on the one stage
+     `LightingStage` that `lighting` also lights. The Sky mode moved to `lighting`'s
+     Sun rig. Retired ids keep resolving through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_lighting_lab_title">Lighting Lab</string>
-    <string name="demo_lighting_lab_subtitle">Sky, HDR environment, reflections, post-FX</string>
+    <string name="demo_lighting_lab_subtitle">Every lighting knob, live on one frame</string>
+    <string name="demo_lighting_lab_explainer">One fixed key over a studio HDR, so every control here has exactly one variable. Exposure, environment and frame options act on the same frame at the same time.</string>
+    <string name="demo_lighting_lab_status">Exposure %1$s · IBL %2$d klx · AO %3$s · Fog %4$s</string>
+    <string name="demo_lighting_lab_on">on</string>
+    <string name="demo_lighting_lab_off">off</string>
+
+    <string name="demo_lighting_lab_section_camera">Camera</string>
+    <string name="demo_lighting_lab_section_environment">Environment</string>
+    <string name="demo_lighting_lab_section_frame">Frame</string>
+
+    <string name="demo_lighting_ibl_intensity">Environment intensity</string>
+    <string name="demo_lighting_lab_sky">Draw the sky</string>
+    <string name="demo_lighting_lab_probe">Local reflection probe</string>
+    <string name="demo_lighting_lab_probe_zone">Probe radius</string>
+    <string name="demo_lighting_lab_ssao">Ambient occlusion</string>
+    <string name="demo_lighting_lab_fog">Fog</string>
+    <string name="demo_lighting_lab_fog_density">Fog density</string>
+    <string name="demo_lighting_lab_msaa">MSAA 4×</string>
+    <string name="demo_lighting_lab_fxaa">FXAA</string>
+    <string name="demo_lighting_lab_dithering">Dithering</string>
 </resources>

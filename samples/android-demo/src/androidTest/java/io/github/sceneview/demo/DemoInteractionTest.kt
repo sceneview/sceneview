@@ -404,56 +404,50 @@ class DemoInteractionTest {
         Thread.sleep(800)
     }
 
-    // ── 1. Lighting — 3 light-type chips ──────────────────────────────────────
+    // ── 1. Lighting — the three rigs ──────────────────────────────────────────
 
     @Test
-    fun lighting_allThreeLightTypes() {
+    fun lighting_allThreeRigs() {
+        // #3496 — the demo is rebuilt around three *rigs* over one shared stage:
+        // Image (an HDR environment and nothing else), Studio (a three-point rig of
+        // analytic lights) and Sun (`DynamicSkyNode` on a clock). It opens on Image.
         openDemo("lighting")
-        screenshot("01_lighting_directional_default")
+        screenshot("01_lighting_image_default")
 
-        tap("Point")
-        screenshot("02_lighting_point")
+        // ── Image rig — environment swatches, then the rotation slider ────────
+        // Swatches are circles, so they carry no text: they are reached by the
+        // `contentDescription` the demo sets to the environment's label.
+        tapByDesc("Sunset"); screenshot("01a_lighting_image_sunset")
+        tapByDesc("Overcast"); screenshot("01b_lighting_image_overcast")
+        tapByDesc("Studio"); screenshot("01c_lighting_image_studio")
+        // Rotating turns the lighting only, so the control is live only once the
+        // painted sky is hidden — the dock's Sky item is what hides it.
+        tap("Sky")
+        dragSlider("Environment rotation", fraction = 0.35f)
+        screenshot("01d_lighting_image_rotated")
+        tap("Sky")
 
-        tap("Spot")
-        screenshot("03_lighting_spot")
+        // ── Studio rig — key angle, intensity, colour, fill and rim ───────────
+        tap("Studio")
+        screenshot("02_lighting_studio_default")
+        dragSlider("Key angle", fraction = 0.75f); screenshot("02a_lighting_key_angle")
+        dragSlider("Key intensity", fraction = 1.0f); screenshot("02b_lighting_key_max")
+        dragSlider("Key intensity", fraction = 0.0f); screenshot("02c_lighting_key_min")
+        tapByDesc("Tungsten"); screenshot("02d_lighting_key_tungsten")
+        tapByDesc("Daylight"); screenshot("02e_lighting_key_daylight")
+        tap("Fill light"); screenshot("02f_lighting_fill_off")
+        tap("Rim light"); screenshot("02g_lighting_rim_off")
 
-        tap("Directional")
-        screenshot("04_lighting_directional_back")
+        // ── Sun rig — the hour drives colour, height, intensity and the sky ───
+        tap("Sun")
+        screenshot("03_lighting_sun_default")
+        dragSlider("Time of day", fraction = 0.05f); screenshot("03a_lighting_sun_night")
+        dragSlider("Time of day", fraction = 0.5f); screenshot("03b_lighting_sun_midday")
+        dragSlider("Haze", fraction = 1.0f); screenshot("03c_lighting_sun_hazy")
 
-        // Intensity slider sweep — min / mid / max
-        dragSlider("Intensity:", fraction = 0.0f); screenshot("04a_lighting_intensity_min")
-        dragSlider("Intensity:", fraction = 0.5f); screenshot("04b_lighting_intensity_mid")
-        dragSlider("Intensity:", fraction = 1.0f); screenshot("04c_lighting_intensity_max")
-
-        // Color swatches — targeted via `semantics { contentDescription = "<Name> light color" }`
-        // added to the demo for a11y + UiAutomator reachability.
-        tapByDesc("Warm light color"); screenshot("04d_lighting_color_warm")
-        tapByDesc("Blue light color"); screenshot("04e_lighting_color_blue")
-        tapByDesc("Red light color"); screenshot("04f_lighting_color_red")
-        tapByDesc("White light color"); screenshot("04g_lighting_color_white")
-    }
-
-    // ── 2. Fog — toggle + density slider + colour presets (single screen open) ─
-
-    @Test
-    fun fog_fullScreen() {
-        openDemo("fog")
-        screenshot("05_fog_enabled_mist")
-
-        // Toggle off / on
-        tap("Fog Enabled"); screenshot("06_fog_disabled")
-        tap("Fog Enabled"); screenshot("07_fog_re_enabled")
-
-        // Colour presets
-        tap("Eerie Green"); screenshot("08_fog_eerie_green")
-        tap("Warm Haze"); screenshot("09_fog_warm_haze")
-        tap("Deep Smoke"); screenshot("10_fog_deep_smoke")
-
-        // Density slider (back to default preset Mist first)
-        tap("Mist")
-        dragSlider("Density:", fraction = 1.0f); screenshot("10a_fog_density_max")
-        dragSlider("Density:", fraction = 0.0f); screenshot("10b_fog_density_min")
-        dragSlider("Density:", fraction = 0.5f); screenshot("10c_fog_density_mid")
+        // Exposure belongs to the camera, so it is the one control on every rig.
+        dragSlider("Exposure", fraction = 1.0f); screenshot("04_lighting_exposure_max")
+        dragSlider("Exposure", fraction = 0.0f); screenshot("04a_lighting_exposure_min")
     }
 
     // ── 3. Physics ─────────────────────────────────────────────────────────────
@@ -572,56 +566,53 @@ class DemoInteractionTest {
     }
 
     // ── 8. Post Processing — 4 toggle rows ────────────────────────────────────
+    // #2239 Batch 2 folded `post-processing` into `lighting-lab`; since #3496 the
+    // lab has no tabs and its SSAO / MSAA / FXAA / dithering switches are driven by
+    // `lightingLab_benchControls` below.
 
-    // ── 8. Lighting Lab — all 4 segmented tabs ────────────────────────────────
+    // ── 8. Lighting Lab — every knob on one bench ─────────────────────────────
 
     @Test
-    fun lightingLab_allTabs() {
-        // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
-        // `post-processing` consolidated into `lighting-lab` with a 4-way segmented
-        // toggle. One test taps through every tab so each merged half is exercised
-        // (the unified demo opens on its default Sky tab).
+    fun lightingLab_benchControls() {
+        // #3496 — the lab's five modes (Sky, Environment, Reflections, Post-FX, Fog)
+        // are gone: one fixed key over a studio HDR, and every knob live at once on
+        // the same frame. `dynamic-sky` moved to `lighting`'s Sun rig, which
+        // `lighting_allThreeRigs` covers.
         openDemo("lighting-lab")
+        screenshot("31_lab_default")
 
-        // ── Sky tab (default landing tab) — time + turbidity sliders ──────────
-        screenshot("31_lab_sky_default")
-        dragSlider("Time of Day:", fraction = 0.1f)   // dawn
-        screenshot("31a_lab_sky_dawn")
-        dragSlider("Time of Day:", fraction = 0.9f)   // dusk
-        screenshot("31b_lab_sky_dusk")
-        dragSlider("Turbidity:", fraction = 1.0f)
-        screenshot("31c_lab_sky_high_turbidity")
+        // ── Camera ────────────────────────────────────────────────────────────
+        dragSlider("Exposure", fraction = 1.0f); screenshot("31a_lab_exposure_max")
+        dragSlider("Exposure", fraction = 0.0f); screenshot("31b_lab_exposure_min")
+        dragSlider("Exposure", fraction = 0.3f)
 
-        // ── Environment tab — HDR chips ───────────────────────────────────────
-        tap("Environment")
-        screenshot("32_lab_env_studio_default")
-        tap("Sunset")
-        screenshot("32a_lab_env_sunset")
-        tap("Studio")
-        screenshot("32b_lab_env_studio_back")
+        // ── Environment — intensity, sky, rotation, local reflection probe ────
+        dragSlider("Environment intensity", fraction = 1.0f)
+        screenshot("32_lab_ibl_max")
+        dragSlider("Environment intensity", fraction = 0.1f)
+        screenshot("32a_lab_ibl_min")
+        dragSlider("Environment rotation", fraction = 0.5f)
+        screenshot("32b_lab_ibl_rotated")
+        tap("Draw the sky"); screenshot("32c_lab_sky_on")
+        tap("Draw the sky")
+        tap("Local reflection probe"); screenshot("32d_lab_probe_on")
+        dragSlider("Probe radius", fraction = 1.0f); screenshot("32e_lab_probe_wide")
+        tap("Local reflection probe")
 
-        // ── Reflections tab — probe radius + Y sliders ────────────────────────
-        tap("Reflections")
-        screenshot("33_lab_probes_default")
-        dragSlider("Probe Radius:", fraction = 1.0f)
-        screenshot("33a_lab_probes_max_radius")
-        dragSlider("Probe Y Position:", fraction = 1.0f)
-        screenshot("33b_lab_probes_y_max")
-
-        // ── Post-FX tab — SSAO / MSAA / FXAA / dithering switches ──────────────
-        // Defaults: SSAO=on, MSAA=off, FXAA=on, Dithering=on (the SDK's library
-        // defaults — FXAA & temporal dithering are cheap and noticeably improve
-        // quality on mobile GPUs).
-        tap("Post-FX")
-        screenshot("34_lab_postFx_defaults")
-        tap("SSAO (Ambient Occlusion)")      // SSAO → off
-        screenshot("34a_lab_postFx_ssao_off")
-        tap("MSAA (4x Multi-Sample)")        // MSAA → on
-        screenshot("34b_lab_postFx_msaa_on")
-        // Revert the two toggled switches back to their defaults.
-        tap("SSAO (Ambient Occlusion)")
-        tap("MSAA (4x Multi-Sample)")
-        screenshot("35_lab_postFx_back_to_defaults")
+        // ── Frame — SSAO, fog and its presets, then the AA switches ───────────
+        tap("Ambient occlusion"); screenshot("33_lab_ssao_off")
+        tap("Ambient occlusion")
+        tap("Fog"); screenshot("33a_lab_fog_on")
+        dragSlider("Fog density", fraction = 1.0f); screenshot("33b_lab_fog_dense")
+        tap("Warm haze"); screenshot("33c_lab_fog_warm")
+        tap("Smoke"); screenshot("33d_lab_fog_smoke")
+        tap("Mist")
+        tap("Fog")
+        tap("MSAA 4×"); screenshot("34_lab_msaa_on")
+        tap("MSAA 4×")
+        tap("FXAA"); screenshot("34a_lab_fxaa_off")
+        tap("FXAA")
+        screenshot("35_lab_back_to_defaults")
     }
 
     // ── 8b. Materials — all 3 segmented tabs ─────────────────────────
@@ -712,9 +703,10 @@ class DemoInteractionTest {
     }
 
     // ── 11. Environment Gallery ───────────────────────────────────────────────
-    // #2239 Batch 2 — `environment` consolidated into `lighting-lab` (Environment
-    // tab). Covered by `lightingLab_allTabs` above, which taps the Environment tab
-    // and cycles the HDR chips.
+    // #2239 Batch 2 — `environment` consolidated into `lighting-lab`; #3496 then
+    // moved the HDR picker itself to `lighting`'s Image rig, where the deep link now
+    // lands. Covered by `lighting_allThreeRigs`, which cycles the environment
+    // swatches.
 
     // ── 12. 2D in 3D — Compose cards on ViewNode quads ────────────────────
     //
@@ -874,12 +866,14 @@ class DemoInteractionTest {
     }
 
     // ── 18. Dynamic Sky ───────────────────────────────────────────────────────
-    // #2239 Batch 2 — `dynamic-sky` consolidated into `lighting-lab` (Sky tab, the
-    // default landing tab). Covered by `lightingLab_allTabs` above.
+    // #2239 Batch 2 — `dynamic-sky` consolidated into `lighting-lab`; #3496 moved
+    // `DynamicSkyNode` to `lighting`'s Sun rig, where the deep link now lands.
+    // Covered by `lighting_allThreeRigs` above.
 
     // ── 19. Reflection Probes ─────────────────────────────────────────────────
-    // #2239 Batch 2 — `reflection-probes` consolidated into `lighting-lab`
-    // (Reflections tab). Covered by `lightingLab_allTabs` above.
+    // #2239 Batch 2 — `reflection-probes` consolidated into `lighting-lab`; since
+    // #3496 the probe is a switch plus a radius slider on the lab's one bench.
+    // Covered by `lightingLab_benchControls` above.
 
     // ── 20/21. Image + Text Labels ─────────────────────────────
     // #2239 Batch 1 consolidated `image` and `text` into `two-d-in-three-d`;

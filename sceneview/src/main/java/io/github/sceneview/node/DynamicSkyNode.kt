@@ -92,12 +92,17 @@ internal class DynamicSkyNodeImpl(engine: Engine) : LightNode(
         val elevation = sin(hourAngle).coerceIn(-1f, 1f)
         val azimuthCos = -cos(hourAngle)                          // east→west sweep on X axis
 
-        // Filament expects the direction *toward* the light (sun), normalised.
-        val dirX = azimuthCos * 0.6f
-        val dirY = elevation
-        val dirZ = -0.5f                                           // slight southward tilt
-        val len = sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ).coerceAtLeast(1e-6f)
-        lightDirection = Direction(x = dirX / len, y = dirY / len, z = dirZ / len)
+        // Vector pointing *toward* the sun: up at noon, on the horizon at 6 h and 18 h.
+        val toSunX = azimuthCos * 0.6f
+        val toSunY = elevation
+        val toSunZ = -0.5f                                         // slight southward tilt
+        val len = sqrt(toSunX * toSunX + toSunY * toSunY + toSunZ * toSunZ)
+            .coerceAtLeast(1e-6f)
+        // Filament's light direction is the direction the light *travels*, i.e. from the sun
+        // down onto the scene — the opposite of the vector above. Before #3496 this was set to
+        // the toward-the-sun vector, so a noon sun lit the scene from underneath the floor: no
+        // cast shadow, and the time-of-day slider only changed the colour.
+        lightDirection = Direction(x = -toSunX / len, y = -toSunY / len, z = -toSunZ / len)
 
         // ── Colour ───────────────────────────────────────────────────────────────────────────────
         color = computeSunColor(elevation, turbidity)

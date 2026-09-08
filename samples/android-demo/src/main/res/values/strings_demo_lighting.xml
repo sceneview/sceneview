@@ -1,17 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `lighting` demo (registered by
-     `LightingFragment.kt`). Android's resource merger
-     fans every `res/values/*.xml` file in, so `R.string.demo_lighting_title` etc.
-     remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870.
+<!-- Strings for the `lighting` demo (registered by `LightingFragment.kt`).
 
-     The `lighting` demo consolidates the former `lighting` and `movable-light`
-     demos behind an in-demo mode switch (issue #1444). -->
+     Rebuilt from scratch in #3496: the screen is now the showcase half of the
+     lighting pair — three *rigs* (image-based, studio, sun) over the one stage
+     `LightingStage` that `lighting-lab` also lights. The retired `movable-light`
+     and `dynamic-sky` ids still deep-link here through
+     `DeepLinkRouter.DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`.
+
+     Android's resource merger fans every `res/values/*.xml` file in, so
+     `R.string.demo_lighting_title` etc. stays globally resolvable (#1870). -->
 <resources>
     <string name="demo_lighting_title">Lighting</string>
-    <string name="demo_lighting_subtitle">Light types with a movable orbiting light</string>
+    <string name="demo_lighting_subtitle">Three rigs on one stage: HDR, studio, sun</string>
     <string name="demo_lighting">Lighting</string>
-    <string name="demo_lighting_desc">Point, directional, and spot lights with shadows</string>
-    <string name="demo_lighting_mode_types">Light Types</string>
-    <string name="demo_lighting_mode_movable">Movable Light</string>
+    <string name="demo_lighting_desc">Image-based, three-point studio and dynamic sun lighting</string>
+    <string name="demo_lighting_loading">Loading the stage…</string>
+
+    <!-- Rig picker. Order matches the `LightingRig` enum, which `ALIAS_INITIAL_TAB` indexes. -->
+    <string name="demo_lighting_rig_image">Image</string>
+    <string name="demo_lighting_rig_studio">Studio</string>
+    <string name="demo_lighting_rig_sun">Sun</string>
+    <string name="demo_lighting_rig_image_explainer">An HDR environment is the whole rig: the chrome ball mirrors it, the matte ball reads it. Rotate the environment and the light turns with it.</string>
+    <string name="demo_lighting_rig_studio_explainer">A three-point rig of analytic lights — a shadow-casting key, a cool fill, a cold rim — each drawn where it stands. Move the key and watch the modelling change.</string>
+    <string name="demo_lighting_rig_sun_explainer">One sun on a clock. The hour drives its colour, height and strength, and the sky swaps with it, so midnight is night rather than a dark noon.</string>
+
+    <!-- Status pill, one per rig. -->
+    <string name="demo_lighting_status_image">Image-based · %1$s · %2$d°</string>
+    <string name="demo_lighting_status_studio">Studio · %1$s key · %2$d kcd · %3$d lights</string>
+    <string name="demo_lighting_status_sun">Sun · %1$s h · %2$s</string>
+
+    <!-- Controls. -->
+    <string name="demo_lighting_environment">Environment</string>
+    <string name="demo_lighting_rotation">Environment rotation</string>
+    <string name="demo_lighting_rotation_hint">Filament turns the lighting, not the painted sky — hide the sky to rotate.</string>
+    <string name="demo_lighting_key_angle">Key angle</string>
+    <string name="demo_lighting_key_intensity">Key intensity</string>
+    <string name="demo_lighting_key_color">Key color</string>
+    <string name="demo_lighting_fill">Fill light</string>
+    <string name="demo_lighting_rim">Rim light</string>
+    <string name="demo_lighting_time_of_day">Time of day</string>
+    <string name="demo_lighting_haze">Haze</string>
+    <string name="demo_lighting_exposure">Exposure</string>
 </resources>

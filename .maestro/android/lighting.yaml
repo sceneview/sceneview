@@ -1,20 +1,19 @@
-# Maestro flow — "Lighting & Environment" demo category (5 demos).
+# Maestro flow — "Lighting & Environment" demo category.
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/lighting.yaml
 #
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids
-# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt.
+# mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt; DEMO_NAME is
+# only a label for the screenshot file names and the log.
 #
-# Note: the former `movable-light` demo was consolidated into `lighting` as an
-# in-demo mode switch (#1444); the retired id still deep-link-resolves via
-# DeepLinkRouter.DEMO_ID_ALIASES, but it no longer needs its own QA leg.
-#
-# #2239: `fog` is no longer a catalogue card — it is `lighting-lab`'s fifth mode.
-# Its leg below is KEPT ON PURPOSE and still drives `DEMO_ID_ALIASES` +
-# ALIAS_INITIAL_TAB, so this flow lands on the Fog mode and keeps exercising
-# `FogNode` exactly as before. Deleting the leg would have deleted the coverage,
-# not the redundancy.
+# Two live cards carry the subject since #3496: `lighting` (the showcase — three
+# rigs over one stage) and `lighting-lab` (the workbench — every knob on one
+# frame). The retired-id legs below are KEPT ON PURPOSE: they are what exercises
+# `DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`, and each one lands on the half that
+# now hosts its subject — `dynamic-sky` on the Sun rig of `lighting`,
+# `environment` on its Image rig, `fog` on the lab. Deleting a leg would delete
+# the coverage, not the redundancy.
 appId: io.github.sceneview.demo
 ---
 - runFlow:
@@ -26,17 +25,22 @@ appId: io.github.sceneview.demo
     file: flows/demo.yaml
     env:
       DEMO_ID: dynamic-sky
-      DEMO_NAME: Dynamic Sky
+      DEMO_NAME: Lighting Sun Rig
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: lighting-lab
+      DEMO_NAME: Lighting Lab
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: fog
-      DEMO_NAME: Fog
+      DEMO_NAME: Lighting Lab Fog
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: environment
-      DEMO_NAME: Environment Gallery
+      DEMO_NAME: Lighting Image Rig
 # Follows the demo's move out of the AR category (#2851): the contact shadow lives in
 # `sceneview`, not `arsceneview`, and the screen is a plain non-AR studio scene. Verified
 # absent from every other flow before adding it here — ar.yaml never carried it (34 header,
