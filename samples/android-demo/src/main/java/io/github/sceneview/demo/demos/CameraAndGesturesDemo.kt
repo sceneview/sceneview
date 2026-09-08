@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,69 +9,56 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import com.google.android.filament.utils.Manipulator
-import io.github.sceneview.RenderQuality
+import androidx.compose.ui.text.style.TextAlign
 import io.github.sceneview.SceneView
+import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
-import io.github.sceneview.demo.LoadingScrim
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.Axes3DNode
-import io.github.sceneview.demo.common.SceneAction
-import io.github.sceneview.demo.common.SceneActionBar
+import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
-import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.demos.internal.CameraRig
+import io.github.sceneview.demo.demos.internal.CameraView
+import io.github.sceneview.demo.demos.internal.OrbitPose
+import io.github.sceneview.demo.demos.internal.RigGesture
+import io.github.sceneview.demo.demos.internal.RigSubject
+import io.github.sceneview.demo.demos.internal.StudioCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
-import io.github.sceneview.gesture.CameraGestureDetector
+import io.github.sceneview.demo.rememberFitOrbitRadius
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassSurface
 import io.github.sceneview.gesture.NodeEditingOverlay
-import io.github.sceneview.gesture.orbitHomePosition
 import io.github.sceneview.gesture.rememberNodeEditingFeedback
-import io.github.sceneview.gesture.targetPosition
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.rememberCameraManipulator
-import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
@@ -82,703 +68,277 @@ import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Unified "Camera & Gestures" demo — consolidates the retired `camera-controls`,
- * `gesture-editing` and `gesture-feedback-preview` demos behind a single
- * segmented-button toggle (#2239).
+ * **Camera & Gestures** — the screen that shows what SceneView's camera can do, on one stage, with
+ * one rig.
  *
- * - **Camera** — orbit / free-flight / map manipulator presets with a distance
- *   slider and an on-screen flight pad. (Formerly `camera-controls`.)
- * - **Gestures** — per-node drag / twist / pinch on a damaged-helmet
- *   `ModelNode`, with per-axis locks, a sensitivity slider, gesture-mode
- *   indicator, and a live transform readout. (Formerly `gesture-editing`.)
- * - **Feedback** — the same editable node with the opt-in on-model affordance
- *   overlay switched on ([NodeEditingOverlay] + [rememberNodeEditingFeedback],
- *   #3357): twist ring and sweep arc, pinch percentage badge with a limit
- *   bounce, drag contact shadow, idle selection ring. (Formerly
- *   `gesture-feedback-preview`.)
+ * ### What was here before, and why none of it survived (#3500)
  *
- * **Why Feedback is a mode here and not a card.** The Gestures mode flips
- * `isEditable` / `isPositionEditable` and draws *no* affordance at all, so the
- * two screens were the same subject cut in half: one showed the behaviour
- * without the visuals, the other the visuals without the controls. Folding them
- * makes the overlay's opt-in nature legible — you switch to Feedback and see
- * exactly what `NodeEditingOverlay` adds over the mode next door. The card that
- * went away was also the one whose name ("Gesture Feedback Preview") read as a
- * design mock rather than an SDK capability.
+ * The previous version was three demos behind a segmented toggle: a manipulator-mode picker
+ * (Orbit / Free Flight / Map) with a distance slider, a per-node edit screen with four switches and
+ * a slider, and a third mode showing the editing affordances the second mode deliberately drew
+ * without. It was an inventory of API surface, not a demonstration: every mode tore down its own
+ * engine on a switch, the distance slider rebuilt the Filament `Manipulator` on every step so each
+ * change teleported the camera, and the one thing a camera screen exists to convey — that the
+ * camera is a place you move through, not a parameter you set — was nowhere on screen.
  *
- * Each sub-mode keeps its own scaffold + `SceneView` + its own
- * [rememberEngine] / loaders, so switching modes tears the inactive one down
- * completely — no engine is hoisted above the `when`, which is what prevents
- * resource leaks across mode switches (the invariant the #2239 Batch-1 review
- * pinned). Old deep links route through
- * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ * This is a rebuild, not a refactor. One scene, one camera, and every camera capability expressed
+ * as something you *do* to it:
+ *
+ * - **Orbit, pan, zoom — with inertia.** One finger orbits, two pan, a pinch dollies, and a
+ *   release *coasts* to a stop. [StudioCameraManipulator] owns the spherical pose so a flick has
+ *   an angular velocity to carry, which the stock Filament manipulator cannot express.
+ * - **Tap a subject to fly to it.** A tap picks the model under the finger and the camera flies —
+ *   eased over `motion-entrance`'s 700 ms — to a framing computed from *that subject's* size.
+ *   Double-tap anywhere returns to the whole stage.
+ * - **Named views.** Five chips over the scene (Hero / Front / Side / Top / Close) fly to an
+ *   angle relative to whatever currently has focus, always by the shortest arc round the subject.
+ * - **A cinematic turntable.** The dock's Cinematic item hands the camera to the SDK's own eased
+ *   orbit ramp ([io.github.sceneview.cinematicAzimuth]), spinning the framing the user chose
+ *   rather than teleporting to a canonical one. A touch takes it back; the next release gives it
+ *   up again.
+ * - **Object gestures, in the same scene.** The dock's Move item makes the focused subject
+ *   editable, so a drag / twist / pinch moves the *object* instead of the camera, with the SDK's
+ *   on-model affordances ([NodeEditingOverlay]) drawn over it. The old build spent two of its
+ *   three modes on this and still never showed it next to the camera it competes with for the
+ *   same gesture.
+ * - **A readout of where the camera is.** A glass HUD prints the live azimuth, elevation and
+ *   distance, plus the name of the focused subject and a badge naming the gesture *while* it runs.
+ *   A camera demo that never tells you where the camera is asks the user to infer it from pixels.
+ *
+ * ### Why one scene and not one model
+ *
+ * Half of what is on screen is a statement about *choosing* a subject — tap-to-focus, per-subject
+ * framing, presets relative to the focus. None of it exists with a single model centred on the
+ * origin. Three subjects standing on a floor is also what makes orbit and pan distinguishable at a
+ * glance: orbit swings the floor's perspective, pan slides it. The composition and its framing
+ * constants live in [CameraRig].
+ *
+ * ### Threading
+ *
+ * Every model is loaded through [rememberModelInstance] (main-thread Filament JNI), and the rig's
+ * per-frame integration runs inside `SceneView`'s own frame loop. The HUD reads the rig from a
+ * `withFrameNanos` poll and publishes only when a *displayed* value changes, so a 60 Hz camera does
+ * not drive 60 recompositions a second.
  */
 @Composable
 fun CameraAndGesturesDemo(onBack: () -> Unit) {
-    var mode by remember {
-        mutableStateOf(initialDemoMode(CameraGesturesMode.entries, CameraGesturesMode.CameraModes))
-    }
-    when (mode) {
-        CameraGesturesMode.CameraModes -> CameraModesSection(onBack, mode) { mode = it }
-        CameraGesturesMode.NodeGestures -> NodeGesturesSection(onBack, mode) { mode = it }
-        CameraGesturesMode.Feedback -> GestureFeedbackSection(onBack, mode) { mode = it }
-    }
-}
-
-/**
- * Labels are one word each. At two modes the row carried "Camera Modes" /
- * "Node Gestures" comfortably; at three, the same phrasing would ellipsise on a
- * phone-width sheet — `LightingLabDemo` measured exactly that failure at four
- * segments with an 11-character label (#3322) and had to split into two rows.
- * One row of short labels beats two rows here: the demo's own title already
- * says "Camera & Gestures", so the segments only have to disambiguate.
- */
-private enum class CameraGesturesMode(val label: String) {
-    CameraModes("Camera"),
-    NodeGestures("Gestures"),
-    Feedback("Feedback"),
-}
-
-@Composable
-private fun ModeSelector(
-    current: CameraGesturesMode,
-    onModeChange: (CameraGesturesMode) -> Unit,
-) {
-    val modes = CameraGesturesMode.entries
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, m ->
-            SegmentedButton(
-                selected = m == current,
-                onClick = { onModeChange(m) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(m.label) },
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-}
-
-// ─── Camera Modes section ──────────────────────────────────────────────────
-//
-// Verbatim port of the retired `camera-controls` demo body — orbit / free-flight
-// / map manipulator with a distance slider. The only addition is the
-// ModeSelector at the top of the controls sheet.
-
-@Composable
-private fun CameraModesSection(
-    onBack: () -> Unit,
-    mode: CameraGesturesMode,
-    onModeChange: (CameraGesturesMode) -> Unit,
-) {
-    val modes = remember {
-        listOf(
-            "Orbit" to Manipulator.Mode.ORBIT,
-            "Free Flight" to Manipulator.Mode.FREE_FLIGHT,
-            "Map" to Manipulator.Mode.MAP
+    // Inspection mode (Android Studio @Preview, Roborazzi): bail out BEFORE rememberEngine(),
+    // which needs Filament .so files LayoutLib does not load.
+    if (LocalInspectionMode.current) {
+        DemoPreviewPlaceholder(
+            title = stringResource(R.string.demo_camera_and_gestures_title),
+            onBack = onBack,
         )
-    }
-    var selectedMode by remember { mutableStateOf(modes[0]) }
-    var resetKey by remember { mutableIntStateOf(0) }
-
-    var cameraDistance by remember {
-        mutableFloatStateOf(DemoSettings.cameraDistance?.coerceIn(0.5f, 8f) ?: 1.5f)
+        return
     }
 
-    val homePosition = Position(0.0f, 0.0f, cameraDistance)
-    val target = remember { Position(0.0f, 0.0f, 0.0f) }
-
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
-    val cameraNode = rememberCameraNode(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
-
-    val firstFrame = rememberFirstFrameState()
-
-    val isFreeFlight = selectedMode.second == Manipulator.Mode.FREE_FLIGHT
-
-    // One Filament manipulator per (mode, reset, distance). Building it with the
-    // FREE_FLIGHT start state pointed *at* the model (yaw faces the camera back
-    // toward `target` from `homePosition`) is what keeps Free Flight from opening
-    // on a black void (#2357).
-    //
-    // Hoisted out of the scene lambda because the flight pad now lives in the
-    // scaffold's `bottomOverlay` slot and drives the very same manipulator.
-    val manipulator = remember(selectedMode, resetKey, cameraDistance) {
-        Manipulator.Builder()
-            .orbitHomePosition(homePosition)
-            .targetPosition(target)
-            .flightStartPosition(homePosition.x, homePosition.y, homePosition.z)
-            .flightStartOrientation(
-                flightStartPitch(homePosition, target),
-                flightStartYaw(homePosition, target),
-            )
-            .flightMaxMoveSpeed(2.0f)
-            .orbitSpeed(0.005f, 0.005f)
-            .zoomSpeed(0.05f)
-            .build(selectedMode.second)
-    }
-    // Swap the live manipulator on the SAME SceneView instead of re-keying the
-    // whole subtree. Re-keying tore down + rebuilt the SceneView every time the
-    // mode changed, and the rebuilt ModelNode reused the already-attached shared
-    // `modelInstance`, leaving the new scene with nothing to render — a black
-    // void that then leaked back into Orbit (#2357). SceneView reacts to a new
-    // `cameraManipulator` via its internal SideEffect, so a stable subtree + a
-    // remembered-per-mode manipulator is all that's needed.
-    val cameraManipulator = remember(manipulator) {
-        CameraGestureDetector.DefaultCameraManipulator(manipulator)
-    }
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_camera_and_gestures_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Text(
-                text = "Camera Mode",
-                style = MaterialTheme.typography.labelLarge
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                modes.forEach { m ->
-                    FilterChip(
-                        selected = selectedMode == m,
-                        onClick = { selectedMode = m },
-                        label = { Text(m.first) }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = when (selectedMode.second) {
-                    Manipulator.Mode.ORBIT ->
-                        "Drag to orbit, two-finger drag to pan, pinch to zoom."
-                    Manipulator.Mode.MAP ->
-                        "Drag to pan across the model, pinch to zoom."
-                    Manipulator.Mode.FREE_FLIGHT ->
-                        "Drag to look around, use the on-screen pad to fly."
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            LabeledSlider(
-                label = "Camera distance",
-                value = cameraDistance,
-                onValueChange = { cameraDistance = it },
-                valueRange = 0.5f..8f,
-                valueText = "%.1f m".format(Locale.US, cameraDistance),
-            )
-        },
-        // Both bottom tenants live in the scaffold's slot, which is a bottom-aligned
-        // Column: the flight pad stacks above the action bar instead of clearing it
-        // with a hand-picked `bottom = 88.dp`. Both are tappable, so the old
-        // arrangement was a touch-target conflict as much as a visual one — the pad
-        // grows with the font scale and the constant did not.
-        bottomOverlay = {
-            if (isFreeFlight) {
-                FreeFlightMovementPad(
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp),
-                    onKeyDown = { manipulator.keyDown(it) },
-                    onKeyUp = { manipulator.keyUp(it) }
-                )
-            }
-            SceneActionBar(
-                SceneAction("Reset Camera", onClick = { cameraDistance = 1.5f; resetKey++ }),
-            )
-        }
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
-                engine = engine,
-                modelLoader = modelLoader,
-                environmentLoader = environmentLoader,
-                environment = rememberModelDemoEnvironment(environmentLoader),
-                cameraNode = cameraNode,
-                cameraManipulator = cameraManipulator
-            ) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.5f,
-                    )
-                }
-            }
-            LoadingScrim(loading = modelInstance == null, label = "Loading helmet…")
-        }
-    }
-}
-
-/**
- * Pitch (radians) that aims a FREE_FLIGHT camera placed at [eye] back toward
- * [target], matching Filament's `FreeFlightManipulator` convention where the
- * look direction is `eulerZYX(0, yaw, pitch) · (0, 0, -1)` — i.e.
- * `dir = (-sin(yaw)·cos(pitch), sin(pitch), -cos(yaw)·cos(pitch))`.
- *
- * Deriving the orientation from `target - eye` (instead of hard-coding `(0, 0)`)
- * is what keeps Free Flight from opening on a black void regardless of where the
- * camera home sits relative to the model (#2357).
- */
-private fun flightStartPitch(eye: Position, target: Position): Float {
-    val dir = target - eye
-    val len = kotlin.math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z)
-    if (len < 1e-6f) return 0.0f
-    return kotlin.math.asin((dir.y / len).coerceIn(-1.0f, 1.0f))
-}
-
-/** Yaw (radians) companion to [flightStartPitch] — see its docs for the convention. */
-private fun flightStartYaw(eye: Position, target: Position): Float {
-    val dir = target - eye
-    val len = kotlin.math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z)
-    if (len < 1e-6f) return 0.0f
-    return kotlin.math.atan2(-dir.x / len, -dir.z / len)
-}
-
-@Composable
-private fun FreeFlightMovementPad(
-    modifier: Modifier = Modifier,
-    onKeyDown: (Manipulator.Key) -> Unit,
-    onKeyUp: (Manipulator.Key) -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        tonalElevation = 3.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                HoldKeyButton(
-                    icon = Icons.Default.KeyboardArrowUp,
-                    contentDescription = "Move forward",
-                    key = Manipulator.Key.FORWARD,
-                    onKeyDown = onKeyDown,
-                    onKeyUp = onKeyUp
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HoldKeyButton(
-                        icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Strafe left",
-                        key = Manipulator.Key.LEFT,
-                        onKeyDown = onKeyDown,
-                        onKeyUp = onKeyUp
-                    )
-                    HoldKeyButton(
-                        icon = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Move backward",
-                        key = Manipulator.Key.BACKWARD,
-                        onKeyDown = onKeyDown,
-                        onKeyUp = onKeyUp
-                    )
-                    HoldKeyButton(
-                        icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Strafe right",
-                        key = Manipulator.Key.RIGHT,
-                        onKeyDown = onKeyDown,
-                        onKeyUp = onKeyUp
-                    )
-                }
-            }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                HoldKeyButton(
-                    icon = Icons.Default.ArrowUpward,
-                    contentDescription = "Move up",
-                    key = Manipulator.Key.UP,
-                    onKeyDown = onKeyDown,
-                    onKeyUp = onKeyUp
-                )
-                HoldKeyButton(
-                    icon = Icons.Default.ArrowDownward,
-                    contentDescription = "Move down",
-                    key = Manipulator.Key.DOWN,
-                    onKeyDown = onKeyDown,
-                    onKeyUp = onKeyUp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HoldKeyButton(
-    icon: ImageVector,
-    contentDescription: String,
-    key: Manipulator.Key,
-    onKeyDown: (Manipulator.Key) -> Unit,
-    onKeyUp: (Manipulator.Key) -> Unit
-) {
-    FilledIconButton(
-        onClick = {},
-        shape = CircleShape,
-        modifier = Modifier
-            .size(48.dp)
-            .pointerInput(key) {
-                detectTapGestures(
-                    onPress = {
-                        onKeyDown(key)
-                        try {
-                            awaitRelease()
-                        } finally {
-                            onKeyUp(key)
-                        }
-                    }
-                )
-            }
-    ) {
-        Icon(imageVector = icon, contentDescription = contentDescription)
-    }
-}
-
-// ─── Node Gestures section ─────────────────────────────────────────────────
-//
-// Verbatim port of the retired `gesture-editing` demo body — per-node
-// drag / twist / pinch on the damaged helmet with editability toggles,
-// scale-sensitivity slider, gesture-mode indicator, and live transform
-// readout. Mode selector injected at the top of the controls sheet.
-
-private const val MODEL_SCALE_UNITS = 0.3f
-private const val AXIS_TO_MODEL_RATIO = 1.5f
-
-@Composable
-private fun NodeGesturesSection(
-    onBack: () -> Unit,
-    mode: CameraGesturesMode,
-    onModeChange: (CameraGesturesMode) -> Unit,
-) {
-    var editable by remember { mutableStateOf(true) }
-    var positionEditable by remember { mutableStateOf(true) }
-    var rotationEditable by remember { mutableStateOf(true) }
-    var scaleEditable by remember { mutableStateOf(true) }
-    var scaleSensitivity by remember { mutableStateOf(0.5f) }
-    var resetKey by remember { mutableStateOf(0) }
-    var gestureMode by remember { mutableStateOf<String?>(null) }
-
-    val modelNodeRef = remember { mutableStateOf<ModelNode?>(null) }
-
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val materialLoader = rememberMaterialLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
-
-    val effectiveEditable by remember {
-        derivedStateOf { editable && (positionEditable || rotationEditable || scaleEditable) }
-    }
-
-    val firstFrame = rememberFirstFrameState()
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_camera_and_gestures_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = editable,
-                        onValueChange = { editable = it },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Editable", style = MaterialTheme.typography.labelLarge)
-                Switch(checked = editable, onCheckedChange = null)
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = positionEditable,
-                        onValueChange = { positionEditable = it },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("• Position (drag)", style = MaterialTheme.typography.labelMedium)
-                Switch(checked = positionEditable, onCheckedChange = null)
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = rotationEditable,
-                        onValueChange = { rotationEditable = it },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("• Rotation (twist)", style = MaterialTheme.typography.labelMedium)
-                Switch(checked = rotationEditable, onCheckedChange = null)
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = scaleEditable,
-                        onValueChange = { scaleEditable = it },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("• Scale (pinch)", style = MaterialTheme.typography.labelMedium)
-                Switch(checked = scaleEditable, onCheckedChange = null)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LabeledSlider(
-                label = "Scale sensitivity",
-                value = scaleSensitivity,
-                onValueChange = { scaleSensitivity = it },
-                valueRange = 0.05f..1f,
-                valueText = "${(scaleSensitivity * 100f).roundToInt()}%",
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = { resetKey++ },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Reset Position")
-            }
-        },
-        topOverlay = {
-            gestureMode?.let { label ->
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(horizontal = 8.dp),
-                    color = Color.Black.copy(alpha = 0.7f),
-                    contentColor = Color.White,
-                    tonalElevation = 4.dp,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = label,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            }
-
-            LiveTransformOverlay(
-                modelNodeRef = modelNodeRef,
-                resetKey = resetKey,
-                modifier = Modifier.align(Alignment.End)
-            )
-        }
-    ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            environmentLoader = environmentLoader,
-            environment = rememberModelDemoEnvironment(environmentLoader),
-            cameraManipulator = rememberCameraManipulator(),
-            onGestureListener = rememberOnGestureListener(
-                onDown = { _, node ->
-                    gestureMode = when {
-                        node == null -> "Moving camera"
-                        effectiveEditable -> "Editing helmet"
-                        else -> "View only (editing off)"
-                    }
-                },
-                onMoveBegin = { _, _, node ->
-                    gestureMode = when {
-                        node == null -> "Moving camera"
-                        effectiveEditable -> "Editing helmet"
-                        else -> "View only (editing off)"
-                    }
-                },
-                onMoveEnd = { _, _, _ -> gestureMode = null },
-                onScaleBegin = { _, _, node ->
-                    gestureMode = when {
-                        node == null -> "Moving camera"
-                        effectiveEditable -> "Editing helmet"
-                        else -> "View only (editing off)"
-                    }
-                },
-                onScaleEnd = { _, _, _ -> gestureMode = null },
-                onRotateBegin = { _, _, node ->
-                    gestureMode = when {
-                        node == null -> "Moving camera"
-                        effectiveEditable -> "Editing helmet"
-                        else -> "View only (editing off)"
-                    }
-                },
-                onRotateEnd = { _, _, _ -> gestureMode = null }
-            )
-        ) {
-            Axes3DNode(
-                materialLoader = materialLoader,
-                length = MODEL_SCALE_UNITS * AXIS_TO_MODEL_RATIO,
-                thickness = 0.005f,
-            )
-
-            key(resetKey) {
-                modelInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = MODEL_SCALE_UNITS,
-                        isEditable = editable,
-                        apply = {
-                            isPositionEditable = positionEditable
-                            isRotationEditable = rotationEditable
-                            isScaleEditable = scaleEditable
-                            scaleGestureSensitivity = scaleSensitivity
-                            modelNodeRef.value = this
-                        }
-                    )
-                }
-            }
-        }
-
-        LaunchedEffect(positionEditable, rotationEditable, scaleEditable, scaleSensitivity) {
-            modelNodeRef.value?.apply {
-                isPositionEditable = positionEditable
-                isRotationEditable = rotationEditable
-                isScaleEditable = scaleEditable
-                scaleGestureSensitivity = scaleSensitivity
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveTransformOverlay(
-    modelNodeRef: MutableState<ModelNode?>,
-    resetKey: Int,
-    modifier: Modifier = Modifier
-) {
-    var liveX by remember { mutableStateOf(0f) }
-    var liveY by remember { mutableStateOf(0f) }
-    var liveZ by remember { mutableStateOf(0f) }
-    var liveRX by remember { mutableStateOf(0f) }
-    var liveRY by remember { mutableStateOf(0f) }
-    var liveRZ by remember { mutableStateOf(0f) }
-
-    LaunchedEffect(resetKey) {
-        while (true) {
-            val node = modelNodeRef.value
-            if (node != null) {
-                val p = node.position
-                val r = node.rotation
-                if (abs(p.x - liveX) > 0.0005f) liveX = p.x
-                if (abs(p.y - liveY) > 0.0005f) liveY = p.y
-                if (abs(p.z - liveZ) > 0.0005f) liveZ = p.z
-                if (abs(r.x - liveRX) > 0.1f) liveRX = r.x
-                if (abs(r.y - liveRY) > 0.1f) liveRY = r.y
-                if (abs(r.z - liveRZ) > 0.1f) liveRZ = r.z
-            }
-            kotlinx.coroutines.delay(16)
-        }
-    }
-
-    Surface(
-        modifier = modifier.padding(horizontal = 8.dp),
-        color = Color.Black.copy(alpha = 0.7f),
-        contentColor = Color.White,
-        tonalElevation = 4.dp,
-        shape = MaterialTheme.shapes.small
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = "pos  X %+.2f  Y %+.2f  Z %+.2f".format(Locale.US, liveX, liveY, liveZ),
-                style = MaterialTheme.typography.labelSmall
-            )
-            Text(
-                text = "rot  X %+.0f°  Y %+.0f°  Z %+.0f°".format(Locale.US, liveRX, liveRY, liveRZ),
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
-    }
-}
-
-// ─── Gesture feedback section ───────────────────────────────────────────────
-// Formerly GestureFeedbackPreviewDemo (`gesture-feedback-preview`, #3357).
-//
-// A non-AR scene exercising the opt-in on-model gesture feedback API
-// (NodeEditingOverlay + rememberNodeEditingFeedback) on an editable model, so the
-// visuals can be QA'd on any emulator without an ARCore session:
-//
-//   - Two-finger twist -> accent ring around the base, live sweep arc and yaw badge.
-//   - Pinch -> percentage badge above the model; `editableScaleRange` is deliberately
-//     narrow (0.5x-2x the start scale) so the limit BOUNCE is easy to hit.
-//   - Drag -> soft contact shadow following the base. The model is a child of the
-//     floor plane, so drags hit-test the floor and re-place the model on it.
-//   - Selected toggle -> the white selection ring, visible only while no gesture is
-//     active (selection and gesture-active are distinct states).
-
-@Composable
-private fun GestureFeedbackSection(
-    onBack: () -> Unit,
-    mode: CameraGesturesMode,
-    onModeChange: (CameraGesturesMode) -> Unit,
-) {
-    var selected by remember { mutableStateOf(true) }
-    val modelNodeRef = remember { mutableStateOf<ModelNode?>(null) }
+    var focus by remember { mutableStateOf<RigSubject?>(null) }
+    var selectedView by remember { mutableStateOf(CameraView.Hero) }
+    var cinematic by remember { mutableStateOf(false) }
+    var moveMode by remember { mutableStateOf(false) }
+    var sensitivity by remember { mutableFloatStateOf(CameraRig.DEFAULT_SENSITIVITY) }
+    var inertia by remember { mutableStateOf(true) }
 
     val engine = rememberEngine()
     val view = rememberView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
-    val floorMaterial = remember(engine) {
-        materialLoader.createColorInstance(Color(0xFF2A2E36), metallic = 0f, roughness = 0.9f)
+    val instances = RigSubject.entries.associateWith { subject ->
+        rememberModelInstance(modelLoader, subject.assetPath)
+    }
+    val allLoaded = instances.values.all { it != null }
+
+    // The floor is what makes a camera move legible: orbit swings its perspective lines, pan
+    // slides them, and a dolly changes how much of it is in frame. A subject alone on a black
+    // field gives a drag nothing to move *against*.
+    val floorMaterial = remember(materialLoader) {
+        materialLoader.createColorInstance(
+            SceneViewColors.SurfaceDim,
+            metallic = 0f,
+            roughness = 0.62f,
+        )
+    }
+
+    // Auto-fit distance per focus, from the demo's real viewport aspect (#3426). Computed once
+    // each, not tuned by hand, so a preset's `distanceScale` means the same thing on every device.
+    val sceneFit = rememberFitOrbitRadius(
+        extentX = CameraRig.SCENE_EXTENT_X,
+        extentY = CameraRig.SCENE_EXTENT_Y,
+        extentZ = CameraRig.SCENE_EXTENT_Z,
+        elevationDegrees = CameraView.Hero.elevationDegrees,
+        fill = CameraRig.STAGE_FILL,
+    )
+    val subjectFits = RigSubject.entries.associateWith { subject ->
+        rememberFitOrbitRadius(
+            extentX = subject.extent,
+            extentY = subject.extent,
+            extentZ = subject.extent,
+            elevationDegrees = CameraView.Hero.elevationDegrees,
+        )
+    }
+    val focusTarget = focus?.let { CameraRig.focusTarget(it) } ?: CameraRig.SCENE_TARGET
+    val focusFit = focus?.let { subjectFits.getValue(it) } ?: sceneFit
+
+    // Read through refs so the rig never has to be rebuilt: a new manipulator instance would drop
+    // the pose, and the whole point of this screen is that the camera is continuous.
+    val fitRef = rememberUpdatedState(focusFit)
+    val sensitivityRef = rememberUpdatedState(sensitivity)
+    val inertiaRef = rememberUpdatedState(inertia)
+
+    val rig = remember {
+        StudioCameraManipulator(
+            initialPose = CameraRig.poseFor(
+                view = CameraView.Hero,
+                focusTarget = CameraRig.SCENE_TARGET,
+                fitDistance = sceneFit,
+            ),
+            fitDistance = { fitRef.value },
+            sensitivity = { sensitivityRef.value },
+            inertiaEnabled = { inertiaRef.value },
+        )
+    }
+
+    // In QA mode the turntable and the coast are both suppressed by construction (the dock item
+    // starts off), so the only thing that could move the camera between two captures is a flight —
+    // and a flight lands on a deterministic pose. That is what keeps this screen's golden stable.
+    LaunchedEffect(cinematic) { rig.cinematic = cinematic && !DemoSettings.qaMode }
+
+    val readout = rememberRigReadout(rig)
+
+    /** Flies to [target]'s [view], keeping the chips and the HUD in step with the camera. */
+    val flyTo: (RigSubject?, CameraView) -> Unit = { subject, cameraView ->
+        focus = subject
+        selectedView = cameraView
+        rig.flyTo(
+            CameraRig.poseFor(
+                view = cameraView,
+                focusTarget = subject?.let { CameraRig.focusTarget(it) } ?: CameraRig.SCENE_TARGET,
+                fitDistance = subject?.let { subjectFits.getValue(it) } ?: sceneFit,
+                awayFrom = rig.pose.azimuthDegrees,
+            )
+        )
+    }
+
+    // Node → subject, so a tap that lands on one of a model's renderable children still resolves
+    // to the subject it belongs to. A plain map, not snapshot state: it is written from the node
+    // factory during composition and only ever read from a gesture callback.
+    val subjectNodes = remember { mutableMapOf<Node, RigSubject>() }
+    // The editable node, as state, because the affordance overlay is a composable that has to
+    // recompose when Move mode changes which node is live.
+    var editableNode by remember { mutableStateOf<ModelNode?>(null) }
+    LaunchedEffect(moveMode, focus, allLoaded) {
+        editableNode = if (moveMode) {
+            subjectNodes.entries.firstOrNull { it.value == focus }?.key as? ModelNode
+        } else {
+            null
+        }
+    }
+    // Move mode needs something to move: focusing the stage as a whole leaves it with no subject,
+    // so the first subject takes focus rather than the toggle silently doing nothing.
+    LaunchedEffect(moveMode) {
+        if (moveMode && focus == null) flyTo(RigSubject.Helmet, CameraView.Hero)
     }
 
     val firstFrame = rememberFirstFrameState()
+
+    val resetAll = {
+        cinematic = false
+        moveMode = false
+        sensitivity = CameraRig.DEFAULT_SENSITIVITY
+        inertia = true
+        flyTo(null, CameraView.Hero)
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_camera_and_gestures_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        loadingLabel = stringResource(R.string.camera_gestures_loading),
+        onReset = resetAll,
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.CenterFocusStrong,
+                label = stringResource(R.string.camera_gestures_action_recenter),
+                onClick = { flyTo(null, CameraView.Hero) },
+            ),
+            DockItem(
+                icon = Icons.Filled.Movie,
+                label = stringResource(R.string.camera_gestures_action_cinematic),
+                onClick = { cinematic = !cinematic },
+                selected = cinematic,
+            ),
+            DockItem(
+                icon = Icons.Filled.OpenWith,
+                label = stringResource(R.string.camera_gestures_action_move),
+                onClick = { moveMode = !moveMode },
+                selected = moveMode,
+            ),
+        ),
         controls = {
-            ModeSelector(mode, onModeChange)
+            LabeledSlider(
+                label = stringResource(R.string.camera_gestures_control_distance),
+                value = readout.distance,
+                onValueChange = { rig.setDistance(it) },
+                valueRange = (focusFit * CameraRig.MIN_DISTANCE_SCALE)..
+                    (focusFit * CameraRig.MAX_DISTANCE_SCALE),
+                decimals = 2,
+                unit = "m",
+            )
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+
+            LabeledSlider(
+                label = stringResource(R.string.camera_gestures_control_sensitivity),
+                value = sensitivity,
+                onValueChange = { sensitivity = it },
+                valueRange = CameraRig.MIN_SENSITIVITY..CameraRig.MAX_SENSITIVITY,
+                valueText = "${(sensitivity * 100f).roundToInt()}%",
+            )
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+
+            // Toggleable on the whole row so the label is part of the target and UiAutomator finds
+            // one clickable ancestor — the same contract every other demo switch uses.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .toggleable(
-                        value = selected,
-                        onValueChange = { selected = it },
-                    ),
+                    .toggleable(value = inertia, onValueChange = { inertia = it }),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Selected (ring when idle)", style = MaterialTheme.typography.bodyMedium)
-                Switch(checked = selected, onCheckedChange = null)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.camera_gestures_control_inertia),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.camera_gestures_control_inertia_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = inertia, onCheckedChange = null)
             }
-        }
+        },
+        topOverlay = {
+            CameraHud(
+                focusLabel = focus?.label
+                    ?: stringResource(R.string.camera_gestures_focus_scene),
+                readout = readout,
+                moveMode = moveMode,
+            )
+        },
+        bottomOverlay = {
+            CameraViewChips(
+                selected = selectedView,
+                onSelect = { flyTo(focus, it) },
+            )
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
@@ -790,62 +350,219 @@ private fun GestureFeedbackSection(
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = rememberModelDemoEnvironment(environmentLoader),
-                // Match ARSceneView's render pipeline so the overlay is judged against the
-                // same image AR users see (see PlaneGridPreviewDemo, #2224).
-                renderQuality = RenderQuality.Performance,
-                // Keep the hand-placed floor + model framing deterministic.
+                // The three subjects are placed *as a composition*: re-centring their union on the
+                // origin would move the stage every time an async model finished loading, and the
+                // per-subject focus targets would then point at nothing.
                 autoCenterContent = false,
-                cameraManipulator = rememberCameraManipulator(
-                    // ~35 degrees above the floor, close enough that the base ring spans a
-                    // good third of the viewport width.
-                    orbitHomePosition = Position(x = 0f, y = 1.1f, z = 1.7f),
-                    targetPosition = Position(x = 0f, y = 0.3f, z = 0f),
+                cameraManipulator = rig,
+                onGestureListener = rememberOnGestureListener(
+                    onSingleTapConfirmed = { _, node ->
+                        // A tap that lands on a subject flies to it; a tap on the floor or the
+                        // void is not an accident to punish — it leaves the camera alone.
+                        subjectOf(node, subjectNodes)?.let { flyTo(it, CameraView.Hero) }
+                    },
+                    onDoubleTap = { _, _ -> flyTo(null, CameraView.Hero) },
                 ),
             ) {
-                // Floor: parent of the model, so a drag hit-tests it and re-places the
-                // child on the hit point (NodeGestureDelegate.onMove semantics).
                 PlaneNode(
-                    size = Size(x = 4f, y = 0f, z = 4f),
+                    size = Size(x = FLOOR_SIZE, y = 0f, z = FLOOR_SIZE),
                     normal = Direction(y = 1f),
                     materialInstance = floorMaterial,
-                ) {
-                    modelInstance?.let { instance ->
+                )
+
+                RigSubject.entries.forEach { subject ->
+                    instances[subject]?.let { instance ->
                         ModelNode(
                             modelInstance = instance,
-                            scaleToUnits = 0.6f,
-                            isEditable = true,
-                            apply = {
-                                isPositionEditable = true
-                                // Narrow window around the as-placed scale so the badge's
-                                // limit bounce is reachable in a couple of pinches. The
-                                // range is ABSOLUTE local scale — scaleToUnits means the
-                                // start scale is nowhere near 1.0.
-                                editableScaleRange = (scale.x * 0.5f)..(scale.x * 2f)
-                                // The helmet asset's origin is its AABB center; sit the
-                                // model ON the floor instead of half-burying it, both at
-                                // placement and on every drag (a drag puts the node
-                                // ORIGIN at the floor hit point).
-                                fun baseLift() = -(center.y - halfExtent.y) * scale.x
-                                position = Position(y = baseLift())
-                                onMove = { _, _, worldPos ->
-                                    worldPosition = worldPos + Position(y = baseLift())
-                                    false
-                                }
-                                modelNodeRef.value = this
-                            }
+                            scaleToUnits = subject.extent,
+                            // Bottom-aligned, so `position` is the spot on the floor the subject
+                            // stands on and the composition is authored in floor coordinates.
+                            centerOrigin = Position(y = -1f),
+                            position = Position(
+                                x = subject.groundX,
+                                y = 0f,
+                                z = subject.groundZ,
+                            ),
+                            rotation = Rotation(y = subject.yawDegrees),
+                            isEditable = moveMode && focus == subject,
+                            apply = { subjectNodes[this] = subject },
                         )
                     }
                 }
             }
 
-            modelNodeRef.value?.let { node ->
+            // The SDK's on-model affordances — twist ring, pinch badge, drag shadow — drawn only
+            // for the node Move mode has made editable, so the overlay's opt-in nature is visible
+            // rather than asserted.
+            editableNode?.let { node ->
                 NodeEditingOverlay(
                     state = rememberNodeEditingFeedback(node),
                     view = view,
-                    modifier = Modifier.matchParentSize(),
-                    selected = selected,
+                    modifier = Modifier.fillMaxSize(),
+                    selected = true,
                 )
             }
         }
     }
 }
+
+/**
+ * Side of the square floor, in metres.
+ *
+ * Large enough that its far edge is off-frame at every preset and at every orbit angle: an 8 m
+ * slab put a hard horizon line across the upper third with pure black above it, which reads as a
+ * broken scene rather than as a studio floor. The environment's image-based lighting does the
+ * rest — the plane falls off into the background on its own, so no edge has to be hidden.
+ */
+private const val FLOOR_SIZE: Float = 90f
+
+/**
+ * What the HUD prints, sampled from the rig at most once per displayed frame.
+ *
+ * Held as its own value class so the poll can compare *displayed* numbers: the camera's azimuth
+ * changes continuously, but "34°" does not, and only the latter needs a recomposition.
+ */
+private data class RigReadout(
+    val azimuthDegrees: Int = 0,
+    val elevationDegrees: Int = 0,
+    val distance: Float = 1f,
+    val gesture: RigGesture? = null,
+)
+
+/**
+ * Samples [rig] every displayed frame and publishes only when a *shown* value changes.
+ *
+ * The rig's pose is a plain field on purpose (see [StudioCameraManipulator.pose]); this is the one
+ * place it crosses into Compose state, and it crosses rounded. Distance is quantised to the
+ * centimetre the HUD and the slider both display.
+ */
+@Composable
+private fun rememberRigReadout(rig: StudioCameraManipulator): RigReadout {
+    var readout by remember { mutableStateOf(RigReadout(distance = rig.pose.distance)) }
+    LaunchedEffect(rig) {
+        while (true) {
+            withFrameNanos { }
+            val pose = rig.pose
+            val next = RigReadout(
+                azimuthDegrees = CameraRig.normalizeDegrees(pose.azimuthDegrees).roundToInt(),
+                elevationDegrees = pose.elevationDegrees.roundToInt(),
+                distance = (pose.distance * 100f).roundToInt() / 100f,
+                gesture = rig.gesture,
+            )
+            if (next != readout) readout = next
+        }
+    }
+    return readout
+}
+
+/**
+ * The camera's own readout: what has focus, where the camera is, and what the hands are doing.
+ *
+ * Glass over media, so it is theme-independent (`DESIGN.md` → Liquid Glass, Button-glass row):
+ * the ground behind it is a rendered scene of arbitrary brightness, not an app surface, and the
+ * scaffold already lays a scrim band under this slot.
+ */
+@Composable
+private fun CameraHud(
+    focusLabel: String,
+    readout: RigReadout,
+    moveMode: Boolean,
+) {
+    GlassSurface(
+        modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(SceneViewTokens.Radius.md),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = SceneViewTokens.Space.md,
+                vertical = SceneViewTokens.Space.sm,
+            ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = if (moveMode) {
+                    stringResource(R.string.camera_gestures_hud_moving, focusLabel)
+                } else {
+                    focusLabel
+                },
+                style = SceneViewTokens.Type.caption,
+                color = SceneViewTokens.Glass.onGlass,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                // Monospaced-by-padding is not worth a font here: the values are formatted with a
+                // sign and a fixed decimal count, so the line does not jitter as the camera moves.
+                text = stringResource(
+                    R.string.camera_gestures_hud_pose,
+                    readout.azimuthDegrees,
+                    readout.elevationDegrees,
+                    String.format(Locale.US, "%.2f", readout.distance),
+                ),
+                style = SceneViewTokens.Type.caption,
+                color = SceneViewTokens.Glass.onGlassMuted,
+                textAlign = TextAlign.Center,
+            )
+            readout.gesture?.let { gesture ->
+                Text(
+                    text = gesture.label,
+                    style = SceneViewTokens.Type.caption,
+                    color = SceneViewTokens.Glass.onGlass,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The five named views, as a chip row over the scene.
+ *
+ * On the scene rather than in the settings sheet because they are the demo's primary verb: a
+ * camera preset you have to open a sheet to reach is a setting, and this screen's claim is that
+ * moving the camera is an action. Five one-word chips are what fits a phone width; the row is why
+ * the labels in [CameraView] are single words.
+ */
+@Composable
+private fun CameraViewChips(
+    selected: CameraView,
+    onSelect: (CameraView) -> Unit,
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CameraView.entries.forEach { view ->
+            FilterChip(
+                selected = view == selected,
+                onClick = { onSelect(view) },
+                label = { Text(view.label, style = SceneViewTokens.Type.caption) },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = SceneViewTokens.Glass.surface,
+                    labelColor = SceneViewTokens.Glass.onGlass,
+                    selectedContainerColor = SceneViewTokens.Glass.onGlass,
+                    selectedLabelColor = SceneViewTokens.Stage.background,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = view == selected,
+                    borderColor = SceneViewTokens.Glass.border,
+                    selectedBorderColor = SceneViewTokens.Glass.onGlass,
+                    borderWidth = SceneViewTokens.Glass.borderWidth,
+                    selectedBorderWidth = SceneViewTokens.Glass.borderWidth,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * Resolves a picked [node] to the subject it belongs to, walking up to the model root.
+ *
+ * A `ModelNode` exposes one child per glTF renderable, and picking returns the deepest touchable
+ * hit — so a tap on the helmet's visor arrives as a child node the demo never registered. Walking
+ * `parent` is what makes "tap the object" mean the object rather than one of its meshes.
+ */
+private fun subjectOf(node: Node?, subjects: Map<Node, RigSubject>): RigSubject? =
+    generateSequence(node) { it.parent }
+        .firstNotNullOfOrNull { subjects[it] }

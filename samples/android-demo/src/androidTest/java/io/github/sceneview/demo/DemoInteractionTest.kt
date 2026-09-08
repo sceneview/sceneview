@@ -796,37 +796,57 @@ class DemoInteractionTest {
         screenshot("57_secondaryCam_top_back")
     }
 
-    // ── 14. Gesture Editing — editable switch + reset button ──────────────────
+    // ── 14. Camera & Gestures — named views, camera gestures, Move mode ───────
 
     @Test
-    fun gestureEditing_editableAndReset() {
-        // #2239 Batch 1 — `gesture-editing` and `camera-controls` consolidated
-        // into `camera-gestures`. Open the unified demo and switch to the
-        // "Node Gestures" tab before driving the editable / reset flow.
+    fun cameraAndGestures_viewsGesturesAndMoveMode() {
+        // #3500 rebuild: the screen no longer has a "Camera Modes" / "Node Gestures"
+        // segmented toggle, an "Editable" switch or a "Reset Position" button. It is one
+        // stage with one camera: five named-view chips over the scene, a Recenter /
+        // Cinematic / Move dock, and a settings sheet with Distance, Gesture sensitivity
+        // and Inertia. The old case named controls that no longer exist.
         openDemo("camera-gestures")
-        // #2239 — exercise the Camera Modes tab (the absorbed `camera-controls` half)
-        // before switching tabs: it is the default landing tab, so orbit the camera here
-        // to confirm the manipulator works, then move to Node Gestures.
-        orbit(pixels = 200); screenshot("57b_camera_modes_orbit")
-        tap("Node Gestures")
-        screenshot("58_gesture_editable_default")
+        screenshot("57b_cameraGestures_hero")
 
-        tap("Editable")
-        screenshot("59_gesture_disabled")
+        // Camera gestures on the viewport: a one-finger drag orbits, a vertical drag
+        // tilts, a pinch dollies. The HUD names each of them while it runs.
+        orbit(pixels = 200); screenshot("58_cameraGestures_orbited")
+        tilt(pixels = 150); screenshot("59_cameraGestures_tilted")
+        pinch(open = true); screenshot("60_cameraGestures_zoomed_in")
+        pinch(open = false); screenshot("60a_cameraGestures_zoomed_out")
 
-        tap("Editable")
-        screenshot("60_gesture_re_enabled")
+        // Named views. Each chip flies to an angle relative to whatever has focus.
+        tap("Top"); screenshot("60b_cameraGestures_view_top")
+        tap("Front"); screenshot("60c_cameraGestures_view_front")
+        tap("Side"); screenshot("60d_cameraGestures_view_side")
+        tap("Close"); screenshot("60e_cameraGestures_view_close")
+        tap("Hero"); screenshot("60f_cameraGestures_view_hero")
 
-        // Single-finger drag on the editable model translates it in screen space.
-        orbit(pixels = 200); screenshot("60a_gesture_dragged_right")
-        tilt(pixels = 150); screenshot("60b_gesture_dragged_down")
+        // Dock: Move hands the same gestures to the focused object instead of the camera,
+        // Cinematic hands the camera to the turntable, Recenter returns to the whole stage.
+        tap(context.getString(R.string.camera_gestures_action_move))
+        screenshot("60g_cameraGestures_move_mode")
+        orbit(pixels = 200); screenshot("60h_cameraGestures_object_dragged")
+        tap(context.getString(R.string.camera_gestures_action_move))
+        screenshot("60i_cameraGestures_move_off")
 
-        // Two-finger pinch on the editable model scales it.
-        pinch(open = true); screenshot("60c_gesture_scaled_up")
-        pinch(open = false); screenshot("60d_gesture_scaled_down")
+        tap(context.getString(R.string.camera_gestures_action_cinematic))
+        Thread.sleep(1500)
+        screenshot("60j_cameraGestures_cinematic")
+        tap(context.getString(R.string.camera_gestures_action_cinematic))
 
-        tap("Reset Position")
-        screenshot("61_gesture_after_reset")
+        // Settings sheet: both sliders are `LabeledSlider`s (merged semantics node), so
+        // they are driven by contentDescription, not by a separate label Text node.
+        dragSliderByDesc(context.getString(R.string.camera_gestures_control_distance), fraction = 1.0f)
+        screenshot("61_cameraGestures_distance_max")
+        dragSliderByDesc(context.getString(R.string.camera_gestures_control_sensitivity), fraction = 0.0f)
+        screenshot("61a_cameraGestures_sensitivity_min")
+        tap(context.getString(R.string.camera_gestures_control_inertia))
+        screenshot("61b_cameraGestures_inertia_off")
+
+        device.pressBack()
+        tap(context.getString(R.string.camera_gestures_action_recenter))
+        screenshot("61c_cameraGestures_recentered")
     }
 
     // ── 15. Lines & Paths — curve chips, stroke slider, point / animate switches ──

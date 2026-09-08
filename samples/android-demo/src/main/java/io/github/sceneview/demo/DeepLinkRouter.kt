@@ -100,9 +100,11 @@ internal object DeepLinkRouter {
         "view-node" to "picking-collision",
         // #2239 Batch 1 — Camera & Gestures consolidation. The retired
         // `camera-controls` and `gesture-editing` demos merged into
-        // `camera-gestures` with a segmented-button toggle. `camera-controls`
-        // lands on the default Camera Modes tab and `gesture-editing`
-        // pre-selects the Node Gestures tab (#2315 — see [ALIAS_INITIAL_TAB]).
+        // `camera-gestures` with a segmented-button toggle. #3500 then rebuilt
+        // that demo from scratch around one stage and one camera, so its tabs
+        // are gone: object gestures are the dock's Move toggle inside the same
+        // scene. All three aliases now land on the same (only) view and none
+        // carries an [ALIAS_INITIAL_TAB] entry. The deep links keep working.
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
         // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
@@ -191,7 +193,8 @@ internal object DeepLinkRouter {
      * The index is 0-based and matches the order of the demo's segmented-button modes.
      * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
      * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
-     * and `billboard` since #3424) are intentionally omitted: they already land correctly,
+     * and `billboard` since #3424; `gesture-editing` and `gesture-feedback-preview` since
+     * #3500) are intentionally omitted: they already land correctly,
      * so an absent entry
      * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
@@ -199,8 +202,6 @@ internal object DeepLinkRouter {
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
         // lighting — [Types, Movable]
         "movable-light" to 1,
-        // camera-gestures — [Camera Modes, Node Gestures]
-        "gesture-editing" to 1,
         // lighting-lab — [Sky, Environment, Reflections, Post-FX]
         "environment" to 1,
         "reflection-probes" to 2,
@@ -215,8 +216,6 @@ internal object DeepLinkRouter {
         "scene-gallery" to 2,
         // lighting-lab — [Sky, Environment, Reflections, Post-FX, Fog] (#2239)
         "fog" to 4,
-        // camera-gestures — [Camera, Gestures, Feedback] (#2239)
-        "gesture-feedback-preview" to 2,
         // ar-geospatial-anchors — [Terrain, Rooftop] (#2239). `ar-terrain` is the
         // default first mode, so it is deliberately absent: an absent entry means
         // "no pre-selection needed", which is exactly right for index 0.

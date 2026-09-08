@@ -5,5 +5,23 @@
      continue to deep-link through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_camera_and_gestures_title">Camera &amp; Gestures</string>
-    <string name="demo_camera_and_gestures_subtitle">Orbit, pan, zoom and per-node edit gestures</string>
+    <string name="demo_camera_and_gestures_subtitle">Orbit with inertia, fly to a subject, named views</string>
+
+    <string name="camera_gestures_loading">Setting the stage…</string>
+
+    <!-- Dock. One word each: the dock caption is never truncated (DESIGN.md). -->
+    <string name="camera_gestures_action_recenter">Recenter</string>
+    <string name="camera_gestures_action_cinematic">Cinematic</string>
+    <string name="camera_gestures_action_move">Move</string>
+
+    <!-- Settings sheet. -->
+    <string name="camera_gestures_control_distance">Distance</string>
+    <string name="camera_gestures_control_sensitivity">Gesture sensitivity</string>
+    <string name="camera_gestures_control_inertia">Inertia</string>
+    <string name="camera_gestures_control_inertia_hint">A flick keeps the camera coasting after you let go</string>
+
+    <!-- Head-up readout over the scene. -->
+    <string name="camera_gestures_focus_scene">Whole stage</string>
+    <string name="camera_gestures_hud_moving">Moving %1$s</string>
+    <string name="camera_gestures_hud_pose">%1$d° az · %2$d° el · %3$s m</string>
 </resources>

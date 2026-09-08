@@ -12,7 +12,7 @@ mirroring the same surface.
 [`ModelViewerDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ModelViewerDemo.kt) — `ModelNode(modelInstance, scaleToUnits, centerOrigin)` with hero-orbit camera manipulator.
 
 ## 2. Camera controls (orbit / zoom / pan)
-[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the unified Camera & Gestures demo (Camera Modes tab): pass a custom `cameraManipulator =` to `SceneView`, or `null` to lock the camera.
+[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the Camera & Gestures demo: pass a custom `cameraManipulator =` to `SceneView`, or `null` to lock the camera. Its `StudioCameraManipulator` owns a spherical pose, so it can also coast on release and fly between framings — things Filament's own `Manipulator` cannot express.
 
 ## 3. AR tap-to-place
 [`ARPlacementDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlacementDemo.kt) — `rememberOnGestureListener(onSingleTapConfirmed = { event, node -> frame.hitTest(event)... })` + `AnchorNode(anchor = hit.createAnchor()) { ModelNode(isEditable = true) }`.
@@ -44,7 +44,7 @@ For a 2D polygon extruded into a 3D mesh, use `ShapeNode(polygonPath = listOf(Po
 [`AnimationPhysicsDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/AnimationPhysicsDemo.kt) (Physics tab) — `PhysicsNode(node, mass, restitution, floorY)`. Experimental; only handles sphere collisions on a Y=0 floor.
 
 ## 12. Gesture editing (drag / pinch / rotate a node)
-[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the unified Camera & Gestures demo (Node Gestures tab): `ModelNode(isEditable = true)`. Listen via `rememberOnGestureListener(onMoveBegin = …, onScaleBegin = …, onRotateBegin = …)`.
+[`CameraAndGesturesDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraAndGesturesDemo.kt) — the Camera & Gestures demo, behind its Move dock item: `ModelNode(isEditable = true)`. Listen via `rememberOnGestureListener(onMoveBegin = …, onScaleBegin = …, onRotateBegin = …)`.
 
 ## 13. ViewNode (Compose UI inside 3D)
 [`PickingAndCollisionDemo.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PickingAndCollisionDemo.kt) — the unified Picking & Collision demo puts both halves in **one** scene (#3329): a `CollisionSystem` ray hit-test with per-node tap highlights, and a `ViewNode { Card { Text("…") } }` card floating over the same shapes (requires `viewNodeWindowManager` on `SceneView`). Touches now reach the embedded view (#2845), so `Button.onClick` fires — but a Material `Surface`/`Card` consumes the gesture even with nothing clickable inside, and a consumed gesture never reaches `onSingleTapUp`. Set `isTouchForwardingEnabled = false` on the node when you want the scene-level tap handler instead.
