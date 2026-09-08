@@ -222,9 +222,8 @@ class DemoRenderingScreenshotTest {
     }
 
     // #2239 Batch 1 — `gesture-editing` consolidated into `camera-gestures` (covered
-    // by `cameraAndGesturesDemo_default_state` below). The Node Gestures sub-mode is
-    // reachable via the "Node Gestures" segmented button; a dedicated capture would
-    // need a tab-aware deep-link parameter (follow-up).
+    // by `cameraAndGesturesDemo_default_state` below). Since the #3500 rebuild there are
+    // no sub-modes: object gestures are the dock's Move toggle inside the same scene.
 
     // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
     // `post-processing` consolidated into `lighting-lab` (covered by
@@ -239,9 +238,9 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun cameraAndGesturesDemo_default_state() {
-        // #2239 Batch 1 — `camera-controls` and `gesture-editing` consolidated into
-        // `camera-gestures`. Default landing tab is Camera Modes; the captured frame
-        // is comparable to the prior `cameracontrols_default` golden once re-baselined.
+        // #3500 rebuilt this demo around a three-subject stage on a floor, so the golden
+        // that baselined the old single-model tab was deleted with the scene it depicted.
+        // The next run re-records it; the run after that verifies it.
         captureAndCompare(demoSlug = "camera-gestures", goldenName = "cameragestures_default", settleSeconds = 14)
     }
 
@@ -612,7 +611,13 @@ class DemoRenderingScreenshotTest {
          */
         val BASELINED_GOLDENS = setOf(
             "animationphysics_default",
-            "cameragestures_default",
+            // "cameragestures_default" — deliberately NOT baselined right now. #3500
+            // rebuilt the demo from scratch (a three-subject stage on a floor, driven by
+            // one spherical rig, replaced the single model behind a segmented mode
+            // toggle), so the committed golden depicted a scene that no longer exists and
+            // was deleted with it. The case below therefore takes the first-run path: the
+            // next suite run saves a fresh capture for promotion and skips. Put the slug
+            // back here in the SAME commit that adds the new PNG.
             // "customgeometry_default" — deliberately NOT baselined right now. #3423
             // rebuilt the demo from scratch (a runtime-generated torus knot replaced the
             // composite molecule), so the committed golden depicted a scene that no longer

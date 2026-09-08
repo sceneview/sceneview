@@ -327,8 +327,8 @@ class DeepLinkRouterTest {
     // ── #2239 catalogue regroup — the four ids retired by the section slice ───
     //
     // `fog` -> `lighting-lab` (mode 4), `gesture-feedback-preview` ->
-    // `camera-gestures` (mode 2), and `ar-terrain` / `ar-rooftop` ->
-    // `ar-geospatial-anchors` (modes 0 and 1). Every one of these ids is on the
+    // `camera-gestures` (which #3500 rebuilt without modes), and `ar-terrain` /
+    // `ar-rooftop` -> `ar-geospatial-anchors` (modes 0 and 1). Every one of these ids is on the
     // public deep-link surface — docs, QR codes, the Maestro flows that
     // deliberately drive retired ids to reach a consolidated demo's modes — so
     // "the card is gone" must never mean "the link is gone".
@@ -363,8 +363,15 @@ class DeepLinkRouterTest {
     fun `catalogue-regroup aliases pre-select the mode that holds their content`() {
         // lighting-lab: [Sky, Environment, Reflections, Post-FX, Fog]
         assertEquals(4, DeepLinkRouter.resolveInitialTab("fog", null))
-        // camera-gestures: [Camera, Gestures, Feedback]
-        assertEquals(2, DeepLinkRouter.resolveInitialTab("gesture-feedback-preview", null))
+        // camera-gestures has no modes since the #3500 rebuild — one stage, one camera,
+        // and object gestures behind the dock's Move toggle rather than a third tab. Both
+        // of its retired ids therefore land on the same (only) view, which is what an
+        // absent entry means. The redirect itself is asserted above; what would be wrong
+        // is a surviving pre-selection pointing at a tab index that no longer exists.
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["gesture-feedback-preview"])
+        assertNull(DeepLinkRouter.resolveInitialTab("gesture-feedback-preview", null))
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["gesture-editing"])
+        assertNull(DeepLinkRouter.resolveInitialTab("gesture-editing", null))
         // ar-geospatial-anchors: [Terrain, Rooftop]
         assertEquals(1, DeepLinkRouter.resolveInitialTab("ar-rooftop", null))
         // `ar-terrain` is mode 0 — absent on purpose, an absent entry means
