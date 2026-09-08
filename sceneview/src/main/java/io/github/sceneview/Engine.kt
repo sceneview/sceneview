@@ -58,6 +58,19 @@ fun Engine.drainFramePipeline() {
     }
 }
 
+/**
+ * Frees [model]'s native resources: releases whatever source glTF data is still held, then
+ * destroys the `gltfio` asset itself.
+ *
+ * **Callers must guarantee this runs at most once per [model].** `runCatching` only catches JVM
+ * exceptions — it cannot turn a JNI call into a null/already-freed native pointer into anything
+ * softer than a `SIGSEGV`, which kills the whole process rather than throwing (#3523). That makes
+ * "safe" here a promise about single-ownership bookkeeping upstream, not about this function's own
+ * try/catch: [io.github.sceneview.loaders.ModelLoader.destroyModel] is the only caller, and it
+ * enforces the at-most-once contract by atomically claiming [model] out of its live-asset registry
+ * before ever reaching this call — a second claim attempt (a cancelled coroutine racing `clear()`,
+ * say) finds the model already gone and never gets here.
+ */
 fun AssetLoader.safeDestroyModel(model: Model) {
     runCatching { model.releaseSourceData() }
     runCatching { destroyAsset(model) }
