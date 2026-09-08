@@ -61,9 +61,17 @@ internal object DemoMath {
      * from the viewport centre, expressed at the target distance — a band whose centre sits
      * above the viewport centre needs a target *below* the model so the model appears higher.
      *
-     * Degenerate inputs (non-finite / non-positive extents or sizes) fall back to safe values;
-     * the distance is clamped to `[0.2, 900]` — the bundled Khronos Fox is ~155 glTF units and
-     * must stay inside the default 1000 m far plane.
+     * Degenerate inputs (non-finite / non-positive extents or sizes) fall back to safe values.
+     *
+     * **The distance follows the subject at every order of magnitude (#3543).** It used to be
+     * clamped to `[0.2, 900]`, and that 20 cm floor is what made a 2 mm mesh open as a
+     * near-invisible dot with a Recenter that could not fix it: the fit distance is ~5 mm, the
+     * clamp pushed the camera forty times further out, and Recenter dutifully returned to the same
+     * wrong place. Only the far end is a real constraint now — the bundled Khronos Fox is ~155
+     * glTF units and must stay inside the default 1000 m far plane — while the near end is
+     * [MIN_VIEWER_DISTANCE], a floating-point guard rather than a size opinion. A model too small
+     * to frame at that distance cannot be seen at any distance. Callers must move the camera's
+     * near plane with it: see [viewerNearPlane].
      */
     fun viewerFraming(
         extentX: Float,
@@ -99,7 +107,9 @@ internal object DemoMath {
         // face, which perspective enlarges: a third of the depth on top of the fit distance
         // lands them on the target fill on device (a full half over-corrected, none
         // under-corrected). It also keeps the eye outside the box.
-        val distance = (max(dVertical, dHorizontal) + ez * DEPTH_ALLOWANCE).coerceIn(0.2f, 900f)
+        val fit = max(dVertical, dHorizontal) + ez * DEPTH_ALLOWANCE
+        val distance = if (fit.isFinite() && fit > 0f) fit.coerceIn(MIN_VIEWER_DISTANCE, MAX_VIEWER_DISTANCE)
+        else DEGENERATE_VIEWER_DISTANCE
 
         // Visible-band centre relative to the viewport centre, in half-viewport units; screen Y
         // grows downwards, so a band centred above the middle yields a negative value.
@@ -110,6 +120,37 @@ internal object DemoMath {
         val eyeOffset = Triple(0f, targetOffset.second + distance * sinP, targetOffset.third + distance * cosP)
         return ViewerFraming(distance, targetOffset, eyeOffset)
     }
+
+    /**
+     * Floating-point floor on the framing distance — 1 mm, not a size opinion (#3543). A subject
+     * whose fit distance is below this is smaller than the camera's own near plane can resolve.
+     */
+    const val MIN_VIEWER_DISTANCE = 0.001f
+
+    /** Ceiling on the framing distance: the default far plane is 1000 m. */
+    const val MAX_VIEWER_DISTANCE = 900f
+
+    /** Distance used when the bounds measure nothing at all — an empty scene still needs a camera. */
+    const val DEGENERATE_VIEWER_DISTANCE = 0.2f
+
+    /**
+     * Camera near plane for a scene framed at [distance] (#3543).
+     *
+     * The library's 1 cm default is right for the metre-scale subjects every bundled sample uses
+     * and fatal for a small one: a 2 mm part frames at 5 mm, entirely inside a 1 cm near plane, so
+     * even a correctly-placed camera renders nothing. A hundredth of the framing distance keeps a
+     * comfortable margin at every scale — including a 4x pinch-in, which never gets closer than a
+     * quarter of it — and is capped at the current default so metre-scale scenes keep exactly the
+     * depth precision they have today.
+     */
+    fun viewerNearPlane(distance: Float, default: Float = DEFAULT_NEAR_PLANE): Float =
+        if (distance.isFinite() && distance > 0f) min(default, distance * NEAR_PLANE_FRACTION) else default
+
+    /** The library's [io.github.sceneview.node.CameraNode] near-plane default, in metres. */
+    const val DEFAULT_NEAR_PLANE = 0.01f
+
+    /** Share of the framing distance the near plane sits at, when that is closer than the default. */
+    const val NEAR_PLANE_FRACTION = 0.01f
 
     /** Fraction of the visible band the framed model spans (QA target: 60–70 %). */
     const val VIEWER_FILL = 0.65f
