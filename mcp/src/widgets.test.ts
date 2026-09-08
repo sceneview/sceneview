@@ -243,6 +243,10 @@ describe("MCP Apps extension negotiation (#3192)", () => {
     // Gating on silence would dark-ship the live listing.
     expect(serveWidgetsTo(null)).toBe(true);
     expect(serveWidgetsTo(undefined)).toBe(true);
+    // An explicit empty list counts as silence too: `mimeTypes` is REQUIRED by
+    // the spec, so an empty one is malformed rather than a stated refusal, and
+    // reading a client bug as "render nothing" would dark-ship the widget
+    // (#3485 — decided here rather than left ambiguous).
     expect(serveWidgetsTo({ mimeTypes: [] })).toBe(true);
   });
 
