@@ -266,6 +266,31 @@ class DemoRenderingScreenshotTest {
         captureAndCompare(demoSlug = "custom-geometry", goldenName = "customgeometry_default", settleSeconds = 6)
     }
 
+    /**
+     * #2646 P1c shipped the `splat-preview` demo and proved it renders on this AVD with a
+     * one-off orbit screenrecord (78 frames, per-frame mean-abs-diff over the splat ROI
+     * 0.23/4.15/5.58 min/median/max, zero popping) — but that probe was never committed, so
+     * nothing in the standing suite guarded the splat render against regression. This case is
+     * that guard. It is the only demo here whose pixels come from a custom `.filamat`
+     * (`splat.filamat`, instanced camera-facing quads + premultiplied-alpha gaussians), so it
+     * is also the suite's only coverage of the material-ABI invariant at runtime: a Filament
+     * bump that reships a mismatched blob turns the viewport blank, and a blank viewport is
+     * exactly what `hasRenderedContent` refuses to capture.
+     *
+     * The slug is deliberately absent from [BASELINED_GOLDENS] — no golden has ever been
+     * recorded for it, so this takes the documented first-run path: save the capture for
+     * review and skip. Promote the PNG and add the slug in the same commit.
+     *
+     * 14 s settle, not 3: the demo reads a 448 KB `.ply` off the main thread, decodes 8 000
+     * gaussians through `SplatParser`, then uploads two RGBA16F data textures before the first
+     * instanced draw. The scene is static once loaded (the camera only moves on user drag, and
+     * there is no spin loop), so the wait is for loading, not for motion to settle.
+     */
+    @Test
+    fun splatPreviewDemo_default_state() {
+        captureAndCompare(demoSlug = "splat-preview", goldenName = "splatpreview_default", settleSeconds = 14)
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /**
