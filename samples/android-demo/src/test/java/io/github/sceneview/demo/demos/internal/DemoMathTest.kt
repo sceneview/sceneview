@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import kotlin.math.atan
 import kotlin.math.hypot
@@ -81,6 +82,43 @@ class DemoMathTest {
         val empty = DemoMath.viewerFraming(0f, Float.NaN, -1f, 0f, 0f, 0f, 0f)
         assertEquals(0.2f, empty.distance, 0.0001f)
         assertTrue(empty.eyeOffset.toList().all { it.isFinite() })
+    }
+
+    @Test fun `viewerFraming frames the same mesh identically at every order of magnitude`() {
+        // #3543 — an STL authored in metres and read as millimetres is 2 mm across. The framing
+        // must put it on screen at the same size as the same mesh a hundred, and a million, times
+        // bigger: the 0.2 m floor this used to carry framed the small one forty times too far out,
+        // which is the "near-invisible dot" of the report. The top of the range stops short of the
+        // 900 m far-plane ceiling, which is a real constraint rather than a scale opinion.
+        val tiny = DemoMath.viewerFraming(0.002f, 0.00114f, 0.00086f, 411f, 914f, 96f, 128f)
+        for (scale in listOf(1f, 100f, 1_000f, 100_000f)) {
+            val scaled = DemoMath.viewerFraming(
+                0.002f * scale, 0.00114f * scale, 0.00086f * scale, 411f, 914f, 96f, 128f,
+            )
+            assertEquals("distance scales with the subject", tiny.distance * scale, scaled.distance,
+                tiny.distance * scale * 0.0001f)
+            // Same angular size on screen, therefore the same picture.
+            assertEquals(
+                heightFraction(tiny, 0.00114f, 0.00086f),
+                heightFraction(scaled, 0.00114f * scale, 0.00086f * scale),
+                0.0001f,
+            )
+        }
+        // And the tiny one is genuinely close, not parked on an absolute floor.
+        assertTrue("2 mm frames at millimetres, not at 20 cm", tiny.distance < 0.02f)
+        assertTrue(tiny.distance > DemoMath.MIN_VIEWER_DISTANCE)
+    }
+
+    @Test fun `viewerNearPlane follows a small subject and leaves metre-scale scenes alone`() {
+        // A metre-scale scene keeps the library default exactly — no depth-precision change.
+        assertEquals(DemoMath.DEFAULT_NEAR_PLANE, DemoMath.viewerNearPlane(2.7f), 0f)
+        assertEquals(DemoMath.DEFAULT_NEAR_PLANE, DemoMath.viewerNearPlane(1f), 0f)
+        // The 2 mm mesh frames at ~5 mm: a 1 cm near plane would swallow it whole.
+        val tiny = DemoMath.viewerFraming(0.002f, 0.00114f, 0.00086f, 411f, 914f, 96f, 128f)
+        val near = DemoMath.viewerNearPlane(tiny.distance)
+        assertTrue("near plane is in front of the subject", near < tiny.distance * VIEWER_MIN_ZOOM_FACTOR)
+        assertEquals(DemoMath.DEFAULT_NEAR_PLANE, DemoMath.viewerNearPlane(Float.NaN), 0f)
+        assertEquals(DemoMath.DEFAULT_NEAR_PLANE, DemoMath.viewerNearPlane(0f), 0f)
     }
 
     private val eps = 0.001f

@@ -882,6 +882,14 @@ public final class io/github/sceneview/core/stl/StlParseException : java/lang/Ru
 	public fun <init> (Ljava/lang/String;)V
 }
 
+public final class io/github/sceneview/core/threemf/ModelUnitGuess {
+	public static final field INSTANCE Lio/github/sceneview/core/threemf/ModelUnitGuess;
+	public final fun getMetreLikeExtent ()Lkotlin/ranges/ClosedFloatingPointRange;
+	public final fun suggest (F)Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public final fun suggestFromLoaded (FLio/github/sceneview/core/threemf/ThreeMfUnit;)Lio/github/sceneview/core/threemf/ThreeMfUnit;
+	public static synthetic fun suggestFromLoaded$default (Lio/github/sceneview/core/threemf/ModelUnitGuess;FLio/github/sceneview/core/threemf/ThreeMfUnit;ILjava/lang/Object;)Lio/github/sceneview/core/threemf/ThreeMfUnit;
+}
+
 public final class io/github/sceneview/core/threemf/ThreeMfComponent {
 	public fun <init> (I[F)V
 	public final fun getObjectId ()I

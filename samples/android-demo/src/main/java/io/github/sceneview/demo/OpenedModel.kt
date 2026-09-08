@@ -6,7 +6,11 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.runtime.Immutable
+import io.github.sceneview.core.obj.ObjLoader
+import io.github.sceneview.core.ply.PlyLoader
+import io.github.sceneview.core.stl.StlLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.core.threemf.ThreeMfUnit
 import java.io.File
 
 /**
@@ -207,6 +211,47 @@ object OpenedModelIntent {
      * [OpenedModel.displayName] for the title; using it on disk would mean sanitising untrusted
      * text into a path, and there is never more than one opened model to hold.
      */
+    /**
+     * Re-convert the staged STL / OBJ / PLY at [unit] and return where the result landed, or `null`
+     * when the file is not one of those formats or cannot be read (#3543).
+     *
+     * None of the three formats records a length unit, so [ModelUnitGuess] can only *offer* a
+     * reading and the user picks. Taking the offer re-runs the same loader over the same staged
+     * bytes with a different scale and writes a plain GLB beside them; the original is left in
+     * place so the choice can be taken back. The staged file itself is never rewritten — a second
+     * "open at real size" must not compound.
+     *
+     * Blocking I/O and a full parse — call it off the main thread.
+     */
+    fun reopenAt(context: Context, displayName: String, unit: ThreeMfUnit): OpenedModel? {
+        val source = File(openedModelsDir(context), STAGED_FILE_NAME).takeIf { it.isFile } ?: return null
+        val bytes = runCatching { source.readBytes() }.getOrNull() ?: return null
+        val glb = runCatching {
+            when (unitLessFormat(displayName)) {
+                "stl" -> StlLoader.toGlb(bytes, unit)
+                "obj" -> ObjLoader.toGlb(bytes, unit)
+                "ply" -> PlyLoader.toGlb(bytes, unit)
+                else -> return null
+            }
+        }.getOrNull() ?: return null
+        val target = File(openedModelsDir(context), "$STAGED_FILE_NAME-${unit.id}.glb")
+        return runCatching {
+            target.writeBytes(glb)
+            OpenedModel(location = Uri.fromFile(target).toString(), displayName = displayName)
+        }.getOrNull()
+    }
+
+    /**
+     * The unit-less mesh format [displayName] names (`stl` / `obj` / `ply`), or `null`. These are
+     * the three formats that carry no unit and therefore the three the scale question applies to —
+     * a glTF and a 3MF both state their size, so neither is ever asked about.
+     */
+    fun unitLessFormat(displayName: String): String? =
+        displayName.substringAfterLast('.', "").lowercase().takeIf { it in UnitLessExtensions }
+
+    /** Extensions of [SupportedExtensions] whose files record no length unit. */
+    val UnitLessExtensions: Set<String> = setOf("stl", "obj", "ply")
+
     private const val STAGED_FILE_NAME = "opened-model"
 
     private const val HEADER_BYTES = 4096
