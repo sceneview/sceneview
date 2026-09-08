@@ -264,7 +264,12 @@ export async function handleMcpRequest(
   // explicit version this server does not implement. As in the reference
   // SDK, an absent header is accepted for backwards compatibility and the
   // session's negotiated version remains in force.
-  if (req.method !== "initialize") {
+  //
+  // `server/discover` is exempt: it is the handshake-free call whose entire
+  // purpose is to tell a client which revisions this server speaks. A host on
+  // a NEWER revision names it in the header, as the spec invites — answering
+  // 400 would deny it the one reply that lets it negotiate down (#3502).
+  if (req.method !== "initialize" && req.method !== DISCOVER_METHOD) {
     const protocolVersion = request.headers.get("mcp-protocol-version");
     if (
       protocolVersion !== null &&
@@ -352,7 +357,7 @@ async function routeMethod(
       return handleToolsList(session);
 
     case "tools/call":
-      return handleToolsCall(req, ctx);
+      return handleToolsCall(req, ctx, session);
 
     // ── OpenAI Apps SDK widget support (resource registry) ────────────────
     case "resources/list":
@@ -508,10 +513,18 @@ function handleToolsList(session: SessionState): unknown {
   return { tools };
 }
 
-/** Validates params and dispatches a `tools/call` to the registry. */
+/**
+ * Validates params and dispatches a `tools/call` to the registry.
+ *
+ * The result widget pointer follows the SAME session decision as the
+ * declaration in `handleToolsList`: a host that discovers widgets from tool
+ * results rather than declarations must not be handed a widget the session
+ * just negotiated away, or the two answers disagree (#3502).
+ */
 async function handleToolsCall(
   req: JsonRpcRequest,
   ctx: TransportContext,
+  session: SessionState,
 ): Promise<unknown> {
   const params = (req.params ?? {}) as Record<string, unknown>;
   const toolName = params.name;
@@ -545,15 +558,30 @@ async function handleToolsCall(
   // know to fetch the bundled HTML widget and render it inline. The same
   // pointer is on the tool declaration (`handleToolsList`). Other clients
   // ignore the unknown `_meta` keys and just see the text content.
+  // Narrow through `unknown` to avoid the strict-overlap check on
+  // ToolResult (which has its own optional `_meta` field) — every consumer of
+  // the JSON-RPC response treats unknown keys as opaque.
+  const r = result as unknown as {
+    _meta?: Record<string, unknown>;
+    [k: string]: unknown;
+  };
+
+  if (!serveWidgetsTo(session.uiExtension)) {
+    // The client negotiated MCP Apps and listed mime types excluding ours.
+    // The upstream handler bakes the pointer into the result itself, so it is
+    // not enough to skip adding one: it has to come back off, or the result
+    // contradicts the declaration `handleToolsList` already stripped. The text
+    // content and `structuredContent` stay — degradation, not failure.
+    if (r._meta && "ui" in r._meta) {
+      const meta = { ...r._meta };
+      delete meta.ui;
+      return { ...r, _meta: meta };
+    }
+    return r;
+  }
+
   const widgetUri = widgetResourceFor(toolName);
   if (widgetUri) {
-    // Narrow through `unknown` to avoid the strict-overlap check on
-    // ToolResult (which has its own optional `_meta` field) — every
-    // consumer of the JSON-RPC response treats unknown keys as opaque.
-    const r = result as unknown as {
-      _meta?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
     r._meta = {
       ...(r._meta ?? {}),
       ui: { resourceUri: widgetUri },
