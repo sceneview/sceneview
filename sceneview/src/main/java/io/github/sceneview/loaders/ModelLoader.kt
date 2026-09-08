@@ -165,10 +165,15 @@ class ModelLoader(
     ): Model? = context.loadFileBuffer(fileLocation)?.let { buffer ->
         // Transcoding decodes and re-encodes images: keep it off the main thread.
         val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
+        // Registering into `models` happens *inside* the create block, in the same
+        // uninterrupted hop onto `dispatcher` as the asset creation itself (#3523): that is
+        // what guarantees a cancellation landing right after creation still finds the model
+        // in the registry, so createOrDestroyOnCancel's own destroy(created) call below goes
+        // through the same claim-then-destroy path as every other destroyModel() caller
+        // instead of racing it.
         val model = createOrDestroyOnCancel(::destroyModel) {
-            assetLoader.createAsset(source)
+            assetLoader.createAsset(source)?.also { models += it }
         } ?: return@let null
-        models += model
         destroyOnCancel(model, ::destroyModel) {
             loadResourcesSuspended(model) { resourceFileName: String ->
                 context.loadFileBuffer(resourceResolver(resourceFileName))
@@ -399,10 +404,10 @@ class ModelLoader(
     ): List<ModelInstance> = context.loadFileBuffer(fileLocation)?.let { buffer ->
         val instances = arrayOfNulls<ModelInstance>(count)
         val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
+        // See loadModel(): registration happens inside the create block itself (#3523).
         val model = createOrDestroyOnCancel(::destroyModel) {
-            assetLoader.createInstancedAsset(source, instances)
+            assetLoader.createInstancedAsset(source, instances)?.also { models += it }
         } ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
-        models += model
         destroyOnCancel(model, ::destroyModel) {
             loadResourcesSuspended(model) { resourceFileName: String ->
                 context.loadFileBuffer(resourceResolver(resourceFileName))
@@ -459,17 +464,31 @@ class ModelLoader(
     @MainThread
     fun createInstance(model: Model): ModelInstance? = assetLoader.createInstance(model)
 
+    /**
+     * Destroys [model]'s native resources — a no-op if [model] is not (or is no longer)
+     * registered in [models].
+     *
+     * Goes through [claimAndDestroy] so every destroy path — this call, a cancelled
+     * [loadModel]/[loadInstancedModel] coroutine's cleanup, [clear] — shares the same
+     * synchronized claim on [models]. That closes #3523: a `destroyOnCancel` continuation
+     * resuming after [clear] already tore this same model down (or the reverse) now finds it
+     * already gone and returns instead of double-freeing the native asset — the segfault
+     * `runCatching` could never have caught in the first place. See [safeDestroyModel] for why
+     * "at most once" has to be enforced here rather than there.
+     */
     fun destroyModel(model: Model) {
-        assetLoader.safeDestroyModel(model)
-        // destroyAsset destroys every entity's components directly, bypassing Node.destroy()
-        // entirely — the sibling Nodes' cached handles need to know a reindex may have happened
-        // here too (#2978 review gap 2). A glTF asset carries renderable components on every
-        // mesh entity and light components whenever KHR_lights_punctual is present, so all three
-        // packed arrays can compact here, not just TransformManager (#3123).
-        engine.bumpTransformGeneration()
-        engine.bumpRenderableGeneration()
-        engine.bumpLightGeneration()
-        models -= model
+        claimAndDestroy(models, model) {
+            assetLoader.safeDestroyModel(it)
+            // destroyAsset destroys every entity's components directly, bypassing
+            // Node.destroy() entirely — the sibling Nodes' cached handles need to know a
+            // reindex may have happened here too (#2978 review gap 2). A glTF asset carries
+            // renderable components on every mesh entity and light components whenever
+            // KHR_lights_punctual is present, so all three packed arrays can compact here,
+            // not just TransformManager (#3123).
+            engine.bumpTransformGeneration()
+            engine.bumpRenderableGeneration()
+            engine.bumpLightGeneration()
+        }
     }
 
     fun clear() {
@@ -478,8 +497,12 @@ class ModelLoader(
         resourceLoader.asyncCancelLoad()
         resourceLoader.evictResourceData()
 
+        // A cancelled load's own cleanup (destroyOnCancel/createOrDestroyOnCancel, both wired
+        // to destroyModel) may still be queued behind this call on the main dispatcher. That is
+        // no longer a race to win: destroyModel's claim-then-destroy means whichever of the two
+        // calls on a given model runs first destroys it, and the other finds it already removed
+        // from `models` and does nothing (#3523).
         models.toList().forEach { destroyModel(it) }
-        models.clear()
     }
 
     fun destroy() {
@@ -530,6 +553,22 @@ class ModelLoader(
         fun getFolderPath(baseFileName: String, resourceFileName: String) =
             "${baseFileName.substringBeforeLast("/")}/$resourceFileName"
     }
+}
+
+/**
+ * Removes [item] from [registry] and, only if it was actually present, runs [destroy] on it.
+ *
+ * The membership check and the removal are the same call — `MutableList.remove` on the
+ * `Collections.synchronizedList` every [ModelLoader] registry is — so of any number of
+ * concurrent callers passing the same [item], exactly one sees `true` and runs [destroy]; every
+ * other caller finds [item] already gone and returns without touching it (#3523). This is the
+ * claim-then-destroy pattern [ModelLoader.destroyModel] relies on to stay safe under a
+ * cancelled-coroutine cleanup racing [ModelLoader.clear]: a native double-free is a `SIGSEGV`
+ * that crashes the process before any `try`/`catch` runs, so the guard has to sit here, in front
+ * of the call into `gltfio`, not wrapped around it.
+ */
+internal fun <T> claimAndDestroy(registry: MutableList<T>, item: T, destroy: (T) -> Unit) {
+    if (registry.remove(item)) destroy(item)
 }
 
 /**
