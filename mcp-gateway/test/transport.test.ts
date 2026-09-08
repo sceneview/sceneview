@@ -624,3 +624,122 @@ describe("transport: HTTP-level protections", () => {
     expect(res.status).toBe(415);
   });
 });
+
+describe("transport: discovery and widget negotiation (#3502)", () => {
+  it("answers server/discover carrying a protocol version this build does not implement", async () => {
+    // Discovery is the handshake-free call whose whole purpose is to tell a
+    // client which revisions this server speaks. A host on a newer revision
+    // sends its current version in the header, as the spec invites — refusing
+    // it with a 400 denies it the one answer that lets it negotiate down.
+    const res = await handleMcpRequest(
+      mcpRequest(
+        { jsonrpc: "2.0", id: 1, method: "server/discover" },
+        { "mcp-protocol-version": "2026-07-28" },
+      ),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(200);
+    const result = (await asJsonRpc(res)).result as { supportedVersions: string[] };
+    expect(result.supportedVersions).toEqual([...SUPPORTED_PROTOCOL_VERSIONS]);
+  });
+
+  it("keeps the version gate for every other method", async () => {
+    const res = await handleMcpRequest(
+      mcpRequest(
+        { jsonrpc: "2.0", id: 1, method: "tools/list" },
+        { "mcp-protocol-version": "2026-07-28" },
+      ),
+      { kv: new MockKv().asKv() },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("withholds the result widget pointer from a client that negotiated it away", async () => {
+    const kv = new MockKv();
+    const init = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {
+            extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/uri-list"] } },
+          },
+        },
+      }),
+      { kv: kv.asKv() },
+    );
+    const sessionId = init.headers.get("mcp-session-id") as string;
+
+    const list = await handleMcpRequest(
+      mcpRequest({ jsonrpc: "2.0", id: 2, method: "tools/list" }, {
+        "mcp-session-id": sessionId,
+      }),
+      { kv: kv.asKv() },
+    );
+    const listed = ((await asJsonRpc(list)).result as {
+      tools: { name: string; _meta?: { ui?: { resourceUri?: string } } }[];
+    }).tools.find((t) => t.name === "view_3d_model");
+
+    const call = await handleMcpRequest(
+      mcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            name: "view_3d_model",
+            arguments: { modelUrl: "https://example.com/chair.glb" },
+          },
+        },
+        { "mcp-session-id": sessionId },
+      ),
+      { kv: kv.asKv() },
+    );
+    const called = (await asJsonRpc(call)).result as {
+      _meta?: { ui?: { resourceUri?: string } };
+      content?: unknown[];
+    };
+
+    // Declaration and result must agree: a host that discovers widgets from
+    // results must not be handed one the session just negotiated away.
+    expect(listed?._meta?.ui?.resourceUri).toBeUndefined();
+    expect(called._meta?.ui?.resourceUri).toBeUndefined();
+    // The tool still answers with its text content — degradation, not failure.
+    expect(called.content).toBeDefined();
+  });
+
+  it("still attaches the result widget pointer for a client that declared nothing", async () => {
+    const kv = new MockKv();
+    const init = await handleMcpRequest(
+      mcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {} },
+      }),
+      { kv: kv.asKv() },
+    );
+    const sessionId = init.headers.get("mcp-session-id") as string;
+    const call = await handleMcpRequest(
+      mcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "view_3d_model",
+            arguments: { modelUrl: "https://example.com/chair.glb" },
+          },
+        },
+        { "mcp-session-id": sessionId },
+      ),
+      { kv: kv.asKv() },
+    );
+    const called = (await asJsonRpc(call)).result as {
+      _meta?: { ui?: { resourceUri?: string } };
+    };
+    expect(called._meta?.ui?.resourceUri).toBe("ui://widget/3d-viewer.html");
+  });
+});
