@@ -64,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
+import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
@@ -86,6 +87,10 @@ import io.github.sceneview.demo.ui.viewer.BundledViewerModel
 import io.github.sceneview.demo.ui.viewer.AnimationBar
 import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
 import io.github.sceneview.demo.ui.viewer.ModelPickerSheet
+import io.github.sceneview.demo.ui.viewer.ModelUnitSheet
+import io.github.sceneview.demo.OpenedModelIntent
+import io.github.sceneview.core.threemf.ModelUnitGuess
+import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.PARK_EYE_HEIGHT
@@ -118,7 +123,9 @@ import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import com.google.ar.core.ArCoreApk
 import kotlinx.coroutines.delay
@@ -307,6 +314,12 @@ private fun SingleModelSection(
     // on a second, poorer screen written to say the same thing.
     val openedModel = remember { DemoSettings.openedModel.also { DemoSettings.openedModel = null } }
     var streamedFileUrl by remember { mutableStateOf<String?>(openedModel?.location) }
+    // Scale question for a unit-less file (#3543). STL / OBJ / PLY record no unit, so the loader
+    // reads them in millimetres; `loadedUnit` is the reading currently on screen, and taking the
+    // offer re-converts the same staged bytes at the other one.
+    var loadedUnit by remember { mutableStateOf(ThreeMfUnit.Default) }
+    var unitSheetOpen by remember { mutableStateOf(false) }
+    var unitAnswered by remember { mutableStateOf(openedModel == null) }
     // Last-tapped state — when it's `true` the FAB shows a spinner. The
     // surprise-coroutine flips it back to `false` regardless of success so
     // the button doesn't get stuck in the loading state.
@@ -500,6 +513,20 @@ private fun SingleModelSection(
     // In `qaMode` both snap to their resting values — a screenshot taken mid-flight frames
     // the model differently every run.
     val modelPresented = firstModelFrame.value
+    // #3543 — a unit-less mesh a couple of units across is metre-authored, not a 2 mm part. The
+    // viewer frames it correctly either way now, so this is a question, asked once, about what the
+    // file MEANT — never a silent rescale, and never a hidden setting.
+    val unitSuggestion = remember(bounds, loadedUnit, openedModel) {
+        val name = openedModel?.displayName ?: return@remember null
+        if (OpenedModelIntent.unitLessFormat(name) == null) return@remember null
+        val extents = bounds?.extents ?: return@remember null
+        ModelUnitGuess.suggestFromLoaded(maxOf(extents.x, extents.y, extents.z), loadedUnit)
+    }
+    // Never in `qaMode`: a screenshot run must show the model, not a sheet over it.
+    val askAboutUnit = unitSuggestion != null && !unitAnswered && !DemoSettings.qaMode
+    LaunchedEffect(askAboutUnit, modelPresented) {
+        if (askAboutUnit && modelPresented) unitSheetOpen = true
+    }
     LaunchedEffect(bounds, recenterGeneration, modelPresented, DemoSettings.qaMode) {
         if (bounds == null) return@LaunchedEffect
         if (DemoSettings.qaMode) {
@@ -524,8 +551,10 @@ private fun SingleModelSection(
         )
     }
     // Back closes transient chrome before leaving the demo.
-    BackHandler(enabled = animationBarOpen || modelSheetOpen || environmentSheetOpen) {
+    val anySheetOpen = animationBarOpen || modelSheetOpen || environmentSheetOpen
+    BackHandler(enabled = anySheetOpen || unitSheetOpen) {
         animationBarOpen = false; modelSheetOpen = false; environmentSheetOpen = false
+        if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
     }
 
     DemoScaffold(
@@ -685,6 +714,15 @@ private fun SingleModelSection(
                     onDistanceChange = { DemoSettings.cameraDistance = it },
                 )
             }
+            // #3543 — the near plane moves with the subject. The library default is 1 cm, which
+            // is in front of a metre-scale model and *behind* a millimetre-scale one: a 2 mm mesh
+            // frames at ~5 mm, so a fixed 1 cm near plane clips it away entirely and no amount of
+            // recentring brings it back. `viewerNearPlane` keeps the default for everything that
+            // already worked and only tightens it for a subject smaller than it.
+            val cameraNode = rememberCameraNode(engine)
+            LaunchedEffect(autoFitRadius) {
+                cameraNode.near = DemoMath.viewerNearPlane(autoFitRadius)
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = onFrame,
@@ -694,6 +732,7 @@ private fun SingleModelSection(
                 environment = viewerEnvironment,
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
+                cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
             ) {
                 activeModelInstance?.let { instance ->
@@ -729,6 +768,33 @@ private fun SingleModelSection(
         onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
         onDismiss = { modelSheetOpen = false },
     )
+    if (unitSheetOpen && unitSuggestion != null) {
+        val extents = bounds?.extents
+        ModelUnitSheet(
+            loadedExtentMeters = extents?.let { maxOf(it.x, it.y, it.z) } ?: 0f,
+            suggested = unitSuggestion,
+            loadedUnit = loadedUnit,
+            onOpenAt = { unit ->
+                unitSheetOpen = false
+                unitAnswered = true
+                val name = openedModel?.displayName ?: return@ModelUnitSheet
+                scope.launch {
+                    val reopened = withContext(Dispatchers.IO) {
+                        OpenedModelIntent.reopenAt(context, name, unit)
+                    }
+                    if (reopened != null) {
+                        loadedUnit = unit
+                        streamedFileUrl = reopened.location
+                        // The file is a different size now: drop the zoom override and re-fly the
+                        // camera, or the model lands framed for the size it no longer is.
+                        DemoSettings.cameraDistance = null
+                        recenterGeneration++
+                    }
+                }
+            },
+            onDismiss = { unitSheetOpen = false; unitAnswered = true },
+        )
+    }
     if (environmentSheetOpen) EnvironmentSheet(
         environments = viewerEnvironments,
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,

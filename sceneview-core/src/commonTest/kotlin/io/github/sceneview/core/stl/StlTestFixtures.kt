@@ -7,7 +7,13 @@ internal object StlTestFixtures {
         floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 1f, 0f, 0f)
     )
 
-    val box: List<FloatArray> get() {
+    val box: List<FloatArray> get() = boxOf(1f)
+
+    /**
+     * The same 70 x 40 x 30 box with every coordinate multiplied by [scale] — `boxOf(1f / 35f)` is
+     * the 2-unit mesh of #3543, the size a metre-authored export lands at.
+     */
+    fun boxOf(scale: Float): List<FloatArray> {
         val vertices = arrayOf(
             floatArrayOf(0f, 0f, 0f), floatArrayOf(70f, 0f, 0f),
             floatArrayOf(70f, 40f, 0f), floatArrayOf(0f, 40f, 0f),
@@ -21,7 +27,10 @@ internal object StlTestFixtures {
         )
         return List(12) { face ->
             FloatArray(12).also { facet ->
-                repeat(3) { vertices[indices[face * 3 + it]].copyInto(facet, 3 + it * 3) }
+                repeat(3) {
+                    val vertex = vertices[indices[face * 3 + it]]
+                    repeat(3) { axis -> facet[3 + it * 3 + axis] = vertex[axis] * scale }
+                }
             }
         }
     }
