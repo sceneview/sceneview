@@ -24,6 +24,38 @@ struct SceneViewDemoApp: App {
     /// Reset to `nil` after presentation so a config change doesn't replay it.
     @State private var pendingDeepLinkDemo: String?
 
+    /// A 3D file handed over by Files, Mail, Messages or any share sheet — the
+    /// `CFBundleDocumentTypes` entries in `Info.plist`. Presented full screen by
+    /// `OpenedFileViewer`; reset to `nil` on dismissal so a config change does not
+    /// replay it.
+    @State private var openedFile: OpenedDocument?
+
+    /// Wraps a file URL so SwiftUI's `.fullScreenCover(item:)` accepts it — the same
+    /// shape as `ContentView.DemoLink`, for the same reason (`URL` is not
+    /// `Identifiable`, and retro-conforming a Foundation type to make it so would leak
+    /// out of this file).
+    struct OpenedDocument: Identifiable {
+        let url: URL
+        var id: String { url.absoluteString }
+    }
+
+    /// A file path pre-seeded from `-open_file <path>`, the deterministic twin of
+    /// opening a document from the share sheet.
+    ///
+    /// The screenshot pipeline needs the "Open with" screen without going through
+    /// SpringBoard's "Open in …?" confirmation, exactly as `-demo <id>` exists so a
+    /// demo can be captured without `simctl openurl`'s dialog. Ignored when the path
+    /// does not exist, so a stale argument cannot wedge a normal launch.
+    private static let launchArgOpenFile: OpenedDocument? = {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "-open_file"), index + 1 < args.count else {
+            return nil
+        }
+        let path = args[index + 1]
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        return OpenedDocument(url: URL(fileURLWithPath: path))
+    }()
+
     /// Demo id pre-seeded from a launch argument (`-demo <id>`), used by the
     /// reproducible App Store screenshot capture pipeline. Launching with a
     /// `-demo` argument routes straight to the demo on first frame, with no
@@ -77,8 +109,26 @@ struct SceneViewDemoApp: App {
                     UpdateBanner()
                         .environmentObject(updater)
                 }
+                #if os(iOS)
+                .fullScreenCover(item: $openedFile) { document in
+                    OpenedFileViewer(url: document.url)
+                }
+                #else
+                .sheet(item: $openedFile) { document in
+                    OpenedFileViewer(url: document.url)
+                }
+                #endif
+                .task {
+                    if openedFile == nil { openedFile = Self.launchArgOpenFile }
+                }
                 .onOpenURL { url in
-                    if let id = DeepLinkRouter.parse(url, allowedDemos: DemoDeepLinkRegistry.allowedIds) {
+                    // A file URL is a document the system handed us through
+                    // `CFBundleDocumentTypes`, not a deep link — and it is checked
+                    // first, because `DeepLinkRouter` would otherwise see a `file`
+                    // scheme it has no business parsing.
+                    if url.isFileURL {
+                        openedFile = OpenedDocument(url: url)
+                    } else if let id = DeepLinkRouter.parse(url, allowedDemos: DemoDeepLinkRegistry.allowedIds) {
                         pendingDeepLinkDemo = id
                     } else if let candidate = DeepLinkRouter.extractCandidate(url) {
                         // A well-formed `sceneview://demo/<id>` (or the
