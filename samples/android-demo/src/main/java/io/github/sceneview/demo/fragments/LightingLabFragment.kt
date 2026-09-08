@@ -9,10 +9,12 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.LightingLabDemo
 
 /**
- * Unified "Lighting Lab" demo — consolidates the retired `dynamic-sky`,
- * `environment`, `reflection-probes`, and `post-processing` demos behind one
- * entry with an internal segmented-button toggle (#2239 Batch 2). The old
- * deep-link ids stay routable through
+ * "Lighting Lab" — the *workbench* half of the lighting pair since #3496: one fixed
+ * rig over the stage `lighting` also lights, with every knob live on the same frame.
+ * It consolidated the retired `dynamic-sky`, `environment`, `reflection-probes` and
+ * `post-processing` demos (#2239 Batch 2); #3496 then moved the first two to
+ * `lighting`, whose Sun and Image rigs are where those subjects belong. Every old
+ * deep-link id stays routable through
  * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  */
 object LightingLabFragment : DemoFragment {
@@ -23,7 +25,10 @@ object LightingLabFragment : DemoFragment {
         category = DemoCategory.RENDERING,
         icon = Icons.Filled.WbSunny,
         order = 11,
-        tags = setOf("light", "hdr", "ibl", "skybox", "environment", "reflection", "bloom", "post-fx"),
+        tags = setOf(
+            "light", "hdr", "ibl", "skybox", "environment",
+            "reflection", "exposure", "ssao", "fog", "post-fx",
+        ),
     )
 
     @Composable

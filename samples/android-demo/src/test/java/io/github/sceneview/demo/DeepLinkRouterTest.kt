@@ -361,8 +361,13 @@ class DeepLinkRouterTest {
 
     @Test
     fun `catalogue-regroup aliases pre-select the mode that holds their content`() {
-        // lighting-lab: [Sky, Environment, Reflections, Post-FX, Fog]
-        assertEquals(4, DeepLinkRouter.resolveInitialTab("fog", null))
+        // #3496 rebuilt `lighting-lab` as one tab-less bench, so `fog` — like the
+        // three other ids the lab absorbed — no longer pre-selects anything: the
+        // fog switch is live on the only frame the lab has.
+        assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["fog"])
+        assertNull(DeepLinkRouter.resolveInitialTab("fog", null))
+        // lighting: [Image, Studio, Sun] — `dynamic-sky` is the Sun rig.
+        assertEquals(2, DeepLinkRouter.resolveInitialTab("dynamic-sky", null))
         // camera-gestures has no modes since the #3500 rebuild — one stage, one camera,
         // and object gestures behind the dock's Move toggle rather than a third tab. Both
         // of its retired ids therefore land on the same (only) view, which is what an

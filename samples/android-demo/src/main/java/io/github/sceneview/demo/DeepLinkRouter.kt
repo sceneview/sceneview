@@ -119,12 +119,15 @@ internal object DeepLinkRouter {
         "billboard" to "two-d-in-three-d",
         // #2239 Batch 2 — Lighting Lab consolidation. The retired `dynamic-sky`,
         // `environment`, `reflection-probes`, and `post-processing` demos merged
-        // into `lighting-lab` with a segmented-button toggle. `dynamic-sky` lands
-        // on the default Sky tab; `environment`, `reflection-probes`, and
-        // `post-processing` pre-select their matching tabs (#2315 — see
-        // [ALIAS_INITIAL_TAB]).
-        "dynamic-sky" to "lighting-lab",
-        "environment" to "lighting-lab",
+        // into `lighting-lab`. #3496 then rebuilt both lighting screens from
+        // scratch and split them by role rather than by subject, which moved two
+        // of those four: `dynamic-sky` is now the Sun rig of `lighting` and
+        // `environment` its Image rig, while `reflection-probes` and
+        // `post-processing` stay on the lab — which no longer has tabs, so they
+        // carry no [ALIAS_INITIAL_TAB] entry. Every one of the four deep links
+        // still resolves, each to the half that now hosts its subject.
+        "dynamic-sky" to "lighting",
+        "environment" to "lighting",
         "reflection-probes" to "lighting-lab",
         "post-processing" to "lighting-lab",
         // #2239 Batch 3 — Animation & Physics consolidation. The retired
@@ -156,10 +159,12 @@ internal object DeepLinkRouter {
         // user choice the alias has no business overriding.
         "ar-instant-placement" to "ar-placement",
         // #2239 catalogue regroup — `fog` merged into `lighting-lab` as its fifth
-        // mode. Both are the same per-Filament-`View` option family the lab's Post-FX
-        // mode already reaches through the `rememberView` handle, so the fold moved a
-        // 181-line card with no modes of its own under the card literally named
-        // "Lighting Lab". `ARFogNode` keeps `FogNode` demonstrated in AR (`ar-fog`).
+        // mode. Both are the same per-Filament-`View` option family the lab already
+        // reaches through the `rememberView` handle, so the fold moved a 181-line
+        // card with no modes of its own under the card literally named "Lighting
+        // Lab". Since #3496 fog is a switch on the lab's one bench rather than a
+        // mode, so the alias no longer pre-selects anything. `ARFogNode` keeps
+        // `FogNode` demonstrated in AR (`ar-fog`).
         "fog" to "lighting-lab",
         // #2239 catalogue regroup — `gesture-feedback-preview` merged into
         // `camera-gestures` as its third mode. The Gestures mode flips `isEditable`
@@ -194,18 +199,16 @@ internal object DeepLinkRouter {
      * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
      * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
      * and `billboard` since #3424; `gesture-editing` and `gesture-feedback-preview` since
-     * #3500) are intentionally omitted: they already land correctly,
-     * so an absent entry
+     * #3500; `environment`, `reflection-probes`, `post-processing` and `fog` since #3496)
+     * are intentionally omitted: they already land correctly, so an absent entry
      * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
-        // lighting — [Types, Movable]
+        // lighting — [Image, Studio, Sun] since #3496. `environment` is deliberately
+        // absent: the Image rig is index 0, the rig the demo already opens on.
         "movable-light" to 1,
-        // lighting-lab — [Sky, Environment, Reflections, Post-FX]
-        "environment" to 1,
-        "reflection-probes" to 2,
-        "post-processing" to 3,
+        "dynamic-sky" to 2,
         // animation-physics — [Animation, Physics]
         "physics" to 1,
         // materials — [PBR Materials, Streaming, Occlusion]
@@ -214,8 +217,6 @@ internal object DeepLinkRouter {
         // model-viewer — [Single Model, Multi-Model, Gallery]
         "multi-model" to 1,
         "scene-gallery" to 2,
-        // lighting-lab — [Sky, Environment, Reflections, Post-FX, Fog] (#2239)
-        "fog" to 4,
         // ar-geospatial-anchors — [Terrain, Rooftop] (#2239). `ar-terrain` is the
         // default first mode, so it is deliberately absent: an absent entry means
         // "no pre-selection needed", which is exactly right for index 0.
