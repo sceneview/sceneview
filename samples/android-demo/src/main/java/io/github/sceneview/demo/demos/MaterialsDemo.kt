@@ -1,6 +1,13 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
+import androidx.annotation.StringRes
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -8,7 +15,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Compare
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lens
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -17,86 +33,140 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.Material
+import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
+import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
-import io.github.sceneview.demo.common.rememberFileModelInstance
 import io.github.sceneview.demo.DemoSettings
-import io.github.sceneview.demo.ErrorScrim
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
-import io.github.sceneview.demo.demos.internal.MaterialsSubject
-import io.github.sceneview.demo.demos.internal.MaterialsSubjects
+import io.github.sceneview.demo.demos.internal.MaterialStudio
+import io.github.sceneview.demo.demos.internal.MaterialTrait
+import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
+import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
-import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
+import io.github.sceneview.demo.HeroOrbitCameraManipulator
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.material.setMetallic
+import io.github.sceneview.material.setReflectance
+import io.github.sceneview.material.setRoughness
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
-// `ModelInstance` is a typealias for Filament's `FilamentInstance`; `.model` is an
-// extension property (ModelInstance.kt) and needs its own import to resolve.
+import io.github.sceneview.math.colorOf
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.sample.rememberMaterialInstance
+import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
-import java.io.File
+import io.github.sceneview.sample.ui.LabeledSlider
 
 /**
- * Unified "Materials" demo — consolidates the retired `texture-streaming` and
- * `occlusion-material` demos into the existing `materials` entry behind a
- * single segmented-button toggle (#2239 Batch 4).
+ * **Materials** — what a physically based surface is, shown rather than described.
  *
- * Each sub-mode showcases one facet of materials / textures:
+ * ## The screen
  *
- * - **PBR Materials** — streamed KHR_materials_* extension showcase (sheen,
- *   transmission, iridescence). (The original `materials` demo.)
- * - **Streaming** — runtime texture / material swap on an already-loaded
- *   model. (Formerly `texture-streaming`.)
- * - **Occlusion** — invisible depth-writing surface that hides content behind
- *   it. (Formerly `occlusion-material`.)
+ * A studio with an HDR sky the user can change, and nine spheres in it. Nothing is loaded
+ * from the network, nothing is streamed, and the first frame is the finished picture: the
+ * whole wall is built from primitives and material parameters, so it is on screen as soon as
+ * the environment's IBL finishes prefiltering.
  *
- * Each sub-mode keeps its own `SceneView` + its own [rememberEngine] / loaders,
- * so switching tabs tears down the inactive section completely — no engine is
- * hoisted above the `when`, which is what prevents resource leaks across tab
- * switches (Batch 1 review confirmed this pattern). Old deep links route
- * through [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES]; the
- * `materials` id itself stays a live registered demo (the natural umbrella).
+ * - **Gallery** — the nine materials at once, under a slow camera *sweep* rather than an
+ *   orbit. Tap a sphere to inspect it.
+ * - **Inspect** — one of them, large, with its parameters on live sliders. *Compare* splits
+ *   the stage so the material you were looking at a moment ago stays on screen next to the
+ *   one you moved to, which is the only way to see a roughness difference of 0.1.
+ * - **Occlusion** — the odd one out, and deliberately kept (#2239 Batch 4 folded the retired
+ *   `occlusion-material` demo in here): `MaterialLoader.createOcclusionInstance()` is a
+ *   material too, just one whose entire job is to paint nothing.
+ *
+ * ## Why the surfaces are real and not approximations
+ *
+ * Four of the nine — clear coat, sheen, transmission, emission — cannot be expressed by the
+ * `color / metallic / roughness / reflectance` set that `MaterialLoader.createColorInstance`
+ * exposes, and SceneView's SDK ships no `.filamat` that can. So the demo ships two of its
+ * own, `studio_pbr` and `studio_glass`, compiled by `tools/GenerateFilamat.sh` with the same
+ * pinned `matc` as every other blob in the repo. See [StudioMaterials] for why the obvious
+ * shortcut — Filament's gltfio ubershader, already in the AAR — renders nine black spheres on
+ * procedural geometry.
+ *
+ * ## Threading
+ *
+ * Every `MaterialInstance` here is allocated and destroyed by [rememberStudioMaterial], a
+ * `DisposableEffect`-backed composable — so all Filament JNI allocation happens on the main
+ * thread and every handle is released when the screen leaves the composition. Parameter
+ * pushes ride `LaunchedEffect`, which runs on the composition's own main dispatcher.
  */
 @Composable
 fun MaterialsDemo(onBack: () -> Unit) {
+    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): bypass the
+    // Filament-backed body BEFORE rememberEngine(), which needs .so files LayoutLib lacks.
+    if (LocalInspectionMode.current) {
+        DemoPreviewPlaceholder(title = "Materials", onBack = onBack)
+        return
+    }
+
     var mode by remember {
-        mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Pbr))
+        mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Gallery))
     }
     when (mode) {
-        MaterialsMode.Pbr -> PbrSection(onBack, mode) { mode = it }
-        MaterialsMode.Streaming -> StreamingSection(onBack, mode) { mode = it }
+        // One call site for both: Gallery and Inspect are two framings of the same scene, and
+        // sharing the composable means the engine, the environment and the nine material
+        // instances survive the toggle. Switching modes is then a camera change, not a
+        // teardown — no reload, no black frame, and a slider tweak is still there when the
+        // user comes back to the wall.
+        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(onBack, mode) { mode = it }
+        // Occlusion gets its own engine on purpose: it is a different scene with a different
+        // camera and a loaded GLB, and giving it a separate `rememberEngine()` means leaving
+        // the tab tears its resources down completely.
         MaterialsMode.Occlusion -> OcclusionSection(onBack, mode) { mode = it }
     }
 }
 
-private enum class MaterialsMode(val label: String) {
-    Pbr("PBR Materials"),
-    Streaming("Streaming"),
-    Occlusion("Occlusion"),
+/**
+ * Declaration order is the segmented-button order and
+ * [io.github.sceneview.demo.DeepLinkRouter.ALIAS_INITIAL_TAB] indexes into it: the retired
+ * `texture-streaming` id resolves to 1 and `occlusion-material` to 2. Append, never reorder.
+ *
+ * `texture-streaming` landing on **Inspect** is not a coincidence kept for the link's sake —
+ * Inspect *is* the runtime-swap section. Its sliders and its picker rewrite the parameters of
+ * a `MaterialInstance` that is already bound to a live renderable, which is the thing that
+ * demo existed to show, minus the sphere it showed it on.
+ */
+private enum class MaterialsMode(@StringRes val labelRes: Int) {
+    Gallery(R.string.demo_materials_mode_gallery),
+    Inspect(R.string.demo_materials_mode_inspect),
+    Occlusion(R.string.demo_materials_mode_occlusion),
 }
 
 @Composable
@@ -111,468 +181,345 @@ private fun ModeSelector(
                 selected = m == current,
                 onClick = { onModeChange(m) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(m.label) },
+                label = { Text(stringResource(m.labelRes)) },
             )
         }
     }
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 }
 
-// ─── PBR Materials section ───────────────────────────────────────────────────
-// The original `materials` demo. Streamed showcase of the KHR_materials_* PBR
-// extension family — sheen, transmission, iridescence — sourced from
-// Sketchfab's CC-BY PBR catalogue (the same curated set declared in
-// [SampleAssets]'s `materials` category).
-//
-// The previous version of this demo (parity with the iOS placeholder) was a
-// 5-sphere metallic/roughness spectrum that didn't actually exercise any of
-// the modern glTF material extensions. Stage 2 replaces it with curated
-// extension-bearing models so the demo answers "what do KHR_materials_sheen
-// / _transmission / _iridescence look like in SceneView?" at a glance.
-//
-// Lighting uses the studio HDR as IBL (no skybox) so reflections hit the
-// extension materials cleanly — sheen, transmission, clearcoat and iridescence
-// all rely heavily on environment lighting to read — while the backdrop stays
-// the demo's own flat surface at every orbit angle. One shared constant:
-// [io.github.sceneview.demo.common.MATERIALS_SHOWCASE_HDR].
-//
-// **The first frame is deterministic (#2874).** The section opens on the
-// bundled [MaterialsSubjects.BUNDLED_DEFAULT] — Khronos' ToyCar, whose GLB
-// carries clearcoat + sheen + transmission — so what it renders on a cold
-// launch does not depend on an API key, the network or the disk cache.
-// Selecting a streamed chip is an explicit user action. Before this, the
-// section opened on streamed slug 0 and rendered either the Sketchfab model
-// or its bundled fallback depending on connectivity, which made the demo
-// unusable as a store frame or a screenshot-diff subject.
-//
-// Honours the umbrella's hard rules:
-//   - **No Sketchfab WebView / external link.** Local file URLs only.
-//   - **No network required to render something useful.** The default subject
-//     is bundled outright, and a streamed chip whose resolve fails still
-//     stages its bundled fallback through the resolver.
-//
-// @see MaterialsSubjects for the subject list + framing / determinism contract.
-// @see SketchfabAssetResolver for the resolve / fallback contract.
+// ─── Gallery + Inspect ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun PbrSection(
+private fun StudioSection(
     onBack: () -> Unit,
     mode: MaterialsMode,
     onModeChange: (MaterialsMode) -> Unit,
 ) {
-    val context = LocalContext.current
-    val resolver = remember(context) { SketchfabAssetResolver.getInstance(context) }
+    val inspecting = mode == MaterialsMode.Inspect
+    val library = MaterialStudio.library
 
-    // The chips: the bundled default first, then the three curated `materials`
-    // slugs — sheen, transmission, iridescence. Stage 2 keeps the streamed count
-    // low so the offline-fallback footprint stays bounded; Stage 3 will expand
-    // once a CI maintenance cron validates each slug weekly.
-    //
-    // Cold launch lands on the BUNDLED subject, never a streamed one (#2874):
-    // what a streamed slug resolves to depends on the API key, the network and
-    // the cache, so the demo used to render a different subject run to run —
-    // measured as an insect on one device and the helmet fallback on another,
-    // from the same build. The determinism contract lives in [MaterialsSubjects]
-    // and is asserted by `MaterialsSubjectsTest`; the streamed catalogue is
-    // untouched and stays one tap away.
-    val subjects = remember { MaterialsSubjects.all() }
-    var selectedIndex by remember { mutableIntStateOf(MaterialsSubjects.DEFAULT_INDEX) }
-    val selectedSubject = subjects.getOrNull(selectedIndex)
-    // Non-null only while a STREAMED chip is selected — the resolve pipeline
-    // below keys off it, and a null value means "the bundled subject is on
-    // screen, nothing to resolve".
-    val selectedSlug = (selectedSubject as? MaterialsSubject.Streamed)?.slug
+    // Bumped by the sheet's Reset. It is a `remember` key for the three slider states and a
+    // `LaunchedEffect` key for the re-push below, so one tap puts every material back to its
+    // declared values — including the ones the user tweaked and then navigated away from.
+    var resetTick by remember { mutableIntStateOf(0) }
 
-    // Bumped by the error scrim's Retry button. It is a `produceState` key so a
-    // tap re-runs the resolve coroutine for the same slug instead of leaving the
-    // demo stuck on a failed resolution forever (#2088).
-    var retryTick by remember { mutableStateOf(0) }
+    var selectedIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_INDEX) }
+    // What Compare puts on the left: the material that was selected before this one. It costs
+    // no control of its own — picking a second material *is* the act of setting up the
+    // comparison — and it answers the only question a material picker cannot: "was that one
+    // rougher, or do I just remember it that way?"
+    var comparedIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_INDEX) }
+    var environmentIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_ENVIRONMENT_INDEX) }
+    var compare by remember { mutableStateOf(false) }
+    var animating by remember { mutableStateOf(true) }
 
-    LaunchedEffect(resolver) {
-        runCatching { resolver.prefetchAll("materials") }
+    val selected = library[selectedIndex]
+
+    // Which material Compare puts on the LEFT. Normally the previous selection — picking a
+    // second material *is* the act of setting up the comparison. But on a fresh screen, after
+    // Reset, or when the user re-picks the chip already selected, "the previous selection" is
+    // the current one, and Compare would split the stage into two identical balls: it reads as
+    // a bug, and it teaches nothing. Falling back to the preceding library entry keeps the
+    // first tap on Compare informative — the default pair is Glazed Ceramic against Car Paint,
+    // a dielectric beside a clear-coated metallic, which is the difference the mode exists for.
+    val compareWith = if (comparedIndex != selectedIndex) {
+        comparedIndex
+    } else {
+        (selectedIndex + library.size - 1) % library.size
     }
 
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val environmentLoader = rememberEnvironmentLoader(engine)
-
-    // The one showcase IBL, shared with the Streaming section (#2874). Extension
-    // materials (sheen / transmission / iridescence / clearcoat) are heavily
-    // IBL-dependent and read flatly under default ambient light. No skybox: the
-    // camera orbits, so a drawn environment put a different backdrop behind the
-    // subject on every capture — see the helper's KDoc for the measurement.
-    val activeEnvironment = rememberMaterialsShowcaseEnvironment(environmentLoader)
-
-    // A failed resolve is surfaced as [MaterialResolveState.Error] instead of
-    // being swallowed into a `null` path that hangs the loading scrim forever
-    // (#2088). `retryTick` re-runs the resolve when the user taps Retry.
-    // A null slug — the bundled chip is selected (#2874), or the registry
-    // category is empty (#2122) — exits to [MaterialResolveState.Empty] and
-    // leaves the bundled instance driving the viewport.
-    val resolveState: MaterialResolveState by produceState<MaterialResolveState>(
-        initialValue = MaterialResolveState.Loading,
-        key1 = resolver,
-        key2 = selectedSlug?.uid,
-        key3 = retryTick,
-    ) {
-        value = MaterialResolveState.Loading
-        val slug = selectedSlug ?: run {
-            value = MaterialResolveState.Empty
-            return@produceState
-        }
-        value = runCatching { resolver.resolve(slug) }
-            .fold(
-                onSuccess = { MaterialResolveState.Resolved(it) },
-                onFailure = { MaterialResolveState.Error(it.message ?: it.javaClass.simpleName) },
-            )
+    // Live parameter overrides. Re-seeded from the material whenever the selection changes,
+    // so the sliders always open on the values the ball is actually wearing.
+    var metallic by remember(selectedIndex, resetTick) { mutableFloatStateOf(selected.metallic) }
+    var roughness by remember(selectedIndex, resetTick) { mutableFloatStateOf(selected.roughness) }
+    var traitAmount by remember(selectedIndex, resetTick) {
+        mutableFloatStateOf(selected.traitAmount)
     }
-    val resolvedFile = (resolveState as? MaterialResolveState.Resolved)?.file
-    val resolveError = (resolveState as? MaterialResolveState.Error)?.message
-
-    // The bundled default subject, loaded from `assets/` — no network, no cache,
-    // no API key, the same bytes on every launch. Loaded unconditionally (and
-    // kept loaded while a streamed chip is on screen) so its slot stays stable
-    // and so switching back to it is instant.
-    val bundledInstance =
-        rememberModelInstance(modelLoader, MaterialsSubjects.BUNDLED_DEFAULT.assetPath)
-
-    // Load the resolved file (streamed GLB or bundled fallback) through
-    // [rememberFileModelInstance] → `ModelLoader.loadModelInstance("file://…")`,
-    // NOT the two-argument `rememberModelInstance(modelLoader, fileUri)`. The
-    // latter binds to the asset-path overload — Kotlin prefers the candidate that
-    // needs no default argument — which feeds the `file://` string straight to
-    // `AssetManager.open`; that throws, the instance stays `null`, and the
-    // "Streaming material…" scrim hangs forever even though the bundled fallback
-    // resolved instantly offline (#2302 — same root cause as #1422 / the
-    // Multi-Model section of ModelViewerDemo). Called unconditionally so its
-    // `produceState` slot stays stable (#1464).
-    val streamedInstance = rememberFileModelInstance(modelLoader, resolvedFile)
-
-    // What is actually on screen: the bundled subject unless a streamed chip is
-    // selected. Never a silent fallback between the two — a streamed chip that
-    // fails shows its error scrim rather than quietly swapping the subject,
-    // which is the ambiguity #2874 was about.
-    val modelInstance = if (selectedSlug == null) bundledInstance else streamedInstance
-
-    val firstFrame = rememberFirstFrameState()
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_materials_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                subjects.forEachIndexed { index, subject ->
-                    FilterChip(
-                        selected = index == selectedIndex,
-                        onClick = { selectedIndex = index },
-                        // displayName + the KHR_* tag give the user a clear
-                        // read of "which extension am I looking at" without
-                        // needing a second line of copy. The tag comes from the
-                        // registry's `tags[0]` for a streamed slug, and from the
-                        // GLB's own `extensionsUsed` for the bundled default.
-                        label = { Text(subject.displayName) },
-                    )
-                }
-            }
-            // Extension tag — the `KHR_materials_*` family this subject
-            // demonstrates. Displayed below the chips so the user can map the
-            // chip choice to the glTF extension being demonstrated.
-            selectedSubject?.let { subject ->
-                if (subject.extensionTag.isNotBlank()) {
-                    Text(
-                        text = subject.extensionTag,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.demo_materials_credit, subject.author),
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        },
-    ) {
-        // One orbit radius for every chip (#2874). The subject is normalised to
-        // [MaterialsSubjects.FRAMING_UNITS] below, so the camera does not have to
-        // move when the chip changes — and no subject reads as a speck because it
-        // happens to be a 15 cm beetle next to a 90 cm sofa.
-        val cameraManipulator = rememberHeroOrbitCameraManipulator(
-            trigger = modelInstance != null,
-            radius = MaterialsSubjects.ORBIT_RADIUS_METERS,
-            yHeight = 0f,
-            durationMillis = 18_000,
-        )
-        Box(modifier = Modifier.fillMaxSize()) {
-            SceneView(
-                modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
-                engine = engine,
-                modelLoader = modelLoader,
-                environmentLoader = environmentLoader,
-                environment = activeEnvironment,
-                cameraManipulator = cameraManipulator,
-            ) {
-                // Both subjects stay MOUNTED; the inactive one is hidden. Feeding
-                // one call site an instance that swaps on every chip re-keys
-                // `remember(engine, modelInstance)` in SceneScope.ModelNode, and the
-                // outgoing node's DisposableEffect runs `node.destroy()` — which
-                // walks `childNodes` and calls `engine.safeDestroyEntity` on the
-                // entities the ModelInstance only BORROWS (`ownsEntity` is false, so
-                // the id survives but the renderable component does not, Node.kt:1284).
-                // `bundledInstance` is retained for the whole session and never
-                // reloaded, so one chip round-trip left it with zero renderables:
-                // Toy Car → any streamed chip → Toy Car rendered a silent black
-                // viewport, with no scrim because the instance is still non-null.
-                //
-                // Every subject is normalised to the SAME size rather than to its own
-                // `scaleToUnits` (#2874) — the camera is fixed, so a per-model scale
-                // is what made one chip fill the viewport and the next read as a speck.
-                //
-                // `autoAnimate = !qaMode` mirrors ModelViewerDemo (#2958): `qaMode`
-                // freezes the orbit yaw but NOT model animation, so a subject with a
-                // baked animation would keep moving under it and the section's golden
-                // screenshots would drift frame to frame. Every subject the section can
-                // show today is static (ToyCar declares no animation; the three
-                // `materials` slugs are `hasBakedAnimation = false`), so this changes no
-                // pixel now — it is what keeps the contract true when the CATALOG gains
-                // an animated slug, which is a data edit no code review would catch.
-                // Read once at node creation, like ModelViewerDemo: the QA harness sets
-                // `DemoSettings.qaMode` before launching a demo, so the value is already
-                // settled when these nodes mount. Re-keying on it instead would destroy
-                // and rebuild the nodes, which is exactly the entity-teardown defect
-                // #2939 fixed above.
-                bundledInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
-                        isVisible = selectedSlug == null,
-                        autoAnimate = !DemoSettings.qaMode,
-                    )
-                }
-                streamedInstance?.let { instance ->
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = MaterialsSubjects.FRAMING_UNITS,
-                        isVisible = selectedSlug != null,
-                        autoAnimate = !DemoSettings.qaMode,
-                    )
-                }
-            }
-            // Mutually exclusive with LoadingScrim: a resolve failure shows the
-            // error scrim (with Retry) instead of hanging on "Streaming…" (#2088).
-            // Only a STREAMED chip can fail to resolve; the bundled default has
-            // nothing to resolve, so it never reaches the error branch.
-            if (resolveError != null && selectedSlug != null) {
-                ErrorScrim(
-                    message = resolveError,
-                    onRetry = { retryTick++ },
-                    label = stringResource(R.string.demo_materials_error),
-                    retryLabel = stringResource(R.string.demo_materials_retry),
-                )
-            } else {
-                // Covers both subjects: the bundled GLB decoding on a cold start
-                // and a streamed slug still resolving. `modelInstance` is the
-                // single source of "is there something to show yet", so an empty
-                // registry category can no longer strand the scrim (#2122) —
-                // there is always a bundled subject behind it. The label follows
-                // the subject: the default one is decoded from `assets/`, and
-                // saying "Streaming…" over it would be a lie.
-                LoadingScrim(
-                    loading = modelInstance == null,
-                    label = stringResource(
-                        if (selectedSlug == null) {
-                            R.string.demo_materials_loading_bundled
-                        } else {
-                            R.string.demo_materials_loading
-                        }
-                    ),
-                )
-            }
-        }
-    }
-}
-
-// ─── Streaming section ───────────────────────────────────────────────────────
-// Formerly TextureStreamingDemo (issue #1480). Runtime texture / material
-// streaming sample.
-//
-// A single loaded model — a [SphereNode], the cleanest possible canvas for
-// reading a material — whose surface material is swapped live from a chip
-// picker. Selecting a chip reassigns the node's [com.google.android.filament.MaterialInstance]
-// via Filament's `setMaterialInstanceAt(...)`, which is cheap: no geometry
-// rebuild, no model reload. The model loads exactly once; only the material
-// data changes.
-//
-// Distinct from the PBR Materials section (#1423), which streams a *whole new
-// model* per chip. Here the model is constant and the material is the variable —
-// the pattern you reach for when an end user is "trying on" finishes,
-// skins, or texture packs on a product in a viewer.
-//
-// Threading: every [MaterialInstance] is allocated by
-// [rememberMaterialInstance] (a `DisposableEffect`-backed composable helper),
-// so all Filament JNI allocation happens on the main thread and every handle
-// is destroyed when the demo leaves the composition — no leak across a
-// home → demo → home navigation cycle. The runtime swap itself
-// (`setMaterialInstanceAt`) is driven from `SphereNode`'s `SideEffect`,
-// also on the main thread.
-//
-// Lighting uses the studio HDR so the metallic / roughness contrast across
-// the variants actually reads — PBR surfaces are heavily IBL-dependent and
-// look flat under default ambient light.
-
-/**
- * One swappable PBR material "set" — a named appearance the demo can apply
- * to the model at runtime.
- *
- * Each variant bundles the four parameters that fully describe a Filament
- * colored PBR surface: a base [color] plus the [metallic] / [roughness] /
- * [reflectance] triple. Swapping the active variant is the teaching point
- * of the Streaming section — it shows that material/texture data can be
- * exchanged on an *already-loaded* model without rebuilding its geometry.
- *
- * The variants are bundled in-app rather than fetched from the network so
- * the demo renders something useful with zero connectivity. Streaming the
- * same kind of data from a remote catalogue (Sketchfab material packs,
- * a CDN of `.ktx` texture sets, …) is a documented follow-up — see the
- * `changelog.d/1480-texture-streaming.md` note.
- */
-private data class MaterialVariant(
-    val labelRes: Int,
-    val color: Color,
-    val metallic: Float,
-    val roughness: Float,
-    val reflectance: Float,
-)
-
-@Composable
-private fun StreamingSection(
-    onBack: () -> Unit,
-    mode: MaterialsMode,
-    onModeChange: (MaterialsMode) -> Unit,
-) {
-    // Bundled material "sets" — a spread of metallic / roughness so the
-    // runtime swap is visually obvious. Polished Steel and Brushed Gold sit
-    // at high metallic; Matte Plastic and Glazed Ceramic at the dielectric
-    // end; Copper bridges the two with a warm tint.
-    val variants = remember {
-        listOf(
-            MaterialVariant(
-                labelRes = R.string.demo_texture_streaming_variant_steel,
-                color = Color(0xFFB8BCC4),
-                metallic = 1.0f,
-                roughness = 0.18f,
-                reflectance = 0.6f,
-            ),
-            MaterialVariant(
-                labelRes = R.string.demo_texture_streaming_variant_gold,
-                color = Color(0xFFE6B64C),
-                metallic = 1.0f,
-                roughness = 0.32f,
-                reflectance = 0.7f,
-            ),
-            MaterialVariant(
-                labelRes = R.string.demo_texture_streaming_variant_copper,
-                color = Color(0xFFC06A3E),
-                metallic = 0.85f,
-                roughness = 0.45f,
-                reflectance = 0.6f,
-            ),
-            MaterialVariant(
-                labelRes = R.string.demo_texture_streaming_variant_plastic,
-                color = Color(0xFF6446CD),
-                metallic = 0.0f,
-                roughness = 0.7f,
-                reflectance = 0.4f,
-            ),
-            MaterialVariant(
-                labelRes = R.string.demo_texture_streaming_variant_ceramic,
-                color = Color(0xFFEDE8E0),
-                metallic = 0.0f,
-                roughness = 0.12f,
-                reflectance = 0.5f,
-            ),
-        )
-    }
-
-    var selectedIndex by remember { mutableIntStateOf(0) }
-    val selectedVariant = variants[selectedIndex]
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // The same showcase IBL the PBR section uses — metallic variants read flat
-    // without an environment to reflect. One shared constant so the two material
-    // sections cannot drift apart visually (#2874).
-    val activeEnvironment = rememberMaterialsShowcaseEnvironment(environmentLoader)
+    val environmentOption = MaterialStudio.environments[environmentIndex]
+    // The skybox is DRAWN here, unlike the demo this replaces. See
+    // `MaterialStudio.environments` for why that reverses #2874 without reopening it: a
+    // material demo that hides the environment is asking the viewer to take the reflections
+    // on faith, and the reproducibility problem #2874 hit was the 360° orbit, which this
+    // screen no longer has in Gallery and pins in QA mode everywhere.
+    val hdrEnvironment = rememberHDREnvironment(
+        environmentLoader,
+        environmentOption.assetPath,
+        createSkybox = true,
+    )
+    // Neutral default while the HDR decodes and prefilters — without it the first frames of
+    // an environment change are black, which reads as a crash rather than as a load.
+    val neutralEnvironment = rememberEnvironment(environmentLoader)
+    val environment = hdrEnvironment ?: neutralEnvironment
 
-    // One MaterialInstance per variant, allocated up front and owned by the
-    // composition. Pre-allocating all of them (instead of one re-keyed
-    // instance) means a chip tap is a pure pointer swap — no JNI allocation
-    // on the interaction path, so the swap is instant.
-    val materialInstances = variants.map { variant ->
-        rememberMaterialInstance(
-            materialLoader = materialLoader,
-            color = variant.color,
-            metallic = variant.metallic,
-            roughness = variant.roughness,
-            reflectance = variant.reflectance,
+    // One MaterialInstance per library entry, allocated once for the life of the screen and
+    // shared by the wall and the hero. That sharing is the point rather than an economy: the
+    // slider moves *the material*, so the ball in Inspect and the same ball in the Gallery
+    // change together, which is what "a MaterialInstance is bound to many renderables"
+    // actually looks like.
+    val materials = rememberStudioMaterials(materialLoader)
+    val instances = library.map { rememberStudioMaterial(materialLoader, materials, it) }
+
+    // Push the live overrides onto the selected instance. Keyed on the values rather than on
+    // `instances` — the map above produces a new List every recomposition, so keying on it
+    // would restart the effect on every frame of a drag.
+    LaunchedEffect(selectedIndex, metallic, roughness, traitAmount) {
+        instances[selectedIndex].push(selected, metallic, roughness, traitAmount)
+    }
+    // Reset: re-push every material's declared values, not just the selected one.
+    LaunchedEffect(resetTick) {
+        if (resetTick > 0) {
+            library.forEachIndexed { index, material -> instances[index].push(material) }
+        }
+    }
+
+    // ── Camera ───────────────────────────────────────────────────────────────────────────
+    //
+    // Two manipulators, both built unconditionally (a composable cannot be called from one
+    // branch of an `if`), and the mode picks which one the view gets.
+
+    // Gallery: a flat wall cannot be orbited — a quarter turn shows the spheres edge-on and a
+    // half turn shows the back of the grid. The phase drives a bounded cosine sweep instead.
+    val sweepPhase = remember { mutableFloatStateOf(MaterialStudio.STATIC_SWEEP_PHASE) }
+    LifecycleAwareLaunchedEffect(animating, inspecting, DemoSettings.qaMode) {
+        if (inspecting || !animating || DemoSettings.qaMode) {
+            if (!animating || DemoSettings.qaMode) {
+                sweepPhase.floatValue = MaterialStudio.STATIC_SWEEP_PHASE
+            }
+            return@LifecycleAwareLaunchedEffect
+        }
+        var lastNanos = 0L
+        while (true) {
+            withFrameNanos { nanos ->
+                if (lastNanos != 0L) {
+                    val advance =
+                        (nanos - lastNanos) / (MaterialStudio.SWEEP_PERIOD_MILLIS * 1_000_000.0)
+                    sweepPhase.floatValue = ((sweepPhase.floatValue + advance) % 1.0).toFloat()
+                }
+                lastNanos = nanos
+            }
+        }
+    }
+
+    val galleryRadius = rememberFitOrbitRadius(
+        extentX = MaterialStudio.wallExtentX(),
+        extentY = MaterialStudio.wallExtentY(),
+        extentZ = 2f * MaterialStudio.BALL_RADIUS,
+        // The camera sweeps but never turns broadside, so the fit does not have to reserve
+        // room for a rotation that cannot happen.
+        azimuthInvariant = false,
+        fill = GALLERY_FILL,
+    )
+    val galleryManipulator = remember(galleryRadius) {
+        HeroOrbitCameraManipulator(
+            yawProvider = { MaterialStudio.sweepYaw(sweepPhase.floatValue) },
+            radius = galleryRadius,
+            yHeight = 0f,
+            target = Position(0f, 0f, 0f),
+            resumeAfterMillis = 4_000L,
         )
     }
-    val selectedMaterial = materialInstances[selectedIndex]
+
+    val heroExtent = if (compare) {
+        2f * MaterialStudio.COMPARE_OFFSET + 2f * MaterialStudio.COMPARE_RADIUS
+    } else {
+        2f * MaterialStudio.HERO_RADIUS
+    }
+    val heroDepth = if (compare) {
+        2f * MaterialStudio.COMPARE_RADIUS
+    } else {
+        2f * MaterialStudio.HERO_RADIUS
+    }
+    val heroRadius = rememberFitOrbitRadius(
+        extentX = heroExtent,
+        extentY = heroDepth,
+        extentZ = heroDepth,
+        fill = HERO_FILL,
+    )
+    val heroManipulator = rememberHeroOrbitCameraManipulator(
+        trigger = inspecting && animating,
+        radius = heroRadius,
+        yHeight = 0.12f,
+        durationMillis = MaterialStudio.ORBIT_PERIOD_MILLIS,
+        staticYaw = MaterialStudio.STATIC_ORBIT_YAW,
+    )
 
     val firstFrame = rememberFirstFrameState()
+
+    // A tap on a gallery sphere selects it and moves to Inspect. `Node.name` carries the
+    // material id — the picker hands back the picked Node, not an index, and matching on the
+    // name is what keeps that mapping readable when the wall order changes.
+    val gestureListener = rememberOnGestureListener(
+        onSingleTapUp = { _, node ->
+            if (!inspecting) {
+                val tapped = library.indexOfFirst { it.id == node?.name }
+                if (tapped >= 0) {
+                    comparedIndex = selectedIndex
+                    selectedIndex = tapped
+                    onModeChange(MaterialsMode.Inspect)
+                }
+            }
+        },
+    )
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        loadingLabel = stringResource(R.string.demo_materials_loading),
+        peekHeader = if (inspecting) {
+            "${selected.label} · ${selected.summary(metallic, roughness, traitAmount)}"
+        } else {
+            stringResource(R.string.demo_materials_gallery_hint)
+        },
+        onResetSettings = {
+            selectedIndex = MaterialStudio.DEFAULT_INDEX
+            comparedIndex = MaterialStudio.DEFAULT_INDEX
+            environmentIndex = MaterialStudio.DEFAULT_ENVIRONMENT_INDEX
+            compare = false
+            animating = true
+            resetTick++
+        },
+        dock = buildList {
+            add(
+                DockItem(
+                    // The caption names the destination, the way a button does: from the
+                    // wall it reads "Inspect", from a single ball it reads "Gallery". It is
+                    // the VISIBLE one-word text (`DESIGN.md`, "Floating Dock"); `label` is
+                    // the accessible name and carries the full phrase.
+                    icon = if (inspecting) Icons.Filled.GridView else Icons.Filled.Lens,
+                    caption = if (inspecting) "Gallery" else "Inspect",
+                    label = if (inspecting) "Back to the gallery" else "Inspect this material",
+                    onClick = {
+                        onModeChange(
+                            if (inspecting) MaterialsMode.Gallery else MaterialsMode.Inspect
+                        )
+                    },
+                )
+            )
+            if (inspecting) {
+                add(
+                    DockItem(
+                        icon = Icons.Filled.Compare,
+                        caption = "Compare",
+                        label = "Compare with the previous material",
+                        onClick = { compare = !compare },
+                        selected = compare,
+                    )
+                )
+            }
+            add(
+                DockItem(
+                    icon = if (animating) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    caption = "Animate",
+                    label = if (animating) "Pause the camera" else "Animate the camera",
+                    onClick = { animating = !animating },
+                    selected = animating,
+                )
+            )
+        },
         controls = {
             ModeSelector(mode, onModeChange)
+
+            Text(stringResource(R.string.demo_materials_picker_label), style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            // A LazyRow rather than a scrolling Row, for the scroll state: nine chips are
+            // three screens wide, and the selection can change from the scene (a tap on a
+            // sphere) or from Reset, not just from a tap on the row itself. Without the
+            // effect below, opening Inspect on the sixth material shows a picker parked on
+            // the first three chips with nothing visibly selected.
+            val pickerState = rememberLazyListState()
+            LaunchedEffect(selectedIndex) { pickerState.animateScrollToItem(selectedIndex) }
+            LazyRow(
+                state = pickerState,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            ) {
+                itemsIndexed(library, key = { _, material -> material.id }) { index, material ->
+                    FilterChip(
+                        selected = index == selectedIndex,
+                        onClick = {
+                            if (index != selectedIndex) {
+                                comparedIndex = selectedIndex
+                                selectedIndex = index
+                            }
+                        },
+                        // A swatch, not a colour block: the ball is a sphere under a key
+                        // light, so the chip shows a sphere under a key light. A flat square
+                        // of a metal's reflectance value is a muddy brown and tells the user
+                        // nothing about the material it stands for.
+                        leadingIcon = { MaterialSwatch(material) },
+                        label = { Text(material.label) },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                text = stringResource(R.string.demo_texture_streaming_picker_label),
-                style = MaterialTheme.typography.labelLarge,
+                text = selected.note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+
+            LabeledSlider(
+                label = "Metallic",
+                value = metallic,
+                onValueChange = { metallic = it },
+                valueRange = 0f..1f,
+            )
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            LabeledSlider(
+                label = "Roughness",
+                value = roughness,
+                onValueChange = { roughness = it },
+                valueRange = 0f..1f,
+            )
+            // The third slider is the material's own extension, and only materials that have
+            // one get it. A permanently-disabled "Clear coat" track under a gold ball would
+            // be four extra pixels of chrome saying "not applicable".
+            if (selected.trait != MaterialTrait.None) {
+                Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+                LabeledSlider(
+                    label = selected.trait.label,
+                    value = traitAmount,
+                    onValueChange = { traitAmount = it },
+                    valueRange = 0f..traitSliderMax(selected.trait),
+                )
+                // The glTF extension this layer is the equivalent of. It is the search term a
+                // user takes back to their own asset pipeline, which is the point of naming it.
+                Text(
+                    text = selected.trait.extension,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+
+            Text(stringResource(R.string.demo_materials_environment_label), style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
-                variants.forEachIndexed { index, variant ->
+                MaterialStudio.environments.forEachIndexed { index, option ->
                     FilterChip(
-                        selected = index == selectedIndex,
-                        onClick = { selectedIndex = index },
-                        label = { Text(stringResource(variant.labelRes)) },
+                        selected = index == environmentIndex,
+                        onClick = { environmentIndex = index },
+                        label = { Text(option.label) },
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(
-                    R.string.demo_texture_streaming_variant_detail,
-                    selectedVariant.metallic,
-                    selectedVariant.roughness,
-                ),
-                style = MaterialTheme.typography.labelSmall,
-            )
         },
     ) {
-        // The model is a primitive SphereNode (built synchronously, no async
-        // load), so the idle orbit can start right away.
-        val cameraManipulator = rememberHeroOrbitCameraManipulator(
-            trigger = true,
-            radius = 1.6f,
-            yHeight = 0f,
-            durationMillis = 20_000,
-        )
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -580,56 +527,262 @@ private fun StreamingSection(
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
-                environment = activeEnvironment,
-                cameraManipulator = cameraManipulator,
+                environment = environment,
+                cameraManipulator = if (inspecting) heroManipulator else galleryManipulator,
+                onGestureListener = gestureListener,
+                // The wall's positions are the layout; letting the union bounding box
+                // re-centre the scene would move them, and the Compare pair's symmetry about
+                // the origin is exactly what makes the two balls read as a pair.
+                autoCenterContent = false,
             ) {
-                // The model is loaded once. `SphereNode` propagates a changed
-                // `materialInstance` through `setMaterialInstanceAt(0, …)` in
-                // its SideEffect, so swapping the picker re-skins this exact
-                // node without rebuilding geometry — the streaming-swap point.
-                SphereNode(
-                    radius = 0.5f,
-                    materialInstance = selectedMaterial,
-                    position = Position(0f, 0f, 0f),
-                )
+                if (inspecting) {
+                    if (compare) {
+                        SphereNode(
+                            radius = MaterialStudio.COMPARE_RADIUS,
+                            stacks = MaterialStudio.BALL_STACKS,
+                            slices = MaterialStudio.BALL_SLICES,
+                            materialInstance = instances[compareWith],
+                            position = Position(-MaterialStudio.COMPARE_OFFSET, 0f, 0f),
+                        )
+                        SphereNode(
+                            radius = MaterialStudio.COMPARE_RADIUS,
+                            stacks = MaterialStudio.BALL_STACKS,
+                            slices = MaterialStudio.BALL_SLICES,
+                            materialInstance = instances[selectedIndex],
+                            position = Position(MaterialStudio.COMPARE_OFFSET, 0f, 0f),
+                        )
+                    } else {
+                        SphereNode(
+                            radius = MaterialStudio.HERO_RADIUS,
+                            stacks = MaterialStudio.BALL_STACKS,
+                            slices = MaterialStudio.BALL_SLICES,
+                            materialInstance = instances[selectedIndex],
+                        )
+                    }
+                } else {
+                    val positions = MaterialStudio.wallPositions()
+                    library.forEachIndexed { index, material ->
+                        key(material.id) {
+                            SphereNode(
+                                radius = MaterialStudio.BALL_RADIUS,
+                                stacks = MaterialStudio.BALL_STACKS,
+                                slices = MaterialStudio.BALL_SLICES,
+                                materialInstance = instances[index],
+                                position = positions[index],
+                                // Picked back out by name in `onSingleTapUp` above.
+                                apply = { name = material.id },
+                            )
+                        }
+                    }
+                }
             }
+            // The scene is procedural, so there is nothing to decode — but the environment's
+            // IBL prefilter is real work, and until it lands the spheres have nothing to
+            // reflect. The cover follows the environment, not a model.
+            LoadingScrim(
+                loading = hdrEnvironment == null,
+                label = stringResource(R.string.demo_materials_loading),
+            )
         }
     }
 }
 
-// ─── Occlusion section ───────────────────────────────────────────────────────
-// Formerly OcclusionMaterialDemo (#1776, parity child of #1754). Showcase for
-// [`MaterialLoader.createOcclusionInstance()`][io.github.sceneview.loaders.MaterialLoader.createOcclusionInstance]
-// — the SceneView equivalent of RealityKit's `OcclusionMaterial` and Sceneform
-// legacy's `MaterialFactory.makeOcclusionMaterial(...)`.
-//
-// Stage (#2304 framing):
-//  - A virtual helmet sits at the world origin, scaled to 0.6 m and framed close by a static
-//    camera looking at the origin, lit by the shared studio IBL so it fills the viewport and
-//    reads against the dark background.
-//  - A vertical occluder plane sits between the camera and the helmet at `z = +0.7 m`, with
-//    its edge on the helmet's centre line so it hides exactly one lateral half of the helmet.
-//
-// Toggle:
-//  - **Occluder visible ON** — the plane wears a tinted unlit material so the user can SEE
-//    where it is. The helmet behind it draws normally because the plane is opaque-painted
-//    (so it should also occlude — proving the toggle ground truth).
-//  - **Occluder visible OFF** — the plane wears the new occlusion material. The plane
-//    itself is now invisible (zero pixels painted), but its depth value still goes into the
-//    depth buffer, so any helmet fragment behind it fails the depth test and is hidden.
-//
-// Effect: one half of the helmet visibly disappears WHERE the plane is, with no plane
-// painted on top — a sharp vertical cut down the middle into the dark background.
-// That's the entire contract — a "ghost wall" that blocks virtual content without ever
-// rendering itself.
-//
-// The whole section is non-AR (3D `SceneView { }`), so the comparison is reproducible on
-// every device — no ARCore required. For AR scenes that want the same effect against the
-// **live camera depth image**, use
-// [`ARCameraStream.isDepthOcclusionEnabled`][io.github.sceneview.ar.camera.ARCameraStream]
-// instead — that path samples ARCore's per-pixel depth, not a static occluder mesh, and is
-// the right tool when the "occluder" is the user's real-world environment.
+/** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
+private const val GALLERY_FILL: Float = 0.88f
 
+/** Fraction of the frame the Inspect hero spans — tighter, because there is one subject. */
+private const val HERO_FILL: Float = 0.8f
+
+/**
+ * Upper bound of the trait slider.
+ *
+ * Every factor is a `0..1` weight except emissive strength, which is a multiplier on the
+ * emitted colour and only starts to read above 1.
+ */
+private fun traitSliderMax(trait: MaterialTrait): Float =
+    if (trait == MaterialTrait.Emissive) 8f else 1f
+
+// ─── The material instances ──────────────────────────────────────────────────────────────
+
+/**
+ * The two materials the studio renders with, compiled from
+ * `samples/android-demo/src/main/materials/` by `tools/GenerateFilamat.sh`.
+ *
+ * ## Why two, and why not the gltfio ubershader
+ *
+ * The first cut of this screen reached for Filament's gltfio **ubershader**, on the theory
+ * that the capability was already in the AAR and only needed calling from Kotlin. It renders
+ * nine black spheres. The ubershader declares the full glTF vertex layout as *required* —
+ * `position | tangents | color | uv0 | uv1`, `0x1f` — and SceneView's procedural `SphereNode`
+ * supplies `0x1b`… `0xb`: position, tangents, uv0. Filament logs
+ * `missing required attributes (0x1f), declared=0xb` once per sphere and shades them with a
+ * zero vertex colour, which multiplies `baseColorFactor` to black. Metals gave it away first:
+ * a metal has no diffuse term, so a black base colour turns chrome, gold, copper and
+ * aluminium into four identical black balls. Binding dummy white textures to the unbound
+ * samplers — the other half of what gltfio's `ResourceLoader` does — does not help, because
+ * the missing attribute is a *vertex* attribute, not a sampler.
+ *
+ * So the demo ships its own materials, which require only what the primitive actually has.
+ * `studio_pbr` covers metallic-roughness plus clear coat, sheen and emission in one shader;
+ * `studio_glass` exists separately only because Filament's sheen lobe and its refraction path
+ * cannot coexist in a single material.
+ */
+private class StudioMaterials(val pbr: Material, val glass: Material)
+
+/** Loads both material blobs once for the life of the screen. */
+@Composable
+private fun rememberStudioMaterials(materialLoader: MaterialLoader): StudioMaterials =
+    remember(materialLoader) {
+        StudioMaterials(
+            pbr = materialLoader.createMaterial("materials/studio_pbr.filamat"),
+            glass = materialLoader.createMaterial("materials/studio_glass.filamat"),
+        )
+    }
+
+/**
+ * Allocates the `MaterialInstance` for [material] and ties it to the composition — the
+ * `rememberMaterialInstance` contract (#937).
+ *
+ * Keyed on the material's id rather than on the whole value: the sliders rewrite parameters on
+ * the instance, and re-keying on the parameters would destroy and rebuild a JNI handle on
+ * every frame of a drag.
+ */
+@Composable
+private fun rememberStudioMaterial(
+    materialLoader: MaterialLoader,
+    materials: StudioMaterials,
+    material: StudioMaterial,
+): MaterialInstance {
+    val instance = remember(materialLoader, materials, material.id) {
+        materialLoader.createInstance(
+            if (material.trait == MaterialTrait.Transmission) materials.glass else materials.pbr
+        )
+    }
+    DisposableEffect(instance) {
+        instance.push(material)
+        onDispose { materialLoader.destroyMaterialInstance(instance) }
+    }
+    return instance
+}
+
+/**
+ * Writes [material]'s parameters onto the instance. Main thread only — every caller is a
+ * `DisposableEffect` or a `LaunchedEffect` on the composition's dispatcher.
+ *
+ * The three optional layers of `studio_pbr` are **explicitly zeroed** for the materials that
+ * do not use them. One shader serves eight of the nine spheres, so "this material has no clear
+ * coat" has to be written as `clearCoat = 0`; an unwritten uniform is not a guaranteed zero.
+ */
+private fun MaterialInstance.push(
+    material: StudioMaterial,
+    metallic: Float = material.metallic,
+    roughness: Float = material.roughness,
+    traitAmount: Float = material.traitAmount,
+) {
+    val base = colorOf(material.color)
+
+    if (material.trait == MaterialTrait.Transmission) {
+        setParameter("color", base.x, base.y, base.z, 1f)
+        setParameter("roughness", roughness)
+        setParameter("reflectance", material.reflectance)
+        setParameter("transmission", traitAmount)
+        setParameter("ior", material.ior)
+        return
+    }
+
+    setParameter("color", base.x, base.y, base.z, 1f)
+    setParameter("metallic", metallic)
+    setParameter("roughness", roughness)
+    setParameter("reflectance", material.reflectance)
+
+    val coat = if (material.trait == MaterialTrait.ClearCoat) traitAmount else 0f
+    setParameter("clearCoat", coat)
+    setParameter("clearCoatRoughness", material.traitRoughness)
+
+    val tint = colorOf(material.traitColor)
+    if (material.trait == MaterialTrait.Sheen) {
+        setParameter("sheenColor", tint.x * traitAmount, tint.y * traitAmount, tint.z * traitAmount)
+    } else {
+        setParameter("sheenColor", 0f, 0f, 0f)
+    }
+    setParameter("sheenRoughness", material.traitRoughness)
+
+    // Emissive strength is a multiplier on the emitted colour, folded in here rather than
+    // carried as a second uniform: the shader only ever needs the product.
+    if (material.trait == MaterialTrait.Emissive) {
+        setParameter("emissive", tint.x * traitAmount, tint.y * traitAmount, tint.z * traitAmount)
+    } else {
+        setParameter("emissive", 0f, 0f, 0f)
+    }
+}
+
+// ─── Swatch ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The little sphere in front of a picker chip.
+ *
+ * Drawn rather than rendered: a tenth Filament view per chip would cost more than the scene
+ * it is labelling. A radial gradient from an off-centre highlight down to a shaded terminator
+ * is enough shape for the eye to read "ball", and the two stops come from the material itself
+ * — the highlight is brighter and less saturated for a smooth surface, flatter for a rough
+ * one, so chrome and brushed aluminium do not get the same dot.
+ */
+@Composable
+private fun MaterialSwatch(material: StudioMaterial) {
+    val base = material.color
+    // Roughness spreads the highlight and takes its peak down: a mirror keeps a small, near
+    // white hotspot, a rough surface barely lifts off its own colour.
+    val highlight = lerpColor(Color.White, base, 0.2f + 0.65f * material.roughness)
+    val shadow = lerpColor(base, Color.Black, 0.55f)
+    Canvas(modifier = Modifier.size(SWATCH_SIZE)) {
+        val radius = size.minDimension / 2f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(highlight, base, shadow),
+                center = Offset(size.width * 0.35f, size.height * 0.32f),
+                radius = radius * 1.55f,
+            ),
+            radius = radius,
+        )
+    }
+}
+
+/** Chip leading-icon box, the M3 default — a swatch that is not 18 dp misaligns the label. */
+private val SWATCH_SIZE = 18.dp
+
+/** Component-wise mix, so the swatch needs no `androidx.compose.ui.graphics.lerp` import. */
+private fun lerpColor(from: Color, to: Color, amount: Float): Color {
+    val t = amount.coerceIn(0f, 1f)
+    return Color(
+        red = from.red + (to.red - from.red) * t,
+        green = from.green + (to.green - from.green) * t,
+        blue = from.blue + (to.blue - from.blue) * t,
+        alpha = 1f,
+    )
+}
+
+// ─── Occlusion ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * `MaterialLoader.createOcclusionInstance()` — the SceneView equivalent of RealityKit's
+ * `OcclusionMaterial` and Sceneform's `MaterialFactory.makeOcclusionMaterial(...)`. Carried
+ * over from the retired `occlusion-material` demo (#1776), which #2239 Batch 4 folded in
+ * here, with its framing unchanged (#2304).
+ *
+ * A helmet sits at the origin under a static camera. A plane stands between the two at
+ * `z = +0.7 m` with its edge on the helmet's centre line.
+ *
+ * - **Occluder visible ON** — the plane wears a tinted unlit material, so the user can see
+ *   where it is. It hides the half of the helmet behind it because it is painted over it.
+ * - **Occluder visible OFF** — the same plane wears the occlusion material. It paints no
+ *   pixels at all, yet still writes depth, so the half of the helmet behind it fails the
+ *   depth test and disappears into the background. A sharp vertical cut, and nothing on top
+ *   of it. That is the whole feature.
+ *
+ * The section is non-AR, so the comparison reproduces on any device. For occluding virtual
+ * content against the **live camera depth image** instead of a static mesh, use
+ * [`ARCameraStream.isDepthOcclusionEnabled`][io.github.sceneview.ar.camera.ARCameraStream].
+ */
 @Composable
 private fun OcclusionSection(
     onBack: () -> Unit,
@@ -641,29 +794,18 @@ private fun OcclusionSection(
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    // Hoisted so the helmet loads once for the whole section — re-toggling the occluder
-    // never re-parses the GLB.
-    val helmetInstance = rememberModelInstance(
-        modelLoader,
-        "models/khronos_damaged_helmet.glb"
-    )
+    // Hoisted so the helmet loads once — re-toggling the occluder never re-parses the GLB.
+    val helmetInstance = rememberModelInstance(modelLoader, "models/khronos_damaged_helmet.glb")
 
-    // Two materials for the in-front plane.
-    //
-    // 1. `occlusionMaterial` — invisible, depth-writing. The thing this section exists to
-    //    demonstrate. Allocate once and reuse — no parameters to tweak.
     val occlusionMaterial = rememberOcclusionMaterialInstance(materialLoader)
-    // 2. `debugVisibleMaterial` — a translucent slate plate that lets the user see WHERE
-    //    the plane is when the toggle is ON. Used as a ground-truth visual; not the
-    //    feature being demonstrated.
+    // Ground truth, not the feature: a translucent slate plate that shows WHERE the plane is.
     val debugVisibleMaterial = rememberUnlitMaterialInstance(
         materialLoader,
         Color(0.4f, 0.4f, 0.45f, 1f),
     )
 
-    // UI state — true means "show the debug-visible plate", false means "use the occlusion
-    // material". Default `false` so the user opens the section on the actual feature — see
-    // the helmet visibly cut by an invisible plane — before being shown the ground truth.
+    // Default `false` so the section opens on the actual feature — a helmet visibly cut by an
+    // invisible plane — and the ground truth is one tap away, not the other way round.
     var occluderVisible by remember { mutableStateOf(false) }
 
     val firstFrame = rememberFirstFrameState()
@@ -672,23 +814,46 @@ private fun OcclusionSection(
         title = stringResource(R.string.demo_materials_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        loadingLabel = stringResource(R.string.demo_materials_loading),
+        peekHeader = stringResource(
+            if (occluderVisible) {
+                R.string.demo_occlusion_material_status_visible
+            } else {
+                R.string.demo_occlusion_material_status_occluding
+            }
+        ),
+        onResetSettings = { occluderVisible = false },
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.Compare,
+                caption = "Occluder",
+                label = "Show the occluder plane",
+                onClick = { occluderVisible = !occluderVisible },
+                selected = occluderVisible,
+            ),
+        ),
         controls = {
             ModeSelector(mode, onModeChange)
+            // Toggleable on the whole row so tapping the label flips the state and
+            // UiAutomator finds a clickable ancestor — the contract the Post-FX switches in
+            // LightingLabDemo and the Lines & Paths switches share.
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = occluderVisible,
+                        onValueChange = { occluderVisible = it },
+                    ),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = stringResource(R.string.demo_occlusion_material_toggle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge,
                 )
-                Switch(
-                    checked = occluderVisible,
-                    onCheckedChange = { occluderVisible = it },
-                )
+                Switch(checked = occluderVisible, onCheckedChange = null)
             }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
                 text = stringResource(R.string.demo_occlusion_material_explainer),
                 style = MaterialTheme.typography.bodySmall,
@@ -704,45 +869,23 @@ private fun OcclusionSection(
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
-                // Studio IBL (no skybox) — the helmet reads via its own lighting against
-                // the dark background, and the occluded region stays dark too, so the
-                // hidden half reads as "gone" rather than as a painted slab (#2304).
+                // Studio IBL, no skybox: the occluded region has to read as *gone*, and it
+                // can only do that against a background the hidden half melts into.
                 environment = rememberModelDemoEnvironment(environmentLoader),
-                // Static camera — the whole section is about depth ordering at a fixed
-                // viewpoint. No orbit so the user sees the occlusion effect from a single,
-                // reproducible angle. Framed close on the helmet (which sits at the world
-                // origin) so it fills the viewport; eye x == target x == 0, so the occluder
-                // wall's edge (at world x = 0) projects to the screen centre — a clean
-                // vertical cut down the helmet's middle (#2304).
+                // Static camera — the section is about depth ordering at a fixed viewpoint.
+                // eye x == target x == 0, so the occluder's edge (world x = 0) projects to
+                // the screen centre: a clean vertical cut down the helmet's middle (#2304).
                 cameraManipulator = rememberCameraManipulator(
                     orbitHomePosition = Position(0f, 0.2f, 1.4f),
                     targetPosition = Position(0f, 0f, 0f),
                 ),
-                // The hand-authored helmet + plane positions are meaningful — keep them
-                // in world space instead of letting the union bbox auto-centre move
-                // them (same reason as CollisionDemo / #1430).
+                // The hand-authored helmet + plane positions are meaningful — keep them in
+                // world space instead of letting the union bbox auto-centre move them.
                 autoCenterContent = false,
             ) {
-                val instance = helmetInstance
-                if (instance != null) {
-                    // Helmet at the world origin, scaled to 0.6 m so it fills the close
-                    // framing (#2304) — the target one lateral half of which the occluder
-                    // hides. Placed at the origin and viewed by a camera looking at the
-                    // origin (the proven framing pattern other demos use); centerOrigin is
-                    // *not* used here because the composable's `position` overrides it.
-                    ModelNode(
-                        modelInstance = instance,
-                        scaleToUnits = 0.6f,
-                    )
+                helmetInstance?.let { instance ->
+                    ModelNode(modelInstance = instance, scaleToUnits = 0.6f)
                 }
-                // Occluder wall at z = +0.7 m — between the camera (z = +1.4) and the
-                // helmet (at the origin), so it clearly sits in front. Its edge is at
-                // world x = 0 (the helmet's centre line) and it extends to one side, so it
-                // hides exactly one lateral half of the helmet: the other half stays fully
-                // visible, giving an obvious vertical occlusion cut down the middle (#2304).
-                // The previous 0.5×0.5 plane was *centred* on the helmet and, being closer
-                // to the camera, covered the whole silhouette — so the helmet simply
-                // vanished and nothing read.
                 PlaneNode(
                     size = Size(x = 1.4f, y = 1.4f, z = 0f),
                     materialInstance =
@@ -757,24 +900,3 @@ private fun OcclusionSection(
         }
     }
 }
-
-/** Resolution lifecycle for a streamed material slug. See [PbrSection]. */
-private sealed interface MaterialResolveState {
-    /** Resolve coroutine in flight. */
-    data object Loading : MaterialResolveState
-
-    /**
-     * Nothing to resolve — either the bundled subject is selected (the cold-launch
-     * default, #2874) or the registry's `materials` category is empty (#2122).
-     * Either way the streamed pipeline stays idle; what the viewport shows is
-     * driven by the bundled instance.
-     */
-    data object Empty : MaterialResolveState
-
-    /** Resolve succeeded — [file] is the on-disk GLB (streamed or bundled fallback). */
-    data class Resolved(val file: File) : MaterialResolveState
-
-    /** Resolve failed — [message] is a short human-readable reason. */
-    data class Error(val message: String) : MaterialResolveState
-}
-

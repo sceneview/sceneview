@@ -1,0 +1,60 @@
+// studio_pbr.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The `materials` demo's gallery surface (#3495). Metallic-roughness plus the
+//             three optional layers Filament's `lit` model can stack on top of it in one
+//             shader: a clear coat, a sheen lobe, and emission.
+// Used by:    samples/android-demo MaterialsDemo — nothing in the SDK.
+// Parameters:
+//   color              — float4, base RGBA. For a metal this is its measured reflectance.
+//   metallic           — float [0,1], 0 = dielectric, 1 = metal.
+//   roughness          — float [0,1], 0 = mirror, 1 = fully diffuse.
+//   reflectance        — float [0,1], dielectric Fresnel at normal incidence.
+//   clearCoat          — float [0,1], strength of the second specular lobe. 0 disables it.
+//   clearCoatRoughness — float [0,1], gloss of the coat itself.
+//   sheenColor         — float3, retro-reflective rim tint. (0,0,0) disables it.
+//   sheenRoughness     — float [0,1], spread of the sheen fuzz.
+//   emissive           — float3, emitted radiance, strength already folded in by the caller.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the
+//               AAR, so it does not need the desktop backends the SDK materials keep.
+//
+// Why this exists rather than Filament's gltfio ubershader: the ubershader declares the full
+// glTF vertex layout as REQUIRED (position | tangents | color | uv0 | uv1 = 0x1f). SceneView's
+// procedural `SphereNode` geometry declares 0xb (position | tangents | uv0), so every sphere
+// hit Filament's "missing required attributes (0x1f), declared=0xb" path and rendered with a
+// zero vertex colour — nine black balls. A material that requires only what the primitive
+// actually has is the fix; #3495 has the before/after captures.
+material {
+    "name" : "Studio PBR",
+    "parameters" : [
+        { "type" : "float4", "name" : "color" },
+        { "type" : "float",  "name" : "metallic" },
+        { "type" : "float",  "name" : "roughness" },
+        { "type" : "float",  "name" : "reflectance" },
+        { "type" : "float",  "name" : "clearCoat" },
+        { "type" : "float",  "name" : "clearCoatRoughness" },
+        { "type" : "float3", "name" : "sheenColor" },
+        { "type" : "float",  "name" : "sheenRoughness" },
+        { "type" : "float3", "name" : "emissive" }
+    ],
+    "requires" : [ "position", "uv0" ],
+    "shadingModel" : "lit",
+    "blending" : "opaque",
+    "doubleSided" : false
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = materialParams.color;
+        material.metallic = materialParams.metallic;
+        material.roughness = materialParams.roughness;
+        material.reflectance = materialParams.reflectance;
+        material.clearCoat = materialParams.clearCoat;
+        material.clearCoatRoughness = materialParams.clearCoatRoughness;
+        material.sheenColor = materialParams.sheenColor;
+        material.sheenRoughness = materialParams.sheenRoughness;
+        // The alpha of `emissive` is an exposure weight, not opacity: 0 means the value is
+        // absolute radiance and does not scale with the camera's exposure, which is what makes
+        // the glow ball read the same under every environment in the picker.
+        material.emissive = vec4(materialParams.emissive, 0.0);
+    }
+}
