@@ -165,8 +165,9 @@ class DemoRenderingScreenshotTest {
     @Test
     fun pickingCollisionDemo_default_state() {
         // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
-        // The default landing tab is Ray Hit-Test, so the captured frame is comparable to
-        // the prior `collision_default` golden once it is re-baselined.
+        // There is no landing tab any more: the screen shows the ray-hit shapes and the
+        // ViewNode "Live Compose in 3D" card in a single scene, which is what this golden
+        // holds since it was re-baselined for #3551.
         captureAndCompare(demoSlug = "picking-collision", goldenName = "pickingcollision_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
