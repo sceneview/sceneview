@@ -35,7 +35,13 @@ import kotlin.math.abs
  *   - GitHub Actions `ubuntu-22.04` runner with `enable-kvm` + `reactivecircus/android-emulator-runner`
  *     (hardware-accelerated emulator)
  *   - Firebase Test Lab (`gcloud firebase test android run …`) on real devices
- *   - Or simply `connectedDebugAndroidTest` against a tethered Pixel during local dev
+ *
+ * **Geometry is not negotiable**: goldens are 1080x2304 (a 1080x2400 @ 420 dpi frame
+ * minus the [STATUS_BAR_PX] status bar), and [compare] refuses any other size outright —
+ * it will not rescale, because resampling invents pixels a percentage budget then has to
+ * pretend to measure. Record on the shared `Pixel_7a` AVD, never a personal device; the
+ * procedure lives in `androidTest/assets/render-goldens/README.md` and that file is the
+ * source of truth the CI workflow comment defers to (#3551).
  *
  * **Goldens**: PNGs in `samples/android-demo/src/androidTest/assets/render-goldens/`.
  * On first run (no golden), the captured image is saved for promotion and the test is
@@ -53,6 +59,16 @@ import kotlin.math.abs
 class DemoRenderingScreenshotTest {
 
     private lateinit var device: UiDevice
+
+    /**
+     * Set by `-Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true`. Declares
+     * that this run is on a software rasterizer (SwiftShader on a CI emulator), where
+     * Filament presents no frame at all. It downgrades exactly one outcome — "the demo
+     * showed its never-rendered-a-frame card" — from a failure to a skip. It does NOT relax
+     * any pixel comparison: a frame that does render is still held to its golden.
+     */
+    private val softwareRenderer: Boolean
+        get() = InstrumentationRegistry.getArguments().getString("softwareRenderer") == "true"
 
     @Before
     fun setUp() {
@@ -416,6 +432,33 @@ class DemoRenderingScreenshotTest {
                     "Refusing to capture or compare an empty viewport.",
             )
         }
+        // The demo tells us itself when the renderer produced nothing: `DemoScaffold`
+        // draws a "Still loading… / The scene has not rendered a frame yet." card over
+        // the viewport. That card is opaque, non-flat content, so `hasRenderedContent`
+        // reads it as "the scene settled" and the run goes on to compare a picture of a
+        // loading message against a golden — 99.75 % of pixels different, reported as a
+        // render regression. It is not one; on a software rasterizer Filament simply
+        // never presents a frame (#3551 — every SwiftShader CI capture is this card).
+        //
+        // Default behaviour is a hard failure, because on a real GPU this card IS the
+        // bug this suite exists to catch. A run that knows it is on a software renderer
+        // opts out with `-Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true`
+        // and gets an explicit skip instead — the same opt-in shape as the `gpuReadback`
+        // flag the library's render tests use (#803, #912). Skipped-with-a-reason is the
+        // honest verdict there; a permanent red that means "wrong hardware" trains
+        // everyone to ignore the leg.
+        if (device.hasObject(By.textContains(STALL_CARD_TEXT))) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_rendered_a_frame")
+            val message = "Demo '$demoSlug' displayed its \"$STALL_CARD_TEXT\" card: the " +
+                "renderer never presented a frame, so there is nothing to compare against " +
+                "$goldenName. Capture saved to $savedTo."
+            if (softwareRenderer) {
+                assumeTrue("$message Skipped: this run declared softwareRenderer=true.", false)
+                return
+            }
+            throw AssertionError(message)
+        }
+
         // Crop the system status bar overlay before saving + comparing. UiAutomator's
         // `takeScreenshot` returns the FULL composited frame including the system bars
         // — clock, wifi/cellular, battery, notification icons, weather — which would
@@ -668,6 +711,15 @@ class DemoRenderingScreenshotTest {
 
         /** Exact text of `DemoScaffold`'s qa_mode pill — the positive cue that the demo composed. */
         const val QA_PILL_TEXT = "QA ×"
+
+        /**
+         * `R.string.demo_loading_stalled_body`, verbatim. The negative cue: the demo is
+         * composed but the renderer has presented nothing. Kept as a literal for the same
+         * reason as [QA_PILL_TEXT] — the app does not set `testTagsAsResourceId`, so the
+         * visible text is the only handle UiAutomator has. Editing that string without
+         * editing this one makes the check silently stop matching, so they move together.
+         */
+        const val STALL_CARD_TEXT = "The scene has not rendered a frame yet."
 
         /** Every demo slug in `DemoRegistry` is lower-kebab; nothing here reaches a shell unchecked. */
         val DEMO_SLUG_PATTERN = Regex("[a-z0-9]+(-[a-z0-9]+)*")
