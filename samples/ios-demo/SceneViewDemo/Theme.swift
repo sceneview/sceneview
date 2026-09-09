@@ -352,6 +352,18 @@ extension View {
         #endif
     }
 
+    /// Hides the navigation bar on iOS (`.toolbar(.hidden, for: .navigationBar)`);
+    /// a no-op on macOS, where `ToolbarPlacement.navigationBar` does not exist
+    /// and the call fails to compile (the v4.33.0 macOS archive, #3556).
+    @ViewBuilder
+    func hideNavigationBar() -> some View {
+        #if os(iOS)
+        self.toolbar(.hidden, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+
     /// Apply SceneView card styling
     func sceneViewCard() -> some View {
         self

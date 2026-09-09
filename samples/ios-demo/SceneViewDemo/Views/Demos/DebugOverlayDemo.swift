@@ -53,7 +53,7 @@ struct DebugOverlayDemo: View {
         }
         .navigationTitle("Debug Overlay")
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleInline()
         #endif
         .onAppear  { fps.start() }
         .onDisappear { fps.stop() }
