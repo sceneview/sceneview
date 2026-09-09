@@ -15,3 +15,11 @@
   and code panels are composited by a new versioned tool, `tools/store-screenshots/compose.py`,
   driven by a manifest that names every output — no PNG is retouched by hand, and DESIGN.md
   tokens are the only colours it draws with.
+- **The AR screenshot now shows the app, not just a room.** The "Real size, your room" slot was a
+  generated photo with no app UI in it at all — the same defect the audit filed against the slot it
+  replaced, and a screenshot that shows no app is one Google can refuse. It is now a composite: the
+  generated room carries the AR screen's **real** chrome, captured on `emulator-5554` and keyed off
+  the flat-black AR surface by `compose.py` (`kind: ar`) — the back arrow, the `Tap to Place`
+  identity pill, the `Model · Sheen Chair` placement bar, the reset control and Settings, drawn as
+  the app draws them. The subject is the chair the captured chrome has armed, so the bar names the
+  model the frame shows.

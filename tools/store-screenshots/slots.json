@@ -1,23 +1,161 @@
 {
   "_comment": "Captions are the listing's six promises, in order. `src` paths are the raw captures described in README.md; `out` paths are what .claude/scripts/store-sync/play_listing.py globs and uploads.",
   "snippet": [
-    [0, "@Composable", [203, 166, 247]],
-    [0, "fun ModelScreen() {", [137, 180, 250]],
-    [1, "Scene(", [137, 180, 250]],
-    [2, "modifier = Modifier.fillMaxSize(),", [201, 209, 217]],
-    [2, "childNodes = listOf(", [201, 209, 217]],
-    [3, "rememberModelNode(\"helmet.glb\")", [166, 227, 161]],
-    [2, ")", [201, 209, 217]],
-    [1, ")", [201, 209, 217]],
-    [0, "}", [201, 209, 217]]
+    [
+      0,
+      "@Composable",
+      [
+        203,
+        166,
+        247
+      ]
+    ],
+    [
+      0,
+      "fun ModelScreen() {",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
+      1,
+      "Scene(",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
+      2,
+      "modifier = Modifier.fillMaxSize(),",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      2,
+      "childNodes = listOf(",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      3,
+      "rememberModelNode(\"helmet.glb\")",
+      [
+        166,
+        227,
+        161
+      ]
+    ],
+    [
+      2,
+      ")",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      1,
+      ")",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      0,
+      "}",
+      [
+        201,
+        209,
+        217
+      ]
+    ]
   ],
   "slots": [
-    {"caption": "Open any 3D file",        "src": "tools/store-screenshots/raw/open-3mf.png",      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png", "size": "1080x2304", "crop_top": 96},
-    {"caption": "Real size, your room",    "src": "tools/store-screenshots/raw/ar-room-phone.png", "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-2.png", "size": "1080x2304", "crop_top": 0},
-    {"caption": "50 demos, source included","src": "tools/store-screenshots/raw/home-demos.png",   "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-3.png", "size": "1080x2304", "crop_top": 96},
-    {"caption": "HDR lighting, one tap",   "src": "tools/store-screenshots/raw/model-hdr.png",     "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-4.png", "size": "1080x2304", "crop_top": 96},
-    {"caption": "Real-time sky and light", "src": "tools/store-screenshots/raw/sky-sun.png",       "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-5.png", "size": "1080x2304", "crop_top": 96},
-    {"caption": "A few lines of Compose",  "src": "tools/store-screenshots/raw/model-hdr.png",     "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-6.png", "size": "1080x2304", "crop_top": 96, "kind": "split"},
-    {"kind": "banner", "headline": "Open any 3D file", "subline": "GLB, glTF, 3MF, STL, OBJ, PLY - in AR, at real size", "src": "tools/store-screenshots/raw/ar-room-phone.png", "out": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png", "size": "1024x500", "caption": "-"}
+    {
+      "caption": "Open any 3D file",
+      "src": "tools/store-screenshots/raw/open-3mf.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png",
+      "size": "1080x2304",
+      "crop_top": 96
+    },
+    {
+      "caption": "Real size, your room",
+      "kind": "ar",
+      "bg": "tools/store-screenshots/raw/ar-room-chair-phone.png",
+      "ui": "tools/store-screenshots/raw/ar-chrome-black.png",
+      "ui_crop_top": 96,
+      "shadow": [
+        0.52,
+        0.762,
+        0.34,
+        0.016,
+        0.35
+      ],
+      "src": "tools/store-screenshots/raw/ar-room-composited.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-2.png",
+      "size": "1080x2304",
+      "crop_top": 0,
+      "ui_keep": [
+        [
+          120,
+          340
+        ],
+        [
+          1840,
+          2300
+        ]
+      ]
+    },
+    {
+      "caption": "50 demos, source included",
+      "src": "tools/store-screenshots/raw/home-demos.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-3.png",
+      "size": "1080x2304",
+      "crop_top": 96
+    },
+    {
+      "caption": "HDR lighting, one tap",
+      "src": "tools/store-screenshots/raw/model-hdr.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-4.png",
+      "size": "1080x2304",
+      "crop_top": 96
+    },
+    {
+      "caption": "Real-time sky and light",
+      "src": "tools/store-screenshots/raw/sky-sun.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-5.png",
+      "size": "1080x2304",
+      "crop_top": 96
+    },
+    {
+      "caption": "A few lines of Compose",
+      "src": "tools/store-screenshots/raw/model-hdr.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-6.png",
+      "size": "1080x2304",
+      "crop_top": 96,
+      "kind": "split"
+    },
+    {
+      "kind": "banner",
+      "headline": "Open any 3D file",
+      "subline": "GLB, glTF, 3MF, STL, OBJ, PLY - in AR, at real size",
+      "src": "tools/store-screenshots/raw/ar-room-phone.png",
+      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png",
+      "size": "1024x500",
+      "caption": "-"
+    }
   ]
 }

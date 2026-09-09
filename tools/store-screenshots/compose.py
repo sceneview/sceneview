@@ -31,7 +31,7 @@ import json
 import os
 import pathlib
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 # DESIGN.md, dark column.
 SURFACE = (13, 17, 23)
@@ -126,6 +126,87 @@ def code_panel(size, lines, pad=44):
     for i, (indent, text, colour) in enumerate(lines):
         d.text((pad + indent * fsize * 0.62, pad + i * step), text, font=font, fill=colour)
     return panel
+
+
+def contact_shadow(im, cx, cy, rx, ry, strength=0.55, blur=None):
+    """Darken an ellipse under the subject so it sits on the surface.
+
+    A generated AR visual reads as a sticker without one: the object is lit but
+    nothing under it is. Multiplied, never painted grey, so the wood grain stays
+    visible through the shadow.
+    """
+    w, h = im.size
+    blur = blur if blur is not None else int(ry * 0.55)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).ellipse([cx - rx, cy - ry, cx + rx, cy + ry],
+                                 fill=int(255 * strength))
+    mask = mask.filter(ImageFilter.GaussianBlur(blur))
+    return ImageChops.multiply(im, ImageChops.invert(mask).convert("RGB"))
+
+
+def merge_ar(bg_src, ui_src, ui_crop_top=0, shadow=None, floor=8, keep=None,
+             matte="opaque"):
+    """Composite the app's real AR chrome over a generated room photo.
+
+    No emulator has a camera, so an AR frame captured on `emulator-5554` shows
+    the app's chrome over a **flat black** AR surface (launch the demo with
+    `--ez qa_backdrop false`; the QA room backdrop must stay off, it is exactly
+    what has to be replaced here). Chrome over black is already premultiplied:
+    a pixel reads `alpha * colour`, so `max(r, g, b)` is that alpha for the
+    white-on-glass vocabulary this UI draws with, and
+
+        out = bg * (1 - alpha) + captured
+
+    puts the real bar, pill, reticle and back arrow over the room with their own
+    translucency intact — no hand-cut mask, no repainted UI. Pixels under
+    `floor` are the black surface itself and drop out.
+    """
+    bg = Image.open(bg_src).convert("RGB")
+    ui = Image.open(ui_src).convert("RGB")
+    if keep:
+        # Keep only the declared chrome bands of the capture. On this AVD the AR
+        # session cannot start (no camera HAL), so the same frame also carries an
+        # error banner and a retry dialog: bands are how the composite takes the
+        # real bars without them. Nothing is painted, only excluded.
+        band_only = Image.new("RGB", ui.size, (0, 0, 0))
+        for y0, y1 in keep:
+            band_only.paste(ui.crop((0, y0, ui.width, y1)), (0, y0))
+        ui = band_only
+    if ui_crop_top:
+        ui = ui.crop((0, ui_crop_top, ui.width, ui.height))
+    if ui.size != bg.size:
+        ui = ui.resize(bg.size, Image.LANCZOS)
+
+    if shadow:
+        bg = contact_shadow(bg, *[int(v * (bg.width if i % 2 == 0 else bg.height))
+                                  for i, v in enumerate(shadow[:4])],
+                            strength=shadow[4] if len(shadow) > 4 else 0.55)
+
+    r, g, b = ui.split()
+    peak = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    if matte == "add":
+        # Premultiplied reading: `max(r, g, b)` is the coverage. Right for the
+        # light-on-nothing marks (text, icons, thin strokes), wrong for a filled
+        # pill — a solid #00448D bar would let 45% of a bright floor through and
+        # read as washed-out plastic, which is how the first pass of this slot
+        # looked.
+        alpha = peak.point(lambda v: 0 if v <= floor else v)
+    else:
+        # Shape reading, the default: anything the chrome drew at all is its own
+        # opaque colour, with only the anti-aliased rim ramping. The bar, the
+        # pills and the icons then land on the room exactly as the capture drew
+        # them instead of being tinted by whatever is behind.
+        lo, hi = floor / 2, floor * 2.2
+        alpha = peak.point(
+            lambda v: 0 if v <= lo else (255 if v >= hi else int(255 * (v - lo) / (hi - lo))))
+    solid = alpha.point(lambda v: 255 if v else 0)
+    ui = ImageChops.multiply(ui, Image.merge("RGB", (solid, solid, solid)))
+    if matte != "add":
+        # Un-premultiply nothing: `ui` already carries the drawn colour, so scale
+        # it by the same alpha the background is dimmed with.
+        ui = ImageChops.multiply(ui, Image.merge("RGB", (alpha, alpha, alpha)))
+    dim = ImageChops.multiply(bg, ImageChops.invert(alpha).convert("RGB"))
+    return ImageChops.add(dim, ui)
 
 
 def _metrics(tw, band, margin, radius, bottom_margin):
@@ -303,6 +384,18 @@ def main():
                               band=item.get("band"), margin=item.get("margin"),
                               zoom=item.get("zoom", 1.0),
                               focus=item.get("focus", 0.32))
+            elif kind == "ar":
+                merged = root / item["src"]
+                frame = merge_ar(root / item["bg"], root / item["ui"],
+                                 ui_crop_top=item.get("ui_crop_top", 0),
+                                 shadow=item.get("shadow"),
+                                 keep=item.get("ui_keep"),
+                                 matte=item.get("matte", "opaque"))
+                merged.parent.mkdir(parents=True, exist_ok=True)
+                frame.save(merged, "PNG")
+                compose(merged, out, item["caption"], size,
+                        crop_top=item.get("crop_top", 0),
+                        band=item.get("band"), margin=item.get("margin"))
             elif kind == "banner":
                 banner(root / item["src"], out, item["headline"], item["subline"], size)
             else:
