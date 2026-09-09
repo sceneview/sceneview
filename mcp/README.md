@@ -12,7 +12,7 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) server for **[SceneView](https://sceneview.github.io)** — the cross-platform 3D & AR SDK for Android (Jetpack Compose + Filament), iOS / macOS / visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR).
 
-Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio, or remotely over Streamable HTTP for ChatGPT, Codex and the OpenAI API (see [Remote server](#remote-server-streamable-http--chatgpt-codex-openai-api)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
+Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio, remotely over Streamable HTTP at **`https://mcp.sceneview.dev/mcp`** (see [Use as a Claude connector](#use-as-a-claude-connector)), or self-hosted for ChatGPT, Codex and the OpenAI API (see [Remote server](#remote-server-streamable-http--chatgpt-codex-openai-api)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
 
 > **Disclaimer:** Generated code is provided "as is" without warranty. Always review before production use. See [TERMS.md](./TERMS.md) and [PRIVACY.md](./PRIVACY.md).
 
@@ -59,6 +59,30 @@ Two options.
 ```bash
 claude mcp add sceneview -- npx -y sceneview-mcp
 ```
+
+### Use as a Claude connector
+
+No install, nothing to run: SceneView is hosted as a remote MCP server and can be added to
+[claude.ai](https://claude.ai) — web, desktop and mobile — as a **custom connector**.
+
+```
+https://mcp.sceneview.dev/mcp
+```
+
+In claude.ai, open **Settings → Connectors → Add custom connector**, paste that URL, name it
+`SceneView`, and click **Add**. The tools appear in the next conversation; the inline 3D viewer
+renders models straight in the chat.
+
+**Authless and read-only.** There is no sign-in, no API key and no account: every tool is a pure
+function of the SDK's own documentation, samples and API surface, so there is nothing to
+authenticate and nothing of yours stored. All tools are annotated `readOnlyHint` except
+`generate_3d_model`, which calls an external generation service and is therefore marked
+open-world rather than read-only.
+
+**Prefer it local?** `npx sceneview-mcp` runs the exact same server over stdio (see
+[Claude Desktop](#claude-desktop) and [Claude Code](#claude-code) above). The local route is the
+one that reads your project from disk (`analyze_project`) and the one that accepts your own
+`SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous, cannot.
 
 ### Cursor
 
@@ -114,6 +138,11 @@ curl -s http://127.0.0.1:3333/mcp \
 ```
 
 Point the ChatGPT connector / OpenAI `mcp` tool at `https://<your-host>/mcp`.
+
+**Already hosted.** You do not have to run it yourself to get a public URL: the same code is
+deployed at `https://mcp.sceneview.dev/mcp` (`GET /health` answers `{"status":"ok"}`), which is
+what the [Claude connector](#use-as-a-claude-connector) above points at. Self-host when you want
+your own keys, your own rate limits, or `analyze_project` against a local checkout.
 
 ---
 

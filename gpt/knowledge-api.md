@@ -3135,9 +3135,11 @@ Key facts an AI codegen pass must get right:
   reactively after creation, re-push them from a `LaunchedEffect` keyed on the new
   values (the `apply` block runs only once at node creation).
 
-The `camera-gestures` demo in `samples/android-demo` (Node Gestures tab) is the
-canonical end-to-end example: it wires every flag to a UI switch, a
-scale-sensitivity slider, and a live-transform overlay.
+The `camera-gestures` demo in `samples/android-demo` is the canonical end-to-end
+example. Its dock's **Move** item flips `isEditable` on whichever subject currently has
+focus, so the same drag / twist / pinch moves the object instead of the camera — in the
+same scene, next to the camera it competes with for the gesture — and the SDK's on-model
+affordances are drawn over it.
 
 ### On-model gesture feedback (opt-in)
 
