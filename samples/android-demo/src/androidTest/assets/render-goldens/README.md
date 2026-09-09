@@ -8,10 +8,12 @@ PNG screenshots of the actual Filament-rendered demo output, captured by
 
 1. Add a `@Test fun` in `DemoRenderingScreenshotTest` that calls
    `captureAndCompare(demoSlug, goldenName, settleSeconds)`.
-2. Run the test once on a real device (Pixel 9 / Pixel 7a / etc.):
+2. Run the test once on the shared `Pixel_7a` AVD — see "Where goldens are
+   recorded" below; never on a personal device:
    ```bash
-   ./gradlew :samples:android-demo:connectedDebugAndroidTest \
-       --tests DemoRenderingScreenshotTest.<methodName>
+   bash .claude/scripts/setup-ar-emulator.sh
+   ANDROID_SERIAL=emulator-5554 ./gradlew :samples:android-demo:connectedDebugAndroidTest \
+       -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest#<methodName>
    ```
 3. The test skips (`assumeTrue`) and saves the captured first-run image.
 4. Pull and **look at it** — this step is not optional, see "What the harness cannot
@@ -52,9 +54,40 @@ hardware. If a particular demo has more variance (e.g. animated scenes) loosen
 the per-test thresholds; if a demo is fully deterministic (single static frame),
 tighten to catch sub-pixel regressions.
 
+## Where goldens are recorded
+
+**This section is the source of truth for the recording procedure; the
+`demo-render-goldens` comment in `.github/workflows/render-tests.yml` defers to
+it.**
+
+Every golden in this directory is recorded on the shared `Pixel_7a` AVD
+(`emulator-5554`, created by `.claude/scripts/setup-ar-emulator.sh`): **1080x2400
+@ 420 dpi, light mode, hardware GPU**. The test crops the top 96 px of status
+bar, so the committed PNGs are **1080x2304**. Anything recorded at another
+geometry fails every comparison on `Size mismatch` before a pixel is read — that
+is not a hypothetical, it is what the CI leg did for months (#3551).
+
 ## CI
 
-Currently runs only on `connectedDebugAndroidTest` — needs a real device or a
-hardware-accelerated emulator (KVM-enabled GitHub Actions Linux runner, or
-Firebase Test Lab). SwiftShader software renderer crashes on `capturePixels`;
-see the `@Ignore` blocks in `sceneview/src/androidTest/.../render/` for context.
+`demo-render-goldens` in `.github/workflows/render-tests.yml` runs this suite on
+every push to `main`, on a `pixel_8`-profile emulator — the same 1080x2400 @ 420
+dpi geometry as the recording AVD, so the comparison actually executes. It is
+**advisory** (`continue-on-error`), and it renders on SwiftShader rather than a
+hardware GPU, so what its verdict is worth is asymmetric:
+
+- A red case there is a **lead**: it reliably catches a demo that no longer
+  launches, a viewport that never renders, a missing or degenerate golden, and
+  chrome/layout drift. Reproduce it on the AVD above before concluding anything.
+- **Never promote a capture from that job's artifact into a golden.** SwiftShader
+  and the recording GPU do not agree pixel-for-pixel; a baseline recorded from CI
+  would then fail on every real device.
+
+The job writes its real executed/passed/failed counts to the run's step summary,
+so "the leg was green" and "the leg compared something" are separate, visible
+facts.
+
+The `sceneview` library's own render tests are a different story: they
+`assumeTrue`-skip on SwiftShader because Filament's `readPixels` crashes there
+(see the `@Ignore` blocks in `sceneview/src/androidTest/.../render/`). This suite
+does not use `readPixels` — it screenshots the composited frame through
+UiAutomator — which is why it runs on CI at all.

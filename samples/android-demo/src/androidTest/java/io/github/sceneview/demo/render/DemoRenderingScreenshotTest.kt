@@ -35,7 +35,13 @@ import kotlin.math.abs
  *   - GitHub Actions `ubuntu-22.04` runner with `enable-kvm` + `reactivecircus/android-emulator-runner`
  *     (hardware-accelerated emulator)
  *   - Firebase Test Lab (`gcloud firebase test android run …`) on real devices
- *   - Or simply `connectedDebugAndroidTest` against a tethered Pixel during local dev
+ *
+ * **Geometry is not negotiable**: goldens are 1080x2304 (a 1080x2400 @ 420 dpi frame
+ * minus the [STATUS_BAR_PX] status bar), and [compare] refuses any other size outright —
+ * it will not rescale, because resampling invents pixels a percentage budget then has to
+ * pretend to measure. Record on the shared `Pixel_7a` AVD, never a personal device; the
+ * procedure lives in `androidTest/assets/render-goldens/README.md` and that file is the
+ * source of truth the CI workflow comment defers to (#3551).
  *
  * **Goldens**: PNGs in `samples/android-demo/src/androidTest/assets/render-goldens/`.
  * On first run (no golden), the captured image is saved for promotion and the test is

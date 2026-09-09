@@ -268,19 +268,38 @@ jobs:
           path: demo-screenshots/
           if-no-files-found: ignore
 
-  # ── AR demo playback screenshot regression ────────────────────────────────
-  # Frame-indexed AR screenshot pipeline (#1050): replays the bundled ARCore
-  # recording through ARRecordPlaybackDemo and captures the rendered frame at
-  # fixed ARCore frame indices (f=30/60/120/180) for golden comparison.
+  # ── Unified-demo render goldens ────────────────────────────────────────────
+  # #2323, #3551. Runs DemoRenderingScreenshotTest against the geometry its
+  # goldens are recorded at.
   #
-  # Unified-demo render goldens (#2323). Runs DemoRenderingScreenshotTest on the
-  # SAME pinned emulator profile as the AR job below — goldens for
-  # `samples/android-demo/src/androidTest/assets/render-goldens/` MUST come from
-  # this exact config (GPU divergence flags false positives on any other).
-  # Non-blocking until the 8 missing baselines are pulled from this job's
-  # artifact, reviewed and committed; with no golden the test assumeTrue-skips
-  # and uploads first-run captures (#2323's silent-skip gap becomes a visible,
-  # harvestable artifact instead).
+  # Until #3551 this job passed no `profile:` at all, so the action created the
+  # system image's default AVD, which renders at 320x544. Every golden under
+  # `samples/android-demo/src/androidTest/assets/render-goldens/` is 1080x2304
+  # (a 1080x2400 frame minus the 96 px status bar the test crops), so every case
+  # died on `Size mismatch` before it read a single pixel — and the `|| true`
+  # plus `continue-on-error` reported that as green for months. `profile:
+  # pixel_8` is the fix: 1080x2400 @ 420 dpi, the same device profile
+  # `.claude/scripts/setup-ar-emulator.sh` gives the shared `Pixel_7a` AVD the
+  # goldens are recorded on, so the comparison actually executes. Rescaling or
+  # letter-boxing the capture inside the test was the alternative and was
+  # rejected: resampling invents pixels, and a 2 % fail budget cannot mean
+  # anything on top of an interpolation.
+  #
+  # What this leg's verdict is worth. The goldens are recorded on a hardware GPU
+  # (see `render-goldens/README.md`, which is the source of truth for the
+  # recording procedure); this leg renders on SwiftShader. Same geometry, same
+  # chrome, different rasterizer — so it catches, reliably: a demo that no
+  # longer launches, a viewport that never renders, a golden that is missing or
+  # degenerate, and chrome/layout drift (the class of breakage that made 9 of 10
+  # goldens stale in #3551). Its per-case pixel percentages are a lead, not a
+  # verdict: reproduce on the recording AVD before re-baselining anything.
+  # NEVER promote a capture pulled from this job's artifact into a golden.
+  #
+  # It therefore stays `continue-on-error: true` — advisory, like every other
+  # non-`android-library-render` leg here (CONTRIBUTING.md, "Heavy suites on
+  # main"). Advisory is not silent: the `Report render-golden results` step below
+  # writes the real executed/passed/failed counts to the job summary and
+  # annotates a shortfall, so "green" can no longer mean "compared nothing".
   demo-render-goldens:
     name: Unified-demo render goldens (emulator)
     # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
@@ -306,22 +325,58 @@ jobs:
       - name: Run unified-demo render screenshot tests
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          # Pinned emulator profile — identical to the AR job (#1050 §4).
           api-level: 30
           target: google_apis
           arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          # 1080x2400 @ 420 dpi — the golden geometry. See the block comment above.
+          profile: pixel_8
+          # The 320x544 default was also 13x fewer pixels to rasterize. At golden
+          # size SwiftShader has to software-rasterize a real phone framebuffer,
+          # and the previous run died with `adb: device offline` after three
+          # cases — the emulator process itself went away mid-suite, which is
+          # also why `demo-render-golden-captures` has never contained a file
+          # (the `adb pull` ran against a device that no longer existed). More
+          # RAM, more cores and a data partition big enough for 15 full-size
+          # PNGs are the headroom that run did not have.
+          cores: 4
+          ram-size: 6144M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -partition-size 4096 -no-metrics
+          emulator-boot-timeout: 900
           disable-animations: true
           script: |
             adb wait-for-device
             attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
 
+            # Record what the device actually is, so a future "it compared
+            # nothing" is one grep away instead of an artifact download. 320x544
+            # here is the #3551 bug reappearing.
+            adb shell wm size; adb shell wm density
+
             # Pure-3D demos — no ARCore sideload needed.
             ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest --stacktrace || true
 
-            # Pull the captures the test wrote (first-run goldens, diffs, actuals).
+            # Pull the captures the test wrote (diffs, actuals, first-run frames).
+            # `adb wait-for-device` first with a bounded retry: if the emulator
+            # died during the suite the pull cannot work, and saying so beats an
+            # empty artifact that reads like "the test wrote nothing".
             mkdir -p render-goldens-output
+            timeout 60 adb wait-for-device || echo "::warning::emulator is gone after the suite — captures cannot be pulled"
             adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
+            ls -R render-goldens-output || true
+
+      # The step that makes "advisory" stop meaning "unreadable". Reads AGP's
+      # JUnit XML — the same file the HTML report is generated from — and states
+      # how many of the suite's cases actually ran, passed and failed, with each
+      # failure's first message line. `|| true` upstream can hide a red build; it
+      # cannot hide this table.
+      - name: Report render-golden results
+        if: always()
+        run: |
+          python3 .github/scripts/summarize-android-test-results.py \
+            --results-dir samples/android-demo/build/outputs/androidTest-results \
+            --source samples/android-demo/src/androidTest/java/io/github/sceneview/demo/render/DemoRenderingScreenshotTest.kt \
+            --title "Unified-demo render goldens" \
+            --captures-dir render-goldens-output
 
       - name: Upload render-golden captures
         if: always()
@@ -336,9 +391,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: demo-render-golden-results
-          path: samples/android-demo/build/reports/androidTests/
+          path: |
+            samples/android-demo/build/reports/androidTests/
+            samples/android-demo/build/outputs/androidTest-results/
           if-no-files-found: ignore
 
+  # ── AR demo playback screenshot regression ────────────────────────────────
+  # Frame-indexed AR screenshot pipeline (#1050): replays the bundled ARCore
+  # recording through ARRecordPlaybackDemo and captures the rendered frame at
+  # fixed ARCore frame indices (f=30/60/120/180) for golden comparison.
+  #
   # Non-blocking by design: until goldens are captured on this pinned emulator
   # profile and committed under
   # `samples/android-demo/src/androidTest/assets/ar-screenshot-goldens/`, the
