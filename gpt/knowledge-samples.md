@@ -687,7 +687,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Interaction
 
-- `camera-gestures` — Camera & Gestures. Orbit, pan, zoom and per-node edit gestures.
+- `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 - `picking-collision` — Picking & Collision. Ray hit-test with picked ViewNode overlays.
 
 ### AR Placement

@@ -465,6 +465,22 @@ Approve the server when Claude Code prompts on the next session start, then chec
 
 Scopes: `--scope project` → `.mcp.json` at the project root (shared, commit it) · `--scope user` → `~/.claude.json` (all your projects) · default `local` → `~/.claude.json`, this project only. Claude Code does **not** read `.claude/mcp.json` or `~/.claude/mcp.json`; a config placed there is silently ignored. Other clients differ: Cursor uses `.cursor/mcp.json`, VS Code `.vscode/mcp.json`, Claude Desktop `claude_desktop_config.json`.
 
+### Hosted connector (no install)
+
+The same server is hosted as a remote MCP endpoint, so a claude.ai user can add it without
+installing anything:
+
+```
+https://mcp.sceneview.dev/mcp
+```
+
+In claude.ai: **Settings → Connectors → Add custom connector**, paste the URL, name it
+`SceneView`. It is authless and read-only — no account, no API key, nothing stored. Streamable
+HTTP on `POST /mcp`; `GET /mcp` answers `405`, `GET /health` answers `{"status":"ok"}`.
+
+Use `npx sceneview-mcp` locally instead when you need `analyze_project` (it reads a project from
+disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous endpoint has neither.
+
 ### Claude Code plugin (one-command install)
 
 For Claude Code users, install the dedicated plugin to get the MCP **plus** 11 namespaced contributor commands and cross-platform reminder hooks in a single step:

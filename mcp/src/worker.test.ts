@@ -46,12 +46,20 @@ describe("wrangler.toml", () => {
     expect(wrangler).toMatch(/^workers_dev\s*=\s*true$/m);
   });
 
-  it("does not bind the custom domain yet", () => {
-    // A connector's URL is effectively permanent: re-pointing it forces every
-    // existing user to disconnect and re-add. Binding `mcp.sceneview.dev` is a
-    // release decision, made when the listing is submitted.
-    expect(wrangler).not.toMatch(/^\s*routes\s*=/m);
-    expect(wrangler).not.toMatch(/custom_domain\s*=\s*true(?![\s\S]*^#)/m);
+  it("binds mcp.sceneview.dev as a custom domain", () => {
+    // This is the URL the connector is added with, and it is effectively
+    // permanent: re-pointing it forces every connected user to disconnect and
+    // re-add. `custom_domain = true` is what makes Cloudflare own the DNS
+    // record and the certificate rather than matching a pre-existing route.
+    expect(wrangler).toMatch(
+      /^routes\s*=\s*\[\{\s*pattern\s*=\s*"mcp\.sceneview\.dev",\s*custom_domain\s*=\s*true\s*\}\]$/m,
+    );
+  });
+
+  it("never names the workers.dev subdomain as the public endpoint", () => {
+    // The account subdomain is an implementation detail of the deploy; the
+    // documented address is the custom domain.
+    expect(wrangler).not.toMatch(/mcp-tools-lab/);
   });
 
   it("disables telemetry on the anonymous shared endpoint", () => {

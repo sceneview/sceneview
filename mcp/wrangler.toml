@@ -3,13 +3,11 @@
 # Deploy:  npx wrangler deploy        (from this directory, after `npm run build`)
 # Result:  https://<name>.<account>.workers.dev/mcp
 #
-# The custom domain (`mcp.sceneview.dev`, on the existing `sceneview.dev` zone
-# alongside `quota.sceneview.dev`) is deliberately NOT bound here yet: the URL a
-# connector is listed with is effectively permanent — re-pointing it later forces
-# every existing user to disconnect and re-add the connector — so binding it is a
-# release decision, not a deploy detail. Add it when submitting:
-#
-#   routes = [{ pattern = "mcp.sceneview.dev", custom_domain = true }]
+# The public URL is `https://mcp.sceneview.dev/mcp` — the address a Claude
+# custom connector is added with, on the existing `sceneview.dev` zone
+# alongside `quota.sceneview.dev`. It is effectively permanent: re-pointing it
+# forces every connected user to disconnect and re-add the connector, so the
+# route below is not a deploy detail to be edited casually.
 
 name = "sceneview-mcp-remote"
 main = "dist/worker.js"
@@ -20,6 +18,10 @@ compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 workers_dev = true
+
+# The stable, brandable endpoint clients are pointed at. `custom_domain` makes
+# Cloudflare own the DNS record and the certificate for `mcp.sceneview.dev`.
+routes = [{ pattern = "mcp.sceneview.dev", custom_domain = true }]
 
 # Telemetry is opt-out in the npm package; on an anonymous shared endpoint there
 # is no user to attribute a call to, so it is off entirely.
