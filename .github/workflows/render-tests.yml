@@ -345,8 +345,8 @@ jobs:
           # (the `adb pull` ran against a device that no longer existed). More
           # RAM, more cores and a data partition big enough for 15 full-size
           # PNGs are the headroom that run did not have.
-          cores: 4
-          ram-size: 6144M
+          cores: 2
+          ram-size: 4096M
           # `-skin 1080x2400`: the golden framebuffer. See the block comment above.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
           emulator-boot-timeout: 900
@@ -366,16 +366,32 @@ jobs:
             adb shell wm size; adb shell wm density
             adb shell wm size | grep -q '1080x2400' || { echo "::error::emulator is not at golden geometry (1080x2400) — every comparison would die on Size mismatch"; exit 1; }
 
+            # Harvest as the suite runs, not after it. The emulator process has
+            # been dying part-way through this suite since long before #3551
+            # touched it (it died at case 3 at the old 320x544 size too, so the
+            # resolution is not the cause) — and a single `adb pull` at the end
+            # therefore ran against a device that no longer existed, which is
+            # why `demo-render-golden-captures` had never contained one file.
+            # A background pull loop plus a background logcat means whatever the
+            # run produced before it died is on disk and in the artifact, and the
+            # crash itself is diagnosable from the same artifact instead of
+            # needing another run to reproduce. Each of these lines is executed
+            # by the action via its own `sh -c`, so they must each be
+            # self-contained and stay on one physical line (see #1153).
+            mkdir -p render-goldens-output
+            nohup sh -c 'adb logcat -v time > render-goldens-output/logcat.txt 2>&1' > /dev/null 2>&1 &
+            nohup sh -c 'while true; do adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ > /dev/null 2>&1; sleep 20; done' > /dev/null 2>&1 &
+
             # Pure-3D demos — no ARCore sideload needed.
             ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest --stacktrace || true
 
-            # Pull the captures the test wrote (diffs, actuals, first-run frames).
-            # `adb wait-for-device` first with a bounded retry: if the emulator
-            # died during the suite the pull cannot work, and saying so beats an
-            # empty artifact that reads like "the test wrote nothing".
-            mkdir -p render-goldens-output
-            timeout 60 adb wait-for-device || echo "::warning::emulator is gone after the suite — captures cannot be pulled"
-            adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
+            # One last pull for anything written after the loop's final pass,
+            # then stop the harvesters. `timeout 30` because if the device is
+            # gone this blocks forever otherwise.
+            pkill -f 'adb pull' || true
+            timeout 30 adb wait-for-device || echo "::warning::emulator is gone after the suite — only the captures harvested mid-run are in the artifact"
+            timeout 120 adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
+            pkill -f 'adb logcat' || true
             ls -R render-goldens-output || true
 
       # The step that makes "advisory" stop meaning "unreadable". Reads AGP's
