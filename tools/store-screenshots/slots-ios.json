@@ -1,0 +1,178 @@
+{
+  "_comment": "App Store, en-US. Sizes are the classes asc_listing.py uploads: iphone-6.9 = 1320x2868, ipad-13 = 2064x2752. Slot order is lexicographic by output filename, which is how both upload paths sort.",
+  "snippet": [
+    [
+      0,
+      "struct ModelViewer: View {",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
+      1,
+      "var body: some View {",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
+      2,
+      "SceneView { content in",
+      [
+        203,
+        166,
+        247
+      ]
+    ],
+    [
+      3,
+      "content.addChild(model.entity)",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      2,
+      "}",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      2,
+      ".environment(.studio)",
+      [
+        166,
+        227,
+        161
+      ]
+    ],
+    [
+      2,
+      ".cameraControls(.orbit)",
+      [
+        166,
+        227,
+        161
+      ]
+    ],
+    [
+      1,
+      "}",
+      [
+        201,
+        209,
+        217
+      ]
+    ],
+    [
+      0,
+      "}",
+      [
+        201,
+        209,
+        217
+      ]
+    ]
+  ],
+  "slots": [
+    {
+      "caption": "Open any 3D file",
+      "src": "tools/store-screenshots/raw/ios/iphone-open-file.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-open-file.png",
+      "size": "1320x2868"
+    },
+    {
+      "caption": "Real size, your room",
+      "src": "tools/store-screenshots/raw/ios/iphone-ar.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/01-ar.png",
+      "size": "1320x2868"
+    },
+    {
+      "caption": "Nearly fifty demos",
+      "src": "tools/store-screenshots/raw/ios/iphone-home.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/02-demos.png",
+      "size": "1320x2868"
+    },
+    {
+      "caption": "HDR lighting, real sky",
+      "src": "tools/store-screenshots/raw/ios/iphone-dynamic-sky.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/03-dynamic-sky.png",
+      "size": "1320x2868"
+    },
+    {
+      "caption": "Materials that catch the light",
+      "src": "tools/store-screenshots/raw/ios/iphone-materials.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/04-materials.png",
+      "size": "1320x2868"
+    },
+    {
+      "caption": "A few lines of SwiftUI",
+      "src": "tools/store-screenshots/raw/ios/iphone-reflection-probes.png",
+      "out": "samples/ios-demo/appstore-screenshots/iphone-6.9/05-swiftui.png",
+      "size": "1320x2868",
+      "kind": "split",
+      "zoom": 1.9,
+      "focus": 0.42
+    },
+    {
+      "caption": "Open any 3D file",
+      "src": "tools/store-screenshots/raw/ios/ipad-open-file.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/00-open-file.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110
+    },
+    {
+      "caption": "Real size, your room",
+      "src": "tools/store-screenshots/raw/ios/ipad-ar.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/01-ar.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110
+    },
+    {
+      "caption": "Nearly fifty demos",
+      "src": "tools/store-screenshots/raw/ios/ipad-home.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/02-demos.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110
+    },
+    {
+      "caption": "HDR lighting, real sky",
+      "src": "tools/store-screenshots/raw/ios/ipad-dynamic-sky.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/03-dynamic-sky.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110
+    },
+    {
+      "caption": "Materials that catch the light",
+      "src": "tools/store-screenshots/raw/ios/ipad-materials.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/04-materials.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110
+    },
+    {
+      "caption": "A few lines of SwiftUI",
+      "src": "tools/store-screenshots/raw/ios/ipad-reflection-probes.png",
+      "out": "samples/ios-demo/appstore-screenshots/ipad-13/05-swiftui.png",
+      "size": "2064x2752",
+      "band": 380,
+      "margin": 110,
+      "kind": "split",
+      "zoom": 1.9,
+      "focus": 0.42
+    }
+  ]
+}

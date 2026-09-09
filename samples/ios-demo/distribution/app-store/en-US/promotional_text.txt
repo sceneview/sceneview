@@ -1,1 +1,1 @@
-Browse stunning 3D models, place them in AR with ARKit, and explore nearly fifty real-time rendering and AR screens built in SwiftUI.
+Open the STL, OBJ, PLY or 3MF you were sent, place it in AR at real size, and explore nearly fifty SwiftUI rendering and AR screens.

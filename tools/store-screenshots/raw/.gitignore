@@ -1,0 +1,3 @@
+# Raw captures are reproducible (see README.md) and heavy — the listing PNGs are
+# what ships. Keep them out of the repo.
+*.png
