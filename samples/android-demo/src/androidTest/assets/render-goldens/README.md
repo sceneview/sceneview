@@ -92,7 +92,12 @@ hardware GPU, so what its verdict is worth is asymmetric:
   and the recording GPU do not agree pixel-for-pixel; a baseline recorded from CI
   would then fail on every real device.
 
-The job writes its real executed/passed/failed counts to the run's step summary,
+- **Only 3 of the 15 cases run today.** The emulator process disappears on the
+  line that captures the Lighting Lab frame — on both system images, and already
+  at the old 320x544 geometry. The remaining 12 cases are untested, not green.
+  Tracked as [#3554](https://github.com/sceneview/sceneview/issues/3554).
+
+The job writes its real executed/passed/failed/skipped counts to the run's step summary,
 so "the leg was green" and "the leg compared something" are separate, visible
 facts.
 

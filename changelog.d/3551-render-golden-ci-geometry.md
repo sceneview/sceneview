@@ -25,3 +25,7 @@
   `softwareRenderer=true` it is an explicit skip with a reason, and everywhere else it
   stays the hard failure it should be. No pixel comparison is relaxed, so a hardware-GPU
   runner would start gating for real without another edit.
+  What the leg still does not do is finish: it dies capturing the Lighting Lab frame,
+  identically on both system images and already at the old geometry, so 12 of the 15
+  cases never run. That is now visible in the summary rather than swallowed, and tracked
+  as [#3554](https://github.com/sceneview/sceneview/issues/3554).
