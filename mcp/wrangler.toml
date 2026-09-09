@@ -1,0 +1,28 @@
+# Hosted remote MCP surface for SceneView — see `src/worker.ts`.
+#
+# Deploy:  npx wrangler deploy        (from this directory, after `npm run build`)
+# Result:  https://<name>.<account>.workers.dev/mcp
+#
+# The custom domain (`mcp.sceneview.dev`, on the existing `sceneview.dev` zone
+# alongside `quota.sceneview.dev`) is deliberately NOT bound here yet: the URL a
+# connector is listed with is effectively permanent — re-pointing it later forces
+# every existing user to disconnect and re-add the connector — so binding it is a
+# release decision, not a deploy detail. Add it when submitting:
+#
+#   routes = [{ pattern = "mcp.sceneview.dev", custom_domain = true }]
+
+name = "sceneview-mcp-remote"
+main = "dist/worker.js"
+
+# `nodejs_compat` + this date enable `enable_nodejs_http_server_modules`, which
+# is what makes `cloudflare:node`'s `httpServerHandler` available.
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+
+# Telemetry is opt-out in the npm package; on an anonymous shared endpoint there
+# is no user to attribute a call to, so it is off entirely.
+[vars]
+SCENEVIEW_TELEMETRY = "0"
+SCENEVIEW_MCP_QUIET = "1"
