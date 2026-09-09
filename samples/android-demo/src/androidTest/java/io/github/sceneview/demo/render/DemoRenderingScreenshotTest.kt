@@ -131,9 +131,8 @@ class DemoRenderingScreenshotTest {
     @Test
     fun twoDInThreeDDemo_default_state() {
         // #3424 rebuilt this demo around `ViewNode` Compose cards on a turntable, so the
-        // old golden (three `TextNode` labels) was deleted with the scene it depicted and
-        // the slug was taken out of BASELINED_GOLDENS. Until a fresh capture is promoted,
-        // this case takes the documented first-run path: save and skip.
+        // old golden (three `TextNode` labels) was deleted with the scene it depicted.
+        // Re-baselined from the rebuilt scene on the shared Pixel_7a AVD.
         //
         // 14 s settle, not 3: the demo loads a 2 048² PBR GLB and a studio HDR, and each of the
         // four `ViewNode`s then needs several more frames for its off-screen `ComposeView` to
@@ -148,8 +147,8 @@ class DemoRenderingScreenshotTest {
      * #3425: the committed `linespaths_default.png` was a picture of the very defect this
      * suite exists to catch — a black viewport crossed by 1-px `PrimitiveType.LINES` and a
      * chain of flat unlit discs. The scene it baselined no longer exists, so the golden was
-     * deleted and its slug taken out of [BASELINED_GOLDENS]; the first run after this change
-     * re-records it from the rebuilt demo and the run after that verifies it.
+     * deleted and its slug taken out of [BASELINED_GOLDENS]. Re-baselined from the rebuilt
+     * demo — the current golden pictures tube-extruded splines, not 1-px lines.
      */
     @Test
     fun linesPathsDemo_default_state() {
@@ -240,7 +239,7 @@ class DemoRenderingScreenshotTest {
     fun cameraAndGesturesDemo_default_state() {
         // #3500 rebuilt this demo around a three-subject stage on a floor, so the golden
         // that baselined the old single-model tab was deleted with the scene it depicted.
-        // The next run re-records it; the run after that verifies it.
+        // Re-baselined from the rebuilt scene on the shared Pixel_7a AVD.
         captureAndCompare(demoSlug = "camera-gestures", goldenName = "cameragestures_default", settleSeconds = 14)
     }
 
@@ -257,9 +256,8 @@ class DemoRenderingScreenshotTest {
     @Test
     fun customGeometryDemo_default_state() {
         // #3423 rebuilt this demo around a mesh generated at runtime, so the old golden
-        // (the composite molecule) was deleted with the scene it depicted and the slug was
-        // taken out of BASELINED_GOLDENS. Until a fresh capture is promoted, this case
-        // takes the documented first-run path: save and skip.
+        // (the composite molecule) was deleted with the scene it depicted. Re-baselined
+        // from the rebuilt scene on the shared Pixel_7a AVD.
         //
         // 6 s settle, not 3: the knot is generated on the main thread and the demo now
         // decodes a studio HDR for its IBL, both after Filament Engine init.
@@ -635,40 +633,27 @@ class DemoRenderingScreenshotTest {
          */
         val BASELINED_GOLDENS = setOf(
             "animationphysics_default",
-            // "cameragestures_default" — deliberately NOT baselined right now. #3500
-            // rebuilt the demo from scratch (a three-subject stage on a floor, driven by
-            // one spherical rig, replaced the single model behind a segmented mode
-            // toggle), so the committed golden depicted a scene that no longer exists and
-            // was deleted with it. The case below therefore takes the first-run path: the
-            // next suite run saves a fresh capture for promotion and skips. Put the slug
-            // back here in the SAME commit that adds the new PNG.
-            // "customgeometry_default" — deliberately NOT baselined right now. #3423
-            // rebuilt the demo from scratch (a runtime-generated torus knot replaced the
-            // composite molecule), so the committed golden depicted a scene that no longer
-            // exists and was deleted with it. The case below therefore takes the first-run
-            // path: the next suite run saves a fresh capture for promotion and skips. Put
-            // the slug back here in the SAME commit that adds the new PNG.
+            // Re-baselined after the #3500 rebuild (three-subject stage on a floor).
+            "cameragestures_default",
+            // Re-baselined after the #3423 rebuild (runtime-generated torus knot).
+            "customgeometry_default",
             "debugoverlay_default",
             "fog_default",
             "geometry_default",
             "lighting_default",
             "lightinglab_default",
-            // "materials_default" — deliberately NOT baselined right now. #3495 rebuilt the
-            // demo from scratch (a nine-sphere procedural material wall replaced a single
-            // streamed Sketchfab subject), so the committed golden depicted a scene that no
-            // longer exists and was deleted with it. The case above therefore takes the
-            // first-run path: the next suite run saves a fresh capture for promotion and
-            // skips. Put the slug back here in the SAME commit that adds the new PNG.
+            // Re-baselined after the #3425 rebuild (tube-extruded splines with sphere
+            // control points, replacing the 1-px `LINES` scene the old golden pictured).
+            "linespaths_default",
+            // Re-baselined after the #3495 rebuild (nine-sphere procedural material wall).
+            "materials_default",
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
             "splatpreview_default",
-            // "twodinthreed_default" — deliberately NOT baselined right now. #3424 rebuilt
-            // the demo from scratch (Compose `ViewNode` cards around an annotated model
-            // replaced three `TextNode` labels), so the committed golden depicted a scene
-            // that no longer exists and was deleted with it. The case above therefore takes
-            // the first-run path: the next suite run saves a fresh capture for promotion and
-            // skips. Put the slug back here in the SAME commit that adds the new PNG.
+            // Re-baselined after the #3424 rebuild (Compose `ViewNode` cards around an
+            // annotated model).
+            "twodinthreed_default",
         )
 
         /**
