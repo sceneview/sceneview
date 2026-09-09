@@ -52,7 +52,7 @@ describe("wrangler.toml", () => {
     // re-add. `custom_domain = true` is what makes Cloudflare own the DNS
     // record and the certificate rather than matching a pre-existing route.
     expect(wrangler).toMatch(
-      /^routes\s*=\s*\[\{\s*pattern\s*=\s*"mcp\.sceneview\.dev",\s*custom_domain\s*=\s*true\s*\}\]$/m,
+      /^routes\s*=\s*\[\{\s*pattern\s*=\s*"mcp\.sceneview\.dev",\s*custom_domain\s*=\s*true\s*\}\]$/m
     );
   });
 
