@@ -71,8 +71,13 @@ def collect(results_dir: Path):
                 skipped = case.find("skipped")
                 if failure is not None or error is not None:
                     node = failure if failure is not None else error
-                    detail = first_line(node.get("message") or node.text)
-                    cases.append((classname, name, "failed", detail))
+                    raw = node.get("message") or node.text or ""
+                    detail = first_line(raw)
+                    # AndroidJUnitRunner writes an assumption violation into <failure>,
+                    # so a case the suite deliberately skipped would be counted red.
+                    # It is neither red nor green: it is a case that declined to run.
+                    kind = "skipped" if "AssumptionViolatedException" in raw else "failed"
+                    cases.append((classname, name, kind, detail))
                 elif skipped is not None:
                     cases.append((classname, name, "skipped", first_line(skipped.get("message") or skipped.text)))
                 else:
