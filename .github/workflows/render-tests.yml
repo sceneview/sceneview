@@ -335,7 +335,12 @@ jobs:
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: google_apis
+          # `default` (AOSP), not `google_apis`: nothing here needs Play services,
+          # and the Google apps of the `google_apis` image spend the whole run
+          # dex2oat-ing and being LMK-killed next to a SwiftShader rasterizer —
+          # visible in the artifact's `logcat.txt` right up to the moment the
+          # emulator process disappears.
+          target: default
           arch: x86_64
           # The 320x544 default was also 13x fewer pixels to rasterize. At golden
           # size SwiftShader has to software-rasterize a real phone framebuffer,
