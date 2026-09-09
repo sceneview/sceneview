@@ -74,8 +74,16 @@ if ! git push origin "v$V"; then
   exit 1
 fi
 
-echo "Tagged v$V — dispatching release.yml on the tag ref."
-# The tag was pushed with GITHUB_TOKEN, so release.yml's `on: push: tags:`
-# trigger will NOT fire (same suppression as above). release.yml accepts
-# workflow_dispatch, and running it on the tag ref is equivalent.
+echo "Tagged v$V — dispatching release.yml, play-store.yml and app-store.yml on the tag ref."
+# The tag was pushed with GITHUB_TOKEN, so the `on: push: tags:` trigger of
+# release.yml, play-store.yml and app-store.yml will NOT fire (same suppression
+# as above). All three accept workflow_dispatch; running them on the tag ref with
+# the inputs below is equivalent to the tag-push path.
+#
+# Until 2026-09-09 only release.yml was dispatched here: v4.32.0 and v4.34.0
+# reached Maven Central and pub.dev but never went to Play production nor to
+# App Store review, and nobody noticed because the store workflows simply had
+# no run to fail (#3557).
 gh workflow run release.yml --ref "v$V"
+gh workflow run play-store.yml --ref "v$V" -f track=auto
+gh workflow run app-store.yml --ref "v$V" -f submit_for_review=true
