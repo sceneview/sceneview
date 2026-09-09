@@ -33,9 +33,13 @@ Full API reference: [`llms.txt`](./llms.txt).
   `bash tools/GenerateFilamat.sh --check` (blob drift) and
   `bash .claude/scripts/check-web-filamat-abi.sh` (web runtime ABI, #2783).
 - **`local.properties` holds a live API key.** Never print it, never commit it.
-- **Merging to `main` deploys.** Play Store rollout is automatic. The App Store
-  submission is automated but Apple's review is not — "submitted" ≠ "live". Maven
-  Central / npm / SPM are irreversible once published.
+- **Merging to `main` deploys.** The Play rollout is sent automatically, but the
+  console can hold it (managed publishing, review): the public page served 4.18.0 for
+  three months while every store run was green. The App Store submission is automated
+  but Apple's review is not — "submitted" ≠ "live". A green workflow proves a call
+  succeeded, never that users see the version: `bash .claude/scripts/prod-status.sh`
+  measures every public surface against `VERSION_NAME`, run it after each release.
+  Maven Central / npm / SPM are irreversible once published.
 - **Never QA on a personal device.** `bash .claude/scripts/setup-ar-emulator.sh` boots
   the reusable emulator; `.claude/scripts/device-qa.sh` drives the harness. There is
   exactly **one AVD**, `Pixel_7a` on `emulator-5554` — every other AVD (the tablet
