@@ -47,9 +47,15 @@ def first_line(text: str | None) -> str:
 
 
 def collect(results_dir: Path):
-    """Parse every `TEST-*.xml` AGP wrote, wherever it nested them."""
+    """Parse every `TEST-*.xml` AGP wrote, wherever it nested them.
+
+    Deliberately a recursive glob of `TEST-*.xml` rather than a fixed path: AGP
+    has moved this directory between versions (`connected/` vs
+    `connected/debug/`), and a hard-coded path that silently matches nothing is
+    the same "reports zero, looks fine" failure this script exists to end.
+    """
     cases = []
-    for xml in sorted(results_dir.rglob("*.xml")):
+    for xml in sorted(results_dir.rglob("TEST-*.xml")):
         try:
             root = ET.parse(xml).getroot()
         except ET.ParseError as exc:  # a truncated file is itself a finding

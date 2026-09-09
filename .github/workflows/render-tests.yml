@@ -277,13 +277,22 @@ jobs:
   # `samples/android-demo/src/androidTest/assets/render-goldens/` is 1080x2304
   # (a 1080x2400 frame minus the 96 px status bar the test crops), so every case
   # died on `Size mismatch` before it read a single pixel — and the `|| true`
-  # plus `continue-on-error` reported that as green for months. `profile:
-  # pixel_8` is the fix: 1080x2400 @ 420 dpi, the same device profile
-  # `.claude/scripts/setup-ar-emulator.sh` gives the shared `Pixel_7a` AVD the
-  # goldens are recorded on, so the comparison actually executes. Rescaling or
-  # letter-boxing the capture inside the test was the alternative and was
-  # rejected: resampling invents pixels, and a 2 % fail budget cannot mean
-  # anything on top of an interpolation.
+  # plus `continue-on-error` reported that as green for months.
+  #
+  # The fix gives the emulator the goldens' geometry: `-skin 1080x2400` for the
+  # framebuffer, then `wm size` + `wm density 420` after boot to pin the logical
+  # display and the dp scale to the shared `Pixel_7a` AVD's, which is what the
+  # goldens are recorded on. Deliberately NOT an `avdmanager` `profile:`: the
+  # first attempt used `profile: pixel_8` and the runner's SDK answered `Error:
+  # No device found matching --device pixel_8` — the device catalogue on a
+  # hosted image is a moving target, and pinning the geometry directly depends
+  # on nothing that can rot out from under it. The script asserts the result
+  # rather than trusting it, so a future image that ignores these flags fails
+  # the step instead of quietly comparing nothing again.
+  #
+  # Rescaling or letter-boxing the capture inside the test was the alternative
+  # and was rejected: resampling invents pixels, and a 2 % fail budget cannot
+  # mean anything on top of an interpolation.
   #
   # What this leg's verdict is worth. The goldens are recorded on a hardware GPU
   # (see `render-goldens/README.md`, which is the source of truth for the
@@ -328,8 +337,6 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
-          # 1080x2400 @ 420 dpi — the golden geometry. See the block comment above.
-          profile: pixel_8
           # The 320x544 default was also 13x fewer pixels to rasterize. At golden
           # size SwiftShader has to software-rasterize a real phone framebuffer,
           # and the previous run died with `adb: device offline` after three
@@ -340,17 +347,24 @@ jobs:
           # PNGs are the headroom that run did not have.
           cores: 4
           ram-size: 6144M
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -partition-size 4096 -no-metrics
+          # `-skin 1080x2400`: the golden framebuffer. See the block comment above.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
           emulator-boot-timeout: 900
           disable-animations: true
           script: |
             adb wait-for-device
             attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
 
-            # Record what the device actually is, so a future "it compared
-            # nothing" is one grep away instead of an artifact download. 320x544
-            # here is the #3551 bug reappearing.
+            # Pin the logical display and dp scale to the recording AVD's, then
+            # ASSERT it. `wm size`/`wm density` are what make this independent of
+            # whatever device catalogue the runner image happens to ship. The
+            # check is the point: comparing at the wrong geometry is exactly the
+            # failure that hid behind a green check for months (#3551), so it
+            # must break the step, not be discovered in an artifact later.
+            adb shell wm size 1080x2400
+            adb shell wm density 420
             adb shell wm size; adb shell wm density
+            adb shell wm size | grep -q '1080x2400' || { echo "::error::emulator is not at golden geometry (1080x2400) — every comparison would die on Size mismatch"; exit 1; }
 
             # Pure-3D demos — no ARCore sideload needed.
             ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest --stacktrace || true
@@ -373,7 +387,7 @@ jobs:
         if: always()
         run: |
           python3 .github/scripts/summarize-android-test-results.py \
-            --results-dir samples/android-demo/build/outputs/androidTest-results \
+            --results-dir samples/android-demo/build/outputs \
             --source samples/android-demo/src/androidTest/java/io/github/sceneview/demo/render/DemoRenderingScreenshotTest.kt \
             --title "Unified-demo render goldens" \
             --captures-dir render-goldens-output

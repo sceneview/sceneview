@@ -70,8 +70,10 @@ is not a hypothetical, it is what the CI leg did for months (#3551).
 ## CI
 
 `demo-render-goldens` in `.github/workflows/render-tests.yml` runs this suite on
-every push to `main`, on a `pixel_8`-profile emulator — the same 1080x2400 @ 420
-dpi geometry as the recording AVD, so the comparison actually executes. It is
+every push to `main`, on an emulator pinned to the same 1080x2400 @ 420 dpi
+geometry as the recording AVD (`-skin 1080x2400` plus `wm size` / `wm density`,
+asserted in the step so a wrong geometry fails loudly), so the comparison
+actually executes. It is
 **advisory** (`continue-on-error`), and it renders on SwiftShader rather than a
 hardware GPU, so what its verdict is worth is asymmetric:
 

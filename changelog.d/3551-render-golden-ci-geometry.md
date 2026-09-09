@@ -7,8 +7,10 @@
   run never got past 2–3 cases — the emulator process was going away mid-suite (`adb:
   device offline`), which is also why the `demo-render-golden-captures` artifact had
   never contained a file: the `adb pull` ran against a device that no longer existed. The
-  job now boots a `pixel_8` profile (1080x2400 @ 420 dpi — the geometry the goldens are
-  recorded at) with the RAM, cores and data partition that framebuffer needs, and a new
+  job now pins the emulator to 1080x2400 @ 420 dpi — the geometry the goldens are recorded
+  at — with `-skin` plus `wm size`/`wm density`, asserted in the step so a wrong geometry
+  breaks the run instead of hiding in it, with the RAM, cores and data partition that
+  framebuffer needs, and a new
   step writes the real executed / passed / failed counts to the run summary, annotating
   a shortfall when cases never ran. The leg stays advisory, per this repo's doctrine for
   emulator legs — but advisory now means "not a merge block", not "unreadable".
