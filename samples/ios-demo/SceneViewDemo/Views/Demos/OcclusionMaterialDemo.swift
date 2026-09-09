@@ -39,7 +39,7 @@ struct OcclusionMaterialDemo: View {
         .onChange(of: showOccluder) { _, _ in applyOccluderMaterial() }
         .navigationTitle("Occlusion Material")
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleInline()
         #endif
     }
 

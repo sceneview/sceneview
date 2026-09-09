@@ -98,7 +98,7 @@ public struct DemoChromeModifier<Controls: View>: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .ignoresSafeArea()
-            .toolbar(.hidden, for: .navigationBar)
+            .hideNavigationBar()
             .overlay(alignment: .top) { identityRow }
             .overlay(alignment: .bottom) { dockView }
             .sheet(isPresented: $controlsPresented) {

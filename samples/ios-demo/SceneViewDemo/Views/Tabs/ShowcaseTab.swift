@@ -96,7 +96,7 @@ struct ShowcaseTab: View {
             .overlay(alignment: .top) {
                 HomeHeader(scrolled: scrolled, query: $query, searchOpen: $searchOpen)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .hideNavigationBar()
             .navigationDestination(isPresented: $showExplore) {
                 ExploreTab(embedded: true)
             }
