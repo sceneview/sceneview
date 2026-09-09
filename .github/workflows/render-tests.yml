@@ -383,15 +383,30 @@ jobs:
             nohup sh -c 'while true; do adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ > /dev/null 2>&1; sleep 20; done' > /dev/null 2>&1 &
 
             # Pure-3D demos — no ARCore sideload needed.
-            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest --stacktrace || true
+            #
+            # `softwareRenderer=true` declares what this runner is. Filament
+            # presents no frame at all on SwiftShader: every capture from this
+            # leg is the demo's own "The scene has not rendered a frame yet."
+            # card, which the suite was comparing against a golden and reporting
+            # as a 99.75 % render regression (#3551). With the flag, that one
+            # outcome becomes an explicit skip with a reason instead — a
+            # permanent red meaning "wrong hardware" only teaches people to stop
+            # reading the leg. It relaxes NO pixel comparison: a frame that does
+            # render is still held to its golden, so the day this job gets a
+            # hardware-GPU runner it starts gating for real with no edit here.
+            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest -Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true --stacktrace || true
 
             # One last pull for anything written after the loop's final pass,
-            # then stop the harvesters. `timeout 30` because if the device is
-            # gone this blocks forever otherwise.
-            pkill -f 'adb pull' || true
+            # then stop the harvesters. The `[a]db` bracket matters: `pkill -f
+            # 'adb pull'` matches the `sh -c` line running it, so it killed
+            # itself and the step reported `exit code null` — a step that fails
+            # for a reason unrelated to the tests is the noise this job is
+            # trying to get rid of. `timeout` because if the device is gone,
+            # `adb wait-for-device` blocks forever.
+            pkill -f '[a]db pull' || true
             timeout 30 adb wait-for-device || echo "::warning::emulator is gone after the suite — only the captures harvested mid-run are in the artifact"
             timeout 120 adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
-            pkill -f 'adb logcat' || true
+            pkill -f '[a]db logcat' || true
             ls -R render-goldens-output || true
 
       # The step that makes "advisory" stop meaning "unreadable". Reads AGP's

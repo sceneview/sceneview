@@ -77,9 +77,17 @@ actually executes. It is
 **advisory** (`continue-on-error`), and it renders on SwiftShader rather than a
 hardware GPU, so what its verdict is worth is asymmetric:
 
-- A red case there is a **lead**: it reliably catches a demo that no longer
-  launches, a viewport that never renders, a missing or degenerate golden, and
-  chrome/layout drift. Reproduce it on the AVD above before concluding anything.
+- **Filament presents no frame at all on SwiftShader.** Every capture from that
+  leg is the demo's own "The scene has not rendered a frame yet." card. The
+  suite used to compare that card against a golden and call it a 99.75 % render
+  regression; the leg now passes `softwareRenderer=true`, which turns that one
+  outcome into an explicit skip with a reason. It relaxes no pixel comparison —
+  the day this job gets a hardware-GPU runner it starts gating for real with no
+  edit to the workflow.
+- So what the leg genuinely proves today is that every demo **launches and
+  composes** at phone geometry, plus the structural checks: a missing or
+  degenerate golden, a golden at the wrong size. A red case there is a **lead**:
+  reproduce it on the AVD above before concluding anything.
 - **Never promote a capture from that job's artifact into a golden.** SwiftShader
   and the recording GPU do not agree pixel-for-pixel; a baseline recorded from CI
   would then fail on every real device.
