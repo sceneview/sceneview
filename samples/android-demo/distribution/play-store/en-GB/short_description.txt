@@ -1,1 +1,1 @@
-Open 3D models, view the .3mf files AI tools make, and place them in AR.
+Open GLB, glTF, 3MF, STL, OBJ and PLY files, and place them in AR at real size.

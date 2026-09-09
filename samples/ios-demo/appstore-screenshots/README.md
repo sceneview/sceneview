@@ -1,63 +1,64 @@
 # iOS App Store screenshots
 
 Fresh, correctly-sized App Store Connect screenshots for the SceneView demo
-app — real iOS-simulator captures of rendered 3D content.
+app — real iOS-simulator captures of rendered 3D content, each one under an
+English caption.
 
-> ✅ **The committed set is current as of 2026-08-29 (#3384).** The four
-> captured frames were re-captured from `main` at `710bb13dd`; #2844 later added
-> a fifth and sixth file — `00-ar.png` in each class, a **generated** AR visual,
-> not a capture (see "The `00-ar.png` slot" below). The previous set dated
-> from 2026-08-04 (`a1dcba562`) and had gone stale in two visible ways: the
-> demo-app glass chrome redesign (#3308) replaced the UI drawn over every
-> frame, and #3315 stripped the white display plinth the hovercar was standing
-> on. The subjects themselves did not change — the old set already showed the
-> hovercar in slot 1 and the Damaged Helmet in slot 2. What the app renders
-> today is what this directory holds.
+> ✅ **The committed set is the captioned six-slot v3, captured 2026-09-09**
+> from this branch's build on the iOS 26.3 simulators (iPhone 17 Pro Max →
+> `iphone-6.9/`, iPad Pro 13-inch (M4) → `ipad-13/`). It replaces the three
+> uncaptioned frames of #3384: a visitor scrolling the carousel reads a caption
+> before any pixel of UI, and the category (Polycam, Sketchfab, Reality
+> Composer) captions every slot.
 >
-> Slot 1 keeps its old subject only because two `qa_mode` overrides put it
-> back: #3382 re-selects the hovercar (the redesign's first-run default is the
-> helmet, which would have made slot 1 a duplicate of slot 2), and this refresh
-> adds the stage under it — the capture pass draws a `studio_warm` skybox
-> instead of the interactive default's undrawn one, which had put the store
-> frame back on black (#2896, regressed by #3308).
+> | Slot | File | Caption | Source |
+> |---|---|---|---|
+> | 1 | `00-open-file.png` | Open any 3D file | `-open_file` on a bundled `printed-icosahedron.3mf` — the frame also shows the app's own real-size read-out (127.6 mm) |
+> | 2 | `01-ar.png` | Real size, your room | the **generated** AR visual (see below) — no simulator has a camera |
+> | 3 | `02-demos.png` | Nearly fifty demos | the Showcase home (47 `@sceneId` scenes ship today) |
+> | 4 | `03-dynamic-sky.png` | HDR lighting, real sky | `-demo dynamic-sky -qa_mode 1` |
+> | 5 | `04-materials.png` | Materials that catch the light | `-demo materials -qa_mode 1` — the keyless offline stand-in, i.e. what a store visitor actually gets |
+> | 6 | `05-swiftui.png` | A few lines of SwiftUI | a SwiftUI snippet over the `reflection-probes` frame |
 >
-> ✅ **The #2897 caveat is cleared.** The linear-multiplier fix is in the build
-> these frames came from. As predicted by the measurement that caveat carried
-> (viewport mean luma 192.3 → 191.2, vehicle region 151.6 → 147.4), its visible
-> change was nil. Only the IBL contribution moved; the skybox is drawn directly
-> and the direct lights were untouched.
+> Composited by `tools/store-screenshots/compose.py` from
+> `tools/store-screenshots/slots-ios.json`: the captions, the card and the code
+> panel are drawn there, from DESIGN.md tokens only. Re-capture, `cp` into
+> `tools/store-screenshots/raw/ios/`, re-run the manifest — never retouch a PNG
+> by hand.
 >
-> ✅ **`dynamic-sky` now shows the same subject Android does (#3003).** It used
-> to build a stylised skyline out of five `systemGray` cubes, so the shot was
-> grey blocks on a plinth against a photo HDR — the demo working as written, but
-> demonstrating a time-of-day sun with an object that has almost nothing to
-> show: a matte grey box reads the same at noon and at dusk apart from its
-> shadow. It now loads `khronos_damaged_helmet`, the subject Android's Lighting
-> Lab puts under this same demo id, whose metal and rough-dielectric regions
-> render the environment change directly in their reflections.
+> **`model-viewer` is deliberately not in this set.** Its frame is the #3383
+> defect in the open: the hovercar sits at 62 % of frame width with the left
+> third empty, dark grey bodywork on a light grey cyclorama. It reads as an
+> off-centre thumbnail next to five composed frames. Re-add it when #3383
+> lands, not before.
 >
-> The ground plane went with the cubes. It existed so the auto-framing pass —
-> which fits the *union* bounding sphere — would not pull back to contain an
-> oversized slab (#2896); with a single hero subject it earned nothing and cost
-> twice, leaving the helmet at about a sixth of the frame height and visibly
-> intersecting it. Android's shot of this subject has no plane either.
+> ⚠️ **`-qa_mode` persists.** It is stored, not per-launch: a device that once
+> ran `-qa_mode 1` keeps drawing the "QA ×" chip beside the title pill, even on
+> a later launch with no argument, and `DemoSheet` only suppresses it for
+> `-demo` launches (`DeepLinkRouter.isScriptedCapture`). The `-open_file`
+> capture therefore has to pass `-qa_mode 0` explicitly (or run on a
+> freshly-created device). A shipped frame must never carry that chip.
 >
 > ⚠️ **The iPad frames carry their capture date, and `simctl` cannot pin it
 > (#3004).** `simctl status_bar override --time "9:41"` fixes the clock, but
-> iPadOS draws the date beside it: the committed frames read `09:41 Sat 29 Aug`.
-> The documented escape hatch does not work — measured on the iPad Pro 13-inch
-> (M4) simulator, iOS 26.3: `--time` rejects every ISO form except the
-> milliseconds one (`2007-01-09T09:41:00.000Z`), and that form sets **only the
-> clock**, converted to a local time (the status bar read `10:41 Sat 22 Aug`
-> — the override had moved the clock off 09:41 and left the real date). `simctl status_bar list` confirms it: one
-> `Time:` field, no date. There is no `simctl` clock setter either. So keep the
-> plain `"9:41"` form, and read the iPad class as **reproducible within a
-> capture day, not across days** — the iPhone class has no date and stays
-> byte-reproducible.
+> iPadOS draws the date beside it. Keep the plain `"9:41"` form and read the
+> iPad class as reproducible within a capture day, not across days.
 >
 > Nothing enforces any of this — the upload is manual and `asc_listing.py`
 > compares checksums, not pixels — so it is a note, not a gate. Look at the
 > mosaic before you upload.
+
+## The AR slot is generated, not captured (#2844)
+
+The listing text sells AR and no capture can show it: the simulator has no
+camera. `01-ar.png` in each class is an **AI-generated marketing visual**
+(Gemini `gemini-3.1-flash-image`, image-to-image, cropped to the class's exact
+pixel spec) — the `khronos_damaged_helmet.glb` helmet anchored in a real
+photographed room, per DESIGN.md's "Preview Image Art Direction" (real camera
+background, no text/UI/device frame/people). It is the same art the #3461
+`00-ar.png` carried, recomposited under its caption; the prompts live in
+`tools/demo-previews/store.json` (`ar-phone`, `ar-tablet`). Replace it with a
+real device capture whenever an authorized device session produces one.
 
 ## Background — issue #917
 
@@ -87,67 +88,35 @@ class** (identical 1320×2868 screenshot spec); likewise the iPad Pro 13-inch
 M4 and M5. Either generation produces an App Store Connect-compliant image
 for its class.
 
-## The `00-ar.png` slot is generated, not captured (#2844)
+## Demos captured (#2854, #2896, #3384)
 
-The listing text sells AR and no image showed any. `00-ar.png` in both classes
-is an **AI-generated marketing visual** (Gemini `gemini-3.1-flash-image`,
-image-to-image, centre-cropped to each class's exact pixel spec): the
-`khronos_damaged_helmet.glb` helmet anchored in a real photographed room, per
-DESIGN.md's "Preview Image Art Direction" (real camera background, no
-text/UI/device frame/people). It is **not** a simulator capture — the
-simulator has no camera and cannot run an AR session — and no procedure in
-this README reproduces it. The `00-` prefix is load-bearing: the upload
-scripts order slots lexicographically by filename, so it takes slot 1 on the
-live listing without renaming the captured frames. Replace it with a real
-device capture whenever an authorized device session produces a better one.
-
-| File | Source reference | Prompt | Generated |
-|---|---|---|---|
-| `iphone-6.9/00-ar.png` (1320 × 2868) | `tools/demo-previews/refs/damaged_helmet.webp` — the crop of the real `modelviewer_default` render golden | `tools/demo-previews/store.json` → `ar-phone` (9:16 raw, shared with Play's `phone-screenshot-1.png`) | 2026-09-05, #3461 |
-| `ipad-13/00-ar.png` (2064 × 2752) | same | `store.json` → `ar-tablet` (3:4 raw, shared with Play's two tablet slots) | 2026-09-05, #3461 |
-
-Until #3461 both were drawn from `refs/hero.webp`, a stylised rusty helmet the
-app never renders (the defect #3454 fixed on the Android catalog cards). That
-file is deleted; the helmet in slot 1 is now the same teal-visor model
-`02-dynamic-sky` shows two slots later. To refresh, run
-`tools/demo-previews/gen.py … --kind store` (see that directory's README) and
-look at both outputs by eye before committing.
-
-## Demos captured (#2854, #2896)
-
-Android's set v2 order, minus `multi-model` (see below). Both ids are
-standalone demos that render rich 3D content with **no network** — deliberately
+Five of the six slots are real simulator captures (slot 2 is generated, see
+above). All of them render rich 3D content with **no network** — deliberately
 not empty or loading AR scenes:
 
-1. `01-model-viewer` — bundled hero model (cyberpunk hovercar) staged in
-   `studio_warm` with its skybox drawn, frozen on a three-quarter hero pose.
-   **Neither the model nor the stage is what the demo shows interactively**, and
-   both overrides are load-bearing:
-   - The hovercar is **not** the demo's interactive default model. Under
-     `qa_mode` the demo picks `storeHeroAssetName` (`ModelViewerDemo.swift`)
-     before the first load (#3382); a frame showing the Khronos helmet here
-     means that selection regressed, and that is exactly what the set shipped
-     with before #3384.
-   - The stage is **not** the interactive default either. Interactively this
-     demo opens on `studio` with `showSkybox = false`, so nothing is drawn
-     behind the model and the viewport shows it over the clear colour — fine
-     for a viewer you are about to orbit, wrong for a store frame: the
-     hovercar's dark bodywork then reads as a grey silhouette on near-black,
-     the exact "dim, dark-on-black" capture #2896 was filed about. Under
-     `qa_mode` the demo therefore also picks `storeHeroEnvironmentName`
-     (`studio_warm` — a real photo studio: seamless cyclorama, softboxes) and
-     turns the skybox **on**. A slot-1 frame with a black background means that
-     override regressed. The pre-redesign code carried the same decision as a
-     `heroEnvironment` constant; #3308 dropped it, which is how the dark frames
-     came back.
-   - Expect a soft dark vertical block against the right edge: it is the studio
-     flag in the `studio_warm` HDRI, i.e. the corner of the cyclorama, not a
-     rendering artefact. It is small on `iphone-6.9` and takes roughly the
-     top-right fifth of the wider `ipad-13` frame.
-2. `02-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI sky,
-   its metal and rough-dielectric regions carrying the time-of-day light. Same
-   subject Android's Lighting Lab shows for this id (#3003); it was a five-cube
-   skyline until then
+1. `00-open-file` — `-open_file` on the bundled `printed-icosahedron.3mf`,
+   the frame the "Open any 3D file" promise is made of. It is the only slot
+   that proves the claim rather than illustrating it: the app's own read-out
+   reads `127.6 × 127.6 × 127.6 mm (12.8 × 12.8 × 12.8 cm) · 20 triangles`,
+   i.e. a 3MF parsed at real-world scale. Launch it with **`-qa_mode 0`**
+   (see the warning at the top) — `-open_file` is not a `-demo` launch, so
+   the QA chip is not suppressed for it.
+2. `01-ar` — generated, not captured. See the AR section above.
+3. `02-demos` — the Showcase home, no launch argument, scrolled to the top.
+   It carries the caption "Nearly fifty demos"; there are 47 `@sceneId`
+   scenes today, so the caption stays true as the catalog grows and does not
+   need re-editing on every added demo.
+4. `03-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI
+   sky, its metal and rough-dielectric regions carrying the time-of-day
+   light. Same subject Android's Lighting Lab shows for this id (#3003).
+5. `04-materials` — the material sphere grid. Since #2874 the id opens on a
+   bundled subject with a reproducible backdrop, so what the frame shows is
+   what a **keyless** user gets, which is the whole point of putting it on a
+   store listing.
+6. `05-swiftui` — the `reflection-probes` frame with a SwiftUI snippet
+   composited over it by `tools/store-screenshots/compose.py`. The code is
+   real, copy-pasteable SceneView API; the panel is drawn from DESIGN.md
+   syntax tokens, never from a screenshot of an editor.
 
 ⚠️ **Committing these PNGs is not uploading them.** The live App Store listing
 keeps showing the previous set until someone runs
@@ -178,13 +147,10 @@ not become due — the reason is structural (keyless resolver substitution), not
 a bug someone was going to fix. Re-add only after looking at a freshly captured
 frame next to the other slots.
 
-Three further ids that used to be in this set were retired from Android's for
+Two further ids that used to be in this set were retired from Android's for
 defects that are platform-independent, so do not reach for them here either.
-`materials` opened on a streamed subject and drew an orbiting HDRI skybox, so
-neither the subject nor the backdrop was reproducible; the demo side is fixed
-(#2874) and the id is eligible again, but do not re-add it without capturing it
-and looking at the frame against the other slots first. `double-pendulum`
-renders as a tiny linkage in a mostly-black frame.
+`double-pendulum` renders as a tiny linkage in a mostly-black frame, and
+`multi-model` is covered above.
 
 `geometry` clipped its primitives in a portrait frame (#2873). That is **fixed
 on Android** — but the fix is a layout change in the Android demo, so it does
@@ -197,29 +163,29 @@ script's variance guard reads as blank.
 
 Captured with the simulator in **dark appearance** and a cleaned status bar
 (fixed 9:41, full signal/battery), mirroring the Android capture's dark-mode +
-status-bar crop.
+status-bar crop. The captured frame is the *input*: every committed PNG is the
+compositor's output, cropped under its caption card, so the raw captures live
+in `tools/store-screenshots/raw/ios/` (gitignored, reproducible) and are never
+committed here.
 
 ⚠️ Dark appearance styles the **system chrome only** — it does not decide how
-dark a frame is. Each scene's look comes from the HDRI it draws: since #3384
-both slots are light (a `studio_warm` cyclorama, a daylit sky), so do not read
+dark a frame is. Each scene's look comes from the HDRI it draws: the six slots
+run from a daylit sky to a near-black reflection-probe stage, so do not read
 "dark appearance" as "dark frame". This has been wrong in both directions
 before — the paragraph claimed both frames were light while `model-viewer` was
 in fact rendering on black, then claimed they sat at opposite ends the same day
 the stage was fixed. Re-check it against the committed PNGs rather than
 trusting it.
 
-The status-bar glyphs are **not** the same colour in the two frames — dark in
-`01-model-viewer`, light in `02-dynamic-sky`, on both classes. iOS picks for
-legibility against what is behind them; both are legible, and neither is a
-capture bug to "fix".
+The status-bar glyphs are **not** the same colour across the set — iOS picks
+for legibility against what is behind them, so a light sky gets dark glyphs and
+a dark stage gets light ones. Both are legible; neither is a capture bug to
+"fix". The caption card sits below the status bar and does not cover it.
 
-One more thing the mosaic shows: the two demos carry different app chrome.
-`model-viewer` has a five-item glass dock along the bottom (place, environment,
-model, animation, settings); `dynamic-sky` has a single round glass control.
-`model-viewer` also resolves a demo title, so it draws a "Model Viewer" pill in
-the identity row, where `dynamic-sky` has none. That is the demos' own shape,
-not a capture artefact, but it is visible when the two sit side by side on the
-listing.
+One more thing the mosaic shows: the demos carry different app chrome — some a
+multi-item glass dock, some a single round control, some a title pill and some
+none. That is the demos' own shape, not a capture artefact, but it is visible
+when the six sit side by side on the listing.
 
 ⚠️ **The capture pass must not paint QA chrome.** `qa_mode` normally draws a
 "QA ×" chip beside the title pill so a human who enabled it can turn it back
@@ -306,13 +272,30 @@ xcrun simctl status_bar "$UDID" override --time "9:41" \
 xcrun simctl install "$UDID" "$APP"
 sleep 90   # first-boot system banners ("Ready for Apple Intelligence") post about a minute in
 
-for slot in 01-model-viewer 02-dynamic-sky; do
+RAW=../../tools/store-screenshots/raw/ios
+for slot in 03-dynamic-sky 04-materials 05-swiftui; do
   xcrun simctl terminate "$UDID" io.github.sceneview.demo 2>/dev/null
   xcrun simctl launch "$UDID" io.github.sceneview.demo -demo "${slot#*-}" -qa_mode 1
   sleep 28   # model load + settle
-  xcrun simctl io "$UDID" screenshot "appstore-screenshots/ipad-13/$slot.png"
+  xcrun simctl io "$UDID" screenshot "$RAW/ipad-13-$slot.png"
 done
+
+# Slot 1 is not a -demo launch, so -qa_mode 0 is mandatory (the chip persists):
+xcrun simctl launch "$UDID" io.github.sceneview.demo \
+  -open_file "$(xcrun simctl get_app_container "$UDID" io.github.sceneview.demo data)/…/printed-icosahedron.3mf" \
+  -qa_mode 0
+# Slot 3 is the Showcase home: launch with no argument at all.
 ```
+
+Then composite — the committed PNGs are the compositor's output, not these
+captures:
+
+```bash
+python3 tools/store-screenshots/compose.py --manifest tools/store-screenshots/slots-ios.json
+```
+
+`slots-ios.json` names every output path, caption, crop and zoom. Change the
+manifest, never a PNG.
 
 ### System banners
 
@@ -321,7 +304,7 @@ reliable either: a freshly-erased device posts "Ready for Apple Intelligence"
 about a minute into the session — i.e. possibly *during* a capture — which is
 exactly how that card once landed in an iPad frame. The removed script detected
 it by re-shooting each frame and hashing the top band; by hand, the check is
-the same one it could never replace: **open all four PNGs before committing
+the same one it could never replace: **open all twelve PNGs before committing
 them.** #917 shipped a set that passed every mechanical check and was still
 wrong (Android captures letterboxed onto an iPad canvas, blank AR scenes), and
 #2896 nearly shipped a "park diorama" that was actually a piano.

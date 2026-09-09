@@ -6,21 +6,26 @@ listing-sync job uploads this directory to the Play Console (#1710).
 This is the Android counterpart of
 [`samples/ios-demo/appstore-screenshots/README.md`](../../../../../ios-demo/appstore-screenshots/README.md).
 Both stores are *meant* to show the same demos framed the same way (#2773) — but
-they are **not in sync today**. Read the next section before assuming parity.
+they are **not in sync today**: the phone class and both iOS classes carry the
+captioned v4/v3 set, the two **tablet classes still carry the uncaptioned
+5-slot v3**. The tablet AVDs they were shot on were deleted (one AVD survives,
+`Pixel_7a`), so re-capturing them needs an AVD recreated first — that is the
+one open gap. Read the next section before assuming parity.
 
 ## What each class actually ships right now
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844, see below); slots 2–5 are **v3** — the redesigned demo (#3321): `showcase Home · Model Viewer · Lighting Lab · Materials`, captured manually (the capture script is gone, #3244) |
+| `phone-screenshot-*` | 6 | **v4, captioned** — every slot now carries an English caption drawn by `tools/store-screenshots/compose.py` (`Open any 3D file · Real size, your room · 50 demos, source included · HDR lighting, one tap · Real-time sky and light · A few lines of Compose`). Slot 2 is the **generated AR visual** (see below); slots 1, 3, 4 and 5 are manual `emulator-5554` captures (the capture script is gone, #3244); slot 6 pairs a Compose snippet with the frame it renders |
 | `tablet7-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet7_QA` in #3350 |
 | `tablet10-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet10_QA` in #3350 |
-| iOS (`appstore-screenshots/`) | 3 + 3 | `00-ar.png` is the **generated AR visual** (#2844); then **v2** — `model-viewer · dynamic-sky`, the set #2896 deliberately curated (`multi-model` excluded: a keyless capture build substitutes bundled stand-ins, so the frame is not the scene the demo documents). Both captured frames predate #2897 — **re-capture before dispatching `app-store-screenshots.yml`**, see that directory's README |
+| iOS (`appstore-screenshots/`) | 6 + 6 | **v3, captioned** — the same six promises, `iphone-6.9` and `ipad-13`, captured on the simulator and composited by the same script. Slot 2 is the generated AR visual; see that directory's README |
 
 ## The AR slot and the feature graphic are generated, not captured (#2844)
 
-The listing text sells AR, and until #2844 no image showed any. Slot 1 of every
-screenshot class and `feature-graphic.png` are now **AI-generated marketing
+The listing text sells AR, and until #2844 no image showed any. The AR slot of
+every screenshot class — **slot 2** on the captioned phone set, slot 1 on the
+two tablet sets — and `feature-graphic.png` are **AI-generated marketing
 visuals** (Gemini `gemini-3.1-flash-image`, image-to-image, centre-cropped to
 each slot's exact pixel spec) showing the helmet anchored in a real
 photographed room, per DESIGN.md's "Preview Image Art Direction" (real camera
@@ -29,8 +34,8 @@ no capture procedure in this README reproduces them.
 
 | File | Source reference | Prompt | Generated |
 |---|---|---|---|
-| `feature-graphic.png` (1024×500) | `tools/demo-previews/refs/damaged_helmet.webp` — the crop of the real `modelviewer_default` render golden | `tools/demo-previews/store.json` → `ar-feature-graphic` (21:9 raw, side-cropped) | 2026-09-05, #3461 |
-| `phone-screenshot-1.png` (1080×2304) | same | `store.json` → `ar-phone` (9:16 raw, shared with the iOS `iphone-6.9/00-ar.png`) | 2026-09-05, #3461 |
+| `feature-graphic.png` (1024×500) | `raw/ar-room-phone.png` (the `ar-phone-room` output above) | composited by `tools/store-screenshots/compose.py` (`kind: banner`) — `gradient-hero` left with the promise, art right | 2026-09-09 |
+| `phone-screenshot-2.png` (1080×2304) | `tools/demo-previews/refs/printed_icosahedron.webp` — a crop of the app's own `printed-icosahedron.3mf` render | `store.json` → `ar-phone-room` (9:16 raw, a printed part on a real desk at its real ~12 cm size, shared with the iOS `01-ar.png`) | 2026-09-09 |
 | `tablet7-screenshot-1.png` (1200×1872) · `tablet10-screenshot-1.png` (1600×2512) | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
 
 Until #3461 these were drawn from `refs/hero.webp`, a stylised rusty helmet the
@@ -47,12 +52,11 @@ HAL id 0 — and routine QA never targets a personal device. To refresh them, ru
 at every output by eye before committing, and replace them with real device
 captures whenever an authorized device session produces better ones.
 
-The previous captured slots were **shifted, not deleted** (git renames: old
-slot N is now slot N+1 in every class). Two consequences for any future manual
-re-capture: number fresh captures from **2**, and remember `play_listing.py`
-uploads by glob — a re-capture that writes slot 1 overwrites the AR visual,
-and a run that "prunes higher-numbered slots" (below) would prune the shifted
-captures if you renumber from 1.
+`play_listing.py` uploads by glob in sorted filename order, so the slot a file
+lands in is decided by its **name**: writing `phone-screenshot-2.png` overwrites
+the AR visual. The phone set is regenerated end-to-end from
+`tools/store-screenshots/slots.json`, which names every output explicitly —
+edit the manifest, not the filenames.
 
 **Set v2** is what the now-removed capture script produced (see below). It is three frames
 deliberately — fewer strong shots beat more mixed ones — each judged on the

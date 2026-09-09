@@ -6,7 +6,13 @@
       "aspect": "21:9",
       "size": "2K",
       "outputs": [
-        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png", "size": [1024, 500]}
+        {
+          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png",
+          "size": [
+            1024,
+            500
+          ]
+        }
       ]
     },
     "ar-phone": {
@@ -15,8 +21,20 @@
       "aspect": "9:16",
       "size": "2K",
       "outputs": [
-        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png", "size": [1080, 2304]},
-        {"dest": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-ar.png", "size": [1320, 2868]}
+        {
+          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png",
+          "size": [
+            1080,
+            2304
+          ]
+        },
+        {
+          "dest": "samples/ios-demo/appstore-screenshots/iphone-6.9/00-ar.png",
+          "size": [
+            1320,
+            2868
+          ]
+        }
       ]
     },
     "ar-tablet": {
@@ -25,9 +43,49 @@
       "aspect": "3:4",
       "size": "2K",
       "outputs": [
-        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet7-screenshot-1.png", "size": [1200, 1872]},
-        {"dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet10-screenshot-1.png", "size": [1600, 2512]},
-        {"dest": "samples/ios-demo/appstore-screenshots/ipad-13/00-ar.png", "size": [2064, 2752]}
+        {
+          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet7-screenshot-1.png",
+          "size": [
+            1200,
+            1872
+          ]
+        },
+        {
+          "dest": "samples/android-demo/distribution/play-store/en-GB/graphics/tablet10-screenshot-1.png",
+          "size": [
+            1600,
+            2512
+          ]
+        },
+        {
+          "dest": "samples/ios-demo/appstore-screenshots/ipad-13/00-ar.png",
+          "size": [
+            2064,
+            2752
+          ]
+        }
+      ]
+    },
+    "ar-phone-room": {
+      "prompt": "The 3D-printed icosahedron of the attached reference — this exact object, and no other: twenty flat triangular faces in a soft pastel palette of cream, warm apricot, pale mint and sky blue, a matte plastic FDM-printed surface with faint horizontal layer lines, crisp straight edges. It is anchored by an AR session on the real wooden desk of a bright home workspace, seen through a handheld phone camera from slightly above at desk height: a laptop and a small potted plant softly out of focus behind, daylight from a window on the left, the desk grain sharp under the object. The icosahedron is real-world scale — about 12 cm across, the size it would print — grounded by a soft contact shadow on the wood, a solid object on the desk, no glow, no hologram effect. Tall portrait phone frame: the icosahedron is centred horizontally and sits just below the middle of the frame, taking about 50% of the frame width, with clear desk below it and room above it. Nothing is cropped or touching a border. No text, no letters, no UI, no device frame, no hands, no people, no watermark. Faithful to the attached reference: keep the real facet shapes and colours; relight and recompose only.",
+      "ref": "printed_icosahedron.webp",
+      "aspect": "9:16",
+      "size": "2K",
+      "outputs": [
+        {
+          "dest": "tools/store-screenshots/raw/ar-room-phone.png",
+          "size": [
+            1080,
+            2304
+          ]
+        },
+        {
+          "dest": "tools/store-screenshots/raw/ar-room-iphone.png",
+          "size": [
+            1290,
+            2796
+          ]
+        }
       ]
     }
   }

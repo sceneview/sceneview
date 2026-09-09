@@ -1,4 +1,7 @@
-SceneView lets you discover and interact with stunning 3D models — and bring them into your real world using augmented reality.
+SceneView opens the 3D files you are actually sent — STL, OBJ, PLY, 3MF, USDZ and Reality — and brings them into your real world using augmented reality.
+
+OPEN ANY MODEL YOU ARE SENT
+Got a 3D file from a chat assistant, a slicer, a message or Files? Tap it and pick SceneView. It opens .stl, .obj, .ply and .3mf — the formats no stock iOS app opens — plus .usdz and .reality, straight from Files or the share sheet, with no conversion step and no account. A printable part arrives at its real size and the right way up, so AR puts it on your actual table at the size it would print.
 
 EXPLORE 3D MODELS
 Browse a curated gallery of high-quality 3D models rendered in real time with RealityKit. Rotate, zoom and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting changes materials — from studio setups to outdoor scenes.
@@ -7,7 +10,7 @@ AUGMENTED REALITY
 Place 3D objects in your real world using your camera. Point at a flat surface, tap to place, then drag, pinch and twist to position your model perfectly. Powered by ARKit with plane detection, instant placement, image tracking, face tracking and environmental light estimation. Real-world depth lets virtual objects sit behind real furniture, and people occlusion keeps someone walking past in front of the scene instead of behind it.
 
 DISCOVER MORE
-Nearly fifty interactive screens, each one a feature you can try:
+Nearly fifty screens, each one shipping its source:
 - Tap to Place, Instant Placement and Wall Placement — the AR placement flows
 - Depth Occlusion, People Occlusion and Depth Collider — virtual objects that respect the real room
 - Image Tracking and Augmented Faces — detect a poster, or a face
