@@ -34,6 +34,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get code sample",
     },
   },
   {
@@ -55,6 +56,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "List code samples",
     },
   },
   {
@@ -76,6 +78,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get Android setup",
     },
   },
   {
@@ -97,6 +100,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Validate SceneView code",
     },
   },
   {
@@ -112,6 +116,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get migration guide",
     },
   },
   {
@@ -133,6 +138,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get node reference",
     },
   },
   {
@@ -148,6 +154,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get platform roadmap",
     },
   },
   {
@@ -170,6 +177,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get best practices",
     },
   },
   {
@@ -185,6 +193,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get AR setup",
     },
   },
   {
@@ -200,6 +209,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get troubleshooting guide",
     },
   },
   {
@@ -222,6 +232,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get iOS setup",
     },
   },
   {
@@ -236,6 +247,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get web setup",
     },
   },
   {
@@ -285,6 +297,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Render 3D preview",
     },
   },
   {
@@ -420,6 +433,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Create 3D artifact",
     },
   },
   {
@@ -447,6 +461,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get platform setup",
     },
   },
   {
@@ -468,6 +483,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Migrate code",
     },
   },
   {
@@ -494,6 +510,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Debug a SceneView issue",
     },
   },
   {
@@ -515,6 +532,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Generate a scene",
     },
   },
   {
@@ -562,6 +580,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "List supported platforms",
     },
   },
   {
@@ -577,6 +596,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get animation guide",
     },
   },
   {
@@ -592,6 +612,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get gesture guide",
     },
   },
   {
@@ -607,6 +628,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get performance tips",
     },
   },
   {
@@ -622,6 +644,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get material guide",
     },
   },
   {
@@ -637,6 +660,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get collision guide",
     },
   },
   {
@@ -652,6 +676,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get model optimization guide",
     },
   },
   {
@@ -667,6 +692,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: false,
       destructiveHint: false,
+      title: "Get web rendering guide",
     },
   },
   {
@@ -702,6 +728,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: true,
       destructiveHint: false,
+      title: "Search 3D models",
     },
   },
   {
@@ -734,6 +761,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: false,
       openWorldHint: true,
       destructiveHint: false,
+      title: "Generate a 3D model",
     },
   },
   {
@@ -755,6 +783,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: true,
       destructiveHint: false,
+      title: "Analyze a project",
     },
   },
   {
@@ -776,6 +805,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: true,
       destructiveHint: false,
+      title: "Search Android docs",
     },
   },
   {
@@ -797,12 +827,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       readOnlyHint: true,
       openWorldHint: true,
       destructiveHint: false,
+      title: "Fetch an Android doc",
     },
   },
   {
     name: "view_3d_model",
     description:
-      "Render an interactive 3D model viewer inline in ChatGPT. Pass a public GLB / GLTF / 3MF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download.",
+      "Render an interactive 3D model viewer inline in the conversation. Pass a public GLB / GLTF / 3MF URL and the assistant will display it in a SceneView-branded widget with orbit controls, auto-rotate, and AR mode (where supported). Use this when the user asks to PREVIEW a 3D model, asks 'what does X look like in 3D?', after `search_models` to render the chosen result, or to show a `.3mf` you just produced for 3D printing — the widget converts 3MF to glTF in the browser, so a printable model is previewable without any download.",
     inputSchema: {
       type: "object",
       properties: {
