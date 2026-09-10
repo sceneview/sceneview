@@ -92,6 +92,7 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun ARImageDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -131,7 +132,7 @@ fun ARImageDemo(onBack: () -> Unit) {
     var isCapturing by remember { mutableStateOf(false) }
     // "What to scan" card is expanded by default so a first-time user immediately sees the
     // reference image to point the camera at; it collapses to a chip once detection succeeds.
-    var showScanGuide by remember { mutableStateOf(true) }
+    var showScanGuide by remember { mutableStateOf(false) }
 
     val modelInstance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
 
@@ -145,6 +146,8 @@ fun ARImageDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_image_title),
         onBack = onBack,
         // The on-screen "what to scan" card and the status overlay already tell
@@ -333,6 +336,7 @@ fun ARImageDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

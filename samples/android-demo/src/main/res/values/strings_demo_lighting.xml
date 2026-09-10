@@ -11,7 +11,7 @@
      `R.string.demo_lighting_title` etc. stays globally resolvable (#1870). -->
 <resources>
     <string name="demo_lighting_title">Lighting</string>
-    <string name="demo_lighting_subtitle">Three rigs on one stage: HDR, studio, sun</string>
+    <string name="demo_lighting_subtitle">Compare studio light, daylight and reflections</string>
     <string name="demo_lighting">Lighting</string>
     <string name="demo_lighting_desc">Image-based, three-point studio and dynamic sun lighting</string>
     <string name="demo_lighting_loading">Loading the stage…</string>

@@ -271,6 +271,8 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = modeState.sessionFailed,
+        arOverlaysEnabled = !modeState.sessionUnavailable,
         title = stringResource(R.string.demo_ar_record_playback_title),
         onBack = onBack,
         controls = {
@@ -511,7 +513,7 @@ fun ARRecordPlaybackDemo(onBack: () -> Unit) {
             }
 
             val replayingFile = currentPlaybackFile
-            if (currentMode.isPlayback && replayingFile != null) {
+            if (currentMode.isPlayback && replayingFile != null && modeState.isTracking) {
                 PlaybackBanner(replayingFile.name)
             }
         },
@@ -638,6 +640,9 @@ private class RecordPlaybackModeState(
     val trackingTracker = TrackingHealthTracker()
 
     /** ARCore reported TRACKING on the most recent frame. */
+    var sessionFailed by mutableStateOf(false)
+    var sessionUnavailable by mutableStateOf(false)
+
     var isTracking by mutableStateOf(false)
 
     /** Latest ARCore-reported tracking-failure reason, `null` while healthy. */
@@ -741,6 +746,7 @@ private fun ModeContent(
     }
 
     ARSceneView(
+        onSessionFailure = { state.sessionFailed = true },
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
@@ -751,7 +757,7 @@ private fun ModeContent(
             config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
             config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
         },
-        onARCoreAvailability = { arCoreAvailability = it },
+        onARCoreAvailability = { arCoreAvailability = it; state.sessionUnavailable = it != null },
         onSessionUpdated = { session: Session, frame: Frame ->
             cameraReady = true
             latestFrame = frame

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="demo_contact_shadow_preview_title">Contact Shadow Preview</string>
-    <string name="demo_contact_shadow_preview_subtitle">Procedural contact shadow, grounded vs floating</string>
+    <string name="demo_contact_shadow_preview_subtitle">Compare objects with and without a contact shadow</string>
     <string name="contact_shadow_toggle">Contact shadows</string>
     <string name="contact_shadow_motion_toggle">Bounce motion</string>
     <!-- Split from a single "Shadow intensity: %d%%" string when the demos moved to the shared
@@ -9,13 +9,11 @@
          The value half is gone again with #3372: the readout is now a bare multiplier ("1.00×")
          formatted in Locale.US by formatShadowIntensityFactor, with nothing left to localise. -->
     <string name="contact_shadow_intensity_label">Shadow intensity</string>
-    <string name="contact_shadow_wall_beat_title">Wall TV — the pool no shadow map can draw</string>
-    <string name="contact_shadow_wall_verdict_wall">Wall: ceiling light grazes the wall, so a thin band of shade hugs the panel\'s lower edge — it reads as pressed against the wall. Correct.</string>
-    <string name="contact_shadow_wall_verdict_floor">Floor on a wall: too dark, too round — reads as a sticker, not a shadow.</string>
-    <string name="contact_shadow_wall_verdict_tabletop">TableTop: tight and close, as if the TV rested on a surface it is not touching.</string>
-    <string name="contact_shadow_label_grounded">Contact shadow</string>
+    <string name="contact_shadow_wall_verdict_wall">A soft shadow behind the TV shows where it meets the wall.</string>
+    <string name="contact_shadow_wall_verdict_floor">A broader, darker shadow suited to objects on the floor.</string>
+    <string name="contact_shadow_wall_verdict_tabletop">A compact shadow suited to objects resting on a table.</string>
+    <string name="contact_shadow_label_grounded">Shadow</string>
     <string name="contact_shadow_label_floating">No shadow</string>
-    <string name="contact_shadow_label_off">Shadows off</string>
     <string name="contact_shadow_peek_on">Grounded vs floating</string>
     <string name="contact_shadow_peek_off">Shadows off — grounding cue gone</string>
 </resources>

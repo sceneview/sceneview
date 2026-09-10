@@ -88,10 +88,10 @@ object LightingStage {
     const val FLOOR_REFLECTANCE: Float = 0.55f
 
     /** Radius of each photographic probe ball. */
-    const val PROBE_RADIUS: Float = 0.09f
+    const val PROBE_RADIUS: Float = 0.065f
 
     /** How far to either side of the hero the probe balls stand. */
-    const val PROBE_OFFSET_X: Float = 0.46f
+    const val PROBE_OFFSET_X: Float = 0.34f
 
     /** Probes are pulled forward of the hero so the camera never hides one behind it. */
     const val PROBE_OFFSET_Z: Float = 0.14f

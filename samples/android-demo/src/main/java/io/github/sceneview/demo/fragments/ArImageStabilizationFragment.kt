@@ -16,7 +16,7 @@ object ArImageStabilizationFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_image_stabilization_subtitle,
         category = DemoCategory.AR_TRACKING,
         icon = Icons.Filled.Texture,
-        order = 25,
+        order = 24,
         tags = setOf("ar", "camera", "stabilization", "eis"),
     )
 

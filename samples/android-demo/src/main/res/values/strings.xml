@@ -55,8 +55,6 @@
 
     <!-- Sketchfab model viewer screen -->
     <string name="sketchfab_animated">Animated</string>
-    <string name="sketchfab_open_in_sceneview">Open in SceneView</string>
-    <string name="sketchfab_rendered_locally">Rendered locally by Filament — no external viewer.</string>
     <!-- Shown under a disabled CTA when the origin catalog exposes a model but
          not a downloadable format the demo can render (#2645). -->
     <string name="gallery_not_downloadable">This model isn\'t available to download from its source.</string>
@@ -88,7 +86,7 @@
     <!-- AR launcher screen -->
     <string name="ar_experiences_title">AR Experiences</string>
     <string name="ar_experiences_tagline">Place models, scan faces, anchor to terrain.</string>
-    <string name="ar_status_ready">AR ready on this device.</string>
+    <string name="ar_status_ready">AR supported on this device.</string>
     <string name="ar_status_not_installed">AR works on this device — ARCore will install on first launch.</string>
     <string name="ar_status_apk_old">AR works on this device — an ARCore update is available.</string>
     <string name="ar_status_unsupported">Live AR is not supported on this device, but you can still explore the AR demos below to see how the SDK is used.</string>
@@ -172,17 +170,17 @@
     <!-- "What's new since you last tested" — the per-install surface. The
          marker it reads is written only by the Got it button; see
          WhatsNewSince.kt. -->
-    <string name="whats_new_since_title">What\'s new since you last tested</string>
+    <string name="whats_new_since_title">What\'s new</string>
     <plurals name="whats_new_since_subtitle">
-        <item quantity="one">%1$d change since the build you marked as seen (v%2$s)</item>
-        <item quantity="other">%1$d changes since the build you marked as seen (v%2$s)</item>
+        <item quantity="one">%1$d improvement since version %2$s</item>
+        <item quantity="other">%1$d improvements since version %2$s</item>
     </plurals>
-    <string name="whats_new_since_subtitle_unknown">Everything that landed since your last session</string>
-    <string name="whats_new_since_unreleased">Not yet released</string>
+    <string name="whats_new_since_subtitle_unknown">Discover the latest improvements</string>
+    <string name="whats_new_since_unreleased">Included in this preview build</string>
     <string name="whats_new_since_mark_seen">Got it</string>
-    <string name="whats_new_since_mark_seen_hint">Closing without tapping Got it keeps this list waiting behind the top-bar badge.</string>
+    <string name="whats_new_since_mark_seen_hint">You can revisit these updates from the home screen.</string>
     <string name="whats_new_since_open_demo">Open %s</string>
-    <string name="whats_new_since_action">What\'s new since you last tested</string>
+    <string name="whats_new_since_action">What\'s new</string>
 
     <!-- Sample categories (legacy keys kept for accessibility / cross-platform docs) -->
     <string name="category_3d">3D</string>
@@ -399,4 +397,9 @@
     <string name="open_model_filter_label">Open in SceneView</string>
     <!-- Shown when a handed-over file cannot be read, or is not a model this app opens. -->
     <string name="open_model_failed">Couldn\'t open that file — SceneView reads .3mf, .glb, .gltf, .stl, .obj and .ply</string>
+    <string name="ar_placement_floor">Floor</string>
+    <string name="ar_placement_wall">Wall</string>
+    <string name="ar_placement_wall_model">TV</string>
+    <string name="ar_placement_wall_help">Mount a life-size TV. Scan the floor, find a wall, then align the bottom of the wall to position the screen.</string>
+    <string name="demo_ar_session_failed">AR could not start. Return to the catalogue and reopen this demo to try again.</string>
 </resources>

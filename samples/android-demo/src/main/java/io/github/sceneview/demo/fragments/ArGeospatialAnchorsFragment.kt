@@ -24,7 +24,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_geospatial_anchors_subtitle,
         category = DemoCategory.AR_ANCHORS,
         icon = Icons.Filled.Landscape,
-        order = 44,
+        order = 42,
         tags = setOf("ar", "geospatial", "terrain", "rooftop", "anchor", "vps", "earth"),
         status = DemoStatus.KnownIssue,
     )

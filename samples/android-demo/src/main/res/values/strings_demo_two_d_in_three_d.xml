@@ -6,6 +6,6 @@
      `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_two_d_in_three_d_title">2D in 3D</string>
-    <string name="demo_two_d_in_three_d_subtitle">Interactive Compose cards anchored in world space</string>
+    <string name="demo_two_d_in_three_d_subtitle">Interact with a card attached to a 3D model</string>
     <string name="demo_two_d_in_three_d_explainer">Each card is a ViewNode: real Compose UI rendered to a texture on a quad. Tap the button in the scene — it works. Billboard is in the dock.</string>
 </resources>

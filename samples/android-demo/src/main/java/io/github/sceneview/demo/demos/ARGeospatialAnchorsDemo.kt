@@ -364,7 +364,7 @@ private fun TerrainSection(
                     // Friendly, complete sentence from friendlyArSessionError (#2349).
                     sessionError != null -> sessionError!!
                     !isTracking -> "Waiting for camera tracking…"
-                    !earthTracking -> "Waiting for VPS lock (go outside, look around)…"
+                    !earthTracking -> "Finding your outdoor location — look at nearby buildings…"
                     cameraLat != null && cameraLng != null -> {
                         val lat = "%.6f".format(Locale.US, cameraLat)
                         val lng = "%.6f".format(Locale.US, cameraLng)
@@ -424,7 +424,7 @@ private fun TerrainSection(
                 cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
                 geospatialUnavailable != null ->
                     DemoStatusBanner(
-                        "${geospatialUnavailable!!} — needs outdoor area with VPS coverage + Cloud API key",
+                        "${geospatialUnavailable!!} — try an outdoor area covered by Street View; cloud setup is required",
                         tone = DemoStatusTone.Blocked,
                     )
                 // The SDK's availability overlay already fills the viewport with the
@@ -778,7 +778,7 @@ private fun RooftopSection(
                     // overlay in the AR view carries the real explanation (#3341).
                     arCoreAvailability != null -> "AR is unavailable on this device"
                     !isTracking -> "Waiting for camera tracking…"
-                    !earthTracking -> "Waiting for VPS lock (go outside, look around)…"
+                    !earthTracking -> "Finding your outdoor location — look at nearby buildings…"
                     cameraLat != null && cameraLng != null -> {
                         val lat = "%.6f".format(Locale.US, cameraLat)
                         val lng = "%.6f".format(Locale.US, cameraLng)
@@ -850,7 +850,7 @@ private fun RooftopSection(
                 cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
                 geospatialUnavailable != null ->
                     DemoStatusBanner(
-                        "${geospatialUnavailable!!} — needs urban area with building data + Cloud API key",
+                        "${geospatialUnavailable!!} — try an outdoor area covered by Street View; cloud setup is required",
                         tone = DemoStatusTone.Blocked,
                     )
                 // The SDK's availability overlay already fills the viewport with the

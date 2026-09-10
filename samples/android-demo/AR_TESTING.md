@@ -253,7 +253,7 @@ class ARDemoPlaybackSmokeTest {
         // Recipe today: stage the fixture to a private file, then deep-link the
         // demo with the path through `--es ar_playback_file`. The MainActivity
         // intent path validates the path is inside the app's external-files dir
-        // (security guard, see #958) and forwards it to ARRecordPlaybackDemo via
+        // (security guard, see #958) and forwards it through rememberArPlaybackDataset to participating AR demos, including ARRecordPlaybackDemo, via
         // DemoSettings.arPendingPlaybackFile. No `playbackOverride` parameter
         // is exposed on the demo composables.
         val fixture = copyAssetToAppFiles("ar-recordings/baseline.mp4")
@@ -342,3 +342,10 @@ adb install -r /tmp/arcore.apk
 - Issue [#876](https://github.com/sceneview/sceneview/issues/876) — proposed stateless
   `recordFrame(session, frame)` API + dedicated `onPlaybackFailed` callback (v4.1
   candidate).
+
+### Interpreting a replay result
+
+The playback intent is consumed by all demos wired to `rememberArPlaybackDataset`, not only
+Record & Playback. A selected file, a live process, or a visible model does not prove camera
+replay. Verify advancing AR session frames and the expected recorded camera scene. If session
+creation fails, record that as unavailable playback, not a successful replay.

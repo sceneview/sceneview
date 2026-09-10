@@ -240,17 +240,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
-        peekHeader = stringResource(
-            R.string.demo_lighting_lab_status,
-            "%.2f".format(Locale.US, exposure),
-            (iblIntensity / 1000f).toInt(),
-            stringResource(
-                if (ssaoEnabled) R.string.demo_lighting_lab_on else R.string.demo_lighting_lab_off,
-            ),
-            stringResource(
-                if (fogEnabled) R.string.demo_lighting_lab_on else R.string.demo_lighting_lab_off,
-            ),
-        ),
+        peekHeader = "Toggle shading or reflections to compare",
         onResetSettings = {
             exposure = LightingStage.EXPOSURE_DEFAULT
             iblIntensity = LightingStage.IBL_INTENSITY_DEFAULT
@@ -277,7 +267,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
             ),
             DockItem(
                 icon = Icons.Filled.Contrast,
-                label = "SSAO",
+                label = "Shading",
                 selected = ssaoEnabled,
                 onClick = { ssaoEnabled = !ssaoEnabled },
             ),
@@ -289,7 +279,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
             ),
             DockItem(
                 icon = Icons.Filled.Lens,
-                label = "Probe",
+                label = "Reflections",
                 selected = probeEnabled,
                 onClick = { probeEnabled = !probeEnabled },
             ),
@@ -313,13 +303,14 @@ fun LightingLabDemo(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             SectionHeader(stringResource(R.string.demo_lighting_lab_section_environment))
+            Text("Environment lighting uses a panoramic image to light the model and create reflections.", style = SceneViewTokens.Type.body)
             LabeledSlider(
                 label = stringResource(R.string.demo_lighting_ibl_intensity),
                 value = iblIntensity,
                 onValueChange = { iblIntensity = it },
                 valueRange = LightingStage.IBL_INTENSITY_MIN..LightingStage.IBL_INTENSITY_MAX,
                 decimals = 0,
-                unit = "lx",
+                unit = "lux",
             )
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             LabeledSlider(
@@ -359,6 +350,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             SectionHeader(stringResource(R.string.demo_lighting_lab_section_frame))
+            Text("Contact shading (ambient occlusion) darkens small creases and nearby surfaces.", style = SceneViewTokens.Type.body)
             SwitchRow(
                 label = stringResource(R.string.demo_lighting_lab_ssao),
                 checked = ssaoEnabled,

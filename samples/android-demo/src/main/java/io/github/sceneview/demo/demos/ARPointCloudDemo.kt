@@ -80,6 +80,8 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun ARPointCloudDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
@@ -129,6 +131,8 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_point_cloud_title),
         onBack = onBack,
         peekHeader = if (pointCount > 0) {
@@ -210,6 +214,8 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (qaBackdrop) QaCameraBackdrop(seed = "point-cloud")
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 materialLoader = materialLoader,

@@ -140,6 +140,7 @@ private data class MeasurePoint(
  */
 @Composable
 fun ARMeasureDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     val cameraNode = rememberARCameraNode(engine)
@@ -197,6 +198,8 @@ fun ARMeasureDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_measure_title),
         onBack = onBack,
         peekHeader = when {
@@ -342,6 +345,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-measure")
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 materialLoader = materialLoader,

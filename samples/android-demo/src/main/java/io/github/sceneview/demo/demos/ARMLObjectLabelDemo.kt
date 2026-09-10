@@ -86,6 +86,8 @@ import io.github.sceneview.rememberModelLoader
  */
 @Composable
 fun ARMLObjectLabelDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val engine = rememberEngine()
@@ -194,6 +196,8 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_ml_title),
         onBack = onBack,
         // No Settings FAB: the only sheet content was a help paragraph and a live status
@@ -233,6 +237,8 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it }) {
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

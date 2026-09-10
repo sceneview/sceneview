@@ -99,7 +99,7 @@ fun WallPlacementDemo(onBack: () -> Unit) {
     var latestAnchor by remember { mutableStateOf<Anchor?>(null) }
 
     DemoScaffold(
-        title = stringResource(R.string.demo_wall_placement_title),
+        title = stringResource(R.string.demo_ar_placement_title),
         onBack = onBack,
         topOverlay = {
             // Phase banner — mirrors the scene's onboarding state machine.

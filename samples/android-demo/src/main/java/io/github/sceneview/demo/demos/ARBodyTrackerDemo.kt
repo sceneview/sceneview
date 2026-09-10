@@ -105,6 +105,7 @@ import java.io.ByteArrayOutputStream
  */
 @Composable
 fun ARBodyTrackerDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val engine = rememberEngine()
@@ -152,6 +153,8 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
     val lastDetectMs = remember { longArrayOf(0L) }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_body_tracker_title),
         onBack = onBack,
         controls = {
@@ -235,6 +238,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

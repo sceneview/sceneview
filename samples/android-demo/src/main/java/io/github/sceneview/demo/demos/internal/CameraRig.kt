@@ -87,7 +87,7 @@ enum class CameraView(
     Top("Top", azimuthDegrees = 12f, elevationDegrees = 78f, distanceScale = 0.82f),
 
     /** Pulled in tight on the focus, from the hero angle. */
-    Close("Close", azimuthDegrees = 24f, elevationDegrees = 12f, distanceScale = 0.52f),
+    Close("Close-up", azimuthDegrees = 24f, elevationDegrees = 12f, distanceScale = 0.52f),
 }
 
 /**

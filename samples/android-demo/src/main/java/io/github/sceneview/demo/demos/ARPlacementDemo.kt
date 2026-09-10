@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -100,14 +102,12 @@ import java.io.File
  */
 @Composable
 fun ARPlacementDemo(onBack: () -> Unit) {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val materialLoader = rememberMaterialLoader(engine)
     val context = LocalContext.current
 
     // Phase + session options (mode, snap-to-plane, reticle). Saveable, so a rotation in the
     // camera does not dump the user back onto the chooser.
     val flow = rememberPlacementFlowState()
+    var wallMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DemoSettings.consumeInitialTab() == 1) }
 
     // The shared session owns the placed-model list, anchors and camera/plane/reticle
     // signals. The demo reads it for Reset; the session writes it on every tap/frame.
@@ -277,9 +277,20 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             onBack = onBack,
             title = stringResource(R.string.demo_ar_placement_title),
             teaches = stringResource(R.string.ar_placement_teaches),
+            wallMode = wallMode,
+            onWallModeChange = { wallMode = it },
         )
         return
     }
+
+    if (wallMode) {
+        WallPlacementDemo(onBack = onBackPressed)
+        return
+    }
+
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_placement_title),
@@ -336,6 +347,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             snapToPlane = flow.snapToPlane,
             showReticle = flow.showReticle,
             instantPlacement = flow.instantEnabled,
+            floorOnly = true,
         )
     }
 }

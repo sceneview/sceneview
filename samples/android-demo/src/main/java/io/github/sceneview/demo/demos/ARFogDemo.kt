@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.Icons
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -76,6 +78,7 @@ import java.util.Locale
  */
 @Composable
 fun ARFogDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     data class FogPreset(val label: String, val color: Color)
 
     val presets = remember {
@@ -128,6 +131,8 @@ fun ARFogDemo(onBack: () -> Unit) {
     val depthOn = depthSupported != false
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_fog_title),
         onBack = onBack,
         onResetSettings = {
@@ -245,22 +250,11 @@ fun ARFogDemo(onBack: () -> Unit) {
             ForceTrackingFailureMenu()
         },
         topOverlay = {
-            Surface(
-                color = if (fogEnabled) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFF555555).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(
-                    text = if (fogEnabled) "FOG ON" else "FOG OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
+            io.github.sceneview.demo.common.DemoStatusCard(
+                text = if (fogEnabled) "Fog on" else "Fog off",
+                tone = io.github.sceneview.demo.common.DemoStatusTone.Progress,
+                icon = Icons.Filled.Tune,
+            )
         },
         bottomOverlay = {
             val effectiveReason = ForcedTrackingFailure.override ?: trackingFailureReason
@@ -306,6 +300,7 @@ fun ARFogDemo(onBack: () -> Unit) {
                     },
                 )
                 ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                     modifier = Modifier.fillMaxSize(),
                     engine = engine,
                     modelLoader = modelLoader,

@@ -80,6 +80,7 @@ internal object DeepLinkRouter {
      * live registered ids — `DeepLinkRouterTest` asserts this invariant.
      */
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
+        "wall-placement" to "ar-placement",
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
         // #2239 Batch 1 — Custom Geometry consolidation. The retired
@@ -205,6 +206,7 @@ internal object DeepLinkRouter {
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
+        "wall-placement" to 1,
         // lighting — [Image, Studio, Sun] since #3496. `environment` is deliberately
         // absent: the Image rig is index 0, the rig the demo already opens on.
         "movable-light" to 1,

@@ -37,7 +37,7 @@ data class RerunSaveActionUx(
  */
 fun rerunSaveActionUx(sharing: Boolean, isConnected: Boolean): RerunSaveActionUx = when {
     sharing -> RerunSaveActionUx(label = "Saving on dev machine…", enabled = false)
-    !isConnected -> RerunSaveActionUx(label = "Save & Share (sidecar offline)", enabled = false)
+    !isConnected -> RerunSaveActionUx(label = "Connect recording service", enabled = false)
     else -> RerunSaveActionUx(label = "Save & Share recording", enabled = true)
 }
 

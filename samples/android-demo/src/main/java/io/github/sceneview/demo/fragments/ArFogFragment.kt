@@ -16,7 +16,7 @@ object ArFogFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_fog_subtitle,
         category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.Cloud,
-        order = 41,
+        order = 39,
         tags = setOf("ar", "fog", "depth", "atmosphere"),
     )
 

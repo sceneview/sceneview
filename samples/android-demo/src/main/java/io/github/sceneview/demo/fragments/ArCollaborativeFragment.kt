@@ -16,7 +16,7 @@ object ArCollaborativeFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_collaborative_subtitle,
         category = DemoCategory.AR_ANCHORS,
         icon = Icons.Filled.Groups,
-        order = 43,
+        order = 41,
         tags = setOf("ar", "multi-user", "sync", "collaboration", "transport"),
     )
 

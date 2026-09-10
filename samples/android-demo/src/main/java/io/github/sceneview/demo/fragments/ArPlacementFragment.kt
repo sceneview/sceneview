@@ -17,7 +17,7 @@ object ArPlacementFragment : DemoFragment {
         category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.TouchApp,
         order = 15,
-        tags = setOf("ar", "plane", "tap-to-place", "anchor", "gltf", "model"),
+        tags = setOf("ar", "plane", "tap-to-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
     )
 
     @Composable

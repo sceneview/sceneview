@@ -11,7 +11,7 @@
      new demo never needs to touch this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_materials_title">Materials</string>
-    <string name="demo_materials_subtitle">A PBR studio: metal, coat, sheen, glass and glow</string>
+    <string name="demo_materials_subtitle">Compare metal, glass, fabric and glow</string>
     <!-- The scene is procedural; what the cover waits on is the HDR environment's
          IBL prefilter, without which nothing has anything to reflect. -->
     <string name="demo_materials_loading">Lighting the studio…</string>

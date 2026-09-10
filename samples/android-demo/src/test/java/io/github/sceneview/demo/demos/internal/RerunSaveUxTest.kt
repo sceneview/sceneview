@@ -27,7 +27,7 @@ class RerunSaveUxTest {
         assertFalse("save must be disabled with no reachable sidecar", ux.enabled)
         assertTrue(
             "the disabled label must name the reason so the CTA isn't a mystery",
-            ux.label.contains("sidecar", ignoreCase = true),
+            ux.label.contains("recording service", ignoreCase = true),
         )
     }
 
