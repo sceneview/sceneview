@@ -17,7 +17,7 @@ import os.log
 ///    `SKETCHFAB_API_KEY` scheme env var still works when running under
 ///    Xcode's "Run" scheme so contributors don't have to edit `Info.plist`.
 ///
-/// TODO V1.1: move to backend proxy via mcp-gateway to avoid bundling key
+/// TODO V1.1: move to a backend proxy to avoid bundling key
 /// directly in the iOS app binary. End-users should authenticate against the
 /// proxy (which holds the master key server-side) so we don't ship a long-lived
 /// token that can be extracted from `.ipa` files.

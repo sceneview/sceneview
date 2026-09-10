@@ -2,8 +2,7 @@
  * Pure tool library for the rerun-3d-mcp package.
  *
  * Exports `TOOL_DEFINITIONS` and `dispatchTool` so this package can be
- * consumed both by its own stdio entrypoint (`./index.ts`) and by the hosted
- * `mcp-gateway` which multiplexes all verticals behind a single HTTP endpoint.
+ * consumed by its own stdio entrypoint (`./index.ts`).
  */
 import { generateSetupProject, SETUP_PLATFORMS, } from "./setup-project.js";
 import { generateArLogger, LOGGER_LANGUAGES, LOGGER_DATA_TYPES, } from "./ar-logger.js";

@@ -40,7 +40,7 @@ No `STATS_TOKEN` is needed locally unless you explicitly set one via `wrangler s
 
 ## Prerequisites (production)
 
-- Cloudflare account (same as mcp-gateway)
+- Cloudflare account
 - `wrangler` CLI authenticated (`wrangler login`)
 
 ## Step 1 — Create D1 database

@@ -2,9 +2,8 @@
  * Pure tool library for this vertical MCP package.
  *
  * Exports `TOOL_DEFINITIONS` and `dispatchTool` so this package can be
- * consumed both by its own stdio entrypoint (`./index.ts`) and by the
- * hosted `mcp-gateway` which multiplexes all verticals behind a single
- * HTTP endpoint. Runtime output is identical to the original monolith.
+ * consumed by its own stdio entrypoint (`./index.ts`). Runtime output is
+ * identical to the original monolith.
  */
 import { generateCharacterViewer, CHARACTER_STYLES, ANIMATION_STATES, } from "./character-viewer.js";
 import { generateLevelEditor, LEVEL_THEMES, GEOMETRY_TYPES, } from "./level-editor.js";

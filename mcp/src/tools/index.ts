@@ -1,9 +1,9 @@
 /**
  * Public entrypoint for the SceneView MCP tool library.
  *
- * Consumers (stdio server in `../index.ts`, hosted gateway in
- * `mcp-gateway/src/mcp/registry.ts`) should import from this file and
- * never reach into `definitions.ts` / `handler.ts` directly.
+ * Consumers (stdio server in `../index.ts`, HTTP server in `../server.ts`)
+ * should import from this file and never reach into `definitions.ts` /
+ * `handler.ts` directly.
  */
 
 export { TOOL_DEFINITIONS } from "./definitions.js";

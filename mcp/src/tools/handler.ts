@@ -4,10 +4,8 @@
  * This module contains the full tool-handling logic extracted from
  * `mcp/src/index.ts`. It has no dependency on the MCP stdio transport — it
  * just takes a tool name + argument bag and returns a `ToolResult`. This
- * lets the same logic be consumed by:
- *
- *   1. The stdio MCP server in `../index.ts` (legacy npm package path).
- *   2. The HTTP gateway in `mcp-gateway/src/mcp/registry.ts` (hosted path).
+ * lets the same logic be consumed by both the stdio MCP server in
+ * `../index.ts` and the Streamable HTTP server in `../server.ts`.
  *
  * Zero runtime behaviour change from 4.0.0: every tool returns exactly the
  * same content it did when the logic lived inside the stdio server's
