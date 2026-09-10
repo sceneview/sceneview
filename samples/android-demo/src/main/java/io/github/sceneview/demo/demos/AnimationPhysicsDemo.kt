@@ -1,5 +1,16 @@
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.node.PhysicsBody
+import io.github.sceneview.node.FloorProvider
+import kotlin.math.sqrt
+import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LinearProgressIndicator
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -41,7 +52,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneView
@@ -77,7 +87,6 @@ import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.io.File
-import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
@@ -112,9 +121,9 @@ fun AnimationPhysicsDemo(onBack: () -> Unit) {
     }
 }
 
-private enum class AnimationPhysicsMode(val label: String) {
-    Animation("Animation"),
-    Physics("Physics"),
+private enum class AnimationPhysicsMode(@StringRes val labelRes: Int) {
+    Animation(R.string.demo_animation_physics_mode_animation),
+    Physics(R.string.demo_animation_physics_mode_physics),
 }
 
 @Composable
@@ -129,11 +138,11 @@ private fun ModeSelector(
                 selected = m == current,
                 onClick = { onModeChange(m) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(m.label) },
+                label = { Text(stringResource(m.labelRes)) },
             )
         }
     }
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
 }
 
 // ─── Animation section ──────────────────────────────────────────────────────
@@ -183,7 +192,7 @@ private enum class CameraMode { HERO, REVEAL, VERTIGO, TRACKING, FREE }
  * IBL slider stay model-agnostic so swapping models doesn't break the framing.
  */
 private data class AnimationModel(
-    val displayName: String,
+    @StringRes val nameRes: Int,
     val bundledAssetPath: String? = null,
     val streamedSlug: SketchfabSlug? = null,
     val scaleToUnits: Float,
@@ -223,7 +232,7 @@ private val ANIMATION_MODELS: List<AnimationModel> = run {
     val sleepingFox = SampleAssets.byUid["cc4ab41731cc4c94a6adf2983821d1a8"]
     listOf(
         AnimationModel(
-            displayName = "Soldier",
+            nameRes = R.string.demo_animation_physics_subject_soldier,
             bundledAssetPath = "models/threejs_soldier.glb",
             scaleToUnits = 1.0f,
             // 3 = "Walk" — the strongest first-impression animation on the
@@ -232,22 +241,22 @@ private val ANIMATION_MODELS: List<AnimationModel> = run {
             defaultAnimationIndex = 3,
         ),
         AnimationModel(
-            displayName = walkingRobot?.displayName ?: "Walking Robot",
+            nameRes = R.string.demo_animation_physics_subject_robot,
             streamedSlug = walkingRobot,
             scaleToUnits = 1.30f,
         ),
         AnimationModel(
-            displayName = dancingKnight?.displayName ?: "Dancing Knight",
+            nameRes = R.string.demo_animation_physics_subject_knight,
             streamedSlug = dancingKnight,
             scaleToUnits = 1.45f,
         ),
         AnimationModel(
-            displayName = idleCat?.displayName ?: "Idle Cat",
+            nameRes = R.string.demo_animation_physics_subject_cat,
             streamedSlug = idleCat,
             scaleToUnits = 0.40f,
         ),
         AnimationModel(
-            displayName = sleepingFox?.displayName ?: "Sleeping Fox",
+            nameRes = R.string.demo_animation_physics_subject_fox,
             streamedSlug = sleepingFox,
             scaleToUnits = 0.55f,
         ),
@@ -351,22 +360,32 @@ private fun AnimationSection(
     // below to drive play/pause/speed/loop imperatively.
     val modelNodeRef = remember { androidx.compose.runtime.mutableStateOf<ModelNodeImpl?>(null) }
 
-    // Reactive animation control: re-runs whenever any of the four controls change.
-    // Relies on a stable node ref plus the modelInstance being loaded.
-    // In qaMode the underlying glTF skeleton must hold a deterministic pose for golden
-    // screenshots — we stop every track so the bind pose renders the same pixels every
-    // run. Without this, captures land at random skeletal-animation phases and the
-    // golden test needs ~60 % pixel tolerance to stay green.
-    LaunchedEffect(modelNodeRef.value, isPlaying, speed, loop, selectedAnim, DemoSettings.qaMode) {
-        val node = modelNodeRef.value ?: return@LaunchedEffect
-        if (node.animationCount <= 0) return@LaunchedEffect
-        // Stop any currently-playing animations before applying new settings.
-        for (i in 0 until node.animationCount) node.stopAnimation(i)
-        if (DemoSettings.qaMode) return@LaunchedEffect
-        if (isPlaying && selectedAnim < node.animationCount) {
-            node.playAnimation(selectedAnim, speed = speed, loop = loop)
+    val node = modelNodeRef.value
+    val animationNames = remember(node) {
+        if (node == null) emptyList() else (0 until node.animationCount).map { index ->
+            node.animator.getAnimationName(index).orEmpty().ifBlank {
+                context.getString(R.string.demo_animation_physics_clip_fallback, index + 1)
+            }
         }
     }
+    val duration = remember(node, selectedAnim) {
+        if (node != null && selectedAnim in animationNames.indices) {
+            node.animator.getAnimationDuration(selectedAnim)
+        } else 0f
+    }
+    var clipTime by remember(node, selectedAnim) { mutableFloatStateOf(0f) }
+    var blendIndex by remember(node, selectedAnim) {
+        mutableIntStateOf(animationNames.indices.firstOrNull { it != selectedAnim } ?: selectedAnim)
+    }
+    var blendWeight by remember(node, selectedAnim) { mutableFloatStateOf(0f) }
+    val previousFrame = remember(node, selectedAnim, isPlaying, DemoSettings.qaMode) { longArrayOf(0L) }
+    LaunchedEffect(node, selectedAnim, DemoSettings.qaMode) {
+        node ?: return@LaunchedEffect
+        for (index in 0 until node.animationCount) node.stopAnimation(index)
+        if (node.animationCount > 0 && selectedAnim !in animationNames.indices) selectedAnim = 0
+    }
+    val clipName = animationNames.getOrNull(selectedAnim)
+        ?: stringResource(R.string.demo_animation_physics_no_clip)
 
     // Cinematic camera framing — a Pixel 7a portrait viewport (~1080x1500 after the
     // controls panel) needs the soldier framed head-to-toe with margins. The model is
@@ -689,84 +708,56 @@ private fun AnimationSection(
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        topOverlay = {
+            Column(
+                modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md)
+                    .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                    .padding(SceneViewTokens.Space.sm),
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+            ) {
+                Text(
+                    clipName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    stringResource(R.string.demo_animation_physics_clip_status,
+                        stringResource(
+                            if (isPlaying && !DemoSettings.qaMode) {
+                                R.string.demo_animation_physics_playing
+                            } else {
+                                R.string.demo_animation_physics_paused
+                            },
+                        ),
+                        clipTime, duration),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LinearProgressIndicator(
+                    progress = { if (duration > 0f) (clipTime / duration).coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (animationNames.size > 1) Text(
+                    stringResource(R.string.demo_animation_physics_blend_status, clipName,
+                        animationNames[blendIndex], (blendWeight * 100).toInt()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        },
         controls = {
             ModeSelector(mode, onModeChange)
-            // Model carousel — switches the active animated subject. Slot 0 is
-            // the bundled threejs soldier; slots 1–4 stream from the `animation`
-            // category of SampleAssets. Streamed slots fall back to the bundled
-            // soldier / shiba / fox GLBs when no Sketchfab key is configured.
-            Text("Subject", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ANIMATION_MODELS.forEachIndexed { index, model ->
-                    FilterChip(
-                        selected = selectedModelIndex == index,
-                        onClick = { selectedModelIndex = index },
-                        label = { Text(model.displayName) },
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Cinematic camera picker. Hero (heroic low-angle orbit), Reveal
-            // (close-up to wide pullback), Vertigo (Hitchcock dolly-zoom), Tracking
-            // (lateral pass), Free (user gesture only).
-            Text("Camera", style = MaterialTheme.typography.labelLarge)
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CameraMode.entries.forEach { camMode ->
-                    FilterChip(
-                        selected = cameraMode == camMode,
-                        onClick = { cameraMode = camMode },
-                        label = {
-                            Text(
-                                when (camMode) {
-                                    CameraMode.HERO -> "Hero"
-                                    CameraMode.REVEAL -> "Reveal"
-                                    CameraMode.VERTIGO -> "Vertigo"
-                                    CameraMode.TRACKING -> "Tracking"
-                                    CameraMode.FREE -> "Free"
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Animation picker — one chip per animation defined in the GLB. Names come
             // from the Filament Animator (gltf animation names). Plays only the selected
             // one to avoid the "stacked animations" visual mess of playing all at once.
-            val node = modelNodeRef.value
-            val animationNames = remember(node) {
-                if (node != null && node.animationCount > 0) {
-                    (0 until node.animationCount).map { i ->
-                        node.animator.getAnimationName(i).ifBlank { "Anim $i" }
-                    }
-                } else {
-                    emptyList()
-                }
-            }
             if (animationNames.isNotEmpty()) {
-                Text("Model", style = MaterialTheme.typography.labelLarge)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(stringResource(R.string.demo_animation_physics_clip), style = MaterialTheme.typography.labelLarge)
+                Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     animationNames.forEachIndexed { index, name ->
@@ -777,67 +768,193 @@ private fun AnimationSection(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             }
+
+            if (duration > 0f) {
+                LabeledSlider(
+                    label = stringResource(R.string.demo_animation_physics_scrub),
+                    value = clipTime.coerceIn(0f, duration),
+                    onValueChange = { isPlaying = false; clipTime = it },
+                    valueRange = 0f..duration,
+                    valueText = stringResource(R.string.demo_animation_physics_time, clipTime, duration),
+                )
+            }
+            if (animationNames.size > 1) {
+                Text(
+                    stringResource(R.string.demo_animation_physics_blend_to),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                ) {
+                    animationNames.forEachIndexed { index, name ->
+                        if (index != selectedAnim) FilterChip(
+                            selected = blendIndex == index,
+                            onClick = { blendIndex = index },
+                            label = { Text(name) },
+                        )
+                    }
+                }
+                LabeledSlider(
+                    label = stringResource(R.string.demo_animation_physics_blend, clipName, animationNames[blendIndex]),
+                    value = blendWeight,
+                    onValueChange = { blendWeight = it },
+                    valueRange = 0f..1f,
+                    valueText = stringResource(R.string.demo_animation_physics_weight, (blendWeight * 100).toInt()),
+                )
+            }
+            Text(
+                stringResource(R.string.demo_animation_physics_animation_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Playback", style = MaterialTheme.typography.labelLarge)
-                IconButton(onClick = { isPlaying = !isPlaying }) {
+                Text(
+                    stringResource(R.string.demo_animation_physics_playback),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                IconButton(onClick = {
+                    if (!isPlaying && clipTime >= duration) clipTime = 0f
+                    isPlaying = !isPlaying
+                }) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play"
+                        contentDescription = if (isPlaying) {
+                            stringResource(R.string.demo_animation_physics_pause)
+                        } else {
+                            stringResource(R.string.demo_animation_physics_play)
+                        },
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
             LabeledSlider(
-                label = "Speed",
+                label = stringResource(R.string.demo_animation_physics_speed),
                 value = speed,
                 onValueChange = { speed = it },
                 valueRange = DemoMath.ANIMATION_SPEED_RANGE,
-                valueText = "${"%.1f".format(Locale.US, speed)}x",
+                valueText = stringResource(R.string.demo_animation_physics_speed_value, speed),
                 steps = 10,
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                 FilterChip(
                     selected = loop,
                     onClick = { loop = true },
-                    label = { Text("Loop") }
+                    label = { Text(stringResource(R.string.demo_animation_physics_loop)) }
                 )
                 FilterChip(
                     selected = !loop,
                     onClick = { loop = false },
-                    label = { Text("Once") }
+                    label = { Text(stringResource(R.string.demo_animation_physics_once)) }
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+
+            // Model carousel — switches the active animated subject. Slot 0 is
+            // the bundled threejs soldier; slots 1–4 stream from the `animation`
+            // category of SampleAssets. Streamed slots fall back to the bundled
+            // soldier / shiba / fox GLBs when no Sketchfab key is configured.
+            Text(stringResource(R.string.demo_animation_physics_subject), style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ANIMATION_MODELS.forEachIndexed { index, model ->
+                    FilterChip(
+                        selected = selectedModelIndex == index,
+                        onClick = { selectedModelIndex = index },
+                        label = { Text(model.streamedSlug?.displayName ?: stringResource(model.nameRes)) },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+
+            // Cinematic camera picker. Hero (heroic low-angle orbit), Reveal
+            // (close-up to wide pullback), Vertigo (Hitchcock dolly-zoom), Tracking
+            // (lateral pass), Free (user gesture only).
+            Text(stringResource(R.string.demo_animation_physics_camera), style = MaterialTheme.typography.labelLarge)
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CameraMode.entries.forEach { camMode ->
+                    FilterChip(
+                        selected = cameraMode == camMode,
+                        onClick = { cameraMode = camMode },
+                        label = {
+                            Text(
+                                when (camMode) {
+                                    CameraMode.HERO -> stringResource(R.string.demo_animation_physics_camera_hero)
+                                    CameraMode.REVEAL -> stringResource(R.string.demo_animation_physics_camera_reveal)
+                                    CameraMode.VERTIGO -> stringResource(R.string.demo_animation_physics_camera_vertigo)
+                                    CameraMode.TRACKING ->
+                                        stringResource(R.string.demo_animation_physics_camera_tracking)
+                                    CameraMode.FREE -> stringResource(R.string.demo_animation_physics_camera_free)
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
             // IBL intensity — the rooftop_night HDR is over-bright from cmgen's defaults.
             // 0 lux gives a pitch-black scene (only the directional sun left), 5 000 lux
             // is the atmospheric default, 10 000 lux pushes into over-exposed neutral.
             LabeledSlider(
-                label = "IBL Intensity",
+                label = stringResource(R.string.demo_animation_physics_ibl),
                 value = iblIntensity,
                 onValueChange = { iblIntensity = it },
                 valueRange = DemoMath.IBL_INTENSITY_RANGE,
-                valueText = "${iblIntensity.toInt()} lux",
+                valueText = stringResource(R.string.demo_animation_physics_lux, iblIntensity.toInt()),
             )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
+                onFrame = { nanos ->
+                    firstFrame.onFrame(nanos)
+                    val animatedNode = modelNodeRef.value
+                    if (animatedNode != null && selectedAnim in animationNames.indices && duration > 0f) {
+                        val previous = previousFrame[0]
+                        previousFrame[0] = nanos
+                        if (isPlaying && !DemoSettings.qaMode && previous != 0L) {
+                            val next = clipTime + ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f) * speed
+                            clipTime = if (loop) next % duration else next.coerceAtMost(duration)
+                            if (!loop && clipTime >= duration) isPlaying = false
+                        }
+                        val animator = animatedNode.animator
+                        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
+                            val blendDuration = animator.getAnimationDuration(blendIndex)
+                            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
+                            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
+                        } else animator.applyAnimation(selectedAnim, clipTime)
+                        animator.updateBoneMatrices()
+                        animatedNode.onWorldTransformChanged()
+                    }
+                },
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
@@ -859,8 +976,8 @@ private fun AnimationSection(
                         // replacing this manual lift) is a separate, visually-QA'd enhancement.
                         position = Position(0f, activeModel.scaleToUnits * 0.5f, 0f),
                         // autoAnimate = false so the ModelNode init doesn't fire-and-forget
-                        // all animations — we drive them from the LaunchedEffect above so
-                        // the speed / loop / play-pause controls have real effect.
+                        // all animations — the scene frame callback applies exactly the
+                        // selected clip time and optional blend on the main thread.
                         autoAnimate = false,
                         apply = { modelNodeRef.value = this },
                     )
@@ -872,7 +989,10 @@ private fun AnimationSection(
             }
             LoadingScrim(
                 loading = modelInstance == null,
-                label = "Loading ${activeModel.displayName}…",
+                label = stringResource(
+                    R.string.demo_animation_physics_loading,
+                    activeModel.streamedSlug?.displayName ?: stringResource(activeModel.nameRes),
+                ),
             )
         }
     }
@@ -971,49 +1091,28 @@ private class ScriptedCameraManipulator(
 }
 
 // ─── Physics section ────────────────────────────────────────────────────────
-// Formerly PhysicsDemo.
-//
-// Demonstrates [PhysicsNode] — drop streamed crash-test bodies (chairs, vases,
-// barrels, amphorae) that fall under gravity and bounce off the floor.
-//
-// Stage 2 migration ([#1152](https://github.com/sceneview/sceneview/issues/1152)).
-//  - Previous version: 5 coloured spheres bouncing on a plane — useful to verify the
-//    rigid-body integrator but not a real visual showcase of "physics on a real GLB".
-//  - New version: the same simulation, but with the four streamed entries from
-//    [SampleAssets.byCategory]`["physics"]` (Ceramic Vase, Wooden Stool,
-//    Wooden Barrel, Clay Amphora — all CC-BY from Sketchfab) cycling through each
-//    drop. The "Bundled spheres" chip preserves the v4.3.1 spheres-only mode for
-//    QA / offline / store-listing screenshot determinism.
-//
-// Physics math is unchanged — every dropped object is treated as a sphere of
-// `collisionRadius = 0.1 m` so the bounce reads naturally regardless of the actual
-// mesh shape (we don't ship a convex-hull collider — `feedback_demo_quality` calls
-// out that the demo's goal is to showcase the SDK's wiring, not to ship a physics
-// engine). The visual mesh is a `ModelNode` parented to the simulated [SphereNodeImpl];
-// the parent sphere is rendered invisibly via a transparent material so only the
-// mesh is visible to the viewer.
-//
-// Each "Drop" press adds a new body. "Reset" clears every body by incrementing a
-// generation key that forces full recomposition. Streamed slugs use the resolver's
-// fallback path when no Sketchfab key is configured, so the carousel always drops
-// something visible even offline.
+// PhysicsBody supplies gravity and floor bounce. The sample adds equal-mass sphere
+// contacts and fixed steps because PhysicsNode has no body-to-body collision API.
+// Streamed meshes ride the same spherical colliders; this is not mesh-shaped physics.
 @Composable
 private fun PhysicsSection(
     onBack: () -> Unit,
     mode: AnimationPhysicsMode,
     onModeChange: (AnimationPhysicsMode) -> Unit,
 ) {
-    // Start with 5 bodies so the first frame already shows the demo's hook
-    // (a colourful rain on the floor) instead of a near-empty scene.
-    var bodyCount by remember { mutableIntStateOf(5) }
+    var bodyCount by remember { mutableIntStateOf(PHYSICS_INITIAL_BODIES) }
     var generation by remember { mutableIntStateOf(0) }
+    var replaying by remember { mutableStateOf(true) }
+    var liveBodyCount by remember { mutableIntStateOf(0) }
+    var collisions by remember { mutableIntStateOf(0) }
+    val simulation = remember(generation) { DemoCollisionReplay() }
 
     // Streamed `physics` slugs from SampleAssets. selectedSlug == null means
     // "Bundled spheres" — the v4.3.1 visual default. Selecting a slug arms
     // it as the carousel of streamed crash-test bodies (chairs / vases /
     // barrels / amphorae) cycling through each drop.
     val physicsSlugs = remember { SampleAssets.byCategory["physics"].orEmpty() }
-    var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(physicsSlugs.firstOrNull()) }
+    var selectedSlug by remember { mutableStateOf<SketchfabSlug?>(null) }
 
     val context = LocalContext.current
 
@@ -1058,38 +1157,78 @@ private fun PhysicsSection(
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        controls = {
-            ModeSelector(mode, onModeChange)
-            Text("Bodies: $bodyCount", style = MaterialTheme.typography.labelLarge)
+        peekHeader = stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions),
+        bottomOverlay = {
+            DemoStatusBanner(
+                text = stringResource(
+                    if (replaying) {
+                        R.string.demo_animation_physics_replaying
+                    } else {
+                        R.string.demo_animation_physics_reset_ready
+                    },
+                ),
+                tone = DemoStatusTone.Guidance,
+            )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
-                Button(onClick = { bodyCount++ }) {
-                    Text("Drop")
-                }
-                Button(onClick = { bodyCount += 10 }) {
-                    Text("Drop 10")
+                Button(onClick = { generation++; replaying = true }) {
+                    Text(stringResource(R.string.demo_animation_physics_replay))
                 }
                 Button(onClick = {
-                    bodyCount = 1
+                    bodyCount = PHYSICS_INITIAL_BODIES
                     generation++
-                }) {
-                    Text("Reset")
-                }
+                    replaying = false
+                }) { Text(stringResource(R.string.demo_animation_physics_reset)) }
             }
+        },
+        controls = {
+            ModeSelector(mode, onModeChange)
+            Text(
+                stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            ) {
+                Button(onClick = { generation++; replaying = true }) {
+                    Text(stringResource(R.string.demo_animation_physics_replay))
+                }
+                Button(onClick = {
+                    bodyCount = PHYSICS_INITIAL_BODIES
+                    generation++
+                    replaying = false
+                }) { Text(stringResource(R.string.demo_animation_physics_reset)) }
+                Button(enabled = bodyCount < PHYSICS_MAX_BODIES, onClick = {
+                    bodyCount++
+                    generation++
+                    replaying = true
+                }) { Text(stringResource(R.string.demo_animation_physics_drop)) }
+                Button(enabled = bodyCount < PHYSICS_MAX_BODIES, onClick = {
+                    bodyCount = (bodyCount + 10).coerceAtMost(PHYSICS_MAX_BODIES)
+                    generation++
+                    replaying = true
+                }) { Text(stringResource(R.string.demo_animation_physics_drop_ten)) }
+            }
+            Text(
+                stringResource(R.string.demo_animation_physics_physics_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             Text(
                 text = stringResource(R.string.demo_physics_picker_label),
                 style = MaterialTheme.typography.labelLarge,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
                 // "Bundled spheres" chip preserves the v4.3.1 visual default
                 // — useful for QA / offline / store-listing screenshots.
@@ -1099,7 +1238,8 @@ private fun PhysicsSection(
                         selectedSlug = null
                         // Reset so the chip swap is unambiguous — spheres
                         // first, then more spheres on tap.
-                        bodyCount = 5
+                        bodyCount = PHYSICS_INITIAL_BODIES
+                        replaying = true
                         generation++
                     },
                     label = {
@@ -1111,14 +1251,15 @@ private fun PhysicsSection(
                         selected = selectedSlug?.uid == slug.uid,
                         onClick = {
                             selectedSlug = slug
-                            bodyCount = 5
+                            bodyCount = PHYSICS_INITIAL_BODIES
+                            replaying = true
                             generation++
                         },
                         label = { Text(slug.displayName) },
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Text(
                 text = stringResource(R.string.demo_physics_picker_subtitle),
                 style = MaterialTheme.typography.labelSmall,
@@ -1134,7 +1275,15 @@ private fun PhysicsSection(
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 cameraNode = cameraNode,
-                onFrame = firstFrame.onFrame,
+                autoCenterContent = false,
+                onFrame = { nanos ->
+                    firstFrame.onFrame(nanos)
+                    // Start only once all nodes are registered: composition timing cannot
+                    // change which body gets a head start on the deterministic replay.
+                    simulation.onFrame(nanos, replaying && simulation.bodies.size == bodyCount)
+                    liveBodyCount = simulation.bodies.size
+                    collisions = simulation.collisions
+                },
                 cameraManipulator = rememberCameraManipulator(
                     orbitHomePosition = cameraNode.worldPosition
                 )
@@ -1166,6 +1315,20 @@ private fun PhysicsSection(
                     position = Position(y = -0.5f),
                 )
 
+                // Visible rails mark the bounds used by the collision response.
+                for (side in listOf(-1f, 1f)) {
+                    CubeNode(
+                        size = Size(0.03f, 0.16f, 1.6f),
+                        position = Position(side * 0.8f, -0.42f, 0f),
+                        materialInstance = groundMaterial,
+                    )
+                    CubeNode(
+                        size = Size(1.6f, 0.16f, 0.03f),
+                        position = Position(0f, -0.42f, side * 0.8f),
+                        materialInstance = groundMaterial,
+                    )
+                }
+
                 // Streamed mesh path. The model file is `null` until the
                 // resolver returns (or the user picked "Bundled spheres").
                 // The GLB is parsed once into a single `Model` (geometry +
@@ -1180,18 +1343,10 @@ private fun PhysicsSection(
                     rememberStreamedModel(modelLoader, file)
                 }
 
-                // collisionRadius is the bouncing-sphere radius PhysicsNode uses
-                // to offset the contact point off the floor. Keep it consistent
-                // regardless of whether we render a sphere or a streamed mesh —
-                // the demo's value is the simulation hook-up, not a per-mesh
-                // collider, and `feedback_demo_quality` says the SDK is the
-                // showcase, not bespoke physics.
-                val collisionRadius = 0.08f
+                val collisionRadius = PHYSICS_RADIUS
 
                 for (i in 0 until bodyCount) {
-                    val xOffset = (i % 5 - 2) * 0.18f + (if (i / 5 % 2 == 0) 0f else 0.09f)
-                    val zOffset = ((i / 5) % 3 - 1) * 0.18f
-                    val startY = 0.6f + (i / 5) * 0.18f
+                    val startPosition = remember(i) { physicsStartPosition(i) }
 
                     var nodeRef by remember(i) { mutableStateOf<SphereNodeImpl?>(null) }
 
@@ -1204,7 +1359,7 @@ private fun PhysicsSection(
                     SphereNode(
                         radius = collisionRadius,
                         materialInstance = sphereMaterials[i % 4],
-                        position = Position(x = xOffset, y = startY, z = zOffset),
+                        position = startPosition,
                         apply = { nodeRef = this }
                     ) {
                         // Streamed mesh child — only rendered when a streamed
@@ -1232,21 +1387,139 @@ private fun PhysicsSection(
                         }
                     }
 
-                    // PhysicsNode attaches an onFrame callback that applies
-                    // gravity + bounce. The radius is the bounding-sphere
-                    // collision radius — the streamed mesh child rides
-                    // visually on top.
                     nodeRef?.let { node ->
-                        PhysicsNode(
-                            node = node,
-                            restitution = 0.7f,
-                            floorY = -0.5f,
-                            radius = collisionRadius,
-                        )
+                        DisposableEffect(node, simulation) {
+                            simulation.bodies[i] = PhysicsBody(
+                                node = node,
+                                restitution = PHYSICS_RESTITUTION,
+                                floorY = PHYSICS_FLOOR,
+                                radius = collisionRadius,
+                                initialVelocity = if (i == 0) Position(1.9f, 0.4f, 0f) else Position(0f),
+                                // Keep resting bodies responsive to later sphere impacts.
+                                floorProvider = FloorProvider { _, _, _, _ -> PHYSICS_FLOOR },
+                            )
+                            onDispose { simulation.bodies.remove(i) }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private const val PHYSICS_INITIAL_BODIES = 7
+private const val PHYSICS_MAX_BODIES = 30
+private const val PHYSICS_RADIUS = 0.08f
+private const val PHYSICS_FLOOR = -0.5f
+private const val PHYSICS_RESTITUTION = 0.8f
+private const val PHYSICS_STEP_NANOS = 8_333_333L
+
+private fun physicsStartPosition(index: Int): Position = when (index) {
+    0 -> Position(-0.65f, -0.32f, 0f)
+    in 1..3 -> Position(0.05f + (index - 1) * PHYSICS_RADIUS * 2f, PHYSICS_FLOOR + PHYSICS_RADIUS, 0f)
+    in 4..5 -> Position(0.13f + (index - 4) * PHYSICS_RADIUS * 2f,
+        PHYSICS_FLOOR + PHYSICS_RADIUS * (1f + sqrt(3f)), 0f)
+    6 -> Position(0.21f, PHYSICS_FLOOR + PHYSICS_RADIUS * (1f + 2f * sqrt(3f)), 0f)
+    else -> Position((index % 5 - 2) * 0.18f, 0.6f + (index / 5) * 0.18f, (index % 3 - 1) * 0.18f)
+}
+
+/** A deterministic sphere-contact demonstration, deliberately local to this sample. */
+private class DemoCollisionReplay {
+    val bodies = sortedMapOf<Int, PhysicsBody>()
+    var collisions = 0
+        private set
+    private var previousFrame = 0L
+    private var accumulatedNanos = 0L
+
+    fun onFrame(nanos: Long, playing: Boolean) {
+        val elapsed = if (previousFrame == 0L) 0L else (nanos - previousFrame).coerceIn(0L, 100_000_000L)
+        previousFrame = nanos
+        if (!playing) return
+        accumulatedNanos += elapsed
+        while (accumulatedNanos >= PHYSICS_STEP_NANOS) {
+            step()
+            accumulatedNanos -= PHYSICS_STEP_NANOS
+        }
+    }
+
+    private fun step() {
+        for (body in bodies.values) {
+            val before = body.velocity
+            body.step(PHYSICS_STEP_NANOS, 0L)
+            val p = body.node.position
+            val v = body.velocity
+            if (before.y < -0.2f && v.y > 0f) collisions++
+            // Same rails as the rendered tray. Only count approaching impacts,
+            // not persistent resting contacts or positional corrections.
+            val bound = 0.8f - 0.015f - body.radius
+            var vx = v.x
+            var vz = v.z
+            val belowRail = p.y - body.radius < PHYSICS_FLOOR + 0.16f
+            if (belowRail && kotlin.math.abs(p.x) > bound && p.x * vx > 0f) {
+                vx = -vx * body.restitution
+                collisions++
+            }
+            if (belowRail && kotlin.math.abs(p.z) > bound && p.z * vz > 0f) {
+                vz = -vz * body.restitution
+                collisions++
+            }
+            if (p.y <= PHYSICS_FLOOR + body.radius && kotlin.math.abs(v.y) < 0.2f) {
+                vx *= 0.985f
+                vz *= 0.985f
+            }
+            if (belowRail) {
+                body.node.position =
+                    Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
+            }
+            body.velocity = Position(vx, v.y, vz)
+        }
+        // Stable index order, a fixed timestep and fixed initial velocities make
+        // the same initial population produce the same sequence of impacts.
+        for ((aIndex, a) in bodies) {
+            for ((bIndex, b) in bodies) {
+                if (bIndex > aIndex && resolvePair(a, b)) collisions++
+            }
+        }
+    }
+
+    /**
+     * Separates [a] and [b] if their spheres overlap and exchanges the impulse
+     * along the contact normal. Returns `true` when the pair met hard enough to
+     * count as an impact, so the caller owns the counter and this stays pure
+     * enough to read.
+     */
+    private fun resolvePair(a: PhysicsBody, b: PhysicsBody): Boolean {
+        val pa = a.node.position
+        val pb = b.node.position
+        val dx = pb.x - pa.x
+        val dy = pb.y - pa.y
+        val dz = pb.z - pa.z
+        val distanceSquared = dx * dx + dy * dy + dz * dz
+        val diameter = a.radius + b.radius
+        if (distanceSquared >= diameter * diameter) return false
+        val distance = sqrt(distanceSquared)
+        val nx = if (distance > 0.00001f) dx / distance else 1f
+        val ny = if (distance > 0.00001f) dy / distance else 0f
+        val nz = if (distance > 0.00001f) dz / distance else 0f
+        val correction = (diameter - distance) * 0.5f
+        a.node.position = Position(
+            pa.x - nx * correction,
+            (pa.y - ny * correction).coerceAtLeast(PHYSICS_FLOOR + a.radius),
+            pa.z - nz * correction,
+        )
+        b.node.position = Position(
+            pb.x + nx * correction,
+            (pb.y + ny * correction).coerceAtLeast(PHYSICS_FLOOR + b.radius),
+            pb.z + nz * correction,
+        )
+        val va = a.velocity
+        val vb = b.velocity
+        val approach = (vb.x - va.x) * nx + (vb.y - va.y) * ny + (vb.z - va.z) * nz
+        if (approach >= 0f) return false
+        val impulse = -(1f + PHYSICS_RESTITUTION) * approach / 2f
+        a.velocity = Position(va.x - impulse * nx, va.y - impulse * ny, va.z - impulse * nz)
+        b.velocity = Position(vb.x + impulse * nx, vb.y + impulse * ny, vb.z + impulse * nz)
+        return approach < -0.2f
     }
 }
 

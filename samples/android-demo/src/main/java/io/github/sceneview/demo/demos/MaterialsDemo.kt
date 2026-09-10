@@ -2,6 +2,17 @@
 
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import io.github.sceneview.rememberView
+import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.utils.worldToScreen
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
@@ -50,7 +61,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
@@ -205,29 +215,11 @@ private fun StudioSection(
     var resetTick by remember { mutableIntStateOf(0) }
 
     var selectedIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_INDEX) }
-    // What Compare puts on the left: the material that was selected before this one. It costs
-    // no control of its own — picking a second material *is* the act of setting up the
-    // comparison — and it answers the only question a material picker cannot: "was that one
-    // rougher, or do I just remember it that way?"
-    var comparedIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_INDEX) }
     var environmentIndex by remember { mutableIntStateOf(MaterialStudio.DEFAULT_ENVIRONMENT_INDEX) }
-    var compare by remember { mutableStateOf(false) }
+    var compare by remember { mutableStateOf(true) }
     var animating by remember { mutableStateOf(true) }
 
     val selected = library[selectedIndex]
-
-    // Which material Compare puts on the LEFT. Normally the previous selection — picking a
-    // second material *is* the act of setting up the comparison. But on a fresh screen, after
-    // Reset, or when the user re-picks the chip already selected, "the previous selection" is
-    // the current one, and Compare would split the stage into two identical balls: it reads as
-    // a bug, and it teaches nothing. Falling back to the preceding library entry keeps the
-    // first tap on Compare informative — the default pair is Glazed Ceramic against Car Paint,
-    // a dielectric beside a clear-coated metallic, which is the difference the mode exists for.
-    val compareWith = if (comparedIndex != selectedIndex) {
-        comparedIndex
-    } else {
-        (selectedIndex + library.size - 1) % library.size
-    }
 
     // Live parameter overrides. Re-seeded from the material whenever the selection changes,
     // so the sliders always open on the values the ball is actually wearing.
@@ -264,6 +256,19 @@ private fun StudioSection(
     // actually looks like.
     val materials = rememberStudioMaterials(materialLoader)
     val instances = library.map { rememberStudioMaterial(materialLoader, materials, it) }
+    // Keep the base fixed while the right-hand preset responds to its sliders.
+    val base = selected.copy(
+        id = "base-${selected.id}",
+        metallic = if (selected.trait == MaterialTrait.None) 0f else selected.metallic,
+        roughness = if (selected.trait == MaterialTrait.None) 0.6f else selected.roughness,
+        reflectance = if (selected.trait == MaterialTrait.None) 0.5f else selected.reflectance,
+        trait = MaterialTrait.None,
+        traitAmount = 0f,
+    )
+    val baseInstance = rememberStudioMaterial(materialLoader, materials, base)
+    val view = rememberView(engine)
+    val comparisonCamera = rememberCameraNode(engine)
+    var labelFrame by remember { mutableIntStateOf(0) }
 
     // Push the live overrides onto the selected instance. Keyed on the values rather than on
     // `instances` — the map above produces a new List every recomposition, so keying on it
@@ -349,6 +354,10 @@ private fun StudioSection(
         staticYaw = MaterialStudio.STATIC_ORBIT_YAW,
     )
 
+    LaunchedEffect(heroRadius) {
+        comparisonCamera.position = Position(0f, 0f, heroRadius)
+        comparisonCamera.lookAt(Position(0f))
+    }
     val firstFrame = rememberFirstFrameState()
 
     // A tap on a gallery sphere selects it and moves to Inspect. `Node.name` carries the
@@ -359,7 +368,6 @@ private fun StudioSection(
             if (!inspecting) {
                 val tapped = library.indexOfFirst { it.id == node?.name }
                 if (tapped >= 0) {
-                    comparedIndex = selectedIndex
                     selectedIndex = tapped
                     onModeChange(MaterialsMode.Inspect)
                 }
@@ -373,15 +381,14 @@ private fun StudioSection(
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
-            "${selected.label} · ${selected.summary(metallic, roughness, traitAmount)}"
+            stringResource(selected.nameRes)
         } else {
             stringResource(R.string.demo_materials_gallery_hint)
         },
         onResetSettings = {
             selectedIndex = MaterialStudio.DEFAULT_INDEX
-            comparedIndex = MaterialStudio.DEFAULT_INDEX
             environmentIndex = MaterialStudio.DEFAULT_ENVIRONMENT_INDEX
-            compare = false
+            compare = true
             animating = true
             resetTick++
         },
@@ -393,8 +400,20 @@ private fun StudioSection(
                     // the VISIBLE one-word text (`DESIGN.md`, "Floating Dock"); `label` is
                     // the accessible name and carries the full phrase.
                     icon = if (inspecting) Icons.Filled.GridView else Icons.Filled.Lens,
-                    caption = if (inspecting) "Gallery" else "Inspect",
-                    label = if (inspecting) "Back to the gallery" else "Inspect this material",
+                    caption = stringResource(
+                        if (inspecting) {
+                            R.string.demo_materials_mode_gallery
+                        } else {
+                            R.string.demo_materials_mode_inspect
+                        },
+                    ),
+                    label = stringResource(
+                        if (inspecting) {
+                            R.string.demo_materials_back_gallery
+                        } else {
+                            R.string.demo_materials_inspect_preset
+                        },
+                    ),
                     onClick = {
                         onModeChange(
                             if (inspecting) MaterialsMode.Gallery else MaterialsMode.Inspect
@@ -406,18 +425,32 @@ private fun StudioSection(
                 add(
                     DockItem(
                         icon = Icons.Filled.Compare,
-                        caption = "Compare",
-                        label = "Compare with the previous material",
+                        caption = stringResource(
+                            if (compare) R.string.demo_materials_single else R.string.demo_materials_compare,
+                        ),
+                        label = stringResource(
+                            if (compare) {
+                                R.string.demo_materials_hide_base
+                            } else {
+                                R.string.demo_materials_show_base
+                            },
+                        ),
                         onClick = { compare = !compare },
                         selected = compare,
                     )
                 )
             }
-            add(
+            if (!inspecting || !compare) add(
                 DockItem(
                     icon = if (animating) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    caption = "Animate",
-                    label = if (animating) "Pause the camera" else "Animate the camera",
+                    caption = stringResource(R.string.demo_materials_animate),
+                    label = stringResource(
+                        if (animating) {
+                            R.string.demo_materials_pause_camera
+                        } else {
+                            R.string.demo_materials_animate_camera
+                        },
+                    ),
                     onClick = { animating = !animating },
                     selected = animating,
                 )
@@ -445,7 +478,6 @@ private fun StudioSection(
                         selected = index == selectedIndex,
                         onClick = {
                             if (index != selectedIndex) {
-                                comparedIndex = selectedIndex
                                 selectedIndex = index
                             }
                         },
@@ -454,13 +486,13 @@ private fun StudioSection(
                         // of a metal's reflectance value is a muddy brown and tells the user
                         // nothing about the material it stands for.
                         leadingIcon = { MaterialSwatch(material) },
-                        label = { Text(material.label) },
+                        label = { Text(stringResource(material.nameRes)) },
                     )
                 }
             }
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             Text(
-                text = selected.note,
+                text = stringResource(selected.explainerRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -468,14 +500,14 @@ private fun StudioSection(
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
 
             LabeledSlider(
-                label = "Metallic",
+                label = stringResource(R.string.demo_materials_metallic),
                 value = metallic,
                 onValueChange = { metallic = it },
                 valueRange = 0f..1f,
             )
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
             LabeledSlider(
-                label = "Roughness",
+                label = stringResource(R.string.demo_materials_roughness),
                 value = roughness,
                 onValueChange = { roughness = it },
                 valueRange = 0f..1f,
@@ -486,18 +518,17 @@ private fun StudioSection(
             if (selected.trait != MaterialTrait.None) {
                 Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
                 LabeledSlider(
-                    label = selected.trait.label,
+                    label = stringResource(when (selected.trait) {
+                        MaterialTrait.ClearCoat -> R.string.demo_materials_clearcoat
+                        MaterialTrait.Sheen -> R.string.demo_materials_sheen
+                        MaterialTrait.Transmission -> R.string.demo_materials_transmission
+                        else -> R.string.demo_materials_emissive
+                    }),
                     value = traitAmount,
                     onValueChange = { traitAmount = it },
                     valueRange = 0f..traitSliderMax(selected.trait),
                 )
-                // The glTF extension this layer is the equivalent of. It is the search term a
-                // user takes back to their own asset pipeline, which is the point of naming it.
-                Text(
-                    text = selected.trait.extension,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
             }
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
@@ -510,11 +541,14 @@ private fun StudioSection(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
-                MaterialStudio.environments.forEachIndexed { index, option ->
+                MaterialStudio.environments.forEachIndexed { index, _ ->
                     FilterChip(
                         selected = index == environmentIndex,
                         onClick = { environmentIndex = index },
-                        label = { Text(option.label) },
+                        label = { Text(stringResource(listOf(
+                            R.string.demo_materials_env_studio, R.string.demo_materials_env_interior,
+                            R.string.demo_materials_env_sunset, R.string.demo_materials_env_night,
+                        )[index])) },
                     )
                 }
             }
@@ -523,12 +557,18 @@ private fun StudioSection(
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
-                onFrame = firstFrame.onFrame,
+                view = view,
+                cameraNode = comparisonCamera,
+                onFrame = { nanos -> firstFrame.onFrame(nanos); labelFrame++ },
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = environment,
-                cameraManipulator = if (inspecting) heroManipulator else galleryManipulator,
+                cameraManipulator = when {
+                    inspecting && compare -> null
+                    inspecting -> heroManipulator
+                    else -> galleryManipulator
+                },
                 onGestureListener = gestureListener,
                 // The wall's positions are the layout; letting the union bounding box
                 // re-centre the scene would move them, and the Compare pair's symmetry about
@@ -541,7 +581,7 @@ private fun StudioSection(
                             radius = MaterialStudio.COMPARE_RADIUS,
                             stacks = MaterialStudio.BALL_STACKS,
                             slices = MaterialStudio.BALL_SLICES,
-                            materialInstance = instances[compareWith],
+                            materialInstance = baseInstance,
                             position = Position(-MaterialStudio.COMPARE_OFFSET, 0f, 0f),
                         )
                         SphereNode(
@@ -574,6 +614,50 @@ private fun StudioSection(
                             )
                         }
                     }
+                }
+            }
+            // Project ordinary Compose labels from the actual view, so names follow the sweep.
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val captionWidth = if (inspecting) maxWidth / 2 else maxWidth * GALLERY_FILL / MaterialStudio.COLUMNS
+                val halfWidthPx = with(density) { captionWidth.toPx() / 2f }
+                val gapPx = with(density) { SceneViewTokens.Space.xs.toPx() }
+                val positions = if (!inspecting) MaterialStudio.wallPositions().map {
+                    Position(it.x, it.y - MaterialStudio.BALL_RADIUS, it.z)
+                } else if (compare) listOf(
+                    Position(-MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
+                    Position(MaterialStudio.COMPARE_OFFSET, -MaterialStudio.COMPARE_RADIUS, 0f),
+                ) else listOf(Position(0f, -MaterialStudio.HERO_RADIUS, 0f))
+                positions.forEachIndexed { index, anchor ->
+                    val caption = if (!inspecting) stringResource(library[index].nameRes)
+                    else if (compare && index == 0) stringResource(
+                        if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
+                        else R.string.demo_materials_base_layer
+                    ) else stringResource(selected.nameRes)
+                    Text(
+                        caption,
+                        modifier = Modifier.offset {
+                            @Suppress("UNUSED_EXPRESSION")
+                            labelFrame
+                            val point = view.worldToScreen(anchor)
+                            IntOffset(((point?.x ?: -view.viewport.width.toFloat()) - halfWidthPx).toInt(),
+                                ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
+                        }.width(captionWidth)
+                            .padding(horizontal = SceneViewTokens.Space.xs)
+                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                            .clickable(enabled = !inspecting) {
+                                selectedIndex = index
+                                onModeChange(MaterialsMode.Inspect)
+                            }
+                            .padding(SceneViewTokens.Space.xs),
+                        style = if (inspecting) {
+                            MaterialTheme.typography.titleSmall
+                        } else {
+                            MaterialTheme.typography.labelSmall
+                        },
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
             // The scene is procedural, so there is nothing to decode — but the environment's
@@ -748,7 +832,7 @@ private fun MaterialSwatch(material: StudioMaterial) {
 }
 
 /** Chip leading-icon box, the M3 default — a swatch that is not 18 dp misaligns the label. */
-private val SWATCH_SIZE = 18.dp
+private val SWATCH_SIZE = SceneViewTokens.Space.md
 
 /** Component-wise mix, so the swatch needs no `androidx.compose.ui.graphics.lerp` import. */
 private fun lerpColor(from: Color, to: Color, amount: Float): Color {
@@ -826,8 +910,8 @@ private fun OcclusionSection(
         dock = listOf(
             DockItem(
                 icon = Icons.Filled.Compare,
-                caption = "Occluder",
-                label = "Show the occluder plane",
+                caption = stringResource(R.string.demo_materials_occluder),
+                label = stringResource(R.string.demo_materials_show_occluder),
                 onClick = { occluderVisible = !occluderVisible },
                 selected = occluderVisible,
             ),

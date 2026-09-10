@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
+import androidx.annotation.StringRes
+import io.github.sceneview.demo.R
 import androidx.compose.ui.graphics.Color
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.math.Position
@@ -62,6 +64,8 @@ internal data class StudioMaterial(
     val id: String,
     val label: String,
     val note: String,
+    @StringRes val nameRes: Int,
+    @StringRes val explainerRes: Int,
     val color: Color,
     val metallic: Float,
     val roughness: Float,
@@ -160,6 +164,8 @@ internal object MaterialStudio {
     val library: List<StudioMaterial> = listOf(
         StudioMaterial(
             id = "chrome",
+            nameRes = R.string.demo_materials_preset_chrome,
+            explainerRes = R.string.demo_materials_explainer_chrome,
             label = "Mirror Chrome",
             note = "A metal at roughness 0.02 reflects the studio almost perfectly.",
             color = Chromium,
@@ -168,6 +174,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "gold",
+            nameRes = R.string.demo_materials_preset_gold,
+            explainerRes = R.string.demo_materials_explainer_gold,
             label = "Polished Gold",
             note = "Metals have no diffuse colour: this tint is gold's own reflectance.",
             color = Gold,
@@ -176,6 +184,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "copper",
+            nameRes = R.string.demo_materials_preset_copper,
+            explainerRes = R.string.demo_materials_explainer_copper,
             label = "Satin Copper",
             note = "The same shading, one notch rougher — the highlight spreads and softens.",
             color = Copper,
@@ -184,6 +194,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "aluminium",
+            nameRes = R.string.demo_materials_preset_aluminium,
+            explainerRes = R.string.demo_materials_explainer_aluminium,
             label = "Brushed Aluminium",
             note = "Roughness 0.55: the environment is still reflected, just scattered.",
             color = Aluminium,
@@ -192,6 +204,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "ceramic",
+            nameRes = R.string.demo_materials_preset_ceramic,
+            explainerRes = R.string.demo_materials_explainer_ceramic,
             label = "Glazed Ceramic",
             note = "A dielectric keeps its own colour and adds a small, sharp highlight.",
             color = Porcelain,
@@ -201,6 +215,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "car-paint",
+            nameRes = R.string.demo_materials_preset_car_paint,
+            explainerRes = R.string.demo_materials_explainer_car_paint,
             label = "Car Paint",
             note = "A glossy clear coat over a metallic flake base — two specular lobes.",
             color = SceneViewColors.Primary,
@@ -212,6 +228,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "velvet",
+            nameRes = R.string.demo_materials_preset_velvet,
+            explainerRes = R.string.demo_materials_explainer_velvet,
             label = "Velvet",
             note = "Sheen adds a retro-reflective rim that lights up at grazing angles.",
             color = SceneViewColors.AccentDeep,
@@ -225,6 +243,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "crystal",
+            nameRes = R.string.demo_materials_preset_crystal,
+            explainerRes = R.string.demo_materials_explainer_crystal,
             label = "Crystal",
             note = "Transmission refracts what is behind the surface at an IOR of 1.5.",
             color = Color(0xFFEFF6FF),
@@ -237,6 +257,8 @@ internal object MaterialStudio {
         ),
         StudioMaterial(
             id = "glow",
+            nameRes = R.string.demo_materials_preset_glow,
+            explainerRes = R.string.demo_materials_explainer_glow,
             label = "Signal Glow",
             note = "Emission owes nothing to the environment — it still lights at night.",
             color = SceneViewColors.SurfaceDim,
@@ -269,7 +291,7 @@ internal object MaterialStudio {
     const val BALL_RADIUS: Float = 0.2f
 
     /** Centre-to-centre distance between two gallery balls, metres. */
-    const val BALL_SPACING: Float = 0.5f
+    const val BALL_SPACING: Float = 0.6f
 
     /** Latitude / longitude subdivisions of every ball — high enough that a mirror has no facets. */
     const val BALL_STACKS: Int = 48

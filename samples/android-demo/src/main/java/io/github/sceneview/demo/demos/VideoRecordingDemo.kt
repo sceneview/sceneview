@@ -1,5 +1,14 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Intent
+import androidx.core.content.FileProvider
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.FilledTonalButton
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.shareFile
+import io.github.sceneview.demo.theme.SceneViewTokens
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
@@ -24,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LoadingScrim
@@ -75,6 +83,16 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
     var recording by remember { mutableStateOf<RecordingSession?>(null) }
     var lastSaved by remember { mutableStateOf<File?>(null) }
 
+    var failed by remember { mutableStateOf(false) }
+    val shareTitle = stringResource(R.string.demo_video_recording_share)
+    val savedUri = remember(lastSaved) {
+        lastSaved?.let { file ->
+            runCatching {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            }.getOrNull()
+        }
+    }
+
     // Never leak a recorder: leaving the demo mid-recording finalizes the file.
     DisposableEffect(surfaceMirrorer) {
         onDispose {
@@ -100,7 +118,8 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
         controls = {
             Text(
                 text = stringResource(R.string.demo_video_recording_explainer),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             lastSaved?.let { file ->
                 Text(
@@ -114,6 +133,41 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
             }
         },
         bottomOverlay = {
+            DemoStatusBanner(
+                text = stringResource(when {
+                    failed || (lastSaved != null && savedUri == null) -> R.string.demo_video_recording_failed
+                    recording != null -> R.string.demo_video_recording_recording
+                    lastSaved != null -> R.string.demo_video_recording_ready
+                    else -> R.string.demo_video_recording_idle
+                }),
+                tone = when {
+                    failed || (lastSaved != null && savedUri == null) -> DemoStatusTone.Blocked
+                    recording != null -> DemoStatusTone.Progress
+                    else -> DemoStatusTone.Guidance
+                },
+            )
+            if (recording == null && lastSaved != null) {
+                Row(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                ) {
+                    FilledTonalButton(enabled = savedUri != null, onClick = {
+                        savedUri?.let { uri ->
+                            failed = runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "video/mp4")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                })
+                            }.isFailure
+                        }
+                    }) { Text(stringResource(R.string.demo_video_recording_play)) }
+                    FilledTonalButton(enabled = savedUri != null, onClick = {
+                        savedUri?.let { uri ->
+                            failed = !shareFile(context, uri, "video/mp4", shareTitle)
+                        }
+                    }) { Text(shareTitle) }
+                }
+            }
             // Record / Stop toggle — the demo's primary action, so it lives in the
             // scaffold's bottom slot (#2779). It keeps the START edge because the
             // Settings FAB owns the bottom-END corner; the slot, not a constant here,
@@ -121,11 +175,12 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
             ExtendedFloatingActionButton(
                 onClick = {
                     recording?.let { active ->
-                        stopRecording(surfaceMirrorer, active)
-                        lastSaved = active.outputFile
+                        failed = !stopRecording(surfaceMirrorer, active)
+                        lastSaved = active.outputFile.takeIf { !failed }
                         recording = null
                     } ?: run {
                         recording = startRecording(context, surfaceMirrorer)
+                        failed = recording == null
                     }
                 },
                 icon = {
@@ -149,7 +204,7 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                 },
                 modifier = Modifier
                     .align(Alignment.Start)
-                    .padding(16.dp),
+                    .padding(SceneViewTokens.Space.md),
             )
         },
     ) {
@@ -203,8 +258,10 @@ private fun startRecording(
     context: Context,
     surfaceMirrorer: SurfaceMirrorer,
 ): RecordingSession? {
-    val outputDir = File(context.getExternalFilesDir(null), "recordings").apply { mkdirs() }
-    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+    val externalDir = context.getExternalFilesDir(null) ?: return null
+    val outputDir = File(externalDir, "recordings")
+    if (!outputDir.isDirectory && !outputDir.mkdirs()) return null
+    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
     val outputFile = File(outputDir, "scene_$timestamp.mp4")
 
     @Suppress("DEPRECATION")
@@ -246,11 +303,12 @@ private fun startRecording(
 }
 
 /** Stops mirroring first (idempotent), then finalizes the MP4. */
-private fun stopRecording(surfaceMirrorer: SurfaceMirrorer, session: RecordingSession) {
+private fun stopRecording(surfaceMirrorer: SurfaceMirrorer, session: RecordingSession): Boolean {
     runCatching { surfaceMirrorer.stopMirroring(session.surface) }
-    runCatching { session.recorder.stop() }
+    val stopped = runCatching { session.recorder.stop() }
         .onFailure { e -> Log.e(TAG, "Failed to stop recorder", e) }
     runCatching { session.recorder.release() }
+    return stopped.isSuccess && session.outputFile.length() > 0L
 }
 
 private const val TAG = "VideoRecordingDemo"

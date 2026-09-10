@@ -6,7 +6,7 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_secondary_camera_title">Secondary Camera (PiP)</string>
-    <string name="demo_secondary_camera_subtitle">Picture-in-picture second camera view</string>
+    <string name="demo_secondary_camera_subtitle">Add an independent camera inset to a 3D viewer</string>
     <string name="demo_secondary_camera_chip_corner">Corner</string>
     <string name="demo_secondary_camera_chip_front">Front</string>
     <string name="demo_secondary_camera_chip_orbit">Orbit</string>
@@ -15,4 +15,8 @@
     <string name="demo_secondary_camera_chip_side">Side</string>
     <string name="demo_secondary_camera_chip_top">Top</string>
     <string name="demo_secondary_camera_pip_cd">Picture-in-picture camera view: %1$s</string>
+    <string name="demo_secondary_camera_main">Main camera · drag to orbit</string>
+    <string name="demo_secondary_camera_pip_label">PiP — %1$s view</string>
+    <string name="demo_secondary_camera_status">PiP: %1$s — change the main view; this camera stays independent.</string>
+    <string name="demo_secondary_camera_explainer">Two cameras render the same scene content into two render targets: an interactive main view and an independent TextureSurface inset, sharing model resources.</string>
 </resources>

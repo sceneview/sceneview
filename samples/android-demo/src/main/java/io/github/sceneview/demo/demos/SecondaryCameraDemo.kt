@@ -1,5 +1,11 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.annotation.StringRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +38,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.DemoScaffold
@@ -64,8 +69,8 @@ private val ORIGIN = Position(0f, 0f, 0f)
 
 // Orbit preset tuning. The camera circles the model in the horizontal plane at
 // a slight elevation; one full sweep takes ORBIT_PERIOD_NANOS.
-private const val ORBIT_RADIUS = 1.8f
-private const val ORBIT_HEIGHT = 0.6f
+private const val ORBIT_RADIUS = 0.85f
+private const val ORBIT_HEIGHT = 0.3f
 private const val ORBIT_PERIOD_NANOS = 12_000_000_000L
 
 /**
@@ -171,7 +176,18 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_secondary_camera_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        bottomOverlay = {
+            DemoStatusBanner(
+                text = stringResource(R.string.demo_secondary_camera_status, stringResource(cameraPreset.labelRes)),
+                tone = DemoStatusTone.Guidance,
+            )
+        },
         controls = {
+            Text(
+                stringResource(R.string.demo_secondary_camera_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             // Mark the section label as a heading so TalkBack users can
             // navigate to it and understand the chip row that follows.
             Text(
@@ -182,8 +198,8 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
             val selectedStateDescription =
                 stringResource(R.string.demo_secondary_camera_chip_selected)
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)
             ) {
                 CameraPreset.entries.forEach { preset ->
                     val selected = cameraPreset == preset
@@ -209,13 +225,13 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Start)
-                    .padding(horizontal = 16.dp)
-                    .size(160.dp, 120.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .padding(horizontal = SceneViewTokens.Space.md)
+                    .size(SceneViewTokens.Space.x4l * 2, SceneViewTokens.Space.x3l * 2)
+                    .clip(RoundedCornerShape(SceneViewTokens.Radius.sm))
                     .border(
-                        2.dp,
+                        SceneViewTokens.Layout.selectedOutlineWidth,
                         MaterialTheme.colorScheme.outline,
-                        RoundedCornerShape(12.dp)
+                        RoundedCornerShape(SceneViewTokens.Radius.sm)
                     )
                     // The PiP renders into a TextureView that TalkBack cannot
                     // introspect — describe it explicitly, and mark it a polite
@@ -244,7 +260,23 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                         )
                     }
                 }
+                Text(
+                    stringResource(R.string.demo_secondary_camera_pip_label, stringResource(cameraPreset.labelRes)),
+                    modifier = Modifier.align(Alignment.BottomStart)
+                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                        .padding(SceneViewTokens.Space.sm),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
+            Text(
+                stringResource(R.string.demo_secondary_camera_main),
+                modifier = Modifier.align(Alignment.End).padding(horizontal = SceneViewTokens.Space.md)
+                    .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                    .padding(SceneViewTokens.Space.sm),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     ) {
         SceneView(
@@ -308,12 +340,12 @@ private fun rememberInstancedHelmet(
  * which has no fixed position — the [LaunchedEffect] animates it every frame.
  */
 private enum class CameraPreset(@StringRes val labelRes: Int, val eye: Position?) {
-    // Y=1.8 with X=0.01 to avoid a gimbal singularity in lookAt's up-vector
+    // Y=0.85 with X=0.01 to avoid a gimbal singularity in lookAt's up-vector
     // resolution when the camera sits exactly above the origin.
-    TOP(R.string.demo_secondary_camera_chip_top, Position(0.01f, 1.8f, 0f)),
-    SIDE(R.string.demo_secondary_camera_chip_side, Position(1.8f, 0.2f, 0f)),
-    FRONT(R.string.demo_secondary_camera_chip_front, Position(0f, 0.2f, 1.8f)),
-    CORNER(R.string.demo_secondary_camera_chip_corner, Position(1.3f, 0.9f, 1.3f)),
+    TOP(R.string.demo_secondary_camera_chip_top, Position(0.01f, 0.85f, 0f)),
+    SIDE(R.string.demo_secondary_camera_chip_side, Position(0.85f, 0.1f, 0f)),
+    FRONT(R.string.demo_secondary_camera_chip_front, Position(0f, 0.1f, 0.85f)),
+    CORNER(R.string.demo_secondary_camera_chip_corner, Position(0.6f, 0.45f, 0.6f)),
 
     // No fixed eye — the demo's LaunchedEffect sweeps the PiP camera around the
     // model on its own, regardless of how the user orbits the main view.
