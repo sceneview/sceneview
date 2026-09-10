@@ -57,7 +57,8 @@ Full API reference: [`llms.txt`](./llms.txt).
 - **Public surfaces are English only** — commit messages and PR bodies included.
 - **Codex is a delegation lever, not a rule** — it bills a quota separate from Claude's.
   Always `.claude/scripts/codex-delegate.sh` (`ask` · `review` · `implement
-  --new-worktree`), never a raw `codex`, never an OpenAI API key. Commits, merges and
+  --new-worktree` · `qa`, which drives a device unsandboxed from a throwaway
+  clone), never a raw `codex`, never an OpenAI API key. Commits, merges and
   releases stay with the lead session. Route to Codex what it does as well for less: an
   independent review of a merged PR, a whole-module read to draft an inventory, unit
   tests and mechanical refactors from a closed brief. Keep with Claude: product
