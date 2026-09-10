@@ -34,6 +34,8 @@ object ArSceneMeshFragment : DemoFragment {
         // KnownIssue badge before the merge; the merged card keeps it, because the
         // capability that could not be verified is still here.
         status = DemoStatus.KnownIssue,
+        // #3463 merged Scene Mesh and Streetscape Geometry into one card.
+        updatedIn = "4.35.0",
     )
 
     @Composable

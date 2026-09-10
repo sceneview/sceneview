@@ -26,6 +26,8 @@ object MaterialsFragment : DemoFragment {
         // streamed and nothing is downloaded, so there is no network path left to
         // fail. The #2088 known-issue chip stays removed.
         status = DemoStatus.Working,
+        // #3495 / #3538 rebuilt the section as a lit PBR studio.
+        updatedIn = "4.35.0",
     )
 
     @Composable

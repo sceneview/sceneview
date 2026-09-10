@@ -25,6 +25,8 @@ object LightingFragment : DemoFragment {
         icon = Icons.Filled.Lightbulb,
         order = 10,
         tags = setOf("light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr"),
+        // #3496 rebuilt the screen as a three-rig showcase over a shared stage.
+        updatedIn = "4.35.0",
     )
 
     @Composable

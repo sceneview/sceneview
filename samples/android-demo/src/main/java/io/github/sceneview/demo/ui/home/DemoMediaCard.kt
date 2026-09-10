@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoFreshness
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.IN_REVIEW_BADGE_VISIBLE
 import io.github.sceneview.demo.R
@@ -67,12 +69,18 @@ import io.github.sceneview.sample.ui.DemoCategoryAccent
  * A status chip sits on the media only for [DemoStatus.ComingSoon] /
  * [DemoStatus.KnownIssue], and [DemoStatus.InReview] behind
  * [IN_REVIEW_BADGE_VISIBLE]. Press scales the card to 0.98 on the one app spring.
+ *
+ * A **freshness** chip ("New" / "Updated", #3566) sits opposite it, top-left, so
+ * the two can coexist on one card. Unlike the status chip it is drawn in release
+ * builds — it is addressed to users, not to whoever runs the sign-off pass — and
+ * it expires on its own as the version moves. See [DemoFreshness].
  */
 @Composable
 fun DemoMediaCard(
     demo: DemoEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    freshness: DemoFreshness = DemoFreshness.None,
 ) {
     val dark = isSystemInDarkTheme()
     MediaCard(
@@ -84,6 +92,7 @@ fun DemoMediaCard(
         status = demo.status,
         onClick = onClick,
         modifier = modifier,
+        freshness = freshness,
     )
 }
 
@@ -178,6 +187,7 @@ private fun MediaCard(
     modifier: Modifier = Modifier,
     /** Custom media; wins over [preview] and [icon]. */
     media: (@Composable BoxScope.() -> Unit)? = null,
+    freshness: DemoFreshness = DemoFreshness.None,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -232,6 +242,15 @@ private fun MediaCard(
                             .padding(SceneViewTokens.Space.sm),
                     )
                 }
+                if (freshness != DemoFreshness.None) {
+                    FreshnessChip(
+                        freshness = freshness,
+                        accent = accent,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(SceneViewTokens.Space.sm),
+                    )
+                }
             }
             Column(
                 modifier = Modifier
@@ -279,6 +298,53 @@ private fun IconTile(icon: ImageVector, accent: Color) {
             tint = accent,
             modifier = Modifier.size(SceneViewTokens.Home.iconTileGlyph),
         )
+    }
+}
+
+/**
+ * "New" / "Updated" on the media, top-left.
+ *
+ * Same pill geometry as [StatusChip] so the two read as one family, but tinted
+ * with the demo's category accent rather than `onSurfaceVariant`: freshness is
+ * an invitation, status is a caveat, and they must not look alike at a glance.
+ */
+@Composable
+private fun FreshnessChip(
+    freshness: DemoFreshness,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val label = when (freshness) {
+        DemoFreshness.New -> stringResource(R.string.samples_chip_new)
+        DemoFreshness.Updated -> stringResource(R.string.samples_chip_updated)
+        DemoFreshness.None -> return
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, outlineSubtle()),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(12.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
