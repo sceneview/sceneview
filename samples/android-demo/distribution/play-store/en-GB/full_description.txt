@@ -11,7 +11,7 @@ Point your camera at a flat surface, tap to place, then drag, pinch and twist to
 
 50 INTERACTIVE DEMOS
 50 screens, each one shipping its source:
-- Tap to Place, Placement Scene and Wall Placement — the AR placement flows
+- Tap to Place, One-Call AR and Wall Placement — the AR placement flows
 - Depth Occlusion, People Occlusion and Depth Collider — virtual objects that respect the real room
 - Measure — tap two points, read the distance
 - Image Tracking and Augmented Faces — detect a poster, or a face

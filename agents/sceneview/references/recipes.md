@@ -80,6 +80,9 @@ PlacementScene(
     coaching = true,        // animated onboarding guide while searching for a surface
     groundShadows = true,   // contact shadow under each placed model
     // reticleStyle = PlacementReticleStyle.RING is the default; DISC for the legacy flat puck
+    // reticleColor defaults to RETICLE_TINT — an achromatic white ring over a faint dark
+    // contact halo, with an #a4c1ff centre dot only in the ready phase (#3570). Re-tint the
+    // dot, not the ring: a saturated reticle competes with the model it is placing.
     onPlaced = { anchor ->
         AnchorNode(anchor = anchor) {
             rememberModelInstance(modelLoader, "models/model.glb")?.let {

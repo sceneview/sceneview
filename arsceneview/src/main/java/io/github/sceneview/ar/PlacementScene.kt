@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import com.google.android.filament.Engine
@@ -97,7 +99,8 @@ import java.io.File
  * @param showReticle           Show the built-in center-screen placement reticle. Default `true`.
  * @param reticleStyle          Reticle geometry — a [PlacementReticleStyle.RING] (the modern
  *                              consumer-AR default) or the legacy [PlacementReticleStyle.DISC].
- * @param reticleColor          Reticle tint. Defaults to the DESIGN.md primary cyan; the
+ * @param reticleColor          Reticle tint. Defaults to [RETICLE_TINT], the achromatic
+ *                              `on-ar-scrim` white every consumer-AR reticle uses (#3570); the
  *                              searching / ready phase modulates its opacity automatically.
  * @param fadePlaneOnFirstPlacement Hide the plane-detection grid once the first model is placed,
  *                              so the surface stops being highlighted after it has served its
@@ -157,6 +160,7 @@ fun PlacementScene(
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
     val controller = remember { PlacementController() }
+    val haptic = LocalHapticFeedback.current
 
     // Latest ARCore frame, captured from onSessionUpdated so the tap gesture (which runs on the
     // UI thread, off the AR frame callback) can still hit-test against a live frame.
@@ -209,9 +213,11 @@ fun PlacementScene(
             onSessionUpdated = { updatedSession, frame ->
                 latestFrame = frame
                 if (groundShadows && session !== updatedSession) session = updatedSession
+                // Tracked unconditionally since #3569: the reticle is only composed while the
+                // camera is TRACKING, so this is no longer a coaching-only signal.
+                isTracking = frame.camera.trackingState == TrackingState.TRACKING
                 if (coaching) {
                     cameraReady = true
-                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     if (!anyPlaneTracked) {
                         anyPlaneTracked = updatedSession.getAllTrackables(Plane::class.java)
                             .any { it.trackingState == TrackingState.TRACKING }
@@ -225,8 +231,13 @@ fun PlacementScene(
                     // rotate) — don't spawn a fresh anchor on top of it.
                     if (node != null) return@rememberOnGestureListener
                     val frame = latestFrame ?: return@rememberOnGestureListener
-                    placementHit(frame, frame.hitTest(event), instantPlacement)
-                        ?.let { hit -> controller.add(hit.createAnchor()) }
+                    placementHit(frame, event.x, event.y, instantPlacement)?.let { hit ->
+                        controller.add(hit.createAnchor())
+                        // Confirm the commit in the hand. A tap that lands must feel different
+                        // from a tap that misses, or a dropped tap reads as a dead screen
+                        // (#3571).
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
                 }
             ),
         ) {
@@ -234,7 +245,12 @@ fun PlacementScene(
             // so the user previews where the next tap lands and gets a searching↔ready signal.
             // Purely visual: the tap handler above runs its own hit-test at the tap coordinates,
             // so placement is not centre-only.
-            if (showReticle && viewportSize != IntSize.Zero) {
+            if (shouldShowReticle(
+                    showReticle = showReticle,
+                    viewportMeasured = viewportSize != IntSize.Zero,
+                    cameraTracking = isTracking,
+                )
+            ) {
                 val centreX = viewportSize.width / 2f
                 val centreY = viewportSize.height / 2f
                 // PlacementReticle adds Depth-Lab orientation smoothing over HitResultNode and
@@ -372,10 +388,11 @@ class PlacementController internal constructor() {
 }
 
 /**
- * Legacy reticle color — DESIGN.md primary cyan, semi-transparent (alpha `0x99`). This was the
+ * Legacy reticle color — the pre-#3570 cyan, semi-transparent (alpha `0x99`). This was the
  * default before the ring reticle landed; the current default is the opaque [RETICLE_TINT], whose
  * alpha the [ReticlePhase] modulates. Retained for the standalone [ARSceneScope.PlacementReticle]
- * and any caller that wants the old flat tint.
+ * and any caller that wants the old flat tint. It is **not** a DESIGN.md token — the token table
+ * has no cyan — so new code should not reach for it.
  */
 val DEFAULT_RETICLE_COLOR: Color = Color(0x99_44_E7_FF)
 
@@ -426,6 +443,112 @@ fun placementHit(
     if (frame.camera.trackingState != TrackingState.TRACKING) return null
     return hits.firstOrNull { hit -> isPlacementHit(hit, instantPlacement) }
 }
+
+/**
+ * The approximate distance, in metres, handed to [Frame.hitTestInstantPlacement] — ARCore's own
+ * documented starting guess for where the surface is before it knows. The point refines from
+ * `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` to `FULL_TRACKING` once enough features are gathered.
+ */
+const val INSTANT_APPROXIMATE_DISTANCE_M = 1.0f
+
+/** Which trackable an accepted tap anchors to. See [placementHitSource]. */
+enum class PlacementHitSource {
+    /** A tracked plane hit inside its polygon — always preferred, it is the accurate answer. */
+    PLANE,
+
+    /** No usable plane; an `InstantPlacementPoint` at [INSTANT_APPROXIMATE_DISTANCE_M]. */
+    INSTANT,
+
+    /** Nothing to anchor to — the tap is dropped. */
+    NONE,
+}
+
+/**
+ * Pure hit-source precedence: the accurate answer wins, the fallback only fills the gap.
+ *
+ * Extracted so the rule is pinned by a JVM unit test without Compose or an ARCore session.
+ */
+fun placementHitSource(
+    hasPlaneHit: Boolean,
+    instantEnabled: Boolean,
+    hasInstantHit: Boolean,
+): PlacementHitSource = when {
+    hasPlaneHit -> PlacementHitSource.PLANE
+    instantEnabled && hasInstantHit -> PlacementHitSource.INSTANT
+    else -> PlacementHitSource.NONE
+}
+
+/**
+ * Resolves the [HitResult] a tap at ([xPx], [yPx]) should anchor to — **plane first, instant
+ * placement as the fallback**.
+ *
+ * This is the overload [PlacementScene] uses, and it exists because the list overload above
+ * cannot express the [instantPlacement] contract on its own (#3571). ARCore's [Frame.hitTest]
+ * never returns an `InstantPlacementPoint`: those come only from
+ * [Frame.hitTestInstantPlacement]. So `placementHit(frame, frame.hitTest(event), true)` — what
+ * `PlacementScene` did before this fix — could only ever accept plane hits, its
+ * [PlacementTrackableKind.INSTANT_PLACEMENT] branch was unreachable, and every tap taken before
+ * a plane had converged under the finger was silently dropped. In a dim room on a low-texture
+ * floor that is most of the first minute, which reads as a screen that simply does not respond.
+ *
+ * With [instantPlacement] on (the default) a tap therefore **always** places something once the
+ * camera is tracking: a plane anchor when a plane is there, an approximated
+ * `InstantPlacementPoint` otherwise, which then refines to the real surface — the Sceneform
+ * `ArFragment` behaviour the composable's KDoc has always promised.
+ *
+ * @param frame            The live ARCore [Frame] to hit-test.
+ * @param xPx              Tap X in view pixels.
+ * @param yPx              Tap Y in view pixels.
+ * @param instantPlacement Whether the instant-placement fallback is eligible.
+ */
+fun placementHit(
+    frame: Frame,
+    xPx: Float,
+    yPx: Float,
+    instantPlacement: Boolean,
+): HitResult? {
+    if (frame.camera.trackingState != TrackingState.TRACKING) return null
+    // Plane hits are filtered by the same acceptance rule as before, with instant OFF so the
+    // unreachable branch can never be consulted here.
+    val planeHit = placementHit(frame, frame.hitTest(xPx, yPx), instantPlacement = false)
+    val instantHit = if (instantPlacement && planeHit == null) {
+        runCatching {
+            frame.hitTestInstantPlacement(xPx, yPx, INSTANT_APPROXIMATE_DISTANCE_M).firstOrNull()
+        }.getOrNull()
+    } else {
+        null
+    }
+    return when (
+        placementHitSource(
+            hasPlaneHit = planeHit != null,
+            instantEnabled = instantPlacement,
+            hasInstantHit = instantHit != null,
+        )
+    ) {
+        PlacementHitSource.PLANE -> planeHit
+        PlacementHitSource.INSTANT -> instantHit
+        PlacementHitSource.NONE -> null
+    }
+}
+
+/**
+ * Whether [PlacementScene] composes its reticle this frame.
+ *
+ * Three conditions, all necessary (#3569):
+ *  - the caller asked for it ([showReticle]);
+ *  - the viewport has been measured, so the centre-screen hit test is not racing a `(0, 0)` hit;
+ *  - **the camera is actually tracking.** Before this gate the reticle node existed from the
+ *    first composition and, having no hit yet, rendered its geometry at the node's identity pose
+ *    — a flat, un-rotated disc floating at the world origin over the camera feed at session
+ *    start, and again once the session stopped delivering frames.
+ *
+ * Pure so it is pinned by a JVM unit test without Compose or ARCore.
+ */
+fun shouldShowReticle(
+    showReticle: Boolean,
+    viewportMeasured: Boolean,
+    cameraTracking: Boolean,
+): Boolean = showReticle && viewportMeasured && cameraTracking
 
 /**
  * Per-[HitResult] acceptance predicate for [placementHit] — see that function's KDoc for the
