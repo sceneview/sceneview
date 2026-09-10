@@ -2,8 +2,7 @@
  * Pure tool library for the rerun-3d-mcp package.
  *
  * Exports `TOOL_DEFINITIONS` and `dispatchTool` so this package can be
- * consumed both by its own stdio entrypoint (`./index.ts`) and by the hosted
- * `mcp-gateway` which multiplexes all verticals behind a single HTTP endpoint.
+ * consumed by its own stdio entrypoint (`./index.ts`).
  */
 
 import {
@@ -77,7 +76,7 @@ export interface ToolDefinition {
   /**
    * MCP behaviour hints — see mcp/src/tools/types.ts for the full rationale.
    * Optional in the type to keep migrations easy; runtime contract test in
-   * mcp-gateway/test/registry.test.ts asserts every tool defines them.
+   * tools/annotations.test.ts asserts every tool defines them.
    */
   annotations?: ToolAnnotations;
 }

@@ -38,7 +38,7 @@ if (arcoreApiKey.isEmpty()) {
 // into BuildConfig so SketchfabService can authenticate against
 // api.sketchfab.com. Empty => Sketchfab features stay disabled
 // (SketchfabConfig.apiKey returns null, the service throws MissingApiKey).
-// TODO V1.1: route requests via the mcp-gateway proxy so end-users never see
+// TODO V1.1: route requests via a backend proxy so end-users never see
 // the master key in the APK. See SketchfabConfig.kt.
 def sketchfabApiKey = System.getenv("SKETCHFAB_API_KEY") ?: ""
 if (sketchfabApiKey.isEmpty()) {

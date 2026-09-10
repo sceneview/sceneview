@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * checked as a last-resort fallback (useful when running unit tests from a
  * shell that exports the variable but doesn't propagate it to Gradle).
  *
- * TODO V1.1: move to backend proxy via mcp-gateway to avoid bundling the key
+ * TODO V1.1: move to a backend proxy to avoid bundling the key
  * directly in the Android app binary. End-users should authenticate against
  * the proxy (which holds the master key server-side) so we don't ship a
  * long-lived token that can be extracted from `.apk` files.

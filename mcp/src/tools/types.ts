@@ -1,9 +1,5 @@
 /**
  * Public types for the SceneView MCP tool library.
- *
- * These are the contract shared with the `mcp-gateway` package. Any change here
- * MUST be reflected in `mcp-gateway/src/mcp/types.ts` (or that file should
- * import from this one once workspaces are set up).
  */
 
 /** An MCP content block — always text for SceneView tools. */
@@ -82,9 +78,8 @@ export interface ToolDefinition {
   };
   /**
    * Behaviour hints for the MCP client. Typed as optional for the migration
-   * but enforced at runtime by a contract test
-   * (`tools/annotations.test.ts` here, mirrored in
-   * `mcp-gateway/test/registry.test.ts`) — every shipped tool MUST set them.
+   * but enforced at runtime by a contract test (`tools/annotations.test.ts`)
+   * — every shipped tool MUST set them.
    * The default sane combo is
    * `{ readOnlyHint: true, openWorldHint: false, destructiveHint: false }`.
    */
