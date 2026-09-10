@@ -6,7 +6,7 @@ Every tool returns complete, compilable Kotlin code using current SceneView 4.0.
 
 ## Installation
 
-### Option A — stdio via `npx` (Claude Desktop, Claude Code, Cursor, Windsurf)
+### stdio via `npx` (Claude Desktop, Claude Code, Cursor, Windsurf)
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -24,25 +24,6 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 Then restart Claude Desktop and ask:
 
 > *"Build me an AR furniture placement app where I can place a sofa in my living room."*
-
-### Option B — hosted HTTP MCP URL (ChatGPT, Claude Desktop "Remote MCP", Cursor URL)
-
-The 7 interior tools are also exposed (along with sceneview-mcp + automotive/gaming/healthcare/rerun verticals, `view_3d_model` included — 67 tools total) on the shared SceneView gateway:
-
-```
-https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public
-```
-
-- Anonymous, no API key required
-- All 7 interior tools are Pro tier — they return a JSON-RPC ACCESS_DENIED with a `/pricing` pointer until you subscribe
-- Rate limit: 60 req/h per IP
-
-For the **authenticated Pro tier** (full quota, all tools dispatch):
-
-```
-https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp
-Authorization: Bearer sv_live_...
-```
 
 ### From the command line
 

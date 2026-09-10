@@ -55,20 +55,12 @@ You agree that:
 - Generated code output is provided without claim of ownership — you may use it freely
 - SceneView SDK and its documentation remain under their respective licenses
 
-## 9. Paid Subscriptions (Pro Tier)
+## 9. Price
 
-The Service offers a free tier and a paid "Pro" subscription tier:
-
-- **Free tier:** 15 core tools (learning, validation, setup, guides) are available at no cost.
-- **Pro tier (€9.99/month):** Unlocks 36+ additional tools including multi-platform setup, scene generation, 3D artifacts, and specialized packages (Automotive, Gaming, Healthcare, Interior).
-
-Pro subscriptions are billed through Stripe via Polar.sh. By subscribing, you agree to:
-- Recurring monthly billing until cancelled
-- Cancellation takes effect at the end of the current billing period
-- No refunds for partial months
-- Pro features become inaccessible once the subscription lapses
-
-API keys are validated against your active Stripe subscription. Sharing API keys is prohibited.
+The Service is free. Every tool is free, there is no subscription, no account
+and no SceneView API key. The optional `SKETCHFAB_API_KEY` and `TRIPO_API_KEY`
+are your own third-party accounts, billed to you by those third parties under
+their own terms.
 
 ## 10. Service Availability
 
@@ -79,7 +71,7 @@ Thomas Gorisse reserves the right to:
 
 ## 11. Data and Privacy
 
-See [PRIVACY.md](./PRIVACY.md) for our privacy policy. In summary: for free-tier users, we collect no personal data. For Pro subscribers, we process only the data necessary for billing (see PRIVACY.md for details).
+See [PRIVACY.md](./PRIVACY.md) for our privacy policy. In summary: we collect no personal data.
 
 ## 12. Governing Law
 
@@ -87,7 +79,7 @@ These Terms are governed by the laws of **France**. Any disputes shall be subjec
 
 ## 13. GDPR Compliance
 
-For free-tier users, the Service does not process personal data. For Pro subscribers, billing data (email, payment method) is processed by Stripe and Polar.sh under their respective privacy policies. API key validation is cached in-memory for 5 minutes and not persisted.
+The Service does not process personal data.
 
 ## 14. Severability
 

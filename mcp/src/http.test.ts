@@ -8,7 +8,7 @@ import type { Server as NodeHttpServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PACKAGE_VERSION } from "./generated/version.js";
 import { CORS_HEADERS, startHttpServer } from "./http.js";
-import { getProToolNames, getToolTier } from "./tiers.js";
+import { getLocalOnlyToolNames, isLocalOnlyTool } from "./surfaces.js";
 import { TOOL_DEFINITIONS } from "./tools/index.js";
 
 const CHALLENGE_TOKEN = "test-challenge-token-1234";
@@ -98,7 +98,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     });
   });
 
-  it("tools/list exposes the free tier only, with view_3d_model bound to the widget", async () => {
+  it("tools/list omits the local-only tools, with view_3d_model bound to the widget", async () => {
     const body = await rpc("tools/list");
     expect(body.error).toBeUndefined();
     const tools = body.result?.tools as Array<{
@@ -108,15 +108,15 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     }>;
     const names = tools.map((t) => t.name);
 
-    const expectedFree = TOOL_DEFINITIONS.filter((t) => getToolTier(t.name) === "free").map(
+    const expectedRemote = TOOL_DEFINITIONS.filter((t) => !isLocalOnlyTool(t.name)).map(
       (t) => t.name
     );
-    expect(names).toEqual(expectedFree);
+    expect(names).toEqual(expectedRemote);
     expect(names).toContain("view_3d_model");
     expect(names).toContain("get_sample");
 
-    for (const pro of getProToolNames()) expect(names).not.toContain(pro);
-    // And no "[PRO]"-prefixed leftovers from the stdio listing either.
+    for (const local of getLocalOnlyToolNames()) expect(names).not.toContain(local);
+    // No paywall prefixes: there is no paid tier left to advertise.
     expect(tools.some((t) => t.description.startsWith("[PRO]"))).toBe(false);
 
     const viewer = tools.find((t) => t.name === "view_3d_model");
@@ -154,7 +154,7 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(content[0]?.text).toContain("model-viewer");
   });
 
-  it("tools/call on a Pro tool is refused with a clear isError text", async () => {
+  it("tools/call on a local-only tool is refused with a clear isError text", async () => {
     const body = await rpc("tools/call", {
       name: "generate_scene",
       arguments: { description: "a chair" },
@@ -163,13 +163,16 @@ describe("POST /mcp — Streamable HTTP, stateless", () => {
     expect(body.result?.isError).toBe(true);
     const content = body.result?.content as Array<{ type: string; text: string }>;
     expect(content[0]?.text).toContain("generate_scene");
-    expect(content[0]?.text).toContain("Pro tool");
+    expect(content[0]?.text).toContain("not available on this remote server");
     expect(content[0]?.text).toContain("npx sceneview-mcp");
-    // Never forwarded to the gateway, never a widget.
+    // Says it is free, never points at a price.
+    expect(content[0]?.text).toContain("free");
+    expect(content[0]?.text).not.toMatch(/pro|pricing|subscri/i);
+    // Never forwarded anywhere, never a widget.
     expect(body.result?._meta).toBeUndefined();
   });
 
-  it("tools/call on an unknown tool says so instead of calling it Pro", async () => {
+  it("tools/call on an unknown tool says so instead of withholding it", async () => {
     const body = await rpc("tools/call", { name: "no_such_tool", arguments: {} });
     expect(body.result?.isError).toBe(true);
     const content = body.result?.content as Array<{ type: string; text: string }>;

@@ -9,13 +9,12 @@
  *                              Windsurf and every other local MCP client.
  *   npx sceneview-mcp --http   Streamable HTTP on `/mcp` — the remote surface
  *                              for ChatGPT / Codex and the OpenAI API `mcp`
- *                              tool (`./http.ts`, free tier only).
+ *                              tool (`./http.ts`).
  *
  * This file used to be a 1 200+ line monolith that defined every tool, its
  * handler, and the stdio transport all at once. The tool definitions and
  * handler logic live in `./tools/`, the `Server` wiring (resources, tool
- * list/call, Pro proxy dispatch via `./proxy.ts`) in `./server.ts`, so this
- * file only picks a transport.
+ * list/call) in `./server.ts`, so this file only picks a transport.
  *
  * IMPORTANT: the stdio runtime behaviour must stay identical to v4.0.0 for
  * existing npm consumers. Do not reorder checks, do not change content
@@ -24,25 +23,19 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { PACKAGE_VERSION } from "./generated/version.js";
-import { DEFAULT_PRICING_URL, isProxyConfigured } from "./proxy.js";
 import { createSceneViewServer } from "./server.js";
 
-// ─── v4 lite-mode startup banner ─────────────────────────────────────────────
+// ─── Startup banner ──────────────────────────────────────────────────────────
 //
 // MCP servers must keep stdout clean for JSON-RPC, so we log to stderr.
-// Claude Desktop surfaces this in the server's "Logs" panel. The banner
-// tells the user which mode they're in (hosted vs free) and where to
-// upgrade, without blocking the transport handshake.
+// Claude Desktop surfaces this in the server's "Logs" panel.
 
 function logStartupBanner(): void {
   if (process.env.SCENEVIEW_MCP_QUIET === "1") return;
-  const proxied = isProxyConfigured();
-  const mode = proxied ? "HOSTED (Pro tools → gateway)" : "LITE (free tools only)";
   const lines = [
-    `[sceneview-mcp] v${PACKAGE_VERSION} — ${mode}`,
-    proxied
-      ? `[sceneview-mcp] Pro tool calls will be forwarded to the hosted gateway.`
-      : `[sceneview-mcp] All setup, migration & docs tools are free. Pro packages (Automotive/Gaming/Healthcare/Interior) at ${DEFAULT_PRICING_URL}`,
+    `[sceneview-mcp] v${PACKAGE_VERSION}`,
+    `[sceneview-mcp] Every tool is free. No account, no API key, no telemetry ` +
+      `you cannot turn off (SCENEVIEW_TELEMETRY=0).`,
   ];
   for (const line of lines) process.stderr.write(`${line}\n`);
 }

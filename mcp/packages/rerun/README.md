@@ -4,7 +4,7 @@ MCP server that helps Claude generate **SceneView ↔ [Rerun.io](https://rerun.i
 
 ## Install
 
-### Option A — stdio via `npx` (Claude Desktop, Claude Code, Cursor, Windsurf)
+### stdio via `npx` (Claude Desktop, Claude Code, Cursor, Windsurf)
 
 ```bash
 npx rerun-3d-mcp
@@ -21,25 +21,6 @@ Or configure as a Claude Code MCP server:
     }
   }
 }
-```
-
-### Option B — hosted HTTP MCP URL (ChatGPT, Claude Desktop "Remote MCP", Cursor URL)
-
-The 5 rerun tools are also exposed (along with sceneview-mcp + automotive/gaming/healthcare/interior verticals, `view_3d_model` included — 67 tools total) on the shared SceneView gateway:
-
-```
-https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp/public
-```
-
-- Anonymous, no API key required
-- All 5 rerun tools are Pro tier — they return a JSON-RPC ACCESS_DENIED with a `/pricing` pointer until you subscribe
-- Rate limit: 60 req/h per IP
-
-For the **authenticated Pro tier** (full quota, all tools dispatch):
-
-```
-https://sceneview-mcp.mcp-tools-lab.workers.dev/mcp
-Authorization: Bearer sv_live_...
 ```
 
 ## Tools

@@ -123,7 +123,7 @@ npx sceneview-mcp --http
 
 Configuration: `PORT` (default `3333`), `HOST` (default `127.0.0.1` — set `HOST=0.0.0.0` to expose it, and put HTTPS in front), `OPENAI_APPS_CHALLENGE_TOKEN` (the value OpenAI gives you when you submit the domain). CORS allows any origin. The usual `SKETCHFAB_API_KEY` / `TRIPO_API_KEY` / `SCENEVIEW_TELEMETRY=0` knobs apply.
 
-**Free tier only.** The remote surface lists and serves the free tools — there is no API key on a shared endpoint, so Pro tool names are refused at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` + `SCENEVIEW_API_KEY` path. stdio keeps listing everything as before.
+**Everything is free, but not everything is remote.** Three generation tools (`render_3d_preview`, `create_3d_artifact`, `generate_scene`) need your own third-party credentials, which a shared anonymous endpoint cannot hold, so the remote surface omits them and refuses those names at call time with a clear `isError` message pointing at the local `npx sceneview-mcp` path. stdio lists and runs all 32.
 
 **Inline 3D viewer.** `view_3d_model` returns `structuredContent` plus `_meta.ui.resourceUri = ui://widget/3d-viewer.html`; the widget (SceneView.js + Filament.js, served by `resources/read` with the `text/html;profile=mcp-app` mime type and its `_meta.ui.csp`) renders the model inline in ChatGPT and any MCP Apps host.
 
@@ -379,21 +379,6 @@ The only network calls are to the GitHub API (for known issues), Sketchfab (when
 
 ---
 
-## Optional: vertical packages
-
-A small set of domain-specific tools is gated behind an optional subscription. They aren't required for general 3D/AR work — only useful if you happen to be building one of these specific verticals:
-
-- **Automotive** — car configurator, paint shader, parts catalog, HUD overlay, AR showroom
-- **Gaming** — physics, particles, level editor, character viewer, inventory 3D
-- **Healthcare** — surgical planning, dental viewer, medical imaging, anatomy, molecule viewer
-- **Interior** — room planner, lighting design, material switcher, furniture placement, room tour
-
-Plus 3 generation helpers: `render_3d_preview`, `create_3d_artifact`, `generate_scene`.
-
-The base SDK and every developer tool listed above stay free, always.
-
----
-
 ## Sponsor
 
 If sceneview-mcp saves you time, consider [sponsoring on GitHub Sponsors](https://github.com/sponsors/sceneview). Building this is a one-dev labor of love and donations keep the free tier covered.
@@ -402,7 +387,7 @@ If sceneview-mcp saves you time, consider [sponsoring on GitHub Sponsors](https:
 
 ## Anonymous telemetry
 
-Enabled by default on the free tier (MCP client name/version and tool names — no personal data, no prompt content). Opt out with `SCENEVIEW_TELEMETRY=0`. See [PRIVACY.md](./PRIVACY.md#telemetry-free-tier) for the full payload shape.
+Enabled by default (MCP client name/version and tool names — no personal data, no prompt content). Opt out with `SCENEVIEW_TELEMETRY=0`. See [PRIVACY.md](./PRIVACY.md#telemetry) for the full payload shape.
 
 ---
 
@@ -412,7 +397,7 @@ Enabled by default on the free tier (MCP client name/version and tool names — 
 cd mcp
 npm install
 npm run prepare  # Copy llms.txt + build TypeScript
-npm test         # 2001 tests
+npm test         # 2007 tests
 npm run lint     # Biome (repo-root biome.json) — lint + format + import assists
 npm run lint:fix # same, applying the safe fixes
 npm run dev      # Start with tsx (hot reload)
@@ -427,8 +412,8 @@ mcp/
     server.ts            # The MCP Server (resources + tools), shared by both transports
     http.ts              # Streamable HTTP entrypoint (/mcp, /health, OpenAI challenge)
     widgets.ts           # MCP Apps widget: ui://widget/3d-viewer.html (SceneView.js + Filament.js)
-    tools/handler.ts     # Tool dispatcher (free + pro)
-    tiers.ts             # Free vs Pro tier mapping
+    tools/handler.ts     # Tool dispatcher
+    surfaces.ts          # Which tools the anonymous remote surface serves
     samples.ts           # 38 compilable code samples (Kotlin + Swift)
     validator.ts         # Code validator (30+ rules)
     node-reference.ts    # Node type parser
@@ -440,7 +425,6 @@ mcp/
     search-models.ts     # Sketchfab BYOK search
     generate-model.ts    # Tripo BYOK text/image -> GLB generation
     analyze-project.ts   # Local project scanner
-    proxy.ts             # Pro-tool proxy to hosted gateway
   llms.txt               # Bundled API reference (copied from repo root)
 ```
 

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
-import { getToolTier } from "./tiers.js";
+import { isLocalOnlyTool } from "./surfaces.js";
 import { dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 import {
   listWidgetResources,
@@ -123,9 +123,9 @@ describe("3D viewer widget HTML", () => {
 describe("view_3d_model tool", () => {
   const def = TOOL_DEFINITIONS.find((t) => t.name === "view_3d_model");
 
-  it("is declared, free, and bound to the widget on the declaration", () => {
+  it("is declared, remotely served, and bound to the widget on the declaration", () => {
     expect(def).toBeDefined();
-    expect(getToolTier("view_3d_model")).toBe("free");
+    expect(isLocalOnlyTool("view_3d_model")).toBe(false);
     expect(def?.inputSchema.required).toEqual(["modelUrl"]);
     // 3MF is a first-class input, not a footnote: the assistant only reaches for
     // this tool on a `.3mf` if the schema says it is accepted (#3482).

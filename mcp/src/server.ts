@@ -6,15 +6,12 @@
  * used to be the same 200 lines of handler registration, so they now call
  * `createSceneViewServer()` and only differ by the `surface` option:
  *
- *   - `"stdio"`  — lists every tool (Pro ones prefixed `[PRO]` unless an API
- *                  key is set) and forwards Pro calls to the hosted gateway.
- *                  This is the v4.0.0 behaviour and MUST stay byte-identical
- *                  for existing npm consumers: same content strings, same
- *                  order of checks.
- *   - `"remote"` — the anonymous public surface. Lists ONLY the free tier and
- *                  refuses Pro tool names at call time with a clear `isError`
- *                  text. There is no key on a shared endpoint, so there is
- *                  nothing to unlock and nothing to forward.
+ *   - `"stdio"`  — lists and runs every tool, in-process. Every tool is free
+ *                  and nothing is forwarded anywhere.
+ *   - `"remote"` — the anonymous public surface. Lists everything except the
+ *                  local-only tools of `surfaces.ts` (the ones needing your
+ *                  own third-party credentials) and refuses those names at
+ *                  call time with a clear `isError` text.
  *
  * Resources (`sceneview://api`, `sceneview://known-issues`, the two
  * `examples://` patterns and the `ui://widget/3d-viewer.html` MCP Apps
@@ -37,9 +34,8 @@ import {
 import { DEMO_WITH_SETTINGS_EXAMPLE, SKETCHFAB_STREAMING_EXAMPLE } from "./examples.js";
 import { LATEST_SCENEVIEW_RELEASE } from "./generated/version.js";
 import { fetchKnownIssues } from "./issues.js";
-import { dispatchProxyToolCall, isProxyConfigured } from "./proxy.js";
+import { isLocalOnlyTool } from "./surfaces.js";
 import { recordClientInit, recordToolCall } from "./telemetry.js";
-import { getToolTier, isProTool, TOOL_TIERS } from "./tiers.js";
 import { API_DOCS, dispatchTool, TOOL_DEFINITIONS } from "./tools/index.js";
 import type { ToolDefinition } from "./tools/types.js";
 import {
@@ -68,17 +64,17 @@ type SdkCallToolResult = {
   _meta?: Record<string, unknown>;
 };
 
-/** Tool declarations the remote surface publishes: the free tier, nothing else. */
+/** Tool declarations the remote surface publishes: everything but the local-only tools. */
 export function remoteToolDefinitions(): ToolDefinition[] {
-  return TOOL_DEFINITIONS.filter((tool) => getToolTier(tool.name) === "free");
+  return TOOL_DEFINITIONS.filter((tool) => !isLocalOnlyTool(tool.name));
 }
 
-/** The refusal a remote caller gets for a Pro tool name. Exported for tests. */
-export function remoteProToolRefusal(toolName: string): string {
+/** The refusal a remote caller gets for a local-only tool name. Exported for tests. */
+export function remoteUnavailableRefusal(toolName: string): string {
   return (
-    `\`${toolName}\` is a Pro tool and is not available on this remote server, ` +
-    `which exposes only the free SceneView tools. To use Pro tools, run the ` +
-    `package locally (\`npx sceneview-mcp\`) with a \`SCENEVIEW_API_KEY\`.`
+    `\`${toolName}\` is not available on this remote server: it needs your own ` +
+    `third-party credentials, which a shared anonymous endpoint cannot hold. ` +
+    `Run the package locally (\`npx sceneview-mcp\`) to use it. It is free.`
   );
 }
 
@@ -221,21 +217,12 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
     const negotiate = <T extends { _meta?: Record<string, unknown> }>(tool: T): T =>
       withWidgets ? tool : withoutWidgetPointer(tool);
 
-    // Remote surface: the free tier only. There is no key on a shared
-    // endpoint, so a `[PRO]` prefix would advertise tools nobody can call.
+    // Remote surface: everything the shared endpoint can actually run.
+    // Listing a tool it has no credentials for would advertise a dead end.
     if (remote) return { tools: remoteToolDefinitions().map(negotiate) };
 
-    // v4 lite mode: we trust the gateway to enforce Pro access at call time,
-    // so listing is purely cosmetic here. If no API key is set we still prefix
-    // Pro tool descriptions with "[PRO]" so the AI knows an upgrade is needed
-    // and surfaces the upsell in its responses; with a key we expose the full
-    // list unmodified.
-    const unlocked = isProxyConfigured();
-    const tools = TOOL_DEFINITIONS.map((tool) => {
-      if (unlocked || !isProTool(tool.name)) return negotiate(tool);
-      return negotiate({ ...tool, description: `[PRO] ${tool.description}` });
-    });
-    return { tools };
+    // Local stdio: the whole tool list, unmodified. Every tool is free.
+    return { tools: TOOL_DEFINITIONS.map(negotiate) };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -251,33 +238,17 @@ export function createSceneViewServer(options: SceneViewServerOptions = {}): Ser
 
     // Record anonymous telemetry (fire-and-forget, non-blocking, opt-out via
     // SCENEVIEW_TELEMETRY=0). See `telemetry.ts` and `PRIVACY.md`.
-    recordToolCall(toolName, getToolTier(toolName));
+    recordToolCall(toolName);
 
-    // ── v4 lite-mode routing ───────────────────────────────────────────────
-    //
-    // Free tools execute locally, same as 3.6.x. Pro tools are forwarded to
-    // the hosted gateway at sceneview-mcp.mcp-tools-lab.workers.dev/mcp —
-    // that's where auth, metering, and Stripe live. If no API key is set,
-    // `dispatchProxyToolCall` returns a friendly stub that points at the
-    // pricing page (handles the upsell itself, no separate denied-response
-    // step needed).
-    //
-    // Remote surface: a KNOWN Pro tool name is refused outright. Unknown
-    // names fall through to `dispatchTool`, whose "Unknown tool" answer is
-    // the honest one (unknown tools default to "pro" in the tier map, and
-    // "that's a Pro tool" would be a lie about a typo).
-    if (isProTool(toolName)) {
-      if (remote) {
-        if (toolName in TOOL_TIERS) {
-          return {
-            content: [{ type: "text", text: remoteProToolRefusal(toolName) }],
-            isError: true,
-          };
-        }
-      } else {
-        const result = await dispatchProxyToolCall(toolName, args);
-        return negotiateResult(result as unknown as SdkCallToolResult);
-      }
+    // Remote surface: a local-only tool name is refused with an explanation.
+    // Unknown names fall through to `dispatchTool`, whose "Unknown tool"
+    // answer is the honest one for a typo. Locally, nothing is refused —
+    // every tool runs in-process.
+    if (remote && isLocalOnlyTool(toolName)) {
+      return {
+        content: [{ type: "text", text: remoteUnavailableRefusal(toolName) }],
+        isError: true,
+      };
     }
 
     // The dispatcher returns the narrower SceneView `ToolResult` shape, which
