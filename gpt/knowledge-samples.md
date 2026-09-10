@@ -693,7 +693,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### AR Placement
 
 - `ar-placement` — Tap to Place. Pick a model, then tap a surface to place it.
-- `placement-scene` — Placement Scene. One-line tap-to-place AR.
+- `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
 - `wall-placement` — Wall Placement. Mount a TV on a wall, floor-to-wall aligned.
 - `ar-plane-node` — Plane Lifecycle. PlaneNode lifecycle: added, updated, removed.
 - `ar-plane-renderer-v2` — Plane Renderer V2. Depth, PBR and HDR plane renderer, V1↔V2.

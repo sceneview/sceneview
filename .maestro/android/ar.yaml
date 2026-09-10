@@ -173,7 +173,7 @@ appId: io.github.sceneview.demo
     file: flows/demo.yaml
     env:
       DEMO_ID: placement-scene
-      DEMO_NAME: Placement Scene
+      DEMO_NAME: One-Call AR
 - runFlow:
     file: flows/demo.yaml
     env:

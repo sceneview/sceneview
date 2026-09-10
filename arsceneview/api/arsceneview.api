@@ -664,6 +664,15 @@ public final class io/github/sceneview/ar/PlacementController {
 	public final fun getCount ()I
 }
 
+public final class io/github/sceneview/ar/PlacementHitSource : java/lang/Enum {
+	public static final field INSTANT Lio/github/sceneview/ar/PlacementHitSource;
+	public static final field NONE Lio/github/sceneview/ar/PlacementHitSource;
+	public static final field PLANE Lio/github/sceneview/ar/PlacementHitSource;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/PlacementHitSource;
+	public static fun values ()[Lio/github/sceneview/ar/PlacementHitSource;
+}
+
 public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum {
 	public static final field DISC Lio/github/sceneview/ar/PlacementReticleStyle;
 	public static final field RING Lio/github/sceneview/ar/PlacementReticleStyle;
@@ -673,18 +682,26 @@ public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum
 }
 
 public final class io/github/sceneview/ar/PlacementReticleVisualKt {
+	public static final field RETICLE_HALO_ALPHA_RATIO F
 	public static final field RETICLE_READY_ALPHA F
 	public static final field RETICLE_SEARCHING_ALPHA F
 	public static final fun PlacementReticleVisual-fWhpE4E (Lio/github/sceneview/NodeScope;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/ar/ReticlePhase;JLio/github/sceneview/ar/PlacementReticleStyle;FLandroidx/compose/runtime/Composer;II)V
+	public static final fun getRETICLE_HALO ()J
+	public static final fun getRETICLE_READY_ACCENT ()J
 	public static final fun getRETICLE_TINT ()J
 	public static final fun reticleAlphaFor (Lio/github/sceneview/ar/ReticlePhase;)F
+	public static final fun reticleHaloAlphaFor (F)F
 	public static final fun reticlePhaseFor (Z)Lio/github/sceneview/ar/ReticlePhase;
 }
 
 public final class io/github/sceneview/ar/PlacementSceneKt {
+	public static final field INSTANT_APPROXIMATE_DISTANCE_M F
 	public static final fun PlacementScene-c8To9hI (Landroidx/compose/ui/Modifier;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLcom/google/ar/core/Config$PlaneFindingMode;ZZJLio/github/sceneview/ar/PlacementReticleStyle;ZZZLjava/io/File;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun getDEFAULT_RETICLE_COLOR ()J
+	public static final fun placementHit (Lcom/google/ar/core/Frame;FFZ)Lcom/google/ar/core/HitResult;
 	public static final fun placementHit (Lcom/google/ar/core/Frame;Ljava/util/List;Z)Lcom/google/ar/core/HitResult;
+	public static final fun placementHitSource (ZZZ)Lio/github/sceneview/ar/PlacementHitSource;
+	public static final fun shouldShowReticle (ZZZ)Z
 }
 
 public final class io/github/sceneview/ar/PlacementTrackableKind : java/lang/Enum {

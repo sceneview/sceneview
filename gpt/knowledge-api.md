@@ -1150,7 +1150,7 @@ Signature:
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
-    reticleColor: Color = RETICLE_TINT,      // DESIGN.md primary cyan; opacity varies searching↔ready
+    reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity varies searching↔ready
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
@@ -1168,8 +1168,18 @@ detach every placed anchor (e.g. a "Clear All" button), or read `controller.coun
 `controller.anchors` to drive a placement counter. Both are Compose-observable.
 
 `PlacementScene` accepts plane hits (inside the polygon) and — when `instantPlacement = true` —
-instant-placement hits. For placement against arbitrary real geometry (sofas, slopes) use
-`DepthHitResultNode`; for full manual control drop down to `ARSceneView` + `HitResultNode`.
+instant-placement hits. Plane hits always win; the instant fallback is only consulted when no
+plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m approximate distance
+(`Frame.hitTest` never returns an `InstantPlacementPoint` — the trap #3571 fixed). A successful
+placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
+For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
+manual control drop down to `ARSceneView` + `HitResultNode`.
+
+The built-in reticle is composed only while the camera is `TRACKING`, so it can never render at
+the identity pose before the first hit (#3569). Its default look is deliberately achromatic — a
+white hairline ring over a faint dark contact halo, with a small `#a4c1ff` centre dot appearing
+only in the *ready* phase (#3570). Reticle colour is a design decision: if you re-tint it, tint
+the dot, not the ring.
 
 ### WallPlacementScene — place on a wall, aligned to the floor↔wall edge (#2740)
 

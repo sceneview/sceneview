@@ -3,8 +3,29 @@
      `PlacementSceneFragment.kt`). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_placement_scene_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
+     this file or `strings.xml` — see #1870.
+
+     #3568: the demo used to open straight into the camera with no copy anywhere on screen, so
+     it read as a second, worse `Tap to Place`. The subject is not "you can tap to place" — the
+     neighbouring demo already shows that, by hand, in 600 lines. The subject is that this whole
+     screen is ONE SDK call. The copy below says that before the camera opens. -->
 <resources>
-    <string name="demo_placement_scene_title">Placement Scene</string>
-    <string name="demo_placement_scene_subtitle">One-line tap-to-place AR</string>
+    <string name="demo_placement_scene_title">One-Call AR</string>
+    <string name="demo_placement_scene_subtitle">The same tap-to-place screen, in a single SDK call</string>
+
+    <!-- Pre-AR explainer (#3568). Mirrors the `Tap to Place` chooser: say what is being shown,
+         then open the camera. -->
+    <string name="placement_scene_headline">One call builds this whole screen</string>
+    <string name="placement_scene_teaches">Everything the camera screen does — the reticle, the plane hints, the onboarding coach, tap-to-place, the instant-placement fallback and the contact shadow under each model — comes from one composable. You only declare what rides each anchor.</string>
+    <string name="placement_scene_snippet">PlacementScene { anchor -&gt;\n    AnchorNode(anchor) { ModelNode(helmet) }\n}</string>
+    <string name="placement_scene_vs_neighbours">Tap to Place, next door, hand-writes the same flow out of the low-level AR primitives so you can see what they are. This screen is the shortcut you ship.</string>
+    <string name="placement_scene_reticle_heading">The cursor you will see</string>
+    <string name="placement_scene_reticle_searching">Searching — no surface yet</string>
+    <string name="placement_scene_reticle_ready">Ready — a tap lands here</string>
+    <string name="placement_scene_reticle_note">Achromatic, so it never competes with the model, with a contact halo that keeps it readable on a pale floor.</string>
+    <string name="placement_scene_cta">Open the camera</string>
+    <string name="placement_scene_controls">Aim the ring at a surface and tap to drop a helmet. Back returns here.</string>
+    <string name="placement_scene_clear">Clear all</string>
+    <string name="placement_scene_count_one">1 model placed</string>
+    <string name="placement_scene_count_other">%1$d models placed</string>
 </resources>

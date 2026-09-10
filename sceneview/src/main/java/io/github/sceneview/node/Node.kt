@@ -586,6 +586,15 @@ open class Node protected constructor(
                 oldParent?.let { it.childNodes = it.childNodes - this }
                 value?.let { it.childNodes = it.childNodes + this }
                 parentEntity = value?.entity
+                // `isVisible` is a COMPUTED property that walks up the parent chain, but the
+                // Filament layer mask that actually decides rendering is only pushed from
+                // `updateVisibility()`. Re-parenting changes the computed answer without
+                // touching either backing field, so before #3569 a child attached to an
+                // already-hidden parent kept the default `0xff` mask and rendered anyway —
+                // which is how PlacementScene's reticle disc showed up flat and un-rotated at
+                // the world origin before ARCore had produced a single hit. Refresh the whole
+                // subtree on every re-parent so a hidden parent can never leak a visible child.
+                updateVisibility()
             }
         }
 
