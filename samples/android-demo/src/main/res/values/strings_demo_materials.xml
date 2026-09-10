@@ -30,4 +30,45 @@
     <string name="demo_occlusion_material_status_visible">Occluder shown · a tinted plate covers the helmet</string>
     <string name="demo_occlusion_material_status_occluding">Occlusion material · invisible, still hides the helmet</string>
     <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
+    <string name="demo_materials_preset_chrome">Polished chrome</string>
+    <string name="demo_materials_preset_gold">Polished gold</string>
+    <string name="demo_materials_preset_copper">Satin copper</string>
+    <string name="demo_materials_preset_aluminium">Brushed aluminium</string>
+    <string name="demo_materials_preset_ceramic">Glazed ceramic</string>
+    <string name="demo_materials_preset_car_paint">Car paint — clearcoat</string>
+    <string name="demo_materials_preset_velvet">Velvet — sheen</string>
+    <string name="demo_materials_preset_crystal">Crystal — transmission</string>
+    <string name="demo_materials_preset_glow">Neon sign — emissive</string>
+    <string name="demo_materials_explainer_chrome">At the preset values, metallic = 1 and roughness = 0.02 turn the sphere into a nearly perfect reflection of the studio.</string>
+    <string name="demo_materials_explainer_gold">At the preset values, metallic = 1 makes base color the gold reflectance and roughness = 0.14 softens its highlights.</string>
+    <string name="demo_materials_explainer_copper">At the preset values, metallic = 1 and roughness = 0.32 spread the copper reflections into a satin highlight.</string>
+    <string name="demo_materials_explainer_aluminium">At the preset values, metallic = 1 and roughness = 0.55 scatter aluminium reflections into a brushed-looking finish.</string>
+    <string name="demo_materials_explainer_ceramic">At the preset values, metallic = 0, roughness = 0.06 and reflectance = 0.7 give ceramic a sharp glazed highlight.</string>
+    <string name="demo_materials_explainer_car_paint">At the preset values, clearCoat = 1 adds a second specular lobe over the base coat: the extra sharp highlight is the lacquer.</string>
+    <string name="demo_materials_explainer_velvet">At the preset values, sheenColor adds a tinted fabric rim and sheenRoughness = 0.3 controls its spread at grazing angles.</string>
+    <string name="demo_materials_explainer_crystal">At the preset values, transmission = 1 and ior = 1.5 let the environment refract through the crystal.</string>
+    <string name="demo_materials_explainer_glow">At the preset values, emissive is the tint multiplied by 4, so the neon surface stays bright independently of the studio light.</string>
+    <string name="demo_materials_base_matte">Base · matte plastic</string>
+    <string name="demo_materials_base_layer">Base · no extra layer</string>
+    <string name="demo_materials_single">Single</string>
+    <string name="demo_materials_compare">Compare</string>
+    <string name="demo_materials_hide_base">Hide the base comparison</string>
+    <string name="demo_materials_show_base">Show the base comparison</string>
+    <string name="demo_materials_animate">Animate</string>
+    <string name="demo_materials_pause_camera">Pause the camera</string>
+    <string name="demo_materials_animate_camera">Animate the camera</string>
+    <string name="demo_materials_back_gallery">Back to the gallery</string>
+    <string name="demo_materials_inspect_preset">Inspect this material</string>
+    <string name="demo_materials_metallic">Metallic</string>
+    <string name="demo_materials_roughness">Roughness</string>
+    <string name="demo_materials_clearcoat">Clear coat</string>
+    <string name="demo_materials_sheen">Sheen</string>
+    <string name="demo_materials_transmission">Transmission</string>
+    <string name="demo_materials_emissive">Emissive strength</string>
+    <string name="demo_materials_env_studio">Studio</string>
+    <string name="demo_materials_env_interior">Interior</string>
+    <string name="demo_materials_env_sunset">Sunset</string>
+    <string name="demo_materials_env_night">Night</string>
+    <string name="demo_materials_occluder">Occluder</string>
+    <string name="demo_materials_show_occluder">Show the occluder plane</string>
 </resources>

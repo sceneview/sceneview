@@ -6,5 +6,22 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_debug_overlay_title">Debug Overlay</string>
-    <string name="demo_debug_overlay_subtitle">Live FPS and render stats overlay</string>
+    <string name="demo_debug_overlay_subtitle">Find the node budget for smooth 3D rendering on your device</string>
+    <string name="demo_debug_overlay_nodes_target">Nodes: %1$d / %2$d</string>
+    <string name="demo_debug_overlay_spawning">Spawning %1$d / %2$d…</string>
+    <string name="demo_debug_overlay_aborted">Stress test stopped at the device limit. Choose a preset to recover.</string>
+    <string name="demo_debug_overlay_preset">%1$d</string>
+    <string name="demo_debug_overlay_reset">Reset</string>
+    <string name="demo_debug_overlay_stop">Stop stress test</string>
+    <string name="demo_debug_overlay_start">Stress test (1 → %1$d)</string>
+    <string name="demo_debug_overlay_fps">Frame rate: %1$.1f fps · target 60</string>
+    <string name="demo_debug_overlay_frame">Frame time: %1$.1f ms · aim ≤ 16.7</string>
+    <string name="demo_debug_overlay_nodes">Rendered spheres: %1$d · lower costs less</string>
+    <string name="demo_debug_overlay_triangles">Estimated triangles: %1$s · lower costs less</string>
+    <string name="demo_debug_overlay_sparkline">FPS history → now · reference line: 60 fps</string>
+    <string name="demo_debug_overlay_explainer">rememberDebugStats measures frame delivery as spheres are added; the first sustained dip below 55 fps marks this run’s practical limit against a 60 fps target.</string>
+    <string name="demo_debug_overlay_prompt">Start the stress test to find this device’s 60 fps node budget.</string>
+    <string name="demo_debug_overlay_measuring">Testing %1$d nodes — looking for a sustained dip below 55 fps…</string>
+    <string name="demo_debug_overlay_no_threshold">No sustained dip below 55 fps observed through %1$d nodes.</string>
+    <string name="demo_debug_overlay_threshold">First sustained dip below 55 fps: about %1$d nodes in this run.</string>
 </resources>

@@ -2,10 +2,15 @@
 
 package io.github.sceneview.demo.demos
 
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.DemoStatusTone
 import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,12 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneView
@@ -58,7 +59,6 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.utils.rememberDebugStats
-import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.max
@@ -112,6 +112,25 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val stats = rememberDebugStats()
+    var firstSlowCount by remember { mutableIntStateOf(0) }
+    var stressTested by remember { mutableStateOf(false) }
+    var measuredCount by remember { mutableIntStateOf(0) }
+    LifecycleAwareLaunchedEffect(stressRunning) {
+        if (!stressRunning) return@LifecycleAwareLaunchedEffect
+        // Ignore warm-up, then require three consecutive samples below the 60 fps target.
+        delay(1_000)
+        var slowSamples = 0
+        var candidateCount = 0
+        while (stressRunning) {
+            measuredCount = currentCount
+            if (stats.fps > 0f && stats.fps < 55f) {
+                if (slowSamples == 0) candidateCount = currentCount
+                slowSamples++
+                if (slowSamples >= 3 && firstSlowCount == 0) firstSlowCount = candidateCount
+            } else slowSamples = 0
+            delay(250)
+        }
+    }
 
     // Shared material for every stress-test sphere — without an explicit material the
     // SphereNode falls back to Filament's default, which rendered black on the black
@@ -199,13 +218,32 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_debug_overlay_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        bottomOverlay = {
+            DemoStatusBanner(
+                text = when {
+                    stressAborted -> stringResource(R.string.demo_debug_overlay_aborted)
+                    firstSlowCount > 0 -> stringResource(R.string.demo_debug_overlay_threshold, firstSlowCount)
+                    stressRunning -> stringResource(R.string.demo_debug_overlay_measuring, currentCount)
+                    stressTested && measuredCount > 0 -> stringResource(R.string.demo_debug_overlay_no_threshold, measuredCount)
+                    else -> stringResource(R.string.demo_debug_overlay_prompt)
+                },
+                tone = if (stressAborted) DemoStatusTone.Blocked else if (stressRunning) {
+                    DemoStatusTone.Progress
+                } else DemoStatusTone.Guidance,
+            )
+        },
         controls = {
+            Text(
+                stringResource(R.string.demo_debug_overlay_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)
             ) {
                 Text(
-                    "Nodes: $currentCount / $targetCount",
+                    stringResource(R.string.demo_debug_overlay_nodes_target, currentCount, targetCount),
                     style = MaterialTheme.typography.labelLarge
                 )
 
@@ -219,7 +257,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "Spawning $currentCount / $targetCount…",
+                        stringResource(R.string.demo_debug_overlay_spawning, currentCount, targetCount),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -227,15 +265,15 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
 
                 if (stressAborted) {
                     Text(
-                        "Stress test aborted (device limit). Tap a preset to recover.",
+                        stringResource(R.string.demo_debug_overlay_aborted),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Disable preset buttons during spawn / stress test so we don't
@@ -248,9 +286,9 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                                 targetCount = preset
                             },
                             enabled = controlsEnabled,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.xs)
                         ) {
-                            Text(preset.toString(), style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.demo_debug_overlay_preset, preset), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     OutlinedButton(
@@ -259,9 +297,9 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                             targetCount = 1
                         },
                         enabled = controlsEnabled,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.xs)
                     ) {
-                        Text("Reset", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.demo_debug_overlay_reset), style = MaterialTheme.typography.labelSmall)
                     }
                 }
 
@@ -275,12 +313,16 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                         if (stressRunning) {
                             // Start fresh from a small count so the ramp is visible.
                             targetCount = 1
+                            currentCount = 1
+                            firstSlowCount = 0
+                            measuredCount = 0
+                            stressTested = true
                         }
                     },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
                 ) {
                     Text(
-                        if (stressRunning) "Stop stress test" else "Stress test (1 → $STRESS_TARGET)",
+                        if (stressRunning) stringResource(R.string.demo_debug_overlay_stop) else stringResource(R.string.demo_debug_overlay_start, STRESS_TARGET),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -294,7 +336,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                 fpsHistorySize = historySize,
                 modifier = Modifier
                     .align(Alignment.Start)
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = SceneViewTokens.Space.sm)
             )
         }
     ) {
@@ -445,45 +487,54 @@ private fun DebugOverlay(
 
     Column(
         modifier = modifier
-            .background(Color(0xAA000000.toInt()))
-            .padding(8.dp)
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+            .padding(SceneViewTokens.Space.sm)
     ) {
         val mono = FontFamily.Monospace
         val fps = stats.fps
         val fpsColor = when {
-            fps >= 55f -> Color(0xFF4CAF50)
-            fps >= 30f -> Color(0xFFFFC107)
-            else -> Color(0xFFE53935)
+            fps >= 55f -> MaterialTheme.colorScheme.primary
+            fps >= 30f -> MaterialTheme.colorScheme.tertiary
+            else -> MaterialTheme.colorScheme.error
         }
         BasicText(
-            text = "FPS: %.1f".format(Locale.US, fps),
-            style = TextStyle(color = fpsColor, fontSize = 12.sp, fontFamily = mono)
+            text = stringResource(R.string.demo_debug_overlay_fps, fps),
+            style = MaterialTheme.typography.labelSmall.copy(color = fpsColor, fontFamily = mono)
         )
         BasicText(
-            text = "Frame: %.1f ms".format(Locale.US, stats.frameTimeMs),
-            style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = mono)
+            text = stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs),
+            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
         )
         BasicText(
-            text = "Nodes: %d".format(Locale.US, stats.nodeCount),
-            style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = mono)
+            text = stringResource(R.string.demo_debug_overlay_nodes, stats.nodeCount),
+            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
         )
         // Estimated tris: SphereNode default tessellation is 24 stacks × 24 slices,
         // which yields 24*24*2 = 1152 triangles. Format with thousands grouping so a
         // 5760000-tri stress-test reads as "5,760,000" instead of a soup of digits.
         val tris = stats.nodeCount.toLong() * TRIS_PER_SPHERE
         BasicText(
-            text = "Tris: %s".format(formatThousands(tris)),
-            style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = mono)
+            text = stringResource(R.string.demo_debug_overlay_triangles, formatThousands(tris)),
+            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
         )
 
         // Sparkline. 60-frame ring buffer scaled to 120 fps max so a 60 fps run sits at
         // half height. We don't draw the ring "as is" — we walk from the oldest sample
         // to the newest so the line moves left-to-right naturally.
+        Text(
+            stringResource(R.string.demo_debug_overlay_sparkline),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val referenceColor = MaterialTheme.colorScheme.outline
+        val plotColor = MaterialTheme.colorScheme.primary
+        val referenceWidth = SceneViewTokens.Glass.borderWidth
+        val plotWidth = SceneViewTokens.Layout.selectedOutlineWidth
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
-                .padding(top = 4.dp),
+                .height(SceneViewTokens.Space.xl)
+                .padding(top = SceneViewTokens.Space.xs),
         ) {
             val w = size.width
             val h = size.height
@@ -503,15 +554,15 @@ private fun DebugOverlay(
             // 60 fps reference line.
             val refY = h - (60f / maxFps) * h
             drawLine(
-                color = Color(0x55FFFFFF),
+                color = referenceColor,
                 start = Offset(0f, refY),
                 end = Offset(w, refY),
-                strokeWidth = 1f,
+                strokeWidth = referenceWidth.toPx(),
             )
             drawPath(
                 path = path,
-                color = Color(0xFF4CAF50),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
+                color = plotColor,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = plotWidth.toPx()),
             )
         }
     }

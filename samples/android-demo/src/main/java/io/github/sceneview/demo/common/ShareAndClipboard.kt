@@ -69,3 +69,16 @@ fun shareText(
         context.startActivity(Intent.createChooser(send, chooserTitle))
     }.isSuccess
 }
+
+/** Shares an app-provided content URI with temporary read access. */
+fun shareFile(context: Context, uri: android.net.Uri, mimeType: String, chooserTitle: String): Boolean {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri(null, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    return runCatching {
+        context.startActivity(Intent.createChooser(send, chooserTitle))
+    }.isSuccess
+}

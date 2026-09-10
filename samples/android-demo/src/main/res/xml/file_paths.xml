@@ -18,4 +18,5 @@
         Scoped to the feedback/ subdirectory only, never the whole cache.
     -->
     <cache-path name="feedback" path="feedback/" />
+    <external-files-path name="video-recordings" path="recordings/" />
 </paths>
