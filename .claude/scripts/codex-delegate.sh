@@ -25,14 +25,34 @@
 #   unless --here is passed. Use --new-worktree to get a dedicated branch and
 #   worktree, which is the intended path for anything non-trivial.
 #
+#   `qa` is the one mode that runs UNSANDBOXED (--sandbox danger-full-access),
+#   because verifying an app means driving `adb`, `xcrun simctl`, Gradle,
+#   `xcodebuild` and screenshot capture — none of which survive a seatbelt.
+#   The isolation is moved out of the sandbox and into the workspace instead:
+#     · a throwaway clone in /tmp with NO `origin` remote, so nothing can be
+#       pushed and no branch of the real repo can be moved;
+#     · GIT_CONFIG_GLOBAL=/dev/null, so no credential helper, no push URL
+#       rewrite, no user identity is inherited;
+#     · the credential-shaped variables of THIS machine (GH_TOKEN,
+#       GITHUB_TOKEN, GEMINI_API_KEY, CLOUDFLARE_API_TOKEN,
+#       PLAY_SERVICE_ACCOUNT_JSON) scrubbed on top of the usual OpenAI set;
+#     · HOME is deliberately kept — Codex reads ~/.codex/auth.json — so the
+#       prompt preamble names the paths under $HOME that stay off-limits;
+#     · the clone is deleted at exit, after QA-REPORT.md and qa-captures/ have
+#       been copied out to the log directory.
+#   Note the clone carries COMMITTED state only: uncommitted work in the source
+#   repo is not what gets QA'd. Commit first, or QA the branch as it stands.
+#
 # Usage:
 #   codex-delegate.sh check
 #   codex-delegate.sh ask       [opts] (<prompt> | --file F | -)
 #   codex-delegate.sh review    [opts] [--base BRANCH | --uncommitted | --commit SHA]
 #   codex-delegate.sh implement [opts] (<prompt> | --file F | -)
+#   codex-delegate.sh qa        --label L --file BRIEF [--repo PATH] [--model M] [--timeout SECS]
 #
 # Common opts: --label NAME  --model M  --timeout SECS  --dir PATH
 #              --new-worktree BRANCH   --here   --schema FILE   --file F
+#              --repo PATH   (qa only: the repo to clone and verify)
 #              --effort low|medium|high|xhigh   (default: the model's own)
 #
 # MODEL POLICY
@@ -64,6 +84,12 @@
 #   included (measured 2026-09-06 02:19 → 02:27, reset announced for 04:15).
 #   Astra on `implement` is a deliberate, one-at-a-time choice for a hard issue
 #   on a fresh window, never a default.
+#
+#   `qa` DOES default to Astra (added 2026-09-10, at Thomas's request), and by
+#   note 1 that means effort high. Driving an emulator and reading what is
+#   actually on screen is the vision-and-persistence job Sol is weakest at, and
+#   a QA run is one call, not three in parallel — the window cost that rules
+#   Astra out for `implement` does not apply. Override with --model gpt-5.6-sol.
 #
 # Exit codes: 0 ok · 1 codex failed · 2 preflight refused (auth/binary/flags)
 #             3 quota or rate limit hit — tell Thomas, never work around it
@@ -126,6 +152,17 @@ AZURE_OPENAI_API_KEY OPENAI_API_BASE"
 UNSET_ARGS=()
 for v in $SCRUB; do UNSET_ARGS+=(-u "$v"); done
 
+# Extra `env` arguments a subcommand may add for itself. Empty for every mode
+# but `qa`, and an empty array expands to nothing, so no existing call site
+# changes shape.
+EXTRA_ENV_ARGS=()
+
+# Credential-shaped variables of THIS machine — nothing to do with billing, so
+# not in $SCRUB, but they must not reach an unsandboxed Codex either. Only `qa`
+# runs unsandboxed, and only `qa` strips them.
+QA_SCRUB="GH_TOKEN GITHUB_TOKEN GEMINI_API_KEY CLOUDFLARE_API_TOKEN \
+PLAY_SERVICE_ACCOUNT_JSON"
+
 # run_codex — for short, non-timed calls (login status).
 run_codex() {
   PATH="$CODEX_PATH_PREFIX:$PATH" env "${UNSET_ARGS[@]}" "$CODEX_BIN" "$@"
@@ -144,7 +181,7 @@ run_codex() {
 # missing key can throw. Nothing has to be recognised as secret for this to hold —
 # a key nobody has thought of yet is neutralised like the rest.
 provision_local_properties() {
-  local wt="$1" src="$REPO_ROOT/local.properties" dst="$1/local.properties"
+  local wt="$1" src="${2:-$REPO_ROOT}/local.properties" dst="$1/local.properties"
   [ -f "$src" ] || return 0
   [ -f "$dst" ] && return 0
   awk -F= '
@@ -281,7 +318,8 @@ invoke() {
   # `timeout` execs a real binary, so the env scrub is inlined here rather than
   # routed through run_codex(): timeout cannot invoke a shell function.
   PATH="$CODEX_PATH_PREFIX:$PATH" timeout --foreground "$tmo" \
-    env "${UNSET_ARGS[@]}" "$CODEX_BIN" "$@" \
+    env "${UNSET_ARGS[@]}" ${EXTRA_ENV_ARGS[@]+"${EXTRA_ENV_ARGS[@]}"} \
+      "$CODEX_BIN" "$@" \
       -C "$workdir" --sandbox "$sandbox" -o "$out" 2>&1 | tee "$log"
   rc="${PIPESTATUS[0]}"
 
@@ -301,9 +339,11 @@ reject_banned_flags ${1+"$@"}
 
 DEFAULT_MODEL="${CODEX_DELEGATE_MODEL:-gpt-5.6-sol}"
 LABEL="" MODEL="" EFFORT="" TIMEOUT="" DIR="" NEW_WT="" HERE="" SCHEMA="" FILE=""
+QA_REPO=""
 REST=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --repo)         QA_REPO="$2"; shift 2 ;;
     --label)        LABEL="$2"; shift 2 ;;
     --model)        MODEL="$2"; shift 2 ;;
     --effort)       EFFORT="$2"; shift 2 ;;
@@ -333,6 +373,10 @@ LONG_CONTEXT_MODEL="${CODEX_DELEGATE_LONG_CONTEXT_MODEL:-gpt-6-astra}"
 # roughly "a bit more than Sol", not "four times Sol". Refuse early and say why,
 # rather than spend minutes uploading a prompt that will bounce.
 CLI_MAX_PROMPT_CHARS="${CODEX_DELEGATE_MAX_PROMPT_CHARS:-1048576}"
+
+# `qa` drives a device and reads what is on screen: Astra, at effort high by
+# the Astra rule above. See MODEL POLICY note 3.
+QA_DEFAULT_MODEL="${CODEX_DELEGATE_QA_MODEL:-gpt-6-astra}"
 
 # resolve_model_args — fills EFFECTIVE_MODEL and CODEX_ARGS from MODEL/EFFORT.
 # Called once up front, and again by `ask` if the prompt turns out to need the
@@ -472,10 +516,143 @@ case "$CMD" in
     git -C "$TARGET" status --short >&2
     ;;
 
+  qa)
+    # Verify a running app on a real emulator/simulator. UNSANDBOXED by
+    # necessity (adb, xcrun simctl, Gradle, xcodebuild, screenshots), isolated
+    # by workspace instead — see the ISOLATION note in the header.
+    preflight quiet
+    [ -n "$LABEL" ] || die "qa requires --label NAME (it names the clone and the result directory)." 2
+    case "$LABEL" in
+      *[!A-Za-z0-9._-]*) die "qa --label must be [A-Za-z0-9._-] only: $LABEL" 2 ;;
+    esac
+
+    BRIEF="$(get_prompt)" || exit 2
+    [ -n "$BRIEF" ] || die "Empty QA brief. Pass --file BRIEF." 2
+
+    # The repo under test. --repo wins; otherwise the caller's own repo.
+    QA_SRC="${QA_REPO:-$REPO_ROOT}"
+    QA_SRC="${QA_SRC/#\~/$HOME}"
+    [ -d "$QA_SRC/.git" ] || QA_SRC="$(git -C "$QA_SRC" rev-parse --show-toplevel 2>/dev/null)" \
+      || die "Not a git repository: ${QA_REPO:-$REPO_ROOT}" 2
+    QA_SRC="$(cd "$QA_SRC" && pwd)"
+
+    # Results land under the TESTED repo's log directory, not the caller's.
+    LOG_DIR="$QA_SRC/.claude/data/codex"
+    RESULT_DIR="$LOG_DIR/qa-$LABEL-$STAMP"
+
+    CLONE="/tmp/codex-qa-$LABEL-$STAMP"
+    [ -e "$CLONE" ] && die "Clone path already exists: $CLONE" 2
+
+    # Copy results out, then delete the clone — on success, on failure, on
+    # timeout alike. A QA run that dies halfway still has findings worth having.
+    qa_finish() {
+      local rc=$?
+      case "$CLONE" in
+        /tmp/codex-qa-*) : ;;
+        *) return $rc ;;                       # never rm -rf anything else
+      esac
+      [ -d "$CLONE" ] || return $rc
+      mkdir -p "$RESULT_DIR"
+      [ -f "$CLONE/QA-REPORT.md" ] && cp "$CLONE/QA-REPORT.md" "$RESULT_DIR/"
+      [ -d "$CLONE/qa-captures" ] && cp -R "$CLONE/qa-captures" "$RESULT_DIR/"
+      rm -rf "$CLONE"
+      if [ -f "$RESULT_DIR/QA-REPORT.md" ]; then
+        ok "QA results: $RESULT_DIR"
+      else
+        rmdir "$RESULT_DIR" 2>/dev/null
+        info "No QA-REPORT.md was written — see the log above."
+      fi
+      info "Clone deleted: $CLONE"
+      return $rc
+    }
+    trap qa_finish EXIT
+
+    # Shallow, single-branch clone over file:// : an independent object store
+    # (no hardlinks, so an unsandboxed `git gc` in the clone cannot touch the
+    # real repo) that only carries HEAD's tree. A full `--local` copy of sceneview
+    # weighed 3.0 GiB (2.0 GiB of .git) and emptied the disk on 2026-09-10; this
+    # one weighs the working tree. Detached HEAD falls back to the full copy.
+    info "Cloning $QA_SRC → $CLONE (throwaway, shallow, no remote)"
+    QA_BRANCH="$(git -C "$QA_SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+    if [ "$QA_BRANCH" != "HEAD" ]; then
+      git clone --depth 1 --single-branch --branch "$QA_BRANCH" "file://$QA_SRC" "$CLONE" >/dev/null 2>&1 \
+        || die "Could not shallow-clone $QA_SRC ($QA_BRANCH) into $CLONE" 1
+    else
+      git clone --no-hardlinks --local "$QA_SRC" "$CLONE" >/dev/null 2>&1 \
+        || die "Could not clone $QA_SRC into $CLONE" 1
+    fi
+    git -C "$CLONE" remote remove origin >/dev/null 2>&1 || true
+    if [ -n "$(git -C "$CLONE" remote 2>/dev/null)" ]; then
+      die "The QA clone still has a remote — refusing to hand it to an unsandboxed agent." 2
+    fi
+    ok "Clone has no remote: nothing can be pushed from it"
+    provision_local_properties "$CLONE" "$QA_SRC"
+    mkdir -p "$CLONE/qa-captures"
+
+    # GIT_CONFIG_GLOBAL=/dev/null: no credential helper, no insteadOf rewrite,
+    # no identity. HOME stays — Codex needs ~/.codex/auth.json to bill ChatGPT.
+    # Order matters: `env` stops accepting options at the first NAME=VALUE, so
+    # every -u must precede the assignment or env reads "-u" as a command name
+    # and exits 127 ("env: -u: No such file or directory").
+    EXTRA_ENV_ARGS=()
+    for v in $QA_SCRUB; do EXTRA_ENV_ARGS+=(-u "$v"); done
+    EXTRA_ENV_ARGS+=(GIT_CONFIG_GLOBAL=/dev/null)
+
+    if [ -z "$MODEL" ]; then
+      MODEL="$QA_DEFAULT_MODEL"
+      resolve_model_args
+      info "qa: model defaulted to $EFFECTIVE_MODEL (policy). Pass --model to override."
+    fi
+
+    QA_PREAMBLE="$(cat <<PREAMBLE
+You are running a QA pass on a real device/simulator. You are UNSANDBOXED, so
+these rules are not enforced by anything but you. Follow them literally.
+
+WORKSPACE
+- Your working copy is a throwaway clone at $CLONE. It has no git remote.
+- Treat git as READ-ONLY: no commit, no push, no tag, no branch, no \`gh\` at
+  all. Read history freely (\`git log\`, \`git show\`, \`git diff\`).
+- Build artefacts and scratch files go inside the clone. Nothing you create
+  outside it will be kept.
+
+NEVER OPEN
+- ~/.quota
+- ~/Projects/ThomasGorisse/profile-private
+- any local.properties (the one in the clone has had its values blanked on
+  purpose — do not go looking for the real one)
+- any directory named credentials/
+If a build needs a value from one of these, stop and say so in the report.
+
+SHARED EMULATOR
+- The Android emulator emulator-5554 is shared with other work. You may
+  install, launch, tap, screenshot and uninstall your own app.
+- You must NEVER reboot it, wipe it, run \`emulator -wipe-data\`, \`adb
+  reboot\`, \`adb emu kill\`, or delete/recreate the AVD. If it is in a bad
+  state, say so in the report and stop.
+
+DELIVERABLE
+- Write your findings to $CLONE/QA-REPORT.md.
+- Save every screenshot or recording under $CLONE/qa-captures/ and reference
+  each one by its path in the report.
+- Only QA-REPORT.md and qa-captures/ are copied out; everything else in the
+  clone is deleted when you finish. Anything you want kept goes in one of
+  those two places.
+- Report what you SAW, with the capture that proves it. A step you could not
+  run is a finding, not a gap to paper over.
+
+--- QA BRIEF ---
+PREAMBLE
+)"
+
+    printf '%s\n%s' "$QA_PREAMBLE" "$BRIEF" \
+      | invoke "qa-$LABEL" danger-full-access "${TIMEOUT:-2400}" "$CLONE" \
+        exec ${CODEX_ARGS[@]+"${CODEX_ARGS[@]}"} -
+    ;;
+
   ""|-h|--help|help)
-    sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,72p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 
   *)
-    die "Unknown subcommand: $CMD (check|ask|review|implement)" 2 ;;
+    die "Unknown subcommand: $CMD (check|ask|review|implement|qa)" 2 ;;
 esac
