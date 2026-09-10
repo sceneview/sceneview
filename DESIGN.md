@@ -105,6 +105,30 @@ a header that tints itself competes with the cards it introduces. Geometry:
 A header is drawn only when more than one section is visible: with a single category
 filtered, the chip already names it.
 
+### Demo App About (Android)
+
+The About tab carries **exactly one emphasised surface**: the support card. Everything
+else — the identity block, the groups of rows — sits at `surface` or `surface-container`
+so the eye lands on the one thing the screen is for.
+
+| Token | Value | Usage |
+|---|---|---|
+| `about-mark` | 80dp, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero`), never a Material glyph |
+| `about-row-icon` | 20dp | Leading glyph of an action row |
+| `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
+| `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
+| `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
+| `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
+
+- **The identity block is not a card.** A slab there is a second emphasised surface
+  competing with the support card below it, which is exactly what the pre-#3564 screen
+  did with a 110dp gradient tile.
+- **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
+  theme-independent — it is the product's identity, the same picture in light and dark,
+  and its contrast is self-contained (light cube on `#0D2137`).
+- **Support is stated once and never pushed.** One card, on the About tab, above the
+  fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+
 ### Text
 
 | Token | Light | Dark | Usage |

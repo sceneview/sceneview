@@ -241,10 +241,25 @@
 
     <!-- About screen -->
     <string name="about_title">About</string>
+    <string name="about_identity_version">Version %1$s</string>
+    <string name="about_identity_tagline">Open-source 3D and AR for Compose, SwiftUI and the Web.</string>
+    <string name="about_support_title">Support SceneView</string>
+    <string name="about_support_description">An independent open-source project. Your support pays for the time that keeps it maintained.</string>
+    <string name="about_support_open_collective">Donate on Open Collective</string>
+    <string name="about_support_github_sponsors">GitHub Sponsors</string>
+    <string name="about_group_learn">Learn</string>
+    <string name="about_group_app">App</string>
+    <string name="about_group_legal">Legal</string>
+    <string name="about_source_title">Source on GitHub</string>
+    <string name="about_release_notes">Release notes</string>
+    <string name="about_license_title">Licence: Apache-2.0</string>
+    <string name="about_credits_attribution">Credits &amp; model attribution</string>
+    <string name="about_footer">Made with ♥ by Thomas Gorisse and the SceneView contributors</string>
+    <string name="about_built_with">Built with Google Filament and ARCore</string>
+    <string name="about_no_browser">No browser installed to open %1$s</string>
     <string name="about_sceneview">SceneView</string>
     <string name="about_version">v%s</string>
     <string name="about_tagline">3D &amp; AR as declarative UI\nfor Android, iOS, Web &amp; more</string>
-    <string name="about_tagline_hero">3D &amp; AR for Jetpack Compose, SwiftUI, and the Web.\nDeclarative, AI-friendly, open source.</string>
     <string name="about_feature_3d_title">3D Scenes</string>
     <string name="about_feature_3d_desc">Full Jetpack Compose integration with Filament rendering engine. Load glTF/GLB models, procedural geometry, dynamic skies, and more.</string>
     <string name="about_feature_ar_title">Augmented Reality</string>
@@ -260,20 +275,9 @@
     <string name="about_credits_models_link">View 3D asset credits</string>
     <string name="about_credits_models_url">https://github.com/sceneview/sceneview/blob/main/assets/CREDITS.md</string>
     <string name="about_credits_license">SceneView itself is open source under the Apache License 2.0. Model licenses are separate and attached to each individual asset.</string>
-    <string name="about_card_open_source_title">Open Source</string>
-    <string name="about_card_open_source_subtitle">Apache 2.0 — free for any project, forever</string>
     <string name="about_card_docs_title">Documentation</string>
-    <string name="about_card_docs_subtitle">Guides, API reference, recipes</string>
-    <string name="about_card_github_title">GitHub</string>
-    <string name="about_card_github_subtitle">Source, issues, releases</string>
     <string name="about_card_playground_title">3D Playground</string>
-    <string name="about_card_playground_subtitle">Try every feature in the browser</string>
-    <string name="about_card_sponsor_title">Sponsor</string>
-    <string name="about_card_sponsor_subtitle">Help keep the project free &amp; active</string>
-    <string name="about_card_credits_title">Credits</string>
-    <string name="about_card_credits_subtitle">Authors &amp; CC-BY attribution for every streamed Sketchfab model</string>
     <string name="about_card_feedback_title">Send feedback</string>
-    <string name="about_card_feedback_subtitle">Report a bug with your device info, the recent log and a screenshot</string>
 
     <!-- Credits bottom sheet (#1152 Stage 3 — CC-BY attribution surface) -->
     <string name="credits_sheet_title">Streamed model credits</string>
@@ -313,16 +317,12 @@
     <string name="demo_reset_action">Reset demo</string>
     <string name="demo_reset_cd">Reset this demo to its initial state</string>
     <string name="demo_reset_done">Demo reset — ready to try again</string>
-    <string name="about_star_on_github">Star on GitHub</string>
     <!--
       These two sit either side of a heart icon. Neither carries padding
       whitespace: aapt strips leading and trailing spaces from an unquoted
       string, which is exactly how "Made with <heart>by Thomas Gorisse" reached
       production. The gap is a layout concern and is set on the Icon. #3237
     -->
-    <string name="about_made_with">Made with</string>
-    <string name="about_made_by">by Thomas Gorisse</string>
-    <string name="about_made_by_team">and the SceneView contributors</string>
 
     <!-- Update banner -->
     <string name="update_available">Update available</string>

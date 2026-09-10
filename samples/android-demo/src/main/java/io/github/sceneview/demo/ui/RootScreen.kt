@@ -5,36 +5,36 @@ package io.github.sceneview.demo.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.annotation.StringRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -42,6 +42,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -49,6 +50,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,22 +61,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.annotation.StringRes
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
@@ -264,304 +266,344 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
 }
 
 /**
- * About tab — M3 Expressive card layout that mirrors the iOS [AboutTab] structure:
- * hero card (cube icon + version pill + tagline), a column of tappable info cards
- * (Open Source, Docs, GitHub, 3D Playground, Sponsor, Credits), a "Star on GitHub"
- * primary button, and a footer.
+ * About tab.
  *
- * Pre-2026-05-11 this tab was 4 plain `Text` lines (QA finding "About tab is stark").
- * Mirroring the iOS layout brings the two platforms to visual + content parity.
+ * Rebuilt from scratch for #3564. What it replaced: eight identical cards in a
+ * column — a hero slab plus seven `AboutInfoCard` rows that gave a statement of
+ * fact ("Open Source", not even tappable) exactly the weight of the one thing the
+ * screen is for. Everything was emphasised, so nothing was.
+ *
+ * The shape now, taken from the About/Settings screens of Sketchfab, Polycam and
+ * Reality Composer: a quiet identity block on the page background, then **one**
+ * emphasised surface, then titled groups of plain rows. The emphasised surface is
+ * the support card (#3565), placed directly under the identity so it is read
+ * without scrolling — and nowhere else in the app, because "non-intrusive" means
+ * one card seen once, never a dialog, a launch nag or a badge.
  */
 @Composable
 private fun AboutTabContent() {
     val context = LocalContext.current
+    val noBrowserMessage = stringResource(R.string.about_no_browser)
     val openLink: (String) -> Unit = { url ->
-        // Devices without a browser (Android Go, stripped AOSP, user uninstalled
-        // Chrome) throw ActivityNotFoundException → app crashes. runCatching +
-        // toast keeps the app alive and tells the user why nothing happened. #1208
+        // Devices without a browser (Android Go, stripped AOSP, uninstalled Chrome)
+        // throw ActivityNotFoundException → the app crashes. #1208
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.onFailure {
             android.widget.Toast.makeText(
                 context,
-                "No browser installed to open $url",
-                android.widget.Toast.LENGTH_LONG
+                noBrowserMessage.format(url),
+                android.widget.Toast.LENGTH_LONG,
             ).show()
         }
     }
-    // #1152 Stage 3 — CC-BY attribution for every streamed Sketchfab model
-    // surfaces as a ModalBottomSheet anchored to the existing "Credits" card.
+    // #1152 Stage 3 — CC-BY attribution for every streamed Sketchfab model.
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
     if (showCreditsSheet) {
         CreditsSheet(onDismiss = { showCreditsSheet = false })
     }
 
-    val scroll = rememberScrollState()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
+            .verticalScroll(rememberScrollState())
             .padding(
-                start = 16.dp,
-                end = 16.dp,
-                top = 12.dp,
+                start = SceneViewTokens.Space.md,
+                end = SceneViewTokens.Space.md,
+                top = SceneViewTokens.Space.lg,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // `space-xl` between blocks, `space-sm` between a group label and its card:
+        // the label has to belong to the card under it, not float between two of them.
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
     ) {
-        AboutHeroCard()
-        AboutInfoCard(
-            icon = Icons.Filled.Public,
-            title = stringResource(R.string.about_card_open_source_title),
-            subtitle = stringResource(R.string.about_card_open_source_subtitle),
-        )
-        AboutInfoCard(
-            icon = Icons.Filled.Book,
-            title = stringResource(R.string.about_card_docs_title),
-            subtitle = stringResource(R.string.about_card_docs_subtitle),
-            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-            onClick = { openLink("https://sceneview.github.io") },
-        )
-        AboutInfoCard(
-            icon = Icons.Filled.Code,
-            title = stringResource(R.string.about_card_github_title),
-            subtitle = stringResource(R.string.about_card_github_subtitle),
-            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-            onClick = { openLink("https://github.com/sceneview/sceneview") },
-        )
-        AboutInfoCard(
-            icon = Icons.Filled.PlayArrow,
-            title = stringResource(R.string.about_card_playground_title),
-            subtitle = stringResource(R.string.about_card_playground_subtitle),
-            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-            onClick = { openLink("https://sceneview.github.io/playground.html") },
-        )
-        AboutInfoCard(
-            icon = Icons.Filled.Favorite,
-            title = stringResource(R.string.about_card_sponsor_title),
-            subtitle = stringResource(R.string.about_card_sponsor_subtitle),
-            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-            onClick = { openLink("https://github.com/sponsors/sceneview") },
-        )
-        AboutInfoCard(
-            icon = Icons.Filled.Group,
-            title = stringResource(R.string.about_card_credits_title),
-            subtitle = stringResource(R.string.about_card_credits_subtitle),
-            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
-            onClick = { showCreditsSheet = true },
-        )
-        // Feedback lives here, as a card among cards, because it used to be a
-        // FAB floating over these tabs — and a FAB floating over a scrolling
-        // list masks whatever is under it, always. The previous mitigation was
-        // to hide it at rest and reveal it on scroll (#2358), on the reasoning
-        // that scrolling moves the overlapped card out of the FAB's fixed band.
-        // That holds for the *one* card that rested there; on a list taller
-        // than the viewport there is always another card in the band, so the
-        // FAB masked text at every scroll position but the top one. No
-        // clearance constant can fix that shape. As a sibling in this column
-        // it cannot overlap anything, the three tabs got their dead bottom
-        // gutter back (see `ListGutter.kt`), and the in-context path is
-        // untouched: a demo
-        // screen still raises `FeedbackOpenRequest` from its own top app bar.
-        AboutInfoCard(
-            icon = Icons.Filled.BugReport,
-            title = stringResource(R.string.about_card_feedback_title),
-            subtitle = stringResource(R.string.about_card_feedback_subtitle),
-            onClick = { FeedbackOpenRequest.request() },
-        )
-
-        Button(
-            onClick = { openLink("https://github.com/sceneview/sceneview") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(percent = 50),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ),
-        ) {
-            Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(stringResource(R.string.about_star_on_github), style = MaterialTheme.typography.titleMedium)
+        AboutIdentity()
+        AboutSupportCard(openLink = openLink)
+        AboutGroup(title = stringResource(R.string.about_group_learn)) {
+            AboutActionRow(
+                icon = Icons.Outlined.MenuBook,
+                title = stringResource(R.string.about_card_docs_title),
+                onClick = { openLink("https://sceneview.github.io") },
+            )
+            AboutRowDivider()
+            AboutActionRow(
+                icon = Icons.Outlined.PlayCircleOutline,
+                title = stringResource(R.string.about_card_playground_title),
+                onClick = { openLink("https://sceneview.github.io/playground.html") },
+            )
+            AboutRowDivider()
+            AboutActionRow(
+                icon = Icons.Outlined.Code,
+                title = stringResource(R.string.about_source_title),
+                onClick = { openLink("https://github.com/sceneview/sceneview") },
+            )
         }
-
+        AboutGroup(title = stringResource(R.string.about_group_app)) {
+            AboutActionRow(
+                icon = Icons.Outlined.BugReport,
+                title = stringResource(R.string.about_card_feedback_title),
+                external = false,
+                onClick = { FeedbackOpenRequest.request() },
+            )
+            AboutRowDivider()
+            AboutActionRow(
+                icon = Icons.Outlined.History,
+                title = stringResource(R.string.about_release_notes),
+                onClick = { openLink("https://github.com/sceneview/sceneview/releases") },
+            )
+        }
+        AboutGroup(title = stringResource(R.string.about_group_legal)) {
+            AboutActionRow(
+                icon = Icons.Outlined.Description,
+                title = stringResource(R.string.about_license_title),
+                onClick = { openLink("https://github.com/sceneview/sceneview/blob/main/LICENSE") },
+            )
+            AboutRowDivider()
+            AboutActionRow(
+                icon = Icons.Outlined.Groups,
+                title = stringResource(R.string.about_credits_attribution),
+                external = false,
+                onClick = { showCreditsSheet = true },
+            )
+        }
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.about_made_with),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Icon(
-                    Icons.Filled.Favorite,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    // The gap on BOTH sides of the heart lives here, not in the
-                    // strings: a leading space in a resource is stripped by aapt
-                    // unless quoted, which is why this read "…<heart>by Thomas
-                    // Gorisse" in the store build. #3237
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .size(14.dp),
-                )
-                Text(
-                    stringResource(R.string.about_made_by),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             Text(
-                stringResource(R.string.about_made_by_team),
+                text = stringResource(R.string.about_footer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(R.string.about_built_with),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
         }
     }
 }
 
+/**
+ * Identity block — the mark, the name, the installed version, one sentence.
+ *
+ * Deliberately **not** a card. A slab here would be a second emphasised surface
+ * competing with the support card directly below it, which is the mistake the old
+ * screen made; on the page background the block reads as a masthead instead.
+ */
 @Composable
-private fun AboutHeroCard() {
+private fun AboutIdentity() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+    ) {
+        Image(
+            // The launcher icon itself (#3563), not a Material glyph on a gradient —
+            // and not `Icons.Filled.ViewInAr`, which is already the AR View tab's icon.
+            painter = painterResource(R.drawable.ic_sceneview_hero),
+            contentDescription = null,
+            modifier = Modifier
+                .size(SceneViewTokens.About.markSize)
+                .clip(RoundedCornerShape(SceneViewTokens.Radius.xl)),
+        )
+        Text(
+            text = stringResource(R.string.about_sceneview),
+            style = SceneViewTokens.Type.title,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            // Version only. The licence has its own row in the Legal group; naming it
+            // twice on one screen is the redundancy this redesign removes.
+            text = stringResource(R.string.about_identity_version, BuildConfig.VERSION_NAME),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.about_identity_tagline),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * The one emphasised surface on the screen (#3565).
+ *
+ * Open Collective takes the filled button because it is the channel that has
+ * actually received contributions; GitHub Sponsors is the quiet second. No amount,
+ * no tier, no urgency copy, and nothing about revenue — the card states what
+ * funding buys and stops.
+ */
+@Composable
+private fun AboutSupportCard(openLink: (String) -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
+        // `secondaryContainer`, not `primaryContainer`: the primary container is
+        // #00448D in the dark scheme — a saturated blue slab that reads as a banner
+        // ad, which is the opposite of "non-intrusive" (#3565). The secondary
+        // container is calm in both themes and still the only tinted surface here,
+        // so the card stays the one thing the eye lands on after the mark.
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 28.dp, horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(SceneViewTokens.Space.md),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .background(
-                        // DESIGN.md `gradient-hero`: the theme's primary → tertiary pair IS
-                        // #005bc1 → #6446cd in light and #a4c1ff → #d2a8ff in dark.
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.tertiary,
-                            ),
-                        ),
-                        shape = RoundedCornerShape(28.dp),
-                    ),
-                contentAlignment = Alignment.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
                 Icon(
-                    Icons.Filled.ViewInAr,
+                    imageVector = Icons.Outlined.FavoriteBorder,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(SceneViewTokens.About.rowIcon),
+                )
+                Text(
+                    text = stringResource(R.string.about_support_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
             Text(
-                stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                text = stringResource(R.string.about_support_description),
+                style = MaterialTheme.typography.bodyMedium,
             )
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                border = androidx.compose.foundation.BorderStroke(
-                    width = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                ),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Button(
+                    onClick = { openLink("https://opencollective.com/sceneview") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget),
+                    shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
                 ) {
-                    Icon(
-                        Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
                     Text(
-                        "v${BuildConfig.VERSION_NAME}",
+                        text = stringResource(R.string.about_support_open_collective),
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                TextButton(
+                    onClick = { openLink("https://github.com/sponsors/sceneview") },
+                    modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
+                    shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ),
+                ) {
+                    Text(
+                        text = stringResource(R.string.about_support_github_sponsors),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
                     )
                 }
             }
-            Text(
-                stringResource(R.string.about_tagline_hero),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp,
-            )
         }
     }
 }
 
+/**
+ * A titled group of rows, drawn as one `surfaceContainer` card with inset hairlines
+ * between its children — so the rows read as a list with a shape, and the label
+ * belongs to the card under it rather than floating between two of them.
+ */
 @Composable
-private fun AboutInfoCard(
+private fun AboutGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            modifier = Modifier
+                .padding(
+                    start = SceneViewTokens.Space.md,
+                    bottom = SceneViewTokens.Space.sm,
+                )
+                .semantics { heading() },
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            Column(content = content)
+        }
+    }
+}
+
+/** Hairline between two rows of an [AboutGroup], inset past the leading glyph. */
+@Composable
+private fun AboutRowDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = SceneViewTokens.About.dividerInset),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+/**
+ * One tappable row. [external] picks the affordance, which is the row's only
+ * promise about what a tap does: open-in-new leaves the app for a browser, a
+ * chevron stays inside it (the feedback flow, the credits sheet).
+ */
+@Composable
+private fun AboutActionRow(
     icon: ImageVector,
-    iconColor: Color = MaterialTheme.colorScheme.primary,
     title: String,
-    subtitle: String,
-    trailingIcon: ImageVector? = null,
-    onClick: (() -> Unit)? = null,
+    external: Boolean = true,
+    onClick: () -> Unit,
 ) {
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .padding(
+                horizontal = SceneViewTokens.Space.md,
+                vertical = SceneViewTokens.Space.sm,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        color = iconColor.copy(alpha = 0.18f),
-                        shape = RoundedCornerShape(12.dp),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (trailingIcon != null) {
-                Icon(
-                    trailingIcon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
+        Icon(
+            imageVector = icon,
+            // Decorative: the row merges its children, so the title below is already
+            // the accessible name. A description here would read it twice.
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(SceneViewTokens.About.rowIcon),
+        )
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Icon(
+            imageVector = if (external) {
+                Icons.AutoMirrored.Outlined.OpenInNew
+            } else {
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight
+            },
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            // The chevron is a thinner glyph than open-in-new, so it is drawn a step
+            // larger: matched boxes would read as two different icon sets in one column.
+            modifier = Modifier.size(
+                if (external) SceneViewTokens.About.rowAffordance else SceneViewTokens.About.rowIcon,
+            ),
+        )
     }
 }

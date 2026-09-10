@@ -193,6 +193,25 @@ object SceneViewTokens {
         const val heroScrimStart = 0.5f
     }
 
+    /**
+     * About screen geometry (`about-*` in `DESIGN.md`).
+     *
+     * The mark is the launcher icon, so its size is a product decision, not a spacing
+     * one. 80 dp: big enough to be read as identity, small enough that the dark tile
+     * does not become a hole punched in a light page — and it keeps the support card
+     * on the first screenful of a 411 x 891 dp phone, which is the point of #3565.
+     */
+    object About {
+        /** `ic_sceneview_hero` tile — the launcher icon at identity size. */
+        val markSize = 80.dp
+        /** Leading glyph of an action row. Smaller than the mark by an order. */
+        val rowIcon = 20.dp
+        /** Trailing affordance (open-in-new / chevron). */
+        val rowAffordance = 16.dp
+        /** Inset of a row divider, so it starts under the label, not under the icon. */
+        val dividerInset = 48.dp
+    }
+
     /** `DESIGN.md` — Spring motion: `spring(dampingRatio 0.85, stiffness 450)`, one spring for press, sheets, dock. */
     object Spring {
         const val dampingRatio = 0.85f
