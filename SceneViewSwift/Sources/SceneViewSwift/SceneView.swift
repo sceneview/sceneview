@@ -165,6 +165,10 @@ public struct SceneView: View {
     // Closes #3008.
     var contentIdentity: AnyHashable?
 
+    // Token from `.recenterCamera(_:)`. A change re-arms the fit-to-bounds
+    // pass and restores the authored orbit angles, without rebuilding content.
+    var recenterToken: AnyHashable?
+
     /// Creates a 3D scene with imperative content setup.
     ///
     /// - Parameter content: A closure that populates the scene. Receives a root
@@ -212,6 +216,7 @@ public struct SceneView: View {
             immersiveSpace: immersiveSpace,
             recentersTargetOnOrbit: recentersTargetOnOrbit,
             contentIdentity: contentIdentity,
+            recenterToken: recenterToken,
             requestedCameraPose: requestedCameraPose,
             requestedCameraPoseGeneration: requestedCameraPoseGeneration,
             onCameraChanged: onCameraChanged,
@@ -298,6 +303,33 @@ public struct SceneView: View {
     public func contentID(_ id: some Hashable) -> SceneView {
         var copy = self
         copy.contentIdentity = AnyHashable(id)
+        return copy
+    }
+
+    /// Re-frames the camera on the content whenever `token` changes — the SDK
+    /// affordance behind a "Recenter" / "Reset view" button.
+    ///
+    /// Re-running the fit-to-bounds pass restores **all three** of the things a
+    /// user means by "recenter": the orbit pivot snaps back to the content
+    /// centroid, the orbit radius is re-fitted to the content bounds (so the
+    /// zoom is reset too — #3595), and the orbit angles return to the authored
+    /// ``cameraOrbit(azimuth:elevation:)`` pose.
+    ///
+    /// ```swift
+    /// SceneView { root in root.addChild(model.entity) }
+    ///     .contentID(modelID)              // swaps the subject
+    ///     .recenterCamera(recenterCount)   // re-frames the subject in place
+    /// ```
+    ///
+    /// Prefer this over bumping ``contentID(_:)`` to recenter: `contentID`
+    /// tears the content down and rebuilds it, which restarts any playing
+    /// animation and re-registers gesture handlers. This moves the camera only.
+    ///
+    /// - Parameter token: Any value you change to request a re-frame — a
+    ///   monotonically bumped counter is the usual shape.
+    public func recenterCamera(_ token: some Hashable) -> SceneView {
+        var copy = self
+        copy.recenterToken = AnyHashable(token)
         return copy
     }
 
@@ -788,6 +820,11 @@ private struct SceneViewRepresentation: View {
     /// makes a change re-run the closure under the *same* `RealityView`.
     let contentIdentity: AnyHashable?
 
+    /// Token from ``SceneView/recenterCamera(_:)``. Any change re-arms the
+    /// fit-to-bounds pass and restores the authored ``SceneView/cameraOrbit(azimuth:elevation:)``
+    /// angles. `nil` means the caller offers no recenter affordance.
+    let recenterToken: AnyHashable?
+
     /// Host-written camera pose from ``SceneView/cameraPose(_:)``. Applied in
     /// `applyCamera()` only when the *value* changed since the last application,
     /// so re-passing the same pose every frame never fights a live drag.
@@ -861,36 +898,10 @@ private struct SceneViewRepresentation: View {
     @State private var initialPinchFov: Float? = nil
     @State private var isDragging = false
 
-    /// Set to `true` once ``refreshContentCentering()`` has translated
-    /// `entities.contentRoot` AND dollied the orbit radius to fit the
-    /// content bounds AND the content bounds have stopped growing across
-    /// consecutive framing ticks, so subsequent frames are a cheap no-op.
-    /// Closes #1026 / #1041 / #1391.
-    @State private var didCenterContent = false
+    /// True for the lifetime of a magnify gesture. Suppresses the orbit drag a
+    /// two-finger pinch also produces (#3597).
+    @State private var isPinching = false
 
-    /// Tracks whether the content-union AABB has held steady long enough to
-    /// latch the framing pass. `refreshContentCentering()` re-frames whenever
-    /// the union diagonal grows (a streamed model just landed) and latches
-    /// `didCenterContent` only once the diagonal has been stable for a
-    /// sustained wall-clock window — see ``FramingStabilityTracker``.
-    ///
-    /// This replaces #1514's fragile "two consecutive ticks" latch, which
-    /// fired inside the multi-second gap between two streamed `Multi-Model
-    /// Park` models landing and so froze the camera on a partial 1–2-model
-    /// union (#1391, reopened). The duration-based hold spans those gaps.
-    @State private var framingStability = FramingStabilityTracker(
-        epsilon: SceneViewRepresentation.framingStabilityEpsilon,
-        stableHoldSeconds: SceneViewRepresentation.framingStableHoldSeconds
-    )
-
-    /// World-space centroid of the content union AABB, as last computed by
-    /// ``refreshContentCentering()``. The auto-framing pass points the orbit
-    /// pivot (`camera.target`) here instead of translating `contentRoot`,
-    /// which is what avoids the `AnchorEntity` re-pin feedback loop (#1391).
-    /// Cached so a `recentersTargetOnOrbit` re-entry can snap the pivot back
-    /// to the content centroid — the content is no longer assumed to sit at
-    /// the world origin. `.zero` until the first valid framing pass.
-    @State private var contentWorldCenter: SIMD3<Float> = .zero
 
     /// Monotonic counter bumped by the content-framing driver task while
     /// ``didCenterContent`` is still `false`. Reading it inside the
@@ -910,6 +921,23 @@ private struct SceneViewRepresentation: View {
     /// content un-framed on any static scene — nothing else pumps `update:`
     /// once auto-rotate is driving `applyCamera()` directly. Closes #3008.
     @State private var framingEpoch: Int = 0
+
+    /// Identity of the framing-driver task.
+    ///
+    /// `framingEpoch` alone cannot key it: the re-arm that a `.contentID(_:)`
+    /// swap performs runs from a view value SwiftUI has moved past, so the
+    /// `@State` bump never reaches the body and the task id never changes —
+    /// the driver stayed dead and every model after the first opened with the
+    /// previous subject's framing (#3595). `contentIdentity` and
+    /// `recenterToken` are `let`s handed down from the caller's own state, so
+    /// they DO change the id, which is what restarts the driver. `epoch`
+    /// remains for the re-arms raised from a real view context (a viewport
+    /// rotation / resize).
+    private struct FramingDriverKey: Hashable {
+        let content: AnyHashable?
+        let recenter: AnyHashable?
+        let epoch: Int
+    }
 
     /// Live viewport aspect ratio (`width / height`), captured by the
     /// `GeometryReader` wrapping the `RealityView`. Drives the
@@ -1001,6 +1029,39 @@ private struct SceneViewRepresentation: View {
         /// content was built from, so an identity that did not actually change
         /// (a re-run `.task(id:)`) rebuilds nothing. Closes #3008.
         var contentIdentity: AnyHashable? = nil
+        /// The ``SceneViewRepresentation/recenterToken`` the last re-frame was
+        /// armed from, so a re-run `.task(id:)` with an unchanged token is a
+        /// no-op and cannot fight a drag in progress.
+        var recenterToken: AnyHashable? = nil
+
+        // MARK: Auto-framing latch (#3595)
+        //
+        // These three live in this REFERENCE box, not in `@State`, and that is
+        // load-bearing rather than incidental. `rebuildContentIfNeeded()` runs
+        // from the `RealityView` `update:` closure and from a `.task(id:)`,
+        // i.e. from a view value SwiftUI has already moved past — a `@State`
+        // write made there is dropped. When these were `@State`, the re-arm a
+        // `.contentID(_:)` swap performs never reached the live view: the
+        // latch stayed `true`, `refreshContentCentering()` returned on its
+        // first guard forever, and every model after the first one inherited
+        // the previous subject's orbit radius and pivot. That is what made
+        // "Recenter" look inert and a freshly picked model open mis-framed
+        // and un-zoomable (#3595 / #3596). A `final class` field is
+        // written through the shared box, so the re-arm survives.
+
+        /// Set once ``refreshContentCentering()`` has fitted the content AND
+        /// the content bounds have held steady, so subsequent frames are a
+        /// cheap no-op. Closes #1026 / #1041 / #1391.
+        var didCenterContent = false
+        /// Tracks whether the content-union AABB has held steady long enough
+        /// to latch ``didCenterContent`` — see ``FramingStabilityTracker``.
+        var framingStability = FramingStabilityTracker(
+            epsilon: SceneViewRepresentation.framingStabilityEpsilon,
+            stableHoldSeconds: SceneViewRepresentation.framingStableHoldSeconds
+        )
+        /// World-space centroid of the content union AABB, as last computed by
+        /// ``refreshContentCentering()``. `.zero` until the first valid pass.
+        var contentWorldCenter: SIMD3<Float> = .zero
     }
     @State private var appliedCache = AppliedCache()
 
@@ -1103,6 +1164,11 @@ private struct SceneViewRepresentation: View {
                     }
                 }
             }
+            .task(id: recenterToken) {
+                // Keyed rather than diffed inside `update:` so a recenter is
+                // applied once per token change, on the current view value.
+                applyRecenterRequestIfNeeded()
+            }
             .task(id: contentIdentity) {
                 // Re-run the content closure in place when `.contentID(_:)`
                 // reports the caller would now build something different.
@@ -1110,8 +1176,13 @@ private struct SceneViewRepresentation: View {
                 // is the one from the latest body evaluation — the same
                 // guarantee the environment loader below relies on. Closes #3008.
                 rebuildContentIfNeeded()
+            applyRecenterRequestIfNeeded()
             }
-            .task(id: framingEpoch) {
+            .task(id: FramingDriverKey(
+                content: contentIdentity,
+                recenter: recenterToken,
+                epoch: framingEpoch
+            )) {
                 // Content-framing driver (#1026 / #1041). The RealityView
                 // `update:` closure only fires while SwiftUI re-evaluates
                 // the view — for a static (non-auto-rotating) scene that is
@@ -1140,7 +1211,7 @@ private struct SceneViewRepresentation: View {
                 var elapsed: UInt64 = 0
                 let interval: UInt64 = 33_000_000          // ~30 Hz
                 let timeout: UInt64 = 90_000_000_000       // 90 s
-                while !Task.isCancelled && !didCenterContent && elapsed < timeout {
+                while !Task.isCancelled && !appliedCache.didCenterContent && elapsed < timeout {
                     try? await Task.sleep(nanoseconds: interval)
                     elapsed += interval
                     framingTick &+= 1
@@ -1196,16 +1267,23 @@ private struct SceneViewRepresentation: View {
             // Hand-rolled gesture path. Apple's `realityViewCameraControls`
             // is not applied — our custom math drives orbit inertia,
             // auto-rotate, and fit-to-bounds framing.
+            // `.simultaneousGesture`, NOT two `.gesture(_:)` modifiers: the
+            // latter makes the drag and the magnify COMPETE for the same touch
+            // sequence, and `DragGesture()` (minimum distance 0) claims it on
+            // the first movement of the first finger. A pinch then reached the
+            // orbit handler and never `MagnifyGesture` — measured on an
+            // iPhone SE simulator, a closing pinch produced zero magnify
+            // events, which is why zooming out did nothing (#3596).
             realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
+                .simultaneousGesture(dragGesture)
+                .simultaneousGesture(pinchGesture)
         #if os(visionOS)
         case .none, .tilt, .dolly:
             // `realityViewCameraControls(_:)` is entirely unavailable on
             // visionOS — fall back to the hand-rolled orbit gesture path.
             realityViewContent
-                .gesture(dragGesture)
-                .gesture(pinchGesture)
+                .simultaneousGesture(dragGesture)
+                .simultaneousGesture(pinchGesture)
         #elseif os(macOS)
         case .none:
             realityViewContent.realityViewCameraControls(.none)
@@ -1264,7 +1342,8 @@ private struct SceneViewRepresentation: View {
         // Re-arm the one-shot pass so the next frame re-fits to the new
         // frustum. Threshold avoids re-framing on sub-pixel layout jitter.
         if let previous, abs(previous - aspect) > 0.01 {
-            didCenterContent = false
+            appliedCache.didCenterContent = false
+            framingEpoch &+= 1
         }
     }
 
@@ -1289,6 +1368,7 @@ private struct SceneViewRepresentation: View {
             // and short-circuits on `nil != nil` for every scene that does not
             // use `.contentID(_:)`. Closes #3008.
             rebuildContentIfNeeded()
+            applyRecenterRequestIfNeeded()
             refreshLightSlot(.main, slot: mainLightSlot)
             refreshLightSlot(.fill, slot: fillLightSlot)
             if autoCenterContentEnabled {
@@ -1315,6 +1395,7 @@ private struct SceneViewRepresentation: View {
             // Costs one `AnyHashable?` compare per tick, and short-circuits on
             // `nil != nil` for every scene that does not use the modifier.
             rebuildContentIfNeeded()
+            applyRecenterRequestIfNeeded()
             // Diff light slots and swap entities when the caller's modifier value
             // changed since last frame. Closes #1017 (Android `prevFillLightRef`
             // pattern in `SceneView.kt:287-305` ported to iOS).
@@ -1473,6 +1554,19 @@ private struct SceneViewRepresentation: View {
         // entity *eligible* for hit-testing, it does not create a hit target.
         entities.contentRoot.makeInputTargetable()
 
+        // Authored cameras that ship inside a model file must not become the
+        // scene's camera. RealityKit renders through whichever camera entity it
+        // finds in the scene, so a glTF/USDZ that carries its own cameras — the
+        // Khronos `ToyCar` sample ships EIGHT of them, and `Cyberpunk Hovercar`
+        // ships one — silently hijacks the view: `SceneView`'s own perspective
+        // camera keeps being orbited, fitted and recentred, but nobody is
+        // looking through it. On screen that reads as "this model opens as an
+        // extreme close-up, will not zoom out, and the Recenter button does
+        // nothing" (#3596 / #3598) — the camera math was right all along, it
+        // was just being applied to the wrong camera. `SceneView` owns the
+        // camera, so authored ones are stripped from the content subtree.
+        SceneViewRepresentation.stripEmbeddedCameras(under: entities.contentRoot)
+
         // Apply RenderQuality preset to all directional lights + the IBL receiver entity.
         // Runs AFTER lights + content are added so the preset walks the full scene tree.
         // Cinematic bumps shadow distance + ensures IBL ≥ 1.0; Performance drops shadows
@@ -1539,14 +1633,7 @@ private struct SceneViewRepresentation: View {
         // The stability tracker has to be re-armed too, or the new bounds are
         // compared against the *old* subject's diagonal and latch on the first
         // tick, before a streamed model has finished landing (#1391).
-        framingStability = FramingStabilityTracker(
-            epsilon: Self.framingStabilityEpsilon,
-            stableHoldSeconds: Self.framingStableHoldSeconds
-        )
-        didCenterContent = false
-        // Restart the driver task: it exits permanently once the latch is set,
-        // and clearing the latch alone does not bring it back.
-        framingEpoch &+= 1
+        rearmFraming()
     }
 
     // MARK: - Light slot reactive plumbing (#1017)
@@ -1751,8 +1838,28 @@ private struct SceneViewRepresentation: View {
     ///   `nil` if no descendant has finite, non-empty bounds yet (async
     ///   loads still in flight).
     @MainActor
+    /// Removes every camera component found in a loaded content subtree.
+    ///
+    /// See the call site in ``buildContent(isInitialBuild:)`` for why this is
+    /// not optional: RealityKit picks up any camera entity in the scene, and a
+    /// model-authored camera then overrides the one ``SceneView`` positions.
+    static func stripEmbeddedCameras(under root: Entity) {
+        var stack: [Entity] = Array(root.children)
+        while let entity = stack.popLast() {
+            stack.append(contentsOf: entity.children)
+            entity.components.remove(PerspectiveCameraComponent.self)
+            #if os(macOS)
+            entity.components.remove(OrthographicCameraComponent.self)
+            #endif
+        }
+    }
+
     private func contentUnionBounds() -> BoundingBox? {
-        var boxes: [BoundingBox] = []
+        // Folded in place rather than collected into a `[BoundingBox]` and
+        // unioned afterwards: this runs on the main thread at 30 Hz for as long
+        // as the framing driver is armed, including while the user is pinching,
+        // and the per-tick array growth was pure churn on that path (#3597).
+        var accumulator = ContentBounds.Accumulator()
         // Iterative pre-order walk — no recursion depth concerns, and the
         // `contentRoot` itself is skipped (it is a transform-only node).
         var stack: [Entity] = Array(entities.contentRoot.children)
@@ -1764,15 +1871,51 @@ private struct SceneViewRepresentation: View {
             // already includes the entity's own descendants, but unioning
             // per-entity is harmless (idempotent) and lets a child whose
             // parent reports empty still contribute.
-            let box = entity.visualBounds(relativeTo: entities.root)
-            boxes.append(box)
+            accumulator.add(entity.visualBounds(relativeTo: entities.root))
         }
-        return ContentBounds.union(of: boxes)
+        return accumulator.result
+    }
+
+    /// Re-arms the one-shot fit-to-bounds pass so the next frames re-fit the
+    /// camera to whatever the content now is.
+    ///
+    /// Every field it touches lives in the ``AppliedCache`` reference box, so
+    /// the re-arm survives being called from the `RealityView` `update:`
+    /// closure or a `.task(id:)` — a `@State` write from there is dropped, and
+    /// that dropped write is exactly what left every model after the first one
+    /// un-framed (#3595).
+    @MainActor
+    private func rearmFraming() {
+        appliedCache.framingStability = FramingStabilityTracker(
+            epsilon: Self.framingStabilityEpsilon,
+            stableHoldSeconds: Self.framingStableHoldSeconds
+        )
+        appliedCache.didCenterContent = false
+    }
+
+    /// Applies a ``SceneView/recenterCamera(_:)`` request: restores the
+    /// authored orbit angles and re-arms the fit-to-bounds pass, which then
+    /// snaps the pivot back to the content centroid and re-fits the radius —
+    /// so a "Recenter" button resets the zoom too (#3595). The content itself
+    /// is untouched, so a playing animation keeps playing (#3595).
+    @MainActor
+    private func applyRecenterRequestIfNeeded() {
+        guard appliedCache.didBuildContent else { return }
+        guard let token = recenterToken else { return }
+        guard appliedCache.recenterToken != token else { return }
+        appliedCache.recenterToken = token
+        camera.azimuth = initialOrbitAzimuth ?? 0
+        camera.elevation = initialOrbitElevation ?? CameraControls().elevation
+        camera.inertiaVelocity = .zero
+        camera.exitFirstPerson()
+        camera.fov = Self.baselineFov
+        rearmFraming()
+        refreshContentCentering()
     }
 
     @MainActor
     private func refreshContentCentering() {
-        guard !didCenterContent else { return }
+        guard !appliedCache.didCenterContent else { return }
         // Union AABB of every content entity, in `entities.root`-local
         // (world) space — see `contentUnionBounds()`. Sampling in the
         // stable `root` frame (rather than `contentRoot`) is what makes
@@ -1797,7 +1940,7 @@ private struct SceneViewRepresentation: View {
         // models landing, which #1514's "two consecutive ticks" latch did
         // not, so it froze the camera on a partial 1–2-model union (#1391).
         let diagonal = simd_length(extents)
-        let stable = framingStability.register(
+        let stable = appliedCache.framingStability.register(
             diagonal: diagonal,
             now: CFAbsoluteTimeGetCurrent()
         )
@@ -1812,7 +1955,7 @@ private struct SceneViewRepresentation: View {
         //    moves no scene node, so there is no feedback loop. Cache the
         //    centroid so a `recentersTargetOnOrbit` re-entry can snap back
         //    to it (the content is no longer assumed to sit at the origin).
-        contentWorldCenter = center
+        appliedCache.contentWorldCenter = center
         camera.target = center
         // 2. Adapt the zoom-radius limits to the content size BEFORE
         //    computing the fit, so `fitRadius`'s internal clamp does not
@@ -1821,10 +1964,16 @@ private struct SceneViewRepresentation: View {
         //    a closer min and a 30 m scene a farther max. Bracket the
         //    limits around the bounding-sphere radius so the user can
         //    still pinch in to roughly fill the frame and out to ~10×.
+        //    Both limits are ASSIGNED from the current bounds, never merged
+        //    with the previous subject's: `max(camera.maxRadius, …)` kept a
+        //    room-scale scene's 600 m ceiling after switching to a 10 cm one,
+        //    and a stale floor is worse still — it clamps `fitRadius` above
+        //    the distance that actually frames the new subject, which reads as
+        //    "this model opened zoomed in and will not zoom out" (#3596).
         let sphereRadius = simd_length(extents * 0.5)
         if sphereRadius.isFinite, sphereRadius > 0 {
             camera.minRadius = max(sphereRadius * 0.5, 0.05)
-            camera.maxRadius = max(camera.maxRadius, sphereRadius * 20)
+            camera.maxRadius = max(sphereRadius * 20, camera.minRadius * 4)
         }
         // 3. Dolly the orbit radius so the bounding box fits the frustum
         //    with a small margin, accounting for the vertical FOV and the
@@ -1842,7 +1991,7 @@ private struct SceneViewRepresentation: View {
         // window (`FramingStabilityTracker`) — until then the driver task
         // and the `update:` closure keep re-framing as more models land.
         if stable {
-            didCenterContent = true
+            appliedCache.didCenterContent = true
         }
         // 4. Apply the new pose to the perspective camera entity in THIS
         //    frame. `applyCamera()` runs *before* this method in the
@@ -1965,7 +2114,7 @@ private struct SceneViewRepresentation: View {
             // rather than translating content to the origin, so snap the
             // pivot back to that cached centroid — not the world origin.
             if camera.mode == .orbit && recentersTargetOnOrbit {
-                camera.recenterTarget(contentWorldCenter)
+                camera.recenterTarget(appliedCache.contentWorldCenter)
             }
         }
 
@@ -2142,6 +2291,13 @@ private struct SceneViewRepresentation: View {
                 )
                 lastDragTranslation = value.translation
                 guard cameraGesturesEnabled else { return }
+                // A two-finger pinch also feeds this drag (its centroid moves),
+                // so orbiting on it spun the model while the user was only
+                // trying to zoom — the "abrupt" zoom of #3597. The pinch owns
+                // the sequence while it is live; the baseline above still
+                // tracks the finger, so releasing into a one-finger drag
+                // resumes from where the finger is, not with a jump.
+                guard !isPinching else { return }
                 camera.handleDrag(delta)
                 isDragging = true
                 // Push the dragged orbit straight onto the camera entity.
@@ -2172,6 +2328,7 @@ private struct SceneViewRepresentation: View {
                 // Note this path does NOT go through `CameraControls.handlePinch` (it
                 // scales a snapshotted baseline instead), so `CameraControls.isEnabled`
                 // alone would silently disable orbit while leaving zoom live.
+                if !isPinching { isPinching = true }
                 if initialPinchRadius == nil, camera.mode == .orbit || camera.mode == .pan {
                     initialPinchRadius = camera.orbitRadius
                 }
@@ -2216,6 +2373,13 @@ private struct SceneViewRepresentation: View {
             .onEnded { _ in
                 initialPinchRadius = nil
                 initialPinchFov = nil
+                isPinching = false
+                // The pinch swallowed the drag deltas, so the orbit baseline is
+                // stale by the whole pinch. Clearing it means the next drag tick
+                // measures from the finger's current position instead of
+                // snapping the camera across the pinch's travel in one frame.
+                lastDragTranslation = .zero
+                camera.inertiaVelocity = .zero
             }
     }
 

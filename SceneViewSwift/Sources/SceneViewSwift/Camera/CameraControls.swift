@@ -668,6 +668,39 @@ enum ContentBounds {
         guard found else { return nil }
         return BoundingBox(min: lo, max: hi)
     }
+
+    /// Streaming form of ``union(of:)`` — folds boxes in as they are measured
+    /// instead of collecting them into an array first.
+    ///
+    /// Same acceptance rule, same result; it exists because the framing pass
+    /// walks the whole content sub-tree at 30 Hz on the main thread while the
+    /// driver is armed, and the intermediate `[BoundingBox]` was per-tick churn
+    /// on the same thread the pinch gesture is handled on (#3597).
+    struct Accumulator {
+        private var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        private var hi = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+        private var found = false
+
+        init() {}
+
+        /// Folds one box in, skipping empty / non-finite ones.
+        mutating func add(_ box: BoundingBox) {
+            let bmin = box.min
+            let bmax = box.max
+            guard bmin.x.isFinite, bmin.y.isFinite, bmin.z.isFinite,
+                  bmax.x.isFinite, bmax.y.isFinite, bmax.z.isFinite,
+                  bmax.x >= bmin.x, bmax.y >= bmin.y, bmax.z >= bmin.z
+            else { return }
+            lo = simd_min(lo, bmin)
+            hi = simd_max(hi, bmax)
+            found = true
+        }
+
+        /// The union of every accepted box, or `nil` if none was accepted.
+        var result: BoundingBox? {
+            found ? BoundingBox(min: lo, max: hi) : nil
+        }
+    }
 }
 
 // MARK: - Framing stability tracker (#1391 retry)
