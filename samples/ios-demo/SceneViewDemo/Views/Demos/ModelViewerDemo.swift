@@ -404,7 +404,11 @@ struct ModelViewerDemo: View {
         ZStack {
             // Mounted once and never re-keyed with `.id(_:)` — see #3008.
             // `.contentID(_:)` swaps the model inside the live scene and re-arms
-            // the fit-to-bounds pass, which is also what "Recenter" relies on.
+            // the fit-to-bounds pass. "Recenter" goes through
+            // `.recenterCamera(_:)` instead of being folded into this id: a
+            // contentID change rebuilds the model, which restarted the playing
+            // animation and made the button look like it did something random
+            // rather than recentring (#3595).
             SceneView { root in
                 guard let loadedNode else { return }
                 root.addChild(loadedNode.entity)
@@ -416,7 +420,8 @@ struct ModelViewerDemo: View {
             // arg (#2785) — wins over both when present, same as Android's
             // `DemoSettings.cameraDistance` beating its own `radius` default.
             .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
-            .contentID(loadedNode == nil ? nil : "\(loadCount)-\(recenterGeneration)")
+            .contentID(loadedNode == nil ? nil : "\(loadCount)")
+            .recenterCamera(recenterGeneration)
             .ignoresSafeArea()
 
             if loadedNode == nil {

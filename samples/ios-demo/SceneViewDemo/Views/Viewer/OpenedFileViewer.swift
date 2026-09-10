@@ -128,7 +128,8 @@ struct OpenedFileViewer: View {
             // silhouette instead of describing it. `Stage.background` shows through.
             .environment(.custom(name: "Studio", hdrFile: "studio.hdr", showSkybox: false))
             .framingMargin(1.12)
-            .contentID(loadedNode == nil ? nil : "\(loadCount)-\(recenterGeneration)")
+            .contentID(loadedNode == nil ? nil : "\(loadCount)")
+            .recenterCamera(recenterGeneration)
             .ignoresSafeArea()
 
             if loadedNode == nil && loadError == nil {
