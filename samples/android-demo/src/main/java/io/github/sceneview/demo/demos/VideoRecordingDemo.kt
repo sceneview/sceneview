@@ -140,9 +140,11 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                     lastSaved != null -> R.string.demo_video_recording_ready
                     else -> R.string.demo_video_recording_idle
                 }),
-                tone = if (failed || (lastSaved != null && savedUri == null)) DemoStatusTone.Blocked else if (recording != null) {
-                    DemoStatusTone.Progress
-                } else DemoStatusTone.Guidance,
+                tone = when {
+                    failed || (lastSaved != null && savedUri == null) -> DemoStatusTone.Blocked
+                    recording != null -> DemoStatusTone.Progress
+                    else -> DemoStatusTone.Guidance
+                },
             )
             if (recording == null && lastSaved != null) {
                 Row(

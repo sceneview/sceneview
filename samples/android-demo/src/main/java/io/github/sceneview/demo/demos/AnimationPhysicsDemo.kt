@@ -715,10 +715,20 @@ private fun AnimationSection(
                     .padding(SceneViewTokens.Space.sm),
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
             ) {
-                Text(clipName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    clipName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 Text(
                     stringResource(R.string.demo_animation_physics_clip_status,
-                        stringResource(if (isPlaying && !DemoSettings.qaMode) R.string.demo_animation_physics_playing else R.string.demo_animation_physics_paused),
+                        stringResource(
+                            if (isPlaying && !DemoSettings.qaMode) {
+                                R.string.demo_animation_physics_playing
+                            } else {
+                                R.string.demo_animation_physics_paused
+                            },
+                        ),
                         clipTime, duration),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -771,7 +781,10 @@ private fun AnimationSection(
                 )
             }
             if (animationNames.size > 1) {
-                Text(stringResource(R.string.demo_animation_physics_blend_to), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    stringResource(R.string.demo_animation_physics_blend_to),
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -803,14 +816,21 @@ private fun AnimationSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.demo_animation_physics_playback), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    stringResource(R.string.demo_animation_physics_playback),
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 IconButton(onClick = {
                     if (!isPlaying && clipTime >= duration) clipTime = 0f
                     isPlaying = !isPlaying
                 }) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) stringResource(R.string.demo_animation_physics_pause) else stringResource(R.string.demo_animation_physics_play)
+                        contentDescription = if (isPlaying) {
+                            stringResource(R.string.demo_animation_physics_pause)
+                        } else {
+                            stringResource(R.string.demo_animation_physics_play)
+                        },
                     )
                 }
             }
@@ -888,7 +908,8 @@ private fun AnimationSection(
                                     CameraMode.HERO -> stringResource(R.string.demo_animation_physics_camera_hero)
                                     CameraMode.REVEAL -> stringResource(R.string.demo_animation_physics_camera_reveal)
                                     CameraMode.VERTIGO -> stringResource(R.string.demo_animation_physics_camera_vertigo)
-                                    CameraMode.TRACKING -> stringResource(R.string.demo_animation_physics_camera_tracking)
+                                    CameraMode.TRACKING ->
+                                        stringResource(R.string.demo_animation_physics_camera_tracking)
                                     CameraMode.FREE -> stringResource(R.string.demo_animation_physics_camera_free)
                                 }
                             )
@@ -968,7 +989,10 @@ private fun AnimationSection(
             }
             LoadingScrim(
                 loading = modelInstance == null,
-                label = stringResource(R.string.demo_animation_physics_loading, activeModel.streamedSlug?.displayName ?: stringResource(activeModel.nameRes)),
+                label = stringResource(
+                    R.string.demo_animation_physics_loading,
+                    activeModel.streamedSlug?.displayName ?: stringResource(activeModel.nameRes),
+                ),
             )
         }
     }
@@ -1136,7 +1160,13 @@ private fun PhysicsSection(
         peekHeader = stringResource(R.string.demo_animation_physics_counts, liveBodyCount, collisions),
         bottomOverlay = {
             DemoStatusBanner(
-                text = stringResource(if (replaying) R.string.demo_animation_physics_replaying else R.string.demo_animation_physics_reset_ready),
+                text = stringResource(
+                    if (replaying) {
+                        R.string.demo_animation_physics_replaying
+                    } else {
+                        R.string.demo_animation_physics_reset_ready
+                    },
+                ),
                 tone = DemoStatusTone.Guidance,
             )
             Row(
@@ -1425,45 +1455,71 @@ private class DemoCollisionReplay {
             var vx = v.x
             var vz = v.z
             val belowRail = p.y - body.radius < PHYSICS_FLOOR + 0.16f
-            if (belowRail && kotlin.math.abs(p.x) > bound && p.x * vx > 0f) { vx = -vx * body.restitution; collisions++ }
-            if (belowRail && kotlin.math.abs(p.z) > bound && p.z * vz > 0f) { vz = -vz * body.restitution; collisions++ }
+            if (belowRail && kotlin.math.abs(p.x) > bound && p.x * vx > 0f) {
+                vx = -vx * body.restitution
+                collisions++
+            }
+            if (belowRail && kotlin.math.abs(p.z) > bound && p.z * vz > 0f) {
+                vz = -vz * body.restitution
+                collisions++
+            }
             if (p.y <= PHYSICS_FLOOR + body.radius && kotlin.math.abs(v.y) < 0.2f) {
                 vx *= 0.985f
                 vz *= 0.985f
             }
-            if (belowRail) body.node.position = Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
+            if (belowRail) {
+                body.node.position =
+                    Position(p.x.coerceIn(-bound, bound), p.y, p.z.coerceIn(-bound, bound))
+            }
             body.velocity = Position(vx, v.y, vz)
         }
         // Stable index order, a fixed timestep and fixed initial velocities make
         // the same initial population produce the same sequence of impacts.
-        for ((aIndex, a) in bodies) for ((bIndex, b) in bodies) {
-            if (bIndex <= aIndex) continue
-            val pa = a.node.position
-            val pb = b.node.position
-            val dx = pb.x - pa.x
-            val dy = pb.y - pa.y
-            val dz = pb.z - pa.z
-            val distanceSquared = dx * dx + dy * dy + dz * dz
-            val diameter = a.radius + b.radius
-            if (distanceSquared >= diameter * diameter) continue
-            val distance = sqrt(distanceSquared)
-            val nx = if (distance > 0.00001f) dx / distance else 1f
-            val ny = if (distance > 0.00001f) dy / distance else 0f
-            val nz = if (distance > 0.00001f) dz / distance else 0f
-            val correction = (diameter - distance) * 0.5f
-            a.node.position = Position(pa.x - nx * correction,
-                (pa.y - ny * correction).coerceAtLeast(PHYSICS_FLOOR + a.radius), pa.z - nz * correction)
-            b.node.position = Position(pb.x + nx * correction,
-                (pb.y + ny * correction).coerceAtLeast(PHYSICS_FLOOR + b.radius), pb.z + nz * correction)
-            val va = a.velocity
-            val vb = b.velocity
-            val approach = (vb.x - va.x) * nx + (vb.y - va.y) * ny + (vb.z - va.z) * nz
-            if (approach >= 0f) continue
-            val impulse = -(1f + PHYSICS_RESTITUTION) * approach / 2f
-            a.velocity = Position(va.x - impulse * nx, va.y - impulse * ny, va.z - impulse * nz)
-            b.velocity = Position(vb.x + impulse * nx, vb.y + impulse * ny, vb.z + impulse * nz)
-            if (approach < -0.2f) collisions++
+        for ((aIndex, a) in bodies) {
+            for ((bIndex, b) in bodies) {
+                if (bIndex > aIndex && resolvePair(a, b)) collisions++
+            }
         }
+    }
+
+    /**
+     * Separates [a] and [b] if their spheres overlap and exchanges the impulse
+     * along the contact normal. Returns `true` when the pair met hard enough to
+     * count as an impact, so the caller owns the counter and this stays pure
+     * enough to read.
+     */
+    private fun resolvePair(a: PhysicsBody, b: PhysicsBody): Boolean {
+        val pa = a.node.position
+        val pb = b.node.position
+        val dx = pb.x - pa.x
+        val dy = pb.y - pa.y
+        val dz = pb.z - pa.z
+        val distanceSquared = dx * dx + dy * dy + dz * dz
+        val diameter = a.radius + b.radius
+        if (distanceSquared >= diameter * diameter) return false
+        val distance = sqrt(distanceSquared)
+        val nx = if (distance > 0.00001f) dx / distance else 1f
+        val ny = if (distance > 0.00001f) dy / distance else 0f
+        val nz = if (distance > 0.00001f) dz / distance else 0f
+        val correction = (diameter - distance) * 0.5f
+        a.node.position = Position(
+            pa.x - nx * correction,
+            (pa.y - ny * correction).coerceAtLeast(PHYSICS_FLOOR + a.radius),
+            pa.z - nz * correction,
+        )
+        b.node.position = Position(
+            pb.x + nx * correction,
+            (pb.y + ny * correction).coerceAtLeast(PHYSICS_FLOOR + b.radius),
+            pb.z + nz * correction,
+        )
+        val va = a.velocity
+        val vb = b.velocity
+        val approach = (vb.x - va.x) * nx + (vb.y - va.y) * ny + (vb.z - va.z) * nz
+        if (approach >= 0f) return false
+        val impulse = -(1f + PHYSICS_RESTITUTION) * approach / 2f
+        a.velocity = Position(va.x - impulse * nx, va.y - impulse * ny, va.z - impulse * nz)
+        b.velocity = Position(vb.x + impulse * nx, vb.y + impulse * ny, vb.z + impulse * nz)
+        return approach < -0.2f
     }
 }
 

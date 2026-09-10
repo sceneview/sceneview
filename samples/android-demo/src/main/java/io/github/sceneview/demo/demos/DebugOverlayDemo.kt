@@ -224,7 +224,8 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     stressAborted -> stringResource(R.string.demo_debug_overlay_aborted)
                     firstSlowCount > 0 -> stringResource(R.string.demo_debug_overlay_threshold, firstSlowCount)
                     stressRunning -> stringResource(R.string.demo_debug_overlay_measuring, currentCount)
-                    stressTested && measuredCount > 0 -> stringResource(R.string.demo_debug_overlay_no_threshold, measuredCount)
+                    stressTested && measuredCount > 0 ->
+                        stringResource(R.string.demo_debug_overlay_no_threshold, measuredCount)
                     else -> stringResource(R.string.demo_debug_overlay_prompt)
                 },
                 tone = if (stressAborted) DemoStatusTone.Blocked else if (stressRunning) {
@@ -286,9 +287,15 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                                 targetCount = preset
                             },
                             enabled = controlsEnabled,
-                            contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.xs)
+                            contentPadding = PaddingValues(
+                                horizontal = SceneViewTokens.Space.sm,
+                                vertical = SceneViewTokens.Space.xs,
+                            ),
                         ) {
-                            Text(stringResource(R.string.demo_debug_overlay_preset, preset), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                stringResource(R.string.demo_debug_overlay_preset, preset),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
                         }
                     }
                     OutlinedButton(
@@ -297,9 +304,15 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                             targetCount = 1
                         },
                         enabled = controlsEnabled,
-                        contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.xs)
+                        contentPadding = PaddingValues(
+                            horizontal = SceneViewTokens.Space.sm,
+                            vertical = SceneViewTokens.Space.xs,
+                        ),
                     ) {
-                        Text(stringResource(R.string.demo_debug_overlay_reset), style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            stringResource(R.string.demo_debug_overlay_reset),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
                 }
 
@@ -319,10 +332,17 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                             stressTested = true
                         }
                     },
-                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.sm),
+                    contentPadding = PaddingValues(
+                        horizontal = SceneViewTokens.Space.md,
+                        vertical = SceneViewTokens.Space.sm,
+                    ),
                 ) {
                     Text(
-                        if (stressRunning) stringResource(R.string.demo_debug_overlay_stop) else stringResource(R.string.demo_debug_overlay_start, STRESS_TARGET),
+                        if (stressRunning) {
+                            stringResource(R.string.demo_debug_overlay_stop)
+                        } else {
+                            stringResource(R.string.demo_debug_overlay_start, STRESS_TARGET)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -503,11 +523,17 @@ private fun DebugOverlay(
         )
         BasicText(
             text = stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs),
-            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = mono,
+            ),
         )
         BasicText(
             text = stringResource(R.string.demo_debug_overlay_nodes, stats.nodeCount),
-            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = mono,
+            ),
         )
         // Estimated tris: SphereNode default tessellation is 24 stacks × 24 slices,
         // which yields 24*24*2 = 1152 triangles. Format with thousands grouping so a
@@ -515,7 +541,10 @@ private fun DebugOverlay(
         val tris = stats.nodeCount.toLong() * TRIS_PER_SPHERE
         BasicText(
             text = stringResource(R.string.demo_debug_overlay_triangles, formatThousands(tris)),
-            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = mono)
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = mono,
+            ),
         )
 
         // Sparkline. 60-frame ring buffer scaled to 120 fps max so a 60 fps run sits at

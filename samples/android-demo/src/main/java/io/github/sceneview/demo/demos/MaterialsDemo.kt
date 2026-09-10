@@ -400,8 +400,20 @@ private fun StudioSection(
                     // the VISIBLE one-word text (`DESIGN.md`, "Floating Dock"); `label` is
                     // the accessible name and carries the full phrase.
                     icon = if (inspecting) Icons.Filled.GridView else Icons.Filled.Lens,
-                    caption = stringResource(if (inspecting) R.string.demo_materials_mode_gallery else R.string.demo_materials_mode_inspect),
-                    label = stringResource(if (inspecting) R.string.demo_materials_back_gallery else R.string.demo_materials_inspect_preset),
+                    caption = stringResource(
+                        if (inspecting) {
+                            R.string.demo_materials_mode_gallery
+                        } else {
+                            R.string.demo_materials_mode_inspect
+                        },
+                    ),
+                    label = stringResource(
+                        if (inspecting) {
+                            R.string.demo_materials_back_gallery
+                        } else {
+                            R.string.demo_materials_inspect_preset
+                        },
+                    ),
                     onClick = {
                         onModeChange(
                             if (inspecting) MaterialsMode.Gallery else MaterialsMode.Inspect
@@ -413,8 +425,16 @@ private fun StudioSection(
                 add(
                     DockItem(
                         icon = Icons.Filled.Compare,
-                        caption = stringResource(if (compare) R.string.demo_materials_single else R.string.demo_materials_compare),
-                        label = stringResource(if (compare) R.string.demo_materials_hide_base else R.string.demo_materials_show_base),
+                        caption = stringResource(
+                            if (compare) R.string.demo_materials_single else R.string.demo_materials_compare,
+                        ),
+                        label = stringResource(
+                            if (compare) {
+                                R.string.demo_materials_hide_base
+                            } else {
+                                R.string.demo_materials_show_base
+                            },
+                        ),
                         onClick = { compare = !compare },
                         selected = compare,
                     )
@@ -424,7 +444,13 @@ private fun StudioSection(
                 DockItem(
                     icon = if (animating) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     caption = stringResource(R.string.demo_materials_animate),
-                    label = stringResource(if (animating) R.string.demo_materials_pause_camera else R.string.demo_materials_animate_camera),
+                    label = stringResource(
+                        if (animating) {
+                            R.string.demo_materials_pause_camera
+                        } else {
+                            R.string.demo_materials_animate_camera
+                        },
+                    ),
                     onClick = { animating = !animating },
                     selected = animating,
                 )
@@ -538,7 +564,11 @@ private fun StudioSection(
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = environment,
-                cameraManipulator = if (inspecting && compare) null else if (inspecting) heroManipulator else galleryManipulator,
+                cameraManipulator = when {
+                    inspecting && compare -> null
+                    inspecting -> heroManipulator
+                    else -> galleryManipulator
+                },
                 onGestureListener = gestureListener,
                 // The wall's positions are the layout; letting the union bounding box
                 // re-centre the scene would move them, and the Compare pair's symmetry about
@@ -620,7 +650,11 @@ private fun StudioSection(
                                 onModeChange(MaterialsMode.Inspect)
                             }
                             .padding(SceneViewTokens.Space.xs),
-                        style = if (inspecting) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelSmall,
+                        style = if (inspecting) {
+                            MaterialTheme.typography.titleSmall
+                        } else {
+                            MaterialTheme.typography.labelSmall
+                        },
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
                     )
