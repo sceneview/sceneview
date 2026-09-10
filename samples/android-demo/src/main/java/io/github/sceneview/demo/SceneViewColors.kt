@@ -56,6 +56,17 @@ object SceneViewColors {
     val PrimaryOverlay = Primary.copy(alpha = 0.4f)
 
     /**
+     * Face-mesh overlay tint — [Primary] at alpha 0.55.
+     *
+     * Sits between [PrimaryOverlay] (0.4) and opaque: the ARCore face mesh is worn on a live
+     * selfie preview that is often backlit and dark, and at 0.4 a *lit* mesh's specular sweep —
+     * the cue that says "fitted 3D topology" rather than "blue filter" — washed out against it.
+     * 0.55 keeps the real face readable underneath while giving the shading something to sit on
+     * (#3576).
+     */
+    val FaceMeshOverlay = Primary.copy(alpha = 0.55f)
+
+    /**
      * Semi-transparent Accent — secondary AR overlay tint for callouts / highlighted
      * geometry, kept distinct from [PrimaryOverlay] so stacked passes remain readable.
      */
