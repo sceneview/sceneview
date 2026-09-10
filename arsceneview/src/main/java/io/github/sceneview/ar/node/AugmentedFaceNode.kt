@@ -158,7 +158,7 @@ open class AugmentedFaceNode(
         // the *normal* state here, not a failure.
         //
         // `PoseNode` hides any node whose `cameraTrackingState` is not in
-        // `visibleCameraTrackingStates`, and the inherited default is `{TRACKING}`. The face mesh
+        // `visibleCameraTrackingStates`, and the inherited default is TRACKING-only. The face mesh
         // is built inside this constructor, while the field still holds its `TRACKING` initial
         // value — so it rendered for one or two frames and then `update(session, frame)` wrote
         // PAUSED into it and hid the whole subtree (`Node.isVisible` walks the parent chain, so
@@ -167,8 +167,11 @@ open class AugmentedFaceNode(
         // the problem: only the SDK's own visibility gate was.
         //
         // Opting this node out of the camera-tracking gate is the fix. The face's OWN tracking
-        // state is still honoured through `TrackableNode.visibleTrackingStates` (`{TRACKING}`),
-        // which is the state that actually means "there is a face here".
+        // state is still honoured through `TrackableNode.visibleTrackingStates`, which stays
+        // TRACKING-only and is the state that actually means "there is a face here".
+        //
+        // Keep this comment free of curly braces: TrackableNodeConstructionGuardContractTest
+        // reads the init body up to the first closing brace it finds in the source.
         visibleCameraTrackingStates = kFaceVisibleCameraTrackingStates
         trackable = augmentedFace
         constructed = true
