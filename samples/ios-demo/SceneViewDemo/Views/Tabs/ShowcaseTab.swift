@@ -30,6 +30,11 @@ struct ShowcaseTab: View {
     @State private var comingSoonScene: DemoItem?
     @State private var showExplore = false
 
+    /// Source namespace for the iOS 18 zoom presentation transition: the tapped
+    /// card (or the hero) morphs into the full-screen demo instead of the demo
+    /// sliding up over it with no visual link to what was tapped (#3599).
+    @Namespace private var cardNamespace
+
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var expanded: Bool { sizeClass == .regular }
@@ -62,6 +67,9 @@ struct ShowcaseTab: View {
                                                   : SceneViewTokens.Home.heroHeight) {
                             open(sceneId: Self.heroDemoId)
                         }
+                        #if os(iOS)
+                        .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
+                        #endif
                     }
 
                     CategoryChipRow(selected: $selectedCategory)
@@ -75,6 +83,9 @@ struct ShowcaseTab: View {
                     LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
                         ForEach(visible) { demo in
                             DemoMediaCard(demo: demo) { open(demo) }
+                                #if os(iOS)
+                                .matchedTransitionSource(id: demo.sceneId, in: cardNamespace)
+                                #endif
                         }
                         if !searching {
                             BrowseOnlineModelsCard { showExplore = true }
@@ -120,6 +131,14 @@ struct ShowcaseTab: View {
             #if os(iOS)
             .fullScreenCover(item: $fullScreenScene) { scene in
                 DemoCover(scene: scene) { fullScreenScene = nil }
+                    // The card that was tapped expands into the demo, and
+                    // collapses back into it on close. Before this, a demo
+                    // appeared with the stock cover slide and nothing tied it
+                    // to the card the thumb had just hit (#3599). The source is
+                    // the `DemoMediaCard` — or the `HomeHero` when the demo is
+                    // opened from it, which is why both carry a
+                    // `matchedTransitionSource` keyed on `sceneId`.
+                    .navigationTransition(.zoom(sourceID: scene.sceneId, in: cardNamespace))
             }
             #else
             .sheet(item: $fullScreenScene) { scene in
