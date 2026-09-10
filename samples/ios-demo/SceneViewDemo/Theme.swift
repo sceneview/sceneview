@@ -164,15 +164,37 @@ enum SceneViewTokens {
             light: Color(red: 0x3D / 255, green: 0x46 / 255, blue: 0x54 / 255),
             dark: Color(red: 0x9C / 255, green: 0xA3 / 255, blue: 0xAF / 255)
         )
-        /// `chip-selected-bg` = `on-surface` — #1A1A2E / #F3F4F6.
+        /// DESIGN.md `chip-selected-bg` in light; `primary` in dark.
+        ///
+        /// The first dark pass used the #242D41 `primary-light` tint with a
+        /// primary outline. Reviewed against the light screen it lost the
+        /// "which one is on?" read at a glance — a thin outline on a barely
+        /// lifted fill states *selectable*, not *selected*, and the row of
+        /// unselected chips sits only a few percent darker. Dark now mirrors
+        /// what light already does (a solid, unmissable pill), swapping the
+        /// shouting white of the previous build for the brand blue.
         static let chipSelectedBackground = Color(
             light: Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x2E / 255),
-            dark: Color(red: 0xF3 / 255, green: 0xF4 / 255, blue: 0xF6 / 255)
+            dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
-        /// `chip-selected-text` = `surface` — #FFFFFF / #0D1117.
+        /// DESIGN.md `chip-selected-text` in light; `surface` in dark, the only
+        /// value that clears AA on the `primary` pill above.
         static let chipSelectedText = Color(
             light: .white,
             dark: Color(red: 0x0D / 255, green: 0x11 / 255, blue: 0x17 / 255)
+        )
+        /// DESIGN.md Primary, `primary-light` — the "subtle background" tint,
+        /// pre-composited over the surface it sits on: `#005BC1` at 8 % over
+        /// white in light, `#A4C1FF` at 10 % over `surface-container` in dark.
+        ///
+        /// The container for a primary *action* — paired with `primary` for its
+        /// label and glyph. Distinct from `chip-selected-bg` on purpose: a
+        /// selection and an action must not wear the same skin (they did, and
+        /// the promoted "Surprise me" read as a selected card in dark and as an
+        /// unreadable navy slab in light, #3585).
+        static let primaryContainer = Color(
+            light: Color(red: 0xEB / 255, green: 0xF0 / 255, blue: 0xF8 / 255),
+            dark: Color(red: 0x24 / 255, green: 0x2D / 255, blue: 0x41 / 255)
         )
         /// `on-surface` — #1A1A2E / #F3F4F6.
         static let onSurface = Color(
@@ -181,16 +203,48 @@ enum SceneViewTokens {
         )
         /// `on-surface-dim` — #3D4654 / #9CA3AF.
         static let onSurfaceDim = chipText
+        /// DESIGN.md Text, `on-surface-faint` — #5C6370 / #6B7280.
+        /// Reserved for decorative tertiary glyphs, never focus or body copy.
+        static let onSurfaceFaint = Color(
+            light: Color(red: 0x5C / 255, green: 0x63 / 255, blue: 0x70 / 255),
+            dark: Color(red: 0x6B / 255, green: 0x72 / 255, blue: 0x80 / 255)
+        )
+        /// DESIGN.md Primary, `primary` — #005BC1 / #A4C1FF.
+        /// Focus and action glyphs use the accent rather than a text grey.
+        static let primary = Color(
+            light: Color(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255),
+            dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
+        )
+        /// DESIGN.md Borders, `outline` — #D6DAE0 / #2A3346.
+        /// The Cards row specifies this 1 pt contour for elevated surfaces.
+        static let outline = Color(
+            light: Color(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255),
+            dark: Color(red: 0x2A / 255, green: 0x33 / 255, blue: 0x46 / 255)
+        )
         /// `outline-subtle` — #EBEDF0 / #1F2937, the 1 pt card + header hairline.
         static let outlineSubtle = Color(
             light: Color(red: 0xEB / 255, green: 0xED / 255, blue: 0xF0 / 255),
             dark: Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
         )
-        /// `surface` — #FFFFFF / #0D1117 (the page ground and the card fill).
+        /// `surface` — #FFFFFF / #0D1117 (the page ground).
         static let surface = Color(
             light: .white,
             dark: Color(red: 0x0D / 255, green: 0x11 / 255, blue: 0x17 / 255)
         )
+        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #161C2C.
+        /// A lighter fill supplies dark elevation without a black shadow.
+        static let surfaceContainer = Color(
+            light: .white,
+            dark: Color(red: 0x16 / 255, green: 0x1C / 255, blue: 0x2C / 255)
+        )
+        /// Derived from DESIGN.md dark `glass-surface`: 5 % white composited
+        /// over `surface-container`, rounded to #222737. Kept opaque so artwork
+        /// cannot bleed through floating status chips or the search field.
+        static let floatingSurface = Color(
+            light: .white,
+            dark: Color(red: 0x22 / 255, green: 0x27 / 255, blue: 0x37 / 255)
+        )
+        /// Legacy light appearance only; dark uses `header-overlay` at 100 %.
         static let headerOverlayAlpha: Double = 0.94
     }
 

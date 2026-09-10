@@ -142,6 +142,15 @@ object SceneViewTokens {
         val chipSelectedTextLight = Color(0xFFFFFFFF)
         val chipSelectedTextDark = Color(0xFF0D1117)
 
+        /**
+         * `primary-light` — the primary role at 8 % (light) / 10 % (dark), the
+         * "Subtle backgrounds" row of `DESIGN.md`. The hue itself stays the
+         * Material `primary` role so the tint follows the scheme; only the
+         * opacity is a token, because the spec sets a different one per theme.
+         */
+        const val primaryLightAlphaLight = 0.08f
+        const val primaryLightAlphaDark = 0.10f
+
         /** `outline-subtle` — #EBEDF0 / #1F2937, the 1 dp card + header hairline. */
         val outlineSubtleLight = Color(0xFFEBEDF0)
         val outlineSubtleDark = Color(0xFF1F2937)
