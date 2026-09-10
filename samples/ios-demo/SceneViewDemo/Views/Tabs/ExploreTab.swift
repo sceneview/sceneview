@@ -243,6 +243,15 @@ struct ExploreTab: View {
     @State private var activeSearchQuery = ""
     @State private var searchResults: [GalleryModel]?
 
+    /// Non-nil when the last search failed to reach the catalog. Kept separate
+    /// from `searchResults == []` so "the catalog answered, with nothing" and
+    /// "we never reached the catalog" stop rendering as the same sentence —
+    /// only the second one is worth a Retry button (#3586).
+    @State private var searchFailure: String?
+
+    /// Focus for the inline field used in `embedded` mode (see `inlineSearchField`).
+    @FocusState private var inlineSearchFocused: Bool
+
     /// Shared namespace for the iOS 18 zoom transition: the carousel card's
     /// thumbnail morphs into the GalleryModelViewerScreen hero on push.
     @Namespace private var heroNamespace
@@ -282,6 +291,15 @@ struct ExploreTab: View {
     private var content: some View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
+                    // `.searchable` renders into the navigation bar. Embedded, this
+                    // view is pushed by ShowcaseTab onto a screen that calls
+                    // `.hideNavigationBar()`, so there is no bar to render into and
+                    // the search field silently did not exist — the whole of #3586.
+                    // Standalone (the Model Viewer's "Browse online models" sheet)
+                    // keeps the native bar field; embedded gets this inline twin.
+                    if embedded {
+                        inlineSearchField
+                    }
                     // Source picker (#2645 / #2700) — stays visible even mid-search.
                     // Switching catalogs resets browse + search state back to the
                     // new source's feeds (see selectSource — parity with Android's
@@ -332,6 +350,12 @@ struct ExploreTab: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
+            // Explore never set a page ground, so dark mode fell back to the
+            // system black (#000) while every other screen sits on the DESIGN.md
+            // `surface` (#0D1117) — the flat, inky feel of #3582. Light is
+            // unchanged: `surface` is #FFFFFF there, which is what the system
+            // background already was.
+            .background(SceneViewTokens.HomeColor.surface)
             .navigationTitle("Explore")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
@@ -348,6 +372,7 @@ struct ExploreTab: View {
                 if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     activeSearchQuery = ""
                     searchResults = nil
+                    searchFailure = nil
                 }
             }
             // Reload the selected source's feeds on first appearance, source
@@ -550,19 +575,67 @@ struct ExploreTab: View {
         let query = activeSearchQuery
         guard !query.isEmpty else { return }
         searchResults = nil
+        searchFailure = nil
         do {
             let results = try await source.search(query: query, limit: 24)
             guard source.id == selectedSource.id && query == activeSearchQuery else { return }
             searchResults = results
+        } catch is CancellationError {
+            // Superseded by a newer query — leave the spinner to the new run.
+            return
         } catch let SketchfabError.requestFailed(statusCode)
             where statusCode == 401 || statusCode == 403 {
             keyRejected = true
             searchResults = []
+            searchFailure = "\(selectedSource.id.displayName) rejected the app's API key, so search is unavailable. Switch catalog from the picker above."
         } catch {
-            // A transient blip surfaces the empty state and clears on the next
+            // A transient blip surfaces the error state and clears on the next
             // query — no permanent latch (matches the Android WAF handling).
             searchResults = []
+            searchFailure = "Couldn't reach \(selectedSource.id.displayName). Check your connection and try again."
         }
+    }
+
+    /// Always-visible search field for `embedded` mode. Styled after the
+    /// Showcase header's own field so the two searches in the app look alike.
+    private var inlineSearchField: some View {
+        HStack(spacing: SceneViewTokens.Space.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+            TextField("Search 3D models on \(selectedSource.id.displayName)", text: $searchText)
+                .font(SceneViewTokens.TypeScale.body)
+                .focused($inlineSearchFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onSubmit { submitSearch() }
+                .accessibilityIdentifier("explore-search-field")
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    activeSearchQuery = ""
+                    searchResults = nil
+                    searchFailure = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, SceneViewTokens.Space.md)
+        .frame(height: SceneViewTokens.Home.searchFieldHeight)
+        // One step above the page ground so the field reads as a field —
+        // `surface` would be invisible against the ground it now sits on.
+        .background(SceneViewTokens.HomeColor.surfaceContainer, in: Capsule())
+        // `outline`, not `outline-subtle`: at rest the fill is one step off the
+        // ground and, with no shadow to lean on in dark, the contour is the only
+        // thing that says "input" rather than "smudge". Focus goes to `primary`.
+        .overlay(Capsule().strokeBorder(
+            inlineSearchFocused ? SceneViewTokens.HomeColor.primary
+                                : SceneViewTokens.HomeColor.outline,
+            lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 
     /// Explicit Enter press: record the query and fire the search.
@@ -689,10 +762,30 @@ struct ExploreTab: View {
                 }
             }
             if let searchResults {
-                if searchResults.isEmpty {
-                    Text("No results for \u{201C}\(activeSearchQuery)\u{201D}")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                if let searchFailure {
+                    // Error state — we never got an answer. Offer the retry.
+                    VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                        Label(searchFailure, systemImage: "wifi.exclamationmark")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Try again") {
+                            let query = activeSearchQuery
+                            activeSearchQuery = ""
+                            activeSearchQuery = query
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(SceneViewTheme.primary)
+                    }
+                } else if searchResults.isEmpty {
+                    // Empty state — the catalog answered, it just has nothing.
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No results for \u{201C}\(activeSearchQuery)\u{201D}")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("Try a shorter or more general word, or pick a category below.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 14) {

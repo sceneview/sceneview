@@ -40,13 +40,38 @@ struct ModelViewerDemo: View {
 
     /// Bundled HDRs offered in the Environment sheet, in Android's order.
     private static let environments: [ViewerEnvironment] = [
-        ViewerEnvironment(assetName: "studio", displayName: "Studio"),
-        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm"),
-        ViewerEnvironment(assetName: "sunset", displayName: "Sunset"),
-        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy"),
-        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky"),
-        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night"),
+        ViewerEnvironment(assetName: "studio", displayName: "Studio", authoredAsPlace: false),
+        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm", authoredAsPlace: false),
+        ViewerEnvironment(assetName: "sunset", displayName: "Sunset", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky", authoredAsPlace: true),
+        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night", authoredAsPlace: true),
     ]
+
+    /// The environment a first run lands on.
+    ///
+    /// #3583 asked for the environment backdrop to be visible by default "sans le
+    /// forcer". A studio rig has no backdrop worth drawing — it is four softbox
+    /// panels in a void — so shipping `studio` first meant the smart default below
+    /// always resolved to "hidden" and nobody ever saw an environment. Landing on a
+    /// place instead makes the default self-explanatory: the sunset you can see is
+    /// the sky lighting the model. The list keeps Android's order; only the
+    /// first-run selection differs, and the user can pick a studio (or switch the
+    /// backdrop off) at any time.
+    private static let defaultEnvironment: ViewerEnvironment =
+        environments.first { $0.assetName == "outdoor_cloudy" } ?? environments[0]
+
+    /// Remembered answer to "should the backdrop be drawn?", persisted across launches.
+    ///
+    /// `auto` is the smart default (#3583): the backdrop follows the picked
+    /// environment — drawn for one authored as a place, hidden for a studio rig, so
+    /// choosing Sunset actually shows you a sunset instead of only its reflection.
+    /// The moment the user touches the "Show environment" switch the answer stops
+    /// being inferred and their choice sticks for every environment and every launch,
+    /// which is the "sans le forcer" half of the ask. "Reset" returns to `auto`.
+    private enum SkyboxPreference: Int {
+        case auto = 0, alwaysOn = 1, alwaysOff = 2
+    }
 
     /// The subject App Store slot 1 is meant to show. The interactive default
     /// is `bundledModels[0]` (Damaged Helmet) — the Khronos reference model a
@@ -60,11 +85,11 @@ struct ModelViewerDemo: View {
 
     /// The stage App Store slot 1 is meant to stand on, drawn as a skybox.
     ///
-    /// The interactive defaults are `environments[0]` (`studio`) with the
-    /// skybox *hidden*, so the viewport shows the model over the clear colour
-    /// — a deliberate look for a viewer you are about to orbit and pick models
-    /// in, and unchanged here. It is the wrong look for a store frame: with no
-    /// backdrop drawn, the hovercar's dark bodywork reads as a grey silhouette
+    /// The interactive default is ``defaultEnvironment`` (`sunset`) with its
+    /// backdrop drawn (#3583). That is still the wrong stage for a store frame:
+    /// the listing wants a controlled warm studio behind the hero rather than a
+    /// sky, so slot 1 pins `studio_warm` and forces the skybox on. With no
+    /// backdrop drawn at all, the hovercar's dark bodywork reads as a grey silhouette
     /// on near-black. That exact frame was already rejected once — #2896 was
     /// filed about a "dim, dark-on-black" capture, and the fix recorded at the
     /// time was to stage the hero in `studio_warm`, an actual photo studio
@@ -112,9 +137,12 @@ struct ModelViewerDemo: View {
     @State private var showExplore = false
     @State private var showAR = false
 
-    @State private var environment: ViewerEnvironment = ModelViewerDemo.environments[0]
+    @State private var environment: ViewerEnvironment = ModelViewerDemo.defaultEnvironment
     @State private var iblIntensity: Float = 1
-    @State private var showSkybox = false
+    @State private var showSkybox = ModelViewerDemo.defaultEnvironment.authoredAsPlace
+
+    /// Raw storage for ``SkyboxPreference`` — `@AppStorage` cannot hold the enum directly.
+    @AppStorage("viewer_skybox_preference") private var skyboxPreferenceRaw: Int = SkyboxPreference.auto.rawValue
 
     @State private var animationNames: [String] = []
     @State private var animationBarOpen = false
@@ -138,6 +166,29 @@ struct ModelViewerDemo: View {
         #else
         return false
         #endif
+    }
+
+    /// The backdrop state a given environment should land on, honouring a
+    /// remembered explicit choice over the per-environment default.
+    private func defaultSkybox(for environment: ViewerEnvironment) -> Bool {
+        switch SkyboxPreference(rawValue: skyboxPreferenceRaw) ?? .auto {
+        case .alwaysOn: return true
+        case .alwaysOff: return false
+        case .auto: return environment.authoredAsPlace
+        }
+    }
+
+    /// The sheet's "Show environment" switch. Reading is plain state; *writing* is
+    /// the user speaking, so it also promotes the preference out of `auto`.
+    private var skyboxBinding: Binding<Bool> {
+        Binding(
+            get: { showSkybox },
+            set: { newValue in
+                showSkybox = newValue
+                skyboxPreferenceRaw = (newValue ? SkyboxPreference.alwaysOn
+                                                : SkyboxPreference.alwaysOff).rawValue
+            }
+        )
     }
 
     private var sceneEnvironment: SceneEnvironment {
@@ -201,6 +252,39 @@ struct ModelViewerDemo: View {
                     }
                     .padding(.bottom, SceneViewTokens.Space.sm)
                 }
+                if hasSketchfabKey {
+                    // Re-roll without opening the sheet — the "switcher sans se prendre
+                    // la tête" half of #3585. Animate already occupies dock item four
+                    // and AR owns the accent, so this rides the floating band instead.
+                    // Shown in both themes: the viewer chrome is glass over live 3D and
+                    // is theme-independent by design.
+                    Button {
+                        Task { @MainActor in
+                            guard !surpriseInFlight else { return }
+                            await rollSurpriseModel()
+                        }
+                    } label: {
+                        GlassPill {
+                            SurpriseShuffleIcon(loading: surpriseInFlight)
+                            Text("Surprise me")
+                                .font(SceneViewTokens.TypeScale.captionSemibold)
+                                .lineLimit(1)
+                        }
+                        // DESIGN.md on-glass stays white over 3D, independent of
+                        // theme; GlassPill retains the existing glass fill/hairline.
+                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                        .tint(SceneViewTokens.Glass.onGlass)
+                        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+                    .disabled(surpriseInFlight)
+                    .accessibilityLabel("Surprise me")
+                    .accessibilityValue(surpriseInFlight ? "Loading" : "Ready")
+                    .accessibilityHint("Loads another random CC-BY model without opening Models")
+                    .accessibilityIdentifier("viewer-surprise")
+                    .padding(.bottom, SceneViewTokens.Space.sm)
+                }
                 if animationBarOpen && !animationNames.isEmpty {
                     AnimationBar(
                         clipNames: animationNames,
@@ -250,12 +334,17 @@ struct ModelViewerDemo: View {
                         environments: Self.environments,
                         selected: environment,
                         intensity: $iblIntensity,
-                        showSkybox: $showSkybox,
-                        onSelect: { environment = $0 },
+                        showSkybox: skyboxBinding,
+                        onSelect: { picked in
+                            environment = picked
+                            showSkybox = defaultSkybox(for: picked)
+                        },
                         onReset: {
-                            environment = Self.environments[0]
+                            // Reset also forgets the remembered choice, back to auto.
+                            skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
+                            environment = Self.defaultEnvironment
                             iblIntensity = 1
-                            showSkybox = false
+                            showSkybox = Self.defaultEnvironment.authoredAsPlace
                         }
                     )
                 }
@@ -295,6 +384,10 @@ struct ModelViewerDemo: View {
                     environment = stage
                     showSkybox = true
                 }
+            } else {
+                // Honour a remembered explicit choice from a previous launch;
+                // otherwise fall back to the picked environment's own default.
+                showSkybox = defaultSkybox(for: environment)
             }
             await loadBundled(selectedModel)
         }
@@ -392,9 +485,10 @@ struct ModelViewerDemo: View {
 
     private func resetAll() {
         recenterGeneration += 1
-        environment = Self.environments[0]
+        skyboxPreferenceRaw = SkyboxPreference.auto.rawValue
+        environment = Self.defaultEnvironment
         iblIntensity = 1
-        showSkybox = false
+        showSkybox = Self.defaultEnvironment.authoredAsPlace
         selectedModel = Self.bundledModels[0]
         Task { await loadBundled(selectedModel) }
     }

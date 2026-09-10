@@ -7,8 +7,9 @@ import SwiftUI
 /// captured preview when the asset catalog has one (`preview_<sceneId>` with a
 /// dark appearance variant, copied from the Android `drawable-nodpi` set) and
 /// the category-tinted SF Symbol tile otherwise; then title (`type-card`, one
-/// line) and subtitle (`type-caption`, weight 400, one line). `surface` fill,
-/// 1 pt `outline-subtle` hairline, 20 pt radius, no shadow, no scrim — the
+/// line) and subtitle (`type-caption`, weight 400, one line). Light: `surface`
+/// and `outline-subtle`; dark: `surface-container` and `outline`.
+/// 1 pt hairline, 20 pt radius, no shadow, no scrim — the
 /// media is the card. Press scales the card to 0.98 on the one app spring.
 struct DemoMediaCard: View {
     let demo: DemoItem
@@ -60,6 +61,8 @@ struct BrowseOnlineModelsCard: View {
 }
 
 private struct MediaCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     let subtitle: String
     let previewName: String?
@@ -102,6 +105,15 @@ private struct MediaCard: View {
                 }
                 .aspectRatio(SceneViewTokens.Layout.mediaAspect, contentMode: .fit)
                 .clipped()
+                .overlay {
+                    if colorScheme == .dark {
+                        // DESIGN.md `outline` seats even the unpaired hero artwork;
+                        // the outer card clip supplies the rounded top corners.
+                        Rectangle().strokeBorder(SceneViewTokens.HomeColor.outline,
+                                                 lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+                            .allowsHitTesting(false)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
                     Text(title)
@@ -118,11 +130,13 @@ private struct MediaCard: View {
                 .padding(.horizontal, SceneViewTokens.Home.cardTextPaddingHorizontal)
                 .padding(.bottom, SceneViewTokens.Home.cardTextPaddingBottom)
             }
-            .background(SceneViewTokens.HomeColor.surface)
+            .background(colorScheme == .dark ? SceneViewTokens.HomeColor.surfaceContainer
+                                            : SceneViewTokens.HomeColor.surface)
             .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Home.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: SceneViewTokens.Home.cardRadius, style: .continuous)
-                    .strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                    .strokeBorder(colorScheme == .dark ? SceneViewTokens.HomeColor.outline
+                                                       : SceneViewTokens.HomeColor.outlineSubtle,
                                   lineWidth: SceneViewTokens.Home.cardOutlineWidth)
             )
         }
@@ -151,6 +165,7 @@ private struct MediaCard: View {
 /// "Preview" / "In review" / "Soon" — the neutral status chip on the media.
 private struct StatusChip: View {
     let label: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: SceneViewTokens.Space.xs) {
@@ -163,8 +178,11 @@ private struct StatusChip: View {
         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
         .padding(.horizontal, SceneViewTokens.Space.sm)
         .padding(.vertical, 3)
-        .background(SceneViewTokens.HomeColor.surface.opacity(0.92), in: Capsule())
-        .overlay(Capsule().strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+        // Dark is opaque and one step above the card; the legacy light alpha is preserved.
+        .background(colorScheme == .dark ? SceneViewTokens.HomeColor.floatingSurface
+                                        : SceneViewTokens.HomeColor.surface.opacity(0.92), in: Capsule())
+        .overlay(Capsule().strokeBorder(colorScheme == .dark ? SceneViewTokens.HomeColor.outline
+                                                           : SceneViewTokens.HomeColor.outlineSubtle,
                                         lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 }

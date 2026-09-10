@@ -6,7 +6,7 @@ import SwiftUI
 /// transparent at 50 % to `stage-scrim-end`, and bottom-left copy —
 /// `type-display` title, `type-body` subtitle at 80 % white, one 44 pt "Open"
 /// pill. The whole card is one button. Light: soft shadow; dark: 1 pt
-/// `outline-subtle`. The iOS twin of Android's `HomeHero.kt`.
+/// `outline` over `surface-container`. The iOS twin of Android's `HomeHero.kt`.
 ///
 /// The hero is dark in both themes by design — it is the one accent on a
 /// white page in light mode, which is why its text colours are fixed tokens
@@ -20,7 +20,9 @@ struct HomeHero: View {
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottomLeading) {
-                SceneViewTokens.HomeColor.heroField
+                // Dark shares the cards' elevated ground; the light stage stays intact.
+                (colorScheme == .dark ? SceneViewTokens.HomeColor.surfaceContainer
+                                      : SceneViewTokens.HomeColor.heroField)
                 // Hosted in an overlay so the fill-scaled image never reports
                 // its own ideal width to the ZStack (it would widen the whole
                 // home scroll content past the screen).
@@ -36,7 +38,11 @@ struct HomeHero: View {
                     stops: [
                         .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimStart,
                               location: SceneViewTokens.Home.heroScrimStart),
-                        .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimEnd, location: 1),
+                        // Dark ends on the card ground, seating the text and image
+                        // on the same elevation as the grid, without a shadow.
+                        .init(color: colorScheme == .dark ? SceneViewTokens.HomeColor.surfaceContainer
+                                                        : SceneViewTokens.SpatialGalleryColor.stageScrimEnd,
+                              location: 1),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -67,7 +73,8 @@ struct HomeHero: View {
             .overlay {
                 if colorScheme == .dark {
                     RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous)
-                        .strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                        // The inner spec hairline also contains the bright artwork edges.
+                        .strokeBorder(SceneViewTokens.HomeColor.outline,
                                       lineWidth: SceneViewTokens.Home.cardOutlineWidth)
                 }
             }

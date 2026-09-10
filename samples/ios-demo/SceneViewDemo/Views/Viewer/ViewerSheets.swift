@@ -27,6 +27,20 @@ struct BundledViewerModel: Identifiable, Equatable {
 struct ViewerEnvironment: Identifiable, Equatable {
     let assetName: String
     let displayName: String
+
+    /// Was this HDR authored as a *place* you could stand in, or as a lighting rig?
+    ///
+    /// The distinction is visible in the `env_thumb_*` chrome balls: `studio` and
+    /// `studio_warm` reflect softbox panels — they are light sources, and drawing
+    /// their skybox puts the model in a grey equipment room. `sunset`,
+    /// `outdoor_cloudy`, `night_sky` and `rooftop_night` reflect a horizon, a field,
+    /// the Milky Way and a city skyline — hiding those throws away the thing you
+    /// just picked, which is what #3583 is about.
+    ///
+    /// This drives the *default* backdrop state only. An explicit toggle by the user
+    /// always wins and is remembered — see `skyboxOverride` in `ModelViewerDemo`.
+    let authoredAsPlace: Bool
+
     var id: String { assetName }
 
     var thumbnailName: String? {
@@ -59,6 +73,47 @@ struct ModelPickerSheet: View {
                     .font(SceneViewTokens.TypeScale.title)
                     .tracking(SceneViewTokens.TypeScale.titleTracking)
                     .padding(.horizontal, SceneViewTokens.Space.md)
+
+                if surpriseAvailable {
+                    // Promoted above the grid in *both* themes: #3585 is about the
+                    // action being buried under the list, which it was in light too.
+                    // DESIGN.md primary-light/container tint ties this action to
+                    // the selected chips; primary glyph + outline signal a button.
+                    Button(action: onSurprise) {
+                        HStack(spacing: SceneViewTokens.Space.md) {
+                            SurpriseShuffleIcon(loading: surpriseLoading)
+                                .foregroundStyle(SceneViewTokens.HomeColor.primary)
+                                .tint(SceneViewTokens.HomeColor.primary)
+                            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                                Text("Surprise me")
+                                    .font(SceneViewTokens.TypeScale.card)
+                                    .foregroundStyle(SceneViewTokens.HomeColor.primary)
+                                // Keep the copy and its wrapping stable while the icon spins.
+                                Text("A random CC-BY model from Sketchfab")
+                                    .font(SceneViewTokens.TypeScale.captionRegular)
+                                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+                        .padding(SceneViewTokens.Space.md)
+                        .background(SceneViewTokens.HomeColor.primaryContainer,
+                                    in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                                .strokeBorder(SceneViewTokens.HomeColor.primary,
+                                              lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+                        }
+                    }
+                    .buttonStyle(PressScaleButtonStyle())
+                    .disabled(surpriseLoading)
+                    .accessibilityLabel("Surprise me")
+                    .accessibilityValue(surpriseLoading ? "Loading" : "Ready")
+                    .accessibilityHint("Loads a random CC-BY model from Sketchfab")
+                    .accessibilityIdentifier("model-picker-surprise")
+                    .padding(.horizontal, SceneViewTokens.Space.md)
+                }
 
                 LazyVGrid(columns: columns, spacing: SceneViewTokens.Space.sm) {
                     ForEach(models) { model in
@@ -97,15 +152,30 @@ struct ModelPickerSheet: View {
                 }
                 .padding(.horizontal, SceneViewTokens.Space.md)
 
-                if surpriseAvailable {
-                    ViewerSheetRow(title: "Surprise me",
-                                   subtitle: surpriseLoading ? "Resolving…" : "A random CC-BY model from Sketchfab",
-                                   loading: surpriseLoading, action: onSurprise)
-                }
                 ViewerSheetRow(title: "Browse online models…", subtitle: nil, loading: false, action: onBrowse)
             }
             .padding(.vertical, SceneViewTokens.Space.md)
         }
+    }
+}
+
+/// `shuffle` describes switching to an unpredictable next model more directly
+/// than decorative sparkles. Shared by the dark sheet action and viewer pill.
+/// The symbol slot and text stay in place throughout loading, without a layout jump.
+struct SurpriseShuffleIcon: View {
+    let loading: Bool
+
+    var body: some View {
+        Image(systemName: "shuffle")
+            .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .semibold))
+            .opacity(loading ? 0 : 1)
+            .frame(width: SceneViewTokens.Layout.dockIconSize, height: SceneViewTokens.Layout.dockIconSize)
+            .overlay {
+                if loading {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .accessibilityHidden(true)
     }
 }
 

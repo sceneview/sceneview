@@ -10,7 +10,7 @@ import SceneViewSwift
 /// (`ExploreTab`, embedded) onto this stack.
 ///
 /// The header is a pinned overlay drawn over the scroll view: transparent
-/// while the hero is on screen, `surface` at 94 % plus a bottom hairline once
+/// while the hero is on screen, `surface` at 94 % light / 100 % dark plus a bottom hairline once
 /// the content has scrolled under it. Its search action swaps the wordmark row
 /// for a 48 pt field that filters title / subtitle / category / tags
 /// (`filterDemos`, pure and unit-tested in `HomeFilterTests`).
@@ -183,6 +183,8 @@ struct DemoCover: View {
 // MARK: - Header
 
 private struct HomeHeader: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let scrolled: Bool
     @Binding var query: String
     @Binding var searchOpen: Bool
@@ -210,7 +212,9 @@ private struct HomeHeader: View {
         }
         .background(
             SceneViewTokens.HomeColor.surface
-                .opacity(scrolled || searchOpen ? SceneViewTokens.HomeColor.headerOverlayAlpha : 0)
+                // DESIGN.md `header-overlay` is opaque in dark. No material:
+                // the pinned catalogue header must not sample scrolling artwork.
+                .opacity(scrolled || searchOpen ? (colorScheme == .dark ? 1 : SceneViewTokens.HomeColor.headerOverlayAlpha) : 0)
                 .ignoresSafeArea(edges: .top)
         )
     }
@@ -247,6 +251,8 @@ private struct TitleRow: View {
 }
 
 private struct SearchRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     @Binding var query: String
     let onClose: () -> Void
     @FocusState private var focused: Bool
@@ -254,7 +260,9 @@ private struct SearchRow: View {
     var body: some View {
         HStack(spacing: SceneViewTokens.Space.sm) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                // Tertiary glyph only; the actual focus indication uses primary below.
+                .foregroundStyle(colorScheme == .dark ? SceneViewTokens.HomeColor.onSurfaceFaint
+                                                     : SceneViewTokens.HomeColor.onSurfaceDim)
             TextField("Search demos", text: $query)
                 .font(SceneViewTokens.TypeScale.body)
                 .focused($focused)
@@ -276,9 +284,11 @@ private struct SearchRow: View {
         .padding(.leading, SceneViewTokens.Space.md)
         .padding(.trailing, SceneViewTokens.Space.xs)
         .frame(height: SceneViewTokens.Home.searchFieldHeight)
-        .background(SceneViewTokens.HomeColor.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(focused ? SceneViewTokens.HomeColor.onSurfaceDim
-                                                : SceneViewTokens.HomeColor.outlineSubtle,
+        .background(colorScheme == .dark ? SceneViewTokens.HomeColor.floatingSurface
+                                        : SceneViewTokens.HomeColor.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(colorScheme == .dark
+                                       ? (focused ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.outline)
+                                       : (focused ? SceneViewTokens.HomeColor.onSurfaceDim : SceneViewTokens.HomeColor.outlineSubtle),
                                         lineWidth: SceneViewTokens.Home.cardOutlineWidth))
         .padding(.horizontal, SceneViewTokens.Home.contentPadding)
         .onAppear { focused = true }
@@ -315,6 +325,8 @@ private struct CategoryChipRow: View {
 }
 
 private struct CategoryChip: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let label: String
     let selected: Bool
     let onTap: () -> Void
@@ -329,8 +341,18 @@ private struct CategoryChip: View {
                 .padding(.horizontal, SceneViewTokens.Home.chipPaddingHorizontal)
                 .frame(height: SceneViewTokens.Home.chipRowHeight)
                 .background(selected ? SceneViewTokens.HomeColor.chipSelectedBackground
-                                     : SceneViewTokens.HomeColor.chipBackground,
+                                     : (colorScheme == .dark ? SceneViewTokens.HomeColor.surfaceContainer
+                                                            : SceneViewTokens.HomeColor.chipBackground),
                             in: Capsule())
+                .overlay {
+                    if colorScheme == .dark {
+                        // Spec outline makes unselected chips legible; primary marks
+                        // selection without the former white capsule's visual weight.
+                        Capsule().strokeBorder(selected ? SceneViewTokens.HomeColor.primary
+                                                        : SceneViewTokens.HomeColor.outline,
+                                               lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+                    }
+                }
         }
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("\(label) filter")
