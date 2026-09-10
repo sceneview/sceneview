@@ -18,6 +18,8 @@ object SplatPreviewFragment : DemoFragment {
         icon = Icons.Filled.ScatterPlot,
         order = 2,
         tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "ply"),
+        // #2646 fixed the framing that clipped the splat shell.
+        updatedIn = "4.35.0",
     )
 
     @Composable

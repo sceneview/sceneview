@@ -76,6 +76,16 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    by the home search field alongside title, subtitle and
  *                    category. Never shown; never empty.
  * @param status      See [DemoStatus]. Defaults to [DemoStatus.Working].
+ * @param sinceVersion  Release this demo **first shipped in**, e.g. `"4.35.0"`.
+ *                      Drives the "New" marker — see [DemoFreshness]. `null`
+ *                      means "has been here long enough that nobody needs
+ *                      telling"; it is never back-filled for old demos.
+ * @param updatedIn     Release in which this demo's **user-visible behaviour**
+ *                      last changed — a rebuild, a new control, a fixed render.
+ *                      Drives the "Updated" marker. Not "any commit that touched
+ *                      the file": a refactor, a lint fix or a dependency bump
+ *                      does not move it, or the marker would be on half the grid
+ *                      permanently and would mean nothing.
  */
 data class DemoEntry(
     val id: String,
@@ -86,6 +96,8 @@ data class DemoEntry(
     val order: Int,
     val tags: Set<String>,
     val status: DemoStatus = DemoStatus.Working,
+    val sinceVersion: String? = null,
+    val updatedIn: String? = null,
 )
 
 /**

@@ -150,6 +150,10 @@
     <string name="samples_chip_preview">Preview</string>
     <string name="samples_chip_soon">Soon</string>
     <string name="samples_chip_in_review">In review</string>
+    <!-- Freshness markers (#3566). Drawn in release builds, unlike "In review":
+         they are addressed to users, not to whoever runs the sign-off pass. -->
+    <string name="samples_chip_new">New</string>
+    <string name="samples_chip_updated">Updated</string>
 
     <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
          the release content itself is parsed at runtime from the bundled

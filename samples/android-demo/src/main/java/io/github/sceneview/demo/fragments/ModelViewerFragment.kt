@@ -18,6 +18,8 @@ object ModelViewerFragment : DemoFragment {
         icon = Icons.Filled.ViewInAr,
         order = 1,
         tags = setOf("gltf", "glb", "hdr", "ibl", "orbit", "ar", "viewer"),
+        // #3543 frames an opened model at any scale; #3482 opens .3mf.
+        updatedIn = "4.35.0",
     )
 
     @Composable

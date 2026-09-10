@@ -80,11 +80,16 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoFreshness
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.categoryDisplayNameRes
+import io.github.sceneview.demo.freshDemos
+import io.github.sceneview.demo.freshness
+import io.github.sceneview.demo.freshnessHeadlineVersion
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
@@ -168,6 +173,43 @@ fun HomeScreen(
     // is chrome repeating what the user just tapped.
     val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
 
+    // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
+    // featured page they feed (#3566). Derived from the demo's own declared
+    // `sinceVersion` / `updatedIn` against the running build, so it expires on
+    // its own and nothing here is hand-maintained. See `DemoFreshness.kt`.
+    val buildVersion = BuildConfig.VERSION_NAME
+    val freshnessById = remember(demos, buildVersion) {
+        demos.associate { it.id to it.freshness(buildVersion) }
+    }
+    val fresh = remember(demos, buildVersion) { freshDemos(demos, buildVersion) }
+    val freshVersion = remember(demos, buildVersion) {
+        freshnessHeadlineVersion(demos, buildVersion)
+    }
+
+    // The featured pager's pages (#3567). The "What's new" page leads when there
+    // is anything to say and is simply absent otherwise — an empty "nothing
+    // changed this release" page is worse than no page.
+    val featuredPages = remember(demos, fresh, freshVersion) {
+        buildList {
+            if (fresh.isNotEmpty()) {
+                add(FeaturedPage.WhatsNew(version = freshVersion, count = fresh.size))
+            }
+            FEATURED_DEMO_IDS.mapNotNull { id -> demos.firstOrNull { it.id == id } }
+                .forEach { entry ->
+                    add(
+                        FeaturedPage.Demo(
+                            entry = entry,
+                            heroArt = if (entry.id == HERO_DEMO_ID) {
+                                R.drawable.preview_hero_model_viewer
+                            } else {
+                                null
+                            },
+                        ),
+                    )
+                }
+        }
+    }
+
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
     val context = LocalContext.current
     val whatsNew by produceState(initialValue = emptyList<WhatsNewRelease>()) {
@@ -175,7 +217,12 @@ fun HomeScreen(
             value = withContext(Dispatchers.IO) { loadWhatsNew(context.assets) }
         }
     }
-    val inReviewDemos = remember(demos) { demos.filter { it.status == DemoStatus.InReview } }
+    // The sheet's "try these" list is the freshness list first — that is what the
+    // marker on the cards points at — with any still-InReview demo appended, so
+    // the process state keeps its own reason to exist without duplicating a row.
+    val inReviewDemos = remember(demos, fresh) {
+        fresh + demos.filter { it.status == DemoStatus.InReview && it !in fresh }
+    }
     var showWhatsNew by rememberSaveable { mutableStateOf(false) }
     if (showWhatsNew) {
         WhatsNewSheet(
@@ -213,12 +260,14 @@ fun HomeScreen(
             item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
                 Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.gridGutter))
             }
-            // While a query is typed the hero gives way so the results start under
-            // the header and stay visible above the keyboard (#3308).
+            // While a query is typed the featured pager gives way so the results
+            // start under the header and stay visible above the keyboard (#3308).
             if (!searching) item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
-                HomeHero(
+                HomeFeaturedPager(
+                    pages = featuredPages,
                     height = if (expanded) home.heroHeightExpanded else home.heroHeight,
-                    onClick = { onDemoClick(HERO_DEMO_ID) },
+                    onDemoClick = onDemoClick,
+                    onWhatsNewClick = { showWhatsNew = true },
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
@@ -260,6 +309,7 @@ fun HomeScreen(
                     DemoMediaCard(
                         demo = demo,
                         onClick = { onDemoClick(demo.id) },
+                        freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                         modifier = Modifier.animateItem(
                             fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
                             placementSpec = spring(
@@ -328,8 +378,18 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** The demo the hero opens. */
+/** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"
+
+/**
+ * Editorial order of the featured pager's demo pages (#3567).
+ *
+ * Short on purpose: a carousel nobody reaches the end of is a list, and the
+ * grid below is already the list. [HERO_DEMO_ID] stays first — it is the demo
+ * the store listing, the deep link and the app icon all point at — and keeps its
+ * bespoke full-span artwork; the rest reuse their own grid captures.
+ */
+private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID, "materials", "lighting")
 
 @Composable
 private fun HomeHeader(

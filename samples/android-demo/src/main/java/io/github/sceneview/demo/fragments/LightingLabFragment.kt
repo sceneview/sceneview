@@ -29,6 +29,8 @@ object LightingLabFragment : DemoFragment {
             "light", "hdr", "ibl", "skybox", "environment",
             "reflection", "exposure", "ssao", "fog", "post-fx",
         ),
+        // #3496 replaced the five tabs with one all-live frame.
+        updatedIn = "4.35.0",
     )
 
     @Composable

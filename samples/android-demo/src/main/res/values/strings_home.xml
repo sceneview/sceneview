@@ -14,6 +14,15 @@
     <string name="home_hero_title">Model Viewer</string>
     <string name="home_hero_subtitle">Any glTF, HDR lighting, one tap to AR</string>
     <string name="home_hero_open">Open</string>
+    <!-- Featured pager, "What's new" page (#3566 / #3567). The title takes a
+         major.minor such as "4.35"; the subtitle takes the number of samples
+         currently carrying a New/Updated marker. -->
+    <string name="home_featured_whats_new_title">New in %1$s</string>
+    <string name="home_featured_whats_new_action">See what changed</string>
+    <plurals name="home_featured_whats_new_subtitle">
+        <item quantity="one">%1$d sample is new or updated \u2014 tap to see which</item>
+        <item quantity="other">%1$d samples are new or updated \u2014 tap to see which</item>
+    </plurals>
 
     <!-- Category filter chips (short labels). One per DemoCategory key, in
          DEMO_CATEGORIES order; the four AR chips drop the "AR " prefix because the
