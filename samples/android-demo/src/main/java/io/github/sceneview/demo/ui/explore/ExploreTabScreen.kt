@@ -93,6 +93,7 @@ import kotlinx.coroutines.supervisorScope
 fun ExploreTabScreen(
     curatedSamples: List<DemoEntry>,
     onSampleClick: (DemoEntry) -> Unit,
+    onBack: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     val recentSearches = rememberRecentSearches()
@@ -252,6 +253,7 @@ fun ExploreTabScreen(
 
     val body = @Composable {
         ExploreBody(
+            onBack = onBack,
             scroll = scroll,
             sources = sources.sources,
             selectedSource = selectedSource,
@@ -320,6 +322,7 @@ fun ExploreTabScreen(
 
 @Composable
 private fun ExploreBody(
+    onBack: () -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
     sources: List<ModelSource>,
     selectedSource: ModelSource,
@@ -364,6 +367,7 @@ private fun ExploreBody(
     ) {
         Spacer(Modifier.height(SceneViewTokens.Space.xs))
 
+        TextButton(onClick = onBack) { Text("← Showcase") }
         if (searchExpanded || isSearching) {
             SearchField(
                 value = searchQuery,
@@ -396,6 +400,12 @@ private fun ExploreBody(
         } else {
             // The pill is anchored to the hero card, not the display: this Box lives
             // inside the scrolled column, whose host applies the window insets.
+                FloatingSearchPill(
+                    sourceName = selectedSource.id.displayName,
+                    onClick = { onSearchExpandedChange(true) },
+                    modifier = Modifier
+                        .padding(SceneViewTokens.Space.md),
+                )
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (hero != null) {
                     SpatialHero(model = hero, onViewIn3D = { onModelClick(hero) })
@@ -411,13 +421,7 @@ private fun ExploreBody(
                         if (loadingFeeds) CircularProgressIndicator()
                     }
                 }
-                FloatingSearchPill(
-                    sourceName = selectedSource.id.displayName,
-                    onClick = { onSearchExpandedChange(true) },
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(SceneViewTokens.Space.md),
-                )
+
             }
         }
 
@@ -546,7 +550,7 @@ private fun FloatingSearchPill(sourceName: String, onClick: () -> Unit, modifier
     Surface(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-        color = if (dark) colors.glassSurfaceDark else colors.glassSurfaceLight,
+        color = MaterialTheme.colorScheme.surfaceDim,
         border = BorderStroke(
             colors.glassBorderWidth,
             if (dark) colors.glassBorderDark else colors.glassBorderLight,

@@ -38,7 +38,7 @@ const val ARCORE_API_KEY_META_DATA = "com.google.android.ar.API_KEY"
 
 /** Status text when the build carries no ARCore Cloud API key at all. */
 const val ARCORE_API_KEY_MISSING_MESSAGE =
-    "ARCore Cloud API key not configured — see $ARCORE_CLOUD_SETUP_DOC"
+    "Cloud features are not configured in this build. Open the setup guide, or try AR Placement without cloud setup."
 
 /**
  * Status text when ARCore rejected the key that *is* present.

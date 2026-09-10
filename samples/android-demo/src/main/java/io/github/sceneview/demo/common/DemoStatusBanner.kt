@@ -146,6 +146,18 @@ fun DemoBottomOverlayScope.DemoStatusBanner(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
 ) {
+    DemoStatusCard(text, tone, modifier, icon, settingsFabReservedSpace)
+}
+
+/** Shared status surface for top, bottom and terminal AR states. */
+@Composable
+fun DemoStatusCard(
+    text: String?,
+    tone: DemoStatusTone = DemoStatusTone.Progress,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    reservedEnd: androidx.compose.ui.unit.Dp = 0.dp,
+) {
     val visible = !text.isNullOrBlank()
 
     // Hold the last real sentence for the length of the exit animation: reading
@@ -201,7 +213,7 @@ fun DemoBottomOverlayScope.DemoStatusBanner(
             // left the pill 73 dp — narrower than the word "measuring" — while
             // end-only leaves 242 dp. The pill still reads as centred, because the
             // band it centres in is the band visibly free of chrome (#3229).
-            .padding(end = settingsFabReservedSpace),
+            .padding(end = reservedEnd),
         contentAlignment = Alignment.Center,
     ) {
         // Fully qualified: the receiver is a `ColumnScope`, whose `AnimatedVisibility`
@@ -280,8 +292,7 @@ fun DemoBottomOverlayScope.DemoStatusBanner(
                         fontWeight = FontWeight.Medium,
                     ),
                     color = SceneViewTokens.ArOverlay.onScrim,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
+
                 )
             }
         }

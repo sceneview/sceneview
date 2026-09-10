@@ -131,19 +131,9 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
         onDispose { CurrentRootScreen.label = null }
     }
 
-    // "What's new since you last tested" lives HERE, not inside the Showcase
-    // tab, because the requirement is "on app open": the auto-open must fire
-    // whichever tab the user lands on, and the sheet must outlive a tab switch.
-    //
-    // Single ownership matters as much as placement: HomeScreen renders the
-    // badged header action from THIS state rather than calling
-    // rememberWhatsNewSince() itself, so acknowledging in the sheet clears the
-    // badge instead of leaving a second, stale copy of the marker on screen.
+    // Updates are available from the home action without interrupting app launch.
     val whatsNewSince = rememberWhatsNewSince()
     var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(whatsNewSince) {
-        if (whatsNewSince.consumeAutoOpen()) showWhatsNewSince = true
-    }
     if (showWhatsNewSince) {
         WhatsNewSinceSheet(
             sections = whatsNewSince.unseen,
@@ -200,6 +190,7 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
                 RootTab.Showcase -> if (galleryOpen) {
                     BackHandler { galleryOpen = false }
                     ExploreTabScreen(
+                        onBack = { galleryOpen = false },
                         curatedSamples = curatedSamplesForExplore(),
                         onSampleClick = { sample -> onDemoClick(sample.id) },
                     )

@@ -32,7 +32,7 @@ internal object CalloutLayout {
     const val MODEL_SIZE_METERS = 0.62f
 
     /** Camera orbit radius from the turntable's centre, in metres. */
-    const val CAMERA_DISTANCE = 2.8f
+    const val CAMERA_DISTANCE = 2.4f
 
     /** Camera height above the turntable's centre, in metres. A gentle look-down. */
     const val CAMERA_HEIGHT = 0.34f
@@ -126,7 +126,7 @@ internal object CalloutLayout {
      * world-anchored annotations, viewer-anchored controls — is the part of this demo most worth
      * copying into a real app.
      */
-    val CONTROL_CARD_POSITION = Position(x = 0f, y = -0.40f, z = 0.62f)
+    val CONTROL_CARD_POSITION = Position(x = 0f, y = -0.45f, z = 0.85f)
 
     /**
      * The camera's home position, on a circle of radius [CAMERA_DISTANCE] around the origin.

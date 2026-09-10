@@ -25,7 +25,7 @@ object ArSceneMeshFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_scene_mesh_subtitle,
         category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.GridOn,
-        order = 36,
+        order = 35,
         tags = setOf(
             "ar", "geospatial", "streetscape", "mesh", "terrain", "building", "classification",
         ),

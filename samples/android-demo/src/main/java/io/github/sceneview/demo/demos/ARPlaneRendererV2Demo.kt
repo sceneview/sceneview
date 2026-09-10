@@ -81,6 +81,7 @@ import io.github.sceneview.rememberModelLoader
  */
 @Composable
 fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -101,6 +102,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_plane_renderer_v2_title),
         onBack = onBack,
         topOverlay = {
@@ -123,14 +126,14 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     Column {
                         Text(
                             text = if (v2Enabled) {
-                                "V2 (depth + PBR + HDR)"
+                                "Shaded surfaces"
                             } else {
-                                "V1 (legacy grid)"
+                                "Simple grid"
                             },
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Text(
-                            text = "Tap to switch renderer",
+                            text = "Compare surface styles",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.7f),
                         )
@@ -176,30 +179,30 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = "Plane V2 — type-aware shading",
+                            text = "Detected surfaces",
                             style = MaterialTheme.typography.labelLarge,
                         )
                         LegendRow(
                             // Cool-white floor — matches FLOOR_PRESET.gridR/G/B (0.85, 0.92, 1.0).
                             swatch = Color(red = 0.85f, green = 0.92f, blue = 1.0f),
-                            label = "Floor — roughness 0.35",
+                            label = "Floor",
                         )
                         LegendRow(
                             // Warm-white ceiling — matches CEILING_PRESET (1.0, 0.96, 0.88).
                             swatch = Color(red = 1.0f, green = 0.96f, blue = 0.88f),
-                            label = "Ceiling — roughness 0.65",
+                            label = "Ceiling",
                         )
                         LegendRow(
                             // Neutral-grey wall — matches WALL_PRESET (0.92, 0.92, 0.92).
                             swatch = Color(red = 0.92f, green = 0.92f, blue = 0.92f),
-                            label = "Wall — roughness 0.80",
+                            label = "Wall",
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = if (planeDetected) {
-                                "Move slowly — depth mesh + scan-in fired."
+                                "A surface has been found. Keep moving to reveal more."
                             } else {
-                                "Move slowly to scan a surface — scan-in fires on first detection."
+                                "Move slowly to find floors, walls and ceilings."
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.7f),
@@ -245,6 +248,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
             // interaction.
             key(v2Enabled) {
                 ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                     modifier = Modifier.fillMaxSize(),
                     engine = engine,
                     modelLoader = modelLoader,

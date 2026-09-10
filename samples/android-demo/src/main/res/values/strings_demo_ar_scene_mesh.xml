@@ -11,7 +11,7 @@
      gone, its deep link resolves through DEMO_ID_ALIASES. -->
 <resources>
     <string name="demo_ar_scene_mesh_title">Scene Geometry</string>
-    <string name="demo_ar_scene_mesh_subtitle">Streetscape meshes, classified or raw</string>
+    <string name="demo_ar_scene_mesh_subtitle">Explore the shape of nearby buildings</string>
 
     <!-- Segmented-button labels. Order matches SceneGeometryMode and the
          DeepLinkRouter.ALIAS_INITIAL_TAB index (`ar-streetscape` = 1). -->
@@ -39,7 +39,7 @@
 
     <!-- Shared status copy — both modes run the same Geospatial session. -->
     <string name="demo_ar_scene_mesh_scanning">Scanning environment…</string>
-    <string name="demo_ar_scene_mesh_geospatial_unavailable">%1$s — needs outdoor area with Street View coverage + Cloud API key</string>
+    <string name="demo_ar_scene_mesh_geospatial_unavailable">%1$s — try outdoors near mapped buildings. This feature also needs cloud setup.</string>
 
     <!-- Permission gate. Both modes need CAMERA + ACCESS_FINE_LOCATION before an
          ARSceneView may be mounted at all. -->

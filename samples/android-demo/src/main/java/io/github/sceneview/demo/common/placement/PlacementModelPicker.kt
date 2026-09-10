@@ -515,7 +515,7 @@ internal fun PlacementModelCard(
                     Image(
                         painter = painterResource(thumbnail),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(PICKER_CARD_MEDIA_HEIGHT)

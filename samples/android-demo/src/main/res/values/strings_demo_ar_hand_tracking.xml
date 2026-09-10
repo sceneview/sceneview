@@ -8,6 +8,6 @@
     <string name="demo_ar_hand_tracking_title">Hand Tracking (Jetpack XR)</string>
     <string name="demo_ar_hand_tracking_subtitle">Hand skeleton on Android XR headsets</string>
     <string name="demo_ar_hand_tracking_xr_required">Jetpack XR device required for live hand tracking</string>
-    <string name="demo_ar_hand_tracking_xr_available">Jetpack XR runtime detected — use XrHandNode for live tracking</string>
-    <string name="demo_ar_hand_tracking_reference_note">Showing a static reference hand skeleton. On an Android XR headset, XrHandNode mirrors a real tracked hand.</string>
+    <string name="demo_ar_hand_tracking_xr_available">Headset runtime detected · showing reference pose</string>
+    <string name="demo_ar_hand_tracking_reference_note">Static reference hand. On a supported headset, these joints follow your fingers.</string>
 </resources>

@@ -22,6 +22,7 @@ import io.github.sceneview.ar.xr.XrHandJoint
 import io.github.sceneview.ar.xr.XrHandSkeleton
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.math.Position
@@ -74,7 +75,7 @@ fun ARHandTrackingDemo(onBack: () -> Unit) {
     // Joint accent (SceneView primary blue) and bone accent (purple) — the same
     // hero gradient the brand palette uses elsewhere in the demo app.
     val jointMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Primary)
-    val boneMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Accent)
+    val boneMaterial = rememberMaterialInstance(materialLoader, SceneViewTokens.ArOverlay.onScrim)
 
     val firstFrame = rememberFirstFrameState()
 
@@ -149,9 +150,17 @@ fun ARHandTrackingDemo(onBack: () -> Unit) {
                     if (from != null && to != null &&
                         XrHandSkeleton.boneLength(from, to) > 0f
                     ) {
-                        LineNode(
-                            start = from,
-                            end = to,
+                        val dx = to.x - from.x
+                        val dy = to.y - from.y
+                        val dz = to.z - from.z
+                        CylinderNode(
+                            radius = JOINT_RADIUS * 0.45f,
+                            height = XrHandSkeleton.boneLength(from, to),
+                            position = Position((from.x + to.x) / 2f, (from.y + to.y) / 2f, (from.z + to.z) / 2f),
+                            rotation = io.github.sceneview.math.Rotation(
+                                x = Math.toDegrees(kotlin.math.atan2(dz, kotlin.math.sqrt(dx * dx + dy * dy)).toDouble()).toFloat(),
+                                z = -Math.toDegrees(kotlin.math.atan2(dx, dy).toDouble()).toFloat(),
+                            ),
                             materialInstance = boneMaterial,
                         )
                     }

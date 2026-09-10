@@ -80,7 +80,7 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
 
     // Mesh-vertex accent (SceneView primary blue) and region accent (purple).
     val vertexMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Primary)
-    val regionMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Accent)
+    val regionMaterial = rememberMaterialInstance(materialLoader, io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay.onScrim)
 
     val firstFrame = rememberFirstFrameState()
 
@@ -149,6 +149,17 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
                         }
                     }
                 }
+                if (XrFaceMesh.isValid(mesh)) {
+                    for (i in 0 until mesh.vertexCount) {
+                        val from = XrFaceMesh.vertexAt(mesh, i) ?: continue
+                        val next = if ((i + 1) % REFERENCE_RING_SEGMENTS != 0) i + 1 else -1
+                        listOf(next, i + REFERENCE_RING_SEGMENTS).filter { it in 0 until mesh.vertexCount }.forEach { j ->
+                            XrFaceMesh.vertexAt(mesh, j)?.let { to ->
+                                LineNode(start = from, end = to, materialInstance = regionMaterial)
+                            }
+                        }
+                    }
+                }
                 // One larger sphere per named anchor region — where a real app
                 // anchors glasses (NOSE_TIP), a hat (forehead), an overlay (CENTER).
                 XrFaceRegion.entries.forEach { region ->
@@ -166,7 +177,7 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
 }
 
 /** Rendered radius of each dense-mesh vertex sphere, in meters. */
-private const val VERTEX_RADIUS = 0.0035f
+private const val VERTEX_RADIUS = 0.002f
 
 /** Rendered radius of each named-region anchor sphere, in meters. */
 private const val REGION_RADIUS = 0.012f

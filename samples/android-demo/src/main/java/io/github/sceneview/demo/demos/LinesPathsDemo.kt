@@ -136,7 +136,7 @@ fun LinesPathsDemo(onBack: () -> Unit) {
     val pointMaterial =
         rememberMaterialInstance(materialLoader, SceneViewColors.Accent, metallic = 0.1f, roughness = 0.4f)
     val groundMaterial =
-        rememberMaterialInstance(materialLoader, SceneViewColors.Primary, metallic = 0f, roughness = 0.5f)
+        rememberMaterialInstance(materialLoader, SceneViewColors.TintLight, metallic = 0f, roughness = 0.5f)
 
     // Lap progress in [0, 1). Driven off the Choreographer rather than an InfiniteTransition so
     // it pauses with the lifecycle (#936) and freezes at a fixed phase in QA mode, which is what
@@ -192,12 +192,7 @@ fun LinesPathsDemo(onBack: () -> Unit) {
         // crossfaded into an equally black scene: loading and loaded were indistinguishable
         // (#3397). The scene itself is now the fix; the label just says what is coming.
         loadingLabel = stringResource(R.string.demo_lines_paths_loading),
-        peekHeader = stringResource(
-            R.string.demo_lines_paths_status,
-            curve.label,
-            route.size,
-            strokeMillimetres.roundToInt(),
-        ),
+        peekHeader = "Follow the moving marker along the curve",
         onResetSettings = {
             curve = CurveKind.Smooth
             strokeMillimetres = LinesPathsScene.DEFAULT_STROKE_MM

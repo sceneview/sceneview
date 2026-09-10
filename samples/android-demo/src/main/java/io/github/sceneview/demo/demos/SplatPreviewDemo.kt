@@ -93,7 +93,7 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     // Snap the reveal slider to the full cloud as soon as it loads (it starts at 0 before we
     // know the count, so the scene is not momentarily empty once the splats are ready).
     LaunchedEffect(totalSplats) {
-        if (totalSplats > 0) visibleSplats = totalSplats
+        if (totalSplats > 0) visibleSplats = totalSplats / 3
     }
 
     val cameraManipulator = rememberCameraManipulator(
@@ -105,6 +105,12 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_splat_preview_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        peekHeader = "Procedural sample · translucent points form a sphere",
+        bottomOverlay = {
+            androidx.compose.material3.FilledTonalButton(onClick = {
+                visibleSplats = if (visibleSplats == totalSplats) totalSplats / 3 else totalSplats
+            }) { Text(if (visibleSplats == totalSplats) "Reveal individual splats" else "Show complete cloud") }
+        },
         controls = {
             SplatPreviewControls(
                 visibleSplats = visibleSplats,

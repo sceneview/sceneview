@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.Icons
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +81,8 @@ import java.util.Locale
  */
 @Composable
 fun ARDepthOfFieldDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
+    var arSessionUnavailable by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -119,6 +123,8 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     )
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = !arSessionUnavailable,
         title = stringResource(R.string.demo_ar_depth_of_field_title),
         onBack = onBack,
         controls = {
@@ -218,26 +224,17 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
         // HUD pill — shows the current focus distance so screenshots make the
         // before/after diff obvious.
         topOverlay = {
-            Surface(
-                color = if (dofEnabled) {
-                    Color(0xFF1B5E20).copy(alpha = 0.85f)
-                } else {
-                    Color(0xFF424242).copy(alpha = 0.85f)
-                },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = if (dofEnabled) "FOCUS %.2f m".format(Locale.US, focusDepth) else "DOF OFF",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            io.github.sceneview.demo.common.DemoStatusCard(
+                text = if (dofEnabled) "Focus %.2f m".format(Locale.US, focusDepth) else "Background blur off",
+                tone = io.github.sceneview.demo.common.DemoStatusTone.Progress,
+                icon = Icons.Filled.Tune,
+            )
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
+                onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

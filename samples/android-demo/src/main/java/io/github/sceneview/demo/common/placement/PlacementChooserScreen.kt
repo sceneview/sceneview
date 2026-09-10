@@ -83,6 +83,8 @@ fun PlacementChooserScreen(
     title: String,
     teaches: String,
     modifier: Modifier = Modifier,
+    wallMode: Boolean = false,
+    onWallModeChange: (Boolean) -> Unit = {},
 ) {
     val armedModel = models.armed(picker)
     val ctaState = placementCtaState(arSupported = arSupported, hasArmedModel = armedModel != null)
@@ -108,7 +110,7 @@ fun PlacementChooserScreen(
         bottomBar = {
             PlacementChooserCta(
                 state = ctaState,
-                modelName = armedModel?.displayName,
+                modelName = if (wallMode) stringResource(R.string.ar_placement_wall_model) else armedModel?.displayName,
                 onEnterAr = flow::enterAr,
             )
         },
@@ -133,6 +135,23 @@ fun PlacementChooserScreen(
             )
             Spacer(Modifier.height(SceneViewTokens.Space.md))
 
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                listOf(R.string.ar_placement_floor, R.string.ar_placement_wall).forEachIndexed { index, label ->
+                    SegmentedButton(
+                        selected = wallMode == (index == 1),
+                        onClick = { onWallModeChange(index == 1) },
+                        shape = SegmentedButtonDefaults.itemShape(index, 2),
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(SceneViewTokens.Space.md))
+            if (wallMode) {
+                Text(
+                    stringResource(R.string.ar_placement_wall_help),
+                    style = SceneViewTokens.Type.body,
+                )
+            } else {
             // The catalogue. Cards are the SAME composable the in-AR sheet draws, so a model
             // looks identical whichever surface you meet it on — the whole point of #3405.
             //
@@ -171,6 +190,7 @@ fun PlacementChooserScreen(
 
             Spacer(Modifier.height(SceneViewTokens.Space.md))
             PlacementModeSection(flow = flow)
+            }
             Spacer(Modifier.height(SceneViewTokens.Space.md))
         }
     }

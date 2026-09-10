@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,6 +48,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
@@ -109,50 +114,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/**
- * Detail sheet for a [GalleryModel] from any [ModelSource] (Sketchfab, Icosa
- * Gallery, Poly Haven). Two-state UI:
- *
- *  1. **Preview**  : large thumbnail + stats + attribution + "Open in SceneView" CTA.
- *  2. **Rendering**: SceneView composable renders the downloaded GLB.
- *
- * Constraints from the product brief:
- *  - All models render through the **SceneView SDK** — never the origin
- *    catalog's iframe / web viewer / external app. The whole point of the demo
- *    app is to showcase the SDK; falling back to a third-party player undermines it.
- *  - No "View on <catalog>" external link — attribution is surfaced as text only.
- *
- * The download is delegated to [source] so a Sketchfab uid, an Icosa asset, or
- * a multi-file Poly Haven glTF all flow through the same viewer.
- */
+/** Downloads the selected model and opens an interactive, full-height viewer. */
 @Composable
 fun GalleryModelViewerScreen(
     model: GalleryModel,
     source: ModelSource,
     onDismiss: () -> Unit,
 ) {
-    var stage by remember(model.cardKey) { mutableStateOf<Stage>(Stage.Preview) }
+    val unavailableMessage = stringResource(R.string.gallery_not_downloadable)
+    var stage by remember(model.cardKey) {
+        mutableStateOf<Stage>(if (model.downloadable) Stage.Downloading else Stage.Error(unavailableMessage))
+    }
 
-    // Pre-warm the Filament Engine on the first transition out of Preview.
-    //
-    // Engine creation is a synchronous JNI call on the main thread; on a real
-    // device it freezes the UI for ~5 s (Choreographer "Skipped 349 frames!"
-    // on Thomas's Pixel for #2193). Previous fix attempts:
-    //   - Engine at sheet root → 5 s freeze the instant the user taps the
-    //     model card. Frozen Explore tab + ANR dialog. #2193 BLOCKER.
-    //   - Engine inside `RenderContent` → freeze shifts to the moment the
-    //     download completes. Frozen Ken-Burns + stopped spinner = the user
-    //     sees a "loaded but stuck" UI before the model appears.
-    //
-    // Anchoring the `rememberEngine` slot here, gated on `stage !is Preview`,
-    // moves the freeze to the Preview → Downloading transition. The user
-    // taps "Open in SceneView", sees the spinner / Ken-Burns appear, and the
-    // freeze happens while a "loading" affordance is already on screen.
-    // Compose Engine slot survives the subsequent Downloading → Rendering
-    // transition (parent composition is stable), so the model renders the
-    // instant `rememberModelInstance` finishes parsing the GLB — no second
-    // freeze. (#2193 follow-up review.)
-    val engineNeeded = stage !is Stage.Preview
+    // Present loading feedback before native engine initialization on the main thread.
+    var engineNeeded by remember(model.cardKey) { mutableStateOf(false) }
+    LaunchedEffect(model.cardKey) {
+        if (model.downloadable) {
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            engineNeeded = true
+        }
+    }
     val engine: Engine? = if (engineNeeded) rememberEngine() else null
     val modelLoader: ModelLoader? = engine?.let { rememberModelLoader(it) }
     val environmentLoader: EnvironmentLoader? = engine?.let { rememberEnvironmentLoader(it) }
@@ -171,6 +153,7 @@ fun GalleryModelViewerScreen(
             // us); the in-app X button below is the primary exit affordance.
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
+            decorFitsSystemWindows = false,
         ),
     ) {
         BackHandler(onBack = onDismiss)
@@ -182,13 +165,13 @@ fun GalleryModelViewerScreen(
         // morphs smoothly between Preview (220 dp card) → Downloading
         // (440 dp Ken-Burns) → Rendering (live SceneView surface). Each
         // stage receives a `heroModifier` slot carrying `sharedBounds` +
-        // a matching `clip(RoundedCornerShape(24.dp))` so the corner
+        // a matching `clip(RoundedCornerShape(SceneViewTokens.Radius.lg))` so the corner
         // radius stays consistent through the morph (without the clip
         // baked into the shared modifier, Preview's rounded corners
         // would snap to square corners at frame 1 of the animation).
         // Stage.Error opts out — there is no hero so reusing the bounds
         // would animate the error card sliding out of empty space.
-        val heroShape = RoundedCornerShape(24.dp)
+        val heroShape = RoundedCornerShape(SceneViewTokens.Radius.lg)
         val heroKey = "gallery-hero-${model.cardKey}"
         SharedTransitionLayout {
             AnimatedContent(
@@ -210,7 +193,7 @@ fun GalleryModelViewerScreen(
                 label = "sketchfab-stage",
             ) { s ->
                 val heroModifier: Modifier = when (s) {
-                    Stage.Preview, Stage.Downloading, is Stage.Rendering ->
+                    Stage.Downloading, is Stage.Rendering ->
                         Modifier
                             .sharedBounds(
                                 sharedContentState = rememberSharedContentState(key = heroKey),
@@ -220,11 +203,6 @@ fun GalleryModelViewerScreen(
                     is Stage.Error -> Modifier
                 }
                 when (s) {
-                    Stage.Preview -> PreviewContent(
-                        model = model,
-                        onOpenInSceneView = { stage = Stage.Downloading },
-                        heroModifier = heroModifier,
-                    )
                     Stage.Downloading -> DownloadingContent(
                         model = model,
                         source = source,
@@ -232,7 +210,9 @@ fun GalleryModelViewerScreen(
                         onError = { stage = Stage.Error(it) },
                         heroModifier = heroModifier,
                     )
-                    is Stage.Rendering -> RenderContent(
+                    is Stage.Rendering -> if (engine == null) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    } else RenderContent(
                         file = s.file,
                         model = model,
                         // Engine + loaders are guaranteed non-null whenever
@@ -242,7 +222,11 @@ fun GalleryModelViewerScreen(
                         environmentLoader = environmentLoader!!,
                         heroModifier = heroModifier,
                     )
-                    is Stage.Error -> ErrorContent(message = s.message, onRetry = { stage = Stage.Preview })
+                    is Stage.Error -> ErrorContent(
+                        message = s.message,
+                        onRetry = { if (model.downloadable) stage = Stage.Downloading else onDismiss() },
+                        retryLabel = if (model.downloadable) "Retry" else "Back to gallery",
+                    )
                 }
             }
         }
@@ -255,7 +239,7 @@ fun GalleryModelViewerScreen(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
-                .padding(8.dp),
+                .padding(SceneViewTokens.Space.sm),
         ) {
             Icon(
                 imageVector = Icons.Filled.Close,
@@ -269,159 +253,9 @@ fun GalleryModelViewerScreen(
 }
 
 private sealed interface Stage {
-    data object Preview : Stage
     data object Downloading : Stage
     data class Rendering(val file: File) : Stage
     data class Error(val message: String) : Stage
-}
-
-// ── Preview ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun PreviewContent(
-    model: GalleryModel,
-    onOpenInSceneView: () -> Unit,
-    heroModifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .then(heroModifier),
-        ) {
-            AsyncNetworkImage(
-                url = model.preferredThumbnailUrl(minWidth = 640, maxWidth = 1280),
-                contentDescription = model.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (model.isAnimated) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.92f),
-                            shape = RoundedCornerShape(50),
-                        )
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.sketchfab_animated),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onTertiary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = model.name,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = model.primaryTagDisplay(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        // Attribution + license + origin catalog (#2645). Every source serves
-        // CC / CC0 content, so crediting the creator is a courtesy (and, for
-        // CC-BY, a requirement) regardless of which catalog the model came from.
-        Text(
-            text = model.attributionLine(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(12.dp))
-        StatsRow(model)
-        Spacer(Modifier.height(20.dp))
-        // Gate the CTA on `downloadable`: some catalogs (e.g. a Sketchfab model
-        // outside the free tier) expose a model but not a format the demo can
-        // fetch and render. Disabling the button — instead of letting the tap
-        // fail into the download error state — keeps the KDoc on
-        // [GalleryModel.downloadable] truthful and the affordance honest (#2645).
-        Button(
-            onClick = onOpenInSceneView,
-            enabled = model.downloadable,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.tertiary,
-                contentColor = MaterialTheme.colorScheme.onTertiary,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = null,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.sketchfab_open_in_sceneview),
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(
-                if (model.downloadable) R.string.sketchfab_rendered_locally
-                else R.string.gallery_not_downloadable,
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-@Composable
-private fun StatsRow(model: GalleryModel) {
-    val scroll = rememberScrollState()
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.horizontalScroll(scroll),
-    ) {
-        if (model.faceCount > 0) StatChip(label = "${model.formattedFaceCount()} polys")
-        if (model.animationCount > 0) StatChip(label = "${model.animationCount} anim")
-        model.tags.take(3).forEach { tag -> StatChip(label = tag) }
-    }
-}
-
-@Composable
-private fun StatChip(label: String) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                shape = RoundedCornerShape(50),
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onTertiaryContainer,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
 // ── Downloading ───────────────────────────────────────────────────────────
@@ -488,7 +322,7 @@ private fun DownloadingContent(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(440.dp)
+            .height(SceneViewTokens.Layout.heroStageHeight)
             .then(heroModifier),
     ) {
         AsyncNetworkImage(
@@ -497,14 +331,14 @@ private fun DownloadingContent(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { scaleX = zoom; scaleY = zoom }
-                .blur(8.dp),
+                .blur(SceneViewTokens.Space.sm),
             contentScale = ContentScale.Crop,
         )
         // Darken the thumbnail so the foreground progress card stays legible.
         Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(SceneViewTokens.Space.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -512,9 +346,9 @@ private fun DownloadingContent(
                 modifier = Modifier
                     .background(
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(SceneViewTokens.Space.md),
                     )
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(horizontal = SceneViewTokens.Space.md, vertical = SceneViewTokens.Space.md),
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -532,7 +366,7 @@ private fun DownloadingContent(
                     } else {
                         CircularProgressIndicator()
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(SceneViewTokens.Space.sm))
                     Text(
                         text = stringResource(R.string.sketchfab_loading_model, model.name),
                         style = MaterialTheme.typography.titleMedium,
@@ -540,7 +374,7 @@ private fun DownloadingContent(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(SceneViewTokens.Space.xs))
                     // Show "X.X / Y.Y MB" when total is known, fallback label otherwise.
                     val streamingFrom = stringResource(R.string.gallery_streaming_from, source.id.displayName)
                     val progressText = progress?.let { (read, total) ->
@@ -698,13 +532,13 @@ private fun RenderContent(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(520.dp),
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(440.dp)
+                .weight(1f)
                 // Feed the live render-surface aspect into the auto-fit framing so a
                 // tall model gets pushed back enough to clear the top/bottom and a wide
                 // model fills the width — both on THIS viewport, not a guessed one (#2348).
@@ -868,26 +702,22 @@ private fun RenderContent(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(SceneViewTokens.Space.sm))
         Text(
             text = model.name,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
         )
         Text(
             // Hide the "· N polys" suffix rather than show a misleading "0 polys" when the
             // source exposes no face count (e.g. Poly Haven). Mirrors the StatsRow poly
             // chip, which is likewise gated on faceCount > 0.
-            text = if (model.faceCount > 0) {
-                stringResource(R.string.sketchfab_rendered_by, model.formattedFaceCount())
-            } else {
-                stringResource(R.string.sketchfab_rendered_by_base)
-            },
+            text = "Drag to orbit · Pinch to zoom",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.md),
         )
     }
 }
@@ -895,12 +725,12 @@ private fun RenderContent(
 // ── Error ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ErrorContent(message: String, onRetry: () -> Unit) {
+private fun ErrorContent(message: String, onRetry: () -> Unit, retryLabel: String = "Retry") {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(280.dp)
-            .padding(24.dp),
+            .heightIn(min = SceneViewTokens.Layout.heroStageHeight)
+            .padding(SceneViewTokens.Space.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -909,14 +739,14 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.error,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(SceneViewTokens.Space.sm))
         Text(
             text = message,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onRetry) { Text(stringResource(R.string.sketchfab_try_again)) }
+        Spacer(Modifier.height(SceneViewTokens.Space.md))
+        Button(onClick = onRetry) { Text(retryLabel) }
     }
 }
 

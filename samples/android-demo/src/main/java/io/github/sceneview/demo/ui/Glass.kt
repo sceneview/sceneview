@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.ui
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -127,7 +128,7 @@ fun GlassPill(
     GlassSurface(modifier = modifier) {
         Row(
             modifier = Modifier
-                .height(SceneViewTokens.Glass.pillHeight)
+                .heightIn(min = SceneViewTokens.Glass.pillHeight)
                 .padding(horizontal = SceneViewTokens.Glass.pillPaddingHorizontal),
             verticalAlignment = Alignment.CenterVertically,
             content = content,

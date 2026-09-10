@@ -5,8 +5,8 @@
      remains globally resolvable. Adding a new demo never needs to touch
      `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_splat_preview_title">Gaussian Splatting</string>
-    <string name="demo_splat_preview_subtitle">3D Gaussian splat radiance-field rendering</string>
-    <string name="demo_splat_preview">Gaussian Splatting</string>
-    <string name="demo_splat_preview_desc">SplatNode renders a rainbow-sphere 3D Gaussian Splat cloud</string>
+    <string name="demo_splat_preview_title">Gaussian Splat Study</string>
+    <string name="demo_splat_preview_subtitle">Inspect a procedural cloud of soft points</string>
+    <string name="demo_splat_preview">Gaussian Splat Study</string>
+    <string name="demo_splat_preview_desc">A procedural sphere made from overlapping soft points</string>
 </resources>
