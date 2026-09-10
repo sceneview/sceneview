@@ -28,19 +28,23 @@ import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.math.Direction
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberFillLightNode
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.sample.rememberUnlitMaterialInstance
+import io.github.sceneview.sample.rememberMaterialInstance
 import kotlinx.coroutines.delay
 
 /**
  * Augmented face mesh tracking demo.
  *
  * Configures the AR session with the front camera and [Config.AugmentedFaceMode.MESH3D] to
- * detect face meshes. When a face is detected, an [AugmentedFaceNode] renders a translucent
- * unlit-blue mesh overlay on the user's face — alpha 0.4 so the user's actual facial features
- * remain visible underneath the fitted topology.
+ * detect face meshes. When a face is detected, an [AugmentedFaceNode] renders a translucent,
+ * **lit** mesh overlay on the user's face — semi-transparent so the real face stays visible
+ * underneath the fitted topology, and shaded by a fixed key + fill rig so the topology reads as
+ * a 3D surface instead of a flat sticker (#3576).
  *
  * Augmented Faces needs **two** session settings, not one: `sessionFeatures` must include
  * [Session.Feature.FRONT_CAMERA] *and* `sessionCameraConfig` must select a FRONT-facing
@@ -81,22 +85,24 @@ fun ARFaceDemo(onBack: () -> Unit) {
     // the real onSessionFailed callback so it gets a distinct, honest message.
     var sessionFailed by remember { mutableStateOf(false) }
 
-    // Unlit translucent overlay for the face mesh. ARCore disables `ENVIRONMENTAL_HDR`
-    // light estimation when the front camera is in use, so any lit material falls
-    // back to whatever neutral IBL is in scope — which historically rendered the
-    // mesh near-invisible even after the tangent-quaternion fix in `35e5990d`.
+    // Lit translucent overlay for the face mesh (#3576).
     //
-    // `createUnlitColorInstance` ships the mesh's flat colour in a single fragment
-    // pass (no PBR shading, no IBL dependency), so the overlay reads as a clean
-    // SceneView-blue tone regardless of front-camera lighting. No fill light needed —
-    // the previous explicit 100 000 lux directional was a workaround for the lit
-    // material that's now obsolete.
+    // ARCore force-disables light estimation on a front-camera session (see the front-camera
+    // guard in `ARSession.configure`), so there is no estimate to react to — but that is an
+    // argument for a *deterministic* rig, not for no shading at all. The previous unlit flat
+    // colour painted the whole face one uniform blue: no highlight, no falloff, no silhouette,
+    // so nothing on screen said "this is a mesh fitted to your face" rather than "a blue filter".
     //
-    // [SceneViewColors.PrimaryOverlay] (alpha 0.4) routes through `transparent_unlit_colored.mat`
-    // which is `doubleSided: true` — pairs with `culling(false)` on the face mesh.
-    // We use a translucent overlay (not opaque blue) so the user can SEE their face
-    // through the fitted topology — that's the entire point of a face-mesh demo.
-    val faceMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.PrimaryOverlay)
+    // A lit PBR instance shades the mesh with the key + fill rig installed below. Roughness is
+    // low enough for a visible specular sweep across the cheekbones and the bridge of the nose —
+    // that highlight is the depth cue the flat colour lacked — and the alpha keeps the real face
+    // readable underneath, which is the entire point of a face-mesh demo.
+    val faceMaterial = rememberMaterialInstance(
+        materialLoader,
+        SceneViewColors.FaceMeshOverlay,
+        metallic = 0.0f,
+        roughness = 0.35f,
+    )
 
     // Slow-front-camera hint. Anchored on the session RESUME (not composition) and
     // non-latching: it resets on every (re)launch and only trips if, a full
@@ -161,6 +167,28 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
+                // Selfie lighting rig (#3576). A front-camera session never tracks the device
+                // pose — ARCore documents `Camera.getDisplayOrientedPose()` as always identity —
+                // so the world frame is pinned to the phone: -Z points straight out of the screen
+                // at the user's face, +Y is up. That makes a FIXED direction a perfectly stable,
+                // camera-anchored light, which is exactly what a portrait wants and what the SDK
+                // defaults do NOT give: `DefaultLightNode` points straight down (0, -1, 0), the
+                // classic overhead angle that buries the eyes, the nose base and the mouth in
+                // shadow — the "lighting is not good at all" report of #3576.
+                //
+                // Key light: slightly above and in front, aimed back into the face. Fill: from
+                // the other side and a little below, at ~40% intensity, to open the shadow side
+                // without flattening the relief. Intensities stay in the same lux ballpark as the
+                // AR defaults (10 000 / 3 000) so the mesh sits at the same exposure as every
+                // other AR demo.
+                mainLightNode = rememberMainLightNode(engine) {
+                    lightDirection = Direction(x = 0.0f, y = -0.35f, z = -1.0f)
+                    intensity = 9_000.0f
+                },
+                fillLightNode = rememberFillLightNode(engine) {
+                    lightDirection = Direction(x = -0.6f, y = 0.25f, z = -1.0f)
+                    intensity = 3_500.0f
+                },
                 sessionFeatures = setOf(Session.Feature.FRONT_CAMERA),
                 // CRITICAL for Augmented Faces (#1436). `sessionFeatures = FRONT_CAMERA`
                 // only makes the front camera *eligible* — it does NOT switch the camera.
@@ -186,11 +214,10 @@ fun ARFaceDemo(onBack: () -> Unit) {
                 // exposure realignment after #1067 + #1088.
                 //
                 // ARSession force-DISABLES light estimation for front-camera sessions
-                // (see the front-camera guard in `ARSession.configure`), so the new
-                // `ARDefaultCameraNode` defaults
-                // (f/12, 1/200 s, ISO 200 ≈ EV 11.6) + 10k+3k lux main/fill lights
-                // give a correctly exposed selfie preview on Pixel 9 without any
-                // per-demo override. If the preview ever shows up over-bright again on
+                // (see the front-camera guard in `ARSession.configure`), so the
+                // `ARDefaultCameraNode` defaults (f/12, 1/200 s, ISO 200 ≈ EV 11.6)
+                // plus the fixed key/fill rig declared above give a correctly exposed
+                // selfie preview on Pixel 9 without any per-demo exposure override. If the preview ever shows up over-bright again on
                 // a new device, fix via a per-facing AE strategy in `arsceneview/`
                 // (e.g. front-camera-specific `ARDefaultCameraNode`), not a per-demo
                 // linear-gain hack.
@@ -219,17 +246,15 @@ fun ARFaceDemo(onBack: () -> Unit) {
                     faceCount = detectedFaces.size
                 }
             ) {
-                // Unlit material — no fill light needed. The previous 100 000-lux
-                // directional was a workaround for the lit-PBR material's IBL
-                // dependency; the unlit path renders the mesh's flat colour
-                // straight to the framebuffer regardless of scene lighting.
                 detectedFaces.forEach { face ->
                     AugmentedFaceNode(
                         augmentedFace = face,
                         meshMaterialInstance = faceMaterial,
-                        // Unlit material → no PBR sampling of TANGENTS, so skip the
-                        // per-frame Mikkelsen compute + JNI upload (#878).
-                        computeTangents = false,
+                        // The material is lit again (#3576), so the per-vertex tangent
+                        // quaternions PBR samples have to be rebuilt on every frame the mesh
+                        // deforms. `computeTangents = false` is the unlit-only shortcut (#878)
+                        // and would leave the shading undefined here.
+                        computeTangents = true,
                         onTrackingStateChanged = { state ->
                             // Face tracking state changed
                         }

@@ -149,6 +149,27 @@ open class AugmentedFaceNode(
     private var constructed = false
 
     init {
+        // #3575 — a front-camera session NEVER reports a tracking device camera.
+        //
+        // `Session.Feature.FRONT_CAMERA` documents that, for the whole life of the session,
+        // `Camera.getTrackingState()` always returns `TrackingState.PAUSED` (and
+        // `Camera.getDisplayOrientedPose()` always returns identity, and every `Frame.hitTest()`
+        // returns an empty list). Augmented Faces is front-camera only, so that PAUSED verdict is
+        // the *normal* state here, not a failure.
+        //
+        // `PoseNode` hides any node whose `cameraTrackingState` is not in
+        // `visibleCameraTrackingStates`, and the inherited default is `{TRACKING}`. The face mesh
+        // is built inside this constructor, while the field still holds its `TRACKING` initial
+        // value — so it rendered for one or two frames and then `update(session, frame)` wrote
+        // PAUSED into it and hid the whole subtree (`Node.isVisible` walks the parent chain, so
+        // `centerNode` and the mesh go with it) for the rest of the session. The demo's banner
+        // still said "Tracking 1 face(s)" the whole time, because ARCore's detection was never
+        // the problem: only the SDK's own visibility gate was.
+        //
+        // Opting this node out of the camera-tracking gate is the fix. The face's OWN tracking
+        // state is still honoured through `TrackableNode.visibleTrackingStates` (`{TRACKING}`),
+        // which is the state that actually means "there is a face here".
+        visibleCameraTrackingStates = kFaceVisibleCameraTrackingStates
         trackable = augmentedFace
         constructed = true
         // Apply the initial state that the gated update() skipped during the constructor dispatch.
@@ -410,6 +431,21 @@ open class AugmentedFaceNode(
         super.destroy()
     }
 }
+
+/**
+ * Every [TrackingState] — the set [AugmentedFaceNode] uses for `visibleCameraTrackingStates`.
+ *
+ * Augmented Faces only runs on a `Session.Feature.FRONT_CAMERA` session, and ARCore documents
+ * that such a session never tracks the device pose: `Camera.getTrackingState()` always returns
+ * [TrackingState.PAUSED]. Gating face-mesh visibility on the *camera's* tracking state — the
+ * `PoseNode` default of `{TRACKING}` — therefore hides the mesh permanently (#3575). The face's
+ * own tracking state remains gated by `TrackableNode.visibleTrackingStates`.
+ *
+ * Top-level and `internal` so the contract can be asserted on the JVM, where neither an ARCore
+ * `AugmentedFace` nor a Filament `Engine` can be instantiated.
+ */
+internal val kFaceVisibleCameraTrackingStates: Set<TrackingState> =
+    TrackingState.values().toSet()
 
 /**
  * Pure logic for [AugmentedFaceNode]'s identity-tangent buffer cache (#1758).
