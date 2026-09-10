@@ -119,7 +119,7 @@ describe("telemetry opt-out", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -156,7 +156,7 @@ describe("telemetry CI detection", () => {
     process.env.CI = "true";
     const mock = installFetchMock();
 
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -234,7 +234,7 @@ describe("telemetry payload shape", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "cursor", version: "0.50.0" });
-    recordToolCall("get_node_reference", "pro");
+    recordToolCall("get_node_reference");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -254,7 +254,7 @@ describe("telemetry payload shape", () => {
     expect(initPayload!.event).toBe("init");
     expect(toolPayload!.event).toBe("tool");
     expect(toolPayload!.tool).toBe("get_node_reference");
-    expect(toolPayload!.tier).toBe("pro");
+    expect(toolPayload!.tier).toBe("free");
     expect(toolPayload!.client).toBe("cursor");
     expect(toolPayload!.clientVersion).toBe("0.50.0");
 
@@ -270,7 +270,7 @@ describe("telemetry payload shape", () => {
     const mock = installFetchMock();
 
     // No recordClientInit before recordToolCall.
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -294,7 +294,7 @@ describe("telemetry payload shape", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    recordToolCall("debug_issue", "free");
+    recordToolCall("debug_issue");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -336,7 +336,7 @@ describe("telemetry non-blocking behavior", () => {
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
 
     const start = Date.now();
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(50);
@@ -376,7 +376,7 @@ describe("telemetry failure handling", () => {
     const mock = installFetchMock(() => Promise.reject(new Error("DNS failure")));
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    expect(() => recordToolCall("list_samples", "free")).not.toThrow();
+    expect(() => recordToolCall("list_samples")).not.toThrow();
     expect(() => flushTelemetry()).not.toThrow();
     await flushMicrotasks();
     await flushMicrotasks();
@@ -391,7 +391,7 @@ describe("telemetry failure handling", () => {
 
     expect(() => {
       recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-      recordToolCall("list_samples", "free");
+      recordToolCall("list_samples");
       flushTelemetry();
     }).not.toThrow();
 
@@ -419,7 +419,7 @@ describe("telemetry batching", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     await flushMicrotasks();
 
     // No fetch yet — buffer holds both events.
@@ -430,8 +430,8 @@ describe("telemetry batching", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "cursor", version: "1.0.0" });
-    recordToolCall("get_node_reference", "free");
-    recordToolCall("list_samples", "free");
+    recordToolCall("get_node_reference");
+    recordToolCall("list_samples");
     flushTelemetry();
     await flushMicrotasks();
 
@@ -449,7 +449,7 @@ describe("telemetry batching", () => {
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
     // The init event is event #1 in the buffer. Add 9 more tool calls to hit 10.
     for (let i = 0; i < 9; i++) {
-      recordToolCall("list_samples", "free");
+      recordToolCall("list_samples");
     }
     await flushMicrotasks();
 
@@ -491,7 +491,7 @@ describe("telemetry batching", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     __resetClientContext();
     flushTelemetry(); // buffer is already empty
     await flushMicrotasks();
@@ -529,7 +529,7 @@ describe("telemetry installId fingerprint", () => {
     const mock = installFetchMock();
 
     recordClientInit({ name: "claude-desktop", version: "0.11.0" });
-    recordToolCall("list_samples", "free");
+    recordToolCall("list_samples");
     flushTelemetry();
     await flushMicrotasks();
 

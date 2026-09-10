@@ -92,7 +92,7 @@ describe("GET public pages", () => {
     const app = makeFullApp();
     const res = await app.request("/pricing", {}, env());
     const body = await res.text();
-    // Free tool count must match mcp/src/tiers.ts::FREE_TOOLS (27 since 4.0.5).
+    // Free tool count must match mcp-gateway/src/mcp/tiers.ts::FREE_TOOLS (27 since 4.0.5).
     expect(body).toContain("27 free tools");
     expect(body).not.toContain("17 free tools");
     // VAT FAQ must reflect the real fiscal state: we are under

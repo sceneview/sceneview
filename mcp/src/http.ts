@@ -13,9 +13,11 @@
  *     `sessionIdGenerator: undefined`, the SDK's documented stateless pattern.
  *     No session store, so any number of instances can sit behind a load
  *     balancer with no affinity, and a crashed request leaks nothing.
- *   - **Free tier only.** The server is built with `surface: "remote"`
- *     (`./server.ts`): `tools/list` returns only free tools and Pro names are
- *     refused at call time. There is no API key on a shared endpoint.
+ *   - **Everything but the local-only tools.** The server is built with
+ *     `surface: "remote"` (`./server.ts`): `tools/list` omits the three tools
+ *     of `./surfaces.ts` that need the caller's own third-party credentials,
+ *     and refuses those names at call time. Every tool is free; there is
+ *     simply no key on a shared endpoint to bill a third party to.
  *   - **No framework.** Node's built-in `http` module and the SDK — zero new
  *     runtime dependencies for the npm package.
  *

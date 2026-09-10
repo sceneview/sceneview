@@ -11,11 +11,12 @@
  * fixed in one is fixed in both. Requires `nodejs_compat` and a
  * `compatibility_date` of 2025-09-01 or later (see `../wrangler.toml`).
  *
- * What it exposes: the anonymous free tier only. `createRequestListener`
- * builds each request's server with `surface: "remote"` (`./server.ts`), so
- * `tools/list` returns the free tools and Pro tool names are refused at call
- * time. There is no API key on a shared public endpoint, hence no
- * authentication at all — the `none` auth type in Anthropic's connector docs.
+ * What it exposes: everything except the local-only tools of `./surfaces.ts`.
+ * `createRequestListener` builds each request's server with
+ * `surface: "remote"` (`./server.ts`), so `tools/list` omits those three names
+ * and refuses them at call time. There is no API key on a shared public
+ * endpoint, hence no authentication at all — the `none` auth type in
+ * Anthropic's connector docs. Every tool is free.
  *
  * Routes are `http.ts`'s: POST /mcp, GET /health, OPTIONS for CORS.
  *

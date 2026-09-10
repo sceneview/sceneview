@@ -1,20 +1,18 @@
 /**
  * Per-tool tier gate for the multiplexed registry.
  *
- * The sceneview-mcp package already ships a `tiers.ts` module that
- * distinguishes free vs pro tools. We import it via a relative path
- * the same way `registry.ts` imports the upstream tool libraries —
- * the gateway does not use npm workspaces.
+ * The free/pro map lives in `./tiers.ts`, next to this gate: the
+ * sceneview-mcp npm package dropped its paid tier and serves every tool
+ * for free, so the gateway owns the only tier map left.
  *
  * The gate is intentionally permissive on the `pro` tier entry: any
  * authenticated user on `pro` or `team` can call every tool. Unknown
  * tools fall back to `pro` (conservative default) and are therefore
- * blocked on the free tier. This mirrors the behavior of the stdio
- * implementation so migrations between transports are transparent.
+ * blocked on the free tier.
  */
 
 import type { DispatchContext } from "./types.js";
-import { getToolTier } from "../../../mcp/src/tiers.js";
+import { getToolTier } from "./tiers.js";
 
 /**
  * Returns true if the given dispatch context is allowed to call the

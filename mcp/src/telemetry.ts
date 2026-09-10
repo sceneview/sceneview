@@ -8,7 +8,8 @@
 //   - client: MCP client name (e.g. "claude-desktop", "cursor")
 //   - clientVersion: MCP client version string reported during handshake
 //   - mcpVersion: this package's version
-//   - tier: "free" | "pro" — tier the TOOL resolved to, NOT the user's plan
+//   - tier: always "free" — kept as a wire field for the worker schema;
+//     SceneView MCP has no paid tier
 //   - tool?: tool name (only for "tool" events)
 //   - installId?: opaque random UUID per install — lets the worker count
 //     unique developers per client runtime without identifying who they are
@@ -29,8 +30,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { Tier } from "./tiers.js";
-
 // Worker implementation: telemetry-worker/ (Hono + D1 + KV rate limiting).
 // Deploy with: cd telemetry-worker && see DEPLOY.md
 const TELEMETRY_ENDPOINT = "https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/events";
@@ -48,6 +47,12 @@ interface ClientContext {
   client: string;
   clientVersion: string;
 }
+
+/**
+ * The only tier there is. Kept as a named type because the worker's event
+ * schema has a `tier` column; SceneView MCP has no paid tier.
+ */
+export type Tier = "free";
 
 /** Exposed for tests. */
 export interface TelemetryPayload {
@@ -397,11 +402,9 @@ export function recordClientInit(clientInfo: { name: string; version: string } |
 }
 
 /**
- * Record a tool invocation. Called from the `CallToolRequestSchema` handler
- * after the tier check has passed. `tier` is the tier the tool resolved to,
- * not the user's subscription status.
+ * Record a tool invocation. Called from the `CallToolRequestSchema` handler.
  */
-export function recordToolCall(toolName: string, tier: Tier): void {
+export function recordToolCall(toolName: string): void {
   if (!isEnabled()) return;
 
   // If the client never completed initialization (which shouldn't happen in
@@ -414,7 +417,7 @@ export function recordToolCall(toolName: string, tier: Tier): void {
     client: ctx.client,
     clientVersion: ctx.clientVersion,
     mcpVersion: getMcpVersion(),
-    tier,
+    tier: "free",
     tool: toolName,
     ...buildBase(),
   });

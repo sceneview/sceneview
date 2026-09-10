@@ -11,13 +11,13 @@
  * sent, so a tool added without a title is not a style nit — it blocks the
  * listing. `types.ts` has always claimed this file exists; it does now.
  *
- * `ToolAnnotations.title` stays optional in the type because the gateway
- * package shares that interface; the requirement is enforced here, at the
- * boundary that actually ships tools.
+ * `ToolAnnotations.title` stays optional in the type because other packages
+ * share that interface; the requirement is enforced here, at the boundary
+ * that actually ships tools.
  */
 
 import { describe, expect, it } from "vitest";
-import { getFreeToolNames } from "../tiers.js";
+import { getLocalOnlyToolNames } from "../surfaces.js";
 import { TOOL_DEFINITIONS } from "./index.js";
 
 describe("tool annotations", () => {
@@ -47,11 +47,11 @@ describe("tool annotations", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
-  it("covers every free tool that the remote surface publishes", () => {
-    // The free tier is what an anonymous connector sees. A free tool with no
-    // definition here would be advertised by `tiers.ts` and never listed.
+  it("names only tools that exist in the local-only list", () => {
+    // A stale name in `surfaces.ts` would silently hide nothing, or worse,
+    // hide a tool that was renamed. Keep the two in sync.
     const defined = new Set(TOOL_DEFINITIONS.map((t) => t.name));
-    const undefinedFree = getFreeToolNames().filter((name) => !defined.has(name));
-    expect(undefinedFree).toEqual([]);
+    const phantoms = getLocalOnlyToolNames().filter((name) => !defined.has(name));
+    expect(phantoms).toEqual([]);
   });
 });

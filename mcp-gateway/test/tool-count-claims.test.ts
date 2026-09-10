@@ -6,10 +6,12 @@
  * number programmatically from the actual registry — never from grepping
  * source — and compares it against the documented claims:
  *
- *   - the "NN tools total" gateway claim in the vertical package READMEs
- *     (drifted twice already: "63" was written when the registry mounted 63,
- *     then rerun tools + `generate_3d_model` / android-docs tools landed);
- *   - the tier map in `mcp/src/tiers.ts`, every entry of which must resolve
+ *   - the absence of any gateway claim in the vertical package READMEs. The
+ *     "NN tools total" number drifted twice ("63" was written when the
+ *     registry mounted 63, then rerun tools + `generate_3d_model` /
+ *     android-docs tools landed) before the section was removed outright:
+ *     the URL it pointed at has answered 404 since the Worker was deleted;
+ *   - the tier map in `mcp-gateway/src/mcp/tiers.ts`, every entry of which must resolve
  *     to a tool the gateway actually mounts (the `get_started` phantom:
  *     listed as free for months while existing nowhere).
  *
@@ -23,35 +25,29 @@ import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 
 import { getAllTools } from "../src/mcp/registry.js";
-import { getFreeToolNames, getProToolNames, getToolTier } from "../../mcp/src/tiers.js";
+import { getFreeToolNames, getProToolNames, getToolTier } from "../src/mcp/tiers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const readmePath = (pkg: string) =>
   path.join(here, "..", "..", "mcp", "packages", pkg, "README.md");
 
-/** The vertical package READMEs that advertise the gateway's total tool count. */
-const READMES_WITH_TOTAL_CLAIM = ["gaming", "interior", "rerun"];
+/** The vertical package READMEs that used to advertise the hosted gateway. */
+const READMES_WITHOUT_GATEWAY_CLAIM = ["gaming", "interior", "rerun"];
 
 const mountedNames = () => new Set(getAllTools().map((t) => t.name));
 
-describe("README 'NN tools total' claims match the registry", () => {
-  it.each(READMES_WITH_TOTAL_CLAIM)(
-    "mcp/packages/%s/README.md claims the real gateway total",
+describe("package READMEs advertise no hosted gateway", () => {
+  it.each(READMES_WITHOUT_GATEWAY_CLAIM)(
+    "mcp/packages/%s/README.md points at no gateway URL or tool total",
     (pkg) => {
       const text = readFileSync(readmePath(pkg), "utf8");
-      const matches = [...text.matchAll(/—\s*(\d+) tools total/g)];
       expect(
-        matches.length,
-        `Expected a "— NN tools total" claim in mcp/packages/${pkg}/README.md`,
-      ).toBeGreaterThan(0);
-      for (const m of matches) {
-        expect(
-          Number(m[1]),
-          `mcp/packages/${pkg}/README.md claims "${m[1]} tools total" but the ` +
-            `gateway registry mounts ${getAllTools().length}. Update the README ` +
-            `(and its siblings) to the real number.`,
-        ).toBe(getAllTools().length);
-      }
+        [...text.matchAll(/—\s*\d+ tools total/g)].length,
+        `mcp/packages/${pkg}/README.md advertises a gateway tool total again. ` +
+          `The gateway it counted is deleted and its URL 404s.`,
+      ).toBe(0);
+      expect(text, `mcp/packages/${pkg}/README.md`).not.toMatch(/mcp-tools-lab/);
+      expect(text, `mcp/packages/${pkg}/README.md`).not.toMatch(/Pro tier/i);
     },
   );
 });
@@ -62,7 +58,7 @@ describe("tier map entries all resolve to mounted tools (no phantoms)", () => {
     const phantoms = getFreeToolNames().filter((n) => !mounted.has(n));
     expect(
       phantoms,
-      `These FREE_TOOLS entries in mcp/src/tiers.ts exist in no tool library ` +
+      `These FREE_TOOLS entries in mcp-gateway/src/mcp/tiers.ts exist in no tool library ` +
         `(the \`get_started\` bug class): ${phantoms.join(", ")}`,
     ).toEqual([]);
   });
@@ -72,7 +68,7 @@ describe("tier map entries all resolve to mounted tools (no phantoms)", () => {
     const phantoms = getProToolNames().filter((n) => !mounted.has(n));
     expect(
       phantoms,
-      `These PRO_TOOLS entries in mcp/src/tiers.ts exist in no tool library: ` +
+      `These PRO_TOOLS entries in mcp-gateway/src/mcp/tiers.ts exist in no tool library: ` +
         phantoms.join(", "),
     ).toEqual([]);
   });
@@ -100,7 +96,7 @@ describe("tier map entries all resolve to mounted tools (no phantoms)", () => {
       .filter((n) => !mapped.has(n));
     expect(
       strays,
-      `These mounted tools have no explicit entry in mcp/src/tiers.ts and ` +
+      `These mounted tools have no explicit entry in mcp-gateway/src/mcp/tiers.ts and ` +
         `silently default to "pro": ${strays.join(", ")}`,
     ).toEqual([]);
   });

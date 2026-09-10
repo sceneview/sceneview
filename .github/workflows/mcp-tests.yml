@@ -28,7 +28,7 @@ name: MCP tests
 #
 # PATHS INCLUDE `mcp/**` FOR THE GATEWAY JOB TOO
 # ----------------------------------------------
-# `mcp-gateway/` imports `mcp/src/tiers.ts`, `mcp/src/tools/index.ts` and every
+# `mcp-gateway/` imports `mcp/src/tools/index.ts`, `mcp/src/widgets.ts` and every
 # `mcp/packages/*/src/tools.ts` directly, so a change confined to `mcp/` can
 # break the gateway's suite. Filtering the gateway on `mcp-gateway/**` alone
 # would reproduce the original gap one directory over: coverage has to follow

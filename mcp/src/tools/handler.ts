@@ -117,18 +117,15 @@ const NODE_SECTIONS = parseNodeSections(API_DOCS);
 /**
  * Run a SceneView MCP tool and return its MCP-formatted result.
  *
- * The caller is responsible for:
- *   - enforcing tier/pro access (the stdio server does this; the gateway
- *     does the same before reaching this function),
- *   - rate limiting,
- *   - recording billing usage.
+ * The caller is responsible for surface filtering (the remote transport
+ * refuses the local-only tools of `surfaces.ts`) and rate limiting.
  *
- * This function performs NO auth and NO billing — it is pure business logic.
+ * This function performs NO auth — it is pure business logic.
  *
  * @param toolName  MCP tool name, e.g. `"get_sample"`.
  * @param args      Arguments bag from the MCP client. `undefined` and
  *                  `null` are both tolerated.
- * @param _ctx      Optional context (user, tier, request id). Currently
+ * @param _ctx      Optional context (user, request id). Currently
  *                  unused by any handler, reserved for future tool wiring.
  */
 export async function dispatchTool(

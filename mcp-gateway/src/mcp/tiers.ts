@@ -1,6 +1,11 @@
 // ─── Tool tier system ─────────────────────────────────────────────────────────
 //
-// Defines free vs pro tool access for SceneView MCP.
+// Defines free vs pro tool access for the hosted gateway Worker.
+//
+// This map used to live in `mcp/src/tiers.ts` and be imported from here. It
+// moved when the npm package dropped its paid tier: `sceneview-mcp` serves
+// every tool for free, so the only place a tier still means anything is this
+// Worker, which meters and bills its own callers.
 
 export type Tier = "free" | "pro";
 
@@ -16,8 +21,8 @@ export type Tier = "free" | "pro";
 const FREE_TOOLS: readonly string[] = [
   // MCP Apps widget tool (`tools/definitions.ts` + `widgets.ts`). Free on
   // purpose: it is the one tool the anonymous ChatGPT / Codex remote surface
-  // (`http.ts`, free tier only) exists to expose, and unknown tools default
-  // to "pro" — removing this line would silently paywall the 3D viewer.
+  // (free tier only) exists to expose, and unknown tools default to "pro" —
+  // removing this line would silently paywall the 3D viewer.
   "view_3d_model",
   "list_samples",
   "get_sample",
@@ -101,7 +106,7 @@ const PRO_TOOLS: readonly string[] = [
   "list_furniture_models",
   "validate_interior_code",
 
-  // Rerun package (Pro per its README — "All 5 rerun tools are Pro tier").
+  // Rerun package.
   // Until #2697 these five (and the six package additions above) rode the
   // unknown-tool default-to-pro fallback; behaviour is unchanged, the map
   // is just explicit now so a forgotten mapping is distinguishable from a
@@ -141,18 +146,3 @@ export function getProToolNames(): string[] {
 export function getFreeToolNames(): string[] {
   return [...FREE_TOOLS];
 }
-
-// ─── Upgrade message ──────────────────────────────────────────────────────────
-
-export const PRO_UPGRADE_MESSAGE = `## \u{1F512} Pro Feature
-
-This tool is part of a specialized package (Automotive / Gaming / Healthcare / Interior / Rerun) or a heavier generation tool. SceneView MCP Pro unlocks them.
-
-**Upgrade for \u20AC19/month** to unlock:
-- 5 vertical packages (Automotive, Gaming, Healthcare, Interior, Rerun — 35 specialized tools)
-- 3D preview, artifact, and scene-generation helpers
-
-All setup, migration, and reference guides remain free.
-
-\u2192 Subscribe at https://sceneview-mcp.mcp-tools-lab.workers.dev/pricing
-\u2192 Then set your API key: \`SCENEVIEW_API_KEY=your_key\``;

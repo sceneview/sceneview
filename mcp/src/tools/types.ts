@@ -101,17 +101,15 @@ export interface ToolDefinition {
 /**
  * Per-request context passed to handlers by the dispatcher.
  *
- * Handlers running in the stdio npm package get an empty context. The gateway
- * populates fields like `userId`, `apiKeyId`, and `tier` once it has
+ * Handlers running in the stdio npm package get an empty context. A
+ * self-hosted front end may populate `userId` / `apiKeyId` once it has
  * authenticated the caller.
  */
 export interface DispatchContext {
-  /** Authenticated user id. Set by the gateway, `undefined` in stdio. */
+  /** Authenticated user id. `undefined` in stdio. */
   userId?: string;
-  /** API key row id. Set by the gateway, `undefined` in stdio. */
+  /** API key row id. `undefined` in stdio. */
   apiKeyId?: string;
-  /** Resolved subscription tier. Defaults to `"free"` in stdio. */
-  tier?: "free" | "pro" | "team";
   /** Free-form key/value bag for future extensibility (request id, headers). */
   extras?: Record<string, unknown>;
 }
