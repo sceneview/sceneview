@@ -1226,6 +1226,8 @@ class EntranceCameraManipulator(
     }
 
     override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+        // A new touch owns the camera: drop any double-tap zoom still in flight (#3608).
+        zoomAnimationDuration = 0f
         ensureFallback()
         fallback?.grabBegin(x, y, strafe)
     }
@@ -1239,6 +1241,7 @@ class EntranceCameraManipulator(
     }
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
+        zoomAnimationDuration = 0f
         ensureFallback()
     }
 
@@ -1263,7 +1266,50 @@ class EntranceCameraManipulator(
         fallback?.scrollEnd()
     }
 
+    // ── Double-tap zoom (#3608) ──────────────────────────────────────────────────────────────────
+    //
+    // The SDK's built-in double-tap zoom lives in `DefaultCameraManipulator` and dollies the
+    // Filament manipulator directly. This class does not delegate its zoom — a pinch *publishes* a
+    // distance so the gesture and the "Camera distance" slider stay one number (see
+    // `scrollUpdate`) — so the built-in default no-ops here and the gesture has to be implemented
+    // against the same published distance, with the same clamps the pinch uses.
+    private var zoomAnimationStart = 0f
+    private var zoomAnimationTarget = 0f
+    private var zoomAnimationElapsed = 0f
+    private var zoomAnimationDuration = 0f
+
+    override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+        ensureFallback()
+        val fit = fitDistance().takeIf { it.isFinite() && it > 0f } ?: 1f
+        val start = effectiveDistance()
+        val target = io.github.sceneview.gesture.zoomedDistanceForDoubleTap(
+            distance = start,
+            homeDistance = fit,
+            zoomIn = zoomIn,
+            minDistance = fit * VIEWER_MIN_ZOOM_FACTOR,
+            maxDistance = fit * VIEWER_MAX_ZOOM_FACTOR,
+        )
+        if (target == start) return
+        zoomAnimationStart = start
+        zoomAnimationTarget = target
+        zoomAnimationElapsed = 0f
+        zoomAnimationDuration = io.github.sceneview.gesture.CameraGestureDetector
+            .DefaultCameraManipulator.DEFAULT_DOUBLE_TAP_ZOOM_DURATION_SECONDS
+    }
+
     override fun update(deltaTime: Float) {
+        if (zoomAnimationDuration > 0f) {
+            zoomAnimationElapsed += deltaTime
+            val progress = zoomAnimationElapsed / zoomAnimationDuration
+            onDistanceChange(
+                io.github.sceneview.gesture.animatedZoomDistance(
+                    start = zoomAnimationStart,
+                    target = zoomAnimationTarget,
+                    progress = progress,
+                )
+            )
+            if (progress >= 1f) zoomAnimationDuration = 0f
+        }
         fallback?.update(deltaTime)
     }
 }

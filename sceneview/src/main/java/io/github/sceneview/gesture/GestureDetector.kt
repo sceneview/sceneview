@@ -64,6 +64,17 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
     var touchedNode: Node? = null
 
+    /**
+     * SDK-internal double-tap hook, invoked just **before** [listener]'s `onDoubleTap`.
+     *
+     * `SceneView` wires this to the camera gesture detector so the built-in double-tap-to-zoom
+     * (#3608) rides the one double-tap recogniser the scene already has. Keeping it separate from
+     * [listener] is the whole point: a consumer that supplies its own `onGestureListener` replaces
+     * [listener] wholesale, and the camera must not lose its zoom because of it. Both run, in this
+     * order, on every double-tap.
+     */
+    internal var onDoubleTapCamera: ((MotionEvent) -> Unit)? = null
+
     private var lastTouchEvent: MotionEvent? = null
 
     private val gestureDetector = android.view.GestureDetector(context,
@@ -114,6 +125,7 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
             }
 
             override fun onDoubleTap(e: MotionEvent) = super.onDoubleTap(e).also {
+                onDoubleTapCamera?.invoke(e)
                 touchedNode?.onDoubleTap(e)
                 listener?.onDoubleTap(e, touchedNode)
             }

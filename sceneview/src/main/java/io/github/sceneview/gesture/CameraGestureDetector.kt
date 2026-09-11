@@ -1,11 +1,13 @@
 package io.github.sceneview.gesture
 
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import com.google.android.filament.Camera
 import com.google.android.filament.utils.Float2
 import com.google.android.filament.utils.Manipulator
 import com.google.android.filament.utils.distance
 import com.google.android.filament.utils.mix
+import kotlin.math.abs
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CameraNode
@@ -52,6 +54,26 @@ open class CameraGestureDetector(
         fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float)
         fun scrollEnd()
         fun update(deltaTime: Float)
+
+        /**
+         * A double-tap (or two-finger tap) asked the camera to zoom, at screen point [x], [y].
+         *
+         * Called by [CameraGestureDetector] when [CameraGestureDetector.isDoubleTapZoomEnabled] is
+         * on. Coordinates are in Filament's convention — origin bottom-left, i.e. already
+         * y-flipped from [android.view.MotionEvent] — the same ones [grabBegin] and [scrollBegin]
+         * receive.
+         *
+         * The step is expected to be *animated*: implementations start the move here and advance
+         * it from [update], which the render loop already calls once per frame. The default
+         * implementation does nothing, so existing manipulators keep compiling and behaving
+         * exactly as before.
+         *
+         * @param x      Tap x, in pixels, origin bottom-left.
+         * @param y      Tap y, in pixels, origin bottom-left.
+         * @param zoomIn `true` for a double-tap (move closer), `false` for a two-finger tap
+         *               (move away).
+         */
+        fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {}
     }
 
     /**
@@ -117,6 +139,49 @@ open class CameraGestureDetector(
 
         /** The distance the manipulator was homed at — the reference for the zoom clamps. */
         private var homeDistance: Float = -1f
+
+        /**
+         * Double-tap to zoom in, two-finger tap to zoom out — the convention every photo viewer
+         * and map trains users to expect, on by default (#3608).
+         *
+         * Set to `false` to opt out; the taps are then ignored by this manipulator and a consumer
+         * `onDoubleTap` callback is the only thing that runs. Toggling it mid-animation cancels
+         * the move in flight.
+         *
+         * ```kotlin
+         * val manipulator = rememberCameraManipulator(orbitRadius = 3f).apply {
+         *     (this as? CameraGestureDetector.DefaultCameraManipulator)
+         *         ?.isDoubleTapZoomEnabled = false
+         * }
+         * ```
+         */
+        var isDoubleTapZoomEnabled: Boolean = true
+
+        /**
+         * Distance ratio one double-tap covers. `2` (the default) halves the camera-to-target
+         * distance on a double-tap and doubles it back on a two-finger tap. Must be `> 1`;
+         * anything else falls back to the default.
+         */
+        var doubleTapZoomFactor: Float = DEFAULT_DOUBLE_TAP_ZOOM_FACTOR
+
+        /**
+         * How long the double-tap zoom takes, in seconds. `0.3` matches the platform's own
+         * double-tap zoom; `0` makes the step instantaneous.
+         */
+        var doubleTapZoomDurationSeconds: Float = DEFAULT_DOUBLE_TAP_ZOOM_DURATION_SECONDS
+
+        /**
+         * In-flight double-tap zoom: where it started, where it lands, and how far along it is.
+         * Advanced from [update] (the render loop already ticks that every frame), so the SDK
+         * needs neither a coroutine nor a second frame callback for it. `animationDuration <= 0`
+         * means "no animation running".
+         */
+        private var animationStartDistance: Float = 0f
+        private var animationTargetDistance: Float = 0f
+        private var animationElapsed: Float = 0f
+        private var animationDuration: Float = 0f
+        private var animationX: Int = 0
+        private var animationY: Int = 0
 
         /**
          * `true` when the wrapped manipulator is an `ORBIT` one, i.e. when `scroll` means "dolly
@@ -215,6 +280,8 @@ open class CameraGestureDetector(
         }
 
         override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
+            // The user's own gesture always wins over an animation still playing.
+            cancelDoubleTapZoom()
             // Last moment the pose is still readable — `grabUpdate` is what re-plants the target.
             currentOrbitDistance()
             manipulator.grabBegin(x, y, strafe)
@@ -229,6 +296,8 @@ open class CameraGestureDetector(
         }
 
         override fun scrollBegin(x: Int, y: Int, separation: Float) {
+            // A pinch takes over from a double-tap zoom still in flight.
+            cancelDoubleTapZoom()
             // Seed the tracked radius from the manipulator while its reported target is still the
             // orbit pivot (see [orbitDistance]) — cheap, and a no-op once measured.
             currentOrbitDistance()
@@ -264,8 +333,87 @@ open class CameraGestureDetector(
 
         override fun scrollEnd() {}
 
+        /**
+         * Starts the animated dolly towards (or away from) the orbit pivot.
+         *
+         * The tap point is remembered and forwarded to `Manipulator.scroll` for the modes that
+         * read it, but an ORBIT manipulator does not: Filament's `OrbitManipulator::scroll` moves
+         * the eye strictly along the gaze and ignores `x`/`y`, so the zoom is centred on the orbit
+         * pivot rather than anchored under the finger. See the `doubleTapZoom` KDoc on
+         * [CameraManipulator].
+         */
+        override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+            if (!isDoubleTapZoomEnabled) return
+            val distance = if (isOrbitMode()) currentOrbitDistance() else -1f
+            // Non-orbit modes (MAP scrolls an extent, FREE_FLIGHT a move speed): a
+            // camera-to-target distance is not what their scroll means, so there is nothing
+            // meaningful to animate. Leave them alone rather than invent a step.
+            if (distance <= 0f) return
+            val home = if (homeDistance > 0f) homeDistance else distance
+            val target = doubleTapZoomedDistance(
+                distance = distance,
+                homeDistance = home,
+                zoomIn = zoomIn,
+                factor = doubleTapZoomFactor,
+                minDistanceFactor = minZoomDistanceFactor,
+                maxDistanceFactor = maxZoomDistanceFactor,
+            )
+            if (target == distance) return
+            animationX = x
+            animationY = y
+            animationStartDistance = distance
+            animationTargetDistance = target
+            animationElapsed = 0f
+            animationDuration = doubleTapZoomDurationSeconds.takeIf { it.isFinite() && it > 0f }
+                ?: 0f
+            if (animationDuration <= 0f) {
+                // Duration 0 is a legal setting, not an error: land on the target immediately.
+                applyDistance(target)
+            }
+        }
+
+        /** Drops any double-tap zoom in flight, leaving the camera exactly where it is. */
+        private fun cancelDoubleTapZoom() {
+            animationDuration = 0f
+        }
+
         override fun update(deltaTime: Float) {
+            advanceDoubleTapZoom(deltaTime)
             manipulator.update(deltaTime)
+        }
+
+        /**
+         * Advances an in-flight double-tap zoom by one frame. No-op — and no allocation, no JNI
+         * call — when nothing is animating, which is every frame but the ~18 of a 300 ms move.
+         */
+        private fun advanceDoubleTapZoom(deltaTime: Float) {
+            if (animationDuration <= 0f) return
+            if (!deltaTime.isFinite() || deltaTime < 0f) return
+            animationElapsed += deltaTime
+            val progress = (animationElapsed / animationDuration).coerceIn(0f, 1f)
+            val next = if (progress >= 1f) {
+                animationTargetDistance
+            } else {
+                animatedZoomDistance(
+                    animationStartDistance, animationTargetDistance, progress
+                )
+            }
+            applyDistance(next)
+            if (progress >= 1f) cancelDoubleTapZoom()
+        }
+
+        /**
+         * Dollies the wrapped manipulator to an absolute camera-to-target [distance], going
+         * through the same `scroll` inversion the pinch uses so the tracked [orbitDistance] and
+         * Filament's own eye stay in step.
+         */
+        private fun applyDistance(distance: Float) {
+            val current = currentOrbitDistance()
+            if (current <= 0f || distance == current) return
+            manipulator.scroll(
+                animationX, animationY, dollyScrollDelta(current, distance, manipulatorZoomSpeed)
+            )
+            orbitDistance = distance
         }
 
         companion object {
@@ -301,6 +449,20 @@ open class CameraGestureDetector(
 
             /** Furthest the pinch may take the camera, as a multiple of the homed distance. */
             const val DEFAULT_MAX_ZOOM_DISTANCE_FACTOR: Float = 8f
+
+            /**
+             * Default distance ratio one double-tap covers — `2`, i.e. a double-tap halves the
+             * camera-to-target distance and a two-finger tap doubles it back. The step every map
+             * and photo viewer uses, and small enough that two taps in a row stay legible.
+             */
+            const val DEFAULT_DOUBLE_TAP_ZOOM_FACTOR: Float = 2f
+
+            /**
+             * Default duration of the double-tap zoom animation, in seconds. `0.3` is the
+             * platform's own double-tap zoom timing — long enough to read as a move rather than a
+             * jump cut, short enough not to feel like waiting.
+             */
+            const val DEFAULT_DOUBLE_TAP_ZOOM_DURATION_SECONDS: Float = 0.3f
 
             /**
              * Default damping exponent for pinch deltas. Sub-1 values create a sqrt-like response
@@ -358,12 +520,87 @@ open class CameraGestureDetector(
     private val kPanConfidenceDistance = 10
     private val kZoomConfidenceDistance = 10
 
+    /**
+     * How far, in pixels, the two-finger midpoint or the inter-finger separation may drift and
+     * still count as a tap. Matches [kPanConfidenceDistance] / [kZoomConfidenceDistance] on
+     * purpose: past that drift the stream is already being promoted to PAN or ZOOM, so the tap and
+     * the drag gestures can never both claim the same movement.
+     */
+    private val kTwoFingerTapSlop = 10f
+
+    /**
+     * How long, in milliseconds, two fingers may rest before lifting and still count as a tap.
+     * [ViewConfiguration.getDoubleTapTimeout] is the platform's own answer to exactly this
+     * question (300 ms), so the two-finger tap and the double-tap share one timing budget.
+     */
+    private val kTwoFingerTapTimeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong()
+
     var isPanEnabled: Boolean = true
+
+    /**
+     * Double-tap to zoom in, two-finger tap to zoom out — on by default (#3608).
+     *
+     * When on, [onDoubleTap] and the two-finger tap recognised below are forwarded to
+     * [CameraManipulator.doubleTapZoom]. Consumer `onDoubleTap` callbacks are untouched either
+     * way: they come from the separate [GestureDetector] and both run.
+     */
+    var isDoubleTapZoomEnabled: Boolean = true
+
+    /**
+     * A confirmed double-tap landed on the scene: zoom in, animated.
+     *
+     * Called by `SceneView` from the [GestureDetector] that already owns double-tap recognition,
+     * so the camera and the consumer's own `onDoubleTap` see the same event and neither steals it
+     * from the other. Not called when the touch was absorbed by an editable node — that node owns
+     * the gesture.
+     */
+    fun onDoubleTap(event: MotionEvent) {
+        if (!isDoubleTapZoomEnabled) return
+        twoFingerTapCandidate = false
+        val touch = TouchPair.of(event, viewHeight())
+        requestZoom(touch.x, touch.y, zoomIn = true)
+    }
+
+    /**
+     * Asks the manipulator to zoom, tolerating a manipulator that predates the gesture.
+     *
+     * [CameraManipulator.doubleTapZoom] has a default implementation, so every Kotlin manipulator
+     * — including one compiled against 4.35 — already answers it. A **Java** class implementing
+     * the interface before 4.36 does not: Kotlin emits the default into a `DefaultImpls` bridge on
+     * the implementor's side, which such a class never got, so the call would land on an abstract
+     * method. Major version 4 is frozen, so that must not become a crash for a consumer who only
+     * upgraded the SDK. Swallowing it here means the worst case is "double-tap does nothing",
+     * which is exactly the 4.35 behaviour they already had.
+     */
+    private fun requestZoom(x: Int, y: Int, zoomIn: Boolean) {
+        val manipulator = cameraManipulator ?: return
+        runCatching { manipulator.doubleTapZoom(x, y, zoomIn) }
+    }
+
+    // ── Two-finger tap (zoom out) ────────────────────────────────────────────────────────────────
+    //
+    // Android's `GestureDetector` has no two-finger tap, but this class already tracks everything
+    // needed to recognise one for free: a second pointer going down while no camera gesture has
+    // started, both fingers lifting within the double-tap window, and the midpoint never
+    // travelling past the pan slop. An aborted pinch fails all three — it either promotes itself
+    // to ZOOM/PAN, or moves further than the slop — so it cannot be mistaken for a tap.
+    private var twoFingerTapCandidate = false
+    private var twoFingerTapDownTimeMs = 0L
+    private var twoFingerTapDownMidpoint = Float2(0f)
+    private var twoFingerTapDownSeparation = 0f
 
     fun onTouchEvent(event: MotionEvent) {
         val touch = TouchPair.of(event, viewHeight())
         when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> twoFingerTapCandidate = false
+
+            MotionEvent.ACTION_POINTER_DOWN -> beginTwoFingerTap(event, touch)
+
             MotionEvent.ACTION_MOVE -> {
+
+                // A tap that travels is not a tap. Checked before the gesture logic below so a
+                // stream promoted to PAN/ZOOM on this very event is already disqualified.
+                invalidateTwoFingerTapIfMoved(touch)
 
                 // CANCEL GESTURE DUE TO UNEXPECTED POINTER COUNT
 
@@ -421,10 +658,58 @@ open class CameraGestureDetector(
                 }
             }
 
+            MotionEvent.ACTION_POINTER_UP -> endTwoFingerTap(event)
+
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_UP -> {
+                twoFingerTapCandidate = false
                 endGesture()
             }
         }
+    }
+
+    /**
+     * Arms the two-finger tap on the second finger going down: exactly two fingers, nothing else
+     * in flight. A third pointer, or a pointer arriving mid-orbit, disqualifies the whole stream.
+     */
+    private fun beginTwoFingerTap(event: MotionEvent, touch: TouchPair) {
+        twoFingerTapCandidate = isDoubleTapZoomEnabled &&
+                event.pointerCount == 2 &&
+                currentGesture == Gesture.NONE
+        if (twoFingerTapCandidate) {
+            twoFingerTapDownTimeMs = event.eventTime
+            twoFingerTapDownMidpoint = touch.midpoint
+            twoFingerTapDownSeparation = touch.separation
+        }
+    }
+
+    /** Disarms the two-finger tap once either finger has travelled past the tap slop. */
+    private fun invalidateTwoFingerTapIfMoved(touch: TouchPair) {
+        if (!twoFingerTapCandidate) return
+        val drifted = distance(touch.midpoint, twoFingerTapDownMidpoint) > kTwoFingerTapSlop
+        val pinched =
+            abs(touch.separation - twoFingerTapDownSeparation) > kTwoFingerTapSlop
+        if (drifted || pinched) {
+            twoFingerTapCandidate = false
+        }
+    }
+
+    /**
+     * Fires the zoom-out when the first of the two fingers lifts inside the tap window.
+     *
+     * `event.eventTime` rather than `System.currentTimeMillis()`: the event's own clock is what
+     * the platform's tap timeouts are expressed in, and it does not drift with dispatch latency.
+     */
+    private fun endTwoFingerTap(event: MotionEvent) {
+        val tapped = twoFingerTapCandidate &&
+                currentGesture == Gesture.NONE &&
+                event.eventTime - twoFingerTapDownTimeMs <= kTwoFingerTapTimeoutMs
+        twoFingerTapCandidate = false
+        if (!tapped) return
+        requestZoom(
+            twoFingerTapDownMidpoint.x.toInt(),
+            twoFingerTapDownMidpoint.y.toInt(),
+            zoomIn = false,
+        )
     }
 
     private fun endGesture() {
@@ -528,6 +813,11 @@ class FovZoomCameraManipulator @JvmOverloads constructor(
 
     override fun scrollEnd() {}
     override fun update(deltaTime: Float) = inner.update(deltaTime)
+
+    // Double-tap stays a dolly, handled by the inner manipulator: this class only re-maps the
+    // *pinch* to a FOV change, and a double-tap that narrowed the lens instead of approaching the
+    // subject would contradict the dolly the orbit/pan half of the camera still does.
+    override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) = inner.doubleTapZoom(x, y, zoomIn)
 
     companion object {
         const val DEFAULT_PINCH_FOV_SPEED: Float = 0.05f

@@ -10,7 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Engine
@@ -31,6 +33,8 @@ import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
@@ -314,6 +318,12 @@ private fun rememberEnvironment(
  * A tap is a down/up pair that never travelled beyond the touch slop; without that check
  * every orbit would end in a spurious tap, since a drag also ends with `ACTION_UP`.
  *
+ * Two taps inside the platform's double-tap window zoom in, a two-finger tap zooms out — the
+ * Maps / Photos convention, matching `:sceneview`'s own gesture set so the façade does not feel
+ * poorer than the SDK it mirrors (#3608). Both are animated and both respect
+ * [CameraState.gesturesEnabled]. The `onTap` callback still fires for every tap, double-tap
+ * included: the camera adds a behaviour, it does not take one away.
+ *
  * Always returns `false`: this observes events, it does not consume them.
  */
 @Composable
@@ -329,14 +339,40 @@ private fun rememberGestureHandler(
     val touchSlop = with(LocalContext.current) {
         ViewConfiguration.get(this).scaledTouchSlop.toFloat()
     }
+    val doubleTapTimeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong()
+    // The zoom animation outlives the touch event that started it, so it needs a scope tied to
+    // the composition rather than to the handler.
+    val scope = rememberCoroutineScope()
 
-    return remember(touchSlop) {
+    return remember(touchSlop, doubleTapTimeoutMs, scope) {
         var downX = 0f
         var downY = 0f
         var lastX = 0f
         var lastY = 0f
         var lastSpan = 0f
         var moved = false
+        var lastTapUpTimeMs = 0L
+        var twoFingerTapCandidate = false
+        var twoFingerTapDownTimeMs = 0L
+        var zoomJob: Job? = null
+
+        // One animation at a time: a second tap retargets from wherever the first one had got
+        // to, instead of two jobs fighting over `distance` frame by frame.
+        fun zoomBy(cameraState: CameraState, ratio: Float) {
+            zoomJob?.cancel()
+            zoomJob = scope.launch {
+                val start = cameraState.distance
+                val target = start * ratio
+                val startedAt = withFrameMillis { it }
+                var progress = 0f
+                while (progress < 1f) {
+                    val now = withFrameMillis { it }
+                    progress = ((now - startedAt).toFloat() / DOUBLE_TAP_ZOOM_DURATION_MS)
+                        .coerceIn(0f, 1f)
+                    cameraState.distance = animatedZoomDistance(start, target, progress)
+                }
+            }
+        }
 
         handler@{ event, hitResult ->
             val cameraState = currentState
@@ -352,7 +388,15 @@ private fun rememberGestureHandler(
 
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     lastSpan = event.spanOrZero()
+                    // Read before `moved` is set below: a second finger landing *while nothing
+                    // has moved yet* is a two-finger-tap candidate, one arriving mid-orbit is
+                    // not. A pinch disqualifies itself further down, as soon as the span drifts.
+                    twoFingerTapCandidate = event.pointerCount == 2 && !moved
                     moved = true
+                    twoFingerTapDownTimeMs = event.eventTime
+                    // A pending single tap cannot become a double-tap once a second finger is
+                    // involved — that would turn "tap, then pinch" into a spurious zoom.
+                    lastTapUpTimeMs = 0L
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -361,8 +405,14 @@ private fun rememberGestureHandler(
                     }
                     if (!cameraState.gesturesEnabled) return@handler false
 
+                    // The user's own gesture wins over an animation still playing.
+                    zoomJob?.cancel()
+
                     if (event.pointerCount >= 2) {
                         val span = event.spanOrZero()
+                        if (abs(span - lastSpan) > touchSlop) {
+                            twoFingerTapCandidate = false
+                        }
                         if (lastSpan > 0f && span > 0f) {
                             // Pinch out brings the camera closer, so divide.
                             cameraState.distance /= (span / lastSpan)
@@ -376,10 +426,26 @@ private fun rememberGestureHandler(
                     lastY = event.y
                 }
 
-                MotionEvent.ACTION_POINTER_UP -> lastSpan = 0f
+                MotionEvent.ACTION_POINTER_UP -> {
+                    lastSpan = 0f
+                    val tapped = twoFingerTapCandidate &&
+                            event.eventTime - twoFingerTapDownTimeMs <= doubleTapTimeoutMs
+                    twoFingerTapCandidate = false
+                    if (tapped && cameraState.gesturesEnabled) {
+                        zoomBy(cameraState, DOUBLE_TAP_ZOOM_FACTOR)
+                    }
+                }
 
                 MotionEvent.ACTION_UP -> {
                     if (!moved) {
+                        val isDoubleTap =
+                            event.eventTime - lastTapUpTimeMs <= doubleTapTimeoutMs
+                        // A third quick tap starts a new pair rather than zooming again on the
+                        // second one's timestamp — the platform's own double-tap bookkeeping.
+                        lastTapUpTimeMs = if (isDoubleTap) 0L else event.eventTime
+                        if (isDoubleTap && cameraState.gesturesEnabled) {
+                            zoomBy(cameraState, 1f / DOUBLE_TAP_ZOOM_FACTOR)
+                        }
                         currentOnTap?.invoke(
                             hitResult?.nodeOrNull?.let {
                                 ModelHit(
@@ -388,6 +454,8 @@ private fun rememberGestureHandler(
                                 )
                             },
                         )
+                    } else {
+                        lastTapUpTimeMs = 0L
                     }
                 }
             }

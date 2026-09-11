@@ -361,6 +361,11 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
                         // void is not an accident to punish — it leaves the camera alone.
                         subjectOf(node, subjectNodes)?.let { flyTo(it, CameraView.Hero) }
                     },
+                    // This screen deliberately keeps its own meaning for the double-tap: back
+                    // to the whole stage. The SDK's built-in double-tap zoom (#3608) still runs
+                    // first — `onDoubleTapCamera` is dispatched before `listener.onDoubleTap` —
+                    // and this flight then supersedes it, which is exactly the priority a
+                    // consumer callback is supposed to have.
                     onDoubleTap = { _, _ -> flyTo(null, CameraView.Hero) },
                 ),
             ) {

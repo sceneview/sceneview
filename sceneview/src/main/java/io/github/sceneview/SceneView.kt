@@ -633,8 +633,19 @@ fun SceneView(
     // redundant JNI setViewport call every frame.
     val seededManipulatorRef = remember { AtomicReference<CameraGestureDetector.CameraManipulator?>(null) }
 
+    // True while the live touch stream is absorbed by an editable node. Double-tap recognition
+    // happens inside `gestureDetector`, which — unlike the camera detector — is fed even for
+    // editable nodes, so the built-in zoom needs this flag to honour the same gesture isolation
+    // the rest of the camera gestures get below (#3608).
+    val cameraGesturesAbsorbedRef = remember { AtomicBoolean(false) }
+
     SideEffect {
         gestureDetector.listener = onGestureListener
+        gestureDetector.onDoubleTapCamera = { event ->
+            if (!cameraGesturesAbsorbedRef.get()) {
+                cameraGestureDetectorRef.get()?.onDoubleTap(event)
+            }
+        }
         cameraGestureDetectorRef.get()?.cameraManipulator = cameraManipulator
         // Re-seed the (newly-swapped) manipulator with the current viewport so its pan/raycast
         // math is correct from the first gesture, without waiting for a surface resize. Only when
@@ -674,13 +685,16 @@ fun SceneView(
             consumedByNode = capturedNode?.onCapturedTouchEvent(event) == true ||
                     (hitResult != null && hitNode?.onTouchEvent(event, hitResult) == true)
             if (!consumedByNode) {
-                gestureDetector.onTouchEvent(event, hitResult)
                 // Skip the camera detector when the touch is on an editable node — the node
                 // owns the gesture. We check the hit node's master `isEditable` (and not the
                 // per-axis flags) so a node that's "editable but with all axes locked" still
                 // absorbs the touch — locking an axis should freeze the node, not divert the
                 // gesture to the camera (that would surprise the user).
                 val absorbedByEditableNode = hitNode?.isEditable == true
+                // Published before `gestureDetector` runs: its double-tap callback fires from
+                // inside that call and reads this to apply the same isolation (#3608).
+                cameraGesturesAbsorbedRef.set(absorbedByEditableNode)
+                gestureDetector.onTouchEvent(event, hitResult)
                 if (!absorbedByEditableNode) {
                     cameraGestureDetectorRef.get()?.onTouchEvent(event)
                 }

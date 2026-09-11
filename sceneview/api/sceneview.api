@@ -1481,13 +1481,17 @@ public class io/github/sceneview/gesture/CameraGestureDetector {
 	public fun <init> (Lkotlin/jvm/functions/Function0;Lcom/google/android/filament/utils/Manipulator;)V
 	public fun <init> (Lkotlin/jvm/functions/Function0;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;)V
 	public final fun getCameraManipulator ()Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
+	public final fun isDoubleTapZoomEnabled ()Z
 	public final fun isPanEnabled ()Z
+	public final fun onDoubleTap (Landroid/view/MotionEvent;)V
 	public final fun onTouchEvent (Landroid/view/MotionEvent;)V
 	public final fun setCameraManipulator (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;)V
+	public final fun setDoubleTapZoomEnabled (Z)V
 	public final fun setPanEnabled (Z)V
 }
 
 public abstract interface class io/github/sceneview/gesture/CameraGestureDetector$CameraManipulator {
+	public fun doubleTapZoom (IIZ)V
 	public abstract fun getTransform ()Ldev/romainguy/kotlin/math/Mat4;
 	public abstract fun grabBegin (IIZ)V
 	public abstract fun grabEnd ()V
@@ -1499,6 +1503,10 @@ public abstract interface class io/github/sceneview/gesture/CameraGestureDetecto
 	public abstract fun update (F)V
 }
 
+public final class io/github/sceneview/gesture/CameraGestureDetector$CameraManipulator$DefaultImpls {
+	public static fun doubleTapZoom (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;IIZ)V
+}
+
 public final class io/github/sceneview/gesture/CameraGestureDetector$Companion {
 	public final fun createDefaultCameraManipulator (Lcom/google/android/filament/utils/Manipulator;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
 	public static synthetic fun createDefaultCameraManipulator$default (Lio/github/sceneview/gesture/CameraGestureDetector$Companion;Lcom/google/android/filament/utils/Manipulator;ILjava/lang/Object;)Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator;
@@ -1507,6 +1515,8 @@ public final class io/github/sceneview/gesture/CameraGestureDetector$Companion {
 public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator : io/github/sceneview/gesture/CameraGestureDetector$CameraManipulator {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/gesture/CameraGestureDetector$DefaultCameraManipulator$Companion;
+	public static final field DEFAULT_DOUBLE_TAP_ZOOM_DURATION_SECONDS F
+	public static final field DEFAULT_DOUBLE_TAP_ZOOM_FACTOR F
 	public static final field DEFAULT_MAX_ZOOM_DISTANCE_FACTOR F
 	public static final field DEFAULT_MIN_ZOOM_DISTANCE_FACTOR F
 	public static final field DEFAULT_ORBIT_ZOOM_SPEED F
@@ -1528,6 +1538,9 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;F)V
 	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FF)V
 	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun doubleTapZoom (IIZ)V
+	public final fun getDoubleTapZoomDurationSeconds ()F
+	public final fun getDoubleTapZoomFactor ()F
 	protected final fun getManipulator ()Lcom/google/android/filament/utils/Manipulator;
 	protected final fun getManipulatorZoomSpeed ()F
 	public final fun getMaxZoomDistanceFactor ()F
@@ -1538,9 +1551,13 @@ public class io/github/sceneview/gesture/CameraGestureDetector$DefaultCameraMani
 	public fun grabBegin (IIZ)V
 	public fun grabEnd ()V
 	public fun grabUpdate (II)V
+	public final fun isDoubleTapZoomEnabled ()Z
 	public fun scrollBegin (IIF)V
 	public fun scrollEnd ()V
 	public fun scrollUpdate (IIFF)V
+	public final fun setDoubleTapZoomDurationSeconds (F)V
+	public final fun setDoubleTapZoomEnabled (Z)V
+	public final fun setDoubleTapZoomFactor (F)V
 	public final fun setMaxZoomDistanceFactor (F)V
 	public final fun setMinZoomDistanceFactor (F)V
 	public fun setViewport (II)V
@@ -1551,6 +1568,11 @@ public final class io/github/sceneview/gesture/CameraGestureDetector$DefaultCame
 }
 
 public final class io/github/sceneview/gesture/CameraGestureMathKt {
+	public static final fun animatedZoomDistance (FFF)F
+	public static final fun easeInOutCubic (F)F
+	public static final fun zoomedDistanceForDoubleTap (FFZFF)F
+	public static final fun zoomedDistanceForDoubleTap (FFZFFF)F
+	public static synthetic fun zoomedDistanceForDoubleTap$default (FFZFFFILjava/lang/Object;)F
 	public static final fun zoomedDistanceForPinch (FFFFF)F
 	public static final fun zoomedDistanceForPinch (FFFFFF)F
 	public static final fun zoomedDistanceForPinch (FFFFFFF)F
@@ -1574,6 +1596,7 @@ public final class io/github/sceneview/gesture/FovZoomCameraManipulator : io/git
 	public fun <init> (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/CameraNode;Lkotlin/ranges/ClosedFloatingPointRange;)V
 	public fun <init> (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/CameraNode;Lkotlin/ranges/ClosedFloatingPointRange;F)V
 	public synthetic fun <init> (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Lio/github/sceneview/node/CameraNode;Lkotlin/ranges/ClosedFloatingPointRange;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun doubleTapZoom (IIZ)V
 	public fun getTransform ()Ldev/romainguy/kotlin/math/Mat4;
 	public fun grabBegin (IIZ)V
 	public fun grabEnd ()V

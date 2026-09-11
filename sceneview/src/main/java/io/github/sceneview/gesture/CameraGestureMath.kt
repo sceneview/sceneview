@@ -169,3 +169,146 @@ internal fun nextFov(
         range.endInclusive.toDouble(),
     )
 }
+
+/**
+ * The camera-to-target distance a **double-tap** (or two-finger tap) should land on.
+ *
+ * Mirrors the Maps / Photos convention: one double-tap divides the distance by [factor], one
+ * two-finger tap multiplies it back. The step is a *ratio*, like the pinch (see [zoomedDistance]),
+ * so the gesture covers the same fraction of the framing whether the subject is a 5 cm bee or a
+ * 155 m landscape, and it is clamped into the same `[home · minFactor, home · maxFactor]` window
+ * the pinch uses — the eye can never reach, let alone cross, the orbit pivot (#3403).
+ *
+ * **The dead-end escape.** Repeatedly double-tapping a photo viewer that has no zoom-out gesture
+ * would strand the user at the closest distance. So when the camera is already sitting on the
+ * lower clamp, a zoom-**in** double-tap returns [homeDistance] instead: the gesture cycles back to
+ * the framing the scene was homed at, exactly like a second double-tap in Google Photos.
+ *
+ * @param distance          Current camera-to-target distance. Non-finite / non-positive returns
+ *                          the lower clamp.
+ * @param homeDistance      Distance the manipulator was homed at — the reference for the clamps
+ *                          and the target of the dead-end escape. Non-positive falls back to
+ *                          [distance].
+ * @param zoomIn            `true` for a double-tap (closer), `false` for a two-finger tap.
+ * @param factor            Distance ratio one tap covers. Must be `> 1`; `2` halves the distance.
+ * @param minDistanceFactor Closest the tap may take the camera, as a fraction of [homeDistance].
+ * @param maxDistanceFactor Furthest, as a multiple of [homeDistance].
+ * @return The clamped new distance. Equal to [distance] when the gesture would not move.
+ */
+internal fun doubleTapZoomedDistance(
+    distance: Float,
+    homeDistance: Float,
+    zoomIn: Boolean,
+    factor: Float,
+    minDistanceFactor: Float,
+    maxDistanceFactor: Float,
+): Float {
+    val home = if (homeDistance.isFinite() && homeDistance > 0f) homeDistance else distance
+    if (!home.isFinite() || home <= 0f) return MIN_ORBIT_DISTANCE
+    return zoomedDistanceForDoubleTap(
+        distance = distance,
+        homeDistance = home,
+        zoomIn = zoomIn,
+        minDistance = (home * minDistanceFactor)
+            .takeIf { it.isFinite() && it > 0f } ?: MIN_ORBIT_DISTANCE,
+        maxDistance = home * maxDistanceFactor,
+        factor = factor,
+    )
+}
+
+/**
+ * The camera-to-target distance a double-tap should land on — the public, absolute-bounds form of
+ * the same step [doubleTapZoomedDistance] applies internally, and the double-tap counterpart of
+ * [zoomedDistanceForPinch].
+ *
+ * Use it when your manipulator owns its own orbit distance (a slider, a saved state) instead of
+ * delegating the dolly to a Filament `Manipulator`. Pair it with [animatedZoomDistance] driven
+ * from `update(deltaTime)` to get the eased move rather than a jump cut:
+ *
+ * ```kotlin
+ * override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+ *     animationStart = zoom
+ *     animationTarget = zoomedDistanceForDoubleTap(
+ *         distance = zoom,
+ *         homeDistance = fit,
+ *         zoomIn = zoomIn,
+ *         minDistance = fit * 0.25f,
+ *         maxDistance = fit * 4f,
+ *     )
+ *     animationElapsed = 0f
+ * }
+ *
+ * override fun update(deltaTime: Float) {
+ *     animationElapsed += deltaTime
+ *     val progress = animationElapsed / 0.3f
+ *     zoom = animatedZoomDistance(animationStart, animationTarget, progress)
+ * }
+ * ```
+ *
+ * @param distance     Current camera-to-target distance. Non-finite / non-positive returns
+ *                     [minDistance].
+ * @param homeDistance Distance the scene was framed at — the target of the dead-end escape
+ *                     described above.
+ * @param zoomIn       `true` for a double-tap (closer), `false` for a two-finger tap.
+ * @param minDistance  Closest the tap may take the camera. Must be `> 0`.
+ * @param maxDistance  Furthest the tap may take the camera.
+ * @param factor       Distance ratio one tap covers. Must be `> 1`; `2` halves the distance.
+ * @return The clamped new distance. Equal to [distance] when the gesture would not move.
+ */
+@JvmOverloads
+fun zoomedDistanceForDoubleTap(
+    distance: Float,
+    homeDistance: Float,
+    zoomIn: Boolean,
+    minDistance: Float,
+    maxDistance: Float,
+    factor: Float =
+        CameraGestureDetector.DefaultCameraManipulator.DEFAULT_DOUBLE_TAP_ZOOM_FACTOR,
+): Float {
+    val low = minDistance.takeIf { it.isFinite() && it > 0f } ?: MIN_ORBIT_DISTANCE
+    val high = maxDistance.takeIf { it.isFinite() && it > low } ?: low
+    val home = if (homeDistance.isFinite() && homeDistance > 0f) homeDistance else distance
+    if (!distance.isFinite() || distance <= 0f) return low
+    val step = if (factor.isFinite() && factor > 1f) {
+        factor
+    } else {
+        CameraGestureDetector.DefaultCameraManipulator.DEFAULT_DOUBLE_TAP_ZOOM_FACTOR
+    }
+    // Already on the lower clamp and asked to go closer: cycle back to the homed framing rather
+    // than no-op forever. `1.001` absorbs the float drift of the repeated multiply/divide.
+    if (zoomIn && distance <= low * 1.001f) return home.coerceIn(low, high)
+    val raw = if (zoomIn) distance / step else distance * step
+    if (!raw.isFinite()) return distance.coerceIn(low, high)
+    return raw.coerceIn(low, high)
+}
+
+/**
+ * Standard cubic ease-in-out on `[0, 1]`, clamped — the acceleration curve every platform's
+ * double-tap zoom uses, so the move reads as one deliberate gesture instead of a jump cut.
+ */
+fun easeInOutCubic(progress: Float): Float {
+    if (!progress.isFinite()) return 1f
+    val t = progress.coerceIn(0f, 1f)
+    return if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).let { it * it * it } / 2f
+}
+
+/**
+ * The camera-to-target distance part-way through a double-tap zoom animation.
+ *
+ * Interpolation is **geometric**, not linear: `start · (target / start)^eased(progress)`. A linear
+ * ramp on a distance looks fast at the far end and crawls at the near end, because what the eye
+ * reads is the *ratio* of successive framings, not their difference — the same reason the pinch is
+ * exponential ([zoomedDistance]). Geometric interpolation keeps the apparent zoom speed constant
+ * over the whole move.
+ *
+ * @param start    Distance the animation began at. Must be `> 0`.
+ * @param target   Distance it ends on. Must be `> 0`.
+ * @param progress Elapsed fraction in `[0, 1]`; clamped, and eased by [easeInOutCubic].
+ */
+fun animatedZoomDistance(start: Float, target: Float, progress: Float): Float {
+    if (!start.isFinite() || start <= 0f) return target
+    if (!target.isFinite() || target <= 0f) return start
+    val eased = easeInOutCubic(progress)
+    val interpolated = start * exp(ln(target / start) * eased)
+    return if (interpolated.isFinite() && interpolated > 0f) interpolated else target
+}
