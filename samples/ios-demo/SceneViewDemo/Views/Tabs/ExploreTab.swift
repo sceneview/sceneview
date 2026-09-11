@@ -607,7 +607,12 @@ struct ExploreTab: View {
                 .focused($inlineSearchFocused)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
+                // `.textInputAutocapitalization` is iOS-only; macOS has no
+                // software keyboard to auto-capitalise, so the modifier is
+                // simply absent there (same as the Showcase header field).
+                #if os(iOS)
                 .textInputAutocapitalization(.never)
+                #endif
                 .onSubmit { submitSearch() }
                 .accessibilityIdentifier("explore-search-field")
             if !searchText.isEmpty {
