@@ -702,6 +702,15 @@ class HeroOrbitCameraManipulator(
     private val yHeight: Float,
     private val target: Position,
     private val resumeAfterMillis: Long = 3_000L,
+    /**
+     * Optional live override of [radius], read once per frame. A demo that animates the
+     * framing — zooming onto a picked object and back out (#3609) — passes the animation's
+     * current value here instead of rebuilding the manipulator, which would drop the
+     * user-control fallback mid-gesture.
+     */
+    private val radiusProvider: (() -> Float)? = null,
+    /** Optional live override of [target], same contract as [radiusProvider]. */
+    private val targetProvider: (() -> Position)? = null,
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
     private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
         null
@@ -717,8 +726,26 @@ class HeroOrbitCameraManipulator(
 
     fun isPaused(): Boolean = fallback != null
 
+    private fun currentRadius(): Float = radiusProvider?.invoke() ?: radius
+
+    private fun currentTarget(): Position = targetProvider?.invoke() ?: target
+
+    /**
+     * Hand control back to the idle orbit immediately, without waiting out
+     * [resumeAfterMillis]. A demo calls this when it starts a camera animation of its own
+     * (#3609): the animation drives [radiusProvider] / [targetProvider], which the
+     * user-control fallback ignores, so an un-cleared fallback would freeze the camera for
+     * the whole animation and the zoom would simply not play.
+     */
+    fun resumeAuto() {
+        fallback = null
+        grabEndTimeNanos = 0L
+    }
+
     private fun currentEye(): Position {
         val rad = Math.toRadians(yawProvider().toDouble()).toFloat()
+        val radius = currentRadius()
+        val target = currentTarget()
         return Position(
             x = sin(rad) * radius + target.x,
             y = target.y + yHeight,
@@ -730,7 +757,7 @@ class HeroOrbitCameraManipulator(
         val eye = currentEye()
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = eye,
-            target = target,
+            target = currentTarget(),
             up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
         )
         return io.github.sceneview.math.Transform(mat)
@@ -742,7 +769,7 @@ class HeroOrbitCameraManipulator(
             // seamless — the first drag begins exactly where we stopped orbiting.
             fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
                 eyePosition = currentEye(),
-                targetPosition = target,
+                targetPosition = currentTarget(),
             ).also { it.setViewport(viewportW, viewportH) }
         }
         // A new gesture is starting — clear the "idle since" stamp so the resume timer
@@ -769,6 +796,7 @@ class HeroOrbitCameraManipulator(
         // of the poles and needs no clamp.
         val transform = fb.getTransform()
         val eye = transform.position
+        val target = currentTarget()
         val clampedEye = clampOrbitEyePitch(eye, target)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
