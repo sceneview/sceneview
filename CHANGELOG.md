@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## v4.36.0 — 2026-09-11
+
+### Added
+
+Double-tap to zoom in, two-finger tap to zoom out, on every `Scene` / `SceneView` — the gesture
+convention of photo viewers and maps, animated over 300 ms and clamped by the same distance limits
+as the pinch. On by default; opt out with
+`CameraGestureDetector.DefaultCameraManipulator.isDoubleTapZoomEnabled = false`, and re-tune with
+`doubleTapZoomFactor` / `doubleTapZoomDurationSeconds`. A consumer's own `onDoubleTap` callback and
+tap-to-pick still fire — the camera does not steal the event.
+
+Custom `CameraManipulator` implementations opt in by overriding `doubleTapZoom(x, y, zoomIn)`; the
+step and the easing are public (`zoomedDistanceForDoubleTap`, `animatedZoomDistance`) so they do
+not have to be reimplemented.
+
+### Fixed
+
+A `ModelNode` (or any DSL child node) added to an already-running `Scene`/`SceneView` is now drawn immediately instead of staying invisible until an unrelated surface resize. Attaching or detaching a node now schedules a frame the same way a resize does, so a render-on-demand scene (`isRendering = false`) no longer needs a workaround nudge for newly attached content to actually appear.
+`SurfaceMirrorer` recordings are no longer uniformly black, and the live viewport no longer
+goes black while recording. Mirroring now renders the scene a second time into each mirrored
+surface's own swap chain, after the scene's own frame has been presented, instead of calling
+Filament's `Renderer.copyFrame` in the middle of it — that copy left the window's colour buffer
+undefined on drivers that discard it once it leaves the EGL draw slot, so both the MP4 and the
+on-screen frame came out black. Wiring a `surfaceMirrorer` no longer forces the window swap
+chain to `CONFIG_READABLE`.
+Dokka no longer sees the Android source roots twice under AGP 9, so the javadoc jar and the API docs build again at release time.
+The Explore tab's search field no longer breaks the macOS demo build: `textInputAutocapitalization` is iOS-only and is now behind an `#if os(iOS)` guard.
+**Materials demo** — a drag that started on a material name moved nothing. The floating
+labels were `clickable`, and a Compose node that accepts pointer input wins the hit test
+outright, so the `SceneView` underneath was never offered the gesture. The labels are now
+pure decoration and the wall orbits from anywhere, labels included. Tapping a sphere no
+longer teleports to *Inspect* either: the camera flies onto the picked ball on an eased
+dolly and flies back out to the wall when you leave *Inspect*. The sheet and the peek
+header now say the spheres are tappable, the tap answers with a selection haptic, and the
+focused label lights up while the camera travels. (#3609)
+
 ## v4.35.0 — 2026-09-11
 
 ### Added
