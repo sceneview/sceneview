@@ -208,7 +208,12 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                 text = {
                     Text(
                         text = if (recording != null) {
-                            stringResource(R.string.demo_video_recording_stop) + " · %d:%02d".format(Locale.US, elapsedSeconds / 60, elapsedSeconds % 60)
+                            stringResource(R.string.demo_video_recording_stop) +
+                                " · %d:%02d".format(
+                                    Locale.US,
+                                    elapsedSeconds / 60,
+                                    elapsedSeconds % 60,
+                                )
                         } else {
                             stringResource(R.string.demo_video_recording_record)
                         },

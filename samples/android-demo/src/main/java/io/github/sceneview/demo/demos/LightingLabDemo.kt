@@ -303,7 +303,11 @@ fun LightingLabDemo(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             SectionHeader(stringResource(R.string.demo_lighting_lab_section_environment))
-            Text("Environment lighting uses a panoramic image to light the model and create reflections.", style = SceneViewTokens.Type.body)
+            Text(
+                "Environment lighting uses a panoramic image to light the model and " +
+                    "create reflections.",
+                style = SceneViewTokens.Type.body,
+            )
             LabeledSlider(
                 label = stringResource(R.string.demo_lighting_ibl_intensity),
                 value = iblIntensity,
@@ -350,7 +354,10 @@ fun LightingLabDemo(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
             SectionHeader(stringResource(R.string.demo_lighting_lab_section_frame))
-            Text("Contact shading (ambient occlusion) darkens small creases and nearby surfaces.", style = SceneViewTokens.Type.body)
+            Text(
+                "Contact shading (ambient occlusion) darkens small creases and nearby surfaces.",
+                style = SceneViewTokens.Type.body,
+            )
             SwitchRow(
                 label = stringResource(R.string.demo_lighting_lab_ssao),
                 checked = ssaoEnabled,

@@ -5284,37 +5284,36 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Viewer
 
-- `model-viewer` — Models. Any glTF, HDR lighting, one tap to AR.
-- `splat-preview` — Gaussian Splatting. 3D Gaussian splat radiance-field rendering.
-- `animation-physics` — Animation & Physics. Skeletal clips plus rigid-body physics.
-- `double-pendulum` — Double Pendulum. Chaotic two-link physics from shared KMP.
+- `model-viewer` — Models. Explore a model in 3D or in your room.
+- `splat-preview` — Gaussian Splat Study. Inspect a procedural cloud of soft points.
+- `animation-physics` — Animation & Physics. Play character animations and try collisions.
+- `double-pendulum` — Double Pendulum. Explore two linked arms in chaotic motion.
 
 ### Geometry & Materials
 
 - `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
-- `lines-paths` — Lines & Paths. Splines, polylines and point sets.
-- `two-d-in-three-d` — 2D in 3D. Interactive Compose cards anchored in world space.
-- `materials` — Materials. PBR extensions and runtime material streaming.
+- `lines-paths` — Lines & Paths. Follow animated curves and paths.
+- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `materials` — Materials. Compare metal, glass, fabric and glow.
 
 ### Rendering
 
-- `lighting` — Lighting. Light types with a movable orbiting light.
-- `lighting-lab` — Lighting Lab. Sky, HDR environment, reflections, post-FX.
-- `contact-shadow-preview` — Contact Shadow Preview. Procedural contact shadow, grounded vs floating.
+- `lighting` — Lighting. Compare studio light, daylight and reflections.
+- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
+- `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
 
 ### Interaction
 
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
-- `picking-collision` — Picking & Collision. Ray hit-test with picked ViewNode overlays.
+- `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 
 ### AR Placement
 
-- `ar-placement` — Tap to Place. Pick a model, then tap a surface to place it.
+- `ar-placement` — AR Placement. Place objects on a floor or mount a TV on a wall.
 - `placement-scene` — One-Call AR. The same tap-to-place screen, in a single SDK call.
-- `wall-placement` — Wall Placement. Mount a TV on a wall, floor-to-wall aligned.
-- `ar-plane-node` — Plane Lifecycle. PlaneNode lifecycle: added, updated, removed.
-- `ar-plane-renderer-v2` — Plane Renderer V2. Depth, PBR and HDR plane renderer, V1↔V2.
+- `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
+- `ar-plane-renderer-v2` — Plane Renderer V2. See floors, walls and ceilings as they are found.
 - `ar-pose` — Pose Placement. Free pose positioning of a node in AR.
 - `ar-measure` — Measure. Tap two points, read the distance.
 - `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
@@ -5323,8 +5322,8 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
 - `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-image-stabilization` — Image Stabilization (EIS). Electronic stabilization of the AR feed.
-- `ar-body-tracker` — AR Body Tracker. Live MediaPipe pose skeleton on the AR feed.
+- `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
+- `ar-body-tracker` — AR Body Tracker. Follow a person with a live skeleton.
 - `ar-hand-tracking` — Hand Tracking (Jetpack XR). Hand skeleton on Android XR headsets.
 - `ar-xr-face` — Face Tracking (Jetpack XR). Face mesh on Android XR headsets.
 
@@ -5335,26 +5334,26 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
 - `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
-- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Confidence-filtered raw depth point cloud.
-- `ar-point-cloud` — Point Cloud. World-space feature points as a point cloud.
-- `ar-scene-mesh` — Scene Geometry. Streetscape meshes, classified or raw.
-- `ar-scene-semantics` — Scene Semantics. 12-class outdoor scene labeling HUD.
-- `ar-ml-object-label` — ML Kit Object Labels. ML Kit detection with anchored 3D labels.
+- `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
+- `ar-point-cloud` — Point Cloud. See the points your camera tracks.
+- `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
+- `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
+- `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
 - `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
 
 ### AR Anchors
 
 - `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-collaborative` — Collaborative AR. Multi-user session sync over any transport.
-- `ar-geospatial-anchors` — Geospatial Anchors. Anchor models on terrain or rooftops by lat/lng.
+- `ar-collaborative` — Collaborative AR. Place one object in two shared views.
+- `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
 
 ### Platform
 
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `video-recording` — Video Recording. Record the scene to MP4 in-app.
-- `secondary-camera` — Secondary Camera (PiP). Picture-in-picture second camera view.
-- `debug-overlay` — Debug Overlay. Live FPS and render stats overlay.
+- `video-recording` — Scene to MP4. Record and share a moving 3D model.
+- `secondary-camera` — Secondary Camera (PiP). Add an independent camera inset to a 3D viewer.
+- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
 - `ar-record-playback` — AR Recording. Record an AR session and replay it anywhere.
 - `ar-rerun` — Rerun Debug. Stream pose and planes to the Rerun viewer.
 

@@ -158,7 +158,12 @@ fun ARHandTrackingDemo(onBack: () -> Unit) {
                             height = XrHandSkeleton.boneLength(from, to),
                             position = Position((from.x + to.x) / 2f, (from.y + to.y) / 2f, (from.z + to.z) / 2f),
                             rotation = io.github.sceneview.math.Rotation(
-                                x = Math.toDegrees(kotlin.math.atan2(dz, kotlin.math.sqrt(dx * dx + dy * dy)).toDouble()).toFloat(),
+                                x = Math.toDegrees(
+                                    kotlin.math.atan2(
+                                        dz,
+                                        kotlin.math.sqrt(dx * dx + dy * dy),
+                                    ).toDouble()
+                                ).toFloat(),
                                 z = -Math.toDegrees(kotlin.math.atan2(dx, dy).toDouble()).toFloat(),
                             ),
                             materialInstance = boneMaterial,

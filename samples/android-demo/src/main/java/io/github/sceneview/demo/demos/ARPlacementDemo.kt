@@ -107,7 +107,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // Phase + session options (mode, snap-to-plane, reticle). Saveable, so a rotation in the
     // camera does not dump the user back onto the chooser.
     val flow = rememberPlacementFlowState()
-    var wallMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DemoSettings.consumeInitialTab() == 1) }
+    var wallMode by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(DemoSettings.consumeInitialTab() == 1)
+    }
 
     // The shared session owns the placed-model list, anchors and camera/plane/reticle
     // signals. The demo reads it for Reset; the session writes it on every tap/frame.

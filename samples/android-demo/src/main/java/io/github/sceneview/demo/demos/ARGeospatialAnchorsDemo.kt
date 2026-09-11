@@ -424,7 +424,8 @@ private fun TerrainSection(
                 cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
                 geospatialUnavailable != null ->
                     DemoStatusBanner(
-                        "${geospatialUnavailable!!} — try an outdoor area covered by Street View; cloud setup is required",
+                        "${geospatialUnavailable!!} — try an outdoor area covered by " +
+                            "Street View; cloud setup is required",
                         tone = DemoStatusTone.Blocked,
                     )
                 // The SDK's availability overlay already fills the viewport with the
@@ -850,7 +851,8 @@ private fun RooftopSection(
                 cloudStatus.isUnavailable -> CloudServiceStatusBanner(cloudStatus)
                 geospatialUnavailable != null ->
                     DemoStatusBanner(
-                        "${geospatialUnavailable!!} — try an outdoor area covered by Street View; cloud setup is required",
+                        "${geospatialUnavailable!!} — try an outdoor area covered by " +
+                            "Street View; cloud setup is required",
                         tone = DemoStatusTone.Blocked,
                     )
                 // The SDK's availability overlay already fills the viewport with the

@@ -238,7 +238,8 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // reflects the in-flight save state.
             if (!isConnected) {
                 DemoStatusBanner(
-                    text = "Saving needs the Rerun recording service on a connected computer. Open Settings for connection details.",
+                    text = "Saving needs the Rerun recording service on a connected " +
+                        "computer. Open Settings for connection details.",
                     tone = DemoStatusTone.Guidance,
                 )
             }

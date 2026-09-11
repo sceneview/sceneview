@@ -80,7 +80,10 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
 
     // Mesh-vertex accent (SceneView primary blue) and region accent (purple).
     val vertexMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Primary)
-    val regionMaterial = rememberMaterialInstance(materialLoader, io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay.onScrim)
+    val regionMaterial = rememberMaterialInstance(
+        materialLoader,
+        io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay.onScrim,
+    )
 
     val firstFrame = rememberFirstFrameState()
 
@@ -153,7 +156,9 @@ fun ARXrFaceDemo(onBack: () -> Unit) {
                     for (i in 0 until mesh.vertexCount) {
                         val from = XrFaceMesh.vertexAt(mesh, i) ?: continue
                         val next = if ((i + 1) % REFERENCE_RING_SEGMENTS != 0) i + 1 else -1
-                        listOf(next, i + REFERENCE_RING_SEGMENTS).filter { it in 0 until mesh.vertexCount }.forEach { j ->
+                        listOf(next, i + REFERENCE_RING_SEGMENTS)
+                            .filter { it in 0 until mesh.vertexCount }
+                            .forEach { j ->
                             XrFaceMesh.vertexAt(mesh, j)?.let { to ->
                                 LineNode(start = from, end = to, materialInstance = regionMaterial)
                             }

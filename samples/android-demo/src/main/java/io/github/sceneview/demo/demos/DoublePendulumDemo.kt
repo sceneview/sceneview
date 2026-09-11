@@ -133,7 +133,13 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     // back off proportionally to its radius so the whole swing always fits.
     val reach = length1 + length2
     val envelopeCenter = Position(pivot.x, pivot.y, pivot.z)
-    val cameraDistance = io.github.sceneview.demo.rememberFitOrbitRadius(reach * 2f, reach * 2f, 0.1f, fill = 0.85f, azimuthInvariant = false)
+    val cameraDistance = io.github.sceneview.demo.rememberFitOrbitRadius(
+        reach * 2f,
+        reach * 2f,
+        0.1f,
+        fill = 0.85f,
+        azimuthInvariant = false,
+    )
 
     val cameraNode = rememberCameraNode(engine) {
         position = Position(envelopeCenter.x, envelopeCenter.y, envelopeCenter.z + cameraDistance)

@@ -135,7 +135,11 @@ fun DemoBottomOverlayScope.CloudServiceStatusBanner(
     if (status == CloudServiceStatus.ApiKeyMissing || status is CloudServiceStatus.ApiKeyRejected) {
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         androidx.compose.material3.FilledTonalButton(onClick = {
-            runCatching { uriHandler.openUri("https://github.com/sceneview/sceneview/blob/main/$ARCORE_CLOUD_SETUP_DOC") }
+            runCatching {
+                uriHandler.openUri(
+                    "https://github.com/sceneview/sceneview/blob/main/$ARCORE_CLOUD_SETUP_DOC"
+                )
+            }
         }) { androidx.compose.material3.Text("Open setup guide") }
     }
 }

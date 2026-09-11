@@ -366,7 +366,11 @@ fun DemoScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        top = if (bottomOverlayReservesScene) maxOf(identityRow + statusBarInset, topOverlayBand) else 0.dp,
+                        top = if (bottomOverlayReservesScene) {
+                            maxOf(identityRow + statusBarInset, topOverlayBand)
+                        } else {
+                            0.dp
+                        },
                         bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
                     )
                     // Observe taps without taking them: the 3D view keeps its drags.
@@ -387,7 +391,12 @@ fun DemoScaffold(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
                     ) {
                         if (arSessionFailed) {
-                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surface),
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 io.github.sceneview.demo.common.DemoStatusCard(
                                     text = stringResource(R.string.demo_ar_session_failed),
                                     tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
@@ -478,7 +487,8 @@ fun DemoScaffold(
             }
 
             // Bottom band: status pill + demo overlays stacked above the dock.
-            if (!arSessionFailed && arOverlaysEnabled && (bottomOverlay != null || peekHeader != null)) {
+            val hasBottomBandContent = bottomOverlay != null || peekHeader != null
+            if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                 DemoBottomOverlay(
                     reservedBottom = dockClearance,
                     onBandHeightChanged = { bottomOverlayBandPx = it },

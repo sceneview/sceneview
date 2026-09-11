@@ -190,7 +190,9 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val labelCamera = io.github.sceneview.rememberCameraNode(engine)
     val groundedLabel = stringResource(R.string.contact_shadow_label_grounded)
     val noShadowLabel = stringResource(R.string.contact_shadow_label_floating)
-    val labelsFontSize = with(androidx.compose.ui.platform.LocalDensity.current) { SceneViewTokens.Type.caption.fontSize.toPx() }
+    val labelsFontSize = with(androidx.compose.ui.platform.LocalDensity.current) {
+        SceneViewTokens.Type.card.fontSize.toPx()
+    }
 
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
@@ -374,15 +376,19 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
 
             listOf(
                 Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
-                Position(BOX_HALF_SPACING, DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f, BOXES_Z) to noShadowLabel,
+                Position(
+                    BOX_HALF_SPACING,
+                    DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
+                    BOXES_Z,
+                ) to noShadowLabel,
             ).forEach { (position, label) ->
                 TextNode(
                     text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
                     fontSize = labelsFontSize,
                     textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
                     backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
-                    widthMeters = 0.46f,
-                    heightMeters = 0.12f,
+                    widthMeters = 0.62f,
+                    heightMeters = 0.16f,
                     position = position,
                     cameraPositionProvider = { labelCamera.worldPosition },
                 )

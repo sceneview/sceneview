@@ -37,6 +37,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.GeometryLayout
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position

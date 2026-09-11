@@ -399,7 +399,12 @@ private fun AnimationSection(
     // baseRadius / baseYHeight / defaultFovDegrees are sourced from DemoMath so the
     // pure-JVM cinematic-camera tests (AnimationDemoStateMachineTest, issue #880)
     // assert against the same constants the demo actually renders with.
-    val baseRadius = io.github.sceneview.demo.rememberFitOrbitRadius(activeModel.scaleToUnits * 0.7f, activeModel.scaleToUnits * 1.2f, activeModel.scaleToUnits * 0.7f, fill = 0.75f)
+    val baseRadius = io.github.sceneview.demo.rememberFitOrbitRadius(
+        activeModel.scaleToUnits * 0.7f,
+        activeModel.scaleToUnits * 1.2f,
+        activeModel.scaleToUnits * 0.7f,
+        fill = 0.75f,
+    )
     val baseYHeight = DemoMath.BASE_Y_HEIGHT
     // The soldier is lifted so feet rest on y=0; its bbox center (chest) is at y=0.5 in
     // world space. Camera target lives at chest height so all modes frame the upper body

@@ -52,7 +52,11 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
         ) {
             Text("Place once. See it together.", style = SceneViewTokens.Type.title)
-            Text("Two simulated viewers on this device share the same objects. No second phone needed.", style = SceneViewTokens.Type.body)
+            Text(
+                "Two simulated viewers on this device share the same objects. " +
+                    "No second phone needed.",
+                style = SceneViewTokens.Type.body,
+            )
             Button(
                 onClick = {
                     placement++
@@ -72,7 +76,12 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
             }
             TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
             if (learnMore) {
-                Text("This preview passes object changes between two local sessions. A multi-device app also needs a shared spatial anchor and a network connection so everyone sees objects in the same place.", style = SceneViewTokens.Type.body)
+                Text(
+                    "This preview passes object changes between two local sessions. " +
+                        "A multi-device app also needs a shared spatial anchor and a network " +
+                        "connection so everyone sees objects in the same place.",
+                    style = SceneViewTokens.Type.body,
+                )
             }
         }
     }
@@ -83,11 +92,18 @@ private fun SessionPane(title: String, session: CollaborativeSession) {
     val engine = rememberEngine()
     val materials = rememberMaterialLoader(engine)
     val accent = MaterialTheme.colorScheme.primary
-    val material = remember(materials, accent) { materials.createColorInstance(accent, metallic = 0.25f, roughness = 0.3f) }
+    val material = remember(materials, accent) {
+        materials.createColorInstance(accent, metallic = 0.25f, roughness = 0.3f)
+    }
     Card(Modifier.fillMaxWidth()) {
         Text(title, modifier = Modifier.padding(SceneViewTokens.Space.md), style = SceneViewTokens.Type.card)
         Box(Modifier.fillMaxWidth().height(SceneViewTokens.Space.x4l + SceneViewTokens.Space.x3l)) {
-            SceneView(Modifier.fillMaxSize(), surfaceType = io.github.sceneview.SurfaceType.TextureSurface, engine = engine, materialLoader = materials) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                surfaceType = io.github.sceneview.SurfaceType.TextureSurface,
+                engine = engine,
+                materialLoader = materials,
+            ) {
                 session.placedNodes.forEach { node ->
                     key(node.nodeKey, node.modelKey) {
                         val position = Position(node.translation[0], node.translation[1], node.translation[2])

@@ -241,7 +241,11 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
         // screenshot to read at a glance.
         topOverlay = {
             io.github.sceneview.demo.common.DemoStatusCard(
-                text = when { eisApplied -> "Stabilization on"; eisSupported == false -> "Stabilization unavailable"; else -> "Stabilization off" },
+                text = when {
+                    eisApplied -> "Stabilization on"
+                    eisSupported == false -> "Stabilization unavailable"
+                    else -> "Stabilization off"
+                },
                 tone = io.github.sceneview.demo.common.DemoStatusTone.Progress,
                 icon = Icons.Filled.Tune,
             )

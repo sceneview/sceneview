@@ -232,7 +232,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                             stressTested = true
                         }
                     },
-                enabled = !spawning,
+                enabled = currentCount >= targetCount,
             ) { Text(if (stressRunning) "Stop test" else "Start stress test") }
 
             DemoStatusBanner(
