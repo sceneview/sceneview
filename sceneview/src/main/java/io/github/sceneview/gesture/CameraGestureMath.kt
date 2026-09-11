@@ -205,10 +205,69 @@ internal fun doubleTapZoomedDistance(
 ): Float {
     val home = if (homeDistance.isFinite() && homeDistance > 0f) homeDistance else distance
     if (!home.isFinite() || home <= 0f) return MIN_ORBIT_DISTANCE
-    val low = (home * minDistanceFactor)
-        .takeIf { it.isFinite() && it > 0f } ?: MIN_ORBIT_DISTANCE
-    val high = (home * maxDistanceFactor)
-        .takeIf { it.isFinite() && it > low } ?: low
+    return zoomedDistanceForDoubleTap(
+        distance = distance,
+        homeDistance = home,
+        zoomIn = zoomIn,
+        minDistance = (home * minDistanceFactor)
+            .takeIf { it.isFinite() && it > 0f } ?: MIN_ORBIT_DISTANCE,
+        maxDistance = home * maxDistanceFactor,
+        factor = factor,
+    )
+}
+
+/**
+ * The camera-to-target distance a double-tap should land on — the public, absolute-bounds form of
+ * the same step [doubleTapZoomedDistance] applies internally, and the double-tap counterpart of
+ * [zoomedDistanceForPinch].
+ *
+ * Use it when your manipulator owns its own orbit distance (a slider, a saved state) instead of
+ * delegating the dolly to a Filament `Manipulator`. Pair it with [animatedZoomDistance] driven
+ * from `update(deltaTime)` to get the eased move rather than a jump cut:
+ *
+ * ```kotlin
+ * override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+ *     animationStart = zoom
+ *     animationTarget = zoomedDistanceForDoubleTap(
+ *         distance = zoom,
+ *         homeDistance = fit,
+ *         zoomIn = zoomIn,
+ *         minDistance = fit * 0.25f,
+ *         maxDistance = fit * 4f,
+ *     )
+ *     animationElapsed = 0f
+ * }
+ *
+ * override fun update(deltaTime: Float) {
+ *     animationElapsed += deltaTime
+ *     val progress = animationElapsed / 0.3f
+ *     zoom = animatedZoomDistance(animationStart, animationTarget, progress)
+ * }
+ * ```
+ *
+ * @param distance     Current camera-to-target distance. Non-finite / non-positive returns
+ *                     [minDistance].
+ * @param homeDistance Distance the scene was framed at — the target of the dead-end escape
+ *                     described above.
+ * @param zoomIn       `true` for a double-tap (closer), `false` for a two-finger tap.
+ * @param minDistance  Closest the tap may take the camera. Must be `> 0`.
+ * @param maxDistance  Furthest the tap may take the camera.
+ * @param factor       Distance ratio one tap covers. Must be `> 1`; `2` halves the distance.
+ * @return The clamped new distance. Equal to [distance] when the gesture would not move.
+ */
+@JvmOverloads
+fun zoomedDistanceForDoubleTap(
+    distance: Float,
+    homeDistance: Float,
+    zoomIn: Boolean,
+    minDistance: Float,
+    maxDistance: Float,
+    factor: Float =
+        CameraGestureDetector.DefaultCameraManipulator.DEFAULT_DOUBLE_TAP_ZOOM_FACTOR,
+): Float {
+    val low = minDistance.takeIf { it.isFinite() && it > 0f } ?: MIN_ORBIT_DISTANCE
+    val high = maxDistance.takeIf { it.isFinite() && it > low } ?: low
+    val home = if (homeDistance.isFinite() && homeDistance > 0f) homeDistance else distance
     if (!distance.isFinite() || distance <= 0f) return low
     val step = if (factor.isFinite() && factor > 1f) {
         factor
@@ -227,7 +286,7 @@ internal fun doubleTapZoomedDistance(
  * Standard cubic ease-in-out on `[0, 1]`, clamped — the acceleration curve every platform's
  * double-tap zoom uses, so the move reads as one deliberate gesture instead of a jump cut.
  */
-internal fun easeInOutCubic(progress: Float): Float {
+fun easeInOutCubic(progress: Float): Float {
     if (!progress.isFinite()) return 1f
     val t = progress.coerceIn(0f, 1f)
     return if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f).let { it * it * it } / 2f
@@ -246,7 +305,7 @@ internal fun easeInOutCubic(progress: Float): Float {
  * @param target   Distance it ends on. Must be `> 0`.
  * @param progress Elapsed fraction in `[0, 1]`; clamped, and eased by [easeInOutCubic].
  */
-internal fun animatedZoomDistance(start: Float, target: Float, progress: Float): Float {
+fun animatedZoomDistance(start: Float, target: Float, progress: Float): Float {
     if (!start.isFinite() || start <= 0f) return target
     if (!target.isFinite() || target <= 0f) return start
     val eased = easeInOutCubic(progress)

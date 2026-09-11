@@ -1568,6 +1568,11 @@ public final class io/github/sceneview/gesture/CameraGestureDetector$DefaultCame
 }
 
 public final class io/github/sceneview/gesture/CameraGestureMathKt {
+	public static final fun animatedZoomDistance (FFF)F
+	public static final fun easeInOutCubic (F)F
+	public static final fun zoomedDistanceForDoubleTap (FFZFF)F
+	public static final fun zoomedDistanceForDoubleTap (FFZFFF)F
+	public static synthetic fun zoomedDistanceForDoubleTap$default (FFZFFFILjava/lang/Object;)F
 	public static final fun zoomedDistanceForPinch (FFFFF)F
 	public static final fun zoomedDistanceForPinch (FFFFFF)F
 	public static final fun zoomedDistanceForPinch (FFFFFFF)F
