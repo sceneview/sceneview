@@ -191,9 +191,6 @@ fun HomeScreen(
     // changed this release" page is worse than no page.
     val featuredPages = remember(demos, fresh, freshVersion) {
         buildList {
-            if (fresh.isNotEmpty()) {
-                add(FeaturedPage.WhatsNew(version = freshVersion, count = fresh.size))
-            }
             FEATURED_DEMO_IDS.mapNotNull { id -> demos.firstOrNull { it.id == id } }
                 .forEach { entry ->
                     add(
@@ -271,6 +268,14 @@ fun HomeScreen(
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
+            if (!searching) {
+                item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
+                    BrowseOnlineModelsCard(
+                        onClick = onBrowseOnlineClick,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+            }
             item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
                 CategoryChipRow(
                     selected = selectedCategory,
@@ -320,14 +325,7 @@ fun HomeScreen(
                     )
                 }
             }
-            if (!searching) {
-                item(key = "browse-online") {
-                    BrowseOnlineModelsCard(
-                        onClick = onBrowseOnlineClick,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
+
         }
 
         HomeHeader(

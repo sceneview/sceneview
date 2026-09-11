@@ -16,7 +16,7 @@ object ArDepthOfFieldFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_depth_of_field_subtitle,
         category = DemoCategory.AR_UNDERSTANDING,
         icon = Icons.Filled.Lens,
-        order = 32,
+        order = 31,
         tags = setOf("ar", "depth", "bokeh", "focus", "post-fx"),
     )
 

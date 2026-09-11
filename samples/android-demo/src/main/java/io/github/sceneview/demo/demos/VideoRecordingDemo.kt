@@ -83,6 +83,16 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
     var recording by remember { mutableStateOf<RecordingSession?>(null) }
     var lastSaved by remember { mutableStateOf<File?>(null) }
 
+    var elapsedSeconds by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    androidx.compose.runtime.LaunchedEffect(recording) {
+        elapsedSeconds = 0L
+        val started = android.os.SystemClock.elapsedRealtime()
+        while (recording != null) {
+            elapsedSeconds = (android.os.SystemClock.elapsedRealtime() - started) / 1000
+            kotlinx.coroutines.delay(250)
+        }
+    }
+
     var failed by remember { mutableStateOf(false) }
     val shareTitle = stringResource(R.string.demo_video_recording_share)
     val savedUri = remember(lastSaved) {
@@ -104,7 +114,7 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
     // Slow hero orbit so the recording provably captures motion, not a still.
     val cameraManipulator = rememberHeroOrbitCameraManipulator(
         trigger = modelInstance != null,
-        radius = 2.2f,
+        radius = io.github.sceneview.demo.rememberFitOrbitRadius(1f, 1f, 1f, fill = 0.72f),
         yHeight = 0f,
         durationMillis = 20_000,
     )
@@ -115,6 +125,7 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_video_recording_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        bottomOverlayReservesScene = true,
         controls = {
             Text(
                 text = stringResource(R.string.demo_video_recording_explainer),
@@ -174,6 +185,7 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
             // supplies the system-bar inset.
             ExtendedFloatingActionButton(
                 onClick = {
+                    if (!firstFrame.rendered.value || modelInstance == null) return@ExtendedFloatingActionButton
                     recording?.let { active ->
                         failed = !stopRecording(surfaceMirrorer, active)
                         lastSaved = active.outputFile.takeIf { !failed }
@@ -196,7 +208,12 @@ fun VideoRecordingDemo(onBack: () -> Unit) {
                 text = {
                     Text(
                         text = if (recording != null) {
-                            stringResource(R.string.demo_video_recording_stop)
+                            stringResource(R.string.demo_video_recording_stop) +
+                                " · %d:%02d".format(
+                                    Locale.US,
+                                    elapsedSeconds / 60,
+                                    elapsedSeconds % 60,
+                                )
                         } else {
                             stringResource(R.string.demo_video_recording_record)
                         },
@@ -298,6 +315,7 @@ private fun startRecording(
         // Stop only the surface we started in this call — not every mirrored surface.
         startedSurface?.let { surfaceMirrorer.stopMirroring(it) }
         runCatching { recorder.release() }
+        outputFile.delete()
         null
     }
 }

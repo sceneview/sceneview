@@ -99,8 +99,8 @@ a header that tints itself competes with the cards it introduces. Geometry:
 
 | Token | Value | Usage |
 |---|---|---|
-| `section-header-top-gap` | 32px (`space-2xl`) | Above a section header |
-| `section-header-bottom-gap` | 16px (`space-sm`) | Header to its first card row |
+| `section-header-top-gap` | 32px (`space-xl`) | Above a section header |
+| `section-header-bottom-gap` | 16px (`space-md`) | Header to its first card row |
 
 A header is drawn only when more than one section is visible: with a single category
 filtered, the chip already names it.

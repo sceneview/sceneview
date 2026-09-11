@@ -23,6 +23,16 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DeepLinkRouterTest {
 
+    @Test
+    fun `retired wall link opens placement with wall selected`() {
+        val uri = Uri.parse("sceneview://demo/wall-placement")
+        assertEquals("ar-placement", DeepLinkRouter.parse(uri))
+        assertEquals(1, DeepLinkRouter.resolveInitialTab("wall-placement", null))
+        assertEquals(0, DeepLinkRouter.resolveInitialTab("wall-placement", "0"))
+        assertTrue(ALL_DEMOS.none { it.id == "wall-placement" })
+    }
+
+
     // Title / subtitle don't matter for the router under test — it only
     // looks at the id. We pass arbitrary R.string.* values to satisfy the
     // post-#1099 resource-ID typed fields without resolving them.

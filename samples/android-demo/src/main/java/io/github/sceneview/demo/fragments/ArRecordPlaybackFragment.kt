@@ -16,7 +16,7 @@ object ArRecordPlaybackFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_record_playback_subtitle,
         category = DemoCategory.PLATFORM,
         icon = Icons.Filled.Replay,
-        order = 49,
+        order = 47,
         tags = setOf("ar", "recording", "playback", "session", "mp4", "replay"),
     )
 

@@ -108,17 +108,24 @@ fun BrowseOnlineModelsCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    MediaCard(
-        title = stringResource(R.string.home_browse_title),
-        subtitle = stringResource(R.string.home_browse_subtitle),
-        preview = null,
-        icon = Icons.Filled.Language,
-        accent = MaterialTheme.colorScheme.primary,
-        status = DemoStatus.Working,
+    Surface(
         onClick = onClick,
-        modifier = modifier,
-        media = { BrowseOnlineCollage() },
-    )
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(SceneViewTokens.Radius.md),
+        color = MaterialTheme.colorScheme.surfaceDim,
+    ) {
+        Row(
+            Modifier.padding(SceneViewTokens.Space.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+        ) {
+            Icon(Icons.Filled.Language, contentDescription = null)
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.home_browse_title), style = SceneViewTokens.Type.card)
+                Text("Discover models from online collections", style = SceneViewTokens.Type.body)
+            }
+        }
+    }
 }
 
 /** Four bundled model thumbnails, scrimmed like the hero, with a globe badge. */
@@ -267,16 +274,16 @@ private fun MediaCard(
                     text = title,
                     style = SceneViewTokens.Type.card,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = Int.MAX_VALUE,
+
                 )
                 Text(
                     text = subtitle,
                     style = SceneViewTokens.Type.caption,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = Int.MAX_VALUE,
+
                 )
             }
         }
@@ -341,8 +348,8 @@ private fun FreshnessChip(
                 style = MaterialTheme.typography.labelSmall,
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = Int.MAX_VALUE,
+
             )
         }
     }
@@ -380,8 +387,8 @@ private fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = Int.MAX_VALUE,
+
             )
         }
     }

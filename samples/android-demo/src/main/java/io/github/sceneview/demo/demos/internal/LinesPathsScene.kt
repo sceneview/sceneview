@@ -386,7 +386,7 @@ internal object LinesPathsScene {
     }
 
     /** The ground track is drawn quieter than the route — this fraction of the main stroke. */
-    const val GROUND_STROKE_RATIO = 0.6f
+    const val GROUND_STROKE_RATIO = 1f
 
     // ── Framing ───────────────────────────────────────────────────────────────────────────────
 

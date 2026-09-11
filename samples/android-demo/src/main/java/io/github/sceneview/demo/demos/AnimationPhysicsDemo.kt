@@ -281,7 +281,7 @@ private fun AnimationSection(
     var selectedAnim by remember { mutableIntStateOf(ANIMATION_MODELS[0].defaultAnimationIndex.coerceAtLeast(0)) }
     // Default cinematic shot is REVEAL — close-up to wide pull-back is the most
     // dramatic intro and pairs naturally with a walking subject.
-    var cameraMode by remember { mutableStateOf(CameraMode.REVEAL) }
+    var cameraMode by remember { mutableStateOf(CameraMode.HERO) }
     // IBL intensity — exposed as a slider so users can dial atmospheric vs neutral.
     // Default 10_000 lux matches SceneView's balanced IBL default (#1075). The
     // rooftop_night skybox renders at full HDR luminance, so a lower IBL left the
@@ -399,12 +399,17 @@ private fun AnimationSection(
     // baseRadius / baseYHeight / defaultFovDegrees are sourced from DemoMath so the
     // pure-JVM cinematic-camera tests (AnimationDemoStateMachineTest, issue #880)
     // assert against the same constants the demo actually renders with.
-    val baseRadius = DemoMath.BASE_RADIUS
+    val baseRadius = io.github.sceneview.demo.rememberFitOrbitRadius(
+        activeModel.scaleToUnits * 0.7f,
+        activeModel.scaleToUnits * 1.2f,
+        activeModel.scaleToUnits * 0.7f,
+        fill = 0.75f,
+    )
     val baseYHeight = DemoMath.BASE_Y_HEIGHT
     // The soldier is lifted so feet rest on y=0; its bbox center (chest) is at y=0.5 in
     // world space. Camera target lives at chest height so all modes frame the upper body
     // naturally and the rooftop ground line aligns visually with the soldier's feet.
-    val target = remember { Position(0f, 0.5f, 0f) }
+    val target = remember(activeModel) { Position(0f, activeModel.scaleToUnits * 0.5f, 0f) }
 
     // Default lens FOV (vertical, degrees). Filament's default focal length of 28 mm
     // works out to ~46° vertical FOV on a phone aspect — we drive this directly so the
@@ -447,7 +452,7 @@ private fun AnimationSection(
     // loop parks on a clean boundary — stopping the per-frame Compose snapshot
     // writes that were the residual background drain (~5-10 mW, #936).
     // ---------------------------------------------------------------------------
-    LifecyclePausingLaunchedEffect(cameraMode, DemoSettings.qaMode) { gate ->
+    LifecyclePausingLaunchedEffect(cameraMode, DemoSettings.qaMode, activeModel) { gate ->
         // QA freeze — match the hero-orbit helper so screenshot tests stay stable.
         if (DemoSettings.qaMode) {
             yawAnim.snapTo(45f)
@@ -639,7 +644,7 @@ private fun AnimationSection(
     val pendingBegin = remember {
         androidx.compose.runtime.mutableStateOf<PendingGestureBegin?>(null)
     }
-    val scriptedManipulator = remember {
+    val scriptedManipulator = remember(activeModel) {
         ScriptedCameraManipulator(
             target = target,
             yawProvider = { yawAnim.value },
@@ -705,6 +710,7 @@ private fun AnimationSection(
     val firstFrame = rememberFirstFrameState()
 
     DemoScaffold(
+        bottomOverlayReservesScene = true,
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,

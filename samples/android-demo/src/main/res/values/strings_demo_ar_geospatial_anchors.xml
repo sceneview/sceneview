@@ -7,5 +7,5 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_geospatial_anchors_title">Geospatial Anchors</string>
-    <string name="demo_ar_geospatial_anchors_subtitle">Anchor models on terrain or rooftops by lat/lng</string>
+    <string name="demo_ar_geospatial_anchors_subtitle">Place objects at outdoor locations</string>
 </resources>

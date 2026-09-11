@@ -81,7 +81,7 @@ fun CloudServiceStatus.message(): String = when (this) {
     is CloudServiceStatus.QuotaExhausted -> arcoreQuotaExhaustedMessage(operation)
     CloudServiceStatus.NoNetwork -> ARCORE_CLOUD_NO_NETWORK_MESSAGE
     CloudServiceStatus.EarthLocalizing ->
-        "Waiting for VPS lock — go outside and look at buildings or landmarks."
+        "Finding your outdoor location — point the camera at nearby buildings or landmarks."
 }
 
 /**
@@ -132,6 +132,16 @@ fun DemoBottomOverlayScope.CloudServiceStatusBanner(
 ) {
     if (status == CloudServiceStatus.Available) return
     DemoStatusBanner(text = status.message(), tone = status.tone, modifier = modifier)
+    if (status == CloudServiceStatus.ApiKeyMissing || status is CloudServiceStatus.ApiKeyRejected) {
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        androidx.compose.material3.FilledTonalButton(onClick = {
+            runCatching {
+                uriHandler.openUri(
+                    "https://github.com/sceneview/sceneview/blob/main/$ARCORE_CLOUD_SETUP_DOC"
+                )
+            }
+        }) { androidx.compose.material3.Text("Open setup guide") }
+    }
 }
 
 /**

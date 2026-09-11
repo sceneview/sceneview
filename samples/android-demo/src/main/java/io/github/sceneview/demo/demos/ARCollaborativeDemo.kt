@@ -1,213 +1,118 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import io.github.sceneview.SceneView
 import io.github.sceneview.ar.collaborative.CollaborativeSession
 import io.github.sceneview.ar.collaborative.LoopbackCollaborativeTransport
-import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.R
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
+import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberMaterialLoader
 
-/**
- * Collaborative AR demo — proves the multi-user sync stack end-to-end on a
- * **single device, no networking**.
- *
- * Real multiplayer AR needs two phones and a [io.github.sceneview.ar.collaborative.CollaborativeTransport]
- * implementation (Nearby Connections / Firebase / WebRTC). To keep this demo
- * always-runnable in the showcase app and in CI, it instead drives **two**
- * [CollaborativeSession]s — "Alice" and "Bob" — through an in-process
- * [LoopbackCollaborativeTransport.LoopbackHub]. Tapping *Alice places a cube*
- * broadcasts a node placement from Alice's session; the panel then shows that
- * same node appearing in Bob's `placedNodes` (and vice versa) — exactly the
- * data flow that would cross the network between two real devices.
- *
- * The production wiring is identical: swap the loopback transport for a real
- * one and parent your content to `CollaborativeSession.sharedAnchorNode` (an
- * ARCore Cloud Anchor). See the `ar-cloud-anchor` demo for the shared-frame
- * half and `llms.txt` "Collaborative AR" for the full recipe.
- */
+/** Two local peers render the state actually received through the collaboration transport. */
 @Composable
 fun ARCollaborativeDemo(onBack: () -> Unit) {
-    // One in-process hub wiring two simulated peers together.
     val hub = remember { LoopbackCollaborativeTransport.LoopbackHub() }
-    val alice = remember {
-        CollaborativeSession(hub.join("alice"), displayName = "Alice")
-    }
-    val bob = remember {
-        CollaborativeSession(hub.join("bob"), displayName = "Bob")
-    }
-
-    // Start both sessions for the lifetime of the screen; stop on dispose so
-    // each broadcasts a `bye` and the supervisor scopes are released.
+    val alice = remember { CollaborativeSession(hub.join("alice"), displayName = "Alice") }
+    val bob = remember { CollaborativeSession(hub.join("bob"), displayName = "Bob") }
+    var placement by remember { mutableIntStateOf(0) }
+    var learnMore by remember { mutableStateOf(false) }
     DisposableEffect(alice, bob) {
         alice.start()
         bob.start()
-        onDispose {
-            alice.stop()
-            bob.stop()
-        }
+        onDispose { alice.stop(); bob.stop() }
     }
-
-    // Monotonic counters so each placement gets a unique node key.
-    var aliceCubeCount by remember { mutableIntStateOf(0) }
-    var bobCubeCount by remember { mutableIntStateOf(0) }
-
-    DemoScaffold(title = "Collaborative AR", onBack = onBack) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Collaborative AR") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back_button))
+                    }
+                },
+            )
+        },
+    ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                .padding(SceneViewTokens.Space.md),
+            verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
         ) {
+            Text("Place once. See it together.", style = SceneViewTokens.Type.title)
             Text(
-                text = "Two in-process sessions over a loopback transport",
-                style = MaterialTheme.typography.titleMedium,
+                "Two simulated viewers on this device share the same objects. " +
+                    "No second phone needed.",
+                style = SceneViewTokens.Type.body,
             )
-            Text(
-                text = "ARCore has no collaboration API — multi-user AR is a shared " +
-                    "Cloud Anchor (one coordinate frame) plus a pluggable transport " +
-                    "relaying state. This demo runs both peers in one process so the " +
-                    "sync is visible with no second phone and no networking.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = {
-                        aliceCubeCount++
-                        alice.placeNode(
-                            nodeKey = "alice-cube-$aliceCubeCount",
-                            modelKey = "cube",
-                            translation = floatArrayOf(
-                                0.15f * aliceCubeCount, 0f, -0.5f,
-                            ),
-                            quaternion = floatArrayOf(0f, 0f, 0f, 1f),
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Alice places a cube") }
-                Button(
-                    onClick = {
-                        bobCubeCount++
-                        bob.placeNode(
-                            nodeKey = "bob-cube-$bobCubeCount",
-                            modelKey = "sphere",
-                            translation = floatArrayOf(
-                                -0.15f * bobCubeCount, 0f, -0.5f,
-                            ),
-                            quaternion = floatArrayOf(0f, 0f, 0f, 1f),
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Bob places a sphere") }
+            Button(
+                onClick = {
+                    placement++
+                    alice.placeNode(
+                        nodeKey = "shared-object",
+                        modelKey = if (placement % 2 == 1) "cube" else "sphere",
+                        translation = floatArrayOf(0f, 0f, 0f),
+                        quaternion = floatArrayOf(0f, 0f, 0f, 1f),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = SceneViewTokens.Layout.touchTarget),
+            ) { Text(if (placement == 0) "Place a cube" else "Change shared object") }
+            SessionPane("Alice", alice)
+            SessionPane("Bob", bob)
+            if (bob.placedNodes.isNotEmpty()) {
+                Text("Shared with Bob", style = SceneViewTokens.Type.body, color = MaterialTheme.colorScheme.primary)
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                SessionCard(
-                    title = "Alice's session",
-                    session = alice,
-                    modifier = Modifier.weight(1f),
-                )
-                SessionCard(
-                    title = "Bob's session",
-                    session = bob,
-                    modifier = Modifier.weight(1f),
+            TextButton(onClick = { learnMore = !learnMore }) { Text(if (learnMore) "Hide details" else "Learn more") }
+            if (learnMore) {
+                Text(
+                    "This preview passes object changes between two local sessions. " +
+                        "A multi-device app also needs a shared spatial anchor and a network " +
+                        "connection so everyone sees objects in the same place.",
+                    style = SceneViewTokens.Type.body,
                 )
             }
-
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Each card is one CollaborativeSession's view. A cube placed " +
-                    "by Alice appears in Bob's list (and vice versa) — that is the " +
-                    "exact data that would travel over a real transport between two " +
-                    "phones sharing a Cloud Anchor.",
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
 }
 
-/** Renders one [CollaborativeSession]'s observed participants + placed nodes. */
 @Composable
-private fun SessionCard(
-    title: String,
-    session: CollaborativeSession,
-    modifier: Modifier = Modifier,
-) {
-    Card(modifier = modifier, shape = RoundedCornerShape(12.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(text = title, style = MaterialTheme.typography.titleSmall)
-
-            Text(
-                text = "Participants: ${session.participants.size}",
-                style = MaterialTheme.typography.labelMedium,
-            )
-            session.participants.forEach { participant ->
-                Text(
-                    text = "  • ${participant.displayName}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-
-            Spacer(Modifier.width(2.dp))
-            Text(
-                text = "Placed nodes: ${session.placedNodes.size}",
-                style = MaterialTheme.typography.labelMedium,
-            )
-            session.placedNodes.forEach { node ->
-                Text(
-                    text = "  • ${node.nodeKey} (${node.modelKey}) by ${node.ownerPeerId}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            if (session.placedNodes.isEmpty()) {
-                Box(
-                    modifier = Modifier.padding(start = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Text(
-                        text = "  (none yet)",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+private fun SessionPane(title: String, session: CollaborativeSession) {
+    val engine = rememberEngine()
+    val materials = rememberMaterialLoader(engine)
+    val accent = MaterialTheme.colorScheme.primary
+    val material = remember(materials, accent) {
+        materials.createColorInstance(accent, metallic = 0.25f, roughness = 0.3f)
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Text(title, modifier = Modifier.padding(SceneViewTokens.Space.md), style = SceneViewTokens.Type.card)
+        Box(Modifier.fillMaxWidth().height(SceneViewTokens.Space.x4l + SceneViewTokens.Space.x3l)) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                surfaceType = io.github.sceneview.SurfaceType.TextureSurface,
+                engine = engine,
+                materialLoader = materials,
+            ) {
+                session.placedNodes.forEach { node ->
+                    key(node.nodeKey, node.modelKey) {
+                        val position = Position(node.translation[0], node.translation[1], node.translation[2])
+                        if (node.modelKey == "sphere") {
+                            SphereNode(radius = 0.45f, position = position, materialInstance = material)
+                        } else {
+                            CubeNode(size = Size(0.8f), position = position, materialInstance = material)
+                        }
+                    }
                 }
             }
         }

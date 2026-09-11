@@ -16,7 +16,7 @@ object ArCloudAnchorFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_cloud_anchor_subtitle,
         category = DemoCategory.AR_ANCHORS,
         icon = Icons.Filled.CloudCircle,
-        order = 42,
+        order = 40,
         tags = setOf("ar", "cloud-anchor", "multi-user", "persistence", "arcore"),
         // #3421 rebuilt this screen as an explicit two-step flow. The state machine is
         // unit-tested and every visual state is captured on the emulator, but hosting and

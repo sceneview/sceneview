@@ -37,6 +37,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.GeometryLayout
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
@@ -64,6 +65,7 @@ import java.util.Locale
  * edge (#2873). [GeometryLayout] owns every position, size and distance involved, and
  * `GeometryLayoutTest` asserts the cluster still clears the frame with margin.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun GeometryDemo(onBack: () -> Unit) {
     // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests):
@@ -149,6 +151,18 @@ fun GeometryDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_geometry_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        peekHeader = "Choose a shape to show or hide it",
+        bottomOverlay = {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+            ) {
+                FilterChip(showCube, onClick = { showCube = !showCube }, label = { Text("Cube") })
+                FilterChip(showSphere, onClick = { showSphere = !showSphere }, label = { Text("Sphere") })
+                FilterChip(showCylinder, onClick = { showCylinder = !showCylinder }, label = { Text("Cylinder") })
+                FilterChip(showPlane, onClick = { showPlane = !showPlane }, label = { Text("Plane") })
+            }
+        },
+        bottomOverlayReservesScene = true,
         controls = {
             // Controls extracted into a separate composable so a Roborazzi snapshot
             // test can capture the panel layout in pure JVM (no Filament, no SceneView).

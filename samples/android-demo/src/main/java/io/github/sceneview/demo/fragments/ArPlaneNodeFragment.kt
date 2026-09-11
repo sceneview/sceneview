@@ -16,7 +16,7 @@ object ArPlaneNodeFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_plane_node_subtitle,
         category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.Layers,
-        order = 18,
+        order = 17,
         tags = setOf("ar", "plane", "planenode", "lifecycle", "callback"),
     )
 

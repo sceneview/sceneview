@@ -16,7 +16,7 @@ object VideoRecordingFragment : DemoFragment {
         subtitleRes = R.string.demo_video_recording_subtitle,
         category = DemoCategory.PLATFORM,
         icon = Icons.Filled.Videocam,
-        order = 46,
+        order = 44,
         tags = setOf("video", "recording", "mp4", "capture", "encoder"),
     )
 

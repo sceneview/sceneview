@@ -1,5 +1,8 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Contrast
+import io.github.sceneview.demo.theme.SceneViewTokens
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +34,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -183,6 +187,13 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     }
 
     val engine = rememberEngine()
+    val labelCamera = io.github.sceneview.rememberCameraNode(engine)
+    val groundedLabel = stringResource(R.string.contact_shadow_label_grounded)
+    val noShadowLabel = stringResource(R.string.contact_shadow_label_floating)
+    val labelsFontSize = with(androidx.compose.ui.platform.LocalDensity.current) {
+        SceneViewTokens.Type.card.fontSize.toPx()
+    }
+
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
@@ -242,37 +253,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         // what `resetAll` already covers, so wiring `onResetSettings` to the same lambda would
         // put the very same action twice in the merged sheet (#3328).
         onReset = resetAll,
-        // The wall TV's live A/B, hosted by the scaffold's top band so it sits in the TV's
-        // half of the frame — see [WallShadowBeat] for why this is an on-screen control and
-        // not a settings-sheet row. The slot owns the gutter and the inset, so the beat
-        // lands at the same y as every other demo's top overlay (#3237).
-        topOverlay = {
-            WallShadowBeat(
-                wallContext = wallContext,
-                onWallContextChange = { wallContext = it },
-            )
-        },
-        // The legend must never be drawn across the grounded box, and no gutter constant
-        // can promise that: where the box lands on screen is a projection, so a lift
-        // tuned on one viewport is wrong on the next. The scaffold insets the viewport by
-        // the legend's measured band instead, which makes the two disjoint by layout
-        // (#2957 — see the `bottomOverlayReservesScene` KDoc).
+        dock = listOf(io.github.sceneview.demo.DockItem(
+            icon = Icons.Filled.Contrast,
+            label = "Shadows",
+            selected = shadowsEnabled,
+            onClick = { shadowsEnabled = !shadowsEnabled },
+        )),
+        // Reserve the selector beneath the stage; labels stay attached to their objects.
         bottomOverlayReservesScene = true,
         bottomOverlay = {
-            // The scaffold owns the bottom band: it pins the row, applies the system-bar
-            // inset, and resolves the Settings-FAB reserve (#2779/#2780).
-            //
-            // The FAB is cleared SIDEWAYS, not by lifting the row over it — the scaffold's
-            // documented full-width idiom (`padding(end = settingsFabReservedSpace)`). The
-            // former `bottom = settingsFabReservedSpace + 24.dp` lift is what pushed the
-            // legend up into the scene, and now that the band is subtracted from the
-            // viewport, every dp of lift is a dp of 3D viewport spent on empty space.
-            GroundingLegend(
-                shadowVisible = shadowVisible,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = settingsFabReservedSpace, bottom = 12.dp),
-            )
+            WallShadowBeat(wallContext = wallContext, onWallContextChange = { wallContext = it })
         },
         controls = {
             ContactShadowControls(
@@ -289,6 +279,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             onFrame = firstFrame.onFrame,
             engine = engine,
+            cameraNode = labelCamera,
             materialLoader = materialLoader,
             environment = environment,
             // Keep the hand-built room where it was authored — auto-centring would reframe the
@@ -383,6 +374,26 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 materialInstance = boxMaterial,
             )
 
+            listOf(
+                Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
+                Position(
+                    BOX_HALF_SPACING,
+                    DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
+                    BOXES_Z,
+                ) to noShadowLabel,
+            ).forEach { (position, label) ->
+                TextNode(
+                    text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
+                    fontSize = labelsFontSize,
+                    textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
+                    backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
+                    widthMeters = 0.62f,
+                    heightMeters = 0.16f,
+                    position = position,
+                    cameraPositionProvider = { labelCamera.worldPosition },
+                )
+            }
+
             // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
             if (shadowsEnabled) {
                 ContactShadow(
@@ -440,27 +451,21 @@ internal fun WallShadowBeat(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.xs))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = SceneViewTokens.Space.sm, vertical = SceneViewTokens.Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = stringResource(R.string.contact_shadow_wall_beat_title),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
             ContactShadowContext.values().forEach { context ->
                 FilterChip(
                     selected = context == wallContext,
                     onClick = { onWallContextChange(context) },
-                    label = { Text(context.name) },
+                    label = { Text(if (context == ContactShadowContext.TableTop) "Table" else context.name) },
                 )
             }
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
         Text(
             text = stringResource(wallContext.wallVerdictRes()),
             style = MaterialTheme.typography.bodySmall,
@@ -492,91 +497,6 @@ private fun ContactShadowContext.wallVerdictRes(): Int = when (this) {
     ContactShadowContext.TableTop -> R.string.contact_shadow_wall_verdict_tabletop
 }
 
-/**
- * The two overlay chips naming the comparison columns — "Contact shadow" for the grounded
- * box, "No shadow" for its floating twin. [shadowVisible] is whether a shadow is actually
- * being drawn (toggle ON *and* intensity above zero), not merely whether the toggle is on:
- * at intensity 0 the pool is fully transparent, so the left chip reports "Shadows off" and
- * the labels never contradict the scene. The caller passes the same value it gives the peek
- * header, so the two labels cannot disagree with each other either.
- *
- * The chips name the two columns; they are NOT positioned under their respective boxes.
- * The camera is an interactive orbit manipulator, so any drag moves the boxes relative to
- * this bottom-anchored row — a positional claim would invert as soon as the user orbits
- * past 90°. Read them as a legend, in the same left-to-right order as the scene at the
- * home framing.
- *
- * Style mirrors the scaffold's `AssetSourceChip` (dot + label on an 85 %-alpha surface) so
- * the demo chrome stays one family. Rendered through `DemoScaffold(bottomOverlay = …)`,
- * which pins it to the bottom of the scene and applies the system-bar inset; the caller
- * supplies only the start gutter and the end inset that clears the settings FAB /
- * peek-chip band.
- *
- * **It is never drawn over the subject (#2957).** Device QA measured the row crossing the
- * grounded box by 170 × 58 px — 51 % of the box's width — at its landing pose, i.e. exactly
- * on the contact-shadow moment this screen exists to show. The row used to float over the
- * viewport, lifted clear of the FAB by a vertical gutter; a bigger gutter only trades one
- * collision for another, because the box's screen position is a *projection* and every
- * candidate constant is tuned to one viewport. The demo now opts into
- * `bottomOverlayReservesScene`, so the scaffold subtracts this row's measured band from the
- * viewport: the scene simply has no pixels there, at any screen size, density or font scale.
- * The row stays low and clears the FAB sideways, which keeps the subtracted band to the
- * chip's own height instead of a chip plus a 128 dp lift.
- */
-@Composable
-private fun GroundingLegend(shadowVisible: Boolean, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LegendChip(
-            label = stringResource(
-                if (shadowVisible) R.string.contact_shadow_label_grounded
-                else R.string.contact_shadow_label_off
-            ),
-            dotColor = if (shadowVisible) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outline,
-        )
-        LegendChip(
-            label = stringResource(R.string.contact_shadow_label_floating),
-            dotColor = MaterialTheme.colorScheme.outline,
-        )
-    }
-}
-
-@Composable
-private fun LegendChip(label: String, dotColor: Color) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor),
-        )
-        Text(
-            text = " $label",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-/**
- * Settings-sheet controls, extracted (and `internal`, like [GeometryDemoControls]) so the
- * panel layout is snapshot-tested in pure JVM (no Filament, no SceneView) — the #880 pattern.
- * The sibling `ContactShadowControlsSnapshotTest` covers it.
- *
- * Three controls, all genuinely global to the scene. The TV's preset picker used to be a
- * fourth row here and has moved on screen to [WallShadowBeat]: it drove one pool, not the
- * scene, so it did not belong among these.
- */
 @Composable
 internal fun ContactShadowControls(
     shadowsEnabled: Boolean,
@@ -602,7 +522,7 @@ internal fun ContactShadowControls(
         )
         Switch(checked = shadowsEnabled, onCheckedChange = null)
     }
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -619,7 +539,7 @@ internal fun ContactShadowControls(
         )
         Switch(checked = motionEnabled, onCheckedChange = null)
     }
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
     LabeledSlider(
         label = stringResource(R.string.contact_shadow_intensity_label),
         value = intensityFactor,

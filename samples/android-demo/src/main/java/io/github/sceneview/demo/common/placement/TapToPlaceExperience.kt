@@ -93,6 +93,7 @@ fun TapToPlaceExperience(
      */
     instantPlacement: Boolean = false,
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
+    floorOnly: Boolean = false,
 ) {
     val armedModel = models.armed(picker)
     // What the status pill announces. A streamed row that is still downloading says so —
@@ -127,6 +128,10 @@ fun TapToPlaceExperience(
             snapToPlane = snapToPlane,
             showReticle = showReticle,
             instantPlacement = instantPlacement,
+            sessionConfiguration = { _, config ->
+                config.planeFindingMode = if (floorOnly) com.google.ar.core.Config.PlaneFindingMode.HORIZONTAL
+                    else com.google.ar.core.Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+            },
             onModelPlaced = onModelPlaced,
             overlays = { s ->
                 TapToPlaceStatusOverlays(

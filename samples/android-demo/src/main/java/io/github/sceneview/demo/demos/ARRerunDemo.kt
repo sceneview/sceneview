@@ -172,6 +172,14 @@ fun ARRerunDemo(onBack: () -> Unit) {
 
             Spacer(Modifier.height(8.dp))
 
+            Text(
+                text = "On your computer, start the recording service from this repository with " +
+                    "python3 samples/android-demo/tools/rerun-bridge.py --save recording.rrd. " +
+                    "Connect the phone by USB and run adb reverse tcp:9876 tcp:9876. " +
+                    "Save becomes available when the connection is established.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
             // ── Stream Stats ────────────────────────────────────────────────
             StreamStatsCard(
                 eventCount = eventCount,
@@ -228,8 +236,15 @@ fun ARRerunDemo(onBack: () -> Unit) {
             // only fail, so the CTA is disabled and its label states why inline
             // instead of leading straight to a failure dialog. Label also
             // reflects the in-flight save state.
+            if (!isConnected) {
+                DemoStatusBanner(
+                    text = "Saving needs the Rerun recording service on a connected " +
+                        "computer. Open Settings for connection details.",
+                    tone = DemoStatusTone.Guidance,
+                )
+            }
             val saveUx = rerunSaveActionUx(sharing = sharing, isConnected = isConnected)
-            SceneActionBar(
+            if (isConnected || sharing) SceneActionBar(
                 SceneAction(
                     label = saveUx.label,
                     onClick = onSaveAndShare,

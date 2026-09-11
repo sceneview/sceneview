@@ -147,7 +147,8 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
     var alwaysOnTop by remember { mutableStateOf(false) }
     var cardScale by remember { mutableFloatStateOf(CalloutLayout.DEFAULT_CARD_SCALE) }
     var spread by remember { mutableFloatStateOf(CalloutLayout.DEFAULT_SPREAD) }
-    var spinning by remember { mutableStateOf(true) }
+    var spinning by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
     var turntableYaw by remember { mutableFloatStateOf(CalloutLayout.QA_SPIN_DEGREES) }
 
     val engine = rememberEngine()
@@ -190,30 +191,32 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
         firstFrameRendered = firstFrame.rendered,
         // The two facts a reader needs at a glance and cannot get from the picture: how wide the
         // quads actually are in metres, and whether the depth buffer still applies to them.
-        peekHeader = statusLabel(cardScale, alwaysOnTop),
+        peekHeader = "Tap the floating card to orbit the helmet",
+        bottomOverlayReservesScene = true,
         onResetSettings = {
             billboard = true
             alwaysOnTop = false
             cardScale = CalloutLayout.DEFAULT_CARD_SCALE
             spread = CalloutLayout.DEFAULT_SPREAD
-            spinning = true
+            spinning = false
+            showDetails = false
         },
         dock = listOf(
             DockItem(
                 icon = Icons.Filled.Portrait,
-                label = BILLBOARD_LABEL,
-                onClick = { billboard = !billboard },
-                selected = billboard,
+                label = "Orbit",
+                onClick = { spinning = !spinning; showDetails = true },
+                selected = spinning,
             )
         ),
         controls = {
             TwoDInThreeDControls(
                 alwaysOnTop = alwaysOnTop,
-                onAlwaysOnTopChange = { alwaysOnTop = it },
+                onAlwaysOnTopChange = { alwaysOnTop = it; showDetails = true },
                 cardScale = cardScale,
                 onCardScaleChange = { cardScale = it },
                 spread = spread,
-                onSpreadChange = { spread = it },
+                onSpreadChange = { spread = it; showDetails = true },
             )
         },
     ) {
@@ -224,6 +227,9 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             materialLoader = materialLoader,
             environmentLoader = environmentLoader,
             cameraNode = cameraNode,
+            view = io.github.sceneview.rememberView(engine).also { view ->
+                view.bloomOptions = view.bloomOptions.apply { enabled = false }
+            },
             // Required. See gotcha 1 in the class KDoc.
             viewNodeWindowManager = viewNodeManager,
             // The shared model-demo IBL (#2110), no skybox. SceneView's *default* environment
@@ -273,7 +279,7 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
                         scaleToUnits = CalloutLayout.MODEL_SIZE_METERS,
                     )
                 }
-                CalloutLayout.CALLOUTS.forEach { callout ->
+                if (showDetails) CalloutLayout.CALLOUTS.take(1).forEach { callout ->
                     key(callout.id) {
                         AnnotationCard(
                             callout = callout,
@@ -292,10 +298,10 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             // ── The control card: world-anchored, always facing, always on top ────────────────
             ControlCard(
                 windowManager = viewNodeManager,
-                cardScale = cardScale,
+                cardScale = cardScale * 2.5f,
                 cameraPosition = cameraPosition,
                 spinning = spinning,
-                onToggleSpin = { spinning = !spinning },
+                onToggleSpin = { spinning = !spinning; showDetails = true },
             )
         }
     }
@@ -459,10 +465,10 @@ private fun CalloutCard(callout: Callout) {
 private fun LiveComposeCard(spinning: Boolean, onToggleSpin: () -> Unit) {
     SceneViewDemoTheme {
         CardShell(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-            Text(text = "Live Compose", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Explore the helmet", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Text(
-                text = "This card is a texture on a quad. The button is real.",
+                text = "Tap to turn the model and reveal its visor annotation.",
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
             )

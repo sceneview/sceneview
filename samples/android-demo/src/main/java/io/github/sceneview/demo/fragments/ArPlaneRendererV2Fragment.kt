@@ -16,7 +16,7 @@ object ArPlaneRendererV2Fragment : DemoFragment {
         subtitleRes = R.string.demo_ar_plane_renderer_v2_subtitle,
         category = DemoCategory.AR_PLACEMENT,
         icon = Icons.Filled.GridOn,
-        order = 19,
+        order = 18,
         tags = setOf("ar", "plane", "renderer", "depth", "pbr", "hdr"),
     )
 

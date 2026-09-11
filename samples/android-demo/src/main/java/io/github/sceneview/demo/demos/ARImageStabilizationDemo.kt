@@ -1,5 +1,7 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.Icons
 import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -90,6 +92,7 @@ import io.github.sceneview.rememberOnGestureListener
  */
 @Composable
 fun ARImageStabilizationDemo(onBack: () -> Unit) {
+    var arSessionFailed by remember { mutableStateOf(false) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -175,6 +178,8 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
     }
 
     DemoScaffold(
+        arSessionFailed = arSessionFailed,
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_image_stabilization_title),
         onBack = onBack,
         controls = {
@@ -235,26 +240,15 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
         // device can't do EIS, red when EIS is off but available. Big enough for a
         // screenshot to read at a glance.
         topOverlay = {
-            Surface(
-                color = when {
-                    eisApplied -> Color(0xFF1B5E20).copy(alpha = 0.85f)
-                    eisSupported == false -> Color(0xFF424242).copy(alpha = 0.85f)
-                    else -> Color(0xFFB71C1C).copy(alpha = 0.85f)
+            io.github.sceneview.demo.common.DemoStatusCard(
+                text = when {
+                    eisApplied -> "Stabilization on"
+                    eisSupported == false -> "Stabilization unavailable"
+                    else -> "Stabilization off"
                 },
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = when {
-                        eisApplied -> "EIS ON"
-                        eisSupported == false -> "EIS UNSUPPORTED"
-                        else -> "EIS OFF"
-                    },
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+                tone = io.github.sceneview.demo.common.DemoStatusTone.Progress,
+                icon = Icons.Filled.Tune,
+            )
         },
         bottomOverlay = {
             // Scanning / tracking-failure overlay — same vocabulary as ARPlacementDemo and
@@ -308,6 +302,7 @@ fun ARImageStabilizationDemo(onBack: () -> Unit) {
             // lantern anchor — the demo's only reference object — making the on/off
             // comparison impossible (#1475).
             ARSceneView(
+                onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

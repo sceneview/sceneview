@@ -7,9 +7,9 @@
      Sun rig. Retired ids keep resolving through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_lighting_lab_title">Lighting Lab</string>
-    <string name="demo_lighting_lab_subtitle">Every lighting knob, live on one frame</string>
-    <string name="demo_lighting_lab_explainer">One fixed key over a studio HDR, so every control here has exactly one variable. Exposure, environment and frame options act on the same frame at the same time.</string>
-    <string name="demo_lighting_lab_status">Exposure %1$s · IBL %2$d klx · AO %3$s · Fog %4$s</string>
+    <string name="demo_lighting_lab_subtitle">See how light and reflections shape a model</string>
+    <string name="demo_lighting_lab_explainer">Compare how reflections, exposure and contact shading change the same model. Toggle one effect to see the difference.</string>
+    <string name="demo_lighting_lab_status">Exposure %1$s · Environment %2$d · Contact shading %3$s · Fog %4$s</string>
     <string name="demo_lighting_lab_on">on</string>
     <string name="demo_lighting_lab_off">off</string>
 
@@ -19,12 +19,12 @@
 
     <string name="demo_lighting_ibl_intensity">Environment intensity</string>
     <string name="demo_lighting_lab_sky">Draw the sky</string>
-    <string name="demo_lighting_lab_probe">Local reflection probe</string>
-    <string name="demo_lighting_lab_probe_zone">Probe radius</string>
-    <string name="demo_lighting_lab_ssao">Ambient occlusion</string>
+    <string name="demo_lighting_lab_probe">Local reflections</string>
+    <string name="demo_lighting_lab_probe_zone">Reflection area</string>
+    <string name="demo_lighting_lab_ssao">Contact shading</string>
     <string name="demo_lighting_lab_fog">Fog</string>
     <string name="demo_lighting_lab_fog_density">Fog density</string>
-    <string name="demo_lighting_lab_msaa">MSAA 4×</string>
-    <string name="demo_lighting_lab_fxaa">FXAA</string>
+    <string name="demo_lighting_lab_msaa">Smooth edges · geometry</string>
+    <string name="demo_lighting_lab_fxaa">Smooth edges · image</string>
     <string name="demo_lighting_lab_dithering">Dithering</string>
 </resources>

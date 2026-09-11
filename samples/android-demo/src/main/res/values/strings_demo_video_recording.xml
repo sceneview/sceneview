@@ -6,9 +6,9 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_video_recording_title">Scene to MP4</string>
-    <string name="demo_video_recording_subtitle">Export a SceneView animation to MP4 without screen capture</string>
+    <string name="demo_video_recording_subtitle">Record and share a moving 3D model</string>
     <string name="demo_video_recording_loading">Loading model…</string>
-    <string name="demo_video_recording_explainer">SurfaceMirrorer mirrors the rendered frames onto a MediaRecorder surface — no consent dialog, no foreground service, and the UI never appears in the video. Recordings land in the app files dir.</string>
+    <string name="demo_video_recording_explainer">Record the moving model without the controls. Stop to preview or share your video. Videos are saved on this device.</string>
     <string name="demo_video_recording_record">Record</string>
     <string name="demo_video_recording_stop">Stop</string>
     <string name="demo_video_recording_saved">Saved: %1$s (%2$d KB)</string>

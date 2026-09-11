@@ -219,6 +219,22 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         bottomOverlay = {
+            Button(
+                    onClick = {
+                        stressAborted = false
+                        stressRunning = !stressRunning
+                        if (stressRunning) {
+                            // Start fresh from a small count so the ramp is visible.
+                            targetCount = 1
+                            currentCount = 1
+                            firstSlowCount = 0
+                            measuredCount = 0
+                            stressTested = true
+                        }
+                    },
+                enabled = currentCount >= targetCount,
+            ) { Text(if (stressRunning) "Stop test" else "Start stress test") }
+
             DemoStatusBanner(
                 text = when {
                     stressAborted -> stringResource(R.string.demo_debug_overlay_aborted)

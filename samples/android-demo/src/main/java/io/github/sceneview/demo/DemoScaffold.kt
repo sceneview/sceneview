@@ -240,6 +240,8 @@ fun DemoScaffold(
     topOverlay: (@Composable DemoTopOverlayScope.() -> Unit)? = null,
     bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)? = null,
     bottomOverlayReservesScene: Boolean = false,
+    arSessionFailed: Boolean = false,
+    arOverlaysEnabled: Boolean = true,
     dock: List<DockItem> = emptyList(),
     dockAccent: DockItem? = null,
     loadingLabel: String? = null,
@@ -315,6 +317,11 @@ fun DemoScaffold(
         // and whatever the font scale does to the chip text (#2957).
         var bottomOverlayBandPx by remember { mutableIntStateOf(0) }
         val bottomOverlayBand = with(LocalDensity.current) { bottomOverlayBandPx.toDp() }
+        var topOverlayBandPx by remember { mutableIntStateOf(0) }
+        val density = LocalDensity.current
+        val topOverlayBand = with(density) { topOverlayBandPx.toDp() }
+        val statusBarInset = with(density) { WindowInsets.safeDrawing.getTop(density).toDp() }
+
 
         // Height of the dock band (toolbar + gutter, excluding the navigation-bar
         // inset), measured for the same reason: the toolbar height is a token, but a
@@ -359,6 +366,11 @@ fun DemoScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
+                        top = if (bottomOverlayReservesScene) {
+                            maxOf(identityRow + statusBarInset, topOverlayBand)
+                        } else {
+                            0.dp
+                        },
                         bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
                     )
                     // Observe taps without taking them: the 3D view keeps its drags.
@@ -377,11 +389,26 @@ fun DemoScaffold(
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
-                    ) { scene() }
+                    ) {
+                        if (arSessionFailed) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.surface),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                io.github.sceneview.demo.common.DemoStatusCard(
+                                    text = stringResource(R.string.demo_ar_session_failed),
+                                    tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
+                                    modifier = Modifier.padding(SceneViewTokens.Space.lg),
+                                )
+                            }
+                        } else scene()
+                    }
                 },
             )
 
-            if (firstFrameRendered != null) {
+            if (firstFrameRendered != null && !arSessionFailed && arOverlaysEnabled) {
                 FirstFrameCover(
                     firstFrameRendered = firstFrameRendered,
                     loadingLabel = loadingLabel,
@@ -451,15 +478,17 @@ fun DemoScaffold(
 
             // Top band: the demo's own overlays below the identity row, then the
             // chrome on top so scaffold controls always win the z-order.
-            if (topOverlay != null) {
+            if (topOverlay != null && !arSessionFailed && arOverlaysEnabled) {
                 DemoTopOverlay(
                     reservedTop = identityRow,
+                    onBandHeightChanged = { topOverlayBandPx = it },
                     content = topOverlay,
                 )
             }
 
             // Bottom band: status pill + demo overlays stacked above the dock.
-            if (bottomOverlay != null || peekHeader != null) {
+            val hasBottomBandContent = bottomOverlay != null || peekHeader != null
+            if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                 DemoBottomOverlay(
                     reservedBottom = dockClearance,
                     onBandHeightChanged = { bottomOverlayBandPx = it },
@@ -1083,8 +1112,7 @@ private fun BoxScope.DemoBottomOverlay(
                     text = status,
                     style = MaterialTheme.typography.labelMedium,
                     color = SceneViewTokens.Glass.onGlass,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }
@@ -1125,12 +1153,14 @@ class DemoTopOverlayScope internal constructor(
 @Composable
 private fun BoxScope.DemoTopOverlay(
     reservedTop: Dp,
+    onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoTopOverlayScope.() -> Unit,
 ) {
     Column(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
+            .onSizeChanged { onBandHeightChanged(it.height) }
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top

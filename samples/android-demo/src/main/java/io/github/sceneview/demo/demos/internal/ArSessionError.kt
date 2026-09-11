@@ -25,7 +25,8 @@ package io.github.sceneview.demo.demos.internal
  */
 fun friendlyArSessionError(error: Throwable?, needsKey: Boolean = true): String {
     val keyHint =
-        if (needsKey) " this needs a device with VPS coverage and an ARCore Cloud API key"
+        if (needsKey) " this feature needs outdoor visual positioning and a configured " +
+            "cloud service. Try AR Placement for an experience without cloud setup"
         else " your device may not support this AR feature"
     val simpleName = error?.javaClass?.simpleName.orEmpty()
     val rawMessage = error?.message?.takeIf { it.isNotBlank() }

@@ -17,7 +17,7 @@ object ArXrFaceFragment : DemoFragment {
         subtitleRes = R.string.demo_ar_xr_face_subtitle,
         category = DemoCategory.AR_TRACKING,
         icon = Icons.Filled.FaceRetouchingNatural,
-        order = 28,
+        order = 27,
         tags = setOf("ar", "xr", "face", "mesh", "headset"),
         // Live face tracking needs an Android XR headset — none in the audit
         // matrix and no public emulator yet (#1903). The demo renders a static
