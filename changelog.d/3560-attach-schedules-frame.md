@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+A `ModelNode` (or any DSL child node) added to an already-running `Scene`/`SceneView` is now drawn immediately instead of staying invisible until an unrelated surface resize. Attaching or detaching a node now schedules a frame the same way a resize does, so a render-on-demand scene (`isRendering = false`) no longer needs a workaround nudge for newly attached content to actually appear.
