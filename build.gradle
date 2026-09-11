@@ -133,6 +133,41 @@ subprojects {
         }
     }
 
+    // ── Dokka: one Kotlin source set per Android module (#3604) ──────────────
+    //
+    // AGP 9 registers the new-DSL Kotlin source sets (`main`, `test`,
+    // `androidTest`, `testFixtures`) ON TOP of the per-variant ones Dokka has
+    // always adapted (`debug`, `release`, ...). Dokka 2.2 turns each of them
+    // into a Dokka source set, so `:sceneview` and `:arsceneview` ended up with
+    // TWO unsuppressed ones — `main` (shown as `androidJvm`) and `release` —
+    // both rooted at `src/main/java`. Its pre-generation check refuses that:
+    //
+    //   Pre-generation validity check failed: Source sets 'androidJvm' and
+    //   'release' have the common source roots: .../src/main/java, ...
+    //   Every Kotlin source file should belong to only one source set (module).
+    //
+    // which failed `dokkaGeneratePublicationHtml` — and with it both the
+    // "Publish to Maven Central" job (the javadoc jar) and "Publish API docs"
+    // at the 4.35.0 cut. 4.34.0 predates the AGP 9 move (#3459) and had only
+    // `release`.
+    //
+    // Keep `main`, suppress every other source set of that module. `main` is
+    // AGP 9's canonical one; the variant flavour additionally leaks a build
+    // type name into the published docs and roots the generated BuildConfig
+    // directory. Output is otherwise identical (same 1713 pages), only the
+    // source-set label changes from `release` to `androidJvm`. The `main`
+    // guard keeps this a no-op for KMP modules, whose source sets are named
+    // `commonMain` / `androidMain` and never collide this way.
+    plugins.withId("org.jetbrains.dokka") {
+        dokka {
+            dokkaSourceSets.configureEach { sourceSet ->
+                if (dokkaSourceSets.findByName("main") != null && sourceSet.name != "main") {
+                    sourceSet.suppress.set(true)
+                }
+            }
+        }
+    }
+
     // Apply detekt to all subprojects that use Kotlin.
     //
     // NOTE: we use `pluginManager.apply("dev.detekt")` instead of the legacy
