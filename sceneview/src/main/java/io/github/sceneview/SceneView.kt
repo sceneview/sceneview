@@ -524,6 +524,26 @@ fun SceneView(
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
 
+    // A frame is *owed* to the surface currently attached: `true` until one has been presented
+    // into it. Snapshot state, not a plain flag, because the paused render loop parks on it —
+    // see [awaitRenderingEnabled] and the `shouldRender` gate below (#3109). Declared here
+    // (rather than next to [sceneRenderer] below, which only needs to read it) so the DSL-node
+    // sync effect right below can set it too — see the `needsPresent.value = true` inside the
+    // `collect` block (#3560).
+    //
+    // Why this exists at all: a swap chain holds no pixels of its own. `SceneRenderer`'s
+    // `onNativeWindowChanged` creates a brand-new one and presents nothing into it, so every
+    // surface generation — first attach, app foregrounded, foldable folded or unfolded,
+    // split-screen resize — starts blank. With `isRendering = false` on an idle scene, which is
+    // this parameter's documented use, a parked loop would leave that new surface blank
+    // *indefinitely* (black, or transparent with `isOpaque = false`) until something unrelated
+    // flipped the flag. The debt makes the park wait on "rendering is on OR a frame is owed", so a
+    // re-created surface always gets exactly one frame and then parks again. Keyed on
+    // (engine, view, renderer) rather than on `sceneRenderer` itself — `sceneRenderer` is
+    // `remember`ed with the same key below, so this reproduces its recreation timing without
+    // forward-referencing it.
+    val needsPresent = remember(engine, view, renderer) { mutableStateOf(true) }
+
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
         snapshotFlow { scopeChildNodes.toList() }.collect { newNodes ->
@@ -545,6 +565,15 @@ fun SceneView(
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
+            // A node was attached to (or detached from) the live scene — schedule a frame the
+            // same way a surface resize does (#3560). With `isRendering = false` (render-on-
+            // demand — the documented use of that parameter), the frame loop below parks on
+            // `shouldRender`, which only `needsPresent` or `isRendering` can wake. Previously
+            // only `onSurfaceResized`/`onSurfaceReady` set it, so a node added to a parked scene
+            // loaded and reported bounds but was never actually drawn until an unrelated resize
+            // (even 1px) incidentally flipped the flag — recomposition alone never reached the
+            // `withFrameNanos` loop.
+            needsPresent.value = true
         }
     }
 
@@ -675,19 +704,8 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
-    // A frame is *owed* to the surface currently attached: `true` until one has been presented
-    // into it. Snapshot state, not a plain flag, because the paused render loop parks on it —
-    // see [awaitRenderingEnabled] and the `shouldRender` gate below (#3109).
-    //
-    // Why this exists at all: a swap chain holds no pixels of its own. `SceneRenderer`'s
-    // `onNativeWindowChanged` creates a brand-new one and presents nothing into it, so every
-    // surface generation — first attach, app foregrounded, foldable folded or unfolded,
-    // split-screen resize — starts blank. With `isRendering = false` on an idle scene, which is
-    // this parameter's documented use, a parked loop would leave that new surface blank
-    // *indefinitely* (black, or transparent with `isOpaque = false`) until something unrelated
-    // flipped the flag. The debt makes the park wait on "rendering is on OR a frame is owed", so a
-    // re-created surface always gets exactly one frame and then parks again.
-    val needsPresent = remember(sceneRenderer) { mutableStateOf(true) }
+    // `needsPresent` (the frame-owed debt) is declared earlier, next to the DSL-node sync effect
+    // that also writes it — see its doc comment above (#3560).
 
     // Wire resize and surface callbacks.
     SideEffect {
