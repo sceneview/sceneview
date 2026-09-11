@@ -21,7 +21,10 @@
     <string name="demo_materials_mode_inspect">Inspect</string>
     <string name="demo_materials_mode_occlusion">Occlusion</string>
 
-    <string name="demo_materials_gallery_hint">Tap a sphere to inspect its material</string>
+    <!-- #3609: the peek header and the sheet line both say the same thing, because the
+         wall reads as a picture and nothing else on screen suggests the spheres respond. -->
+    <string name="demo_materials_gallery_hint">Tap a sphere to zoom in on it</string>
+    <string name="demo_materials_tap_hint">Tap any sphere to fly the camera onto it and open its parameters. Drag anywhere — over the labels too — to move the camera.</string>
     <string name="demo_materials_picker_label">Material</string>
     <string name="demo_materials_environment_label">Environment</string>
 

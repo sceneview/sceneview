@@ -2,8 +2,10 @@
 
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -52,6 +54,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -81,6 +85,7 @@ import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.haptic.rememberHapticFeedback
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setMetallic
 import io.github.sceneview.material.setReflectance
@@ -100,6 +105,7 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
+import kotlinx.coroutines.launch
 
 /**
  * **Materials** — what a physically based surface is, shown rather than described.
@@ -112,7 +118,8 @@ import io.github.sceneview.sample.ui.LabeledSlider
  * the environment's IBL finishes prefiltering.
  *
  * - **Gallery** — the nine materials at once, under a slow camera *sweep* rather than an
- *   orbit. Tap a sphere to inspect it.
+ *   orbit. Tap a sphere and the camera flies onto it, then hands over to *Inspect*;
+ *   leaving Inspect flies back out to the wall (#3609).
  * - **Inspect** — one of them, large, with its parameters on live sliders. *Compare* splits
  *   the stage so the material you were looking at a moment ago stays on screen next to the
  *   one you moved to, which is the only way to see a roughness difference of 0.1.
@@ -270,6 +277,22 @@ private fun StudioSection(
     val comparisonCamera = rememberCameraNode(engine)
     var labelFrame by remember { mutableIntStateOf(0) }
 
+    // ── Tap-to-focus (#3609) ─────────────────────────────────────────────────────────────
+    //
+    // Thomas's in-app note on 4.35.0: a tap on a sphere teleported to Inspect. The jump is
+    // now an eased dolly — the Gallery camera flies from the wall onto the picked sphere and
+    // only then hands over to Inspect, so the eye keeps track of which ball it followed.
+    //
+    // `focusIndex` is the picked sphere for the whole flight *and* for the flight back: it is
+    // cleared only once the ease-out finishes, which is what lets the reverse leg aim at the
+    // ball the user left rather than snapping through the origin.
+    var focusIndex by remember { mutableStateOf<Int?>(null) }
+    val focusZoom = remember { Animatable(0f) }
+    val focusing = focusIndex != null
+    val focusScope = rememberCoroutineScope()
+    val haptic = rememberHapticFeedback()
+    val wallPositions = remember { MaterialStudio.wallPositions() }
+
     // Push the live overrides onto the selected instance. Keyed on the values rather than on
     // `instances` — the map above produces a new List every recomposition, so keying on it
     // would restart the effect on every frame of a drag.
@@ -291,9 +314,16 @@ private fun StudioSection(
     // Gallery: a flat wall cannot be orbited — a quarter turn shows the spheres edge-on and a
     // half turn shows the back of the grid. The phase drives a bounded cosine sweep instead.
     val sweepPhase = remember { mutableFloatStateOf(MaterialStudio.STATIC_SWEEP_PHASE) }
-    LifecycleAwareLaunchedEffect(animating, inspecting, DemoSettings.qaMode) {
-        if (inspecting || !animating || DemoSettings.qaMode) {
-            if (!animating || DemoSettings.qaMode) {
+    // Two ways to stop the sweep, and they end differently. `sweepPinned` — the pause button
+    // or QA mode — also returns the phase to its canonical value, so the wall is framed the
+    // same way every time it is stilled. A focus flight (#3609) merely *suspends* it: a yaw
+    // still travelling under the dolly drags the picked sphere out of frame, and resetting
+    // the phase mid-flight would snap it there in one frame.
+    val sweepPinned = !animating || DemoSettings.qaMode
+    val sweepStopped = inspecting || sweepPinned || focusing
+    LifecycleAwareLaunchedEffect(animating, inspecting, focusing, DemoSettings.qaMode) {
+        if (sweepStopped) {
+            if (sweepPinned && !focusing) {
                 sweepPhase.floatValue = MaterialStudio.STATIC_SWEEP_PHASE
             }
             return@LifecycleAwareLaunchedEffect
@@ -320,16 +350,6 @@ private fun StudioSection(
         azimuthInvariant = false,
         fill = GALLERY_FILL,
     )
-    val galleryManipulator = remember(galleryRadius) {
-        HeroOrbitCameraManipulator(
-            yawProvider = { MaterialStudio.sweepYaw(sweepPhase.floatValue) },
-            radius = galleryRadius,
-            yHeight = 0f,
-            target = Position(0f, 0f, 0f),
-            resumeAfterMillis = 4_000L,
-        )
-    }
-
     val heroExtent = if (compare) {
         2f * MaterialStudio.COMPARE_OFFSET + 2f * MaterialStudio.COMPARE_RADIUS
     } else {
@@ -354,23 +374,102 @@ private fun StudioSection(
         staticYaw = MaterialStudio.STATIC_ORBIT_YAW,
     )
 
-    LaunchedEffect(heroRadius) {
+    // Where the tap-to-focus dolly stops. Not an arbitrary "close enough" distance: it is the
+    // distance at which a wall sphere covers the same fraction of the frame as the ball
+    // Inspect is about to draw, so the hand-over from this camera to Inspect's changes the
+    // subject's size by nothing. Apparent size is radius / distance, hence the ratio.
+    val inspectBallRadius =
+        if (compare) MaterialStudio.COMPARE_RADIUS else MaterialStudio.HERO_RADIUS
+    val focusRadius = (heroRadius * MaterialStudio.BALL_RADIUS / inspectBallRadius)
+        // Never let the eye reach into the sphere it is flying at.
+        .coerceAtLeast(3f * MaterialStudio.BALL_RADIUS)
+    // Read by the manipulator's providers on the render thread, so `compare` flipping while a
+    // flight is in the air retargets it instead of stranding it at a stale distance.
+    val focusRadiusState = rememberUpdatedState(focusRadius)
+
+    val galleryManipulator = remember(galleryRadius) {
+        HeroOrbitCameraManipulator(
+            yawProvider = { MaterialStudio.sweepYaw(sweepPhase.floatValue) },
+            radius = galleryRadius,
+            yHeight = 0f,
+            target = Position(0f, 0f, 0f),
+            resumeAfterMillis = 4_000L,
+            // The dolly is expressed as two per-frame reads rather than as a rebuilt
+            // manipulator: rebuilding one mid-flight would drop the user-control fallback and
+            // the camera would jump.
+            radiusProvider = {
+                val t = focusZoom.value
+                galleryRadius + (focusRadiusState.value - galleryRadius) * t
+            },
+            targetProvider = {
+                val t = focusZoom.value
+                val anchor = focusIndex?.let { wallPositions[it] } ?: Position(0f, 0f, 0f)
+                Position(anchor.x * t, anchor.y * t, anchor.z * t)
+            },
+        )
+    }
+
+    /**
+     * Fly onto [index], then open Inspect on it. In QA mode the flight is instantaneous so
+     * the screenshot harness never captures a half-travelled camera.
+     */
+    fun focusOn(index: Int) {
+        focusIndex = index
+        haptic.selection()
+        // A drag earlier in the session leaves the manipulator in user control, where the two
+        // providers above are ignored — without this the dolly would simply not play.
+        galleryManipulator.resumeAuto()
+        focusScope.launch {
+            focusZoom.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = if (DemoSettings.qaMode) 0 else FOCUS_FLIGHT_MILLIS,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+            selectedIndex = index
+            onModeChange(MaterialsMode.Inspect)
+        }
+    }
+
+    // The flight back. Leaving Inspect — by the dock's Gallery button or by the segmented
+    // control — eases the wall back in from wherever the camera had landed, which is the
+    // "tap again to go back out" half of #3609.
+    LaunchedEffect(inspecting) {
+        if (!inspecting && focusZoom.value > 0f) {
+            focusZoom.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = if (DemoSettings.qaMode) 0 else FOCUS_FLIGHT_MILLIS,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+            focusIndex = null
+        }
+    }
+
+    // Re-frame the Compare pair on every entry into it, not just when the fitted radius
+    // changes. With `compare` on there is no manipulator at all, so the camera node simply
+    // keeps the pose the *gallery* manipulator last wrote — which since #3609 is the dolly's
+    // landing pose, parked off-centre on the sphere that was tapped, leaving one of the two
+    // balls out of frame. Keying on `inspecting` and `compare` puts the pair back on the axis
+    // the moment the hand-over happens.
+    LaunchedEffect(heroRadius, inspecting, compare) {
         comparisonCamera.position = Position(0f, 0f, heroRadius)
         comparisonCamera.lookAt(Position(0f))
     }
     val firstFrame = rememberFirstFrameState()
 
-    // A tap on a gallery sphere selects it and moves to Inspect. `Node.name` carries the
-    // material id — the picker hands back the picked Node, not an index, and matching on the
-    // name is what keeps that mapping readable when the wall order changes.
+    // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
+    // `Node.name` carries the material id — the picker hands back the picked Node, not an
+    // index, and matching on the name is what keeps that mapping readable when the wall order
+    // changes. Guarded on `focusing` so a second tap during the flight cannot start a second
+    // one; the camera is already travelling and a re-aim mid-flight reads as a glitch.
     val gestureListener = rememberOnGestureListener(
         onSingleTapUp = { _, node ->
-            if (!inspecting) {
+            if (!inspecting && !focusing) {
                 val tapped = library.indexOfFirst { it.id == node?.name }
-                if (tapped >= 0) {
-                    selectedIndex = tapped
-                    onModeChange(MaterialsMode.Inspect)
-                }
+                if (tapped >= 0) focusOn(tapped)
             }
         },
     )
@@ -458,6 +557,17 @@ private fun StudioSection(
         },
         controls = {
             ModeSelector(mode, onModeChange)
+
+            // The wall does not look interactive — nine spheres read as a picture (#3609).
+            // The sheet says so once, in Gallery only, where it is true.
+            if (!inspecting) {
+                Text(
+                    text = stringResource(R.string.demo_materials_tap_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+            }
 
             Text(stringResource(R.string.demo_materials_picker_label), style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
@@ -634,6 +744,16 @@ private fun StudioSection(
                         if (selected.trait == MaterialTrait.None) R.string.demo_materials_base_matte
                         else R.string.demo_materials_base_layer
                     ) else stringResource(selected.nameRes)
+                    // #3609: the labels carry NO pointer-input modifier, on purpose. They
+                    // used to be `clickable`, and a Compose node that takes pointer input
+                    // wins the hit test outright — the `SceneView` sibling underneath was
+                    // never even offered the event, so a drag that happened to start on a
+                    // name did nothing at all while the same drag two pixels lower orbited
+                    // the camera. Non-consumption is not enough to fix that: hit testing
+                    // stops at the topmost node that accepts pointers, whatever it then does
+                    // with them. So the labels are pure decoration and the spheres behind
+                    // them stay both draggable and tappable.
+                    val focused = !inspecting && focusIndex == index
                     Text(
                         caption,
                         modifier = Modifier.offset {
@@ -644,18 +764,25 @@ private fun StudioSection(
                                 ((point?.y ?: -view.viewport.height.toFloat()) + gapPx).toInt())
                         }.width(captionWidth)
                             .padding(horizontal = SceneViewTokens.Space.xs)
-                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                            .clickable(enabled = !inspecting) {
-                                selectedIndex = index
-                                onModeChange(MaterialsMode.Inspect)
-                            }
+                            .background(
+                                if (focused) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                MaterialTheme.shapes.small,
+                            )
                             .padding(SceneViewTokens.Space.xs),
                         style = if (inspecting) {
                             MaterialTheme.typography.titleSmall
                         } else {
                             MaterialTheme.typography.labelSmall
                         },
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (focused) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -670,6 +797,14 @@ private fun StudioSection(
         }
     }
 }
+
+/**
+ * Duration of the tap-to-focus dolly, in and out (#3609).
+ *
+ * Long enough to read as travel rather than as a cut — under ~300 ms the eye registers a jump
+ * — and short enough that it never feels like a wait before Inspect opens.
+ */
+private const val FOCUS_FLIGHT_MILLIS: Int = 520
 
 /** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
 private const val GALLERY_FILL: Float = 0.88f
