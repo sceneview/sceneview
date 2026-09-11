@@ -10,7 +10,6 @@ import android.view.TextureView
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
-import com.google.android.filament.SwapChainFlags
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
 import com.google.android.filament.android.DisplayHelper
@@ -69,60 +68,17 @@ class SceneRenderer(
     // ── Surface mirroring ───────────────────────────────────────────────────────────────────────
 
     /**
-     * Optional [SurfaceMirrorer] that copies every rendered frame to additional [Surface]s —
+     * Optional [SurfaceMirrorer] that mirrors every rendered frame to additional [Surface]s —
      * e.g. a [android.media.MediaRecorder] input surface for clean in-app video recording
      * (no MediaProjection consent dialog, no foreground service, no overlay UI in the frame).
      *
      * Wired automatically by the `SceneView` / `ARSceneView` composables from their
-     * `surfaceMirrorer` parameter. The frame copy runs between `Renderer.render` and
-     * `Renderer.endFrame`, as Filament's `copyFrame` requires.
-     *
-     * Setting a mirrorer makes the window swap chain **readable**
-     * ([SwapChainFlags.CONFIG_READABLE]) — a hard
-     * Filament requirement for `Renderer.copyFrame` to read the rendered frame back (without it
-     * the mirrored output is black). The flag is applied at swap-chain creation; if the swap
-     * chain already exists non-readable when the mirrorer is attached, it is recreated in place.
+     * `surfaceMirrorer` parameter. Mirroring runs **after** the scene's `Renderer.endFrame()`:
+     * each mirrored surface gets its own swap chain and its own render pass, so the live view's
+     * frame is complete and presented before any mirror work starts. Wiring a mirrorer changes
+     * nothing about the window swap chain — it can be attached and detached at any time.
      */
     var surfaceMirrorer: SurfaceMirrorer? = null
-        set(value) {
-            field = value
-            // Late attach: the surface was created before a mirrorer was wired, so the swap
-            // chain lacks CONFIG_READABLE and every mirrored frame would come out black.
-            // Recreate it readable, in place. Main thread only (same as all Filament calls) and
-            // never concurrent with renderFrame — both run on the main looper.
-            if (value != null && !swapChainReadable && swapChainRef.get() != null) {
-                recreateSwapChain()
-            }
-        }
-
-    /** Whether the current swap chain was created with [SwapChainFlags.CONFIG_READABLE]. */
-    private var swapChainReadable = false
-
-    /** The native window surface backing the current swap chain — kept for recreation. */
-    private var nativeWindowSurface: Surface? = null
-
-    /**
-     * Swap-chain creation flags: UiHelper's opacity-derived flags, plus CONFIG_READABLE when a
-     * [surfaceMirrorer] is wired (required by `Renderer.copyFrame` — see [surfaceMirrorer]).
-     */
-    private fun swapChainFlags(): Long =
-        uiHelper.swapChainFlags or if (surfaceMirrorer != null) {
-            SwapChainFlags.CONFIG_READABLE
-        } else {
-            0L
-        }
-
-    /** Destroys and recreates the swap chain on the retained surface with fresh [swapChainFlags]. */
-    private fun recreateSwapChain() {
-        val surface = nativeWindowSurface ?: return
-        swapChainRef.getAndSet(null)?.let {
-            engine.destroySwapChain(it)
-            engine.flushAndWait()
-        }
-        swapChainReadable = swapChainFlags() and
-                SwapChainFlags.CONFIG_READABLE != 0L
-        swapChainRef.set(engine.createSwapChain(surface, swapChainFlags()))
-    }
 
     // ── Resize callback ─────────────────────────────────────────────────────────────────────────
 
@@ -252,11 +208,15 @@ class SceneRenderer(
 
         if (renderer.beginFrame(sc, frameTimeNanos)) {
             renderer.render(view)
-            // Copy the rendered frame to any mirrored surfaces (in-app video recording).
-            // Must run between render() and endFrame() — Filament's copyFrame contract.
-            surfaceMirrorer?.onFrame(engine, renderer, view)
             renderer.endFrame()
             presentedFrameCount++
+            // Mirror the scene onto any mirrored surfaces (in-app video recording), as a second
+            // render pass on its own renderer. Deliberately AFTER endFrame: mirroring must never
+            // touch the window swap chain's frame — `Renderer.copyFrame`, which ran between
+            // render() and endFrame(), left the window's colour buffer undefined on drivers that
+            // discard it once it leaves the EGL draw slot, blacking both the recording and the
+            // live view (#3602).
+            surfaceMirrorer?.onFrame(engine, view, frameTimeNanos)
         }
 
         // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
@@ -308,13 +268,8 @@ class SceneRenderer(
     private fun makeRendererCallback(viewHeight: () -> Int) = object : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
             // Create a new swap chain for the surface; destroy the old one if any.
-            // Retain the surface + readability so a mirrorer attached later can recreate the
-            // swap chain with CONFIG_READABLE (see [surfaceMirrorer]).
-            nativeWindowSurface = surface
-            swapChainReadable = swapChainFlags() and
-                    SwapChainFlags.CONFIG_READABLE != 0L
             swapChainRef.getAndSet(
-                engine.createSwapChain(surface, swapChainFlags())
+                engine.createSwapChain(surface, uiHelper.swapChainFlags)
             )?.let { engine.destroySwapChain(it) }
 
             displayHelper?.let { dh ->
@@ -326,8 +281,6 @@ class SceneRenderer(
 
         override fun onDetachedFromSurface() {
             onSurfaceDestroyed?.invoke()
-            nativeWindowSurface = null
-            swapChainReadable = false
             // Detach the DisplayHelper (unregisters its display-changed listener) BEFORE
             // destroying the swap chain and flushAndWait(). Destroying the surface makes an
             // adaptive-refresh display switch its refresh rate back, posting a display-changed
