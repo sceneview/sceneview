@@ -2,6 +2,951 @@
 
 ## Unreleased
 
+## v4.35.0 — 2026-09-11
+
+### Added
+
+- **SceneView ships as a ChatGPT / Codex plugin, and `sceneview-mcp` gains a remote transport and an inline 3D viewer ([#3470](https://github.com/sceneview/sceneview/issues/3470)).** OpenAI's Plugins Directory — one listing shared by ChatGPT and Codex — takes a manifest, skills and an optional MCP server; the repository is now that package: `.codex-plugin/plugin.json` points at the three existing skills under `agents/` (each with `agents/openai.yaml` display metadata), `.agents/skills/*` symlinks let Codex pick the skills up in any checkout, and `.agents/plugins/marketplace.json` installs the plugin locally. `npx sceneview-mcp --http` serves the MCP Streamable HTTP transport at `/mcp` (stateless), `/health` and OpenAI's `/.well-known/openai-apps-challenge` domain-verification route; the remote surface lists the free tier only and refuses Pro tool names, so it complies with the directory's no-subscription-promotion rule. The 3D-viewer widget that died with `mcp-gateway/` returns inside the free package: `view_3d_model` renders a public GLB/glTF URL with SceneView.js + Filament.js through the MCP Apps resource `ui://widget/3d-viewer.html` (`text/html;profile=mcp-app`, CSP declared in `_meta.ui.csp`), declared on the tool in `tools/list` and on the result. Listing copy, starter prompts, the 5 + 3 test cases and the owner gestures live in `agents/OPENAI-PLUGIN.md`. Motivated by GPT-6 Astra (2026-09-03), which drives 3D tools through computer use and MCP rather than generating assets itself.
+- **SceneView opens `.3mf` — the format AI print flows emit, that nothing on Android or the web
+  could view ([#3482](https://github.com/sceneview/sceneview/issues/3482)).** Ask ChatGPT for a 3D
+  print from a drawing and you get a `.3mf`: an OPC/ZIP package whose `3D/3dmodel.model` part is XML
+  with `<vertices>`, `<triangles>`, `<components>` and a `<build>` plate, in millimetres and Z-up.
+  Until now no Android app and no web page opened one in 3D, let alone in AR. `sceneview-core` now
+  reads 3MF in pure Kotlin on **every** platform — no `java.util.zip`, no XML library, no
+  `expect`/`actual` — and converts it to GLB in memory, so the whole existing glTF path (materials,
+  gestures, AR placement, the web viewer) is reused instead of a second loader per renderer.
+  **There is no new API to learn on Android:** `ModelLoader` sniffs the payload by its ZIP magic, so
+  `rememberModelInstance(modelLoader, uri.toString())`, `loadModel("print.3mf")` and every other
+  entry point already accept a 3MF; a payload that is not a ZIP costs a 4-byte comparison.
+  Conversion scales the file's declared unit to metres (a 60 mm print is life-size in AR without a
+  magic number), rotates the printer's Z-up to glTF's Y-up so the part stands up instead of lying on
+  its back, and gives every face its own normal — flat shading is what a printed part looks like,
+  and a smoothed normal would round over the facets the slicer will extrude. `<basematerials>` and
+  the materials extension's `<colorgroup>` become one glTF material per colour, per object and per
+  triangle, all `doubleSided` because generated meshes are often inconsistently wound. Unrecognised
+  3MF extensions (slice, beamlattice, production) are skipped rather than rejected: an unknown
+  extension must not stop a print from being previewed. For a custom pipeline,
+  `ThreeMfLoader.parse()` returns the file's own objects, meshes and build items, and
+  `ThreeMfLoader.toGlb()` / `isThreeMf()` are public in `sceneview-core`.
+- **The web opens a `.3mf` too — in the viewer, on `/open`, and inside ChatGPT
+  ([#3482](https://github.com/sceneview/sceneview/issues/3482)).** The 3MF reader that landed in
+  `sceneview-core` is pure Kotlin and already compiled for Kotlin/JS, so closing the gap on the web
+  is plumbing, not a second parser. `sceneview-web`'s `loadModel(url)` now sniffs what it fetched
+  and converts a 3MF to GLB before Filament.js sees it: `sceneview.modelViewer("canvas",
+  "print.3mf")` works with no new call, exactly as `ModelLoader` does on Android, and a payload
+  without the ZIP magic is passed through as the same `ArrayBuffer` instance rather than copied.
+  Two functions are added to the `sceneview` namespace for pages that hold the *bytes* instead of a
+  URL — a dropped file, a fetch the page made itself: `sceneview.isThreeMf(bytes)` (cheap, never
+  throws) and `sceneview.threeMfToGlb(bytes)` (a `Uint8Array` GLB, throws on an unreadable 3MF).
+- **`sceneview.github.io/open` renders a printable model instead of dead-ending on it.** The page
+  the app's verified link already points at now accepts `?url=<model>` and a `.3mf` dropped anywhere
+  on it, converts it in the browser and shows it on a SceneView stage — the answer to "ChatGPT just
+  made me a `.3mf`, now what?" on a desktop with no app installed. `?demo=<id>` keeps its existing
+  deep-link and QR behaviour untouched. The converter is fetched only once a payload actually starts
+  with the ZIP magic, so a `.glb` link costs nothing extra.
+- **`view_3d_model` previews a `.3mf` in ChatGPT.** The MCP tool and its widget accept `.3mf` /
+  `model/3mf` alongside glTF and GLB, so the assistant can show the print it just generated. The
+  widget converts in the browser through the same compiled core and labels the format pill `3MF`;
+  a `.glb` or `.gltf` URL short-circuits before any extra fetch or download.
+- **The demo app is now an "Open with" target for `.3mf`, `.glb` and `.gltf` — a print shared out
+  of ChatGPT opens in 3D, then in AR ([#3482](https://github.com/sceneview/sceneview/issues/3482)).**
+  Reading 3MF in the SDK only matters if a file can reach it: on Android a `.3mf` sitting in
+  Downloads or arriving from a chat has nowhere to go, because no installed app claims it. The
+  demo now declares `ACTION_VIEW` and `ACTION_SEND` filters for all three formats and appears in
+  the chooser, so the file lands in the viewer under its own name and the dock's **View in AR**
+  carries it through to placement at its real printed size.
+  **Android's file typing is unreliable, so the file's own bytes decide.** Measured on an emulator:
+  a `.3mf` arriving through the share sheet has `application/octet-stream` as its type *and* no
+  queryable display name at all, so both metadata signals are blank and a metadata-only check
+  refuses a file the SDK reads perfectly. Incoming files are therefore sniffed — glTF magic, and
+  for a ZIP the SDK's own `ThreeMfLoader.isThreeMf`, so a `.docx` or a `.jar` is not claimed just
+  for starting with `PK` — with the declared name and MIME kept as the fallback. The file is copied
+  into the app's cache before use: a `content://` read grant is scoped to the launching intent and
+  would expire under the viewer → AR navigation, and only the previous file is kept.
+Let the Android demo open STL, OBJ, and PLY files from file managers and share sheets.
+Add a pure-Kotlin ASCII and binary PLY loader with normals, vertex colours, polygon triangulation,
+and in-memory GLB conversion on Android, Apple, and web targets.
+- **The iOS demo app opens 3D files from Files, Mail, Messages and any share sheet
+  ([#3492](https://github.com/sceneview/sceneview/issues/3492)).** `.stl`, `.obj`, `.ply`,
+  `.3mf`, `.usdz` and `.reality` are declared in `Info.plist`, so SceneView shows up in the
+  "Open with" list for files iOS otherwise has nothing to open — Quick Look reads USDZ and
+  Reality only, and an STL or a 3MF that arrives by AirDrop or comes down from a
+  marketplace is a dead end on a stock iPhone. `LSSupportsOpeningDocumentsInPlace` means
+  the system hands over the original file instead of copying a 500 MB scan into the app's
+  Inbox.
+- **The opened file answers "how big is this, really?"** The viewer shows the size in the
+  file's own unit *and* in centimetres, plus the triangle count. The formats that carry no
+  unit — STL, OBJ, PLY — get a mm / cm / in / m picker under the readout, because they
+  store bare numbers and guessing silently is what puts a 21 cm print in the room at
+  210 m. 3MF and USD state their own unit and get no picker. **View in AR** places the
+  model at that real size, bottom-aligned on the detected plane — not shrunk to a tidy
+  preview, which would answer a different question than the one the file was opened to
+  ask.
+- **SceneViewSwift reads 3MF — the format 3D printing standardised on and Apple never
+  shipped a reader for ([#3492](https://github.com/sceneview/sceneview/issues/3492)).**
+  `MDLAsset` reads OBJ, STL, PLY and USD; Quick Look reads USDZ and Reality; nothing on
+  the platform opens a `.3mf`, which is what a Bambu, Prusa or Orca user is handed and
+  what MakerWorld hands back. `ModelNode.load(contentsOf:)` now opens one like any other
+  file, and `ThreeMFDocument` is available directly for apps that want the geometry
+  without a scene.
+- **The parser covers what slicers actually write**, not just the happy path: `<model
+  unit>` in every unit the core spec defines, `<mesh>`, `<components>` composed through
+  their row-vector transforms, `<build><item>` placements, `<basematerials>` and the
+  materials extension's `<colorgroup>` resolved **per triangle** so a multi-colour print
+  comes back multi-colour, and Production-extension `p:path` references into other
+  `.model` parts of the package — which is how Bambu Studio and Orca write project files,
+  and the reason a reader that only ever opens `3D/3dmodel.model` shows an empty plate for
+  half the files in circulation. The root part is found through `_rels/.rels` rather than
+  assumed. A package whose `<build>` is empty falls back to its objects instead of
+  rendering nothing. 3MF declares its own unit, so it needs no `unit:` argument — passing
+  one overrides the file.
+- **A 3MF is an untrusted file**, and it is opened like one. The ZIP reader is
+  read-only, resolves entries by their exact recorded name (there is no path joining, so
+  `../` matches nothing rather than escaping), and refuses to inflate an entry over
+  256 MB. The XML parser refuses external entities outright
+  (`externalEntityResolvingPolicy = .never`) — without that, opening a file received by
+  AirDrop or email is a file-read primitive. An object that contains itself is reported,
+  not recursed into.
+- **SceneViewSwift opens STL, OBJ and PLY, at real-world size
+  ([#3492](https://github.com/sceneview/sceneview/issues/3492)).** `ModelNode.load` was
+  USDZ and Reality only, which meant the Apple side could not open the files people
+  actually receive — a slicer's `.stl`, a scanner's `.ply`, a marketplace's `.obj`. It now
+  reads all three through ModelIO and is **one entry point for every format**:
+  `ModelFormat.sniff(contentsOf:)` reads the file's own bytes before believing its
+  extension, because a model that arrived through a share sheet, AirDrop or a download
+  routinely has the wrong one. `ModelLoadingError.unsupportedFormat` carries the extension
+  the user tried, so a viewer can say which format it was handed instead of "load failed".
+- **A unit, because these formats do not have one.** STL, OBJ and PLY store bare numbers:
+  the same coordinates mean millimetres out of a slicer and metres out of a photogrammetry
+  pipeline, and RealityKit is metric — so loading either without saying which is meant puts
+  a 21 cm print in the room at 210 m. `ModelNode.load(contentsOf:unit:)` takes a
+  `ModelUnit` (µm / mm / cm / in / ft / m), defaulting to **millimetres for STL** and metres
+  for OBJ and PLY, and bakes the conversion into the vertex positions so a caller's later
+  `.scale(_:)` is theirs alone. `ModelFormat.carriesUnit` is `false` for exactly those
+  three — the signal to offer a unit picker rather than guess.
+- **`MeshAsset` — geometry you can measure before you render it.** Parsing produces plain
+  Swift arrays with no RealityKit dependency, so `MeshAsset.load(contentsOf:)` runs off the
+  main actor and answers "how big is this, really?" (`boundsInMeters`, `triangleCount`)
+  before an entity exists. `ModelNode(_ asset:)` turns it into a `ModelEntity` with one
+  physically-based material per part; OBJ `.mtl` base colour, metallic and roughness are
+  carried across, quad faces are triangulated, and PLY per-vertex colours survive on
+  `MeshGeometry.colors` (averaged into the material tint, since RealityKit's
+  `MeshDescriptor` has no vertex-colour channel).
+- **`mcp/src/guides.ts` is under test ([#3506](https://github.com/sceneview/sceneview/pull/3506)).**
+  It was the last substantial module in `mcp/src/` with no test file: 655 lines of static
+  content that four tools return verbatim, with nothing pinning it. 18 cases now cover
+  the `BEST_PRACTICES` key set and the guarantee that `all` still contains every topic
+  body, the absence of uninterpolated module constants, every Maven and SPM coordinate
+  carrying `LATEST_SCENEVIEW_RELEASE` instead of a literal, the platform rows and the
+  Filament/RealityKit split, balanced code fences, and the Upcoming-version rule that
+  caught the rot above.
+- **`sceneview-mcp` now has a hosted endpoint, so Claude, ChatGPT and anything else that
+  speaks remote MCP can reach it without installing anything.** Until now the server only
+  existed as a local process: `npx sceneview-mcp` over stdio, or `--http` on a port you
+  hosted yourself. Nothing was deployed, which meant every remote-MCP surface — a Claude
+  custom connector, the OpenAI API `mcp` tool — was out of reach no matter how complete the
+  protocol work was. A Cloudflare Worker now runs that same server publicly: `POST /mcp`
+  speaks Streamable HTTP, `GET /health` reports the version, and the 29 free tools are
+  listed and callable anonymously with no key and no account. The Worker is 15 lines,
+  because it does not reimplement anything — Cloudflare's `httpServerHandler` runs the
+  existing `node:http` listener from `--http` verbatim, so the hosted endpoint and the local
+  one are the same code path and a bug fixed in one is fixed in both.
+- **Every tool now declares a human-readable `title`.** 31 of the 32 tools shipped with
+  `readOnlyHint` / `openWorldHint` / `destructiveHint` but no title, so clients that show a
+  tool picker had nothing to show but the raw function name — and Anthropic's connectors
+  directory rejects a server whose tools lack one. `view_3d_model` also stopped describing
+  itself as rendering "inline in ChatGPT": it renders inline in whatever conversation is
+  hosting it, and a host reading its own description should not be told it is a different
+  product. A contract test now fails the build if a tool is added without a title or without
+  its behaviour hints.
+- **The hosted MCP server has a permanent address of its own — `https://mcp.sceneview.dev/mcp`
+  — and a step-by-step way to add it to claude.ai in one paste.** The Worker shipped in the
+  previous release answered on a Cloudflare-generated `*.workers.dev` hostname, which is fine
+  for a smoke test and wrong for anything a user is asked to keep: the URL a connector is
+  added with is effectively permanent, because re-pointing it later forces every connected
+  user to disconnect and re-add. `mcp.sceneview.dev` is now bound as a Cloudflare custom
+  domain on the same zone as `quota.sceneview.dev`, with Cloudflare owning the DNS record and
+  the certificate, so the address the docs publish is the address that stays.
+
+  `mcp/README.md` gains a **Use as a Claude connector** section and `llms.txt` a matching
+  entry: the URL, the exact path through claude.ai (**Settings → Connectors → Add custom
+  connector**), and what the endpoint is — authless and read-only, no account, no API key,
+  nothing of yours stored, since every tool is a pure function of the SDK's own docs, samples
+  and API surface. It also says plainly when *not* to use it: `analyze_project` reads a
+  project from disk and `search_models` / `generate_3d_model` want your own API keys, and a
+  shared anonymous endpoint can offer neither — that is what `npx sceneview-mcp` over stdio
+  is still for. The deployment test that asserted the domain stayed unbound now asserts the
+  binding instead, so the route cannot be dropped from `wrangler.toml` unnoticed.
+- **The Showcase tells you what is new, and its featured banner scrolls
+  ([#3566](https://github.com/sceneview/sceneview/issues/3566),
+  [#3567](https://github.com/sceneview/sceneview/issues/3567)).** Nothing on the grid said
+  which of the 49 samples had changed since the last release, so a returning user — the
+  maintainer included — had no way to know which feature was worth opening again. Two
+  optional fields on `DemoEntry`, `sinceVersion` and `updatedIn`, are now declared in each
+  demo's own fragment (the file a PR already edits, so no shared registry to conflict on)
+  and compared against `BuildConfig.VERSION_NAME`: a demo carries a **New** or **Updated**
+  chip on its card for one minor version, then goes quiet on its own. `updatedIn` means
+  *user-visible behaviour changed* — a refactor or a lint fix does not move it, or half the
+  grid would wear a badge permanently and the badge would mean nothing. Seven demos are
+  marked for 4.35. The static hero at the top of the screen became a `HorizontalPager` with
+  a dot indicator: it looked like a carousel and swiping it did nothing. Its first page is
+  **"New in 4.35 — 7 samples are new or updated"**, which opens the what's-new sheet; the
+  three that follow open Model Viewer, Materials and Lighting.
+- Added unit coverage for the shared MCP deprecated API and missing import checks.
+
+### Changed
+
+- **The Android demo catalogue is now nine named sections instead of one flat run of cards
+  ([#2239](https://github.com/sceneview/sceneview/issues/2239)).** 53 demos rendered as a
+  single uninterrupted grid, 33 of them behind one "Augmented Reality" chip — so nothing
+  told a scrolling thumb where one subject ended and the next began, and demos that belong
+  together read as scattered even when they were adjacent. The grid now draws a full-span
+  header per section and the chips filter down to one: **Viewer · Geometry & Materials ·
+  Rendering · Interaction · AR Placement · AR Tracking · AR Understanding · AR Anchors ·
+  Platform**. AR is four sections because AR is four ARCore API families — placing content,
+  tracking a subject, reading the room, and anchors that outlive the frame — not one.
+  Three merges land with it, each folding demos that were the same SDK surface cut in half:
+  `fog` became **Lighting Lab**'s fifth mode (both are per-Filament-`View` option objects
+  reached through the same `rememberView` handle), `gesture-feedback-preview` became
+  **Camera & Gestures**' third mode (the Gestures mode flipped `isEditable` and drew no
+  affordance; the preview drew the affordance with no controls), and `ar-terrain` +
+  `ar-rooftop` became one **Geospatial Anchors** card with Terrain and Rooftop modes — they
+  were 303 identical lines out of ~485, differing only in whether the resolve call names
+  `altitudeAboveTerrain` or `altitudeAboveRooftop`. 53 cards → 50. Every retired id keeps
+  deep-linking: `sceneview://demo/fog` opens Lighting Lab **on the Fog mode**, and the same
+  for the other three, so no QR code, doc link or Maestro leg lost its target or its
+  coverage.
+- **The build moved to Android Gradle Plugin 9.4.0 on Gradle 9.7.1
+  ([#3440](https://github.com/sceneview/sceneview/issues/3440)).** Two dependency bumps
+  could not be merged at any version of themselves: `androidx.navigation:navigation-compose
+  2.10.0` ([#3416](https://github.com/sceneview/sceneview/issues/3416)) and
+  `org.jetbrains.compose 1.12.0` ([#3418](https://github.com/sceneview/sceneview/issues/3418))
+  both declare an AAR-metadata floor of *"Android Gradle plugin 9.1.0 or higher"*, and the
+  repo was on 8.13.2 — `checkDebugAarMetadata` failed no matter how often Dependabot rebased.
+  Both bumps ride along in this change, so consumers get Compose Multiplatform 1.12.0 and the
+  current navigation artifact.
+
+  For SDK consumers the published artifacts are unchanged — same coordinates, same POMs, same
+  public API (`apiCheck` passes against the committed `.api` dumps untouched). What changes is
+  what it takes to *build* the repo: Gradle 9.7.1, since Gradle 9.6 removed the internal API
+  AGP 8 relied on, and AGP 9's own floor is Gradle 9.
+
+  Three AGP 9 behaviours needed handling rather than accepting:
+
+  - AGP 9 ships Kotlin support built in and drops the `org.jetbrains.kotlin.android` plugin.
+    Adopting it compiles fine and **silently deletes two gates**: built-in Kotlin applies no
+    Kotlin *plugin id*, and both `binary-compatibility-validator` and this repo's detekt wiring
+    key on those ids. On that branch `./gradlew :sceneview:tasks --all` listed zero `api*` and
+    zero `detekt*` tasks while `./gradlew apiCheck` still exited 0. The build therefore keeps
+    the Kotlin Gradle plugin via `android.builtInKotlin=false` + `android.newDsl=false`, each
+    carrying its removal condition in `gradle.properties`.
+  - AGP 9 only creates host unit tests for the default variant, so
+    `:samples:android-demo:testReleaseUnitTest` — the task
+    [#3410](https://github.com/sceneview/sceneview/issues/3410) added because 13 compose-rule
+    tests once failed on `release` while passing on `debug` — stopped existing. It is restored
+    explicitly through the variant API.
+
+  - AGP 9 enforces unique library namespaces, and `androidx.test.espresso:espresso-core`
+    and `espresso-idling-resource` both declare `androidx.test.espresso` at 3.2.0 — the
+    version Flutter's `integration_test` plugin pins through `espresso-core:3.2+`. That
+    broke `flutter build apk --debug` for the Flutter demo, which is fixed by forcing both
+    artifacts to 3.7.0 (Espresso split the two namespaces in 3.5.1) in
+    `samples/flutter-demo/android/app/build.gradle.kts`, with its removal condition in
+    place.
+
+  `android.suppressUnsupportedCompileSdk=37.0`, added by
+  [#3439](https://github.com/sceneview/sceneview/pull/3439) as a temporary silencer, is gone
+  from the repo root and from the React Native compile harness: AGP 9.4.0 supports compileSdk 37
+  officially, so an "unsupported compile SDK" warning is a real signal again.
+- **The eight remaining helmet cards in the Android demo now show the helmet the app really
+  loads ([#3454](https://github.com/sceneview/sceneview/issues/3454)).** #3438 fixed
+  `model-viewer` and the `HomeHero` banner, but `lighting`, `lighting-lab`, `fog`,
+  `camera-gestures`, `materials`, `debug-overlay`, `video-recording` and `secondary-camera`
+  were still generated from `tools/demo-previews/refs/hero.webp` — a stylised rusty helmet
+  that `khronos_damaged_helmet.glb` does not render, even though all ten cards open the same
+  GLB. Their prompts now point at `refs/damaged_helmet.webp`, the reference cropped from the
+  `modelviewer_default` render golden, and name the model's real features (teal-green glass
+  visor, cyan HUD ring, orange triangle marker, scuffed off-white plates, gold-brass jaw), so
+  the sixteen regenerated images carry the same helmet, field, key light and contact shadow
+  as the cards around them. Each card also states its own effect more plainly than before —
+  the three coloured lights of `lighting` and the fog gradient of `fog` were barely readable,
+  and `camera-gestures` no longer draws written labels over the scene.
+- **One QA state-pin extra instead of two ([#3455](https://github.com/sceneview/sceneview/issues/3455)).**
+  #3449 and #3451 each landed an intent extra that pins an Android demo into a named UI
+  state so the emulator, which has neither ARCore nor AICore (#2754), can capture every
+  state: `qa_ask_state` for Point & Ask, ungated, and `qa_state` for Cloud Anchors, gated
+  on `qa_mode`. They are now the same seam. `--ez qa_mode true --es qa_state <id>` carries
+  every demo's vocabulary — Point & Ask reads its eleven card ids (`checking` … `failed-persistent`)
+  through it, Cloud Anchors its fourteen scenarios — and each demo ignores the ids it does
+  not know. The gate lives in one pure function, `DeepLinkRouter.resolveQaState`, which
+  returns `null` unless `qa_mode` is on; a unit test pins both the accepted and the ignored
+  path, and Point & Ask now also drops its pin at runtime when QA mode is toggled off from
+  the sheet, as Cloud Anchors already did. State ids are unchanged, so an existing capture
+  command only renames the extra. `qa_ask_state` is gone; the demo README lists both id
+  sets next to the one command that uses them.
+- **Scene Mesh and Streetscape Geometry are one card — "Scene Geometry", with Mesh and
+  Streetscape modes ([#3463](https://github.com/sceneview/sceneview/issues/3463)).** They
+  were 246 identical lines out of 445 and — more to the point — the *same* primary API:
+  both enable `Config.StreetscapeGeometryMode.ENABLED` and read
+  `frame.getUpdatedTrackables(StreetscapeGeometry::class.java)`. The whole difference is
+  which node consumes the trackable: `SceneMeshNode`, which colour-codes each geometry by
+  its `MeshClassification` (the enum that gives ARKit `ARMeshAnchor` parity), or the raw
+  `StreetscapeGeometryNode` it subclasses. That is a toggle, and shipping it as two cards
+  taught the reader that ARCore has two scene-geometry APIs when it has one with an
+  optional classification layer. Both capabilities are intact — the classified colour map
+  and its legend on Mesh, the single-material raw mesh on Streetscape — and each mode keeps
+  its own `ARSceneView` and `rememberEngine`, so switching tears the inactive ARCore
+  session and Filament engine down completely. 50 cards → 49.
+  `sceneview://demo/ar-streetscape` still opens the card **on the Streetscape mode**, so no
+  QR code, doc link or Maestro leg lost its target or its coverage; the card carries the
+  `KnownIssue` badge the Streetscape half already had, because both modes still need an
+  outdoor location with Street View coverage and an ARCore Cloud API key.
+- **ChatGPT / Codex plugin: the listing logo is the 512 px export, and the submission packet records the Codex install that was actually exercised ([#3470](https://github.com/sceneview/sceneview/issues/3470)).** `.codex-plugin/plugin.json` now points `logo` at `branding/exports/logo/logo-512.png` instead of the 192 px favicon, and `agents/OPENAI-PLUGIN.md` replaces "codex is not installed" with the verified `codex plugin marketplace add` / `codex plugin add sceneview@sceneview-local` flow (Codex CLI 0.149.0), including the two gotchas it surfaced: relative marketplace paths do not resolve, and the installed copy drops the `.agents/skills` symlinks, so skills resolve through the manifest path only.
+- **The installable SceneView skill now says that `.3mf` needs no special handling
+  ([#3482](https://github.com/sceneview/sceneview/issues/3482)).** The SDK reading 3MF is only
+  half the job: an AI that has not been told will invent a branch, a format check or a
+  "3MF support" flag before calling the loader, and worse, will decide the format from the
+  file extension or the MIME type — which Android does not reliably report. `SKILL.md` gains
+  that as a critical rule, `references/cheatsheet.md` states it on the two loader rows an AI
+  actually reads, and `references/recipes.md` gains a worked recipe whose Kotlin is compiled by
+  `:snippets-check` like every other snippet in the reference set.
+- **The Codex delegation script now pins the model it asks for
+  ([#3494](https://github.com/sceneview/sceneview/pull/3494)).**
+  `.claude/scripts/codex-delegate.sh` never passed `-m`, so it inherited whatever the
+  installed Codex CLI treats as its default. Codex CLI 0.153.4 makes `gpt-6-astra` that
+  default: updating the CLI would have moved every delegation onto a scarcer allowance
+  with no visible trace beyond the model line in each run header. The script now always
+  passes the model explicitly — `gpt-5.6-sol` by default, overridable with
+  `CODEX_DELEGATE_MODEL` or per call with `--model` — and routes the same choice into
+  `codex review`, which accepts no `-m`, through `-c model="..."`. A new `--effort`
+  reaches `model_reasoning_effort`, previously unreachable through the script.
+  `CLAUDE.md` records the routing policy that goes with it.
+- **The Android demo's Materials section is rebuilt as a lit PBR studio
+  ([#3495](https://github.com/sceneview/sceneview/issues/3495)).** It used to be a single
+  sphere with a row of sliders. It is now a nine-material gallery staged on a studio wall —
+  **Chrome · Gold · Copper · Brushed Aluminium · Glazed Ceramic · Car Paint · Velvet ·
+  Crystal · Signature Glow** — under a swept key light, with three modes reachable from the
+  dock: **Gallery** (tap any sphere), **Inspect** (one hero, live sliders, the glTF
+  extension each parameter maps to spelled out under it — `KHR_materials_clearcoat`,
+  `_sheen`, `_transmission`, `_emissive_strength`), and **Occlusion** (an occluder plane cut
+  through the subject). A Compare control splits the stage into two spheres so a change reads
+  against a reference instead of against memory, and four environments (Studio, Interior,
+  Sunset, Night) show that every one of these parameters is a conversation with the IBL, not
+  a colour picker.
+- Rebuilt the demo app's **Lighting** and **Lighting Lab** screens from scratch, split by role over one shared stage: Lighting is the showcase — three rigs (image-based, three-point studio, dynamic sun) with a chrome and a matte probe ball that make a light move readable — and Lighting Lab is the workbench, its five tabs replaced by a single frame where exposure, environment intensity and rotation, sky, local reflection probe, SSAO, fog, MSAA, FXAA and dithering are all live at once. Every retired deep link still resolves, now to the half that hosts its subject.
+- **The Android demo's Camera & Gestures screen is rebuilt from scratch — one stage, one
+  camera, and every camera capability expressed as something you *do* to it
+  ([#3500](https://github.com/sceneview/sceneview/issues/3500)).** The screen was three
+  demos behind a segmented toggle: a manipulator-mode picker (Orbit / Free Flight / Map)
+  with a distance slider, a per-node edit screen with four switches, and a third mode
+  showing the editing affordances the second deliberately drew without. It was an inventory
+  of API surface, not a demonstration — every mode tore down its own engine on a switch,
+  and the distance slider rebuilt the Filament `Manipulator` on every step, so each change
+  **teleported** the camera. The one thing a camera screen exists to convey, that the camera
+  is a place you move through rather than a parameter you set, was nowhere on screen.
+  What replaces it is a three-subject stage on a lit floor, driven by a single spherical
+  rig that is never rebuilt: **one finger orbits, two pan, a pinch dollies, and a release
+  coasts to a stop**; a **tap flies to the subject under your finger**, framed from that
+  subject's own size, and a double-tap returns to the whole stage; five named views (Hero ·
+  Front · Side · Top · Close) fly to an angle **relative to whatever has focus**, always by
+  the shortest arc round it; the dock's Cinematic item hands the camera to the SDK's own
+  eased orbit ramp, spinning the framing *you* chose instead of teleporting to a canonical
+  one; and its Move item makes the focused subject editable, so the same drag / twist /
+  pinch moves the **object** — with the SDK's on-model affordances drawn over it — right
+  next to the camera it competes with for the same gesture. A glass HUD prints the live
+  azimuth, elevation and distance, the name of what has focus, and the gesture *while it
+  runs*, because a camera demo that never says where the camera is asks you to infer it
+  from pixels. The floor is what makes the difference legible: orbit swings its perspective
+  lines, a pan slides them.
+- **`codex-delegate.sh` now routes by what was measured, not by what is newest.** Two changes,
+  both from a measurement run on 2026-09-06 rather than from the model's press release.
+  `--model gpt-6-astra` implies `--effort high` unless an effort is given: at its own default
+  effort Astra answered "no actionable regressions" on a diff where the same model at high
+  effort found two real protocol bugs, so the scarce allowance was being spent on the cheap
+  reasoning. And `ask` escalates to Astra by itself when the prompt is larger than
+  `CODEX_DELEGATE_ASK_ESCALATE_BYTES` (800 KB, about 230K tokens): every `gpt-5.6-*` model
+  stops at a 272K-token window and a prompt above it is **truncated, not refused**, so a
+  whole-module read or a dead session transcript would come back looking complete and be
+  missing its tail. Astra takes about 922K tokens of input, which is the one job here that
+  nothing else can do. What deliberately did not change: `implement` still defaults to
+  `gpt-5.6-sol`. Three parallel Astra implements at effort high spent 206K tokens in nine
+  minutes and exhausted an entire ChatGPT Plus five-hour window — for **every** model, Sol
+  included — so Astra on `implement` is a one-at-a-time choice for a hard issue on a fresh
+  window, never a default.
+- **The Play Store and App Store listings for the demo app now say what the app opens, and
+  show it.** Both descriptions were missing four of the six formats the Android manifest
+  already declares — the listings sold GLB and glTF while the app has been opening 3MF, STL,
+  OBJ and PLY from any file manager — and the Play short description promised "Every demo is
+  a screen you can actually use", which describes nothing a visitor gets. The six formats are
+  now named on both stores, the promise is replaced by the real one (open any 3D file, at real
+  size, in your room), and the App Store text only claims the formats the iOS app was measured
+  opening. Store titles are unchanged.
+- **The two listings carry a new captioned set of screenshots.** The Play phone class goes from
+  five uncaptioned frames to six captured on the `Pixel_7a` emulator, and the App Store from
+  three to six per device class captured on the iOS simulators; every frame now sits under an
+  English caption card, so the carousel reads before any pixel of app UI does. The Play feature
+  graphic is a composed banner with a text hook instead of a full-bleed crop. Captions, cards
+  and code panels are composited by a new versioned tool, `tools/store-screenshots/compose.py`,
+  driven by a manifest that names every output — no PNG is retouched by hand, and DESIGN.md
+  tokens are the only colours it draws with.
+- **The AR screenshot now shows the app, not just a room.** The "Real size, your room" slot was a
+  generated photo with no app UI in it at all — the same defect the audit filed against the slot it
+  replaced, and a screenshot that shows no app is one Google can refuse. It is now a composite: the
+  generated room carries the AR screen's **real** chrome, captured on `emulator-5554` and keyed off
+  the flat-black AR surface by `compose.py` (`kind: ar`) — the back arrow, the `Tap to Place`
+  identity pill, the `Model · Sheen Chair` placement bar, the reset control and Settings, drawn as
+  the app draws them. The subject is the chair the captured chrome has armed, so the bar names the
+  model the frame shows.
+The demo app's **About screen** is rebuilt. The 110dp gradient tile and its Material
+`view_in_ar` glyph are replaced by the app's own launcher mark, the seven look-alike
+cards become three labelled groups of settings-style rows (Learn, App, Legal), and
+supporting the project is now a single card near the top of the screen — Open Collective
+first, GitHub Sponsors beside it — instead of one row lost in the middle of a list.
+- **The `placement-scene` demo is now "One-Call AR", and says what it demonstrates before the
+  camera opens ([#3568](https://github.com/sceneview/sceneview/issues/3568)).** Named "Placement
+  Scene" and sitting next to "Tap to Place" and "Wall Placement", it opened straight into a
+  camera with its only explanation buried in a Settings sheet — so it read as a second, worse
+  copy of its neighbour, and the one person who wrote the SDK could not name its subject after a
+  minute of use. Its subject is not that you can tap to place; it is that the entire camera
+  screen is a **single `PlacementScene { anchor -> … }` call**, where `Tap to Place` hand-writes
+  the same flow out of the low-level primitives to show what they are. The demo now opens on a
+  still, themed screen that states exactly that, shows the snippet, introduces the cursor by
+  rendering the real reticle in two non-AR scenes — one over a pale ground, one over a dark one —
+  and only then opens the camera; Back returns there rather than leaving the demo. The deep link
+  `sceneview://demo/placement-scene` is unchanged. It stays in the catalogue because it is the
+  only demo that exercises the public one-call composable, which is also the first snippet
+  `llms.txt` offers for AR placement.
+- **The AR placement reticle is achromatic ([#3570](https://github.com/sceneview/sceneview/issues/3570)).**
+  `RETICLE_TINT` was `#44E7FF` and its documentation called that "the DESIGN.md primary cyan".
+  DESIGN.md has no cyan: `primary` is `#005bc1` / `#a4c1ff`, and `#44E7FF` is in no token table.
+  On a real floor that saturated ring was the loudest thing in the frame and tinted the room.
+  Every reticle worth copying — RealityKit's `FocusEntity`, Scene Viewer, Polycam, IKEA Place —
+  is neutral, and says *searching* versus *ready* with opacity and shape rather than hue. The
+  default is now the `on-ar-scrim` white, drawn as a hairline ring over a faint `ar-scrim` contact
+  halo so it stays readable on a pale floor, with the one colour on screen confined to a small
+  `#a4c1ff` centre dot that appears only in the ready phase. Theme-independent, like every
+  element drawn over a camera frame. Callers that want the old look can still pass
+  `reticleColor = DEFAULT_RETICLE_COLOR`.
+- **Materials, Animation & Physics, Video Recording, Secondary Camera and Debug Overlay now
+  show what they demonstrate
+  ([#3572](https://github.com/sceneview/sceneview/issues/3572),
+  [#3573](https://github.com/sceneview/sceneview/issues/3573),
+  [#3574](https://github.com/sceneview/sceneview/issues/3574)).** All five rendered
+  something correct and explained none of it. **Materials** was nine unlabelled spheres: each
+  now carries a projected caption naming its preset — *Polished chrome*, *Car paint —
+  clearcoat*, *Crystal — transmission*, *Neon sign — emissive* — and tapping one opens it
+  side by side with the same sphere in matte plastic, so the parameter that changed is
+  visible rather than asserted. **Animation & Physics** demonstrated neither half: the
+  animation side now names the playing clip, shows its playhead in seconds, lets you scrub
+  the pose and cross-fade into a second named clip with a live blend percentage, and the
+  physics side answers a drop with sphere-to-sphere collision response and an impact
+  counter, plus a deterministic Replay. **Video Recording** now states what it is doing and
+  lets you play back or share the MP4 it produced, instead of writing a file the user never
+  sees. **Secondary Camera** labels both views and explains the second `Camera` feeding the
+  picture-in-picture. **Debug Overlay** names each metric it prints and reports the first
+  sustained drop below 55 fps as the stress test spawns nodes. Every string is a resource,
+  and each sample carries a one-paragraph explainer naming the SDK API it exercises.
+- Reworked the Android demo app after a full QA pass: Floor and Wall placement are now one
+  **AR Placement** entry with a named surface selector (the `wall-placement` deep link still
+  opens it on Wall), the Showcase opens on a model instead of a release note, Collaborative AR
+  shows Alice and Bob as two live panes, Contact Shadows no longer hides the TV behind its
+  explanation, and 2D in 3D starts on one readable, tappable card.
+
+### Fixed
+
+- **The `splat-preview` demo clipped its own subject ([#2646](https://github.com/sceneview/sceneview/issues/2646)).** The orbit home was a hand-picked `z = 1.6 m` against a shell whose silhouette is 0.536 m (0.5 m of centres plus one 3σ billboard disc), which in portrait left a half-width of only 0.309 m at the subject — the sphere overflowed both edges by ~1.7x, and the demo that exists to show Gaussian splats never showed the whole cloud. The distance is now computed from the projection Filament actually uses (a 35 mm-equivalent focal length against a 24 mm sensor, so `tan(fovV/2) = 12 / focalLength`, the horizontal angle scaled by the 9:20 portrait aspect) and from the tangent condition `d = radius / sin(halfAngle)` — framing on `tan` would fit the flat disc through the centre and still clip the silhouette. Covered by `SplatFramingTest`, which asserts containment and keeps the old 1.6 m as a regression witness, and the demo's render is now baselined: `splatpreview_default.png` is a real golden and the slug joined `BASELINED_GOLDENS`.
+- **The `splat-preview` demo rendered unguarded, and ten doc surfaces undercounted the node inventory ([#2646](https://github.com/sceneview/sceneview/issues/2646)).** P1c proved `SplatNode` renders on the QA emulator with a one-off orbit screenrecord, but that probe was never committed — so `DemoRenderingScreenshotTest` covered 14 demo slugs and not the one whose pixels come from a custom `.filamat`. Added the `splat-preview` case (first-run path: the slug is deliberately absent from `BASELINED_GOLDENS` until a reviewed capture is promoted), which makes the suite's only runtime check of the `splat.filamat` ABI invariant — a mismatched blob blanks the viewport, and a blank viewport is what the settle probe refuses to capture. Separately, `README.md`, the doc site (`cheatsheet`, `manifest.json`, `platforms`, `try`, `structured-data.json`), `mcp/README.md`, `mcp/src/guides.ts` and `website-static/index.html` still advertised `46+ node types` while `.cursorrules` and `.windsurfrules` had been corrected to `48+` in [#3352](https://github.com/sceneview/sceneview/pull/3352); all twelve claims now read `48+`.
+- **A gate script that cannot find its tool now says "could not run" instead of reporting a
+  failure ([#3192](https://github.com/sceneview/sceneview/issues/3192), workstream 2).** Audit of
+  every script a workflow or `CLAUDE.md` still invokes as a check, now that #3244 has removed the
+  local harness (`pre-push-check.sh` and the `script_report_failure` helper the issue names are
+  gone with it). Four legs turned a missing tool into a verdict about the tree:
+  `validate-demo-assets.sh` read a missing `curl` as HTTP 000 → "transient", spent 23 s of
+  backoff per URL and exited 0 with every CDN reference "not checked"; `ios-device-qa.sh` exited
+  1 — the code a flow that really failed returns — when `xcrun` (or macOS itself) was absent;
+  `ar-replay-qa.sh` exited 1 — "a demo crashed" — when `python3` was missing for the verdict
+  merge, and only found out after a full emulator sweep; `qa-android-demos.sh` printed "APK
+  build failed or timed out" on a stock macOS host that has no GNU `timeout`, without Gradle
+  ever starting. Each now uses the code its own header reserves for "could not run" (exit 2,
+  checked up front), or resolves `gtimeout` the way `lib/maestro.sh` already does; nothing
+  changes when the tool is present. `test-validate-demo-assets.sh` pins the `curl` contract.
+- **MCP Apps is now declared as an extension, so a host that follows the negotiation rules can
+  find the 3D viewer ([#3192](https://github.com/sceneview/sceneview/issues/3192), workstream
+  4).** Everything the widget needs shipped a while ago — the `ui://widget/3d-viewer.html`
+  resource, its `text/html;profile=mcp-app` mime type, and `_meta.ui.resourceUri` on both tool
+  declarations and tool results — but MCP Apps is *opt-in*, negotiated through
+  `capabilities.extensions` (SEP-1724), and neither `sceneview-mcp` nor the hosted gateway ever
+  named `io.modelcontextprotocol/ui` anywhere. A spec-following host had nothing to switch on: it
+  saw a server with tools and resources and no reason to look for a UI. Both handshakes now
+  declare `extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } }`
+  from one shared source in `mcp/src/widgets.ts`, so the gateway and `npx sceneview-mcp` cannot
+  drift. The declaration is additive on every revision either server speaks — the `ext-apps` spec
+  advertises the same capability over `protocolVersion: "2024-11-05"` in its own example — so
+  hosts negotiating an earlier revision are unaffected.
+- **The gateway answers `server/discover`, so a 2026-07-28 client can discover it at all.** That
+  revision removes the `initialize` handshake, which means an `extensions` block living only in
+  the handshake result is invisible to a modern client; it would have got a bare `-32601` and
+  learned nothing. The gateway now returns the same identity, capabilities and revision list
+  without a session or a handshake, the way `sceneview-mcp` already did (#3349). It advertises
+  only the revisions it actually implements (`2025-06-18`, `2025-03-26`) — announcing 2026-07-28
+  while implementing none of its per-request `_meta` versioning or result envelopes would be the
+  worse bug.
+- **The gateway degrades to text for a client that negotiated MCP Apps without our mime type.**
+  The extension spec asks servers to check the peer's capabilities before advertising UI-enabled
+  tools. Silence stays permissive on purpose: every host predating the extension framework —
+  ChatGPT included, which drives the widget off the `openai/*` `_meta` keys — declares nothing,
+  and gating on silence would have dark-shipped the live listing. Only a client that names the
+  extension *and* lists mime types excluding ours loses the pointer; the tool stays listed and
+  callable. Tool declarations also merge `_meta.ui` instead of replacing it, so re-affirming the
+  widget pointer can no longer drop the `openai/*` spellings or any key the declaration gains
+  later. The mime type itself is unchanged and correct: `text/html;profile=mcp-app` is the
+  current MCP Apps value, not the withdrawn `text/html+skybridge`.
+- **`SceneView(onFrame = …)` now fires only for frames that actually reached the surface, so the
+  Materials demo no longer shows a blank viewport
+  ([#3444](https://github.com/sceneview/sceneview/issues/3444)).** `onFrame` was invoked from the
+  pre-render step, before `Renderer.beginFrame` had decided anything — and Filament refuses frames
+  while the GPU is behind. On the QA emulator the Materials demo presents **4 frames in its first
+  6.3 s** (Filament compiling the ToyCar's `KHR_materials_clearcoat` / `_sheen` / `_transmission`
+  variants) before settling at 60 fps, so the callback fired on refused attempts, the demo
+  scaffold's loading cover lifted on tick 1, and the viewport sat black for ~10 s with no spinner,
+  no label and not even the 12 s "Still loading…" card — which is what the reporter, the QA
+  screenshot and any store capture recorded. The callback is now gated on
+  `SceneRenderer.presentedFrameCount` actually advancing; everything else in the tick (load
+  updates, node ticks, framing passes, the camera manipulator) still runs every frame, or a
+  stalled surface could never recover. No signature changed — only when the callback fires.
+- **The demo scaffold waits for a *sustained* frame cadence before dropping its loading cover.**
+  A presented frame means *submitted*, not *displayed*: a warming driver spends ~1.5 s on each of
+  those first frames and still emits the occasional close pair, so "one frame arrived" — and even
+  "two arrived quickly" — uncovered a surface the driver would not paint for another 8 s.
+  `FirstFrameState` now needs 8 presented frames in a row no more than 250 ms apart (~133 ms once
+  the loop runs at 60 fps, unreachable during warm-up); the 12 s "Still loading…" card remains the
+  backstop for a device that never gets there.
+
+- **The demo viewport names its own state.** It is "Scene loading" while the cover is up and
+  "Scene ready" once a frame has reached the surface, so TalkBack announces whether there is
+  anything to look at instead of leaving an unlabelled rectangle.
+- **A QA launch (`--ez qa_mode true`) no longer lands on the "What's new" sheet.** A QA run
+  deep-links into a single demo; a modal that opens itself over it swallowed the gestures and could
+  end up in the capture. It stays silent rather than acknowledging itself, so the badge still has
+  its list waiting for the next human who opens the app.
+- **`./gradlew :samples:android-demo:detekt` no longer fails Gradle's task-ordering validation
+  ([#3450](https://github.com/sceneview/sceneview/issues/3450)).** detekt scans the same
+  `src/main/java` tree kotlinc compiles, which contains the build-generated `GeneratedDemos.kt`,
+  but only the Kotlin compile tasks declared their dependency on `generateDemoRegistry`; the demo's
+  detekt tasks now declare it too. The CI `Lint` job runs the demo's detekt alongside the four
+  library modules, so the task is exercised on every Android PR instead of only on a maintainer's
+  machine; its 93 pre-existing findings (70 of them `MaxLineLength`, 91 distinct signatures) are grandfathered in
+  `buildSrc/config/detekt/baseline-android-demo.xml`, the same treatment the library modules got, so
+  only new violations fail.
+- **Web: `LightManager.setShadowOptions()` and `LightManager$Builder.shadowOptions()` no
+  longer throw `UnboundTypeError` with the bundled Filament.js
+  ([#3456](https://github.com/sceneview/sceneview/issues/3456)).** The runtime vendored at
+  `website-static/js/filament/` (and the copy the web demo serves) was Filament.js 1.70.1,
+  whose Embind bindings never registered `quatf` — the type of
+  `ShadowOptions::transform` — so both public shadow-option entry points failed with
+  `Cannot call LightManager._setShadowOptions due to unbound types` and nothing on the web
+  could set `mapSize`, `normalBias`, contact shadows or `stepCount`. The runtime is now
+  Filament.js **1.72.1**, the first tagged release that carries the upstream fix
+  (google/filament#10116), the `filamentWebsite` pin and `RUNTIME.json` move with it, and
+  the three `website-static/materials/*.filamat` blobs are recompiled with the matching
+  `matc` (MATERIAL_VERSION 70 → 72) in the same change, as the runtime/material ABI
+  invariant requires. A Playwright spec (`samples/web-demo/tests/shadow-options.spec.ts`)
+  now calls both entry points against the shipped runtime and proves a `mapSize` change
+  visibly moves the rendered shadow. The npm `filament` pin used by the Kotlin/JS bundle
+  (`filamentWeb`, 1.52.3) is unchanged: npm publishing of that package stopped at 1.53.4,
+  so the fix is only reachable through the vendored runtime.
+- **The Play Store and App Store listings now lead with the helmet the app really renders
+  ([#3461](https://github.com/sceneview/sceneview/issues/3461)).** The generated AR visual
+  that opens every screenshot class (#2844) and the Play feature graphic were still
+  image-to-image from `tools/demo-previews/refs/hero.webp`, a stylised rusty helmet that
+  `khronos_damaged_helmet.glb` does not render — the defect #3454 fixed on the catalog
+  cards, one surface further out. All six store files are regenerated from
+  `refs/damaged_helmet.webp`, the crop of the real `modelviewer_default` render golden, so
+  the store, the Showcase hero banner and the Model Viewer card converge on the same
+  teal-visor helmet. The prompts now live in `tools/demo-previews/store.json` and
+  `gen.py --kind store` cuts each slot to its exact store pixel spec, so the art is
+  reproducible the way the cards are; `refs/hero.webp` is deleted, nothing references it
+  any more.
+- **The Flutter demo's `pubspec.lock` now records `flutter_sceneview` at the plugin's current version
+  ([#3462](https://github.com/sceneview/sceneview/issues/3462)).** The lockfile still pinned the
+  path-based plugin entry at 4.31.0 while `flutter/sceneview_flutter/pubspec.yaml` had moved on, so
+  a fresh clone's first `flutter pub get` rewrote a tracked file before any code was touched. The
+  lockfile stays committed (the Flutter team's recommendation for applications); the demo README now
+  says it is refreshed by `flutter pub get` and never hand-edited.
+- **The demo's release bundle builds again under AGP 9; the Play Internal deploy on
+  `main` was broken since the AGP 9 move
+  ([#3467](https://github.com/sceneview/sceneview/issues/3467)).**
+  `:samples:android-demo:buildReleasePreBundle` failed with `Entry name contains invalid
+  characters: root/META-INF/SceneView:sceneview_release.kotlin_module`. Kotlin Gradle
+  plugin 2.4.10 names every JVM/Android compilation `<project.group>:<project.name>` (plus
+  `_<variant>` for Android variants), and the default Gradle group of a subproject is the
+  root project's name — so every module in this build compiled as `SceneView:<module>`,
+  with a colon in the Kotlin module name. The compiler writes the `.kotlin_module` file
+  under a sanitised name (`SceneView_sceneview_release`), which is why debug APKs, the
+  AARs and `assembleDebug` were all green; but R8, on the minified release build, re-emits
+  that resource under the raw module name, and AGP 9's bundle packaging validates zip entry
+  names and rejects the colon. The app's existing `META-INF/*.kotlin_module` packaging
+  exclude is not a fallback: AGP 9 does not apply it on the bundle path at all — the AAB
+  built with this fix still carries all 19 `.kotlin_module` entries, so excluding the
+  resource could never have made the entry legal.
+
+  The fix is at the root: the root `build.gradle` now sets a colon-free Kotlin module name
+  on every JVM/Android compilation of every subproject — `<project.name>` for `main`,
+  `<project.name>_<compilation>` otherwise, i.e. `sceneview_release`, `sceneview-core`,
+  `sceneview-compose`, `android-demo_release` — which is the name KGP used before 2.4. It
+  covers `kotlin-android` modules and the multiplatform ones (`androidTarget()`, AGP 9's
+  `androidLibrary { }` and `jvm()` targets) alike; Kotlin/Native and Kotlin/JS compilations
+  are untouched. The only trace in the binary-compatibility dumps is `arsceneview.api`, where
+  the mangled accessors of seven `internal` Compose lambda singletons move from
+  `…$SceneView_arsceneview_release` to `…$arsceneview_release` — the module name is part of
+  the JVM mangling of `internal` members, which are not public API; the dump merely records
+  them. No public declaration changes, in any module.
+
+  `:samples:android-demo:bundleRelease` — the exact task the Play deploys run — joins the
+  local verification list for build-system changes alongside the `assembleDebug` /
+  `testReleaseUnitTest` / `lintDebug` set recorded for the AGP 9 move
+  ([#3440](https://github.com/sceneview/sceneview/issues/3440)), and CI's `build` job now
+  builds the demo's release bundle whenever a PR touches the build system (`gradle/**`,
+  `build.gradle*`, `settings.gradle*`, `gradle.properties`, the wrapper), so this gap
+  cannot reopen silently.
+- **CI on `main` no longer ends `cancelled` in "KMP native unit tests (iOS sim)" when
+  the job runs on the self-hosted Mac
+  ([#3469](https://github.com/sceneview/sceneview/issues/3469)).**
+  The tests were green in ~20 s on every affected push; the 30 minutes were spent in
+  `Post Run ./.github/actions/setup-gradle`. The composite action writes the Gradle
+  cache on `push` events, and on a self-hosted runner the Gradle User Home is the
+  machine's own `~/.gradle` — a home the action never restores into ("Gradle User Home
+  already exists: will not restore from cache") but did tar and upload in full on every
+  `main` push: 2.2 GB + 3.0 GB entries still at `Sent 1073741824 of 2201734690 (48.8%),
+  0.6 MBs/sec` when the job timeout fired (job 100769714909), or a transfer stuck at
+  `Sent 0 of 1269721491 (0.0%), 0.0 MBs/sec` for the whole 30 minutes (job 100796430540).
+  The same commits' PR runs are read-only and spent 0 s in that step, which is why the
+  failure only ever showed on `main`. All four `main` runs that reached this job on the
+  self-hosted runner spent 17 to 30 minutes there. The save also ran `gradle --stop`
+  against the developer's live daemons (one of the two it stopped belonged to a local
+  Flutter build) and pushed multi-GB macOS entries into a repository cache already at
+  14.5 GB active against the 10 GB quota.
+
+  `setup-gradle` now stays `cache-read-only` whenever `runner.environment` is
+  `self-hosted`, on every workflow that uses it; hosted runners keep repopulating the
+  cache on `push` exactly as before. The job's `timeout-minutes` was not the problem and
+  is unchanged; a comment next to it points at the post-step for the next reader.
+- **The iOS demo's home cards now show the helmet the app really loads
+  ([#3474](https://github.com/sceneview/sceneview/issues/3474)).** The Showcase hero
+  banner and the Model Viewer, Dynamic Sky, PBR Materials and Fog preview imagesets in
+  `Assets.xcassets` were still drawn from the deleted `hero.webp` render or from unrelated
+  helmets — the defect #3454 and #3461 fixed on Android and in the store listings, one
+  platform further out. The five imagesets are regenerated from
+  `tools/demo-previews/refs/damaged_helmet.webp` with the prompts recorded in
+  `prompts.json` / `heroes.json` (`gen.py --format jpg`), so the iOS cards, the Android
+  cards and the store art converge on the same teal-visor helmet.
+- **A model authored away from the origin is now framed where it actually is, not where it was
+  measured ([#3482](https://github.com/sceneview/sceneview/issues/3482)).** `sceneview-web`'s
+  auto-centre pass moves content onto the origin through the content-root pivot, then auto-dollies
+  the camera to fit — but it fitted the bounding box measured *before* that move, so the camera
+  aimed at the content's old position. A glTF authored around the origin has a ~zero offset, which
+  is why it went unnoticed; a 3MF is authored in the positive octant by specification, so a
+  converted print rendered a third of a frame off-centre.
+- **An opened file reached the AR placement picker labelled `opened-model`
+  ([#3482](https://github.com/sceneview/sceneview/issues/3482)).** The staged copy is deliberately
+  named `opened-model` on disk — a display name comes from whichever app shared the file, so
+  putting it on a path would mean sanitising untrusted text — and AR derived its row label from
+  that path's basename. The user opened `rocket.3mf` and the picker offered them `opened-model`.
+  The viewer now carries the file's own name across to placement, next to the real-world size it
+  already measured.
+- **The `npx sceneview-mcp` stdio server now honours the MCP Apps mime negotiation it
+  advertises ([#3485](https://github.com/sceneview/sceneview/issues/3485)).** The server
+  declares the `io.modelcontextprotocol/ui` extension, which tells a host it follows the
+  extension's rule: degrade to text when the client declares mime types excluding
+  `text/html;profile=mcp-app`. The HTTP gateway did that; the stdio server did not — it
+  mapped every tool declaration through unchanged, `_meta.ui.resourceUri` included, and
+  attached the same pointer to every `view_3d_model` result, so a host that had just said
+  it cannot render our widget was pointed at one anyway. Both handlers now read the
+  client's declared extensions from the handshake and take the pointer off declaration and
+  result together, so the two transports cannot disagree. What does **not** change: a
+  client that declares no extension at all — ChatGPT today, which drives the widget off the
+  `openai/*` keys — still gets its widget, and so does one that names our mime type. The
+  tool itself stays listed, callable and text-answering in every case: degradation, not
+  failure. An explicit empty `mimeTypes` list is now documented as counting with silence,
+  since the spec makes the field required and an empty one is malformed rather than a
+  refusal.
+- **"View in AR" from the Model Viewer sometimes dropped the current model and opened the
+  picker instead ([#3493](https://github.com/sceneview/sceneview/issues/3493)).** The handoff
+  passed whatever model the viewer was showing, but AR only recognised it when it also
+  happened to be one of the six models curated for the AR placement catalogue. The Damaged
+  Helmet is deliberately *not* one of them — a design call from #2023 about what a first-time
+  visitor should be offered — so tapping "View in AR" while looking at it silently failed to
+  arm anything and landed on the picker instead of the camera. The handoff now always wins:
+  any model the viewer was showing opens AR directly, with the same model already armed, and
+  the picker is still one tap away if the user wants to change it.
+- `DynamicSkyNode` pointed its sun light at the sky instead of at the scene: Filament's light direction is the direction the light *travels*, but the node set it to the vector *toward* the sun. A noon sun therefore lit the scene from underneath the ground — no cast shadow at any hour, and the time-of-day slider only changed the light's colour. The direction is now negated, so the sun rises, casts and sets as documented.
+- **The MCP gateway no longer refuses discovery to hosts on a newer protocol revision, and
+  a tool result no longer carries a widget the session negotiated away
+  ([#3502](https://github.com/sceneview/sceneview/issues/3502)).** `server/discover` is the
+  handshake-free call whose whole purpose is to say which revisions this server speaks, yet
+  it sat behind the `MCP-Protocol-Version` gate: a host sending its own current revision in
+  that header — exactly what the spec invites — got a 400 instead of the one answer that
+  would have let it negotiate down. Discovery is now exempt from the gate; every other
+  method still is not. Second half: `tools/list` already stripped `_meta.ui.resourceUri`
+  for a client that declared MCP Apps mime types excluding `text/html;profile=mcp-app`, but
+  `tools/call` attached the pointer unconditionally, so a host that discovers widgets from
+  results rather than declarations was still handed a widget it had just said it cannot
+  render. The call path now reads the same session decision and takes the pointer back off
+  the result — the text content and `structuredContent` are untouched, which is the
+  graceful degradation the extension asks for. Four transport tests pin both halves,
+  including that a client declaring nothing still gets its widget.
+- **The MCP roadmap no longer advertises a version that already shipped
+  ([#3506](https://github.com/sceneview/sceneview/pull/3506)).**
+  `get_platform_roadmap` returned an "Upcoming" section still promising `v4.0.0` —
+  SceneViewSwift stabilization, Android XR, the Flutter and React Native bridges — while
+  4.34.0 is published, so every host that asked the server what was coming next was told
+  the current major line was still ahead of it. The section now names the workstreams
+  without a version number, and says that `5.0.0` is a deliberate milestone rather than
+  an automatic bump.
+- **The site's Discord link was dead on eight pages, the two landing-page CTAs included.** `discord.gg/sceneview` returns `Unknown Invite` from Discord's API; the live invite is the one the README already used. The footer's "Twitter" entry pointed at an unrelated personal account and is removed rather than guessed at.
+- **Stale counts on the marketing surfaces.** The MCP server ships 38 compilable samples, not 33 (`mcp/src/samples.ts`), and the README advertised two npm packages whose own deprecation notices call them archived scaffolding.
+- **An oversized Codex prompt no longer reports a quota block that never happened.** The Codex
+  CLI caps one turn at **1,048,576 characters** whatever the model's window is, so `gpt-6-astra`'s
+  advertised ~922K tokens of input is not reachable through `codex exec` — the real ceiling lands
+  around 260–300K tokens, which is "a bit more than `gpt-5.6-sol`", not four times more. Handing
+  it a 2,043,968-character session transcript was refused with `input_too_large`; and because that
+  transcript itself quoted the words `session limit` and `rate_limit`, and Codex echoes the prompt
+  into its log, `codex-delegate.sh`'s quota grep matched the **prompt's own text** and stopped with
+  a plan limit that did not exist. Named causes are now checked before word-matching — the same
+  shape of fix the function already carries for an earlier instance of the bug — so an oversized
+  input exits 1 with its character count instead of 3, and `ask` refuses it up front rather than
+  spending minutes uploading a prompt that will bounce. A real quota block still exits 3 and no
+  workaround is ever attempted. `CODEX_DELEGATE_MAX_PROMPT_CHARS` raises the cap if a future CLI
+  does.
+- **Leaving a screen while a model was still loading could kill the process
+  ([#3523](https://github.com/sceneview/sceneview/issues/3523)).** A cancelled `loadModel`
+  coroutine and `ModelLoader.clear()` could both reach `destroyAsset`/`releaseSourceData` for
+  the same glTF asset, and the second one dereferenced a freed native pointer — a `SIGSEGV` in
+  `libgltfio`, not an exception, so the `runCatching` around those calls never had a chance to
+  help. It reproduced about twice per ten QA runs on the demo app, always by navigating back
+  before the model finished loading. `ModelLoader.destroyModel` now *claims* the model out of
+  its live-asset registry and only destroys it if the claim succeeded, so of any number of
+  concurrent callers for one asset exactly one reaches Filament and the rest are no-ops.
+  Registration into that registry also moved inside the same main-thread hop as the asset
+  creation itself, closing the window where a model existed but was not yet claimable.
+Frame an opened model at any scale. The demo viewer clamped its camera to 20 cm at the near end, so
+an STL, OBJ or PLY authored in metres — read in millimetres, as those unit-less formats are — opened
+as a near-invisible dot that Recenter could not bring back. The framing distance and the camera's
+near plane now follow the subject's own size, and a unit-less file a few units across is offered the
+metre reading ("Looks like metres — open at real size") instead of being scaled in silence.
+- **A 3MF, STL, PLY or OBJ that declares no colour now renders as a lit, shaded, neutral
+  grey instead of a blown-out white solid wearing a bloom halo
+  ([#3548](https://github.com/sceneview/sceneview/issues/3548)).** The fallback albedo the
+  four loaders share was written `0.62, 0.64, 0.68` — sRGB numbers, put straight into
+  glTF's `baseColorFactor`, which is defined in **linear** space. So the "light grey"
+  those numbers describe was really an sRGB 0.81 near-white, and SceneView's camera runs
+  about two stops over sunny-16 by design (f/12, 1/200 s, ISO 200, to match RealityKit).
+  Under the model viewer's 30,000-lux IBL that albedo clipped: every shading cue vanished,
+  the surface read as unlit, and it crossed the bloom threshold so the print wore a yellow
+  halo. A CadQuery chair measured 435 of 480 sampled surface pixels fully clipped, with a
+  visible glow outside its own silhouette. The fallback is now **18% linear grey** — the
+  photographic mid-grey, neutral on all three channels — defined once and shared by the
+  3MF, STL, PLY and OBJ paths, so a colourless file reads the same whatever format it
+  arrived in. Same chair after: zero clipped pixels, no glow outside the silhouette, and
+  facet-by-facet shading you can read. Files that *do* carry colour are untouched — an
+  explicit 3MF `displaycolor` still goes through the sRGB→linear transfer it always did.
+- **Nine demo render goldens still showed the retired demo chrome
+  ([#3551](https://github.com/sceneview/sceneview/issues/3551)).** The unified demo moved
+  from a light Material app bar plus a FAB to the floating dark pill, so every baseline
+  recorded before that redesign disagreed with the live app across a quarter to
+  three-quarters of its pixels — `animationphysics`, `debugoverlay`, `fog`, `geometry`,
+  `lighting`, `lightinglab`, `modelviewer`, `pickingcollision` and `secondarycamera` were
+  all failing for the chrome, not for the render. They are re-recorded on the reference
+  AVD (Pixel_7a, 1080x2400 @ 420 dpi, light mode, hardware GPU) and each capture was
+  reviewed by eye before promotion: the model, the environment and the on-screen controls
+  are present in every one. The suite now runs 15 of 15 green.
+- **The `demo-render-goldens` CI leg had never compared a single golden, and reported
+  green for it ([#3551](https://github.com/sceneview/sceneview/issues/3551)).** The job
+  booted the system image's default AVD, which renders at 320x544; every golden is
+  1080x2304. So all 15 cases died on `Size mismatch` before reading a pixel, and the
+  `|| true` inside a `continue-on-error` job turned that into a green check. Worse, the
+  run never got past 2–3 cases — the emulator process was going away mid-suite (`adb:
+  device offline`), which is also why the `demo-render-golden-captures` artifact had
+  never contained a file: the `adb pull` ran against a device that no longer existed. The
+  job now pins the emulator to 1080x2400 @ 420 dpi — the geometry the goldens are recorded
+  at — with `-skin` plus `wm size`/`wm density`, asserted in the step so a wrong geometry
+  breaks the run instead of hiding in it, with the RAM, cores and data partition that
+  framebuffer needs, and a new
+  step writes the real executed / passed / failed counts to the run summary, annotating
+  a shortfall when cases never ran. The leg stays advisory, per this repo's doctrine for
+  emulator legs — but advisory now means "not a merge block", not "unreadable".
+  `render-goldens/README.md` is stated as the single source of truth for how a golden is
+  recorded, and the workflow comment that claimed goldens "MUST come from this exact
+  [CI] config" is gone: that config renders on SwiftShader and cannot produce a baseline
+  a real GPU will match.
+  The captures that leg finally produced then showed what SwiftShader actually renders:
+  nothing — every frame is the demo's own "The scene has not rendered a frame yet." card,
+  which the suite had been comparing against a golden and reporting as a 99.75 % render
+  regression. The suite now recognises that card; on a run that declares
+  `softwareRenderer=true` it is an explicit skip with a reason, and everywhere else it
+  stays the hard failure it should be. No pixel comparison is relaxed, so a hardware-GPU
+  runner would start gating for real without another edit.
+  What the leg still does not do is finish: it dies capturing the Lighting Lab frame,
+  identically on both system images and already at the old geometry, so 12 of the 15
+  cases never run. That is now visible in the summary rather than swallowed, and tracked
+  as [#3554](https://github.com/sceneview/sceneview/issues/3554).
+The demo app builds for macOS again: the iOS-only navigation bar calls that broke the App Store macOS archive since v4.33.0 now go through platform-guarded helpers (#3556).
+Release-fast releases now reach the stores: `tag-release.sh` dispatches play-store.yml and app-store.yml alongside release.yml, and a read-only `prod-status.sh` probe reports what is actually live on every public surface versus `VERSION_NAME` (#3557).
+- **A hidden node can no longer leak a visible child, and the AR reticle no longer flashes at
+  the world origin ([#3569](https://github.com/sceneview/sceneview/issues/3569)).** `isVisible`
+  is computed from the parent chain, but the Filament layer mask that decides rendering was only
+  pushed when a node's own visibility field changed. Re-parenting changed the computed answer
+  without touching any field, so a child attached to an already-hidden parent kept the default
+  visible mask and rendered anyway. In `PlacementScene` that surfaced as a flat, un-rotated
+  reticle disc floating over the camera feed at the world origin for the first frames of every
+  session, before ARCore had produced a single hit. `Node.parent` now refreshes the subtree's
+  rendered visibility, and `PlacementScene` composes its reticle only while the camera is
+  `TRACKING`, so it is also gone the moment the session stops.
+- **A tap in `PlacementScene` now always places something once the camera is tracking
+  ([#3571](https://github.com/sceneview/sceneview/issues/3571)).** The composable ran
+  `frame.hitTest(event)` and fed the result to an acceptance filter that had a branch for
+  `InstantPlacementPoint` hits. ARCore never returns one from `Frame.hitTest` — instant hits
+  come only from `Frame.hitTestInstantPlacement` — so with `instantPlacement = true` (the
+  default) that branch was unreachable and every tap taken before a plane had converged under
+  the finger was dropped in silence. On a low-texture floor in a dim room that is most of the
+  first minute, which reads as a screen that simply does not respond. The tap now resolves
+  plane-first with the instant point at a 1 m approximate distance as the fallback — the
+  Sceneform `ArFragment` behaviour the KDoc always promised — and a successful placement fires
+  a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
+- **The Augmented Faces mesh is visible again, and it is lit
+  ([#3575](https://github.com/sceneview/sceneview/issues/3575),
+  [#3576](https://github.com/sceneview/sceneview/issues/3576)).** Face detection was never
+  broken — the demo banner truthfully read "Tracking 1 face(s)" while the screen showed
+  nothing. Augmented Faces only runs on a `Session.Feature.FRONT_CAMERA` session, and ARCore
+  documents that such a session never tracks the device pose: `Camera.getTrackingState()`
+  always returns `PAUSED`. `PoseNode` hides any node whose camera tracking state falls
+  outside `visibleCameraTrackingStates`, which defaults to `{TRACKING}`. `AugmentedFaceNode`
+  builds its mesh inside its own constructor, while that field still holds its initial
+  value, so the mesh appeared for a frame or two and was then hidden — with its children —
+  for the rest of the session. `AugmentedFaceNode` now opts out of the *camera* gate
+  entirely; the face's own `TrackingState`, which is the one that actually means "there is a
+  face here", still gates the mesh.
+  With the mesh back on screen, its shading was the second half of the report: the demo
+  painted it with an **unlit** flat colour and `computeTangents = false`, one uniform blue
+  with no highlight and no falloff — a filter, not a fitted mesh. ARCore force-disables
+  light estimation on a front-camera session, which is why the demo had drifted to unlit,
+  but "no estimate" argues for a deterministic rig rather than for no shading. The face is
+  now a lit PBR material with per-frame tangent quaternions, and the demo installs its own
+  key and fill lights instead of inheriting the SDK's straight-down `(0, -1, 0)` default —
+  the overhead angle that buries the eyes, the base of the nose and the mouth. A
+  front-camera session pins world space to the device, so a fixed direction out of the
+  screen is a stable, camera-anchored portrait key light.
+- **The iOS demo's dark mode has surfaces again, and four buried or broken things in the
+  Model Viewer and Explore work
+  ([#3582](https://github.com/sceneview/sceneview/issues/3582),
+  [#3583](https://github.com/sceneview/sceneview/issues/3583),
+  [#3584](https://github.com/sceneview/sceneview/issues/3584),
+  [#3585](https://github.com/sceneview/sceneview/issues/3585),
+  [#3586](https://github.com/sceneview/sceneview/issues/3586)).** Dark mode drew every card
+  fill with the same `#0D1117` as the page it sat on, because DESIGN.md's `surface-container`
+  (`#161C2C`) had never been ported to Swift — cards, the hero ground and the header chips
+  were all literally invisible against their own background, which is what "flat and inky"
+  meant. That token now exists, together with `outline`, `on-surface-faint`, `primary` and a
+  `primary-container` for tinted actions; cards and the hero scrim land on it, hairlines use
+  `outline`, and the selected filter chip trades the shouting white pill for a solid `primary`
+  one. Light is untouched — every value is a light/dark pair whose light half is what shipped.
+  With it: the **Model Viewer opens on an environment you can see** (`outdoor_cloudy`, backdrop
+  drawn) instead of a studio rig whose backdrop is four softbox panels in a void, while the
+  "Show environment" switch still wins and its answer is remembered across launches and
+  environments; **Cyberpunk Hovercar and Butterfly have thumbnails** instead of silently
+  falling back to an anonymous `cube.transparent` (`thumbnailName` probes `UIImage(named:)` and
+  returns `nil` when an imageset is missing, so nothing failed — a unit test now walks the whole
+  catalogue for tiles, USDZs and backdrop defaults); **"Surprise me" is promoted to the top of
+  the Models sheet** and re-rollable from a pill in the viewer itself, instead of being the
+  second-to-last row of a list nobody scrolls; and **Explore has a search field again** — it
+  had one all along, but `.searchable` renders into a navigation bar and the embedded Explore
+  is pushed onto a screen that hides its bar, so the field silently did not exist. Embedded
+  Explore now draws its own inline field, with distinct empty, no-results and error states,
+  and sits on `surface` rather than the system black it had been falling through to. The
+  Android demo's model picker gets the same "Surprise me" promotion, so the two apps agree
+  on where the feature lives.
+**iOS demo — the Lighting sample now demonstrates lighting.** Changing the option produced no
+visible difference and nothing in the scene ever looked reflective. Two causes: the demo added its
+own light on top of the `SceneView` system key + fill it never disabled (10 000 + 3 000 lux, so its
+own 2 000 lux directional was a rounding error), and it set no `.environment(_:)`, so half-rough
+white spheres had no IBL to mirror. The screen is rebuilt as the iOS counterpart of Android's #3496
+rebuild — three rigs (**Image**, **Studio**, **Sun**) over one stage with a chrome probe and a matte
+probe, each rig disabling both system light slots so what you see is the rig and nothing else.
+- **Every model in the iOS viewer now opens correctly framed, zooms both ways, and comes
+  back to where it started ([#3595](https://github.com/sceneview/sceneview/issues/3595),
+  [#3596](https://github.com/sceneview/sceneview/issues/3596),
+  [#3597](https://github.com/sceneview/sceneview/issues/3597),
+  [#3598](https://github.com/sceneview/sceneview/issues/3598)).** App Store QA on an iPhone
+  SE found the Toy Car opening as an extreme close-up that refused to zoom out, the
+  Butterfly opening as a speck, the Cyberpunk Hovercar off-centre, the Recenter button doing
+  nothing visible, and the menu's Reset restoring everything except the zoom. Those were
+  four faults wearing one costume. `SceneView` re-armed its fit-to-bounds pass by writing
+  value-type `@State` from the `RealityView` `update:` closure and from a `.task(id:)` —
+  writes SwiftUI drops, because both run on a view value it has already moved past — so
+  after the first subject latched, every later model inherited the previous one's pivot and
+  orbit radius. The latch, the stability tracker and the recenter token now live in the
+  reference-type applied cache, where a write sticks. The zoom-radius limits are **assigned**
+  from the current content's bounds instead of merged with the outgoing subject's: a stale
+  floor clamped the fit *above* the distance that frames the new model, which is precisely
+  "opened zoomed in and will not zoom out". The orbit drag and the pinch were two competing
+  `.gesture(_:)` modifiers, so `DragGesture` claimed the touch sequence and no closing pinch
+  ever reached the SDK — they are composed with `.simultaneousGesture` now, with the orbit
+  drag suppressed for the duration of a pinch. And a model file may ship its own cameras
+  (the Khronos `ToyCar` sample carries eight); RealityKit renders through one of those, so
+  the camera being fitted and recentred was not the camera on screen. `SceneView` owns the
+  camera, so authored ones are stripped from loaded content.
+- **New: `SceneView.recenterCamera(_:)`** — bump a token to re-frame the camera on the
+  content that is already loaded. Hosts previously had to re-key `contentID`, which rebuilds
+  the model and restarts its animation to move a camera.
+- **The framing driver no longer allocates per tick.** The content-bounds union folded into
+  a fresh array on every one of its 30 Hz passes, on the main thread, while the user was
+  pinching — and with the latch broken it never stopped. It folds in place now, and it
+  latches.
+- **Tapping a demo card in the iOS Showcase now expands that card into the demo
+  ([#3599](https://github.com/sceneview/sceneview/issues/3599)).** The full-screen demo used
+  to appear with the stock cover slide, with nothing tying it to the card the thumb had just
+  hit. It uses the same iOS 18 zoom transition the Explore gallery already uses: the tapped
+  `DemoMediaCard` — or the hero, when the demo is opened from it — is the transition source,
+  and the demo collapses back into it on close.
+- Fixed the Android demo screens whose text sat under the system bars, whose subjects were
+  clipped or too small to read, and whose AR coaching kept running after the session had
+  already failed; aligned the demo palette and typography with `DESIGN.md`.
+
+### Removed
+
+- **Device-QA: the Rosetta x86_64 AR rig is gone ([#3521](https://github.com/sceneview/sceneview/pull/3521)).** `setup-ar-emulator.sh --rosetta` and its whole provisioning path are removed. The rig existed to test whether an x86_64 guest could host a live-camera ARCore session on Apple Silicon and was measured not to (same camera topology as arm64 — no HAL id `0`; the ARCore install kills `system_server`); that finding is kept in `.maestro/README.md`, the ~650 lines that could only re-derive it are not. The QA host now keeps exactly one AVD, `Pixel_7a` on `emulator-5554`, which the same script recreates if it is missing. Real ARCore-session QA still needs a physical device.
+- **`sceneview-mcp` no longer sells a Pro tier.** The gateway it pointed at was deleted months ago and both of its URLs answer HTTP 404, so every "upgrade to Pro" surface in the package was an upsell to a dead end: the `[PRO]` prefixes on tool descriptions, the startup banner's pricing link, the "set `SCENEVIEW_API_KEY` to unlock it" stub and its invalid-key / rate-limit variants, the `SCENEVIEW_API_KEY` credential in `mcpize.yaml`, the subscription clauses in `TERMS.md` and `PRIVACY.md`, and the hosted-gateway sections of the rerun / gaming / interior READMEs. Every tool is free and runs in-process. The tool list is unchanged on both surfaces: the three generation tools that need your own third-party credentials are still local-only, and now say so honestly instead of asking for a subscription (#3590).
+- **The dead `mcp-gateway/` pricing dashboard and Cloudflare Worker are removed**, made obsolete by the MCP Pro tier's removal in #3590; the last commit that still contains it is tagged `archive/mcp-gateway-2026-09-10`.
+
+### Tests
+
+- **Five rebuilt demos have a render golden again
+  ([#2323](https://github.com/sceneview/sceneview/issues/2323)).** `materials` (#3495 /
+  [#3538](https://github.com/sceneview/sceneview/pull/3538)), `camera-gestures` (#3500 /
+  [#3540](https://github.com/sceneview/sceneview/pull/3540)), `custom-geometry` (#3423),
+  `two-d-in-three-d` (#3424) and `lines-paths` (#3425) each replaced their scene wholesale,
+  so each rebuild deleted the golden that pictured the old one and took its slug out of
+  `BASELINED_GOLDENS`. That is the documented first-run path, but it leaves the case
+  `assumeTrue`-skipped — five demos whose render nothing was checking. All five are
+  re-recorded from the rebuilt scenes on the shared `Pixel_7a` AVD, each capture looked at
+  before promotion (the nine-sphere material wall, the three-subject camera stage, the
+  runtime torus knot, the four depth-tested Compose cards, the tube-extruded splines), and
+  each verified by a second run that compares green against the committed PNG.
+- **The Android device-QA flow waits for real pixels before it interacts, and asserts them before
+  it captures.** Liveness alone passed a black demo — the Activity was perfectly alive the whole
+  time — and waiting for the loading cover to be *absent* passed just as trivially, in the instant
+  between `launchApp` and the first composition. `.maestro/android/flows/demo.yaml` now waits for
+  the viewport's positive "Scene ready" node **before** the orbit swipes (the cover swallows
+  touches, so swiping under it orbited nothing) and asserts it again at capture time. That is the
+  app's own "there are pixels" signal, so it needs no pixel reader and no new script; a demo that
+  never presents a frame now fails QA instead of passing it. The same signal replaces the zoom
+  legs' fixed 9 s render-warm-up guess, which waited on a marker that never existed.
+
+### Docs
+
+- **Every public surface now says what SceneView actually ships: 3MF, and the ChatGPT / Codex plugin.** The README, the MkDocs site, `llms.txt`, the Android skill, the landing page and both store listings were written before either landed. A new [Model Formats](https://sceneview.github.io/docs/formats/) page states the whole matrix — glTF/GLB everywhere, USDZ on Apple, `.3mf` on Android with no new API — what the conversion does to units, axes, normals and colours, and how the demo receives a file from the share sheet. `llms.txt` gains the other half of that contract: the formats that do **not** load (STL #3486, PLY #3487, OBJ + MTL #3488, 3MF on the web #3491), so a generator names the issue instead of inventing a loader. The ChatGPT / Codex plugin is now installable from the README, `CONTRIBUTING.md`, the docs and the site with the commands that were actually exercised, and the plugin manifest carries a 3MF starter prompt and keywords.
+- **Play Store and App Store listings rewritten against the shipped app.** The Android listing led with a "Dynamic Sky" demo the app no longer has and never mentioned that the app now opens a `.3mf`, `.glb` or `.gltf` handed over by another app; both listings now describe the ~50 screens that exist, resolved from `DemoRegistry`'s fragments and the iOS scene files rather than from memory.
+
 ## v4.34.0 — 2026-09-03
 
 ### Added

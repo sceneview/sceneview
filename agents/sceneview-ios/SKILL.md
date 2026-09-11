@@ -41,7 +41,7 @@ and view modifiers, not Jetpack Compose.
 - **Renderer** — RealityKit. There is **no Filament** on Apple platforms.
 - **Distribution** — Swift Package Manager. The package lives in the
   `github.com/sceneview/sceneview` monorepo; consumers add it by URL and pin a
-  version tag (currently `4.34.0`).
+  version tag (currently `4.35.0`).
 
 `SceneViewSwift` is consumable directly from Swift, and also underneath the
 Flutter and React Native bridges.
@@ -109,7 +109,7 @@ post-processing, they are outside `sceneview-compose`'s scope — use `ARSceneVi
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.34.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.35.0")
 ```
 
 ```swift
