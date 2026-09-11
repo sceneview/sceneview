@@ -11,7 +11,7 @@ import com.google.android.filament.Viewport
  * Mirrors the rendered Filament frame to additional [Surface]s — the primitive behind clean
  * **in-app video recording** of a `SceneView` / `ARSceneView`.
  *
- * Every rendered frame is copied (GPU-side, letterboxed to preserve aspect ratio) onto each
+ * Every rendered frame is drawn again (GPU-side, letterboxed to preserve aspect ratio) onto each
  * mirrored surface. Point it at a [android.media.MediaRecorder]'s input surface and you get an
  * MP4 of exactly what the scene renders — camera feed and virtual content composited, **without
  * MediaProjection**: no system consent dialog, no `mediaProjection` foreground service, and no
@@ -42,6 +42,17 @@ import com.google.android.filament.Viewport
  *
  * Multiple surfaces can be mirrored simultaneously — each [startMirroring] call adds one target.
  *
+ * ### How a frame reaches the surface
+ * Each mirrored surface gets its own Filament swap chain, and the scene is **rendered a second
+ * time** into it — from a dedicated [Renderer], right after the scene's own frame has been
+ * presented. It does *not* use `Renderer.copyFrame`: that copy runs on Filament's legacy
+ * `blitDEPRECATED` path and needs an `eglMakeCurrent` with the window as EGL *read* surface and
+ * the recorder as *draw* surface, in the middle of the window's frame. Drivers that treat the
+ * window's colour buffer as undefined once it leaves the draw slot then hand back a black read
+ * *and* present a black window — a uniformly black MP4 with a blacked-out live viewport (#3602).
+ * A second render depends on no such cross-surface read, so it behaves the same everywhere, at
+ * the cost of one extra scene pass per mirrored surface per frame.
+ *
  * ### Threading
  * [startMirroring] performs no Filament call and is safe from any thread — the swap chain is
  * created lazily on the render (main) thread at the next frame. [stopMirroring] destroys the
@@ -67,6 +78,15 @@ class SurfaceMirrorer {
     private var engine: Engine? = null
 
     /**
+     * Dedicated Filament [Renderer] for the mirror passes, created at the first mirrored frame.
+     *
+     * A *separate* renderer, not the scene's: Filament keeps frame-pacing history per [Renderer]
+     * and documents that alternating swap chains on a single renderer loses all or part of it, so
+     * mirroring through the scene's own renderer would degrade the live view's pacing.
+     */
+    private var mirrorRenderer: Renderer? = null
+
+    /**
      * The [Surface]s currently being mirrored to (snapshot copy).
      */
     val mirroredSurfaces: List<Surface>
@@ -83,12 +103,12 @@ class SurfaceMirrorer {
      *
      * Use [android.media.MediaRecorder.getSurface], [android.media.MediaCodec.createInputSurface]
      * or [android.media.MediaCodec.createPersistentInputSurface] to obtain a recording input
-     * surface. Mirroring incurs a per-frame GPU copy — only mirror while capturing, and call
-     * [stopMirroring] when done.
+     * surface. Mirroring costs one extra scene render per frame — only mirror while capturing, and
+     * call [stopMirroring] when done.
      *
      * The frame is letterboxed into the destination rectangle so the scene's aspect ratio is
      * preserved. No-op if [surface] is already being mirrored (double-start safe). Safe to call
-     * from any thread, and before the scene's first frame — copying begins with the next
+     * from any thread, and before the scene's first frame — mirroring begins with the next
      * rendered frame.
      *
      * @param surface the [Surface] onto which the rendered scene is mirrored.
@@ -130,7 +150,7 @@ class SurfaceMirrorer {
     /**
      * Stops mirroring to [surface].
      *
-     * Call when capture is complete — otherwise the per-frame GPU copy cost remains. The caller
+     * Call when capture is complete — otherwise the per-frame render cost remains. The caller
      * stays responsible for releasing the [Surface] itself (e.g. `MediaRecorder.stop()`).
      *
      * Idempotent: no-op if [surface] is not currently mirrored. Must be called from the main
@@ -152,29 +172,46 @@ class SurfaceMirrorer {
     }
 
     /**
-     * Copies the frame just rendered by [renderer] to every mirrored surface.
+     * Renders the scene onto every mirrored surface.
      *
-     * Called by [io.github.sceneview.SceneRenderer] on the render thread, between
-     * `Renderer.render(view)` and `Renderer.endFrame()`.
+     * Called by [io.github.sceneview.SceneRenderer] on the render thread, right after the scene's
+     * own `Renderer.endFrame()`. Each mirror gets its own `beginFrame`/`render`/`endFrame` on the
+     * dedicated [mirrorRenderer], with [view]'s viewport temporarily set to the letterboxed
+     * destination rectangle and restored before returning.
      */
-    internal fun onFrame(engine: Engine, renderer: Renderer, view: View) {
+    internal fun onFrame(engine: Engine, view: View, frameTimeNanos: Long) {
         this.engine = engine
         synchronized(surfaceMirrors) {
-            surfaceMirrors.forEach { mirror ->
-                // Lazy swap-chain creation — startMirroring is JNI-free.
-                val swapChain = mirror.swapChain
-                    ?: runCatching { engine.createSwapChain(mirror.surface) }.getOrNull()
-                        ?.also { mirror.swapChain = it }
-                    ?: return@forEach
-                val destViewport = mirror.viewport ?: view.viewport
-                renderer.copyFrame(
-                    swapChain,
-                    getLetterboxViewport(view.viewport, destViewport),
-                    view.viewport,
-                    Renderer.MIRROR_FRAME_FLAG_COMMIT
-                            or Renderer.MIRROR_FRAME_FLAG_SET_PRESENTATION_TIME
-                            or Renderer.MIRROR_FRAME_FLAG_CLEAR
-                )
+            if (surfaceMirrors.isEmpty()) return
+            val renderer = mirrorRenderer ?: engine.createRenderer().also {
+                // Clear the whole destination every frame so the letterbox bars stay black
+                // instead of keeping whatever the previous frame left there.
+                it.clearOptions = Renderer.ClearOptions().apply {
+                    clear = true
+                    clearColor = doubleArrayOf(0.0, 0.0, 0.0, 1.0)
+                }
+                mirrorRenderer = it
+            }
+            val sourceViewport = view.viewport
+            try {
+                surfaceMirrors.forEach { mirror ->
+                    // Lazy swap-chain creation — startMirroring is JNI-free.
+                    val swapChain = mirror.swapChain
+                        ?: runCatching { engine.createSwapChain(mirror.surface) }.getOrNull()
+                            ?.also { mirror.swapChain = it }
+                        ?: return@forEach
+                    val destViewport = mirror.viewport ?: sourceViewport
+                    // Draw into the centred sub-rectangle that preserves the scene's aspect
+                    // ratio; the rest of the destination stays cleared to black.
+                    view.viewport = getLetterboxViewport(sourceViewport, destViewport)
+                    if (renderer.beginFrame(swapChain, frameTimeNanos)) {
+                        renderer.render(view)
+                        renderer.endFrame()
+                    }
+                }
+            } finally {
+                // The live view must get its own viewport back whatever happened above.
+                view.viewport = sourceViewport
             }
         }
     }
@@ -194,6 +231,10 @@ class SurfaceMirrorer {
                 mirror.swapChain = null
             }
             surfaceMirrors.clear()
+            mirrorRenderer?.let { renderer ->
+                engine?.let { runCatching { it.destroyRenderer(renderer) } }
+            }
+            mirrorRenderer = null
         }
         this.engine = null
     }
