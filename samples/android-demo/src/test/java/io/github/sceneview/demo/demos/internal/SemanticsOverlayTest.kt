@@ -59,13 +59,18 @@ class SemanticsOverlayTest {
     }
 
     @Test
-    fun `labelBufferToArgb clamps an out-of-range byte into the palette`() {
+    fun `labelBufferToArgb clamps an out-of-range byte to UNLABELED and paints it transparent`() {
         val source = ByteBuffer.allocateDirect(1)
         source.put(0, 200.toByte()) // way past LABEL_COUNT - 1
 
         val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 1, height = 1, rowStrideBytes = 1)
 
-        assertEquals(SemanticsOverlay.PALETTE_ARGB[SemanticsOverlay.LABEL_COUNT - 1], pixels[0])
+        // coerceIn(0, LABEL_COUNT - 1) folds any garbage ordinal onto UNLABELED_ORDINAL (11), the
+        // last valid entry — and UNLABELED is by contract painted fully transparent (see the
+        // "paints UNLABELED fully transparent" test above), not PALETTE_ARGB[11]'s opaque black.
+        // A corrupt/unrecognized byte should show the live camera through, never a solid colour
+        // that looks like a deliberate classification.
+        assertEquals(0x00000000, pixels[0])
     }
 
     @Test
