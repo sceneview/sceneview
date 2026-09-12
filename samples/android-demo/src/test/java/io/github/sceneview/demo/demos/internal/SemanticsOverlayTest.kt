@@ -8,66 +8,128 @@ import org.junit.Test
 import java.nio.ByteBuffer
 
 /**
- * JVM unit tests for [SemanticsOverlay]. ARCore's `Image` is not mockable on the JVM, so the
- * row-stride compaction is fed a plain [ByteBuffer] shaped like an ARCore `R8` semantic image
- * (one byte per pixel, a label ordinal, row-strided) instead.
+ * JVM unit tests for [SemanticsOverlay]. ARCore's `Image` is not mockable on the JVM, so
+ * [labelBufferToArgb][SemanticsOverlay.labelBufferToArgb] is fed a plain [ByteBuffer] shaped like
+ * an ARCore `R8` semantic image (one byte per pixel, a label ordinal, row-strided) instead.
  *
- * Pins the contract that backs the `ARSceneSemanticsDemo` GPU overlay (#1868): the packed
- * buffer must be tightly-packed `width * height` bytes regardless of input stride, and the
- * 12-class colour palette / label tables must stay the right size.
+ * Pins the contract that backs the `ARSceneSemanticsDemo` Compose bitmap overlay (#1868,
+ * #3396, #3527): row-strided input compacts and colours correctly regardless of stride, rotation
+ * re-indexes without resampling, `UNLABELED` stays transparent, and the 12-class colour
+ * palette / label tables stay the right size.
  */
 class SemanticsOverlayTest {
 
-    // ── stripRowStride ─────────────────────────────────────────────────────
+    // ── labelBufferToArgb ──────────────────────────────────────────────────
 
     @Test
-    fun `stripRowStride compacts a strided buffer to width times height bytes`() {
+    fun `labelBufferToArgb colours each pixel from the palette, ignoring row padding`() {
         val width = 3
         val height = 2
         val rowStride = 5 // 2 padding bytes per row
         val source = ByteBuffer.allocateDirect(rowStride * height)
-        // Row 0: ordinals 0,1,2 then padding; Row 1: ordinals 3,4,5 then padding.
+        // Row 0: ordinals 0(SKY),1(BUILDING),2(TREE) then padding.
+        // Row 1: ordinals 3(ROAD),4(SIDEWALK),5(TERRAIN) then padding.
+        val ordinals = intArrayOf(0, 1, 2, 3, 4, 5)
         for (y in 0 until height) {
             for (x in 0 until width) {
-                source.put(y * rowStride + x, (y * width + x).toByte())
+                source.put(y * rowStride + x, ordinals[y * width + x].toByte())
             }
         }
-        val packed = SemanticsOverlay.stripRowStride(source, width, height, rowStride)
 
-        assertEquals(width * height, packed.remaining())
-        for (i in 0 until width * height) {
-            assertEquals("packed[$i]", i.toByte(), packed.get(i))
+        val pixels = SemanticsOverlay.labelBufferToArgb(source, width, height, rowStride)
+
+        assertEquals(width * height, pixels.size)
+        for (i in ordinals.indices) {
+            assertEquals("pixel[$i]", SemanticsOverlay.PALETTE_ARGB[ordinals[i]], pixels[i])
         }
     }
 
     @Test
-    fun `stripRowStride handles a zero-padding buffer (stride equals width)`() {
-        val width = 4
-        val height = 3
+    fun `labelBufferToArgb paints UNLABELED fully transparent`() {
+        val width = 2
+        val height = 1
         val source = ByteBuffer.allocateDirect(width * height)
-        for (i in 0 until width * height) source.put(i, (i % 12).toByte())
+        source.put(0, SemanticsOverlay.UNLABELED_ORDINAL.toByte())
+        source.put(1, 0) // SKY
 
-        val packed = SemanticsOverlay.stripRowStride(source, width, height, width)
+        val pixels = SemanticsOverlay.labelBufferToArgb(source, width, height, width)
 
-        assertEquals(0, packed.position())
-        assertEquals(width * height, packed.remaining())
-        assertEquals(7.toByte(), packed.get(7))
+        assertEquals(0x00000000, pixels[0])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[1])
     }
 
     @Test
-    fun `stripRowStride rejects a stride smaller than the width`() {
+    fun `labelBufferToArgb clamps an out-of-range byte into the palette`() {
+        val source = ByteBuffer.allocateDirect(1)
+        source.put(0, 200.toByte()) // way past LABEL_COUNT - 1
+
+        val pixels = SemanticsOverlay.labelBufferToArgb(source, width = 1, height = 1, rowStrideBytes = 1)
+
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[SemanticsOverlay.LABEL_COUNT - 1], pixels[0])
+    }
+
+    @Test
+    fun `labelBufferToArgb rejects a stride smaller than the width`() {
         val source = ByteBuffer.allocateDirect(16)
         assertThrows(IllegalArgumentException::class.java) {
-            SemanticsOverlay.stripRowStride(source, width = 8, height = 2, rowStrideBytes = 4)
+            SemanticsOverlay.labelBufferToArgb(source, width = 8, height = 2, rowStrideBytes = 4)
         }
     }
 
     @Test
-    fun `stripRowStride rejects an empty image`() {
+    fun `labelBufferToArgb rejects an empty image`() {
         val source = ByteBuffer.allocateDirect(4)
         assertThrows(IllegalArgumentException::class.java) {
-            SemanticsOverlay.stripRowStride(source, width = 0, height = 2, rowStrideBytes = 4)
+            SemanticsOverlay.labelBufferToArgb(source, width = 0, height = 2, rowStrideBytes = 4)
         }
+    }
+
+    @Test
+    fun `labelBufferToArgb rejects a rotation that is not a multiple of 90`() {
+        val source = ByteBuffer.allocateDirect(4)
+        assertThrows(IllegalArgumentException::class.java) {
+            SemanticsOverlay.labelBufferToArgb(
+                source,
+                width = 2,
+                height = 2,
+                rowStrideBytes = 2,
+                rotationDegrees = 45,
+            )
+        }
+    }
+
+    @Test
+    fun `labelBufferToArgb rotates 90 degrees clockwise without resampling`() {
+        // 2x1 source: [SKY(0), BUILDING(1)] -> rotated 90 becomes a 1x2 column,
+        // reading top-to-bottom as [SKY, BUILDING] (matches DepthVisualization's indexing).
+        val width = 2
+        val height = 1
+        val source = ByteBuffer.allocateDirect(width * height)
+        source.put(0, 0) // SKY
+        source.put(1, 1) // BUILDING
+
+        val pixels = SemanticsOverlay.labelBufferToArgb(
+            source,
+            width,
+            height,
+            rowStrideBytes = width,
+            rotationDegrees = 90,
+        )
+        val outWidth = SemanticsOverlay.rotatedWidth(width, height, 90)
+        val outHeight = SemanticsOverlay.rotatedHeight(width, height, 90)
+
+        assertEquals(1, outWidth)
+        assertEquals(2, outHeight)
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[0], pixels[0])
+        assertEquals(SemanticsOverlay.PALETTE_ARGB[1], pixels[1])
+    }
+
+    @Test
+    fun `displayRotationToDegrees matches the depth-visualization portrait mapping`() {
+        assertEquals(90, SemanticsOverlay.displayRotationToDegrees(0))
+        assertEquals(0, SemanticsOverlay.displayRotationToDegrees(1))
+        assertEquals(270, SemanticsOverlay.displayRotationToDegrees(2))
+        assertEquals(180, SemanticsOverlay.displayRotationToDegrees(3))
     }
 
     // ── palette / label tables ─────────────────────────────────────────────
