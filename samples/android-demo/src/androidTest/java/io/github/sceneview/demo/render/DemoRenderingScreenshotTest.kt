@@ -182,8 +182,14 @@ class DemoRenderingScreenshotTest {
     fun pickingCollisionDemo_default_state() {
         // #2239 Batch 1 — `collision` and `view-node` consolidated into `picking-collision`.
         // There is no landing tab any more: the screen shows the ray-hit shapes and the
-        // ViewNode "Live Compose in 3D" card in a single scene, which is what this golden
-        // holds since it was re-baselined for #3551.
+        // ViewNode "Live Compose in 3D" card in a single scene.
+        //
+        // Re-baselined for #3501, which rebuilt the scene: six primitives on a lit floor with
+        // contact-shadow pools, a raised three-quarter camera, and a real key + rim light (the
+        // previous pair resolved to the LightNode *class constructor* and never reached the
+        // scene — see PickingAndCollisionDemo). Nothing animates in the default state, so the
+        // frame is still a deterministic still; the tolerance stays at the #3551 value because
+        // the variance source is unchanged (the ViewNode card's own cold/warm compose).
         captureAndCompare(demoSlug = "picking-collision", goldenName = "pickingcollision_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }

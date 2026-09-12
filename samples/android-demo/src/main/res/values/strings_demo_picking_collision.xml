@@ -5,5 +5,12 @@
      through `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_picking_collision_title">Picking &amp; Collision</string>
-    <string name="demo_picking_collision_subtitle">Tap objects to select and inspect them</string>
+    <!-- The catalogue card's one line. It says what the screen DOES, in words anyone
+         reads without knowing what a ray or a hit-test is (#3501). -->
+    <string name="demo_picking_collision_subtitle">Tap any shape and the scene tells you exactly which one you touched</string>
+    <string name="demo_picking_collision_controls_help">Tap a shape: the scene casts a ray from your fingertip, finds the first object it meets, and that shape lifts, polishes and names itself. Tap the floating card — either face — and the touch is forwarded into the real Compose tree rendered on it.</string>
+    <string name="demo_picking_collision_compose_card">Compose card</string>
+    <!-- %1$d picked, %2$d total. Sits next to the picked shape's name in the pill. -->
+    <string name="demo_picking_collision_lit_count">%1$d of %2$d lit</string>
+    <string name="demo_picking_collision_clear">Clear selection</string>
 </resources>

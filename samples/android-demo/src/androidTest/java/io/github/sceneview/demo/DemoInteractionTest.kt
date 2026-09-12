@@ -898,11 +898,11 @@ class DemoInteractionTest {
         // `Card(onClick = …)`, with the "Tap me" Button inside it). We click three distinct
         // positions so three genuine up-events fire (tapping the same pixel back-to-back can
         // coalesce into a double-tap sequence on some gesture stacks); the counter must read 3.
-        // The card now floats at world y = 0.52 above the shape row, with the eye pulled back
-        // to 4.2 m (PickingLayout). Measured on the emulator at 1080x2400 for #3329: the card
-        // centre lands at 0.38 x h, spanning roughly +/-0.07 x h and +/-0.17 x w around it.
+        // #3501 moved the card to world y = 0.92, z = -0.35 and shrank it to scale 0.3, with
+        // the eye raised to (0, 1.05, 4.4) (PickingLayout). The card centre lands at
+        // CARD_CENTRE_Y x h — see that constant for how it was obtained.
         val cx = device.displayWidth / 2
-        val cy = (device.displayHeight * 0.38).toInt()
+        val cy = (device.displayHeight * CARD_CENTRE_Y).toInt()
         device.click(cx - 40, cy); Thread.sleep(500)
         device.click(cx, cy + 40); Thread.sleep(500)
         device.click(cx + 40, cy); Thread.sleep(700)
@@ -966,29 +966,50 @@ class DemoInteractionTest {
 
     @Test
     fun collision_shapeTapAndReset() {
-        // #3329 — one scene now: the shape row and the Compose card share it, and the
-        // row was pulled in to x = ±0.5 with the eye at 4.2 m so it stops being clipped
-        // by the portrait viewport edges (see PickingLayout).
+        // #3501 rebuilt the scene: six primitives (one of each kind the library ships) in two
+        // staggered rows on a lit floor, seen from an eye raised to y = 1.05 and pitched down
+        // onto the table. See `PickingLayout` for the plan these coordinates project.
         openDemo("picking-collision")
         screenshot("85_collision_default")
 
         val w = device.displayWidth
         val h = device.displayHeight
-        // Measured off the emulator at 1080x2400 while validating #3329 (not projected by
-        // hand — these are the pixels the shapes actually landed on):
-        //   spheres (world y = -0.05) → 0.54 x h
-        //   cubes   (world y = -0.30) → 0.61 x h
-        //   x = -0.5 → 0.19 | -0.25 → 0.34 | 0 → 0.50 | 0.25 → 0.65 | 0.5 → 0.81
-        val sphereY = (h * 0.54).toInt()
-        val cubeY   = (h * 0.61).toInt()
-        device.click((w * 0.19).toInt(), cubeY);   Thread.sleep(300)  // cube   0
-        device.click((w * 0.34).toInt(), sphereY); Thread.sleep(300)  // sphere 1
-        device.click((w * 0.50).toInt(), cubeY);   Thread.sleep(300)  // cube   2
-        device.click((w * 0.65).toInt(), sphereY); Thread.sleep(300)  // sphere 3
-        device.click((w * 0.81).toInt(), cubeY);   Thread.sleep(400)  // cube   4
+        // PROJECTED from `PickingLayout`, then corrected against the device — see the
+        // constants at the bottom of this file for which of the two each number is:
+        //   back row  (z = -0.45) → BACK_ROW_Y x h
+        //   front row (z = +0.30) → FRONT_ROW_Y x h
+        //   x = -0.5 → 0.30 | 0 → 0.50 | +0.5 → 0.70 (back row, narrower: it is farther)
+        //   x = -0.5 → 0.26 | 0 → 0.50 | +0.5 → 0.74 (front row)
+        val backY = (h * BACK_ROW_Y).toInt()
+        val frontY = (h * FRONT_ROW_Y).toInt()
+        device.click((w * 0.30).toInt(), backY);  Thread.sleep(300)  // cube     0
+        device.click((w * 0.50).toInt(), backY);  Thread.sleep(300)  // cone     1
+        device.click((w * 0.70).toInt(), backY);  Thread.sleep(300)  // cylinder 2
+        device.click((w * 0.26).toInt(), frontY); Thread.sleep(300)  // sphere   3
+        device.click((w * 0.50).toInt(), frontY); Thread.sleep(300)  // torus    4
+        device.click((w * 0.74).toInt(), frontY); Thread.sleep(400)  // capsule  5
         screenshot("86_collision_after_taps")
 
-        tap("Reset Colors")
+        // The action is disabled until something is actually picked (#3501), so reaching it
+        // here also asserts that at least one of the six taps above landed on a shape.
+        tap("Clear selection")
         screenshot("87_collision_after_reset")
     }
 }
+
+/**
+ * Screen fractions the `picking-collision` taps aim at after the #3501 rebuild, on the shared
+ * `Pixel_7a` AVD at 1080x2400. They live here, named, rather than inline: all three move
+ * together whenever `PickingLayout`'s camera moves, so a reviewer needs to see that they are
+ * one framing rather than three magic numbers.
+ *
+ * These are **projected from `PickingLayout`, not yet re-measured on the device** — this suite
+ * needs the shared emulator, which the #3501 work did not hold while the scene was written.
+ * They are therefore the one thing in this change that is asserted rather than observed: the
+ * three `screenshot(...)` calls around them will show immediately whether each tap landed, and
+ * these constants get corrected from that run. Until then, treat a miss here as a bad
+ * coordinate, not a broken pick.
+ */
+private const val BACK_ROW_Y = 0.47
+private const val FRONT_ROW_Y = 0.56
+private const val CARD_CENTRE_Y = 0.30
