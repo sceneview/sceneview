@@ -281,6 +281,15 @@ time `.claude/scripts/collate-changelog.sh` collates all fragments into a new
 `## vX.Y.Z` section. See [`changelog.d/README.md`](changelog.d/README.md) for
 the full convention.
 
+**Fragments are copied verbatim, not reformatted.** Write the bullet(s) exactly
+as they should read in the release notes — every non-blank line must be a
+top-level `- ` bullet or an indented continuation of one, never a bare
+paragraph. `ci.yml`'s `changelog-lint` job runs
+`.claude/scripts/check-changelog-fragments.sh` on any PR touching
+`changelog.d/**` and fails on a malformed fragment; a paragraph fragment that
+slips past this check would collate cleanly but produce zero highlights in the
+demo's "What's new" card, since it only recognises lines starting with `- `.
+
 Two rules worth knowing before you write one:
 
 - **HTML comments are stripped**, so anything inside `<!-- … -->` is a
@@ -349,7 +358,7 @@ correct. Specifically:
 
 - **`ci.yml`** — the single consolidated PR workflow (`build`, `lint`,
   `unit-test`, `api-check`, `web-desktop`, `flutter-demo`, `compile-kmp`,
-  `kmp-native-test`). Its `paths-ignore` filter sits under the `push:`
+  `kmp-native-test`, `changelog-lint`). Its `paths-ignore` filter sits under the `push:`
   trigger only — on a pull request the skipping is done by the `changes`
   job, which detects the touched paths and gates every other job, so a
   docs-only PR runs none of them. (Before #1370 this was three separate
