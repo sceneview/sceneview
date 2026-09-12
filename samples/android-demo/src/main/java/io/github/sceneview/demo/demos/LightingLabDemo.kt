@@ -107,6 +107,17 @@ import com.google.android.filament.Scene as FilamentScene
  * Filament JNI, main thread: the model comes from `rememberModelInstance`, the environments are
  * built inside `remember` blocks that run in composition, and the `View` options are pushed from
  * a `SideEffect` — never from a background coroutine.
+ *
+ * ## What the default frame is allowed to allocate
+ *
+ * Every knob on this bench is off or at the library default when the screen opens, and the
+ * allocations have to match: a control that is off must not have paid for itself yet. That is not
+ * a style rule here, it is #3554 — the screen used to build the local probe's 2 048² HDR the
+ * moment it composed, which made it the only demo in the catalogue holding two full cubemap
+ * pyramids at once, and the only case in `DemoRenderingScreenshotTest` that took the emulator
+ * process down with it. `probeEnvironment` documents the cost in detail.
+ *
+ * So: anything a switch guards is built when that switch is first turned on, not before.
  */
 @Composable
 fun LightingLabDemo(onBack: () -> Unit) {
@@ -125,6 +136,20 @@ fun LightingLabDemo(onBack: () -> Unit) {
     var showSky by remember { mutableStateOf(false) }
     var probeEnabled by remember { mutableStateOf(false) }
     var probeZone by remember { mutableFloatStateOf(LightingStage.PROBE_ZONE_DEFAULT) }
+
+    /**
+     * Whether the probe's own HDR has ever been asked for — see [probeEnvironment] for why this
+     * latch exists rather than a plain `remember(probeEnabled)`.
+     *
+     * Flipped from the two controls that turn the probe on, never written during composition, and
+     * never reset: once the environment is built, switching the probe off keeps it around so the
+     * next toggle is instant instead of paying the decode again.
+     */
+    var probeEnvironmentRequested by remember { mutableStateOf(false) }
+    val setProbeEnabled: (Boolean) -> Unit = { enabled ->
+        probeEnabled = enabled
+        if (enabled) probeEnvironmentRequested = true
+    }
     // Defaults mirror the library's own `createView` (SceneFactories.kt): SSAO on, MSAA off,
     // FXAA on, dithering on. A lab that opened with the wrong defaults would teach them.
     var ssaoEnabled by remember { mutableStateOf(true) }
@@ -177,10 +202,36 @@ fun LightingLabDemo(onBack: () -> Unit) {
     DisposableEffect(benchEnvironment) {
         onDispose { benchEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
     }
-    val probeEnvironment: Environment? = remember(environmentLoader) {
-        environmentLoader.createHDREnvironment(
-            assetFileLocation = LightingStage.PROBE_ENVIRONMENT_FILE,
-        )
+    /**
+     * The local probe's IBL — built the first time the probe is switched on, never before, and
+     * without a skybox.
+     *
+     * Both halves of that are #3554. This screen was the only demo in the catalogue that built
+     * **two** 2 048² HDR environments at once, and it built the second one eagerly even though
+     * the probe it feeds starts off. `createHDREnvironment` is not a file read: each call decodes
+     * the HDR to a float equirect texture, renders it to a cubemap, then runs the specular
+     * prefilter over a full mip chain — so the default frame was paying for a second cubemap
+     * pyramid that nothing sampled.
+     *
+     * `createSkybox = false` is the other half, and it is free: [ReflectionProbeNode] only ever
+     * reads `environment.indirectLight`, so the skybox this used to build could never be drawn.
+     * Passing `false` also lets the loader destroy the intermediate cubemap once the prefilter has
+     * consumed it instead of retaining it for a `Skybox` that does not exist.
+     *
+     * On the `demo-render-goldens` leg that matters more than it looks: SwiftShader presents no
+     * frame at all there (`softwareRenderer=true`), so nothing on this screen is ever rasterised —
+     * but the allocations above still happen at composition, because they are what *builds* the
+     * environment rather than what draws it.
+     */
+    val probeEnvironment: Environment? = remember(environmentLoader, probeEnvironmentRequested) {
+        if (!probeEnvironmentRequested) {
+            null
+        } else {
+            environmentLoader.createHDREnvironment(
+                assetFileLocation = LightingStage.PROBE_ENVIRONMENT_FILE,
+                createSkybox = false,
+            )
+        }
     }
     DisposableEffect(probeEnvironment) {
         onDispose { probeEnvironment?.let { environmentLoader.destroyEnvironment(it) } }
@@ -281,7 +332,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
                 icon = Icons.Filled.Lens,
                 label = "Reflections",
                 selected = probeEnabled,
-                onClick = { probeEnabled = !probeEnabled },
+                onClick = { setProbeEnabled(!probeEnabled) },
             ),
         ),
         controls = {
@@ -340,7 +391,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
             SwitchRow(
                 label = stringResource(R.string.demo_lighting_lab_probe),
                 checked = probeEnabled,
-                onCheckedChange = { probeEnabled = it },
+                onCheckedChange = setProbeEnabled,
             )
             LabeledSlider(
                 label = stringResource(R.string.demo_lighting_lab_probe_zone),
