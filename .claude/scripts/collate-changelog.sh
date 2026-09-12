@@ -80,6 +80,25 @@ if [ "${#FRAGMENTS[@]}" -eq 0 ]; then
     echo -e "${YELLOW}No fragments in $FRAG_DIR/${NC} — only legacy ## Unreleased entries will be collated."
 fi
 
+# ─── -1. Fragment format guard ───────────────────────────────────────────
+# Collation copies a fragment's stripped body verbatim into CHANGELOG.md — it
+# never reformats prose into a bullet. Six paragraph fragments merged
+# 2026-09-11 collated fine and shipped zero highlights in the demo's "What's
+# new" card, because `WhatsNewChangelog.kt` only recognises a bullet
+# (`line.startsWith("- ")`); the mismatch was found only once the release ran
+# (#3614). This is the same guard PRs hit at review time via
+# `check-changelog-fragments.sh` wired into `ci.yml` — running it again here
+# means `collate-changelog.sh` cannot be invoked directly (release checklist,
+# a manual run) and skip the check the way a CI-only gate could.
+LINT="$REPO_ROOT/.claude/scripts/check-changelog-fragments.sh"
+if [ ! -f "$LINT" ]; then
+    echo -e "${RED}Error:${NC} $LINT is missing — the fragment format guard cannot run."
+    exit 1
+fi
+if [ "${#FRAGMENTS[@]}" -gt 0 ]; then
+    bash "$LINT" "${FRAGMENTS[@]}"
+fi
+
 # ─── 0. Breaking-change / patch-bump guard ───────────────────────────────
 # Runs BEFORE anything is written or deleted, and before --dry-run returns:
 # this is the last moment a fragment's `<!-- breaking -->` declaration exists.

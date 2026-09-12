@@ -16,6 +16,7 @@ name: CI
 #   - changes        path detection (one dorny/paths-filter run for the whole PR)
 #   - changes-verdict  reds the run when `changes` did not conclude, so
 #                    `skipped` legs cannot read as green (#3148); required check
+#   - changelog-lint changelog.d/ fragment format   (gated on `changelog`)
 #   - build          libraries + sample APKs        (gated on `android`)
 #   - lint           Android lint                   (gated on `android`)
 #   - unit-test      JVM unit tests (PR-blocking gate) (gated on `android`)
@@ -118,6 +119,8 @@ jobs:
       # release bundle in `build` — the task the Play deploys run and the one
       # the AGP 9 move never exercised (#3467).
       build-system: ${{ steps.filter.outputs.build-system }}
+      # `changelog.d/**` fragment edits — gates `changelog-lint` below.
+      changelog: ${{ steps.filter.outputs.changelog }}
     steps:
       # Checked out only on `push`. `dorny/paths-filter` reads the diff from
       # the GitHub API on `pull_request` and never touches the working tree; it
@@ -245,6 +248,13 @@ jobs:
             compose:
               - *shared
               - 'sceneview-compose/**'
+            # Deliberately NOT under `shared`: a fragment's format has nothing
+            # to do with the build system, and folding it into `shared` would
+            # fire `changelog-lint` on every PR that merely bumps a Gradle
+            # version — the opposite of the narrow, single-purpose gate this
+            # filter exists to be.
+            changelog:
+              - 'changelog.d/**'
 
       # The `outputs:` block above warns that a missing output evaluates to the
       # empty string and silently skips every downstream job — "a gate that can
@@ -266,6 +276,7 @@ jobs:
             kmp=${{ steps.filter.outputs.kmp }}
             compose=${{ steps.filter.outputs.compose }}
             build-system=${{ steps.filter.outputs.build-system }}
+            changelog=${{ steps.filter.outputs.changelog }}
         run: |
           set -euo pipefail
           bad=0
@@ -317,6 +328,30 @@ jobs:
           fi
           echo "::error::'Detect changed paths' concluded '$RESULT', not 'success'. Every job that needs it was skipped WITHOUT being evaluated, so this run measured nothing — it is not evidence that the tree is green. Re-run the CI workflow for this commit."
           exit 1
+
+  # ── Changelog fragment format (#3614 postmortem) ─────────────────────────
+  # `collate-changelog.sh` copies a fragment's body verbatim into
+  # CHANGELOG.md — it never reformats prose into a bullet. Six fragments
+  # merged 2026-09-11 were free paragraphs with no `- ` bullet, collated
+  # without complaint, and shipped zero highlights in the demo's "What's new"
+  # card (`WhatsNewChangelog.kt` only recognises `line.startsWith("- ")`).
+  # Nothing caught it until the release PR (#3614) ran
+  # `WhatsNewAssetIntegrityTest` against the real collated CHANGELOG.md, three
+  # weeks after the fragments themselves were reviewable. This job runs
+  # `check-changelog-fragments.sh` at PR time instead — deliberately the
+  # lightest job in this workflow: a checkout and a bash script, no JDK, no
+  # Gradle, no cache warm-up.
+  changelog-lint:
+    name: Changelog fragment format
+    needs: changes
+    if: inputs.force-all || needs.changes.outputs.changelog == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check changelog fragment format
+        run: bash .claude/scripts/check-changelog-fragments.sh
 
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
