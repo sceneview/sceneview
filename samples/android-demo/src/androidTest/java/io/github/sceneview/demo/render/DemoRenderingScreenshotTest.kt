@@ -196,15 +196,24 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun lightingLabDemo_default_state() {
-        // #2239 Batch 2 — `dynamic-sky`, `environment`, `reflection-probes`, and
-        // `post-processing` consolidated into `lighting-lab`. Default landing tab is
-        // Sky (the dynamic-sky scene), so the captured frame is comparable to the
-        // prior `dynamicsky_default` golden once re-baselined. The Environment /
-        // Reflections / Post-FX sub-modes are reachable via segmented-button taps but
-        // covered only via DemoInteractionTest; dedicated screenshot captures would
-        // need a tab-aware deep-link parameter (follow-up). The procedural-sky shader
-        // has very high gradient sensitivity around the horizon, so TAA jitter bleeds
-        // into entire pixel rows along the sun band — 15 % handles cold + warm runs.
+        // #2239 Batch 2 folded `dynamic-sky`, `environment`, `reflection-probes` and
+        // `post-processing` into `lighting-lab`; #3539 then rebuilt the screen and the
+        // tabs are gone. There is one frame now — the shared `LightingStage` (helmet on
+        // a lit floor between a chrome and a matte probe ball) under a studio IBL and a
+        // single shadow-casting key — with every knob live in the sheet. `DynamicSkyNode`
+        // moved to the `lighting` showcase's Sun rig, so there is no procedural sky on
+        // this screen any more.
+        //
+        // The tolerance is inherited from the scene that DID have a procedural sky and
+        // has not been re-measured against the rebuilt frame, because this case has never
+        // completed a CI run (#3554). The IBL prefilter still has cold/warm cache variance
+        // and the chrome probe magnifies it, so 15 % is kept as the conservative value
+        // until a green run gives a real number to tighten it to.
+        //
+        // #3554: this case killed the emulator process at capture. The screen was the only
+        // demo building two 2 048² HDR environments at once, and it built the probe's one
+        // eagerly although the probe starts off — see `LightingLabDemo.probeEnvironment`.
+        // That allocation is now deferred, which is the fix under test here.
         captureAndCompare(demoSlug = "lighting-lab", goldenName = "lightinglab_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }

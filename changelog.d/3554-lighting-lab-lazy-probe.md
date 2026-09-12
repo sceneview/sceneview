@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **Lighting Lab no longer builds the reflection probe's environment before the probe is switched on ([#3554](https://github.com/sceneview/sceneview/issues/3554)).** The demo decoded a second 2048² HDR into a full cubemap and specular mip chain as soon as the screen composed, even though the local reflection probe it feeds starts off — making it the only demo holding two cubemap pyramids at once. It is now built the first time the probe is turned on, and without a skybox, since
+  `ReflectionProbeNode` only ever reads the environment's indirect light and that skybox could never be drawn.
