@@ -1,8 +1,14 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
+import android.view.Surface
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +31,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,10 +39,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.google.android.filament.Texture
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.SemanticLabel
@@ -47,8 +54,6 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.semanticImage
 import io.github.sceneview.ar.arcore.semanticLabelFraction
-import io.github.sceneview.ar.node.ARCameraNode
-import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
@@ -56,21 +61,9 @@ import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.demos.internal.SemanticsOverlay
 import io.github.sceneview.demo.rememberArPlaybackDataset
-import io.github.sceneview.material.setSemanticsOpacity
-import io.github.sceneview.math.Direction
-import io.github.sceneview.math.Position
-import io.github.sceneview.math.Size
-import io.github.sceneview.node.PlaneNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-
-/**
- * Local-space distance (metres) from the AR camera at which the full-screen semantic-overlay
- * quad is parented. Any value inside the near/far clip range works — the quad is sized to the
- * camera frustum at this distance every frame, so it always fills the viewport exactly.
- */
-private const val OVERLAY_QUAD_DISTANCE = 1.0f
 
 /**
  * AR demo — Scene Semantics: read ARCore's per-pixel 12-class outdoor semantic model and render
@@ -85,16 +78,24 @@ private const val OVERLAY_QUAD_DISTANCE = 1.0f
  *    the support gate via [io.github.sceneview.ar.arcore.resolveSemanticMode]) and the HUD
  *    surfaces a "not supported" banner — so the screen is never just black (#1617 principle).
  * 2. On every `onSessionUpdated`, call [Frame.semanticLabelFraction] for each of the 12 labels
- *    (a cheap GPU-backed query) to drive the HUD, **and** acquire the full per-pixel raster
- *    via [Frame.semanticImage] and upload it into a Filament `R8` [Texture].
- * 3. The overlay quad is a full-screen [PlaneNode] parented to the AR camera node, painted with
- *    the **`semantics_overlay.filamat`** material ([io.github.sceneview.loaders.MaterialLoader.createSemanticsOverlayInstance]):
- *    the shader maps each label ordinal to one of 12 fixed colors. A Compose [Slider] drives
- *    `opacity` (0.0 = camera only, 1.0 = full overlay) — same blend UX as `ARDepthVisualizationDemo`.
+ *    (a cheap GPU-backed query) to drive the HUD, **and** acquire the full per-pixel raster via
+ *    [Frame.semanticImage] and colour it into an `ARGB_8888` [Bitmap] via
+ *    [SemanticsOverlay.labelBufferToArgb] — rotated to the display orientation the same way
+ *    `ARDepthVisualizationDemo` rotates its depth bitmap (#3184-class mismatch).
+ * 3. The bitmap is composited as a Compose [Image], on top of the [ARSceneView] itself, with
+ *    `alpha` driven by the Camera ↔ Semantic [Slider] (0.0 = camera only, 1.0 = full overlay) —
+ *    the exact same architecture `ARDepthVisualizationDemo` uses for its depth overlay.
  *
- * The custom `.filamat` shader is the per-pixel label-overlay port of Google's
- * `samples/semantics_java` `background_semantics.frag`, deferred from #1730 / PR #1867 so the
- * matc-toolchain ABI work could be sequenced after the Config + Frame-accessor API landed.
+ * This demo used to paint the raster with a custom `semantics_overlay.filamat` material on a
+ * full-screen quad parented to the AR camera node instead. That never actually appeared: the
+ * camera background is deliberately drawn *last* in Filament's render order (`ARCameraStream`
+ * priority 7, so it can early-Z-reject pixels already covered by opaque virtual geometry,
+ * #1617) — but the overlay material had to disable depth *write* (so `UNLABELED` pixels could
+ * stay transparent instead of leaving an opaque hole), so it left nothing in the depth buffer
+ * for the camera pass to reject against, and the camera silently overdrew the overlay every
+ * frame, on every device. See [SemanticsOverlay]'s class KDoc for the full account. That is the
+ * root cause of [#3396](https://github.com/sceneview/sceneview/issues/3396) and
+ * [#3527](https://github.com/sceneview/sceneview/issues/3527).
  *
  * **Outdoor only.** The ARCore model has no indoor training data — pointing the camera at a
  * living-room wall will return mostly `UNLABELED`. Take this demo outside (street / park /
@@ -105,14 +106,26 @@ private const val OVERLAY_QUAD_DISTANCE = 1.0f
  */
 @Composable
 fun ARSceneSemanticsDemo(onBack: () -> Unit) {
+    val context = LocalContext.current
+    // Resolved once: the Display *object* is stable for the lifetime of this context, while
+    // `rotation` on it is live — so the per-frame read below stays cheap. Same pattern as
+    // `ARDepthVisualizationDemo`. `Context.display` was added in API 30; fall back to the
+    // deprecated accessor on API 28–29.
+    val display = remember(context) {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+            }
+        }.getOrNull()
+    }
+
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val arPlaybackDataset = rememberArPlaybackDataset()
-
-    // The AR camera node is hoisted so the semantic-overlay quad can be parented to it — the
-    // quad then tracks the camera and is sized to its frustum every frame, filling the viewport.
-    val cameraNode = rememberARCameraNode(engine)
 
     // Capability gate: null while we wait for the first session.configure callback;
     // true if the device shipped the Scene Semantics ML model; false otherwise.
@@ -143,15 +156,16 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
     // Camera ↔ Semantic overlay blend [0..1]. 0 = camera feed only; 1 = full segmentation overlay.
     var overlayBlend by remember { mutableStateOf(0.5f) }
 
-    // ── Filament resources for the GPU overlay (#1868) ──────────────────────────────────────
-    // The semantic raster is uploaded into this single-channel R8 texture, recreated only when
-    // the ARCore image dimensions change. The PlaneNode paints it with the custom .filamat.
-    // Held in `remember` holders so they survive recomposition; released in the DisposableEffect.
-    val overlay = remember { SemanticsOverlayResources() }
-
-    DisposableEffect(Unit) {
-        onDispose { overlay.release(materialLoader) }
-    }
+    // ── Compose bitmap overlay (#1868, #3396, #3527) ──────────────────────────────────
+    // Mutable bitmap; reallocated when the semantic-image resolution or display rotation
+    // changes. Composited as a Compose Image on top of the ARSceneView — see the class KDoc
+    // for why a Filament 3D quad could never actually appear over the live camera feed.
+    var semanticsBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var bitmapWidth by remember { mutableStateOf(0) }
+    var bitmapHeight by remember { mutableStateOf(0) }
+    // Version counter incremented after every successful upload so Compose recomposes the
+    // Image even though the Bitmap reference is unchanged.
+    var semanticsFrameVersion by remember { mutableStateOf(0) }
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_scene_semantics_title),
@@ -356,7 +370,6 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                cameraNode = cameraNode,
                 playbackDataset = arPlaybackDataset,
                 sessionConfiguration = { session: Session, config: Config ->
                     // Capability probe — uses ARCore's `isSemanticModeSupported` so we set the
@@ -392,162 +405,64 @@ fun ARSceneSemanticsDemo(onBack: () -> Unit) {
                             )
                         } ?: false
 
-                        // Per-pixel raster overlay — acquire the R8 semantic image, upload it
-                        // into the Filament texture, (re)build the camera-parented overlay quad
-                        // and size it to the current frustum. All Filament JNI calls run here on
-                        // the ARCore frame callback (the render/main thread) — never off-thread.
-                        overlay.update(
-                            frame = frame,
-                            engine = engine,
-                            materialLoader = materialLoader,
-                            cameraNode = cameraNode,
-                            opacity = overlayBlend
-                        )
+                        // Per-pixel raster overlay (#3396, #3527) — acquire the R8 semantic
+                        // image, colour it into an ARGB bitmap rotated to the display, and
+                        // composite it as a Compose Image above the ARSceneView. See the class
+                        // KDoc for why a Filament 3D quad never actually appeared on screen.
+                        val image = frame.semanticImage()
+                        if (image != null) {
+                            try {
+                                val plane = image.planes[0]
+                                val w = image.width
+                                val h = image.height
+                                val rotation = SemanticsOverlay.displayRotationToDegrees(
+                                    display?.rotation ?: Surface.ROTATION_0
+                                )
+                                val pixels = SemanticsOverlay.labelBufferToArgb(
+                                    labelBytes = plane.buffer,
+                                    width = w,
+                                    height = h,
+                                    rowStrideBytes = plane.rowStride,
+                                    rotationDegrees = rotation,
+                                )
+                                // Post-rotation dimensions — swapped on a quarter turn.
+                                val outW = SemanticsOverlay.rotatedWidth(w, h, rotation)
+                                val outH = SemanticsOverlay.rotatedHeight(w, h, rotation)
+                                if (semanticsBitmap == null ||
+                                    outW != bitmapWidth ||
+                                    outH != bitmapHeight
+                                ) {
+                                    semanticsBitmap =
+                                        Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                                    bitmapWidth = outW
+                                    bitmapHeight = outH
+                                }
+                                semanticsBitmap?.setPixels(pixels, 0, outW, 0, 0, outW, outH)
+                                semanticsFrameVersion++
+                            } finally {
+                                runCatching { image.close() }
+                            }
+                        }
                     }
                 },
                 onTrackingFailureChanged = { reason ->
                     trackingFailureReason = reason
                 },
             )
-        }
-    }
-}
 
-/**
- * Holds the Filament resources backing the GPU semantic overlay: the `R8` [Texture] that
- * receives the per-pixel raster, the camera-parented full-screen [PlaneNode], and its
- * `semantics_overlay.filamat` material instance. Recreated lazily and reused across frames so
- * the per-frame cost is one `setImage` upload plus a frustum-fit resize.
- *
- * All members are touched only from the ARCore frame callback (the render/main thread); none
- * are accessed off-thread, so no synchronization is needed.
- */
-private class SemanticsOverlayResources {
-    private var texture: Texture? = null
-    private var textureWidth = 0
-    private var textureHeight = 0
-    private var quad: PlaneNode? = null
-
-    /**
-     * Acquires the semantic raster from [frame], uploads it into the (lazily (re)created)
-     * `R8` texture, builds the overlay quad on first use, sizes it to the camera frustum, and
-     * applies [opacity]. A no-op when semantics are not yet available.
-     */
-    @Suppress("LongMethod") // Filament texture upload + quad lifecycle is inherently multi-step
-    fun update(
-        frame: Frame,
-        engine: com.google.android.filament.Engine,
-        materialLoader: io.github.sceneview.loaders.MaterialLoader,
-        cameraNode: ARCameraNode,
-        opacity: Float
-    ) {
-        val image = frame.semanticImage() ?: return
-        try {
-            val width = image.width
-            val height = image.height
-            if (width <= 0 || height <= 0) return
-
-            val plane = image.planes[0]
-            val packed = SemanticsOverlay.stripRowStride(
-                source = plane.buffer,
-                width = width,
-                height = height,
-                rowStrideBytes = plane.rowStride
-            )
-
-            // (Re)create the R8 texture when the ARCore image resolution changes.
-            if (texture == null || width != textureWidth || height != textureHeight) {
-                texture?.let { runCatching { engine.destroyTexture(it) } }
-                texture = Texture.Builder()
-                    .width(width)
-                    .height(height)
-                    .levels(1)
-                    .sampler(Texture.Sampler.SAMPLER_2D)
-                    .format(Texture.InternalFormat.R8)
-                    .build(engine)
-                textureWidth = width
-                textureHeight = height
-                // The texture identity changed — rebuild the quad so its material instance
-                // samples the fresh texture.
-                disposeQuad(cameraNode, materialLoader)
-            }
-
-            val tex = texture ?: return
-            tex.setImage(
-                engine,
-                0,
-                Texture.PixelBufferDescriptor(
-                    packed,
-                    Texture.Format.R,
-                    Texture.Type.UBYTE
+            // Read the version so Compose recomposes when a new semantic frame arrives.
+            val versionRead = semanticsFrameVersion
+            val bitmap = semanticsBitmap
+            if (bitmap != null && versionRead >= 0) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = overlayBlend,
+                    modifier = Modifier.fillMaxSize()
                 )
-            )
-
-            // Build the camera-parented full-screen quad on first use.
-            if (quad == null) {
-                quad = PlaneNode(
-                    engine = engine,
-                    size = Size(1.0f, 1.0f),
-                    center = Position(0.0f, 0.0f, -OVERLAY_QUAD_DISTANCE),
-                    // Plane faces the camera (-Z is the look direction; the quad's outward
-                    // normal must point back toward the camera at +Z in camera-local space).
-                    normal = Direction(0.0f, 0.0f, 1.0f),
-                    materialInstance = materialLoader.createSemanticsOverlayInstance(
-                        semanticTexture = tex,
-                        opacity = opacity
-                    )
-                ).also { cameraNode.addChildNode(it) }
             }
-
-            // Size the quad to exactly fill the camera frustum at OVERLAY_QUAD_DISTANCE.
-            // The projection matrix is column-major: m[5] = 1/tan(vFov/2), m[0] = m[5]/aspect.
-            val projection = cameraNode.projectionTransform
-            val m11 = projection.y.y
-            val m00 = projection.x.x
-            quad?.let { node ->
-                if (m11 != 0.0f && m00 != 0.0f) {
-                    val visibleHeight = 2.0f * OVERLAY_QUAD_DISTANCE / m11
-                    val visibleWidth = 2.0f * OVERLAY_QUAD_DISTANCE / m00
-                    node.updateGeometry(
-                        size = Size(visibleWidth, visibleHeight),
-                        center = Position(0.0f, 0.0f, -OVERLAY_QUAD_DISTANCE),
-                        normal = Direction(0.0f, 0.0f, 1.0f)
-                    )
-                }
-                node.materialInstance.setSemanticsOpacity(opacity)
-            }
-        } finally {
-            runCatching { image.close() }
         }
-    }
-
-    private fun disposeQuad(
-        cameraNode: ARCameraNode,
-        materialLoader: io.github.sceneview.loaders.MaterialLoader
-    ) {
-        quad?.let { node ->
-            cameraNode.removeChildNode(node)
-            val mi = node.materialInstance
-            node.destroy()
-            materialLoader.destroyMaterialInstance(mi)
-        }
-        quad = null
-    }
-
-    /** Releases the texture, the quad and its material instance. Call on demo teardown. */
-    fun release(materialLoader: io.github.sceneview.loaders.MaterialLoader) {
-        quad?.let { node ->
-            val mi = runCatching { node.materialInstance }.getOrNull()
-            runCatching { node.destroy() }
-            mi?.let { materialLoader.destroyMaterialInstance(it) }
-        }
-        quad = null
-        texture?.let { tex ->
-            // The quad's renderable is already destroyed above, so the texture is no longer
-            // bound — safe to destroy directly on the engine.
-            runCatching { materialLoader.engine.destroyTexture(tex) }
-        }
-        texture = null
     }
 }
 
