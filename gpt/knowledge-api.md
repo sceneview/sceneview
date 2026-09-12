@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.35.0)
+  Source of truth: /llms.txt  (SceneView 4.36.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.35.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.36.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -3504,6 +3504,51 @@ SceneView(
 )
 ```
 
+### Camera gestures
+
+One finger orbits, two fingers pan, a pinch dollies — and since 4.36.0 a **double-tap zooms in**
+and a **two-finger tap zooms out**, animated over 300 ms, the same convention as Google Maps and
+Photos (#3608). Both taps are on by default in `Scene` / `SceneView` / `ARScene`, are clamped by
+the same min/max distance factors as the pinch, and leave `onSingleTapConfirmed`, node picking and
+a consumer's own `onDoubleTap` untouched — the camera and the listener both see the event.
+
+Repeated double-taps do not dead-end: once the camera sits on the closest allowed distance, the
+next double-tap cycles back to the framing the scene was homed at.
+
+```kotlin
+// Opt out, or re-tune the step, on the default manipulator:
+val manipulator = rememberCameraManipulator(orbitRadius = 3f)
+(manipulator as? CameraGestureDetector.DefaultCameraManipulator)?.apply {
+    isDoubleTapZoomEnabled = false          // default true
+    doubleTapZoomFactor = 2f                // distance ratio per tap (must be > 1)
+    doubleTapZoomDurationSeconds = 0.3f     // 0 = instantaneous
+}
+SceneView(cameraManipulator = manipulator)
+```
+
+A custom `CameraGestureDetector.CameraManipulator` gets the gesture through
+`doubleTapZoom(x, y, zoomIn)` (default implementation: **no-op**), with `x`/`y` in Filament's
+bottom-left origin. The default being a no-op means a scene that supplies its own manipulator
+gets no zoom until it overrides that method — the maths is public so it does not have to be
+reinvented:
+
+```kotlin notest members of a custom CameraManipulator, not standalone declarations
+override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+    zoomTarget = zoomedDistanceForDoubleTap(   // io.github.sceneview.gesture
+        distance = currentDistance, homeDistance = fitDistance, zoomIn = zoomIn,
+        minDistance = fitDistance * 0.25f, maxDistance = fitDistance * 10f,
+    )
+    zoomStart = currentDistance; zoomElapsed = 0f
+}
+
+override fun update(deltaTime: Float) {          // already ticked every frame
+    zoomElapsed += deltaTime
+    applyDistance(animatedZoomDistance(zoomStart, zoomTarget, zoomElapsed / 0.3f))
+}
+``` Note that with an ORBIT manipulator the zoom is centred on the orbit pivot,
+not anchored under the finger: Filament's `OrbitManipulator::scroll` moves the eye along the gaze
+and ignores `x`/`y`.
+
 ### How far `orbitHomePosition` actually puts the camera
 
 Getting this wrong is a factor-of-2 framing bug, and every example above hides it because
@@ -4185,7 +4230,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.35.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.36.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4197,7 +4242,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.35.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.36.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4801,7 +4846,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.35.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.36.0")
 ```
 
 Import: `import SceneViewSwift`
