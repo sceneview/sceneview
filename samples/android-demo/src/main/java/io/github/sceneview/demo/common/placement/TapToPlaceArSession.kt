@@ -66,9 +66,7 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.ar.PlacementReticleVisual
 import io.github.sceneview.ar.PlaneDiscoveryGuide
-import io.github.sceneview.ar.RETICLE_READY_ALPHA
-import io.github.sceneview.ar.RETICLE_SEARCHING_ALPHA
-import io.github.sceneview.ar.ReticlePhase
+import io.github.sceneview.ar.reticleAlphaFor
 import io.github.sceneview.ar.reticlePhaseFor
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.loaders.MaterialLoader
@@ -351,18 +349,20 @@ fun TapToPlaceArSession(
             // The reticle has no surface to sit on while the QA backdrop stands in for the
             // camera: un-hit it parks at the camera and fills the frame (#3308).
             if (viewportSize != IntSize.Zero && showReticle && !qaCameraBackdropEnabled()) {
-                // Searching / ready, cross-faded rather than stepped. ARCore's centre-pixel
-                // hit test flickers in and out over a half-converged plane, and a hard alpha
-                // step turns that flicker into a strobing ring — the opposite of the
+                // Searching / hit / locked, cross-faded rather than stepped. ARCore's
+                // centre-pixel hit test flickers in and out over a half-converged plane, and a
+                // hard alpha step turns that flicker into a strobing ring — the opposite of the
                 // unambiguous "you can place now" signal the phase change exists to give
-                // (#3326).
-                val reticlePhase = reticlePhaseFor(state.reticleHit != null)
+                // (#3326). The hit's trackable decides locked-vs-estimated (#3570).
+                val hit = state.reticleHit
+                val hitTrackable = hit?.trackable
+                val reticlePhase = reticlePhaseFor(
+                    hasHit = hit != null,
+                    lockedOnPlane = hitTrackable is Plane &&
+                        hitTrackable.trackingState == TrackingState.TRACKING,
+                )
                 val reticleAlpha by animateFloatAsState(
-                    targetValue = if (reticlePhase == ReticlePhase.READY) {
-                        RETICLE_READY_ALPHA
-                    } else {
-                        RETICLE_SEARCHING_ALPHA
-                    },
+                    targetValue = reticleAlphaFor(reticlePhase),
                     animationSpec = tween(durationMillis = RETICLE_FADE_MS),
                     label = "placement-reticle-alpha",
                 )

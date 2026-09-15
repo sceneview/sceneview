@@ -683,6 +683,7 @@ public final class io/github/sceneview/ar/PlacementReticleStyle : java/lang/Enum
 
 public final class io/github/sceneview/ar/PlacementReticleVisualKt {
 	public static final field RETICLE_HALO_ALPHA_RATIO F
+	public static final field RETICLE_LOCKED_ALPHA F
 	public static final field RETICLE_READY_ALPHA F
 	public static final field RETICLE_SEARCHING_ALPHA F
 	public static final fun PlacementReticleVisual-fWhpE4E (Lio/github/sceneview/NodeScope;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/ar/ReticlePhase;JLio/github/sceneview/ar/PlacementReticleStyle;FLandroidx/compose/runtime/Composer;II)V
@@ -690,8 +691,13 @@ public final class io/github/sceneview/ar/PlacementReticleVisualKt {
 	public static final fun getRETICLE_READY_ACCENT ()J
 	public static final fun getRETICLE_TINT ()J
 	public static final fun reticleAlphaFor (Lio/github/sceneview/ar/ReticlePhase;)F
+	public static final fun reticleDotColorFor-4WTKRHQ (Lio/github/sceneview/ar/ReticlePhase;J)J
+	public static synthetic fun reticleDotColorFor-4WTKRHQ$default (Lio/github/sceneview/ar/ReticlePhase;JILjava/lang/Object;)J
+	public static final fun reticleDotRadiusFor (Lio/github/sceneview/ar/ReticlePhase;)F
 	public static final fun reticleHaloAlphaFor (F)F
 	public static final fun reticlePhaseFor (Z)Lio/github/sceneview/ar/ReticlePhase;
+	public static final fun reticlePhaseFor (ZZ)Lio/github/sceneview/ar/ReticlePhase;
+	public static synthetic fun reticlePhaseFor$default (ZZILjava/lang/Object;)Lio/github/sceneview/ar/ReticlePhase;
 }
 
 public final class io/github/sceneview/ar/PlacementSceneKt {
@@ -810,6 +816,7 @@ public final class io/github/sceneview/ar/PlaneVisualizerV2$Companion {
 }
 
 public final class io/github/sceneview/ar/ReticlePhase : java/lang/Enum {
+	public static final field LOCKED Lio/github/sceneview/ar/ReticlePhase;
 	public static final field READY Lio/github/sceneview/ar/ReticlePhase;
 	public static final field SEARCHING Lio/github/sceneview/ar/ReticlePhase;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;

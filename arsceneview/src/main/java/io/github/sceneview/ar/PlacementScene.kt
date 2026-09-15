@@ -62,10 +62,11 @@ import java.io.File
  *    surface the user is pointing at; avoid a permanently decorated floor").
  *  - A built-in **reticle** in the modern consumer-AR idiom (Scene Viewer / IKEA Place / Houzz):
  *    a thin [ring][PlacementReticleStyle.RING] that snaps to the center-screen hit-test each
- *    frame and **changes state** — dim while *searching* for a surface, bright with a centre dot
- *    once *ready* for a tap — so the user gets an unambiguous "you can place now" signal without
- *    any text. Themed via [reticleColor], switch geometry with [reticleStyle], hide it with
- *    `showReticle = false`.
+ *    frame and **changes state** — dim while *searching* for a surface, brighter with a small
+ *    white dot on an estimated *hit*, brightest with an accented dot once *locked* on a tracked
+ *    plane — so the user gets an unambiguous "you can place now" signal without any text, and
+ *    the cursor stays achromatic until it has a real surface ([ReticlePhase], #3570). Themed via
+ *    [reticleColor], switch geometry with [reticleStyle], hide it with `showReticle = false`.
  *  - Optional **onboarding coaching** ([coaching], off by default): the [PlaneDiscoveryGuide]
  *    overlay — an animated hand hint + "move your phone to find a surface" pill after 3 s, a
  *    "Need help?" tip card after 8 s, faded out the instant a surface is found — the same UX
@@ -101,7 +102,9 @@ import java.io.File
  *                              consumer-AR default) or the legacy [PlacementReticleStyle.DISC].
  * @param reticleColor          Reticle tint. Defaults to [RETICLE_TINT], the achromatic
  *                              `on-ar-scrim` white every consumer-AR reticle uses (#3570); the
- *                              searching / ready phase modulates its opacity automatically.
+ *                              searching / hit / locked [ReticlePhase] modulates its opacity and
+ *                              centre dot automatically, and the only hue on the cursor is the
+ *                              locked dot's.
  * @param fadePlaneOnFirstPlacement Hide the plane-detection grid once the first model is placed,
  *                              so the surface stops being highlighted after it has served its
  *                              discovery purpose. Default `true`. Set `false` to keep the grid
@@ -170,7 +173,7 @@ fun PlacementScene(
     // onSizeChanged; until measured the reticle stays hidden so it never races a (0,0) hit.
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Reticle searching↔ready state — driven by the centre-screen hit test each frame.
+    // Reticle searching / hit / locked state — driven by the centre-screen hit test each frame.
     var reticlePhase by remember { mutableStateOf(ReticlePhase.SEARCHING) }
 
     // Onboarding-coaching signals, only tracked when `coaching` is on (a null failure and false
@@ -242,7 +245,8 @@ fun PlacementScene(
             ),
         ) {
             // Built-in reticle — a thin ring that snaps to the centre-screen hit-test each frame
-            // so the user previews where the next tap lands and gets a searching↔ready signal.
+            // so the user previews where the next tap lands and gets a searching / hit / locked
+            // signal.
             // Purely visual: the tap handler above runs its own hit-test at the tap coordinates,
             // so placement is not centre-only.
             if (shouldShowReticle(
@@ -254,13 +258,18 @@ fun PlacementScene(
                 val centreX = viewportSize.width / 2f
                 val centreY = viewportSize.height / 2f
                 // PlacementReticle adds Depth-Lab orientation smoothing over HitResultNode and
-                // reports each hit change, driving the searching↔ready phase. Instant-placement
-                // hits are accepted by the tap handler but not by the reticle's plane-only snap,
-                // so the ring reads READY only on a real tracked surface.
+                // reports each hit change, driving the searching / hit / locked phase.
+                // Instant-placement hits are accepted by the tap handler but not by the reticle's
+                // plane-only snap, so the ring only ever reaches LOCKED on a real tracked plane.
                 PlacementReticle(
                     xPx = centreX,
                     yPx = centreY,
-                    onHitResultChanged = { hit -> reticlePhase = reticlePhaseFor(hit != null) },
+                    onHitResultChanged = { hit ->
+                        reticlePhase = reticlePhaseFor(
+                            hasHit = hit != null,
+                            lockedOnPlane = isPlaneLockHit(hit),
+                        )
+                    },
                 ) {
                     PlacementReticleVisual(
                         materialLoader = materialLoader,
@@ -549,6 +558,22 @@ fun shouldShowReticle(
     viewportMeasured: Boolean,
     cameraTracking: Boolean,
 ): Boolean = showReticle && viewportMeasured && cameraTracking
+
+/**
+ * Whether [hit] is a **tracked-plane** hit — the input that promotes the reticle from
+ * [ReticlePhase.READY] to [ReticlePhase.LOCKED] (#3570).
+ *
+ * A [com.google.ar.core.Point] or an instant-placement point is a legitimate place to drop a
+ * model, but it is an estimated surface, so it does not earn the locked cursor (and its accent
+ * colour). Only a [Plane] ARCore is actively [TrackingState.TRACKING] does.
+ *
+ * Internal: the boolean it produces is what the public, device-free [reticlePhaseFor] consumes,
+ * and that is the function callers and tests need.
+ */
+internal fun isPlaneLockHit(hit: HitResult?): Boolean {
+    val trackable = hit?.trackable ?: return false
+    return trackable is Plane && trackable.trackingState == TrackingState.TRACKING
+}
 
 /**
  * Per-[HitResult] acceptance predicate for [placementHit] — see that function's KDoc for the

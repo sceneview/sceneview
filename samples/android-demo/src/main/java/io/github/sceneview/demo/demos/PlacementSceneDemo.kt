@@ -97,9 +97,9 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
 /**
  * The pre-AR half: what this screen demonstrates, in one screen, before the camera opens.
  *
- * Renders the **real** [PlacementReticleVisual] in two plain non-AR [Scene]s — one over a pale
- * ground, one over a dark one — so the cursor the user is about to meet is introduced, and so
- * the #3570 redesign has a surface that can be captured without a camera.
+ * Renders the **real** [PlacementReticleVisual] in three plain non-AR [Scene]s — one per
+ * [ReticlePhase], over a pale ground and a dark one — so the cursor the user is about to meet is
+ * introduced, and so the #3570 redesign has a surface that can be captured without a camera.
  */
 @Composable
 private fun PlacementSceneIntro(onBack: () -> Unit, onOpenAr: () -> Unit) {
@@ -163,6 +163,9 @@ private fun PlacementSceneIntro(onBack: () -> Unit, onOpenAr: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
             ) {
+                // The three states of the cursor, over the two grounds it has to survive: the
+                // pale floor carries the two dim states (the hard contrast case) and the dark
+                // one carries the lock, where the accent dot appears (#3570).
                 ReticleSwatch(
                     phase = ReticlePhase.SEARCHING,
                     label = stringResource(R.string.placement_scene_reticle_searching),
@@ -171,7 +174,13 @@ private fun PlacementSceneIntro(onBack: () -> Unit, onOpenAr: () -> Unit) {
                 )
                 ReticleSwatch(
                     phase = ReticlePhase.READY,
-                    label = stringResource(R.string.placement_scene_reticle_ready),
+                    label = stringResource(R.string.placement_scene_reticle_hit),
+                    ground = PALE_GROUND,
+                    modifier = Modifier.weight(1f),
+                )
+                ReticleSwatch(
+                    phase = ReticlePhase.LOCKED,
+                    label = stringResource(R.string.placement_scene_reticle_locked),
                     ground = DARK_GROUND,
                     modifier = Modifier.weight(1f),
                 )
