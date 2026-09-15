@@ -219,7 +219,7 @@ class SsotDefaultsTest(unittest.TestCase):
                             f"{image_type} pattern matches no committed file")
 
 
-# ── Opt-in default-locale switch + locale prune (#3652) ─────────────────────
+# ── Opt-in default-locale switch + locale prune (#3658) ─────────────────────
 #
 # `apply_sync` lazily imports `requests` and catches `requests.HTTPError`, but
 # this suite's contract is that it runs with no third-party dependency

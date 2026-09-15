@@ -48,7 +48,7 @@ on:
           - beta
           - alpha
           - internal
-      # Listing-only maintenance run (#3652). Skips build + publish entirely
+      # Listing-only maintenance run (#3658). Skips build + publish entirely
       # and runs `sync-listing` alone, with the two opt-in flags that move the
       # store's default language to en-US and delete every other locale.
       #
@@ -77,7 +77,7 @@ jobs:
     timeout-minutes: 45
     # `listing_only` is a store-listing maintenance run — there is no new AAB
     # to build. On a tag push `inputs` is null, so this is `!null` == true and
-    # the release path is untouched (#3652).
+    # the release path is untouched (#3658).
     if: ${{ !inputs.listing_only }}
     outputs:
       version_code: ${{ steps.version.outputs.code }}
@@ -303,7 +303,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Nothing to roll out on a listing-only run (#3652).
+    # Nothing to roll out on a listing-only run (#3658).
     if: ${{ !inputs.listing_only }}
 
     # Track list comes from the build job — see its `Compute target tracks` step.
@@ -703,7 +703,7 @@ jobs:
     # listing refresh (e.g. to push new screenshots/feature-graphic) without
     # waiting for the next minor release.
     #
-    # `always() &&` is required for the `listing_only` path (#3652): build and
+    # `always() &&` is required for the `listing_only` path (#3658): build and
     # publish are SKIPPED there, and a skipped `needs:` would otherwise skip
     # this job too. The success arm keeps its old meaning for every other run
     # — an `always()` without it would turn this into a job that syncs the
@@ -742,7 +742,7 @@ jobs:
           # LISTING_FLAGS is empty on every automatic run: a release syncs the
           # text and touches nothing else, as it always has. Only the manual
           # `listing_only` dispatch adds the two opt-in flags that move the
-          # store's default language and delete the other locales (#3652).
+          # store's default language and delete the other locales (#3658).
           LISTING_FLAGS=""
           if [ "${{ inputs.listing_only }}" = "true" ]; then
             LISTING_FLAGS="--set-default-locale en-US --prune-other-locales"
