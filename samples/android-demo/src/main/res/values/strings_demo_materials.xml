@@ -11,6 +11,10 @@
      new demo never needs to touch this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_materials_title">Materials</string>
+    <!-- #3624: the identity pill while one sphere is open. Naming the material there is
+         what turns the arrow beside it into "back to the wall" rather than "leave the
+         demo" — the same thing the system back gesture now does. -->
+    <string name="demo_materials_title_detail">Materials · %1$s</string>
     <string name="demo_materials_subtitle">Compare metal, glass, fabric and glow</string>
     <!-- The scene is procedural; what the cover waits on is the HDR environment's
          IBL prefilter, without which nothing has anything to reflect. -->

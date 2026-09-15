@@ -711,6 +711,15 @@ class HeroOrbitCameraManipulator(
     private val radiusProvider: (() -> Float)? = null,
     /** Optional live override of [target], same contract as [radiusProvider]. */
     private val targetProvider: (() -> Position)? = null,
+    /**
+     * Optional live override of [yHeight], same contract as [radiusProvider].
+     *
+     * A demo that flies the camera onto a subject and then hands the frame over to another
+     * camera (#3624) animates this so the flight lands on the *elevation* the next camera
+     * uses, not only on its distance: an eye that arrives level with the subject and is then
+     * replaced by one tilted down cuts to a different angle at the last frame.
+     */
+    private val yHeightProvider: (() -> Float)? = null,
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
     private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
         null
@@ -730,6 +739,8 @@ class HeroOrbitCameraManipulator(
 
     private fun currentTarget(): Position = targetProvider?.invoke() ?: target
 
+    private fun currentYHeight(): Float = yHeightProvider?.invoke() ?: yHeight
+
     /**
      * Hand control back to the idle orbit immediately, without waiting out
      * [resumeAfterMillis]. A demo calls this when it starts a camera animation of its own
@@ -748,7 +759,7 @@ class HeroOrbitCameraManipulator(
         val target = currentTarget()
         return Position(
             x = sin(rad) * radius + target.x,
-            y = target.y + yHeight,
+            y = target.y + currentYHeight(),
             z = cos(rad) * radius + target.z,
         )
     }

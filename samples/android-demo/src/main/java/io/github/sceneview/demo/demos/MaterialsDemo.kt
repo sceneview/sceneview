@@ -4,6 +4,7 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,6 +46,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +83,6 @@ import io.github.sceneview.demo.demos.internal.StudioMaterial
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
-import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
@@ -105,7 +106,10 @@ import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * **Materials** — what a physically based surface is, shown rather than described.
@@ -290,6 +294,21 @@ private fun StudioSection(
     val focusZoom = remember { Animatable(0f) }
     val focusing = focusIndex != null
     val focusScope = rememberCoroutineScope()
+    // The flight in, kept so a `back` mid-flight can cancel it instead of landing in Inspect
+    // a fifth of a second after the user asked to leave (#3624).
+    var flightJob by remember { mutableStateOf<Job?>(null) }
+    // ── The hand-over yaw (#3624) ────────────────────────────────────────────────────────
+    //
+    // The dolly used to land on the wall sphere from wherever the sweep happened to be, and
+    // Inspect then drew its own camera from a yaw of its own — so the last frame of a 520 ms
+    // travel was a cut to another angle. This one float is the seam: the Gallery flight eases
+    // *to* it and every Inspect camera starts *from* it, which is what makes the two halves
+    // one continuous move. On the way back it is refilled with the pose the Inspect orbit
+    // actually left the camera in, so the flight out is continuous at its own first frame.
+    //
+    // Frozen at 0 in QA mode: there the flight has zero duration, so there is no continuity
+    // to preserve, and a yaw that follows the sweep would move every Inspect golden.
+    val handoverYaw = remember { mutableFloatStateOf(0f) }
     val haptic = rememberHapticFeedback()
     val wallPositions = remember { MaterialStudio.wallPositions() }
 
@@ -366,13 +385,43 @@ private fun StudioSection(
         extentZ = heroDepth,
         fill = HERO_FILL,
     )
-    val heroManipulator = rememberHeroOrbitCameraManipulator(
-        trigger = inspecting && animating,
-        radius = heroRadius,
-        yHeight = 0.12f,
-        durationMillis = MaterialStudio.ORBIT_PERIOD_MILLIS,
-        staticYaw = MaterialStudio.STATIC_ORBIT_YAW,
-    )
+    // Inspect's idle orbit. Built here rather than through
+    // `rememberHeroOrbitCameraManipulator` for one reason: its yaw has to *start* at
+    // [handoverYaw] (#3624), and the factory's own animator owns the absolute yaw. The spin
+    // is therefore an offset from the hand-over, and it is re-zeroed on every entry into
+    // Inspect — including an entry with the orbit paused, where a stale offset would be a
+    // jump of whatever angle the last visit happened to stop at.
+    val heroSpin = remember { Animatable(0f) }
+    LaunchedEffect(inspecting, animating, DemoSettings.qaMode) {
+        heroSpin.snapTo(0f)
+        if (!inspecting || !animating || DemoSettings.qaMode) return@LaunchedEffect
+        while (true) {
+            heroSpin.snapTo(0f)
+            heroSpin.animateTo(
+                targetValue = 360f,
+                animationSpec = tween(
+                    durationMillis = MaterialStudio.ORBIT_PERIOD_MILLIS,
+                    easing = LinearEasing,
+                ),
+            )
+        }
+    }
+    // Deep-link zoom override (#1571), as `rememberHeroOrbitCameraManipulator` applies it.
+    val heroOrbitRadius = DemoSettings.cameraDistance ?: heroRadius
+    val heroManipulator = remember(heroOrbitRadius) {
+        HeroOrbitCameraManipulator(
+            yawProvider = {
+                if (DemoSettings.qaMode) {
+                    MaterialStudio.STATIC_ORBIT_YAW
+                } else {
+                    handoverYaw.floatValue + heroSpin.value
+                }
+            },
+            radius = heroOrbitRadius,
+            yHeight = HERO_Y_HEIGHT,
+            target = Position(0f, 0f, 0f),
+        )
+    }
 
     // Where the tap-to-focus dolly stops. Not an arbitrary "close enough" distance: it is the
     // distance at which a wall sphere covers the same fraction of the frame as the ball
@@ -386,10 +435,27 @@ private fun StudioSection(
     // Read by the manipulator's providers on the render thread, so `compare` flipping while a
     // flight is in the air retargets it instead of stranding it at a stale distance.
     val focusRadiusState = rememberUpdatedState(focusRadius)
+    // Eye height the dolly ends at. The wall sweep is level with the spheres, Inspect's orbit
+    // sits [HERO_Y_HEIGHT] above its subject — same tilt expressed at the dolly's own, much
+    // shorter distance, so the two cameras look down the same line when they swap (#3624).
+    // Compare has no tilt at all: its camera is on the equator.
+    val focusYHeightState = rememberUpdatedState(
+        if (compare) 0f else HERO_Y_HEIGHT * focusRadius / heroOrbitRadius
+    )
+
+    /**
+     * Yaw of the Gallery camera at this instant: the sweep while the wall is idle, easing to
+     * (or, on the way out, away from) [handoverYaw] across the flight. Reads only remembered
+     * state holders, so it stays correct when called from a provider captured in `remember`.
+     */
+    fun galleryYaw(): Float {
+        val sweep = MaterialStudio.sweepYaw(sweepPhase.floatValue)
+        return sweep + (handoverYaw.floatValue - sweep) * focusZoom.value
+    }
 
     val galleryManipulator = remember(galleryRadius) {
         HeroOrbitCameraManipulator(
-            yawProvider = { MaterialStudio.sweepYaw(sweepPhase.floatValue) },
+            yawProvider = ::galleryYaw,
             radius = galleryRadius,
             yHeight = 0f,
             target = Position(0f, 0f, 0f),
@@ -406,7 +472,50 @@ private fun StudioSection(
                 val anchor = focusIndex?.let { wallPositions[it] } ?: Position(0f, 0f, 0f)
                 Position(anchor.x * t, anchor.y * t, anchor.z * t)
             },
+            yHeightProvider = { focusZoom.value * focusYHeightState.value },
         )
+    }
+
+    /**
+     * The single door between the two framings (#3624). Every mode change goes through it so
+     * the hand-over yaw is written on both crossings: entering, it captures the pose the
+     * Gallery camera is in right now, which is the pose Inspect must open on; leaving, it
+     * captures the pose the Inspect orbit has drifted to, which is where the flight back out
+     * must start. Without that the transition is continuous in one direction only.
+     */
+    fun changeMode(target: MaterialsMode) {
+        if (!DemoSettings.qaMode) {
+            if (target == MaterialsMode.Inspect && !inspecting) {
+                handoverYaw.floatValue = galleryYaw()
+            } else if (inspecting && target != MaterialsMode.Inspect) {
+                // Compare draws from a fixed camera node, so nothing has moved since the
+                // hand-over; the hero orbit adds its own travel on top of it.
+                if (!compare) handoverYaw.floatValue += heroSpin.value
+            }
+        }
+        onModeChange(target)
+    }
+
+    /**
+     * Ease the wall back in from wherever the camera stands, and only then drop the focus.
+     * Shared by the flight out of Inspect and by a `back` pressed mid-flight in — which also
+     * cancels the flight in, so the camera turns round instead of landing in Inspect a
+     * quarter of a second after the user asked to leave.
+     */
+    fun flyBackToWall() {
+        flightJob?.cancel()
+        flightJob = focusScope.launch {
+            if (focusZoom.value > 0f) {
+                focusZoom.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = if (DemoSettings.qaMode) 0 else FOCUS_FLIGHT_MILLIS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+            focusIndex = null
+        }
     }
 
     /**
@@ -416,10 +525,15 @@ private fun StudioSection(
     fun focusOn(index: Int) {
         focusIndex = index
         haptic.selection()
+        // Pin the sweep where the tap found it: the dolly must not also turn, or the sphere
+        // it is flying at slides across the frame. `galleryYaw()` reads the sweep here
+        // because the flight has not started yet.
+        if (!DemoSettings.qaMode) handoverYaw.floatValue = galleryYaw()
         // A drag earlier in the session leaves the manipulator in user control, where the two
         // providers above are ignored — without this the dolly would simply not play.
         galleryManipulator.resumeAuto()
-        focusScope.launch {
+        flightJob?.cancel()
+        flightJob = focusScope.launch {
             focusZoom.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
@@ -428,24 +542,22 @@ private fun StudioSection(
                 ),
             )
             selectedIndex = index
-            onModeChange(MaterialsMode.Inspect)
+            changeMode(MaterialsMode.Inspect)
         }
     }
 
-    // The flight back. Leaving Inspect — by the dock's Gallery button or by the segmented
-    // control — eases the wall back in from wherever the camera had landed, which is the
-    // "tap again to go back out" half of #3609.
+    // The flight back. Leaving Inspect — by the dock's Gallery button, by the segmented
+    // control, by the back arrow or by the system back gesture — eases the wall back in from
+    // wherever the camera had landed, which is the "tap again to go back out" half of #3609.
     LaunchedEffect(inspecting) {
-        if (!inspecting && focusZoom.value > 0f) {
-            focusZoom.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = if (DemoSettings.qaMode) 0 else FOCUS_FLIGHT_MILLIS,
-                    easing = FastOutSlowInEasing,
-                ),
-            )
-            focusIndex = null
-        }
+        if (!inspecting && focusZoom.value > 0f) flyBackToWall()
+    }
+
+    // A detail is a level down, not a screen of its own: back returns to the wall (#3624).
+    // It used to leave the demo altogether, which is what the top-left arrow does — and that
+    // arrow is rerouted below for exactly the same reason, so the two agree.
+    BackHandler(enabled = inspecting || focusing) {
+        if (inspecting) changeMode(MaterialsMode.Gallery) else flyBackToWall()
     }
 
     // Re-frame the Compare pair on every entry into it, not just when the fitted radius
@@ -455,7 +567,11 @@ private fun StudioSection(
     // balls out of frame. Keying on `inspecting` and `compare` puts the pair back on the axis
     // the moment the hand-over happens.
     LaunchedEffect(heroRadius, inspecting, compare) {
-        comparisonCamera.position = Position(0f, 0f, heroRadius)
+        // On the hand-over yaw, not on the +Z axis (#3624): the pair is symmetric about the
+        // origin from any azimuth, and starting anywhere else would undo the flight's last
+        // frame with a cut.
+        val yaw = Math.toRadians(handoverYaw.floatValue.toDouble()).toFloat()
+        comparisonCamera.position = Position(sin(yaw) * heroRadius, 0f, cos(yaw) * heroRadius)
         comparisonCamera.lookAt(Position(0f))
     }
     val firstFrame = rememberFirstFrameState()
@@ -475,8 +591,16 @@ private fun StudioSection(
     )
 
     DemoScaffold(
-        title = stringResource(R.string.demo_materials_title),
-        onBack = onBack,
+        // A detail is a level down: the identity pill names the material the user opened, and
+        // the arrow next to it goes back up to the wall rather than out of the demo (#3624).
+        // That is also the visible half of the fix — the system back gesture above and this
+        // arrow now do the same thing, which is what makes either of them guessable.
+        title = if (inspecting) {
+            stringResource(R.string.demo_materials_title_detail, stringResource(selected.nameRes))
+        } else {
+            stringResource(R.string.demo_materials_title)
+        },
+        onBack = { if (inspecting) changeMode(MaterialsMode.Gallery) else onBack() },
         firstFrameRendered = firstFrame.rendered,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
@@ -514,7 +638,7 @@ private fun StudioSection(
                         },
                     ),
                     onClick = {
-                        onModeChange(
+                        changeMode(
                             if (inspecting) MaterialsMode.Gallery else MaterialsMode.Inspect
                         )
                     },
@@ -556,7 +680,7 @@ private fun StudioSection(
             )
         },
         controls = {
-            ModeSelector(mode, onModeChange)
+            ModeSelector(mode, ::changeMode)
 
             // The wall does not look interactive — nine spheres read as a picture (#3609).
             // The sheet says so once, in Gallery only, where it is true.
@@ -805,6 +929,14 @@ private fun StudioSection(
  * — and short enough that it never feels like a wait before Inspect opens.
  */
 private const val FOCUS_FLIGHT_MILLIS: Int = 520
+
+/**
+ * Height of Inspect's orbiting eye above its subject, world units.
+ *
+ * Shared with the Gallery dolly, which scales it to its own distance so the flight lands on
+ * the angle Inspect draws from instead of cutting to it (#3624).
+ */
+private const val HERO_Y_HEIGHT: Float = 0.12f
 
 /** Fraction of the frame the gallery wall spans. Leaves the chrome bands their own air. */
 private const val GALLERY_FILL: Float = 0.88f
