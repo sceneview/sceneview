@@ -17,6 +17,8 @@
     <string name="demo_model_viewer_loading">Loading model…</string>
     <string name="demo_model_viewer_surprise">Surprise me</string>
     <string name="demo_model_viewer_surprise_loading">Finding…</string>
+    <!-- Accessible name of the floating Surprise me pill: the visible label is short, the spoken one says what it does. -->
+    <string name="demo_model_viewer_surprise_hint">Surprise me: load another random model</string>
 
     <!-- Multi-Model section — formerly the `multi-model` demo. -->
     <string name="demo_multi_model_title">Multi-Model Scene</string>

@@ -11,14 +11,18 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -30,6 +34,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
@@ -132,6 +138,82 @@ fun GlassPill(
                 .padding(horizontal = SceneViewTokens.Glass.pillPaddingHorizontal),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
+        )
+    }
+}
+
+/**
+ * A [GlassPill] that is a button: glyph + one short label, with the same press
+ * spring and the same white-on-media treatment as [GlassIconButton].
+ *
+ * The pill — not a dock item — is the shape for an action that must stay
+ * visible over the scene without claiming one of the four labelled dock slots
+ * (`DESIGN.md` "Floating Dock": at most four items plus the accent). [icon] is
+ * replaced by an indeterminate spinner while [loading], so the pill neither
+ * resizes nor greys out while the action resolves.
+ *
+ * [contentDescription] is the accessible name and defaults to [label]; pass the
+ * longer phrase when the visible label is a shortened one.
+ */
+@Composable
+fun GlassActionPill(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    contentDescription: String = label,
+) {
+    val accessibleName = contentDescription
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) SceneViewTokens.Motion.pressScale else 1f,
+        animationSpec = SceneViewTokens.Motion.spring(),
+        label = "glass-pill-press",
+    )
+    GlassPill(
+        modifier = modifier
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            // Clipped BEFORE the click, so the ripple follows the capsule instead
+            // of painting the square bounds `GlassSurface` clips a step later.
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.full))
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                enabled = enabled && !loading,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.contentDescription = accessibleName },
+    ) {
+        Box(
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    color = SceneViewTokens.Glass.onGlass,
+                    strokeWidth = SceneViewTokens.Glass.borderWidth * 2,
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                    tint = SceneViewTokens.Glass.onGlass,
+                )
+            }
+        }
+        Spacer(Modifier.size(SceneViewTokens.Space.sm))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = SceneViewTokens.Glass.onGlass,
+            maxLines = 1,
         )
     }
 }

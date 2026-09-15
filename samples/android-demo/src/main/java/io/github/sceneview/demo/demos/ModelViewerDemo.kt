@@ -24,6 +24,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.outlined.Animation
 import androidx.compose.material.icons.outlined.Category
@@ -83,6 +84,7 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.viewer.BundledViewerModel
 import io.github.sceneview.demo.ui.viewer.AnimationBar
 import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
@@ -557,6 +559,21 @@ private fun SingleModelSection(
         if (unitSheetOpen) { unitSheetOpen = false; unitAnswered = true }
     }
 
+    // One roll, two callers (#3585): the promoted row at the top of the Models sheet and
+    // the persistent pill floating over the scene. Closing the sheet on completion is a
+    // no-op for the pill, which is only reachable while the sheet is closed.
+    val rollSurprise: () -> Unit = {
+        if (!surpriseInFlight) {
+            surpriseInFlight = true
+            scope.launch {
+                streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull()
+                surpriseInFlight = false
+                modelSheetOpen = false
+            }
+        }
+        Unit
+    }
+
     DemoScaffold(
         // An opened file is titled with its own name: the user came here from their file
         // manager or a share sheet, and "Model Viewer" would not tell them it worked.
@@ -610,13 +627,34 @@ private fun SingleModelSection(
                 DemoSettings.cameraDistance = null
                 recenterGeneration++
             })),
-        // Always composed when the model has clips, so the bar can slide in and out with
-        // the standard M3 enter/exit instead of appearing and vanishing between frames
-        // (#3406). An `AnimatedVisibility` that is not visible measures zero, so the
-        // scaffold's measured bottom band is unchanged while it is closed.
-        bottomOverlay = if (animationNames.isNotEmpty()) {{
+        // The animation bar is always composed when the model has clips, so it can slide
+        // in and out with the standard M3 enter/exit instead of appearing and vanishing
+        // between frames (#3406). An `AnimatedVisibility` that is not visible measures
+        // zero, so the scaffold's measured bottom band is unchanged while it is closed.
+        bottomOverlay = if (hasSketchfabKey || animationNames.isNotEmpty()) {{
+            // #3585 — "Surprise me" was reachable only from the third row of a sheet the
+            // user had to open first, and it is the one action of this viewer that makes
+            // people keep tapping. A glass pill floating over the scene re-rolls without
+            // opening anything; the sheet keeps its promoted row for the first discovery.
+            // The dock is full (Models, Lighting, Animate, Recenter) and AR owns the
+            // accent, so a fifth labelled dock item is not available — DESIGN.md caps the
+            // dock at four plus the accent. The pill is theme-independent like every
+            // other piece of chrome over a live viewport. Hidden without a Sketchfab key
+            // (App Store / F-Droid builds): there is no catalogue to surprise anyone with.
+            if (hasSketchfabKey) {
+                GlassActionPill(
+                    icon = Icons.Filled.Shuffle,
+                    label = stringResource(
+                        if (surpriseInFlight) R.string.demo_model_viewer_surprise_loading
+                        else R.string.demo_model_viewer_surprise
+                    ),
+                    onClick = rollSurprise,
+                    loading = surpriseInFlight,
+                    contentDescription = stringResource(R.string.demo_model_viewer_surprise_hint),
+                )
+            }
             AnimatedVisibility(
-                visible = animationBarOpen,
+                visible = animationBarOpen && animationNames.isNotEmpty(),
                 enter = fadeIn(SceneViewTokens.Motion.fade()) +
                     expandVertically(SceneViewTokens.Motion.spring(), expandFrom = Alignment.Bottom),
                 exit = fadeOut(SceneViewTokens.Motion.fade()) +
@@ -764,7 +802,7 @@ private fun SingleModelSection(
         bundledModels, selectedModel.assetPath, hasSketchfabKey, surpriseInFlight,
         onSelect = { selectedModel = it; streamedFileUrl = null; modelSheetOpen = false },
         onPark = { modelSheetOpen = false; onModeChange(ModelViewerMode.Multi) },
-        onSurprise = { if (!surpriseInFlight) { surpriseInFlight = true; scope.launch { streamedFileUrl = runCatching { pickRandomDownloadableModel(service, resolver) }.getOrNull(); surpriseInFlight = false; modelSheetOpen = false } } },
+        onSurprise = rollSurprise,
         onBrowse = { modelSheetOpen = false; onModeChange(ModelViewerMode.Gallery) },
         onDismiss = { modelSheetOpen = false },
     )
