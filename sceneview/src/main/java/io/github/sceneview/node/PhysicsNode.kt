@@ -56,6 +56,12 @@ fun interface FloorProvider {
  *                      off the **real** floor / table / wall instead of a static plane. When
  *                      `null` or when the provider returns `null` at the body's current XZ, the
  *                      simulation falls back to the static [floorY] plane.
+ * @param gravity       Gravitational acceleration vector in m/s², expressed in the same space as
+ *                      [Node.position] — i.e. the parent node's frame. Defaults to
+ *                      `(0, `[GRAVITY]`, 0)`. Tilting this vector is how a body rolls down a
+ *                      sloped tray without the floor plane itself moving in the simulation: rotate
+ *                      the tray's pivot node for the visuals, and give the body the same gravity
+ *                      rotated by the pivot's **inverse** rotation (#3621).
  */
 class PhysicsBody(
     val node: Node,
@@ -64,6 +70,7 @@ class PhysicsBody(
     val radius: Float = 0f,
     initialVelocity: Position = Position(0f, 0f, 0f),
     var floorProvider: FloorProvider? = null,
+    gravity: Position = Position(0f, GRAVITY, 0f),
 ) {
     /**
      * Mass in kg.
@@ -110,6 +117,20 @@ class PhysicsBody(
     /** Current linear velocity in m/s (world space). */
     var velocity: Position = initialVelocity
 
+    /**
+     * Gravitational acceleration vector in m/s², in the node's parent frame.
+     *
+     * Assigning a new value wakes the body: a sleeping body sitting on what has just become a
+     * slope has to start moving again, and without this it would stay frozen (#3621).
+     */
+    var gravity: Position = gravity
+        set(value) {
+            if (field != value) {
+                field = value
+                isAsleep = false
+            }
+        }
+
     /** True once the body has come to rest on the floor. */
     var isAsleep: Boolean = false
         private set
@@ -135,9 +156,10 @@ class PhysicsBody(
         // Read the current velocity once into plain Floats — avoids 3 property-getter calls per
         // axis below and lets us mutate in place before the single Position commit.
         val curVel = velocity
-        var vx = curVel.x
-        var vy = curVel.y + GRAVITY * safeDt
-        var vz = curVel.z
+        val g = gravity
+        var vx = curVel.x + g.x * safeDt
+        var vy = curVel.y + g.y * safeDt
+        var vz = curVel.z + g.z * safeDt
 
         // Integrate position into a Float triple — defer the single Position alloc until after
         // the floor-collision clamp.
@@ -161,7 +183,10 @@ class PhysicsBody(
             // the **static** floor: the depth mesh refreshes 5× a second and an "asleep" body
             // on a wobbly mesh would freeze in mid-air the moment its supporting triangles get
             // edge-culled. A body resting on real geometry stays awake and re-evaluates.
-            if (kotlin.math.abs(vy) < SLEEP_THRESHOLD && floorProvider == null) {
+            // Never sleep under a tilted gravity: the horizontal component is still
+            // accelerating the body along the plane, so an asleep body would freeze mid-slope.
+            val gravityIsVertical = g.x == 0f && g.z == 0f
+            if (kotlin.math.abs(vy) < SLEEP_THRESHOLD && floorProvider == null && gravityIsVertical) {
                 vy = 0f
                 isAsleep = true
             }
@@ -180,7 +205,8 @@ class PhysicsBody(
  *
  * This is a pure-Kotlin, no-library physics integration intended as a lightweight prototype.
  * It supports:
- * - Gravity (9.8 m/s²) along -Y
+ * - Gravity — 9.8 m/s² along -Y by default, or any [gravity] vector you supply (tilt it and the
+ *   body slides along the floor plane, #3621)
  * - Bouncy floor collision with a configurable coefficient of restitution
  * - Sleep detection to halt integration once the body comes to rest
  * - Optional dynamic floor lookup via [floorProvider] — used by the #1713 depth collider so the
@@ -232,6 +258,7 @@ fun PhysicsNode(
     floorY: Float = 0f,
     radius: Float = 0f,
     floorProvider: FloorProvider? = null,
+    gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f),
 ) {
     val body = remember(node) {
         PhysicsBody(
@@ -241,8 +268,13 @@ fun PhysicsNode(
             radius = radius,
             initialVelocity = linearVelocity,
             floorProvider = floorProvider,
+            gravity = gravity,
         )
     }
+    // Keep the gravity vector live so a caller can tilt it from Compose state (a tray the user
+    // tips, a device-orientation reading) without recreating the body. The setter is a no-op
+    // when the value is unchanged, so recomposition never wakes a resting body by accident.
+    body.gravity = gravity
     // Keep the floor provider live: callers usually pass `rememberDepthCollider(...)`, which is
     // a stable instance, but allow swapping it out across recompositions (e.g. to A/B between
     // depth-driven and static floor) without recreating the body.
@@ -279,7 +311,9 @@ fun PhysicsNode(
 @Deprecated(
     "The 'mass' parameter is currently a no-op (the Euler integration applies only gravity, " +
         "which is mass-independent). Use the PhysicsNode overload without 'mass'.",
-    ReplaceWith("PhysicsNode(node, restitution, linearVelocity, floorY, radius, floorProvider)"),
+    ReplaceWith(
+        "PhysicsNode(node, restitution, linearVelocity, floorY, radius, floorProvider, gravity)"
+    ),
     DeprecationLevel.WARNING
 )
 @Composable
@@ -291,6 +325,7 @@ fun PhysicsNode(
     floorY: Float = 0f,
     radius: Float = 0f,
     floorProvider: FloorProvider? = null,
+    gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f),
 ) = PhysicsNode(
     node = node,
     restitution = restitution,
@@ -298,4 +333,5 @@ fun PhysicsNode(
     floorY = floorY,
     radius = radius,
     floorProvider = floorProvider,
+    gravity = gravity,
 )

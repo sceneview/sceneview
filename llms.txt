@@ -1064,13 +1064,31 @@ Renders a triangulated 2D polygon in 3D space. Supports holes, Delaunay refineme
     linearVelocity: Position = Position(0f, 0f, 0f),
     floorY: Float = 0f,
     radius: Float = 0f,
-    floorProvider: FloorProvider? = null   // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    floorProvider: FloorProvider? = null,  // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f)  // acceleration vector, m/s²
 )
 ```
 Attaches gravity + floor bounce to an existing node. Does NOT add the node to the scene — the node
 must already exist. Uses Euler integration at 9.8 m/s² with configurable restitution and floor.
 Note: a `mass` overload exists but is `@Deprecated` — gravity is mass-independent, so `mass` is
 a no-op until a force/impulse API lands.
+
+`gravity` is a full vector in the node's parent frame, live across recompositions (`PhysicsBody.gravity`
+is also settable directly). Tilt it to make bodies roll down a slope: rotate the tray's pivot node for
+the visuals and give the bodies that same gravity rotated by the pivot's **inverse** rotation — the
+floor stays a flat plane in the simulation, which is what this engine models. A body never falls asleep
+while its gravity has a horizontal component. The pure-Kotlin core mirrors this as
+`PhysicsState(gravity = ...)` in `io.github.sceneview.physics`.
+
+```kotlin
+// A tray tipped 20° towards the viewer: pivot rotates, gravity leans the other way.
+val tray = Rotation(x = 20f, y = 0f, z = 0f)
+val g = transpose(rotation(tray.toQuaternion())) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+Node(rotation = tray) {
+    SphereNode(radius = 0.08f, apply = { ball = this })
+}
+PhysicsNode(node = ball, radius = 0.08f, floorY = -0.5f, gravity = Position(g.x, g.y, g.z))
+```
 
 ```kotlin
 SceneView {

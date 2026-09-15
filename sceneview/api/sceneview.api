@@ -3013,10 +3013,11 @@ public final class io/github/sceneview/node/PhysicsBody {
 	public static final field SLEEP_THRESHOLD F
 	public fun <init> (Lio/github/sceneview/node/Node;FFFFLdev/romainguy/kotlin/math/Float3;)V
 	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFFLdev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;)V
-	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;)V
+	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getFloorProvider ()Lio/github/sceneview/node/FloorProvider;
 	public final fun getFloorY ()F
+	public final fun getGravity ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getMass ()F
 	public final fun getNode ()Lio/github/sceneview/node/Node;
 	public final fun getRadius ()F
@@ -3024,6 +3025,7 @@ public final class io/github/sceneview/node/PhysicsBody {
 	public final fun getVelocity ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun isAsleep ()Z
 	public final fun setFloorProvider (Lio/github/sceneview/node/FloorProvider;)V
+	public final fun setGravity (Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun setVelocity (Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun step (JLjava/lang/Long;)V
 }
@@ -3032,8 +3034,8 @@ public final class io/github/sceneview/node/PhysicsBody$Companion {
 }
 
 public final class io/github/sceneview/node/PhysicsNodeKt {
-	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FFLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Landroidx/compose/runtime/Composer;II)V
-	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Landroidx/compose/runtime/Composer;II)V
+	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FFLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
 }
 
 public class io/github/sceneview/node/PlaneNode : io/github/sceneview/node/GeometryNode {

@@ -5,6 +5,7 @@ import io.github.sceneview.node.FloorProvider
 import kotlin.math.sqrt
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
@@ -47,9 +48,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
@@ -69,9 +72,14 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.ModelLoader
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.transpose
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
+import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.math.Transform
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
 import io.github.sceneview.model.Model
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.node.SphereNode as SphereNodeImpl
@@ -1113,6 +1121,20 @@ private fun PhysicsSection(
     var collisions by remember { mutableIntStateOf(0) }
     val simulation = remember(generation) { DemoCollisionReplay() }
 
+    // ── Tray tilt (#3621) ────────────────────────────────────────────────────
+    // `tiltEnabled` swaps what a one-finger drag over the viewport does: OFF (default) it orbits
+    // the camera exactly as before, ON it tips the tray. Nothing about the camera manipulator
+    // changes — the toggle simply raises a transparent pointer-input layer above the SceneView
+    // that consumes the drag, so the existing orbit behaviour is untouched when the toggle is off.
+    //
+    // The two angles survive the toggle: tilting, turning tilt off to re-frame the camera, then
+    // turning it back on is a normal thing to do and re-levelling the tray behind the user's back
+    // would be hostile. "Level" is the explicit way back to flat.
+    var tiltEnabled by remember { mutableStateOf(false) }
+    val pitchAnim = remember { Animatable(0f) }
+    val rollAnim = remember { Animatable(0f) }
+    val tiltScope = rememberCoroutineScope()
+
     // Streamed `physics` slugs from SampleAssets. selectedSlug == null means
     // "Bundled spheres" — the v4.3.1 visual default. Selecting a slug arms
     // it as the carousel of streamed crash-test bodies (chairs / vases /
@@ -1143,6 +1165,33 @@ private fun PhysicsSection(
         }.value
     }
 
+    // Gravity expressed in the *tray's* frame: the whole rig (floor, rails, balls) hangs off a
+    // pivot node rotated by (pitch, 0, roll), so the simulation keeps its flat floor at
+    // PHYSICS_FLOOR and its axis-aligned rails, and the slope shows up purely as a horizontal
+    // component in the gravity vector. That is the one shape this engine supports cleanly — it has
+    // no plane normal and no friction, so rotating a collider would have left the balls sitting
+    // motionless on the slope.
+    val trayGravity = remember(pitchAnim.value, rollAnim.value) {
+        trayLocalGravity(pitchAnim.value, rollAnim.value)
+    }
+    LaunchedEffect(simulation, trayGravity) { simulation.gravity = trayGravity }
+
+    // Nudging the tray implies "run it": a tilt with the simulation parked reads as a broken
+    // control. Levelling does not force playback back on.
+    val applyTilt: (Float, Float) -> Unit = { pitch, roll ->
+        replaying = true
+        tiltScope.launch {
+            pitchAnim.snapTo(pitch.coerceIn(-PHYSICS_MAX_TILT_DEGREES, PHYSICS_MAX_TILT_DEGREES))
+            rollAnim.snapTo(roll.coerceIn(-PHYSICS_MAX_TILT_DEGREES, PHYSICS_MAX_TILT_DEGREES))
+        }
+    }
+    val levelTray: () -> Unit = {
+        tiltScope.launch {
+            launch { pitchAnim.animateTo(0f, tween(400, easing = FastOutSlowInEasing)) }
+            rollAnim.animateTo(0f, tween(400, easing = FastOutSlowInEasing))
+        }
+    }
+
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -1167,10 +1216,10 @@ private fun PhysicsSection(
         bottomOverlay = {
             DemoStatusBanner(
                 text = stringResource(
-                    if (replaying) {
-                        R.string.demo_animation_physics_replaying
-                    } else {
-                        R.string.demo_animation_physics_reset_ready
+                    when {
+                        tiltEnabled -> R.string.demo_animation_physics_tilt_hint
+                        replaying -> R.string.demo_animation_physics_replaying
+                        else -> R.string.demo_animation_physics_reset_ready
                     },
                 ),
                 tone = DemoStatusTone.Guidance,
@@ -1220,6 +1269,52 @@ private fun PhysicsSection(
             }
             Text(
                 stringResource(R.string.demo_animation_physics_physics_explainer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+            Text(
+                text = stringResource(R.string.demo_animation_physics_tilt_label),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = tiltEnabled,
+                    onClick = { tiltEnabled = !tiltEnabled },
+                    label = { Text(stringResource(R.string.demo_animation_physics_tilt_drag)) },
+                )
+                Button(
+                    enabled = pitchAnim.value != 0f || rollAnim.value != 0f,
+                    onClick = levelTray,
+                ) { Text(stringResource(R.string.demo_animation_physics_tilt_level)) }
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
+            // The sliders mirror the drag rather than replacing it: they are what a screen reader
+            // can actually operate, and they give the exact angle the drag can only approximate.
+            LabeledSlider(
+                label = stringResource(R.string.demo_animation_physics_tilt_pitch),
+                value = pitchAnim.value,
+                onValueChange = { applyTilt(it, rollAnim.value) },
+                valueRange = -PHYSICS_MAX_TILT_DEGREES..PHYSICS_MAX_TILT_DEGREES,
+                decimals = 0,
+                unit = "°",
+            )
+            LabeledSlider(
+                label = stringResource(R.string.demo_animation_physics_tilt_roll),
+                value = rollAnim.value,
+                onValueChange = { applyTilt(pitchAnim.value, it) },
+                valueRange = -PHYSICS_MAX_TILT_DEGREES..PHYSICS_MAX_TILT_DEGREES,
+                decimals = 0,
+                unit = "°",
+            )
+            Text(
+                text = stringResource(R.string.demo_animation_physics_tilt_explainer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1314,103 +1409,153 @@ private fun PhysicsSection(
                     rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[3]),
                 )
 
-                // Ground plane — must use Size(x, y=0, z) for a HORIZONTAL floor
-                PlaneNode(
-                    materialInstance = groundMaterial,
-                    size = Size(x = 1.6f, y = 0f, z = 1.6f),
-                    position = Position(y = -0.5f),
-                )
-
-                // Visible rails mark the bounds used by the collision response.
-                for (side in listOf(-1f, 1f)) {
-                    CubeNode(
-                        size = Size(0.03f, 0.16f, 1.6f),
-                        position = Position(side * 0.8f, -0.42f, 0f),
+                // Tilt pivot (#3621) — the floor, the rails and every body hang off this node, so
+                // the whole tray rotates as one rigid rig and the simulation stays in its own flat
+                // frame. The light deliberately stays at the scene root: the room does not tip
+                // when the tray does.
+                Node(rotation = Rotation(x = pitchAnim.value, z = rollAnim.value)) {
+                    // Ground plane — must use Size(x, y=0, z) for a HORIZONTAL floor
+                    PlaneNode(
                         materialInstance = groundMaterial,
+                        size = Size(x = 1.6f, y = 0f, z = 1.6f),
+                        position = Position(y = -0.5f),
                     )
-                    CubeNode(
-                        size = Size(1.6f, 0.16f, 0.03f),
-                        position = Position(0f, -0.42f, side * 0.8f),
-                        materialInstance = groundMaterial,
-                    )
-                }
 
-                // Streamed mesh path. The model file is `null` until the
-                // resolver returns (or the user picked "Bundled spheres").
-                // The GLB is parsed once into a single `Model` (geometry +
-                // materials live here, shared by every instance); each falling
-                // body then gets its OWN `ModelInstance` spawned from it below.
-                // A `ModelInstance` wraps exactly one Filament entity / one
-                // TransformManager slot, so it can only ride one body at a
-                // time — sharing it across bodies meant every ModelNode wrote
-                // the same entity transform (last-write-wins) and only one
-                // mesh was ever visible (#1706).
-                val streamedModel: Model? = selectedFile?.let { file ->
-                    rememberStreamedModel(modelLoader, file)
-                }
-
-                val collisionRadius = PHYSICS_RADIUS
-
-                for (i in 0 until bodyCount) {
-                    val startPosition = remember(i) { physicsStartPosition(i) }
-
-                    var nodeRef by remember(i) { mutableStateOf<SphereNodeImpl?>(null) }
-
-                    // The simulated SphereNode is rendered "invisibly" (it
-                    // carries the colour ramp material when the user is in
-                    // bundled-sphere mode; in streamed mode we ALSO render
-                    // it — same coloured silhouette — so the dropped streamed
-                    // mesh sits visually on top of a soft colour pad which
-                    // hides the bounding-sphere abstraction).
-                    SphereNode(
-                        radius = collisionRadius,
-                        materialInstance = sphereMaterials[i % 4],
-                        position = startPosition,
-                        apply = { nodeRef = this }
-                    ) {
-                        // Streamed mesh child — only rendered when a streamed
-                        // slug is selected AND its download has landed. The
-                        // child inherits the sphere's transform so it rides
-                        // the simulation. Each body spawns its OWN
-                        // `ModelInstance` from the shared `Model` so it has an
-                        // independent Filament entity — `createInstance` only
-                        // duplicates the lightweight entity tree, geometry and
-                        // materials stay shared (#1706). Keyed on `i` so the
-                        // instance is created once per body, on the main
-                        // composition thread (Filament JNI is @MainThread).
-                        val model = streamedModel
-                        val slug = selectedSlug
-                        if (model != null && slug != null) {
-                            val instance = remember(i, model) {
-                                modelLoader.createInstance(model)
-                            }
-                            if (instance != null) {
-                                ModelNode(
-                                    modelInstance = instance,
-                                    scaleToUnits = slug.scaleToUnits,
-                                )
-                            }
-                        }
+                    // Visible rails mark the bounds used by the collision response.
+                    for (side in listOf(-1f, 1f)) {
+                        CubeNode(
+                            size = Size(0.03f, 0.16f, 1.6f),
+                            position = Position(side * 0.8f, -0.42f, 0f),
+                            materialInstance = groundMaterial,
+                        )
+                        CubeNode(
+                            size = Size(1.6f, 0.16f, 0.03f),
+                            position = Position(0f, -0.42f, side * 0.8f),
+                            materialInstance = groundMaterial,
+                        )
                     }
 
-                    nodeRef?.let { node ->
-                        DisposableEffect(node, simulation) {
-                            simulation.bodies[i] = PhysicsBody(
-                                node = node,
-                                restitution = PHYSICS_RESTITUTION,
-                                floorY = PHYSICS_FLOOR,
-                                radius = collisionRadius,
-                                initialVelocity = if (i == 0) Position(1.9f, 0.4f, 0f) else Position(0f),
-                                // Keep resting bodies responsive to later sphere impacts.
-                                floorProvider = FloorProvider { _, _, _, _ -> PHYSICS_FLOOR },
-                            )
-                            onDispose { simulation.bodies.remove(i) }
+                    // Streamed mesh path. The model file is `null` until the
+                    // resolver returns (or the user picked "Bundled spheres").
+                    // The GLB is parsed once into a single `Model` (geometry +
+                    // materials live here, shared by every instance); each falling
+                    // body then gets its OWN `ModelInstance` spawned from it below.
+                    // A `ModelInstance` wraps exactly one Filament entity / one
+                    // TransformManager slot, so it can only ride one body at a
+                    // time — sharing it across bodies meant every ModelNode wrote
+                    // the same entity transform (last-write-wins) and only one
+                    // mesh was ever visible (#1706).
+                    val streamedModel: Model? = selectedFile?.let { file ->
+                        rememberStreamedModel(modelLoader, file)
+                    }
+
+                    val collisionRadius = PHYSICS_RADIUS
+
+                    for (i in 0 until bodyCount) {
+                        val startPosition = remember(i) { physicsStartPosition(i) }
+
+                        var nodeRef by remember(i) { mutableStateOf<SphereNodeImpl?>(null) }
+
+                        // The simulated SphereNode is rendered "invisibly" (it
+                        // carries the colour ramp material when the user is in
+                        // bundled-sphere mode; in streamed mode we ALSO render
+                        // it — same coloured silhouette — so the dropped streamed
+                        // mesh sits visually on top of a soft colour pad which
+                        // hides the bounding-sphere abstraction).
+                        SphereNode(
+                            radius = collisionRadius,
+                            materialInstance = sphereMaterials[i % 4],
+                            position = startPosition,
+                            apply = { nodeRef = this }
+                        ) {
+                            // Streamed mesh child — only rendered when a streamed
+                            // slug is selected AND its download has landed. The
+                            // child inherits the sphere's transform so it rides
+                            // the simulation. Each body spawns its OWN
+                            // `ModelInstance` from the shared `Model` so it has an
+                            // independent Filament entity — `createInstance` only
+                            // duplicates the lightweight entity tree, geometry and
+                            // materials stay shared (#1706). Keyed on `i` so the
+                            // instance is created once per body, on the main
+                            // composition thread (Filament JNI is @MainThread).
+                            val model = streamedModel
+                            val slug = selectedSlug
+                            if (model != null && slug != null) {
+                                val instance = remember(i, model) {
+                                    modelLoader.createInstance(model)
+                                }
+                                if (instance != null) {
+                                    ModelNode(
+                                        modelInstance = instance,
+                                        scaleToUnits = slug.scaleToUnits,
+                                    )
+                                }
+                            }
+                        }
+
+                        nodeRef?.let { node ->
+                            DisposableEffect(node, simulation) {
+                                simulation.bodies[i] = PhysicsBody(
+                                    node = node,
+                                    restitution = PHYSICS_RESTITUTION,
+                                    floorY = PHYSICS_FLOOR,
+                                    radius = collisionRadius,
+                                    initialVelocity = if (i == 0) Position(1.9f, 0.4f, 0f) else Position(0f),
+                                    // Keep resting bodies responsive to later sphere impacts.
+                                    floorProvider = FloorProvider { _, _, _, _ -> PHYSICS_FLOOR },
+                                    gravity = simulation.gravity,
+                                )
+                                onDispose { simulation.bodies.remove(i) }
+                            }
                         }
                     }
                 }
             }
         }
+
+        // Tilt drag layer. Present only while the toggle is on, so with it off every pointer
+        // event reaches the SceneView and the camera orbits exactly as it always has.
+        //
+        // Sign convention, read against the camera at (0, 2, 4) looking at the origin: dragging
+        // DOWN tips the near (+Z) edge down, so the balls roll towards the viewer; dragging RIGHT
+        // drops the +X edge, so they roll right. Both match where the finger goes.
+        if (tiltEnabled) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            applyTilt(
+                                pitchAnim.value + dragAmount.y * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                                rollAnim.value - dragAmount.x * PHYSICS_TILT_DEGREES_PER_PIXEL,
+                            )
+                        }
+                    }
+            )
+        }
     }
+}
+
+/**
+ * Gravity expressed in the tilted tray's own frame.
+ *
+ * The tray pivot is rotated by `Rotation(pitch, 0, roll)`; a vector that is constant in world
+ * space is therefore the inverse of that rotation applied to it inside the tray. We build the
+ * rotation through the exact same `toQuaternion()` call [io.github.sceneview.node.Node.rotation]
+ * uses and invert it by transposing the matrix (a rotation matrix is orthonormal), so the result
+ * cannot drift from whatever Euler order the SDK settles on.
+ *
+ * At zero tilt this returns `(0, PhysicsBody.GRAVITY, 0)` exactly, which is what keeps the
+ * untouched demo bit-identical to its previous behaviour.
+ */
+internal fun trayLocalGravity(pitchDegrees: Float, rollDegrees: Float): Position {
+    if (pitchDegrees == 0f && rollDegrees == 0f) {
+        return Position(0f, PhysicsBody.GRAVITY, 0f)
+    }
+    val trayRotation = rotationMatrix(Rotation(pitchDegrees, 0f, rollDegrees).toQuaternion())
+    val local = transpose(trayRotation) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+    return Position(local.x, local.y, local.z)
 }
 
 private const val PHYSICS_INITIAL_BODIES = 7
@@ -1419,6 +1564,15 @@ private const val PHYSICS_RADIUS = 0.08f
 private const val PHYSICS_FLOOR = -0.5f
 private const val PHYSICS_RESTITUTION = 0.8f
 private const val PHYSICS_STEP_NANOS = 8_333_333L
+
+/** Tilt is clamped well short of the angle at which the rails stop being able to hold a ball. */
+private const val PHYSICS_MAX_TILT_DEGREES = 20f
+
+/**
+ * Drag sensitivity. At ~2.6x density a comfortable half-screen swipe (≈500 px) sweeps the full
+ * ±20° range, so the extremes are reachable without the control feeling twitchy near flat.
+ */
+private const val PHYSICS_TILT_DEGREES_PER_PIXEL = 0.06f
 
 private fun physicsStartPosition(index: Int): Position = when (index) {
     0 -> Position(-0.65f, -0.32f, 0f)
@@ -1432,6 +1586,13 @@ private fun physicsStartPosition(index: Int): Position = when (index) {
 /** A deterministic sphere-contact demonstration, deliberately local to this sample. */
 private class DemoCollisionReplay {
     val bodies = sortedMapOf<Int, PhysicsBody>()
+
+    /**
+     * Gravity in the tray's frame, pushed onto every body at the top of each step. Held here
+     * rather than on the bodies so a body spawned mid-tilt (the "Add 1" button) starts out under
+     * the same slope as the ones already rolling.
+     */
+    var gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f)
     var collisions = 0
         private set
     private var previousFrame = 0L
@@ -1450,6 +1611,7 @@ private class DemoCollisionReplay {
 
     private fun step() {
         for (body in bodies.values) {
+            body.gravity = gravity
             val before = body.velocity
             body.step(PHYSICS_STEP_NANOS, 0L)
             val p = body.node.position

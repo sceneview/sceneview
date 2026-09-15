@@ -55,4 +55,11 @@
     <string name="demo_animation_physics_physics_explainer">PhysicsBody.step supplies gravity and restitution = 0.8 floor bounce; this sample adds equal-mass sphere impulses at a fixed 120 Hz step so the same launch scatters the pile on every replay.</string>
     <string name="demo_animation_physics_replaying">Same launch, same pile · restitution 0.8 · watch the impacts rise.</string>
     <string name="demo_animation_physics_reset_ready">Initial poses restored · Replay launches the same collision again.</string>
+    <string name="demo_animation_physics_tilt_label">Tilt the tray</string>
+    <string name="demo_animation_physics_tilt_drag">Tilt with drag</string>
+    <string name="demo_animation_physics_tilt_level">Level</string>
+    <string name="demo_animation_physics_tilt_pitch">Pitch · toward you</string>
+    <string name="demo_animation_physics_tilt_roll">Roll · left and right</string>
+    <string name="demo_animation_physics_tilt_hint">Tilt is on · drag the scene to tip the tray and the balls roll downhill. Turn it off to orbit the camera again.</string>
+    <string name="demo_animation_physics_tilt_explainer">The tray hangs off one pivot node and the gravity vector is rotated into its frame, so the floor plane and rails stay flat in the simulation while the balls accelerate down the slope.</string>
 </resources>

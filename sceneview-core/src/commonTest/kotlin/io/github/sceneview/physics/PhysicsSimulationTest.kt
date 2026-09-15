@@ -346,6 +346,76 @@ class PhysicsSimulationTest {
         assertEquals(state, result)
     }
 
+    // --- Tilted gravity (#3621) ---
+
+    @Test
+    fun tiltedGravityAcceleratesAlongTheFloor() {
+        // A 20° slope around the Z axis, expressed the way the tray demo does it: the floor plane
+        // stays flat in the simulation, the gravity vector leans instead.
+        val state = PhysicsState(
+            position = Position(0f, 0f, 0f),
+            velocity = Position(),
+            floorY = 0f,
+            gravity = Position(3.35f, -9.21f, 0f),
+        )
+        // 0.05 s is the largest step simulateStep accepts — anything longer is clamped to it.
+        val result = simulateStep(state, 0.05f)
+        assertTrue(result.velocity.x > 0f, "Horizontal gravity should accelerate the body in +X")
+        assertEquals(3.35f * 0.05f, result.velocity.x, epsilon)
+        assertTrue(result.position.x > 0f, "The body should have moved downhill")
+    }
+
+    @Test
+    fun verticalGravityIsUnchangedByTheNewParameter() {
+        // The default gravity has to reproduce the pre-#3621 integration exactly, otherwise every
+        // existing scene drifts.
+        val state = PhysicsState(position = Position(0f, 10f, 0f))
+        val result = simulateStep(state, 0.016f)
+        assertEquals(GRAVITY * 0.016f, result.velocity.y, epsilon)
+        assertEquals(0f, result.velocity.x, epsilon)
+        assertEquals(0f, result.velocity.z, epsilon)
+    }
+
+    @Test
+    fun tiltedGravityKeepsTheBodyAwakeOnContact() {
+        // Resting on the floor with a sideways pull: sleeping here would freeze the ball halfway
+        // down the slope, which is exactly the bug a naive port of the sleep rule introduces.
+        val resting = PhysicsState(
+            position = Position(0f, 0f, 0f),
+            velocity = Position(),
+            floorY = 0f,
+            gravity = Position(3.35f, -9.21f, 0f),
+        )
+        var state = resting
+        repeat(20) { state = simulateStep(state, 0.016f) }
+        assertFalse(state.isAsleep, "A body under a tilted gravity must never fall asleep")
+        assertTrue(state.position.x > 0f, "It should keep sliding downhill")
+    }
+
+    @Test
+    fun verticalGravityStillSleepsOnTheFloor() {
+        var state = PhysicsState(
+            position = Position(0f, 0.2f, 0f),
+            velocity = Position(),
+            restitution = 0f,
+            floorY = 0f,
+        )
+        repeat(40) { state = simulateStep(state, 0.016f) }
+        assertTrue(state.isAsleep, "Vertical gravity must keep the original sleep behaviour")
+    }
+
+    @Test
+    fun tiltedGravityAlsoSuppressesSleepOnTheDynamicFloorOverload() {
+        var state = PhysicsState(
+            position = Position(0f, 0f, 0f),
+            velocity = Position(),
+            gravity = Position(0f, -9.21f, 3.35f),
+        )
+        repeat(20) { state = simulateStep(state, 0.016f) { _, _, _, _ -> null } }
+        assertFalse(state.isAsleep)
+        assertTrue(state.position.z > 0f)
+    }
+
     // --- PhysicsState defaults ---
 
     @Test
@@ -357,5 +427,6 @@ class PhysicsSimulationTest {
         assertEquals(0f, state.floorY, epsilon)
         assertEquals(0f, state.radius, epsilon)
         assertFalse(state.isAsleep)
+        assertEquals(Position(0f, GRAVITY, 0f), state.gravity)
     }
 }

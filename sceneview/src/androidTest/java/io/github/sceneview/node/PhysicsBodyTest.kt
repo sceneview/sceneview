@@ -219,4 +219,45 @@ class PhysicsBodyTest {
             node.destroy()
         }
     }
+
+    @Test
+    fun step_tiltedGravity_slidesTheBodyAlongTheFloor() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // A ball resting on a flat floor, under gravity leaning 20° towards +X — the shape the
+            // tilting tray demo produces (#3621). `PhysicsBody.step` re-implements the pure-Kotlin
+            // `simulateStep`, so this is the only place the Android copy is checked.
+            val node = Node(engine).apply { position = Position(0f, 0f, 0f) }
+            val body = PhysicsBody(
+                node = node,
+                restitution = 0f,
+                floorY = 0f,
+                gravity = Position(3.35f, -9.21f, 0f),
+            )
+
+            var previous = 0L
+            repeat(30) { index ->
+                val now = (index + 1) * 16_000_000L
+                body.step(now, previous)
+                previous = now
+            }
+
+            assertFalse("a tilted gravity must keep the body awake", body.isAsleep)
+            assertTrue("the body should have slid downhill", node.position.x > 0.05f)
+            assertEquals("it must stay on the floor", 0f, node.position.y, 0.0001f)
+
+            node.destroy()
+        }
+    }
+
+    @Test
+    fun gravity_isVerticalByDefault() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = Node(engine)
+            val body = PhysicsBody(node = node)
+            assertEquals(0f, body.gravity.x, 0.0001f)
+            assertEquals(PhysicsBody.GRAVITY, body.gravity.y, 0.0001f)
+            assertEquals(0f, body.gravity.z, 0.0001f)
+            node.destroy()
+        }
+    }
 }
