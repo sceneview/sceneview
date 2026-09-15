@@ -21,7 +21,7 @@ Step-by-step guide to publish the SceneView app on Google Play.
      this repo maintains and the only one the listing-sync job targets
      (`distribution/play-store/en-US/`). The listing was consolidated to a
      single source-of-truth directory in #1710 and moved from `en-GB` to
-     `en-US` in #3652, which also added the opt-in flags that set the store's
+     `en-US` in #3658, which also added the opt-in flags that set the store's
      default language and prune every other locale.
    - **App or game:** App
    - **Free or paid:** Free

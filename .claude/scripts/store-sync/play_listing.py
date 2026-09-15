@@ -17,7 +17,7 @@ Single code path for the Play listing sync, shared by CI and local runs:
               check-doc-drift.sh `--fail` convention).
 
 Two OPT-IN modifiers, off unless named, added with the en-GB -> en-US move
-(#3652). The automatic tag path in play-store.yml passes neither, so a release
+(#3658). The automatic tag path in play-store.yml passes neither, so a release
 keeps syncing text and nothing else:
 
   --set-default-locale LOCALE   set the store's `defaultLanguage`.
@@ -253,7 +253,7 @@ def apply_sync(sess, pkg, root, set_default_locale=None, prune_other_locales=Fal
     `set_default_locale` and `prune_other_locales` are OPT-IN and both default
     to off, so the automatic tag path keeps doing exactly what it always did:
     write the repo's locales, touch nothing else. They exist for the manual
-    `listing_only` dispatch (#3652).
+    `listing_only` dispatch (#3658).
 
     ORDER IS LOAD-BEARING inside the single edit, and it is the reason these
     are not three independent scripts:
@@ -518,7 +518,7 @@ def main(argv=None):
                     help="dry-run only: exit 3 when drift is found")
     # Both opt-in, both off by default: the automatic tag path must keep
     # syncing text and nothing else. These are for the manual `listing_only`
-    # dispatch (#3652) — see the apply_sync docstring for why the order of
+    # dispatch (#3658) — see the apply_sync docstring for why the order of
     # the three operations inside the edit is not free.
     ap.add_argument("--set-default-locale", metavar="LOCALE", default=None,
                     help="set the store's defaultLanguage to LOCALE "
