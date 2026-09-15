@@ -1,1 +1,1 @@
-Open GLB, glTF, 3MF, STL, OBJ and PLY files, and place them in AR at real size.
+Open any 3D model you are sent and place it in your room, at its real size.

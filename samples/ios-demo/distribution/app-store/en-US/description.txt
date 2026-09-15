@@ -1,34 +1,27 @@
-SceneView opens the 3D files you are actually sent — STL, OBJ, PLY, 3MF, USDZ and Reality — and brings them into your real world using augmented reality.
+A 3D file lands in Messages, Mail or Files. Tap it, and it is standing on your desk at its real size.
 
-OPEN ANY MODEL YOU ARE SENT
-Got a 3D file from a chat assistant, a slicer, a message or Files? Tap it and pick SceneView. It opens .stl, .obj, .ply and .3mf — the formats no stock iOS app opens — plus .usdz and .reality, straight from Files or the share sheet, with no conversion step and no account. A printable part arrives at its real size and the right way up, so AR puts it on your actual table at the size it would print.
+SceneView opens USDZ, Reality, STL, OBJ, PLY and 3MF — including the mesh formats no stock app on your iPhone will open — straight from the share sheet, with no conversion step and no account.
 
-EXPLORE 3D MODELS
-Browse a curated gallery of high-quality 3D models rendered in real time with RealityKit. Rotate, zoom and inspect every detail with intuitive touch gestures. Switch between HDR environments to see how lighting changes materials — from studio setups to outdoor scenes.
+WHAT YOU CAN DO
 
-AUGMENTED REALITY
-Place 3D objects in your real world using your camera. Point at a flat surface, tap to place, then drag, pinch and twist to position your model perfectly. Powered by ARKit with plane detection, instant placement, image tracking, face tracking and environmental light estimation. Real-world depth lets virtual objects sit behind real furniture, and people occlusion keeps someone walking past in front of the scene instead of behind it.
+- Open a 3D file from anywhere — Files, Mail, Messages or any app's share sheet.
+- See it at true scale — point at a flat surface, tap to place, then drag, pinch and twist it into position.
+- Trust the size — a printable part arrives in real-world units and the right way up, so what sits on your table is what would come off the printer.
+- Let the real room win — real furniture and passing people stay in front of virtual objects, and the light around you lights the model.
+- Hang it on a wall, or place it instantly without waiting for a plane.
+- Change the light — swap HDR environments and watch materials, reflections and shadows answer in real time.
+- Browse Sketchfab from inside the app and open what you find in the viewer.
+- Wander 48 demo screens — placement, image and face tracking, scene mesh, depth, physics, materials, geometry, spatial audio and more.
 
-DISCOVER MORE
-Nearly fifty screens, each one shipping its source:
-- Tap to Place, Instant Placement and Wall Placement — the AR placement flows
-- Depth Occlusion, People Occlusion and Depth Collider — virtual objects that respect the real room
-- Image Tracking and Augmented Faces — detect a poster, or a face
-- Cloud Anchors and Scene Mesh — anchors that outlive the session, and the mesh of the room itself
-- Dynamic Sky: watch the sky shift from dawn to dusk with atmospheric scattering
-- Volumetric Fog: height-based atmospheric fog for immersive scenes
-- Reflection Probes and HDR Environments: local reflections and image-based lighting
-- Physics and Double Pendulum: rigid-body simulation and chaotic motion
-- Geometry, Materials, Lines & Paths, Custom Mesh, Extruded Shapes — the building blocks
-- Text, Images, Video Textures and Billboards — surfaces in world space
-- Spatial Audio: positional sound that pans as you orbit
-- AR Recording and Debug Overlay: capture a session, watch the render stats
+FOR DEVELOPERS
 
-EFFECTS PLAYGROUND
-Experiment with real-time rendering effects. Adjust time of day, toggle volumetric fog, tune atmospheric haze and enable screen-space ambient occlusion — all with instant visual feedback.
+This app is the live showcase for SceneView, the open-source 3D and AR SDK for SwiftUI. A model on screen is one view; AR placement is one call. Every one of the 48 screens ships its source, and each links to the code that draws it.
 
-BUILT ON THE SCENEVIEW SDK
-This app is the live showcase for SceneView, the open-source 3D and AR SDK for SwiftUI, Jetpack Compose and the web. Everything you see here is a few lines of SwiftUI in your own app — every screen's source is public.
+github.com/sceneview/sceneview
+
+PRIVACY
+
+No account, no analytics, no tracking, no ads. Your models and the camera feed stay on your device — the camera is used only for AR, and nothing it sees is stored or uploaded. The one feature that reaches the network is the online model gallery, and only while you are searching it.
 
 Open source under the Apache License 2.0.
 https://github.com/sceneview/sceneview

@@ -17,7 +17,9 @@ Step-by-step guide to publish the SceneView app on Google Play.
 2. Click **"Create app"**
 3. Fill in:
    - **App name:** `SceneView`
-   - **Default language:** English (United States)
+   - **Default language:** English (United Kingdom) — `en-GB`, the locale the
+     listing-sync job targets (`distribution/play-store/en-GB/`, consolidated
+     as the single source of truth in #1710)
    - **App or game:** App
    - **Free or paid:** Free
 4. Accept declarations and click **Create app**

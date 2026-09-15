@@ -1,1 +1,1 @@
-Open the STL, OBJ, PLY or 3MF you were sent, place it in AR at real size, and explore nearly fifty SwiftUI rendering and AR screens.
+Explore now searches the online model gallery as you type. Open any 3D file you are sent — USDZ, STL, OBJ, PLY, 3MF — and stand it in your room at its real size.
