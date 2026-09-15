@@ -5,8 +5,21 @@
      remains globally resolvable. Adding a new demo never needs to touch
      `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_splat_preview_title">Gaussian Splat Study</string>
-    <string name="demo_splat_preview_subtitle">Inspect a procedural cloud of soft points</string>
-    <string name="demo_splat_preview">Gaussian Splat Study</string>
-    <string name="demo_splat_preview_desc">A procedural sphere made from overlapping soft points</string>
+    <string name="demo_splat_preview_title">Real-World Scan</string>
+    <string name="demo_splat_preview_subtitle">A tree stump and its raccoons, scanned with a phone</string>
+    <string name="demo_splat_preview">Real-World Scan</string>
+    <string name="demo_splat_preview_desc">Open a real phone capture: three raccoons on a tree stump, rebuilt from 233 808 coloured points</string>
+    <string name="demo_splat_preview_loading">Opening the scan…</string>
+
+    <!-- Controls sheet -->
+    <string name="demo_splat_preview_intro">Someone walked around this tree stump filming with a phone. There is no model and no texture here — the scan is stored as coloured points, and that is what you are looking at.</string>
+    <string name="demo_splat_preview_points_label">Points drawn</string>
+    <!-- %1$s = points currently drawn, %2$s = points in the file, both already grouped. -->
+    <string name="demo_splat_preview_points_value">%1$s of %2$s</string>
+    <string name="demo_splat_preview_points_hint">Drawing fewer points is how a big capture keeps a steady frame rate on an older phone. The file still holds every one of them.</string>
+    <!-- %1$s = file size, %2$d = decode time in milliseconds. -->
+    <string name="demo_splat_preview_file">raccoon_family.spz · %1$s · opened in %2$d ms. Capture by Niantic Labs (SPZ samples, MIT), cropped to the stump for this demo.</string>
+    <string name="demo_splat_preview_file_loading">Opening raccoon_family.spz…</string>
+    <!-- Status pill above the controls sheet. %1$s = point count, %2$s = file size. -->
+    <string name="demo_splat_preview_peek">Phone capture · %1$s points · %2$s</string>
 </resources>

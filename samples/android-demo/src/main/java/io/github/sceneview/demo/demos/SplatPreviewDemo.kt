@@ -22,48 +22,56 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.core.splat.SplatCloud
 import io.github.sceneview.core.splat.SplatParser
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Position
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.ui.LabeledSlider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
-
-/** Bundled synthetic 3D Gaussian Splatting scene — a dense rainbow sphere shell (8 000 splats). */
-private const val SPLAT_ASSET = "splats/rainbow_sphere.ply"
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
- * Renders a **3D Gaussian Splatting** scene with [io.github.sceneview.node.SplatNode] (#2646) —
- * the radiance-field capture format produced by Scaniverse, Polycam, Luma and every INRIA-style
- * trainer.
+ * A real phone capture, bundled as the very file a scanning app exports: three raccoons on a
+ * tree stump, filmed by walking around it, reconstructed as 233 808 coloured points.
  *
- * The bundled asset ([SPLAT_ASSET]) is a synthetic rainbow sphere: ~8 000 overlapping, translucent
- * gaussians decoded by the shared `SplatParser` (P1a) and rendered as hardware-instanced,
- * camera-facing quads (P1b). The overlapping translucent shell is deliberately a stress case for
- * the CPU painter's sort — drag to orbit and the node re-sorts the splats back-to-front so the
- * far side composites correctly behind the near side.
+ * Source: the `racoonfamily.spz` sample published with Niantic's SPZ format (MIT). The bundled
+ * copy is cropped to the subject by `tools/crop-spz.py` — 932 560 splats / 24 MB down to a
+ * bundleable 3.1 MB — with every kept splat byte-identical to the capture.
+ */
+private const val SPLAT_ASSET = "splats/raccoon_family.spz"
+
+/**
+ * **Open a 3D scan** — the demo answers one question a developer actually has: *what does a
+ * capture made with Scaniverse / Polycam / Luma look like in my app, and what does it cost?*
  *
- * Controls:
- * - **Orbit** — drag to rotate the camera; `cameraPositionProvider` feeds the live camera world
- *   position to the node so it re-sorts on motion.
- * - **Visible splats** — a reveal slider driving `SplatNode.splatCount` (LOD / reveal hook).
+ * Everything on screen comes from the file: the point count, its size on disk, how long it took
+ * to decode. The single control is the one that matters in production — how many of those points
+ * you draw ([io.github.sceneview.node.SplatNode.splatCount]), which is how a large capture stays
+ * smooth on a cheaper phone without re-exporting anything.
+ *
+ * Rendering is [io.github.sceneview.node.SplatNode] (#2646): hardware-instanced camera-facing
+ * gaussian discs, re-sorted back-to-front on a background thread whenever the camera moves, so
+ * the translucent points composite correctly from every angle.
  */
 @Composable
 fun SplatPreviewDemo(onBack: () -> Unit) {
     // Inspection mode (AS @Preview pane, Roborazzi): bypass the Filament-backed body BEFORE any
     // rememberEngine() call — LayoutLib does not ship the native .so files. See GeometryDemo.
     if (LocalInspectionMode.current) {
-        DemoPreviewPlaceholder(title = "Gaussian Splatting", onBack = onBack)
+        DemoPreviewPlaceholder(
+            title = stringResource(R.string.demo_splat_preview_title),
+            onBack = onBack,
+        )
         return
     }
 
@@ -73,49 +81,66 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState()
 
-    // Decode the bundled .ply off the main thread (pure CPU, no Filament calls). Null while
+    // Decode the bundled capture off the main thread (pure CPU, no Filament calls). Null while
     // loading — the SplatNode is only declared once the cloud is ready, mirroring the SDK's
     // "returns null while loading, always handle the null case" resource-loading contract.
-    var splatCloud by remember { mutableStateOf<SplatCloud?>(null) }
+    var scan by remember { mutableStateOf<LoadedScan?>(null) }
     LaunchedEffect(Unit) {
         val bytes = withContext(Dispatchers.IO) {
             context.assets.open(SPLAT_ASSET).use { it.readBytes() }
         }
-        splatCloud = withContext(Dispatchers.Default) { SplatParser.fromPly(bytes) }
+        scan = withContext(Dispatchers.Default) {
+            val startedAt = System.nanoTime()
+            // parse() sniffs the container: the same call opens a .spz or a .ply export.
+            val cloud = SplatParser.parse(bytes)
+            LoadedScan(
+                cloud = cloud,
+                framing = scanFraming(cloud),
+                fileBytes = bytes.size,
+                decodeMillis = (System.nanoTime() - startedAt) / 1_000_000,
+            )
+        }
     }
 
     // Live camera world position, refreshed each frame and handed to the node's painter's sort.
-    var cameraPosition by remember { mutableStateOf(HOME_CAMERA_POSITION) }
-    // Reveal slider — number of splats drawn (0..count). Defaults to the whole cloud.
-    var visibleSplats by remember { mutableIntStateOf(0) }
-    val totalSplats = splatCloud?.count ?: 0
-
-    // Snap the reveal slider to the full cloud as soon as it loads (it starts at 0 before we
-    // know the count, so the scene is not momentarily empty once the splats are ready).
-    LaunchedEffect(totalSplats) {
-        if (totalSplats > 0) visibleSplats = totalSplats / 3
+    var cameraPosition by remember { mutableStateOf(Position(z = 2f)) }
+    // How many of the captured points are drawn. 0 until the file is open, then the whole scan.
+    var drawnPoints by remember { mutableIntStateOf(0) }
+    val totalPoints = scan?.cloud?.count ?: 0
+    LaunchedEffect(totalPoints) {
+        if (totalPoints > 0) drawnPoints = totalPoints
     }
 
-    val cameraManipulator = rememberCameraManipulator(
-        orbitHomePosition = HOME_CAMERA_POSITION,
-        targetPosition = Position(0f),
-    )
+    // The framing is only known once the file is decoded, so the manipulator is re-created when
+    // the scan lands — same `remember(key)` pattern the model viewer uses for its park framing.
+    val framing = scan?.framing
+    val cameraManipulator = remember(framing) {
+        createDefaultCameraManipulator(
+            eyePosition = framing?.cameraPosition ?: DEFAULT_CAMERA_POSITION,
+            targetPosition = framing?.target ?: Position(0f),
+        )
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_splat_preview_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        peekHeader = "Procedural sample · translucent points form a sphere",
-        bottomOverlay = {
-            androidx.compose.material3.FilledTonalButton(onClick = {
-                visibleSplats = if (visibleSplats == totalSplats) totalSplats / 3 else totalSplats
-            }) { Text(if (visibleSplats == totalSplats) "Reveal individual splats" else "Show complete cloud") }
+        loadingLabel = stringResource(R.string.demo_splat_preview_loading),
+        peekHeader = scan?.let {
+            stringResource(
+                R.string.demo_splat_preview_peek,
+                formatPoints(it.cloud.count),
+                formatMegabytes(it.fileBytes),
+            )
         },
+        onResetSettings = { drawnPoints = totalPoints },
         controls = {
             SplatPreviewControls(
-                visibleSplats = visibleSplats,
-                totalSplats = totalSplats,
-                onVisibleSplatsChange = { visibleSplats = it },
+                drawnPoints = drawnPoints,
+                totalPoints = totalPoints,
+                fileBytes = scan?.fileBytes ?: 0,
+                decodeMillis = scan?.decodeMillis ?: 0,
+                onDrawnPointsChange = { drawnPoints = it },
             )
         },
     ) {
@@ -132,62 +157,96 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
                 cameraPosition = cameraNode.worldPosition
             },
         ) {
-            splatCloud?.let { cloud ->
+            scan?.let { loaded ->
                 SplatNode(
-                    splatCloud = cloud,
+                    splatCloud = loaded.cloud,
                     cameraPositionProvider = { cameraPosition },
-                    splatCount = visibleSplats,
+                    splatCount = drawnPoints,
                 )
             }
         }
     }
 }
 
+/** The decoded capture plus the facts the screen reports about the file it came from. */
+private data class LoadedScan(
+    val cloud: SplatCloud,
+    val framing: ScanFraming,
+    val fileBytes: Int,
+    val decodeMillis: Long,
+)
+
 /**
- * Stateless controls panel for [SplatPreviewDemo] — a reveal slider over the splat count. Kept
- * separate so a Roborazzi snapshot test can capture it in pure JVM (no Filament). See GeometryDemo.
+ * Stateless controls panel for [SplatPreviewDemo]. Kept separate so a Roborazzi snapshot test can
+ * capture it in pure JVM (no Filament). See GeometryDemo.
  */
 @Composable
 internal fun SplatPreviewControls(
-    visibleSplats: Int,
-    totalSplats: Int,
-    onVisibleSplatsChange: (Int) -> Unit,
+    drawnPoints: Int,
+    totalPoints: Int,
+    fileBytes: Int,
+    decodeMillis: Long,
+    onDrawnPointsChange: (Int) -> Unit,
 ) {
+    Text(
+        text = stringResource(R.string.demo_splat_preview_intro),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
     LabeledSlider(
-        label = "Visible splats",
-        value = visibleSplats.toFloat(),
-        onValueChange = { onVisibleSplatsChange(it.toInt()) },
-        valueRange = 0f..totalSplats.coerceAtLeast(1).toFloat(),
-        valueText = "$visibleSplats / $totalSplats",
-        enabled = totalSplats > 0,
+        label = stringResource(R.string.demo_splat_preview_points_label),
+        value = drawnPoints.toFloat(),
+        onValueChange = { onDrawnPointsChange(it.toInt()) },
+        valueRange = 0f..totalPoints.coerceAtLeast(1).toFloat(),
+        valueText = stringResource(
+            R.string.demo_splat_preview_points_value,
+            formatPoints(drawnPoints),
+            formatPoints(totalPoints),
+        ),
+        enabled = totalPoints > 0,
     )
     Spacer(modifier = Modifier.height(8.dp))
     Text(
-        text = "Drag the scene to orbit — the splats re-sort back-to-front so the translucent " +
-            "shell composites correctly from every angle.",
+        text = stringResource(R.string.demo_splat_preview_points_hint),
         style = MaterialTheme.typography.bodySmall,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(
+        text = if (totalPoints > 0) {
+            stringResource(
+                R.string.demo_splat_preview_file,
+                formatMegabytes(fileBytes),
+                decodeMillis.toInt(),
+            )
+        } else {
+            stringResource(R.string.demo_splat_preview_file_loading)
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
+/** `233808` → `233 808`: grouped for readability, with no locale surprise. */
+internal fun formatPoints(count: Int): String =
+    count.toString().reversed().chunked(3).joinToString(" ").reversed()
+
+/** Bytes → `3.1 MB`, the number a developer compares against their APK budget. */
+internal fun formatMegabytes(bytes: Int): String =
+    String.format(Locale.US, "%.1f MB", bytes / 1024f / 1024f)
+
 // ── Orbit home framing ─────────────────────────────────────────────────────────
 
-/**
- * Geometry of the bundled cloud, from `tools/generate-splat-sphere.py`: a shell of centres at
- * `radius = 0.5` whose splats are drawn as billboard discs of `3 * sigma = 3 * 0.012` m. The
- * silhouette the camera has to contain is therefore the shell radius **plus** one disc radius —
- * framing on 0.5 alone clips the outermost splats.
- */
-private const val SHELL_RADIUS = 0.5f
-private const val SPLAT_DISC_RADIUS = 0.036f
-private const val SILHOUETTE_RADIUS = SHELL_RADIUS + SPLAT_DISC_RADIUS
+/** Orbit home and target for a capture, derived from the cloud itself — no hand-picked numbers. */
+internal data class ScanFraming(val target: Position, val cameraPosition: Position)
+
+/** Used only while the file is still decoding, so the first frame has a sane camera. */
+private val DEFAULT_CAMERA_POSITION = Position(z = 2f)
 
 /**
  * Filament derives its projection from a **35 mm-equivalent focal length against a 24 mm-high
  * sensor** (`CameraNode.focalLength` defaults to 28 mm, applied via `setLensProjection`), so the
  * vertical half-angle is `atan((24 / 2) / focalLength)` and the horizontal one is the vertical
- * scaled by the aspect ratio. In portrait that makes **width the binding constraint**, which is
- * why the previous hand-picked `z = 1.6` clipped: it left a half-width of only 0.309 m at the
- * subject against a 0.536 m silhouette, so the shell overflowed both edges by ~1.7x.
+ * scaled by the aspect ratio. In portrait that makes **width the binding constraint**.
  */
 private const val SENSOR_HEIGHT_MM = 24.0f
 private const val DEFAULT_FOCAL_LENGTH_MM = 28.0f
@@ -196,15 +255,24 @@ private const val DEFAULT_FOCAL_LENGTH_MM = 28.0f
  *  the full-screen ratio is the conservative choice: any real viewport has more horizontal room. */
 private const val PORTRAIT_ASPECT = 9f / 20f
 
-/** Fraction of the frame's half-width the silhouette is allowed to fill — the "small margin". */
-private const val FRAME_FILL = 0.88f
+/** Fraction of the frame's half-width the framed radius is allowed to fill — the "small margin". */
+private const val FRAME_FILL = 0.95f
 
-/** Elevation of the orbit home above the equator, preserved from the original framing (~3.6°). */
+/**
+ * Fraction of the capture the framing is required to contain. A real capture has no silhouette:
+ * it fades out into whatever the phone happened to see — grass, ground, a blurred hedge. Framing
+ * on the outermost splat would push the subject into the distance to keep that fringe on screen,
+ * so the home shot contains the **median half** of the points and lets the fringe spill off the
+ * edges, which is what a photographer would do.
+ */
+private const val SUBJECT_QUANTILE = 0.5f
+
+/** Elevation of the orbit home above the target (~3.6°), a slightly-above-eye-line look. */
 private const val HOME_TILT_RADIANS = 0.06241f
 
 /**
- * Distance at which a sphere of [radius] is fully contained with a [fill] margin, for a vertical-fit
- * perspective camera of [focalLengthMm] at [aspect].
+ * Distance at which a sphere of [radius] is fully contained with a [fill] margin, for a
+ * vertical-fit perspective camera of [focalLengthMm] at [aspect].
  *
  * The sphere is bounded by the frustum where the view ray is **tangent** to it, so the containing
  * distance is `radius / sin(halfAngle)` — not `radius / tan(halfAngle)`, which frames the flat disc
@@ -212,7 +280,7 @@ private const val HOME_TILT_RADIANS = 0.06241f
  * unit-testable without a Filament engine.
  */
 internal fun splatFramingDistance(
-    radius: Float = SILHOUETTE_RADIUS,
+    radius: Float,
     aspect: Float = PORTRAIT_ASPECT,
     focalLengthMm: Float = DEFAULT_FOCAL_LENGTH_MM,
     fill: Float = FRAME_FILL,
@@ -225,14 +293,43 @@ internal fun splatFramingDistance(
 }
 
 /**
- * Orbit home: far enough back on +Z that the whole shell fits in portrait with a small margin,
- * computed by [splatFramingDistance] rather than guessed, and lifted to the original ~3.6° tilt.
+ * Frames [cloud] from its own geometry: the target is the centroid of the points, the distance is
+ * [splatFramingDistance] applied to the radius containing [SUBJECT_QUANTILE] of them. Pure math on
+ * the decoded arrays — `internal` and Filament-free, so it is unit-tested directly.
  */
-private val HOME_CAMERA_POSITION = splatFramingDistance().let { distance ->
-    Position(
-        x = 0f,
-        y = distance * sin(HOME_TILT_RADIANS),
-        z = distance * cos(HOME_TILT_RADIANS),
+internal fun scanFraming(cloud: SplatCloud, aspect: Float = PORTRAIT_ASPECT): ScanFraming {
+    val count = cloud.count
+    var sumX = 0.0
+    var sumY = 0.0
+    var sumZ = 0.0
+    for (i in 0 until count) {
+        sumX += cloud.positions[i * 3]
+        sumY += cloud.positions[i * 3 + 1]
+        sumZ += cloud.positions[i * 3 + 2]
+    }
+    val target = Position(
+        x = (sumX / count).toFloat(),
+        y = (sumY / count).toFloat(),
+        z = (sumZ / count).toFloat(),
+    )
+
+    val radii = FloatArray(count) { i ->
+        val dx = cloud.positions[i * 3] - target.x
+        val dy = cloud.positions[i * 3 + 1] - target.y
+        val dz = cloud.positions[i * 3 + 2] - target.z
+        sqrt(dx * dx + dy * dy + dz * dz)
+    }
+    radii.sort()
+    val subjectRadius = radii[((count - 1) * SUBJECT_QUANTILE).toInt()]
+
+    val distance = splatFramingDistance(radius = subjectRadius, aspect = aspect)
+    return ScanFraming(
+        target = target,
+        cameraPosition = Position(
+            x = target.x,
+            y = target.y + distance * sin(HOME_TILT_RADIANS),
+            z = target.z + distance * cos(HOME_TILT_RADIANS),
+        ),
     )
 }
 
@@ -261,7 +358,13 @@ private fun SplatPreviewControlsPreview() {
         androidx.compose.foundation.layout.Column(
             modifier = Modifier.padding(16.dp),
         ) {
-            SplatPreviewControls(visibleSplats = 6000, totalSplats = 8000, onVisibleSplatsChange = {})
+            SplatPreviewControls(
+                drawnPoints = 233_808,
+                totalPoints = 233_808,
+                fileBytes = 3_305_000,
+                decodeMillis = 420,
+                onDrawnPointsChange = {},
+            )
         }
     }
 }

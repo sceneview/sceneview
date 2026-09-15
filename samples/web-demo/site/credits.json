@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView web demo",
   "artefact": "the sceneview.github.io/web-demo deploy",
   "source": "assets/catalog.json",
-  "total": 15,
+  "total": 17,
   "sections": [
     {
       "title": "3D models",
@@ -168,6 +168,26 @@
           "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "size": 26538,
           "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`"
+        },
+        {
+          "file": "models/printed-icosahedron.3mf",
+          "name": "printed-icosahedron.3mf",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 1312,
+          "note": "Authored in-repo as a 3MF sample for the web `/open` page"
+        },
+        {
+          "file": "models/two-colour-cube.3mf",
+          "name": "two-colour-cube.3mf",
+          "author": "SceneView project",
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+          "size": 1204,
+          "note": "Authored in-repo as a 3MF sample for the web `/open` page"
         }
       ]
     }
