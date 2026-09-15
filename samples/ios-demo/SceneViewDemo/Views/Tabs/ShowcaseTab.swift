@@ -21,6 +21,11 @@ import SceneViewSwift
 /// chrome of their own; `.demoChrome` hides that navigation bar and draws its
 /// own back button under the same identifier.
 struct ShowcaseTab: View {
+    /// Whether this tab is the one on screen, with nothing presented over it.
+    /// Gates the hero's live 3D stage: a RealityKit view still rendering behind
+    /// a demo would be a second scene competing with the one the user opened.
+    var isActive: Bool = true
+
     @State private var scenes: [DemoItem] = []
     @State private var selectedCategory: DemoCategory?
     @State private var query = ""
@@ -35,9 +40,28 @@ struct ShowcaseTab: View {
     /// sliding up over it with no visual link to what was tapped (#3599).
     @Namespace private var cardNamespace
 
+    /// Drives the entrance cascade (``StaggeredReveal``): flipped once, one
+    /// frame after the catalogue appears, and never back. It lives here, on the
+    /// screen, rather than in each item: a card in a `LazyVGrid` is rebuilt
+    /// whenever the grid is — constantly, while the hero's 3D stage renders —
+    /// and per-item state would replay the fade forever. Read from the parent,
+    /// a rebuilt card is simply already revealed.
+    @State private var catalogueRevealed = false
+
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     private var expanded: Bool { sizeClass == .regular }
+
+    /// The hero's 3D stage runs only here: visible tab, foreground app, nothing
+    /// presented on top. Everything else tears it down — see ``HomeHero``.
+    private var heroLive: Bool {
+        isActive
+            && scenePhase == .active
+            && fullScreenScene == nil
+            && comingSoonScene == nil
+            && !showExplore
+    }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private var visible: [DemoItem] {
@@ -64,31 +88,54 @@ struct ShowcaseTab: View {
                     // sit right under the header (Android parity).
                     if !searching {
                         HomeHero(height: expanded ? SceneViewTokens.Home.heroHeightExpanded
-                                                  : SceneViewTokens.Home.heroHeight) {
+                                                  : SceneViewTokens.Home.heroHeight,
+                                 live: heroLive) {
                             open(sceneId: Self.heroDemoId)
                         }
                         #if os(iOS)
                         .matchedTransitionSource(id: Self.heroDemoId, in: cardNamespace)
                         #endif
+                        .staggeredReveal(position: 0, revealed: catalogueRevealed)
                     }
 
                     CategoryChipRow(selected: $selectedCategory)
                         .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
-                        .padding(.bottom, SceneViewTokens.Home.gridTopGap)
+                        .padding(.bottom, searching ? SceneViewTokens.Space.sm : SceneViewTokens.Home.gridTopGap)
+                        .staggeredReveal(position: 1, revealed: catalogueRevealed)
+
+                    // While a query is live the count is the only feedback that
+                    // the list under it is the answer to what was typed. It
+                    // counts up and down in place (`contentTransition`) instead
+                    // of swapping strings, so the eye follows the number rather
+                    // than re-reading the sentence.
+                    if searching && !visible.isEmpty {
+                        Text(visible.count == 1 ? "1 demo" : "\(visible.count) demos")
+                            .font(SceneViewTokens.TypeScale.captionRegular)
+                            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                            .contentTransition(.numericText(value: Double(visible.count)))
+                            .animation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.short),
+                                       value: visible.count)
+                            .padding(.bottom, SceneViewTokens.Home.gridTopGap)
+                            .accessibilityIdentifier("home-result-count")
+                    }
 
                     if visible.isEmpty && searching {
                         EmptySearchState(query: query) { query = "" }
                     }
 
                     LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
-                        ForEach(visible) { demo in
+                        ForEach(Array(visible.enumerated()), id: \.element.sceneId) { index, demo in
                             DemoMediaCard(demo: demo) { open(demo) }
                                 #if os(iOS)
                                 .matchedTransitionSource(id: demo.sceneId, in: cardNamespace)
                                 #endif
+                                // Hero and chip row take the first two slots of
+                                // the cascade; the grid follows in reading order.
+                                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
                         }
                         if !searching {
                             BrowseOnlineModelsCard { showExplore = true }
+                                .staggeredReveal(position: visible.count + 2, revealed: catalogueRevealed)
                         }
                     }
                     .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
@@ -113,6 +160,14 @@ struct ShowcaseTab: View {
             }
             .onAppear {
                 if scenes.isEmpty { scenes = GeneratedScenes.all() }
+            }
+            .task {
+                // One frame late, so the first layout paints the pre-reveal
+                // state and the cascade has something to animate from.
+                guard !catalogueRevealed else { return }
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled else { return }
+                catalogueRevealed = true
             }
             .sheet(item: $comingSoonScene) { scene in
                 ComingSoonScreen(

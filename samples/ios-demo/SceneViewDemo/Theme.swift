@@ -279,6 +279,42 @@ enum SceneViewTokens {
         static let heroScrimStart: CGFloat = 0.5
     }
 
+    /// `DESIGN.md` — Motion: the `ease-expressive` curve, the three durations,
+    /// and the two patterns the catalogue uses (scroll reveal, staggered entry).
+    ///
+    /// Only the catalogue and the home hero animate with these; the chrome
+    /// keeps ``Spring``. Everything here degrades to a plain opacity change
+    /// under `accessibilityReduceMotion` — the spec's "disable translateY and
+    /// scale, keep opacity fades".
+    enum Motion {
+        /// `ease-expressive` — cubic-bezier(0.2, 0, 0, 1).
+        static func expressive(_ duration: Double) -> Animation {
+            .timingCurve(0.2, 0, 0, 1, duration: duration)
+        }
+        /// `duration-short`.
+        static let short: Double = 0.2
+        /// `duration-medium`.
+        static let medium: Double = 0.35
+        /// `duration-long`.
+        static let long: Double = 0.7
+
+        /// Scroll reveal — `translateY(24px) opacity(0)` → `translateY(0) opacity(1)`
+        /// over `duration-long` with `ease-expressive`.
+        static let revealOffset: CGFloat = 24
+        static var reveal: Animation { expressive(long) }
+
+        /// Staggered catalogue entry: each item starts `staggerStep` after the
+        /// one before it, capped at `staggerMaxDelay` so a long grid never
+        /// makes the last card wait — the cascade states reading order, it is
+        /// not a queue.
+        static let staggerStep: Double = 0.045
+        static let staggerMaxDelay: Double = 0.32
+
+        /// Home hero turntable, radians per second — a slow drift, well under
+        /// the viewer's own orbit, because the hero is a poster and not a demo.
+        static let heroOrbitSpeed: Float = 0.14
+    }
+
     /// `DESIGN.md` — one spring: `spring(dampingRatio 0.85, stiffness 450)`.
     /// SwiftUI's `response` form of the same curve is 0.35 s / 0.85.
     enum Spring {

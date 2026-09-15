@@ -62,6 +62,17 @@ final class ViewerAssetTests: XCTestCase {
         }
     }
 
+    /// The home hero renders a real bundled model, not a picture of one. If its
+    /// asset ever leaves the bundle the card silently falls back to the poster
+    /// frame forever — nothing throws, nothing fails, the home screen just
+    /// stops being alive. Same silent-regression class as #3584.
+    func testHomeHeroModelShipsItsUSDZ() {
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: HomeHero.heroAssetName, withExtension: "usdz"),
+            "the home hero loads \(HomeHero.heroAssetName).usdz, which is not in the bundle."
+        )
+    }
+
     /// The #3583 smart default: a studio rig is a light source, so its backdrop
     /// stays hidden; an environment authored as a place is meant to be seen.
     func testOnlyStudioRigsHideTheirBackdropByDefault() {

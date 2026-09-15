@@ -177,7 +177,9 @@ struct ContentView: View {
         // Android bottom bar. The online gallery (`ExploreTab`) lives behind
         // the Showcase grid's "Browse online models" card.
         TabView(selection: $selectedTab) {
-            ShowcaseTab()
+            // `isActive` gates the home hero's live 3D stage: only the visible
+            // tab, with no demo presented over it, may run a scene.
+            ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
                 .tabItem {
                     Label("Showcase", systemImage: "square.grid.2x2.fill")
                 }
