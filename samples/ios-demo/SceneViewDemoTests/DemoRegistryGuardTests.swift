@@ -159,8 +159,12 @@ final class DemoRegistryGuardTests: XCTestCase {
     //   (b) the small, historically-significant set that's already caused a
     //       real bug (the #2799 canonicalized ids + their #2769 aliases).
     // Growth of the *un-pinned* middle (new demos, newly-ported residuals) is
-    // exactly what `parity-manifest.yml` + `check-demo-id-parity.sh` (#2801
-    // deliverable c) track going forward, so it isn't duplicated here.
+    // tracked in `parity-manifest.yml`, so it isn't duplicated here. Note that
+    // ledger is now a MANUAL artifact: `check-demo-id-parity.sh` (#2801
+    // deliverable c), which used to reconcile it against both registries in
+    // CI, was deleted with the agent harness (#3244). These tests are the only
+    // automated guard left, and they check iOS against itself — they never
+    // read `parity-manifest.yml`.
 
     /// Flagship, long-shipped ids — if any of these ever falls through to the
     /// placeholder, something is badly broken (a deleted Scene file, an

@@ -47,17 +47,18 @@
 # assuming it is stale — read the issue it cites first. `androidStatus` mirrors
 # Android's own `DemoStatus`
 # (Working/KnownIssue/ComingSoon/InReview) for CONTEXT ONLY — it does not
-# constrain `iosStatus`, and nothing in the gate relates the two.
+# constrain `iosStatus`, and nothing relates the two.
 #
 # This paragraph used to assert that the #2798 audit had found a strict
 # correlation — every non-`Working` Android demo landing in iOS's
 # `stub`/`android-only` bucket, "with zero exceptions". That was a snapshot of
 # one afternoon, never an invariant, and it is now plainly false: a row earns
 # `iosStatus: working` the moment iOS resolves it to a real destination,
-# whatever Android's own status is. Three ids are live counter-examples
-# (`ar-cloud-anchor` and `ar-depth-collider`, both `KnownIssue`, and
-# `wall-placement`, `InReview`) — each genuinely ported, each carrying the
-# matching iOS `@status` badge, so calling any of them `stub` would be a lie.
+# whatever Android's own status is. The three ids that used to prove it
+# (`ar-cloud-anchor`, `ar-depth-collider`, `wall-placement`) have since all
+# gone `Working` or been retired on Android, so this file no longer carries a
+# standing counter-example — which is precisely why the rule is written down
+# rather than left to be re-derived from the rows.
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
@@ -65,9 +66,10 @@
 # Do NOT append a new "and now it is X/Y" paragraph when a port lands: that is
 # exactly how this header came to carry four mutually contradictory counts at
 # once (22/18/13, then 28/25, then 29/24, then 30/23) while the real numbers
-# were something else again. Update these two places in the same PR, and let
-# CI check you — `check-demo-id-parity.sh` now recounts the rows itself and
-# FAILS on any banner that disagrees, so a stale tally can no longer pass.
+# were something else again. Update these two places in the same PR — BY HAND.
+# Nothing in CI recounts them: `check-demo-id-parity.sh`, which used to, was
+# deleted with the agent harness (#3244, commit 72e5709) and was never
+# replaced. A stale tally passes CI today, so recount before you touch a row.
 #
 # Recount, never hand-edit:
 #   python3 -c "import yaml,collections; print(collections.Counter(
@@ -121,11 +123,39 @@
 #     said 32 / 0 / 20 before this pass and had said so since before #3405 —
 #     the two paragraphs above were both wrong, in different directions, which
 #     is what "recount, never inherit" is for. No script recounts them today:
-#     `check-demo-id-parity.sh`, named further down as the CI guard, does not
-#     exist in the repository.
+#     `check-demo-id-parity.sh` does not exist in the repository.
 #   - `ar-cloud-anchor`'s `androidStatus` was corrected here too (KnownIssue →
 #     InReview): #3451 rebuilt that screen and moved the fragment to InReview
 #     without touching this row.
+#
+# Re-measured 2026-09-16 (recount pass, no merge of its own). Counted from the
+# fragment files, the two collators' output and this file — the three
+# disagreed again, in three different ways:
+#   - Android: 48 fragments (49 `*Fragment.kt` files minus the `DemoFragment`
+#     base class) — 42 Working / 2 KnownIssue / 2 ComingSoon / 2 InReview.
+#     `collate-demos.sh` reports the same 48.
+#   - iOS: 48 `*Scene.swift` scenes, none `@available false`, plus 8 legacy /
+#     umbrella aliases and 0 residual ids = 56 accepted deep-link ids.
+#   - This ledger carried 49 rows; one of them, `wall-placement`, is no longer
+#     a canonical Android id — #3603 folded it into `ar-placement` and left an
+#     alias behind. Dropped here, per this file's own retired-id rule. The
+#     ledger now carries 48 of 48: 30 working, 0 stub, 18 android-only, and
+#     the banner below said 31 working.
+#   - Two `androidStatus` values were stale, both in the same direction (the
+#     fragment had been promoted without the row following): `ar-cloud-anchor`
+#     InReview → Working, `ar-depth-collider` KnownIssue → Working.
+#   - The structural gap this recount makes visible, and which no row can
+#     express: **22 of iOS's 48 Samples cards carry an id Android RETIRED** —
+#     the #1444 / #2239 / #3405 regroup keys (`animation`, `physics`, `text`,
+#     `image`, `video`, `billboard`, `custom-mesh`, `shape`, `collision`,
+#     `camera-controls`, `gesture-editing`, `dynamic-sky`, `environment`,
+#     `movable-light`, `reflection-probes`, `multi-model`, `scene-gallery`,
+#     `texture-streaming`, `occlusion-material`, `fog`, `ar-instant-placement`,
+#     `wall-placement`). Plus `placement-reticle-preview`, retired by #3275
+#     with no Android alias at all, so that deep link resolves on iOS and
+#     falls through on Android. This ledger's left-hand column is Android's
+#     canonical id set, so an iOS-only surplus card has nowhere to be recorded
+#     here; it is tracked in the backlog issues filed 2026-09-16 instead.
 #
 # How it got here — STRUCTURE, deliberately without counts (the banners below
 # are the live numbers). L0.6 (#2804, closes #2769) made every Android id
@@ -142,28 +172,38 @@
 #     stubs are gone, the ids are `android-only` again, and the deep links
 #     resolve exactly as they did — through `DeepLinkPlaceholder`.
 #   - Wave A (#2798) then genuinely ported six AR demos to iOS, promoting
-#     their rows from `stub` to `working`. Two of them (`ar-depth-collider`,
-#     `ar-cloud-anchor`) are `KnownIssue` on Android and a third
-#     (`wall-placement`) is `InReview` — which is what broke the "zero
-#     exceptions" correlation described above. Not special cases: any
-#     non-`Working` Android id lands in iOS's `working` bucket once its port
-#     is real, exactly like a `Working` one.
+#     their rows from `stub` to `working`. Three of them were non-`Working` on
+#     Android at the time (`ar-depth-collider`, `ar-cloud-anchor`,
+#     `wall-placement`) — which is what broke the "zero exceptions"
+#     correlation described above. Not special cases: any non-`Working`
+#     Android id lands in iOS's `working` bucket once its port is real,
+#     exactly like a `Working` one.
 #
-# Checked by `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` ->
-# `repo-hygiene`, ubuntu, blocking): fails if a Android id has neither an iOS
-# registry entry nor a row here, if a row's `iosStatus` disagrees with the
-# live registry, or if a row here no longer corresponds to a live Android id.
-# It also recounts the section banners below — their tallies are comments,
-# which `yaml.safe_load` never sees, so before that check they drifted freely
-# behind a green CI (four contradictory counts in this very header, and four
-# rows flipped to `working` in place without leaving the `stub` section).
-# A banner whose count disagrees with its bucket, or a row filed under the
-# wrong section, now FAILS.
-# Update this file (status + reason) in the SAME PR that changes either
-# platform's registry — that's what keeps it honest.
+# NOT checked by anything, as of 2026-09-16. This file used to name
+# `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` -> `repo-hygiene`) as a
+# blocking gate; that script was deleted by #3244 (commit 72e5709, "Remove the
+# agent harness") and there is no `repo-hygiene` job in `ci.yml` either.
+# Nothing today fails when a row's `iosStatus` disagrees with the live iOS
+# registry, when a retired Android id keeps its row, or when a banner tally
+# drifts — all three had happened by the 2026-09-16 recount below.
+#
+# What DOES verify something, and is what to run/read instead:
+#   - `samples/android-demo/scripts/collate-demos.sh --check` — Android's id
+#     set (`GeneratedDemos.all`) is the left-hand column of this ledger.
+#   - `samples/ios-demo/scripts/collate-ios-demos.sh --check` — iOS's scene id
+#     set (`GeneratedScenes.allowedIds`), the generated half of
+#     `DemoDeepLinkRegistry.allowedIds`.
+#   - `SceneViewDemoTests/DemoRegistryGuardTests` — the iOS-side invariants:
+#     no Samples card is a dead end, every legacy alias targets a live scene
+#     id, `residualIds` never collides with a live scene, and a pinned set of
+#     flagship + android-only ids resolves the way this ledger says.
+#     It checks iOS against itself; it does NOT read this file.
+# Reconciling the two id sets against these rows is a MANUAL pass. Do it, and
+# update this file (status + reason), in the SAME PR that changes either
+# platform's registry — that's the only thing keeping it honest.
 
 demos:
-  # ─── working (31) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (30) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -171,7 +211,7 @@ demos:
     androidStatus: Working
     iosStatus: working
   - id: ar-cloud-anchor
-    androidStatus: InReview
+    androidStatus: Working
     iosStatus: working
     reason: >-
       Capability caveat on a `working` row (#2864): iOS resolves this id to a
@@ -182,7 +222,7 @@ demos:
       (Android ships it; ARCORE_API_KEY is set). Vendoring arcore-ios-sdk is
       NOT planned — see #2864 for the reopen conditions.
   - id: ar-depth-collider
-    androidStatus: KnownIssue
+    androidStatus: Working
     iosStatus: working
   - id: ar-depth-occlusion
     androidStatus: Working
@@ -269,9 +309,6 @@ demos:
   - id: two-d-in-three-d
     androidStatus: Working
     iosStatus: working
-  - id: wall-placement
-    androidStatus: InReview
-    iosStatus: working
 
   # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
   # Deliberately empty, and meant to stay that way. A `stub` row means the
@@ -279,8 +316,9 @@ demos:
   # in a showcase app, and the most visible defect it can ship. #3231 deleted
   # all 21 of them; every id below moved to `android-only`, which is the
   # honest bucket for "iOS has no screen for this". The status stays a legal
-  # value (`check-demo-id-parity.sh` still enforces it) so a future id that
-  # must be *accepted* without having a screen has somewhere to go.
+  # value so a future id that
+  # must be *accepted* without having a screen has somewhere to go. (The
+  # value is legal, not enforced — see the header: no script checks this file.)
 
   # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to

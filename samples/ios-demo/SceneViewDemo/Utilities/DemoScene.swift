@@ -80,8 +80,13 @@ import SwiftUI
 /// deep link falls through to `DeepLinkPlaceholder`
 /// (`DemoDeepLinkRegistry.destination(for:)`), and its absence from the iOS
 /// catalog is recorded in the cross-platform ledger `parity-manifest.yml`
-/// (`iosStatus: android-only`), which `.claude/scripts/check-demo-id-parity.sh`
-/// enforces.
+/// (`iosStatus: android-only`). That ledger is maintained BY HAND: the script
+/// that used to check it (`.claude/scripts/check-demo-id-parity.sh`) was
+/// deleted with the agent harness (#3244) and never replaced. What is
+/// enforced automatically is the iOS side only —
+/// `DemoRegistryGuardTests.testNoSamplesCardIsADeadEnd` plus the collators'
+/// `--check` modes (`samples/ios-demo/scripts/collate-ios-demos.sh`,
+/// `samples/android-demo/scripts/collate-demos.sh`).
 ///
 /// The `@available` / `comingSoon` / ``ComingSoonScreen`` machinery below is
 /// kept deliberately — it is the compile-time path a new `@available false`

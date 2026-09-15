@@ -121,8 +121,9 @@ enum DemoDeepLinkRegistry {
     /// the unregistered-id path in `destination(for:)`. Kept as an empty
     /// `Set` (not deleted) — it is still the documented landing spot for an
     /// id that must be *accepted* without having a screen, and
-    /// `check-demo-id-parity.sh` (#2801) is specifically tested against this
-    /// `[]` case.
+    /// `DemoRegistryGuardTests` asserts the `[]` case directly (no residual id
+    /// may shadow a live generated scene id). The `check-demo-id-parity.sh`
+    /// script (#2801) that also covered this was deleted by #3244.
     ///
     /// Internal (not `private`) for the same reason as `legacyAliases` above —
     /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
