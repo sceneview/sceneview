@@ -1081,13 +1081,20 @@ while its gravity has a horizontal component. The pure-Kotlin core mirrors this 
 `PhysicsState(gravity = ...)` in `io.github.sceneview.physics`.
 
 ```kotlin
-// A tray tipped 20° towards the viewer: pivot rotates, gravity leans the other way.
-val tray = Rotation(x = 20f, y = 0f, z = 0f)
-val g = transpose(rotation(tray.toQuaternion())) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
-Node(rotation = tray) {
-    SphereNode(radius = 0.08f, apply = { ball = this })
+import dev.romainguy.kotlin.math.transpose
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
+
+// A tray tipped 20° towards the viewer. The pivot node rotates the visuals; gravity is rotated by
+// the pivot's INVERSE (a rotation matrix is orthonormal, so transpose == inverse), which is what
+// makes the ball roll downhill while the simulation still sees a flat floor plane.
+SceneView {
+    val tilt = Rotation(x = 20f, y = 0f, z = 0f)
+    val g = transpose(rotationMatrix(tilt.toQuaternion())) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+    val ball = remember(engine) { SphereNode(engine, radius = 0.08f) }
+    Node(rotation = tilt) {
+        PhysicsNode(node = ball, radius = 0.08f, floorY = -0.5f, gravity = Position(g.x, g.y, g.z))
+    }
 }
-PhysicsNode(node = ball, radius = 0.08f, floorY = -0.5f, gravity = Position(g.x, g.y, g.z))
 ```
 
 ```kotlin
