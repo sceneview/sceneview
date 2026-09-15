@@ -52,6 +52,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -294,6 +295,10 @@ private fun SingleModelSection(
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
     var recenterGeneration by remember { mutableStateOf(0) }
+    // Set once the scene block below creates the live manipulator, so the Recenter action —
+    // declared here, ahead of that block in source order — can still reach it and capture the
+    // pose actually on screen before the flight resets (#3622).
+    val cameraManipulatorRef = remember { mutableStateOf<EntranceCameraManipulator?>(null) }
     var spinScene by remember { mutableStateOf(false) }
     var animationBarOpen by remember { mutableStateOf(false) }
     var animationPlaying by remember { mutableStateOf(true) }
@@ -605,6 +610,10 @@ private fun SingleModelSection(
             DockItem(Icons.Outlined.WbSunny, "Lighting", { environmentSheetOpen = true }),
         ) + (if (animationNames.isNotEmpty()) listOf(DockItem(Icons.Outlined.Animation, "Animate", { animationBarOpen = !animationBarOpen }, selected = animationBarOpen)) else emptyList()) +
             listOf(DockItem(Icons.Outlined.RestartAlt, "Recenter", {
+                // Capture the pose actually on screen — post-orbit, pre-reset — before anything
+                // moves, so the flight below starts from there instead of snapping to the
+                // cold-open's synthetic swung-off-axis pose (#3622).
+                cameraManipulatorRef.value?.beginRecenterFlight()
                 // Recenter drops the zoom override too (#3403) — the camera returning to its
                 // framed home pose while keeping a 4x zoom is not "recentred".
                 DemoSettings.cameraDistance = null
@@ -697,7 +706,13 @@ private fun SingleModelSection(
                 if (f == null) c
                 else Position(c.x, c.y + f.targetOffset.second, c.z + f.targetOffset.third)
             }
-            val cameraManipulator = remember(activeModelInstance, recenterGeneration) {
+            // Keyed on the content alone (#3403 / #3404, see above) — NOT `recenterGeneration`.
+            // Rebuilding on every recenter tap used to be how the flight got a fresh start, but a
+            // fresh instance has no [EntranceCameraManipulator.flightStartEye] captured, so it fell
+            // through to the cold-open's synthetic swung-off-axis geometry instead of the pose the
+            // user had actually orbited to (#3622). `beginRecenterFlight` now does that job on the
+            // SAME instance, from the dock's onClick above, before `recenterGeneration` even changes.
+            val cameraManipulator = remember(activeModelInstance) {
                 EntranceCameraManipulator(
                     eye = {
                         val f = liveFraming.value
@@ -714,6 +729,7 @@ private fun SingleModelSection(
                     onDistanceChange = { DemoSettings.cameraDistance = it },
                 )
             }
+            SideEffect { cameraManipulatorRef.value = cameraManipulator }
             // #3543 — the near plane moves with the subject. The library default is 1 cm, which
             // is in front of a metre-scale model and *behind* a millimetre-scale one: a 2 mm mesh
             // frames at ~5 mm, so a fixed 1 cm near plane clips it away entirely and no amount of

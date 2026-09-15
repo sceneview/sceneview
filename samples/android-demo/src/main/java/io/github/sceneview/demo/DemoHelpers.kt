@@ -1131,6 +1131,27 @@ class EntranceCameraManipulator(
     private var viewportW = 1
     private var viewportH = 1
 
+    /**
+     * Set by [beginRecenterFlight] — non-null while a recenter flight is interpolating from the
+     * pose the camera was actually showing back to [eye]. `null` means "no captured start", which
+     * is the cold-open case: the synthetic swing/lift geometry below is the whole point of a first
+     * arrival, but replaying it for Recenter ignored wherever the user had orbited to and snapped
+     * the flight's start to that same swung-off-axis pose every time (#3622).
+     */
+    private var flightStartEye: Position? = null
+
+    /**
+     * Starts a flight back to [eye] from wherever the camera is on screen right now, instead of
+     * the cold-open's synthetic swing. Called by the caller's Recenter action, which then resets
+     * `progress` to `0` and animates it back to `1` — capturing here, before that reset, is what
+     * lets [currentEye] read the pose the user actually left the camera at rather than the frozen
+     * post-drag pose [fallback] would otherwise keep returning (#3622).
+     */
+    fun beginRecenterFlight() {
+        flightStartEye = getTransform().position
+        fallback = null
+    }
+
     /** Eye position for the current [progress] — [eye] itself once the flight is over. */
     private fun currentEye(): Position {
         val eye = eye()
@@ -1138,6 +1159,13 @@ class EntranceCameraManipulator(
         val p = progress().coerceIn(0f, 1f)
         if (p >= 1f) return eye
         val remaining = 1f - p
+        flightStartEye?.let { start ->
+            return Position(
+                x = eye.x + (start.x - eye.x) * remaining,
+                y = eye.y + (start.y - eye.y) * remaining,
+                z = eye.z + (start.z - eye.z) * remaining,
+            )
+        }
         val dx = eye.x - target.x
         val dy = eye.y - target.y
         val dz = eye.z - target.z
