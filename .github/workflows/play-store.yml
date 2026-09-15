@@ -48,6 +48,19 @@ on:
           - beta
           - alpha
           - internal
+      # Listing-only maintenance run (#3652). Skips build + publish entirely
+      # and runs `sync-listing` alone, with the two opt-in flags that move the
+      # store's default language to en-US and delete every other locale.
+      #
+      # It is a SEPARATE input rather than the default behaviour because it is
+      # the only path in this repo that deletes something on the live store.
+      # A tag push must never take it: the automatic release keeps syncing
+      # text and nothing else, exactly as before.
+      listing_only:
+        description: 'Sync ONLY the store listing (no build, no publish), set the default language to en-US and DELETE every other listing locale. Destructive — run it deliberately.'
+        required: false
+        default: false
+        type: boolean
 
 # Only one Play Store deploy at a time.
 concurrency:
@@ -62,6 +75,10 @@ jobs:
     name: Build release AAB
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # `listing_only` is a store-listing maintenance run — there is no new AAB
+    # to build. On a tag push `inputs` is null, so this is `!null` == true and
+    # the release path is untouched (#3652).
+    if: ${{ !inputs.listing_only }}
     outputs:
       version_code: ${{ steps.version.outputs.code }}
       version_name: ${{ steps.version.outputs.name }}
@@ -286,6 +303,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Nothing to roll out on a listing-only run (#3652).
+    if: ${{ !inputs.listing_only }}
 
     # Track list comes from the build job — see its `Compute target tracks` step.
     #
@@ -315,7 +334,7 @@ jobs:
 
       # Populate Play Store's "What's new in this version" from the matching
       # `## vX.Y.Z` section in CHANGELOG.md. Writes a single
-      # `whatsnew/whatsnew-en-GB` file consumed by `r0adkll/upload-google-play`
+      # `whatsnew/whatsnew-en-US` file consumed by `r0adkll/upload-google-play`
       # via `whatsNewDirectory:`. Snapshot builds (version_name like
       # `4.4.0-abcd1234`) strip the suffix to find the base release section.
       #
@@ -355,7 +374,7 @@ jobs:
           # Strip markdown → plain text (stores render literally). Order matters:
           # links first (`[label](url)` → `label`), then bold/italic/code, then
           # heading hashes, then squeeze blank-line runs.
-          python3 - << 'PYEOF' > whatsnew/whatsnew-en-GB
+          python3 - << 'PYEOF' > whatsnew/whatsnew-en-US
           import re, sys
           text = open('whatsnew/raw.md').read()
           text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)   # [label](url) → label
@@ -370,8 +389,8 @@ jobs:
           PYEOF
           rm -f whatsnew/raw.md
           echo "extracted=true" >> "$GITHUB_OUTPUT"
-          echo "What's new payload ($(wc -c < whatsnew/whatsnew-en-GB) chars):"
-          cat whatsnew/whatsnew-en-GB
+          echo "What's new payload ($(wc -c < whatsnew/whatsnew-en-US) chars):"
+          cat whatsnew/whatsnew-en-US
 
       # Two-mode publish:
       #
@@ -655,7 +674,7 @@ jobs:
   #   - Listing text rarely changes between patches; pushing identical
   #     copy on every `vX.Y.1` would clutter the Play Console's "Recent
   #     changes" tab with no signal.
-  #   - The `whatsnew-en-GB` payload (set above by the publish job)
+  #   - The `whatsnew-en-US` payload (set above by the publish job)
   #     remains the per-release surface for "what changed".
   #
   # Runs as a separate job (not a publish-matrix step) so it fires
@@ -663,7 +682,7 @@ jobs:
   # Uses its own Edit — independent of the upload + promote Edits — so
   # a listing-sync failure cannot block the AAB rollout.
   sync-listing:
-    name: Sync Play Store listing (en-GB)
+    name: Sync Play Store listing (en-US)
     needs: [build, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -683,7 +702,20 @@ jobs:
     # Also run on `workflow_dispatch` so a manual trigger can force a
     # listing refresh (e.g. to push new screenshots/feature-graphic) without
     # waiting for the next minor release.
-    if: needs.build.outputs.is_minor_bump == 'true' || github.event_name == 'workflow_dispatch'
+    #
+    # `always() &&` is required for the `listing_only` path (#3652): build and
+    # publish are SKIPPED there, and a skipped `needs:` would otherwise skip
+    # this job too. The success arm keeps its old meaning for every other run
+    # — an `always()` without it would turn this into a job that syncs the
+    # listing even when the build failed.
+    if: >-
+      always() && (
+        inputs.listing_only ||
+        (
+          needs.build.result == 'success' && needs.publish.result == 'success' &&
+          (needs.build.outputs.is_minor_bump == 'true' || github.event_name == 'workflow_dispatch')
+        )
+      )
     steps:
       - name: Checkout (for distribution/play-store/* files)
         uses: actions/checkout@v7
@@ -706,4 +738,21 @@ jobs:
           # exit 0, caps + truncation, edit rollback). `--apply` is the CI
           # write mode; without it the script is a read-only drift diff you
           # can run locally (see the script header).
-          /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py --apply
+          #
+          # LISTING_FLAGS is empty on every automatic run: a release syncs the
+          # text and touches nothing else, as it always has. Only the manual
+          # `listing_only` dispatch adds the two opt-in flags that move the
+          # store's default language and delete the other locales (#3652).
+          LISTING_FLAGS=""
+          if [ "${{ inputs.listing_only }}" = "true" ]; then
+            LISTING_FLAGS="--set-default-locale en-US --prune-other-locales"
+            echo "listing_only: default language -> en-US, other locales will be DELETED"
+            # Read first, on the same credentials, so the run log records what
+            # the destructive call is about to remove. Read-only; never fails
+            # the job (`|| true`) — the apply below is the operation that counts.
+            /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py \
+              --dry-run $LISTING_FLAGS || true
+          fi
+
+          # shellcheck disable=SC2086 # deliberate word-splitting of the flags
+          /tmp/listing-venv/bin/python3 .claude/scripts/store-sync/play_listing.py --apply $LISTING_FLAGS

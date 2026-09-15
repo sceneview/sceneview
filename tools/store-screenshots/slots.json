@@ -87,7 +87,7 @@
     {
       "caption": "Open any 3D file",
       "src": "tools/store-screenshots/raw/open-3mf.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-1.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-1.png",
       "size": "1080x2304",
       "crop_top": 96
     },
@@ -105,7 +105,7 @@
         0.35
       ],
       "src": "tools/store-screenshots/raw/ar-room-composited.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-2.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-2.png",
       "size": "1080x2304",
       "crop_top": 0,
       "ui_keep": [
@@ -122,28 +122,28 @@
     {
       "caption": "50 demos, source included",
       "src": "tools/store-screenshots/raw/home-demos.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-3.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-3.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
       "caption": "HDR lighting, one tap",
       "src": "tools/store-screenshots/raw/model-hdr.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-4.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-4.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
       "caption": "Real-time sky and light",
       "src": "tools/store-screenshots/raw/sky-sun.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-5.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-5.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
       "caption": "A few lines of Compose",
       "src": "tools/store-screenshots/raw/model-hdr.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/phone-screenshot-6.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-6.png",
       "size": "1080x2304",
       "crop_top": 96,
       "kind": "split"
@@ -153,7 +153,7 @@
       "headline": "Open any 3D file",
       "subline": "GLB, glTF, 3MF, STL, OBJ, PLY - in AR, at real size",
       "src": "tools/store-screenshots/raw/ar-room-phone.png",
-      "out": "samples/android-demo/distribution/play-store/en-GB/graphics/feature-graphic.png",
+      "out": "samples/android-demo/distribution/play-store/en-US/graphics/feature-graphic.png",
       "size": "1024x500",
       "caption": "-"
     }
