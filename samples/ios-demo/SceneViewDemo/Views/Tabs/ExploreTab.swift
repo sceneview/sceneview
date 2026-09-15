@@ -235,19 +235,13 @@ struct ExploreTab: View {
     /// Ignored by the CC sources, which don't expose the flag.
     @State private var animatedOnly = false
 
-    // Search execution state (#1239 parity). `activeSearchQuery` (set on submit
-    // or on a recent-search tap) drives the search `.task`. `searchResults`:
-    //   - `nil`      → query is loading
-    //   - `.isEmpty` → query ran and returned 0 hits
-    //   - non-empty  → render the results carousel, hide the feeds
-    @State private var activeSearchQuery = ""
-    @State private var searchResults: [GalleryModel]?
-
-    /// Non-nil when the last search failed to reach the catalog. Kept separate
-    /// from `searchResults == []` so "the catalog answered, with nothing" and
-    /// "we never reached the catalog" stop rendering as the same sentence —
-    /// only the second one is worth a Retry button (#3586).
-    @State private var searchFailure: String?
+    // Search query + state machine (#3586). The four states the results area can
+    // be in — browse feeds, loading, no results, unreachable catalog — live in
+    // `ExploreSearchModel` so they are one enum instead of a combination of
+    // `@State` flags, and so they are unit-testable without a view or a network
+    // (`SceneViewDemoTests/ExploreSearchModelTests.swift`). `searchText` stays
+    // here: it is the field's binding and nothing else.
+    @State private var search = ExploreSearchModel()
 
     /// Focus for the inline field used in `embedded` mode (see `inlineSearchField`).
     @FocusState private var inlineSearchFocused: Bool
@@ -259,7 +253,7 @@ struct ExploreTab: View {
 
     /// The currently selected source (Sketchfab | Icosa | Poly Haven).
     private var selectedSource: any ModelSource { sources.selected }
-    private var isSearching: Bool { !activeSearchQuery.isEmpty }
+    private var isSearching: Bool { search.isSearching }
     private var allFeedsEmpty: Bool {
         selectedSource.feedKinds.allSatisfy { (feedsByKind[$0] ?? []).isEmpty }
     }
@@ -366,22 +360,27 @@ struct ExploreTab: View {
                 prompt: "Search 3D models on \(selectedSource.id.displayName)"
             )
             .onSubmit(of: .search) { submitSearch() }
-            .onChange(of: searchText) { _, newValue in
-                // Clearing the field cancels the active search and restores the
-                // default carousels (#1239 parity).
-                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    activeSearchQuery = ""
-                    searchResults = nil
-                    searchFailure = nil
-                }
-            }
+            // Clearing the field cancels the active search at once and restores
+            // the default carousels — it must not wait out the debounce below.
+            .onChange(of: searchText) { _, newValue in search.fieldChanged(newValue) }
+            // Debounced live search (#2228 parity): each keystroke re-keys this
+            // task, which cancels the previous one mid-sleep, so the query only
+            // fires 350 ms after the user stops typing. Below two characters
+            // nothing fires at all.
+            .task(id: searchText) { await search.debouncedActivate(text: searchText) }
             // Reload the selected source's feeds on first appearance, source
             // switch, or Animated toggle. `.task(id:)` cancels the previous run
             // when the key changes — the single cancel-then-restart pipeline that
             // mirrors the Android LaunchedEffect.
             .task(id: feedsTaskKey) { await loadFeeds() }
-            // Execute the search when the active query (or source) changes.
-            .task(id: searchTaskKey) { await runSearch() }
+            // Execute the search when the active query, the source, or the retry
+            // token changes.
+            .task(id: searchTaskKey) {
+                await search.run(source: selectedSource)
+                // A 401/403 met during search latches the same banner the feeds
+                // use, so one rejected key is explained once, in one place.
+                if search.keyRejected { keyRejected = true }
+            }
             // Pull-to-refresh — every available source has live feeds to refresh
             // (Icosa / Poly Haven need no key), so it's always wired.
             .refreshable { await loadFeeds(force: true) }
@@ -406,7 +405,7 @@ struct ExploreTab: View {
                 CategorySheet(category: category) { query in
                     searchText = query
                     recentSearches.push(query)
-                    activeSearchQuery = query
+                    search.submit(text: query)
                 }
                 .presentationDetents([.medium, .large])
                 #if os(iOS)
@@ -430,8 +429,13 @@ struct ExploreTab: View {
 
     /// Re-keys the feeds `.task` on source switch or Animated toggle.
     private var feedsTaskKey: String { "\(selectedSource.id.slug)|\(animatedOnly)" }
-    /// Re-keys the search `.task` on query change or source switch.
-    private var searchTaskKey: String { "\(activeSearchQuery)|\(selectedSource.id.slug)" }
+    /// Re-keys the search `.task` on query change, source switch, or Retry.
+    /// The retry token is part of the key because re-assigning the *same* query
+    /// inside one run loop does not change the key — so the old "clear it and
+    /// set it back" retry never restarted anything (#3586).
+    private var searchTaskKey: String {
+        "\(search.activeQuery)|\(selectedSource.id.slug)|\(search.retryToken)"
+    }
 
     /// Resolve the concrete source that produced `model` (robust against a source
     /// switch while the viewer is on screen).
@@ -467,8 +471,7 @@ struct ExploreTab: View {
     private func selectSource(_ source: any ModelSource) {
         guard source.id != selectedSource.id else { return }
         searchText = ""
-        activeSearchQuery = ""
-        searchResults = nil
+        search.reset()
         feedsByKind = [:]
         keyRejected = false
         sources.select(source)
@@ -566,36 +569,6 @@ struct ExploreTab: View {
         keyRejected = rejected
     }
 
-    /// Execute the active search against the selected source. `nil` results means
-    /// "in flight"; an empty list means "0 hits"; non-empty renders the carousel.
-    /// Source search does not accept an `animated` filter (Sketchfab only exposes
-    /// it on the feed endpoints; the CC sources have no such concept), #2645.
-    private func runSearch() async {
-        let source = selectedSource
-        let query = activeSearchQuery
-        guard !query.isEmpty else { return }
-        searchResults = nil
-        searchFailure = nil
-        do {
-            let results = try await source.search(query: query, limit: 24)
-            guard source.id == selectedSource.id && query == activeSearchQuery else { return }
-            searchResults = results
-        } catch is CancellationError {
-            // Superseded by a newer query — leave the spinner to the new run.
-            return
-        } catch let SketchfabError.requestFailed(statusCode)
-            where statusCode == 401 || statusCode == 403 {
-            keyRejected = true
-            searchResults = []
-            searchFailure = "\(selectedSource.id.displayName) rejected the app's API key, so search is unavailable. Switch catalog from the picker above."
-        } catch {
-            // A transient blip surfaces the error state and clears on the next
-            // query — no permanent latch (matches the Android WAF handling).
-            searchResults = []
-            searchFailure = "Couldn't reach \(selectedSource.id.displayName). Check your connection and try again."
-        }
-    }
-
     /// Always-visible search field for `embedded` mode. Styled after the
     /// Showcase header's own field so the two searches in the app look alike.
     private var inlineSearchField: some View {
@@ -618,9 +591,7 @@ struct ExploreTab: View {
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
-                    activeSearchQuery = ""
-                    searchResults = nil
-                    searchFailure = nil
+                    search.cancel()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
@@ -643,12 +614,12 @@ struct ExploreTab: View {
             lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 
-    /// Explicit Enter press: record the query and fire the search.
+    /// Explicit Enter press: record the query and fire the search now, without
+    /// the debounce. Only this path writes to the recent-search history — live
+    /// keystroke fragments would fill it with "m", "ma", "mar", …
     private func submitSearch() {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
+        guard let query = search.submit(text: searchText) else { return }
         recentSearches.push(query)
-        activeSearchQuery = query
         #if os(iOS)
         SceneViewHaptic.shared.light()
         #endif
@@ -753,62 +724,123 @@ struct ExploreTab: View {
         }
     }
 
-    /// Search-results carousel (#1239 parity). `searchResults == nil` ⇒ loading;
-    /// empty ⇒ 0 hits; non-empty ⇒ render the carousel.
+    /// The results area, one branch per `ExploreSearchState` (#3586). The browse
+    /// feeds are the fourth state and are rendered by `content` instead — this
+    /// section only exists while a query is active.
     @ViewBuilder
     private var searchResultsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Search results")
                     .font(.title2.weight(.bold))
-                if searchResults == nil {
+                if search.state == .loading {
                     Spacer()
                     ProgressView().controlSize(.small)
                 }
             }
-            if let searchResults {
-                if let searchFailure {
-                    // Error state — we never got an answer. Offer the retry.
-                    VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-                        Label(searchFailure, systemImage: "wifi.exclamationmark")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Try again") {
-                            let query = activeSearchQuery
-                            activeSearchQuery = ""
-                            activeSearchQuery = query
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(SceneViewTheme.primary)
-                    }
-                } else if searchResults.isEmpty {
-                    // Empty state — the catalog answered, it just has nothing.
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No results for \u{201C}\(activeSearchQuery)\u{201D}")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Try a shorter or more general word, or pick a category below.")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(searchResults, id: \.cardKey) { model in
-                                FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
-                                    viewingModel = model
-                                    #if os(iOS)
-                                    SceneViewHaptic.shared.light()
-                                    #endif
-                                }
+            switch search.state {
+            case .idle:
+                EmptyView()
+            case .loading:
+                // Say what is happening rather than spin in silence — the
+                // heading's spinner alone reads as "stuck" on a slow network.
+                Text("Searching \(selectedSource.id.displayName) for \u{201C}\(search.activeQuery)\u{201D}…")
+                    .font(SceneViewTokens.TypeScale.body)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .accessibilityIdentifier("explore-search-loading")
+            case .noResults(let query):
+                // The catalog answered, it just has nothing for this word.
+                searchStateCard(
+                    icon: "magnifyingglass",
+                    title: "No results for \u{201C}\(query)\u{201D}",
+                    message: "\(selectedSource.id.displayName) has nothing under that word. Try a shorter or more general one, or pick a category below.",
+                    action: nil
+                )
+                .accessibilityIdentifier("explore-search-no-results")
+            case .failed(let failure):
+                // We never got an answer. Say which, and offer the way out.
+                searchStateCard(
+                    icon: failure.icon,
+                    title: failure.title,
+                    message: failure.message,
+                    action: failure.canRetry ? "Try again" : nil
+                ) {
+                    search.retry()
+                }
+                .accessibilityIdentifier("explore-search-error")
+            case .results(let models):
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(models, id: \.cardKey) { model in
+                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                                viewingModel = model
+                                #if os(iOS)
+                                SceneViewHaptic.shared.light()
+                                #endif
                             }
                         }
-                        .padding(.bottom, 4)
                     }
-                    .scrollClipDisabled()
+                    .padding(.bottom, 4)
                 }
+                .scrollClipDisabled()
             }
         }
+    }
+
+    /// One card for a search state that has no models to show — "no results" and
+    /// every flavour of failure. The two need the same shape, because the user's
+    /// question is the same ("why is the screen empty?"); only the sentence and
+    /// the presence of an action differ.
+    ///
+    /// DESIGN.md: `surface-container` ground one step off the page, `outline`
+    /// hairline, `radius-md`, `space-md` padding, `type-card` title over
+    /// `type-body` guidance — the same slab the rest of the demo chrome uses, so
+    /// it reads as part of the app in both themes.
+    @ViewBuilder
+    private func searchStateCard(
+        icon: String,
+        title: String,
+        message: String,
+        action: String?,
+        onAction: @escaping () -> Void = {}
+    ) -> some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Label {
+                Text(title)
+                    .font(SceneViewTokens.TypeScale.card)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            } icon: {
+                Image(systemName: icon)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+            }
+            Text(message)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if let action {
+                Button(action: onAction) {
+                    Text(action)
+                        .font(SceneViewTokens.TypeScale.bodySemibold)
+                        .padding(.horizontal, SceneViewTokens.Space.md)
+                        .frame(height: 36)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SceneViewTokens.HomeColor.primary)
+                .clipShape(Capsule())
+                .accessibilityIdentifier("explore-search-retry")
+            }
+        }
+        .padding(SceneViewTokens.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                .fill(SceneViewTokens.HomeColor.surfaceContainer)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                .strokeBorder(SceneViewTokens.HomeColor.outline,
+                              lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+        )
     }
 
     /// Fallback single-row carousel of bundled local models, shown only when every
@@ -882,7 +914,7 @@ struct ExploreTab: View {
                         // Tapping a recent search re-runs it against the current
                         // source (#1239 parity).
                         searchText = query
-                        activeSearchQuery = query
+                        search.submit(text: query)
                     } onRemove: {
                         recentSearches.remove(query)
                     }

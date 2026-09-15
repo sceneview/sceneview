@@ -59,6 +59,8 @@
 		A10000010000000000000001 /* SceneViewDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* SceneViewDemoApp.swift */; };
 		A10000010000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* Assets.xcassets */; };
 		B4A94ABD8B5DA5F4E4CE4834 /* SketchfabService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */; };
+		E35861000000000000003586 /* ExploreSearchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35860000000000000003586 /* ExploreSearchModel.swift */; };
+		E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E35862000000000000003586 /* ExploreSearchModelTests.swift */; };
 		DA0000000000000000000A01 /* ModelSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A01 /* ModelSource.swift */; };
 		DA0000000000000000000A02 /* GallerySources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A02 /* GallerySources.swift */; };
 		DA0000000000000000000A03 /* GallerySourceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0000000000000000000A03 /* GallerySourceRegistry.swift */; };
@@ -219,6 +221,8 @@
 		5FA64989921B8BD7A9F30B31 /* ComingSoonScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComingSoonScreen.swift; path = SceneViewDemo/Views/ComingSoonScreen.swift; sourceTree = SOURCE_ROOT; };
 		6C214F8F9A1B35560E551895 /* SketchfabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabModels.swift; path = SceneViewDemo/Services/SketchfabModels.swift; sourceTree = SOURCE_ROOT; };
 		8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SketchfabService.swift; path = SceneViewDemo/Services/SketchfabService.swift; sourceTree = SOURCE_ROOT; };
+		E35860000000000000003586 /* ExploreSearchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExploreSearchModel.swift; path = SceneViewDemo/Services/ExploreSearchModel.swift; sourceTree = SOURCE_ROOT; };
+		E35862000000000000003586 /* ExploreSearchModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExploreSearchModelTests.swift; path = SceneViewDemoTests/ExploreSearchModelTests.swift; sourceTree = SOURCE_ROOT; };
 		DB0000000000000000000A01 /* ModelSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelSource.swift; path = SceneViewDemo/Services/ModelSource.swift; sourceTree = SOURCE_ROOT; };
 		DB0000000000000000000A02 /* GallerySources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GallerySources.swift; path = SceneViewDemo/Services/GallerySources.swift; sourceTree = SOURCE_ROOT; };
 		DB0000000000000000000A03 /* GallerySourceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GallerySourceRegistry.swift; path = SceneViewDemo/Services/GallerySourceRegistry.swift; sourceTree = SOURCE_ROOT; };
@@ -455,6 +459,7 @@
 				A20000000000000000002966 /* BundledAssetCredits.swift */,
 				6C214F8F9A1B35560E551895 /* SketchfabModels.swift */,
 				8FFA4BE9A50A8347603AA10E /* SketchfabService.swift */,
+				E35860000000000000003586 /* ExploreSearchModel.swift */,
 				E11525101A2B40A19EAECE6700000001 /* SketchfabSlug.swift */,
 				E11525111A2B40A19EAECE6700000002 /* SampleAssets.swift */,
 				E11525121A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift */,
@@ -472,6 +477,7 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
 				A20000000000000000003158 /* ReflectionProbesDemoTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
@@ -948,6 +954,7 @@
 				A10000000000000000002966 /* BundledAssetCredits.swift in Sources */,
 				593E4FADBA93AF1190A3A67E /* SketchfabModels.swift in Sources */,
 				B4A94ABD8B5DA5F4E4CE4834 /* SketchfabService.swift in Sources */,
+				E35861000000000000003586 /* ExploreSearchModel.swift in Sources */,
 				E11525001A2B40A19EAECE6700000001 /* SketchfabSlug.swift in Sources */,
 				E11525011A2B40A19EAECE6700000002 /* SampleAssets.swift in Sources */,
 				E11525021A2B40A19EAECE6700000003 /* SketchfabAssetResolver.swift in Sources */,
@@ -1044,6 +1051,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				E35863000000000000003586 /* ExploreSearchModelTests.swift in Sources */,
 				B10000000000000000003585 /* ViewerAssetTests.swift in Sources */,
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
