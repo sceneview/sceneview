@@ -16,6 +16,17 @@ Single code path for the Play listing sync, shared by CI and local runs:
               pass --fail-on-drift to exit 3 when drift is found (the
               check-doc-drift.sh `--fail` convention).
 
+Two OPT-IN modifiers, off unless named, added with the en-GB -> en-US move
+(#3652). The automatic tag path in play-store.yml passes neither, so a release
+keeps syncing text and nothing else:
+
+  --set-default-locale LOCALE   set the store's `defaultLanguage`.
+  --prune-other-locales         DELETE every listing locale except that one.
+                                Requires --set-default-locale: the survivor is
+                                named, never inferred. Under --dry-run both are
+                                reported as drift lines — the delete list is
+                                readable before it is destructive.
+
 Credentials — reuses the deploy service account, NO new scope:
   SERVICE_ACCOUNT_JSON                  JSON content (what the workflow passes)
   PLAY_STORE_SERVICE_ACCOUNT_JSON       alias, JSON content
@@ -198,6 +209,16 @@ def locales_under(root):
     return [d.name for d in sorted(root.iterdir()) if d.is_dir()]
 
 
+def locales_to_prune(remote_locales, keep):
+    """Locales live on the store that `--prune-other-locales` would delete.
+
+    Pure, so the destructive decision is unit-testable without the API. `keep`
+    is never in the result — deleting the locale we just wrote (and made the
+    default) would empty the listing entirely.
+    """
+    return sorted({l for l in remote_locales if l and l != keep})
+
+
 # ── Network layer (lazy third-party imports) ─────────────────────────────────
 
 def _session(creds_info):
@@ -211,9 +232,43 @@ def _session(creds_info):
     return AuthorizedSession(creds)
 
 
-def apply_sync(sess, pkg, root):
+def remote_locales(sess, base, edit_id):
+    """Every language that has a listing on the store, inside `edit_id`.
+
+    `edits.listings.list` returns `{"listings": [{"language": "fr-FR", ...}]}`;
+    a store with no listing at all answers 404, which is an empty set, not an
+    error.
+    """
+    r = sess.get(f"{base}/edits/{edit_id}/listings")
+    if r.status_code == 404:
+        return []
+    r.raise_for_status()
+    return [l.get("language") for l in (r.json().get("listings") or [])]
+
+
+def apply_sync(sess, pkg, root, set_default_locale=None, prune_other_locales=False):
     """Push text + graphics for every locale. Faithful extraction of the former
-    play-store.yml heredoc — same flow, same prints, same error handling."""
+    play-store.yml heredoc — same flow, same prints, same error handling.
+
+    `set_default_locale` and `prune_other_locales` are OPT-IN and both default
+    to off, so the automatic tag path keeps doing exactly what it always did:
+    write the repo's locales, touch nothing else. They exist for the manual
+    `listing_only` dispatch (#3652).
+
+    ORDER IS LOAD-BEARING inside the single edit, and it is the reason these
+    are not three independent scripts:
+
+      1. write the repo locales — `en-US` must EXIST before it can be named
+         the default; Play rejects a `defaultLanguage` that has no listing.
+      2. switch `defaultLanguage` — must happen before the deletes, because
+         Play refuses to delete the listing of the current default language.
+      3. delete the others — last, when nothing points at them any more.
+
+    All three ride the same edit, so the commit is atomic: if the prune 400s,
+    the default-language switch rolls back with it and the store is left
+    exactly as it was. The alternative (three edits) has a window where the
+    store has no default listing at all.
+    """
     # Re-assert at the WRITE boundary, not just the CLI one: main() checks this
     # too, but a caller importing apply_sync() directly would otherwise open an
     # edit and 400 halfway through it, rolling back everything staged (#2794).
@@ -292,7 +347,35 @@ def apply_sync(sess, pkg, root):
             # still gets its images uploaded.
             sync_graphics(edit_id, locale, ldir)
 
-        # 2. Commit the edit.
+        # 2. (opt-in) Point the store's default language at our one locale.
+        #
+        #    PATCH, not PUT: `edits.details.update` REPLACES the whole Details
+        #    resource, and Details also carries contactEmail / contactPhone /
+        #    contactWebsite. A PUT carrying only `defaultLanguage` would blank
+        #    the three contact fields on the live listing — a silent data loss
+        #    that no diff in this repo would ever surface, since none of those
+        #    fields are stored here. `edits.details.patch` sets the one field.
+        if set_default_locale:
+            r = sess.patch(
+                f"{base}/edits/{edit_id}/details",
+                json={"defaultLanguage": set_default_locale},
+            )
+            r.raise_for_status()
+            print(f"[listing] defaultLanguage -> {set_default_locale}")
+
+        # 3. (opt-in) Delete every other locale's listing. Ordered after the
+        #    default switch on purpose — see the docstring.
+        if prune_other_locales:
+            keep = set_default_locale or (locales[0] if locales else None)
+            doomed = locales_to_prune(remote_locales(sess, base, edit_id), keep)
+            if not doomed:
+                print(f"[listing] prune: nothing to delete (only {keep} is live)")
+            for locale in doomed:
+                d = sess.delete(f"{base}/edits/{edit_id}/listings/{locale}")
+                d.raise_for_status()
+                print(f"[listing] prune: deleted {locale}")
+
+        # 4. Commit the edit.
         r = sess.post(f"{base}/edits/{edit_id}:commit")
         r.raise_for_status()
         print("[listing] commit OK")
@@ -339,12 +422,17 @@ def apply_sync(sess, pkg, root):
         raise
 
 
-def dry_run(sess, pkg, root):
+def dry_run(sess, pkg, root, set_default_locale=None, prune_other_locales=False):
     """READ-ONLY drift check: live listing vs repo files. Returns drift lines.
 
     Opens a throwaway edit (the `edits.listings` / `edits.images` GETs need an
     edit id; a fresh edit reflects the live state), never commits it, and
     abandons it in a finally block.
+
+    With `--prune-other-locales`, this is also the ONLY way to see what the
+    destructive run would remove before running it: every locale it would
+    delete is reported as a drift line naming it. A destructive flag whose
+    blast radius can only be discovered by firing it is not reviewable.
     """
     base = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{pkg}"
 
@@ -386,6 +474,27 @@ def dry_run(sess, pkg, root):
                     ir.raise_for_status()
                 remote_shas = [i.get("sha256") for i in images]
                 drift += diff_images(locale, image_type, files, remote_shas)
+
+        if prune_other_locales:
+            keep = set_default_locale or (locales[0] if locales else None)
+            doomed = locales_to_prune(remote_locales(sess, base, edit_id), keep)
+            for locale in doomed:
+                drift.append(
+                    f"{locale}: listing is live on the store and WOULD BE "
+                    f"DELETED by --prune-other-locales (keeping {keep})"
+                )
+            if not doomed:
+                print(f"[dry-run] prune: nothing to delete (only {keep} is live)")
+
+        if set_default_locale:
+            dr = sess.get(f"{base}/edits/{edit_id}/details")
+            if dr.status_code == 200:
+                current = dr.json().get("defaultLanguage")
+                if current != set_default_locale:
+                    drift.append(
+                        f"defaultLanguage: store={current!r} "
+                        f"WOULD BECOME {set_default_locale!r}"
+                    )
     finally:
         try:
             sess.delete(f"{base}/edits/{edit_id}")
@@ -407,10 +516,31 @@ def main(argv=None):
                       help="read-only live-vs-repo diff (default)")
     ap.add_argument("--fail-on-drift", action="store_true",
                     help="dry-run only: exit 3 when drift is found")
+    # Both opt-in, both off by default: the automatic tag path must keep
+    # syncing text and nothing else. These are for the manual `listing_only`
+    # dispatch (#3652) — see the apply_sync docstring for why the order of
+    # the three operations inside the edit is not free.
+    ap.add_argument("--set-default-locale", metavar="LOCALE", default=None,
+                    help="set the store's defaultLanguage to LOCALE "
+                         "(opt-in; dry-run reports it instead)")
+    ap.add_argument("--prune-other-locales", action="store_true",
+                    help="DELETE every listing locale except the kept one "
+                         "(opt-in and destructive; dry-run names them first)")
     ap.add_argument("--package", default=os.environ.get("PACKAGE_NAME", DEFAULT_PACKAGE))
     ap.add_argument("--listing-dir",
                     default=os.environ.get("LISTING_DIR", DEFAULT_LISTING_DIR))
     args = ap.parse_args(argv)
+
+    # `--prune-other-locales` deletes whatever it is not told to keep. Without
+    # `--set-default-locale` the kept locale would be inferred from whichever
+    # directory sorts first, which is a silent, filesystem-ordering-dependent
+    # answer to "which listing survives". Make the pairing explicit instead.
+    if args.prune_other_locales and not args.set_default_locale:
+        print(
+            "::error::--prune-other-locales requires --set-default-locale "
+            "LOCALE — the locale to keep must be named, not inferred."
+        )
+        return 2
 
     root = pathlib.Path(args.listing_dir)
     if not root.is_dir():
@@ -428,6 +558,21 @@ def main(argv=None):
         )
         return 2
 
+    # Naming a default locale the repo does not carry would point the store at
+    # a listing this sync never writes — the #1710 failure mode (an `en-US`
+    # directory that updated nothing), in reverse and on the live store.
+    # Checked HERE, before the credential probe: it is a pure repo-side fact,
+    # and a bad flag must be rejected on a developer's laptop (where there are
+    # no credentials and main() would otherwise return 0) and not only in CI.
+    if args.set_default_locale and args.set_default_locale not in locales_under(root):
+        print(
+            f"::error::--set-default-locale {args.set_default_locale} has no "
+            f"directory under {root} (found: "
+            f"{', '.join(locales_under(root)) or 'none'}). The default "
+            "language must be a locale this repo actually maintains."
+        )
+        return 2
+
     creds_info = resolve_credentials()
     if creds_info is None:
         print(
@@ -439,9 +584,13 @@ def main(argv=None):
 
     sess = _session(creds_info)
     if args.apply:
-        return apply_sync(sess, args.package, root)
+        return apply_sync(sess, args.package, root,
+                          set_default_locale=args.set_default_locale,
+                          prune_other_locales=args.prune_other_locales)
 
-    drift = dry_run(sess, args.package, root)
+    drift = dry_run(sess, args.package, root,
+                    set_default_locale=args.set_default_locale,
+                    prune_other_locales=args.prune_other_locales)
     if not drift:
         print(f"[dry-run] {args.package}: live listing matches the repo — no drift")
         return 0

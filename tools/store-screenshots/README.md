@@ -10,7 +10,7 @@ slot. Before this script the two sets shipped raw, uncaptioned captures.
 It is a compositor, not a capture tool. Capturing stays manual and documented
 where each set lives:
 
-- Play: `samples/android-demo/distribution/play-store/en-GB/graphics/README.md`
+- Play: `samples/android-demo/distribution/play-store/en-US/graphics/README.md`
   (`emulator-5554`, the one `Pixel_7a` AVD, `adb exec-out screencap`, 96 px of
   status bar to crop).
 - App Store: `samples/ios-demo/appstore-screenshots/README.md`

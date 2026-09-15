@@ -210,8 +210,8 @@ jobs:
           mkdir -p whatsnew
           SUBJECT=$(git log -1 --pretty=%s)
           NOTE="main@$(git rev-parse --short HEAD): ${SUBJECT}"
-          printf '%s' "${NOTE:0:500}" > whatsnew/whatsnew-en-GB
-          cat whatsnew/whatsnew-en-GB
+          printf '%s' "${NOTE:0:500}" > whatsnew/whatsnew-en-US
+          cat whatsnew/whatsnew-en-US
 
       - name: Publish to Play Store (internal)
         if: steps.guard.outputs.skip != 'true'
