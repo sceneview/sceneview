@@ -6,9 +6,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
@@ -52,6 +55,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -91,9 +95,14 @@ import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
 import io.github.sceneview.demo.freshnessHeadlineVersion
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalMotionEnabled
+import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
+import io.github.sceneview.demo.ui.cascadeIn
+import io.github.sceneview.demo.ui.pressScale
+import io.github.sceneview.demo.ui.rememberCascade
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -237,6 +246,35 @@ fun HomeScreen(
         derivedStateOf { gridState.firstVisibleItemIndex > 0 }
     }
 
+    // How far the featured band has travelled out of the viewport, 0 → 1. Read at
+    // *draw* time by the live hero's `graphicsLayer` (hence a lambda, not a `Float`):
+    // the band collapses without a single extra recomposition per scrolled frame, and
+    // without the grid's own scroll maths ever depending on a height the collapse chose.
+    val heroCollapse: () -> Float = remember(gridState) {
+        {
+            val item = gridState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.key == HERO_ITEM_KEY }
+            when {
+                item == null -> 1f
+                item.size.height == 0 -> 0f
+                else -> ((-item.offset.y).toFloat() / item.size.height).coerceIn(0f, 1f)
+            }
+        }
+    }
+    // Frames are for a band that is on screen and holding still. A drag is the one
+    // moment the scroll needs every millisecond of the frame budget, and a hero that
+    // has scrolled past its own height has nothing left to show.
+    val heroOnScreen by remember(gridState) {
+        derivedStateOf {
+            gridState.layoutInfo.visibleItemsInfo.any { it.key == HERO_ITEM_KEY }
+        }
+    }
+    val heroRendering = heroOnScreen && !gridState.isScrollInProgress && !searching
+
+    // The catalogue's one-shot entrance, played on arrival and never again under a thumb.
+    val cascade = rememberCascade()
+    var cascadeIndex = 0
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
@@ -259,12 +297,14 @@ fun HomeScreen(
             }
             // While a query is typed the featured pager gives way so the results
             // start under the header and stay visible above the keyboard (#3308).
-            if (!searching) item(key = "hero", span = { GridItemSpan(maxLineSpan) }) {
+            if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
                 HomeFeaturedPager(
                     pages = featuredPages,
                     height = if (expanded) home.heroHeightExpanded else home.heroHeight,
                     onDemoClick = onDemoClick,
                     onWhatsNewClick = { showWhatsNew = true },
+                    collapseFraction = heroCollapse,
+                    heroRendering = heroRendering,
                     modifier = Modifier.testTag(HomeTestTags.HERO),
                 )
             }
@@ -272,7 +312,9 @@ fun HomeScreen(
                 item(key = "browse-online", span = { GridItemSpan(maxLineSpan) }) {
                     BrowseOnlineModelsCard(
                         onClick = onBrowseOnlineClick,
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier
+                            .animateItem()
+                            .cascadeIn(cascade.delayFor(cascadeIndex++)),
                     )
                 }
             }
@@ -305,23 +347,28 @@ fun HomeScreen(
                     ) {
                         SectionHeader(
                             category = demo.category,
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier
+                                .animateItem()
+                                .cascadeIn(cascade.delayFor(cascadeIndex++)),
                         )
                     }
                 }
                 previousCategory = demo.category
+                val cardDelay = cascade.delayFor(cascadeIndex++)
                 item(key = "demo-${demo.id}") {
                     DemoMediaCard(
                         demo = demo,
                         onClick = { onDemoClick(demo.id) },
                         freshness = freshnessById[demo.id] ?: DemoFreshness.None,
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
-                            placementSpec = spring(
-                                dampingRatio = SceneViewTokens.Spring.dampingRatio,
-                                stiffness = SceneViewTokens.Spring.stiffness,
-                            ),
-                        ),
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = tween(SceneViewTokens.Duration.fadeMillis),
+                                placementSpec = spring(
+                                    dampingRatio = SceneViewTokens.Spring.dampingRatio,
+                                    stiffness = SceneViewTokens.Spring.stiffness,
+                                ),
+                            )
+                            .cascadeIn(cardDelay),
                     )
                 }
             }
@@ -376,6 +423,13 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * Grid key of the featured band. Named because three things now agree on it: the
+ * item itself, the collapse fraction that measures its travel, and the render gate
+ * that parks Filament once it has left.
+ */
+private const val HERO_ITEM_KEY = "hero"
+
 /** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"
 
@@ -401,6 +455,10 @@ private fun HomeHeader(
 ) {
     val home = SceneViewTokens.Home
     var searchOpen by rememberSaveable { mutableStateOf(query.isNotEmpty()) }
+    val motionEnabled = LocalMotionEnabled.current
+    val headerSwapSpec = remember(motionEnabled) {
+        if (motionEnabled) tween<Float>(SceneViewTokens.Duration.shortMillis) else snap()
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val overlay by animateColorAsState(
         targetValue = if (scrolled) {
@@ -411,12 +469,19 @@ private fun HomeHeader(
         animationSpec = tween(SceneViewTokens.Duration.shortMillis),
         label = "headerOverlay",
     )
-    Column(modifier = modifier.fillMaxWidth().background(overlay)) {
+    // The wordmark row and the search row are not the same height, so the swap used to
+    // step the grid underneath it. `animateContentSize` makes the header carry that
+    // difference itself, on the same `motion-fade` the content crossfade uses.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(overlay)
+            .animateContentSize(animationSpec = motionFade()),
+    ) {
         AnimatedContent(
             targetState = searchOpen,
             transitionSpec = {
-                fadeIn(tween(SceneViewTokens.Duration.shortMillis)) togetherWith
-                    fadeOut(tween(SceneViewTokens.Duration.shortMillis))
+                fadeIn(headerSwapSpec) togetherWith fadeOut(headerSwapSpec)
             },
             label = "headerContent",
         ) { open ->
@@ -628,6 +693,7 @@ private fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable,
 
 @Composable
 private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     val dark = isSystemInDarkTheme()
     val colors = SceneViewTokens.HomeColor
     val home = SceneViewTokens.Home
@@ -646,7 +712,13 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     Surface(
         modifier = Modifier
             .height(home.chipRowHeight)
-            .clickable(role = Role.Tab, onClick = onClick),
+            .pressScale(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                role = Role.Tab,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
         color = background,
         contentColor = content,

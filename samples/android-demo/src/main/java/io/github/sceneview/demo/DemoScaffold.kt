@@ -11,6 +11,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -108,6 +109,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.haptic.SceneViewHaptic
@@ -1270,9 +1272,14 @@ private fun DemoSettingsSheet(
                 .padding(bottom = SceneViewTokens.Space.lg),
         ) {
             if (controlsContent != null) {
+                // A demo's controls grow and shrink on their own — a section expands,
+                // a slider appears only once its toggle is on. Without this the sheet
+                // snaps to the new height and everything below jumps under the thumb
+                // that caused it; `motion-fade` makes the panel carry the change.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .animateContentSize(animationSpec = motionFade())
                         .padding(horizontal = SceneViewTokens.Space.md),
                     content = controlsContent,
                 )

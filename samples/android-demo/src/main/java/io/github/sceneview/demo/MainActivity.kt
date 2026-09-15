@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,6 +28,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.LocalMotionEnabled
+import io.github.sceneview.demo.theme.rememberMotionEnabled
 import io.github.sceneview.demo.ui.RootScreen
 import io.github.sceneview.sample.common.update.InAppUpdateManager
 import io.github.sceneview.sample.common.update.UpdateBanner
@@ -46,6 +50,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
@@ -319,6 +324,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
     val navController = rememberNavController()
+    // One read, at the root, of "is this device/session allowed to animate" — the
+    // system animator scale, QA mode and inspection mode all answer it. Everything
+    // below reads `LocalMotionEnabled` instead of asking again.
+    val motionEnabled = rememberMotionEnabled()
     val requestedRoute = DemoSettings.requestedRoute
     LaunchedEffect(requestedRoute) {
         requestedRoute?.let {
@@ -371,6 +380,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // and the NavHost were sibling root composables — the demo screens' own
     // TopAppBar then drew over the banner, clipping the "Update ready / Restart"
     // chrome. Drawing the banner last in the Box guarantees it stays visible.
+    CompositionLocalProvider(LocalMotionEnabled provides motionEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -381,10 +391,26 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             // an iOS-style push — the incoming screen travelled a whole viewport on
             // Compose's default spring, which on a demo that then has to load a model
             // read as two separate waits stacked on each other.
-            enterTransition = { slideInHorizontally(navMotion()) { it / NAV_SLIDE_FRACTION } + fadeIn(navMotion()) },
-            exitTransition = { slideOutHorizontally(navMotion()) { -it / NAV_SLIDE_FRACTION } + fadeOut(navMotion()) },
-            popEnterTransition = { slideInHorizontally(navMotion()) { -it / NAV_SLIDE_FRACTION } + fadeIn(navMotion()) },
-            popExitTransition = { slideOutHorizontally(navMotion()) { it / NAV_SLIDE_FRACTION } + fadeOut(navMotion()) }
+            enterTransition = {
+                slideInHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
+                    fadeIn(navMotion(motionEnabled)) +
+                    scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+            },
+            exitTransition = {
+                slideOutHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
+                    fadeOut(navMotion(motionEnabled)) +
+                    scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+            },
+            popEnterTransition = {
+                slideInHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
+                    fadeIn(navMotion(motionEnabled)) +
+                    scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+            },
+            popExitTransition = {
+                slideOutHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
+                    fadeOut(navMotion(motionEnabled)) +
+                    scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+            }
         ) {
             composable("list") {
                 // Three-tab root (Showcase / AR View / About). Demo deep links
@@ -515,6 +541,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
         }
     }
+    }
 }
 
 /**
@@ -550,14 +577,29 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
  * Fraction of the viewport a screen travels during a navigation transition — a
  * sixth, the short shared-axis distance, not the full-window push (#3406).
  */
+/**
+ * Scale the outgoing / incoming screen starts and ends at. A sixth of a viewport of
+ * travel says "sideways"; two per cent of scale says "and towards you" — together
+ * they are the depth cue a flat cross-fade lacks, small enough that nothing on
+ * either screen is ever legibly the wrong size.
+ */
+private const val NAV_SCALE = 0.98f
+
 private const val NAV_SLIDE_FRACTION = 6
 
 /** The one spec every navigation slide and fade shares: `duration-medium`, `ease-expressive`. */
-private fun <T> navMotion(): androidx.compose.animation.core.FiniteAnimationSpec<T> =
+private fun <T> navMotion(
+    enabled: Boolean,
+): androidx.compose.animation.core.FiniteAnimationSpec<T> = if (enabled) {
     androidx.compose.animation.core.tween(
         durationMillis = SceneViewTokens.Duration.mediumMillis,
         easing = SceneViewTokens.Ease.expressive,
     )
+} else {
+    // "Remove animations" / animator scale 0 / QA mode: the screen change still
+    // happens, it just arrives on the first frame. See `theme/Motion.kt`.
+    androidx.compose.animation.core.snap()
+}
 
 @Composable
 fun PlaceholderDemo(id: String, onBack: () -> Unit) {
