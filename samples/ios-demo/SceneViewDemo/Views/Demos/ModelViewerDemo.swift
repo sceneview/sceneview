@@ -29,7 +29,12 @@ struct ModelViewerDemo: View {
     /// Bundled models offered in the Models sheet. The Khronos set mirrors
     /// Android's grid; the hovercar is the iOS store hero, selected under
     /// `qa_mode` by ``storeHeroAssetName`` rather than by being first here.
-    private static let bundledModels: [BundledViewerModel] = [
+    ///
+    /// `internal`, not `private` — `ViewerAssetTests` iterates this exact array
+    /// (rather than a hand-copied duplicate) via `@testable import` so a model
+    /// added here without its `model_thumb_<asset>` tile fails the suite
+    /// instead of silently regressing to the blank-cube placeholder (#3584).
+    static let bundledModels: [BundledViewerModel] = [
         BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
         BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
         BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
@@ -39,7 +44,10 @@ struct ModelViewerDemo: View {
     ]
 
     /// Bundled HDRs offered in the Environment sheet, in Android's order.
-    private static let environments: [ViewerEnvironment] = [
+    ///
+    /// `internal`, not `private` — see ``bundledModels``: `ViewerAssetTests`
+    /// walks this array directly.
+    static let environments: [ViewerEnvironment] = [
         ViewerEnvironment(assetName: "studio", displayName: "Studio", authoredAsPlace: false),
         ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm", authoredAsPlace: false),
         ViewerEnvironment(assetName: "sunset", displayName: "Sunset", authoredAsPlace: true),

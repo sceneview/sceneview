@@ -6,32 +6,31 @@
 // `model_thumb_<asset>` tile renders as an anonymous `cube.transparent`
 // placeholder and nothing fails. Cyberpunk Hovercar — the iOS App Store hero —
 // and Butterfly shipped that way. These assert the whole list resolves.
+//
+// The lists under test are `ModelViewerDemo.bundledModels` / `.environments`
+// themselves (`internal`, exposed to this target via `@testable import`) —
+// NOT a hand-copied duplicate. An earlier version of this file kept its own
+// copy of the catalog: it happened to match on introduction, but nothing
+// forced it to stay in sync, so a model added to `ModelViewerDemo` alone
+// (the easy, obvious edit) without a matching update here would pass the
+// suite while the real app regressed — the exact silent-failure shape #3584
+// was filed about. Testing the live array closes that gap.
 
 #if DEBUG
 
 import XCTest
 @testable import SceneViewDemo
 
+// `ModelViewerDemo` is a SwiftUI `View`; its `static let` catalogs are
+// therefore main-actor isolated under Swift 6 strict concurrency, same as
+// `BundledAssetPrimBudgetTests` next door.
+@MainActor
 final class ViewerAssetTests: XCTestCase {
 
-    /// The catalog under test, mirroring `ModelViewerDemo.bundledModels`.
-    private let models: [BundledViewerModel] = [
-        BundledViewerModel(assetName: "khronos_damaged_helmet", displayName: "Damaged Helmet"),
-        BundledViewerModel(assetName: "khronos_fox", displayName: "Fox"),
-        BundledViewerModel(assetName: "khronos_lantern", displayName: "Lantern"),
-        BundledViewerModel(assetName: "khronos_toy_car", displayName: "Toy Car"),
-        BundledViewerModel(assetName: "cyberpunk_hovercar", displayName: "Cyberpunk Hovercar"),
-        BundledViewerModel(assetName: "animated_butterfly", displayName: "Butterfly"),
-    ]
+    /// The catalog under test — the real one the app renders, not a copy.
+    private let models: [BundledViewerModel] = ModelViewerDemo.bundledModels
 
-    private let environments: [ViewerEnvironment] = [
-        ViewerEnvironment(assetName: "studio", displayName: "Studio", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "studio_warm", displayName: "Studio Warm", authoredAsPlace: false),
-        ViewerEnvironment(assetName: "sunset", displayName: "Sunset", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "outdoor_cloudy", displayName: "Outdoor Cloudy", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "night_sky", displayName: "Night Sky", authoredAsPlace: true),
-        ViewerEnvironment(assetName: "rooftop_night", displayName: "Rooftop Night", authoredAsPlace: true),
-    ]
+    private let environments: [ViewerEnvironment] = ModelViewerDemo.environments
 
     #if canImport(UIKit)
     func testEveryBundledModelResolvesAThumbnail() {
