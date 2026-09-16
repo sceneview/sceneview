@@ -23,6 +23,7 @@ import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
+import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -97,18 +98,27 @@ internal class HeroTurntable {
         idleBlend = 0f
     }
 
-    /** Advances the turntable by [deltaSeconds] and returns the yaw to draw. */
-    fun advance(deltaSeconds: Float): Float {
+    /**
+     * Advances the turntable by [deltaSeconds] and returns the yaw to draw.
+     *
+     * [idle] is the system's "remove animations" answer. A fling is the tail of a
+     * gesture the reader started, so it still plays out; the unprompted turntable is
+     * exactly the kind of perpetual motion that setting exists to stop, so with
+     * [idle] false the subject simply holds wherever it was left.
+     */
+    fun advance(deltaSeconds: Float, idle: Boolean): Float {
         if (abs(flingDegreesPerSecond) > HERO_FLING_CUTOFF_DEGREES_PER_SECOND) {
             yawDegrees += flingDegreesPerSecond * deltaSeconds
             flingDegreesPerSecond *= exp(-HERO_FLING_FRICTION * deltaSeconds)
         } else {
             flingDegreesPerSecond = 0f
-            // The turntable does not snap back on: it fades in over
-            // [HERO_IDLE_RESUME_SECONDS], so letting go of the model does not look
-            // like the app grabbing it.
-            idleBlend = min(1f, idleBlend + deltaSeconds / HERO_IDLE_RESUME_SECONDS)
-            yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * idleBlend * deltaSeconds
+            if (idle) {
+                // The turntable does not snap back on: it fades in over
+                // [HERO_IDLE_RESUME_SECONDS], so letting go of the model does not look
+                // like the app grabbing it.
+                idleBlend = min(1f, idleBlend + deltaSeconds / HERO_IDLE_RESUME_SECONDS)
+                yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * idleBlend * deltaSeconds
+            }
         }
         return yawDegrees
     }
@@ -203,6 +213,10 @@ internal fun HomeHeroScene(
     val loaded = modelInstance != null || gaveUp
     val isRendering = !loaded || rendering
 
+    // "Remove animations" is on: the subject is still there, still draggable, it just
+    // stops turning on its own. Read once per composition, not per frame.
+    val idleTurntable = LocalMotionEnabled.current
+
     val density = LocalDensity.current
     val dragToDegrees = remember(density) { HERO_DEGREES_PER_DP / density.density }
 
@@ -261,7 +275,7 @@ internal fun HomeHeroScene(
                 if (previous == 0L) return@SceneView
                 val deltaSeconds = ((frameTimeNanos - previous) / 1_000_000_000.0).toFloat()
                     .coerceIn(0f, MAX_FRAME_SECONDS)
-                val yaw = turntable.advance(deltaSeconds)
+                val yaw = turntable.advance(deltaSeconds, idleTurntable)
                 nodeHolder[0]?.rotation = Rotation(x = HERO_PITCH_DEGREES, y = yaw)
             },
         ) {
