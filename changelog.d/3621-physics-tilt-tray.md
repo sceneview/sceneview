@@ -7,4 +7,6 @@
   `PhysicsNode` (and the pure-Kotlin `PhysicsState` in `sceneview-core`) gained a `gravity` vector
   instead of a hardcoded -9.8 m/s² on Y: the tray hangs off one pivot node and the bodies get that
   same gravity rotated into the tray's frame, so the simulation keeps its flat floor plane and its
-  axis-aligned rails. Bodies no longer fall asleep while gravity has a horizontal component.
+  axis-aligned rails. Bodies no longer fall asleep while gravity has a horizontal component, and
+  the impact counter ignores resting contacts, which a tilted tray otherwise re-triggered on every
+  step.

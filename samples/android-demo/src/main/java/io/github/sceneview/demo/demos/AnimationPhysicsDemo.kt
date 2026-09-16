@@ -1565,6 +1565,16 @@ private const val PHYSICS_FLOOR = -0.5f
 private const val PHYSICS_RESTITUTION = 0.8f
 private const val PHYSICS_STEP_NANOS = 8_333_333L
 
+/**
+ * Minimum closing speed, in m/s, for a contact to be worth counting as an impact.
+ *
+ * A body pressed against a rail is re-accelerated into it every step, so without this floor a
+ * tilted tray counts one "impact" per body per step — 7 resting balls turned the counter into
+ * 75 000 in under a minute (#3621). It matches the threshold the floor bounce and the
+ * sphere-to-sphere response already use, so all three surfaces agree on what a hit is.
+ */
+private const val PHYSICS_IMPACT_SPEED = 0.2f
+
 /** Tilt is clamped well short of the angle at which the rails stop being able to hold a ball. */
 private const val PHYSICS_MAX_TILT_DEGREES = 20f
 
@@ -1616,7 +1626,7 @@ private class DemoCollisionReplay {
             body.step(PHYSICS_STEP_NANOS, 0L)
             val p = body.node.position
             val v = body.velocity
-            if (before.y < -0.2f && v.y > 0f) collisions++
+            if (before.y < -PHYSICS_IMPACT_SPEED && v.y > 0f) collisions++
             // Same rails as the rendered tray. Only count approaching impacts,
             // not persistent resting contacts or positional corrections.
             val bound = 0.8f - 0.015f - body.radius
@@ -1624,12 +1634,12 @@ private class DemoCollisionReplay {
             var vz = v.z
             val belowRail = p.y - body.radius < PHYSICS_FLOOR + 0.16f
             if (belowRail && kotlin.math.abs(p.x) > bound && p.x * vx > 0f) {
+                if (kotlin.math.abs(vx) >= PHYSICS_IMPACT_SPEED) collisions++
                 vx = -vx * body.restitution
-                collisions++
             }
             if (belowRail && kotlin.math.abs(p.z) > bound && p.z * vz > 0f) {
+                if (kotlin.math.abs(vz) >= PHYSICS_IMPACT_SPEED) collisions++
                 vz = -vz * body.restitution
-                collisions++
             }
             if (p.y <= PHYSICS_FLOOR + body.radius && kotlin.math.abs(v.y) < 0.2f) {
                 vx *= 0.985f
@@ -1687,7 +1697,7 @@ private class DemoCollisionReplay {
         val impulse = -(1f + PHYSICS_RESTITUTION) * approach / 2f
         a.velocity = Position(va.x - impulse * nx, va.y - impulse * ny, va.z - impulse * nz)
         b.velocity = Position(vb.x + impulse * nx, vb.y + impulse * ny, vb.z + impulse * nz)
-        return approach < -0.2f
+        return approach < -PHYSICS_IMPACT_SPEED
     }
 }
 
