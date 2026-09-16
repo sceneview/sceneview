@@ -3013,6 +3013,8 @@ public final class io/github/sceneview/node/PhysicsBody {
 	public static final field SLEEP_THRESHOLD F
 	public fun <init> (Lio/github/sceneview/node/Node;FFFFLdev/romainguy/kotlin/math/Float3;)V
 	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFFLdev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;)V
+	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;)V
 	public synthetic fun <init> (Lio/github/sceneview/node/Node;FFFLdev/romainguy/kotlin/math/Float3;Lio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getFloorProvider ()Lio/github/sceneview/node/FloorProvider;
@@ -3034,7 +3036,9 @@ public final class io/github/sceneview/node/PhysicsBody$Companion {
 }
 
 public final class io/github/sceneview/node/PhysicsNodeKt {
+	public static final synthetic fun PhysicsNode (Lio/github/sceneview/node/Node;FFLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Landroidx/compose/runtime/Composer;II)V
 	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FFLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun PhysicsNode (Lio/github/sceneview/node/Node;FLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Landroidx/compose/runtime/Composer;II)V
 	public static final fun PhysicsNode (Lio/github/sceneview/node/Node;FLdev/romainguy/kotlin/math/Float3;FFLio/github/sceneview/node/FloorProvider;Ldev/romainguy/kotlin/math/Float3;Landroidx/compose/runtime/Composer;II)V
 }
 

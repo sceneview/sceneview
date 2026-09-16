@@ -119,10 +119,14 @@ final class ExploreSearchModel {
 
     // MARK: - Entry points
 
-    /// The field's text changed. Emptying it cancels the search immediately —
-    /// waiting out the debounce would leave stale results under an empty field.
+    /// The field's text changed. Falling below `minimumQueryLength` cancels the
+    /// search immediately — waiting out the debounce would leave stale results
+    /// under a field that can no longer produce them. Emptying is only the
+    /// common case: `debouncedActivate` refuses anything shorter than the
+    /// minimum, so deleting "helmet" down to "h" used to keep the helmet
+    /// results on screen forever.
     func fieldChanged(_ raw: String) {
-        if Self.normalize(raw).isEmpty { cancel() }
+        if Self.normalize(raw).count < Self.minimumQueryLength { cancel() }
     }
 
     /// Debounced live search, driven by the view's `.task(id: searchText)`:

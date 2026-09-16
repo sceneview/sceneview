@@ -119,6 +119,20 @@ final class ExploreSearchModelTests: XCTestCase {
         XCTAssertFalse(search.isSearching)
     }
 
+    /// Deleting down to a single character can no longer produce a search, so the
+    /// results of the longer query must not stay on screen under it.
+    func testDeletingBelowTheMinimumClearsTheFinishedSearch() async {
+        let search = ExploreSearchModel()
+        search.submit(text: "helmet")
+        await search.run(source: StubSource { _, _ in [model("a")] })
+        XCTAssertEqual(search.state, .results([model("a")]))
+
+        search.fieldChanged("h")
+        XCTAssertEqual(search.state, .idle)
+        XCTAssertEqual(search.activeQuery, "")
+        XCTAssertFalse(search.isSearching)
+    }
+
     // MARK: The four states
 
     func testIdleWhenNoQueryIsActive() async {

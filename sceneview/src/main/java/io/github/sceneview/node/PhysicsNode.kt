@@ -107,6 +107,34 @@ class PhysicsBody(
         this.mass = mass
     }
 
+    /**
+     * Binary-compatibility shim for the pre-`gravity` constructor descriptor
+     * `(Node, F, F, F, Float3, FloorProvider)V` and its default-mask synthetic — code compiled
+     * against 4.36.0 and earlier calls one of those two (CONTRIBUTING.md — a removed or retyped
+     * public symbol is a breaking change). Hidden from source resolution, so Kotlin callers
+     * always bind to the primary constructor.
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use the primary constructor, which takes `gravity`.",
+        level = DeprecationLevel.HIDDEN
+    )
+    constructor(
+        node: Node,
+        restitution: Float = 0.6f,
+        floorY: Float = 0f,
+        radius: Float = 0f,
+        initialVelocity: Position = Position(0f, 0f, 0f),
+        floorProvider: FloorProvider? = null
+    ) : this(
+        node = node,
+        restitution = restitution,
+        floorY = floorY,
+        radius = radius,
+        initialVelocity = initialVelocity,
+        floorProvider = floorProvider,
+        gravity = Position(0f, GRAVITY, 0f)
+    )
+
     companion object {
         const val GRAVITY = -9.8f   // m/s² downward (-Y)
 
@@ -334,4 +362,62 @@ fun PhysicsNode(
     radius = radius,
     floorProvider = floorProvider,
     gravity = gravity,
+)
+
+/**
+ * Binary-compatibility shim for the pre-`gravity` descriptor of [PhysicsNode]. The Compose
+ * compiler puts every parameter in the JVM signature, so adding `gravity` — even with a default —
+ * retyped the method and would `NoSuchMethodError` on code compiled against 4.36.0 and earlier
+ * (CONTRIBUTING.md — a removed or retyped public symbol is a breaking change).
+ *
+ * Hidden from source resolution: Kotlin callers always bind to the overload that takes `gravity`.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the PhysicsNode overload that takes `gravity`.",
+    level = DeprecationLevel.HIDDEN
+)
+@Composable
+fun PhysicsNode(
+    node: Node,
+    restitution: Float = 0.6f,
+    linearVelocity: Position = Position(0f, 0f, 0f),
+    floorY: Float = 0f,
+    radius: Float = 0f,
+    floorProvider: FloorProvider? = null,
+) = PhysicsNode(
+    node = node,
+    restitution = restitution,
+    linearVelocity = linearVelocity,
+    floorY = floorY,
+    radius = radius,
+    floorProvider = floorProvider,
+    gravity = Position(0f, PhysicsBody.GRAVITY, 0f),
+)
+
+/**
+ * Binary-compatibility shim for the pre-`gravity` descriptor of the deprecated `mass` overload of
+ * [PhysicsNode]. Same rationale as the shim above.
+ */
+@Deprecated(
+    "Binary-compatibility overload. The 'mass' parameter is a no-op; use the PhysicsNode " +
+        "overload without 'mass'.",
+    level = DeprecationLevel.HIDDEN
+)
+@Composable
+fun PhysicsNode(
+    node: Node,
+    @Suppress("UNUSED_PARAMETER") mass: Float,
+    restitution: Float = 0.6f,
+    linearVelocity: Position = Position(0f, 0f, 0f),
+    floorY: Float = 0f,
+    radius: Float = 0f,
+    floorProvider: FloorProvider? = null,
+) = PhysicsNode(
+    node = node,
+    restitution = restitution,
+    linearVelocity = linearVelocity,
+    floorY = floorY,
+    radius = radius,
+    floorProvider = floorProvider,
+    gravity = Position(0f, PhysicsBody.GRAVITY, 0f),
 )

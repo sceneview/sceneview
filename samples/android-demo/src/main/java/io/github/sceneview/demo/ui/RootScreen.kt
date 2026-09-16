@@ -160,7 +160,10 @@ fun RootScreen(onDemoClick: (String) -> Unit) {
         )
     }
 
-    if (galleryOpen) BackHandler { galleryOpen = false }
+    // Only while the gallery is actually on screen. `galleryOpen` is rememberSaveable and
+    // survives a tab switch, so an unconditional handler let Back close the *hidden* gallery
+    // from AR View or About — the visible screen's own back behaviour never ran.
+    BackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { galleryOpen = false }
 
     // Fade-through specs, hoisted: `transitionSpec` is not a composable scope, so it
     // cannot ask `LocalMotionEnabled` itself.

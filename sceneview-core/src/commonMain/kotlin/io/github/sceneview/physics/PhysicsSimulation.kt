@@ -32,7 +32,57 @@ data class PhysicsState(
     val radius: Float = 0f,
     val isAsleep: Boolean = false,
     val gravity: Position = Position(0f, GRAVITY, 0f)
-)
+) {
+    /**
+     * Binary-compatibility shim for the pre-`gravity` constructor descriptor
+     * `(Float3, Float3, F, F, F, Z)V` and its default-mask synthetic. Hidden from source
+     * resolution, so Kotlin callers always bind to the primary constructor; it exists only so
+     * code compiled against 4.36.0 and earlier keeps linking (CONTRIBUTING.md — a removed or
+     * retyped public symbol is a breaking change).
+     *
+     * `isAsleep` is deliberately the one parameter without a default: a fully defaulted
+     * secondary constructor would generate a second `<init>()V` and clash with the primary's.
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use the primary constructor, which takes `gravity`.",
+        level = DeprecationLevel.HIDDEN
+    )
+    constructor(
+        position: Position = Position(),
+        velocity: Position = Position(),
+        restitution: Float = 0.6f,
+        floorY: Float = 0f,
+        radius: Float = 0f,
+        isAsleep: Boolean
+    ) : this(position, velocity, restitution, floorY, radius, isAsleep, Position(0f, GRAVITY, 0f))
+
+    /**
+     * Binary-compatibility shim for the pre-`gravity` `copy` descriptor. Same rationale as the
+     * secondary constructor above; hidden from source so `copy(...)` always means the generated
+     * seven-parameter one. Carries [gravity] over, so an old-descriptor `copy` no longer silently
+     * resets a tilted gravity to straight down.
+     */
+    @Deprecated(
+        "Binary-compatibility overload. Use copy(), which also takes `gravity`.",
+        level = DeprecationLevel.HIDDEN
+    )
+    fun copy(
+        position: Position = this.position,
+        velocity: Position = this.velocity,
+        restitution: Float = this.restitution,
+        floorY: Float = this.floorY,
+        radius: Float = this.radius,
+        isAsleep: Boolean
+    ): PhysicsState = copy(
+        position = position,
+        velocity = velocity,
+        restitution = restitution,
+        floorY = floorY,
+        radius = radius,
+        isAsleep = isAsleep,
+        gravity = gravity
+    )
+}
 
 /** Gravitational acceleration in m/s² (downward along -Y). */
 const val GRAVITY = -9.8f
