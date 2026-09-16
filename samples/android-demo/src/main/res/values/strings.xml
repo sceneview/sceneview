@@ -60,7 +60,7 @@
     <string name="gallery_not_downloadable">This model isn\'t available to download from its source.</string>
     <string name="sketchfab_loading_model">Loading %s…</string>
     <string name="sketchfab_streaming_from">Streaming from Sketchfab · rendering in SceneView</string>
-    <!-- Multi-source generalisation of sketchfab_streaming_from (#2645): %s is
+    <!-- Multi-source generalization of sketchfab_streaming_from (#2645): %s is
          the origin catalog display name (Sketchfab / Icosa Gallery / Poly Haven). -->
     <string name="gallery_streaming_from">Streaming from %s · rendering in SceneView</string>
     <string name="sketchfab_rendered_by">Rendered by SceneView · %s polys</string>
@@ -190,7 +190,7 @@
     <string name="category_ar">AR</string>
     <string name="category_interactive">Interactive</string>
 
-    <!-- Catalogue section headers — one per DemoCategory key, drawn as a full-span
+    <!-- Catalog section headers — one per DemoCategory key, drawn as a full-span
          header on the home grid and as the long label in search results (#2239). -->
     <string name="category_viewer">Viewer</string>
     <string name="category_geometry_materials">Geometry &amp; Materials</string>
@@ -254,7 +254,7 @@
     <string name="about_group_legal">Legal</string>
     <string name="about_source_title">Source on GitHub</string>
     <string name="about_release_notes">Release notes</string>
-    <string name="about_license_title">Licence: Apache-2.0</string>
+    <string name="about_license_title">License: Apache-2.0</string>
     <string name="about_credits_attribution">Credits &amp; model attribution</string>
     <string name="about_footer">Made with ♥ by Thomas Gorisse and the SceneView contributors</string>
     <string name="about_built_with">Built with Google Filament and ARCore</string>
@@ -312,8 +312,8 @@
     <string name="demo_settings_reset_cd">Reset demo settings to defaults</string>
     <!-- Predictable per-demo reset action (#1966) -->
     <!--
-        Labelled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
-        header's settings-scoped "Reset", and two identically-labelled buttons doing
+        Labeled "Reset demo", not "Reset": since #3328 it sits in the same sheet as the
+        header's settings-scoped "Reset", and two identically-labeled buttons doing
         different things is exactly the confusion the merge set out to remove.
     -->
     <string name="demo_reset_action">Reset demo</string>
@@ -401,5 +401,5 @@
     <string name="ar_placement_wall">Wall</string>
     <string name="ar_placement_wall_model">TV</string>
     <string name="ar_placement_wall_help">Mount a life-size TV. Scan the floor, find a wall, then align the bottom of the wall to position the screen.</string>
-    <string name="demo_ar_session_failed">AR could not start. Return to the catalogue and reopen this demo to try again.</string>
+    <string name="demo_ar_session_failed">AR could not start. Return to the catalog and reopen this demo to try again.</string>
 </resources>

@@ -60,10 +60,10 @@ fun ModelUnitSheet(
             Modifier.fillMaxWidth().padding(SceneViewTokens.Space.md).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
         ) {
-            Text("Looks like metres", style = MaterialTheme.typography.titleLarge)
+            Text("Looks like meters", style = MaterialTheme.typography.titleLarge)
             Text(
-                "This file carries no unit, so it opened in millimetres — ${formatSize(loadedExtentMeters)} across. " +
-                    "A mesh this size is usually authored in metres.",
+                "This file carries no unit, so it opened in millimeters — ${formatSize(loadedExtentMeters)} across. " +
+                    "A mesh this size is usually authored in meters.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

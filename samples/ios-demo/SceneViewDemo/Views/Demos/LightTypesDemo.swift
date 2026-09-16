@@ -87,9 +87,9 @@ struct LightingDemo: View {
             case .image:
                 return "An HDR environment is the whole rig: the chrome ball mirrors it, the matte ball reads it. Swap the environment and the light changes with it."
             case .studio:
-                return "A three-point rig of analytic lights — a shadow-casting key, a cool fill, a cold rim — each drawn where it stands. Move the key and watch the modelling change."
+                return "A three-point rig of analytic lights — a shadow-casting key, a cool fill, a cold rim — each drawn where it stands. Move the key and watch the modeling change."
             case .sun:
-                return "One sun on a clock. The hour drives its colour, height and strength, and the sky swaps with it, so midnight is night rather than a dark noon."
+                return "One sun on a clock. The hour drives its color, height and strength, and the sky swaps with it, so midnight is night rather than a dark noon."
             }
         }
     }

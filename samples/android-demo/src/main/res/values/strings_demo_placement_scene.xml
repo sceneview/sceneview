@@ -7,7 +7,7 @@
 
      #3568: the demo used to open straight into the camera with no copy anywhere on screen, so
      it read as a second, worse `Tap to Place`. The subject is not "you can tap to place" — the
-     neighbouring demo already shows that, by hand, in 600 lines. The subject is that this whole
+     neighboring demo already shows that, by hand, in 600 lines. The subject is that this whole
      screen is ONE SDK call. The copy below says that before the camera opens. -->
 <resources>
     <string name="demo_placement_scene_title">One-Call AR</string>
@@ -23,7 +23,7 @@
     <string name="placement_scene_reticle_searching">Searching — no surface yet</string>
     <string name="placement_scene_reticle_hit">Hit — estimated surface</string>
     <string name="placement_scene_reticle_locked">Locked — a tap lands here</string>
-    <string name="placement_scene_reticle_note">Achromatic, so it never competes with the model, with a contact halo that keeps it readable on a pale floor. Colour appears once, on the centre dot, when the cursor locks onto a tracked surface.</string>
+    <string name="placement_scene_reticle_note">Achromatic, so it never competes with the model, with a contact halo that keeps it readable on a pale floor. Color appears once, on the center dot, when the cursor locks onto a tracked surface.</string>
     <string name="placement_scene_cta">Open the camera</string>
     <string name="placement_scene_controls">Aim the ring at a surface and tap to drop a helmet. Back returns here.</string>
     <string name="placement_scene_clear">Clear all</string>

@@ -673,7 +673,7 @@ private enum class Mode(val label: String) {
     LIVE("Live"),
     RECORD("Record"),
     PLAYBACK("Playback"),
-    ANALYSE("Analyse");
+    ANALYSE("Analyze");
 
     /** `true` for the two modes that bind a `playbackDataset` and replay an MP4. */
     val isPlayback: Boolean get() = this == PLAYBACK || this == ANALYSE
@@ -1058,7 +1058,7 @@ private fun AnalysisLiveOverlay(
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Text(
-                text = "◉ Analysing replay",
+                text = "◉ Analyzing replay",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold
             )

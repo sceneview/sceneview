@@ -19,7 +19,7 @@
     <string name="demo_ar_scene_mesh_mode_streetscape">Streetscape</string>
 
     <!-- One-line explainer per mode, shown above the toggle in the controls sheet. -->
-    <string name="demo_ar_scene_mesh_mode_mesh_explainer">SceneMeshNode colour-codes every geometry by its MeshClassification — one hue for terrain, another for buildings. The same enum labels an ARKit scene-reconstruction mesh, so classification-driven code runs unchanged on both platforms.</string>
+    <string name="demo_ar_scene_mesh_mode_mesh_explainer">SceneMeshNode color-codes every geometry by its MeshClassification — one hue for terrain, another for buildings. The same enum labels an ARKit scene-reconstruction mesh, so classification-driven code runs unchanged on both platforms.</string>
     <string name="demo_ar_scene_mesh_mode_streetscape_explainer">StreetscapeGeometryNode is the raw node the classified one subclasses: the same Geospatial trackables, one material for all of them, no classification.</string>
 
     <!-- Status pill, Mesh mode. -->

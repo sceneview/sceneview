@@ -20,9 +20,9 @@
     <string name="demo_ar_measure_action_open">Open loop</string>
     <string name="demo_ar_measure_action_clear">Clear</string>
 
-    <string name="demo_ar_measure_description">Survey a real space — a workshop, a room, a piece of furniture — to size something you are about to build or 3D-print for it. Each tap anchors a point on a detected plane or on the depth map; consecutive points are joined by a labelled segment. Keep tapping for a chain, close the loop for a perimeter.</string>
+    <string name="demo_ar_measure_description">Survey a real space — a workshop, a room, a piece of furniture — to size something you are about to build or 3D-print for it. Each tap anchors a point on a detected plane or on the depth map; consecutive points are joined by a labeled segment. Keep tapping for a chain, close the loop for a perimeter.</string>
     <string name="demo_ar_measure_depth_toggle">Depth-map fallback</string>
     <string name="demo_ar_measure_depth_supported">Lets you measure clutter, slopes and edges that never grow a plane.</string>
     <string name="demo_ar_measure_depth_unsupported">Not supported on this device — plane hits only.</string>
-    <string name="demo_ar_measure_accuracy_notice">Accuracy: several centimetres on a phone without a ToF sensor, approaching one centimetre with ToF/LiDAR. Good enough to lay out a space (will it fit, how far apart, what is the clear height). Not a caliper — never use it for a fitting dimension on a printed part. See AR_MEASURE.md.</string>
+    <string name="demo_ar_measure_accuracy_notice">Accuracy: several centimeters on a phone without a ToF sensor, approaching one centimeter with ToF/LiDAR. Good enough to lay out a space (will it fit, how far apart, what is the clear height). Not a caliper — never use it for a fitting dimension on a printed part. See AR_MEASURE.md.</string>
 </resources>

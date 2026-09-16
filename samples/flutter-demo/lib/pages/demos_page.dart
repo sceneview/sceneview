@@ -139,7 +139,7 @@ class _MaterialsDemoState extends State<_MaterialsDemo> {
     return _DemoCard(
       icon: Icons.palette,
       title: 'Materials — Lit vs Unlit',
-      description: 'GeometryNode.unlit flag: PBR shading vs flat colour.',
+      description: 'GeometryNode.unlit flag: PBR shading vs flat color.',
       child: Column(
         children: [
           SizedBox(

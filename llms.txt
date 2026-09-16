@@ -245,7 +245,7 @@ fun MyARScreen() {
 
 ### Tracking-failure messages (user-facing strings)
 
-`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, localised, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, backed by string resources, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
 
 ```kotlin
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }

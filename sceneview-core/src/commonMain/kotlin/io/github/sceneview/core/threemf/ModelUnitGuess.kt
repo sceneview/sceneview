@@ -14,7 +14,7 @@ package io.github.sceneview.core.threemf
  * [MetreLikeExtent] — 5 cm to 50 m read as metres — millimetres would make the object smaller than
  * a grain of sand, and metres is the better guess.
  *
- * The guess is never applied silently: the demo offers it ("Looks like metres") and the user
+ * The guess is never applied silently: the demo offers it ("Looks like meters") and the user
  * decides. This object only answers the question, so the answer can be unit-tested and shared by
  * every platform that asks it.
  */

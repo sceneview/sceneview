@@ -29,6 +29,9 @@ android {
         compose = true
     }
     androidResources {
+        // en-US only, like the phone demo: no translated `values-<locale>/`
+        // folders here, and library translations are dropped too.
+        localeFilters += ['en-rUS']
         noCompress 'filamat', 'ktx'
     }
     // Asset folders: TV demo's own assets (src/main/assets) hold the TV-only

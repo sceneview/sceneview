@@ -21,8 +21,8 @@
     <string name="demo_lighting_rig_studio">Studio</string>
     <string name="demo_lighting_rig_sun">Sun</string>
     <string name="demo_lighting_rig_image_explainer">An HDR environment is the whole rig: the chrome ball mirrors it, the matte ball reads it. Rotate the environment and the light turns with it.</string>
-    <string name="demo_lighting_rig_studio_explainer">A three-point rig of analytic lights — a shadow-casting key, a cool fill, a cold rim — each drawn where it stands. Move the key and watch the modelling change.</string>
-    <string name="demo_lighting_rig_sun_explainer">One sun on a clock. The hour drives its colour, height and strength, and the sky swaps with it, so midnight is night rather than a dark noon.</string>
+    <string name="demo_lighting_rig_studio_explainer">A three-point rig of analytic lights — a shadow-casting key, a cool fill, a cold rim — each drawn where it stands. Move the key and watch the modeling change.</string>
+    <string name="demo_lighting_rig_sun_explainer">One sun on a clock. The hour drives its color, height and strength, and the sky swaps with it, so midnight is night rather than a dark noon.</string>
 
     <!-- Status pill, one per rig. -->
     <string name="demo_lighting_status_image">Image-based · %1$s · %2$d°</string>
