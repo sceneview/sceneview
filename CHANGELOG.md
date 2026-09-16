@@ -2,6 +2,101 @@
 
 ## Unreleased
 
+## v4.37.0 — 2026-09-16
+
+### Added
+
+- **iOS demo — Explore searches the online catalog as you type ([#3586](https://github.com/sceneview/sceneview/issues/3586)).** A 350 ms debounce with a 2-character minimum, Android parity, and four named states — browse feeds, searching, "no results", and an offline card with a working Retry.
+- **Tilt the tray in the `animation-physics` demo and the balls roll downhill
+  ([#3621](https://github.com/sceneview/sceneview/issues/3621)).** A "Tilt with drag" toggle swaps
+  what a one-finger drag does — camera orbit when it is off (unchanged), tipping the tray when it
+  is on — with mirrored Pitch / Roll sliders for precise angles and screen readers, a ±20° clamp
+  and a "Level" button that springs the tray back flat. Under the hood `PhysicsBody` /
+  `PhysicsNode` (and the pure-Kotlin `PhysicsState` in `sceneview-core`) gained a `gravity` vector
+  instead of a hardcoded -9.8 m/s² on Y: the tray hangs off one pivot node and the bodies get that
+  same gravity rotated into the tray's frame, so the simulation keeps its flat floor plane and its
+  axis-aligned rails. Bodies no longer fall asleep while gravity has a horizontal component, and
+  the impact counter ignores resting contacts, which a tilted tray otherwise re-triggered on every
+  step.
+
+### Changed
+
+- **The AR placement reticle now has three documented states and spends colour only on the last
+  one ([#3570](https://github.com/sceneview/sceneview/issues/3570)).** `ReticlePhase` gains
+  `LOCKED`: the white hairline ring stays achromatic while searching (35 % opacity, no dot) and
+  on an estimated hit (60 %, small white dot), and the DESIGN.md `primary` dark-value accent
+  appears only on the smaller centre dot once the hit is on a tracked ARCore plane (90 %) — so
+  the cursor never competes with the model about to be placed.
+- Android demo: "Surprise me" is now a persistent shuffle pill floating over the Model Viewer scene, so another random model is one tap away without opening the Models sheet — matching the iOS viewer (#3585).
+- The `splat-preview` demo is now **Real-World Scan** — a real phone capture (three raccoons on a tree stump, 233 808 points, 3.3 MB) opened straight from the file a scanning app exports, with a live points-drawn budget — instead of a procedural rainbow sphere (#3620).
+- Demo app: a live, draggable 3D hero on the home screen that collapses as you scroll, plus a reduce-motion-aware motion pass over the catalogue, tab switches and settings sheets.
+- **iOS demo — the home screen is alive.** The hero card now renders the bundled
+  Damaged Helmet through SceneViewSwift (RealityKit) instead of a poster frame:
+  a slow turntable on the same studio IBL the demos use, framed in the card's
+  free upper-right corner. Exactly one 3D scene runs at a time — the stage is
+  torn down when the Showcase tab is hidden, the app backgrounds or a demo is
+  presented, so the opened demo owns the GPU alone.
+- **iOS demo — motion pass on the catalogue.** The hero, the category chips and
+  the cards fan in on `ease-expressive` (`DESIGN.md` Motion), the result count
+  updates with `contentTransition(.numericText)`, and every card answers a press
+  with the app's one spring. Under `accessibilityReduceMotion` the turntable
+  stops and the rise and cascade give way to a plain opacity fade.
+- **The demo apps now ship in en-US only
+  ([#3661](https://github.com/sceneview/sceneview/pull/3661)).** The apps never had a second
+  translation of their own — no `values-<locale>/`, no `.lproj` beyond `Base`, no string
+  catalog — but they still rendered half-translated on a non-English phone: AndroidX and
+  Material ship their own translations inside their AARs (`appcompat` alone carries 84 locale
+  folders), so system-provided strings like "Cancel" appeared in the device language while
+  every demo string stayed English. Both native Android demos now set
+  `localeFilters += ['en-rUS']`, and the built APK's resource table reports no locale
+  qualifier at all. Source copy was also normalized to American spelling — `colour` → `color`,
+  `centre` → `center`, `centimetres` → `centimeters`, `Licence` → `License` — across the
+  Android, iOS, Flutter and React Native demos. Locale-sensitive *formatting* is untouched
+  and still tested: an en-US UI still runs on a French device, where a decimal comma must
+  never reach the screen.
+
+### Fixed
+
+- **`ar-scene-semantics` overlay never appeared, on every device
+  ([#3527](https://github.com/sceneview/sceneview/issues/3527),
+  [#3396](https://github.com/sceneview/sceneview/issues/3396)).** The demo painted the
+  per-pixel semantic raster on a Filament 3D quad parented to the AR camera, but the camera
+  background is deliberately drawn *last* (`ARCameraStream` priority 7, so it can early-Z-reject
+  pixels already covered by opaque virtual geometry — #1617) while the overlay material had to
+  disable depth *write* so `UNLABELED` pixels could stay transparent instead of punching an
+  opaque hole. With nothing left in the depth buffer for the camera pass to reject against, the
+  camera silently overdrew the overlay every single frame, regardless of device or opacity.
+  The demo now colours the raster into a bitmap and composites it as a Compose `Image` on top
+  of the `ARSceneView`, the same architecture `ARDepthVisualizationDemo` already uses — sidestepping
+  Filament's render-order bookkeeping entirely. The colouring + display-rotation logic is a
+  pure function, `SemanticsOverlay.labelBufferToArgb`, pinned by JVM tests.
+- **Lighting Lab no longer builds the reflection probe's environment before the probe is switched on ([#3554](https://github.com/sceneview/sceneview/issues/3554)).** The demo decoded a second 2048² HDR into a full cubemap and specular mip chain as soon as the screen composed, even though the local reflection probe it feeds starts off — making it the only demo holding two cubemap pyramids at once. It is now built the first time the probe is turned on, and without a skybox, since
+  `ReflectionProbeNode` only ever reads the environment's indirect light and that skybox could never be drawn.
+- **iOS demo: Cyberpunk Hovercar had no thumbnail in the Model Viewer list
+  ([#3584](https://github.com/sceneview/sceneview/issues/3584)).** `ViewerAssetTests` now
+  walks `ModelViewerDemo`'s own bundled-model and environment catalogs (instead of a
+  hand-copied duplicate that could silently drift from them) so a future model added
+  without its `model_thumb_<asset>` tile fails the suite instead of rendering a blank
+  placeholder.
+- **`model-viewer` demo: Recenter jumped the camera to a cold-open swing instead of flying
+  from the current pose ([#3622](https://github.com/sceneview/sceneview/issues/3622)).**
+  Tapping Recenter rebuilt `EntranceCameraManipulator`, which discarded the pose the user had
+  orbited to and replayed the wide, swung-off-axis start reserved for the very first arrival.
+  Recenter now captures the pose actually on screen and flies from there to the resting framing.
+- Materials demo: back now returns to the material wall instead of leaving the sample, and the fly-to-detail camera lands on its final pose instead of cutting to another angle.
+- Physics: restored the pre-`gravity` JVM descriptors of `PhysicsState`, `PhysicsBody` and
+  the `PhysicsNode` composables as hidden compatibility overloads, so code compiled against
+  4.36.0 keeps linking instead of failing with `NoSuchMethodError`.
+- Demo (Android): Back no longer closes the hidden Explore gallery when another tab is on
+  screen — the gallery handler is now scoped to the Showcase tab.
+- Demo (iOS): deleting the Explore search field below two characters now clears the active
+  search, instead of leaving the previous query's results under a field that can no longer
+  produce them.
+
+### Tests
+
+- **A `changelog.d/` fragment shaped as a paragraph now fails CI instead of shipping an empty "What's new" card ([#3616](https://github.com/sceneview/sceneview/issues/3616)).** `check-changelog-fragments.sh` checks that every non-blank line of a fragment (after stripping HTML comments) is a top-level `- ` bullet or an indented continuation, and that the filename matches `<issue-or-pr-number>-<short-slug>.md`. Wired into `ci.yml` as the new `changelog-lint` job — gated on a `changelog.d/**` path filter, checkout + bash only — and into the top of `collate-changelog.sh`, so a direct invocation of the collator gets the same guard. Six fragments merged 2026-09-11 were paragraphs with no bullet marker; they are rewritten in this PR into the expected shape.
+
 ## v4.36.0 — 2026-09-11
 
 ### Added

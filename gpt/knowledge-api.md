@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.36.0)
+  Source of truth: /llms.txt  (SceneView 4.37.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.36.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.37.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Core Composables
 
@@ -215,7 +215,7 @@ fun MyARScreen() {
 
 ### Tracking-failure messages (user-facing strings)
 
-`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, localised, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
+`TrackingFailureReason` carries the *why* of a tracking loss — surface it to the user with an actionable hint, not a silent black screen. This snippet is self-contained (the `android-demo` sample ships the same mapping, backed by string resources, as `demo/common/TrackingFailureMessages.kt` — copy that file if you want string resources):
 
 ```kotlin
 var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -1034,13 +1034,38 @@ Renders a triangulated 2D polygon in 3D space. Supports holes, Delaunay refineme
     linearVelocity: Position = Position(0f, 0f, 0f),
     floorY: Float = 0f,
     radius: Float = 0f,
-    floorProvider: FloorProvider? = null   // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    floorProvider: FloorProvider? = null,  // dynamic floor source — e.g. rememberDepthCollider() (AR)
+    gravity: Position = Position(0f, PhysicsBody.GRAVITY, 0f)  // acceleration vector, m/s²
 )
 ```
 Attaches gravity + floor bounce to an existing node. Does NOT add the node to the scene — the node
 must already exist. Uses Euler integration at 9.8 m/s² with configurable restitution and floor.
 Note: a `mass` overload exists but is `@Deprecated` — gravity is mass-independent, so `mass` is
 a no-op until a force/impulse API lands.
+
+`gravity` is a full vector in the node's parent frame, live across recompositions (`PhysicsBody.gravity`
+is also settable directly). Tilt it to make bodies roll down a slope: rotate the tray's pivot node for
+the visuals and give the bodies that same gravity rotated by the pivot's **inverse** rotation — the
+floor stays a flat plane in the simulation, which is what this engine models. A body never falls asleep
+while its gravity has a horizontal component. The pure-Kotlin core mirrors this as
+`PhysicsState(gravity = ...)` in `io.github.sceneview.physics`.
+
+```kotlin
+import dev.romainguy.kotlin.math.transpose
+import dev.romainguy.kotlin.math.rotation as rotationMatrix
+
+// A tray tipped 20° towards the viewer. The pivot node rotates the visuals; gravity is rotated by
+// the pivot's INVERSE (a rotation matrix is orthonormal, so transpose == inverse), which is what
+// makes the ball roll downhill while the simulation still sees a flat floor plane.
+SceneView {
+    val tilt = Rotation(x = 20f, y = 0f, z = 0f)
+    val g = transpose(rotationMatrix(tilt.toQuaternion())) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
+    val ball = remember(engine) { SphereNode(engine, radius = 0.08f) }
+    Node(rotation = tilt) {
+        PhysicsNode(node = ball, radius = 0.08f, floorY = -0.5f, gravity = Position(g.x, g.y, g.z))
+    }
+}
+```
 
 ```kotlin
 SceneView {
@@ -1150,7 +1175,7 @@ Signature:
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
-    reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity varies searching↔ready
+    reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
@@ -4230,7 +4255,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.36.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.37.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4242,7 +4267,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.36.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.37.0/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
@@ -4846,7 +4871,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.36.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.37.0")
 ```
 
 Import: `import SceneViewSwift`
