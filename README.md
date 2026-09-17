@@ -43,7 +43,8 @@ an AI assistant — and shows them at their real size, in 3D and in AR.
 
 | Format | Android | Apple | Web |
 |---|---|---|---|
-| glTF / GLB | ✅ Filament | ✅ RealityKit | ✅ |
+| GLB | ✅ Filament | ✅ RealityKit | ✅ |
+| glTF | ✅ Filament | ❌ (convert to GLB/USDZ first) | ✅ |
 | 3MF | ✅ pure Kotlin → GLB in memory, millimetres honoured | — | — |
 | STL (binary + ASCII) | ✅ pure Kotlin → GLB | — | — |
 | OBJ + MTL | ✅ pure Kotlin → GLB, material colours | — | — |
