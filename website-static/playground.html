@@ -103,10 +103,10 @@
 
     [data-theme="dark"] {
       --pg-code-bg: #0d1117;
-      --pg-code-gutter: #161b22;
-      --pg-code-line: #3d4452;
-      --pg-canvas-bg: radial-gradient(ellipse at 50% 40%, #161b22 0%, #0d1117 100%);
-      --pg-sidebar-bg: #111518;
+      --pg-code-gutter: #242a33;
+      --pg-code-line: #8b949e; /* #3d4452 was 1.93:1 — line numbers were invisible */
+      --pg-canvas-bg: radial-gradient(ellipse at 50% 40%, #242a33 0%, #0d1117 100%);
+      --pg-sidebar-bg: #242a33;
       --pg-surface: #0d1117;
       --pg-shadow-ambient: 0 4px 20px rgba(0, 0, 0, 0.3);
       --pg-shadow-float: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -135,7 +135,7 @@
     }
 
     [data-theme="dark"] .pg__header {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__header-left {
@@ -236,7 +236,7 @@
     }
 
     [data-theme="dark"] .pg__action-btn {
-      background: #21262d;
+      background: #323a47;
       color: #c9d1d9;
     }
 
@@ -310,7 +310,7 @@
     }
 
     [data-theme="dark"] .pg__search-input {
-      background: #21262d;
+      background: #323a47;
       color: #f0f6fc;
     }
 
@@ -412,7 +412,7 @@
     }
 
     [data-theme="dark"] .pg__ai-textarea {
-      background: #21262d;
+      background: #323a47;
       color: #f0f6fc;
       border-color: #30363d;
     }
@@ -560,7 +560,7 @@
     }
 
     [data-theme="dark"] .pg__item:hover {
-      background: #21262d;
+      background: #323a47;
     }
 
     .pg__item--active {
@@ -659,7 +659,7 @@
     }
 
     [data-theme="dark"] .pg__code-tab {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__code-tab-left {
@@ -1005,7 +1005,7 @@
     }
 
     [data-theme="dark"] .pg__preview-tab {
-      background: #111518;
+      background: #242a33;
     }
 
     .pg__preview-tab-left {
@@ -1059,7 +1059,7 @@
     }
 
     [data-theme="dark"] .pg__model-select {
-      background-color: #21262d;
+      background-color: #323a47;
       color: #c9d1d9;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' stroke='%23c9d1d9' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2 3.5l3 3 3-3'/%3E%3C/svg%3E");
     }
@@ -1118,7 +1118,7 @@
     }
 
     [data-theme="dark"] .pg__model-trigger {
-      background: #21262d;
+      background: #323a47;
       color: #c9d1d9;
     }
 
@@ -1127,7 +1127,7 @@
     }
 
     [data-theme="dark"] .pg__model-trigger-thumb {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__model-panel {
@@ -1384,7 +1384,7 @@
     }
 
     [data-theme="dark"] .pg__bottom {
-      background: #161b22;
+      background: #242a33;
     }
 
     .pg__bottom-desc {
@@ -1416,8 +1416,9 @@
     }
 
     [data-theme="dark"] .pg__tag {
-      background: #21262d;
-      color: #8b949e;
+      background: #323a47;
+      /* #8b949e was 3.73:1 on this chip. */
+      color: #b0b8c4;
     }
 
     .pg__bottom-link {
@@ -1471,7 +1472,7 @@
       }
 
       [data-theme="dark"] .pg__mobile-examples {
-        background: #21262d;
+        background: #323a47;
         color: #f0f6fc;
         border-color: #484f58;
       }

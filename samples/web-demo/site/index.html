@@ -27,20 +27,23 @@
             --sv-green-light: #55efc4;
             --sv-dark: #0D1117;
             --sv-dark-surface: #161B22;
-            --sv-dark-card: #1c2333;
+            --sv-dark-card: #2b323d;
             --sv-dark-overlay: rgba(13, 17, 23, 0.88);
             --sv-text: #f3f4f6;
             --sv-text-dim: #9ca3af;
-            --sv-text-faint: #6b7280;
-            --sv-border: rgba(255,255,255,0.08);
-            --sv-border-hover: rgba(255,255,255,0.18);
+            /* Overlay UI sits on top of an arbitrary 3D scene, so the panels have to
+               carry their own background: faint text was 3.3-3.9:1 and the panels were
+               75%-opaque over the canvas, which made them read as part of the scene. */
+            --sv-text-faint: #8b949e;
+            --sv-border: rgba(255,255,255,0.14);
+            --sv-border-hover: rgba(255,255,255,0.28);
             --sv-radius-sm: 8px;
             --sv-radius: 12px;
             --sv-radius-lg: 16px;
             --sv-radius-pill: 28px;
             --sv-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            --sv-glass: rgba(22, 27, 34, 0.75);
-            --sv-glass-border: rgba(255,255,255,0.06);
+            --sv-glass: rgba(38, 44, 54, 0.90);
+            --sv-glass-border: rgba(255,255,255,0.14);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
