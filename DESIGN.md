@@ -392,7 +392,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | Token | Value | Usage |
 |---|---|---|
 | `glass-surface` (over media) | rgba(255,255,255,0.14) | Back button, identity pill, dock — **0.14, not 0.08, wherever there is no backdrop blur**; see below |
-| `glass-border` | 1px rgba(255,255,255,0.24) | Outline of every glass element — same condition |
+| `over-media-edge` | 1px rgba(255,255,255,0.36) **+** 1px rgba(0,0,0,0.75) outside it | The edge of every element that floats over media — dock, pills, cards, chips. Drawn **outside** the fill; replaces `glass-border` |
 | `on-glass` | #ffffff | Icons and labels on glass |
 | `on-glass-muted` | rgba(255,255,255,0.72) | Secondary label on glass |
 | `chrome-scrim` | rgba(0,0,0,0.60) → transparent | Ground under the chrome bands |
@@ -401,16 +401,48 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
-- **Which is why the fill is 0.14 and the border 0.24, not 0.08.** 8 % white is a
-  value borrowed from surfaces that back it with a real backdrop blur, where the
-  blur separates the panel from the media by *structure* and the fill was never
-  doing the work alone. Without blur it has to, and at 8 % it cannot: measured over
-  the `#0B0F16` stage that is **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera
-  feed — the panel edge was a guess. 0.14 / 0.24 is the first pair that clears
-  1.25:1 on both grounds with margin (fill 1.47:1 and 1.35:1; border 2.09:1 and
-  1.93:1) while still reading as glass rather than a solid sheet. Web and iOS keep
-  0.08 wherever they have a genuine `backdrop-filter` — iOS pairs it with a ceiling
-  and the same 0.24 border, see *Demo Scaffold (iOS demo)*.
+- **Which is why the fill is 0.14, not 0.08.** 8 % white is a value borrowed from
+  surfaces that back it with a real backdrop blur, where the blur separates the
+  panel from the media by *structure* and the fill was never doing the work alone.
+  Without blur it has to, and at 8 % it cannot: measured over the `#0B0F16` stage
+  that is **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera feed. 0.14 clears
+  1.25:1 on both grounds with margin (1.47:1 and 1.35:1) while still reading as
+  glass rather than a solid sheet. Web and iOS keep 0.08 wherever they have a
+  genuine `backdrop-filter` — see *Demo Scaffold (iOS demo)*.
+- **The edge is two bands, and it is drawn outside.** 1.25:1 is a *fill* bar; the
+  line that identifies a control is WCAG 1.4.11's **3:1**. The old 1px 0.24 white
+  border failed it for a reason no opacity could fix: `Modifier.border` strokes
+  *inside* the bounds, over the panel's own 14 % white fill — white on that fill is
+  **1.03:1**, invisible by construction, on every ground and in both themes. Over
+  media, the ground is not ours to choose (a white wall, a night room), so no single
+  colour passes either: 36 % white is 1.4:1 on `#F5F5F5`, 75 % black is 1.5:1 on
+  `#050505`. `over-media-edge` therefore pairs them — white ring straddling the
+  boundary, black halo 1px further out, both on the media — so the room can only
+  lose to one band at a time. What carries the boundary changes with the room, and
+  that is the point — on a bright ground the halo separates from the media (9.9:1 on
+  `#F5F5F5`), on a dark one the two bands separate from each other (3.27:1 on
+  `#050505`, where the halo against the media is only 1.02:1). Computed by sRGB
+  source-over compositing of the token alphas over five camera grounds, worst
+  adjacency per ground:
+
+  | ground | ring \| halo | halo \| media | ring \| fill |
+  |---|---|---|---|
+  | `#F5F5F5` white wall | 10.20:1 | 9.89:1 | 1.03:1 |
+  | `#CFC8BD` pale carpet | 9.32:1 | 7.68:1 | 1.18:1 |
+  | `#8A6F55` wood floor | 6.90:1 | 3.60:1 | 1.69:1 |
+  | `#1E1B18` dim room | 3.93:1 | 1.18:1 | 2.90:1 |
+  | `#050505` night | 3.27:1 | 1.02:1 | 3.23:1 |
+  | `#000000` black, the floor | **3.14:1** | 1.00:1 | 3.27:1 |
+
+  The worst ground is pure black, and there the boundary still reads from both
+  sides: **3.14:1** outward against the media, **3.27:1** inward against the panel's
+  own fill. Verified on device, not only on paper — captured on the emulator over the
+  black AR backdrop, the bands render rgb(92) over the media and rgb(115) over the
+  fill, which is 36 % white composited over each, to the unit. The single-band border
+  this replaces reached 1.01–1.28:1 on the same grounds.
+
+  Bright grounds are still the untested half: no emulator here starts an ARCore
+  session, so the white-wall column is arithmetic, not a photograph.
 - **The chrome bands sit on `chrome-scrim`.** White on media reads only when the
   media is dark, and a demo scene can be any brightness — a near-white studio
   erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
@@ -463,7 +495,7 @@ listed here.
 |---|---|---|
 | `glass-surface` (iOS) | rgba(255,255,255,0.08) under `.ultraThinMaterial` | Floor — what the blur cannot fall under over dark media |
 | `glass-ceiling` (iOS, dark scheme) | rgba(42,43,44,0.60) over the material | Ceiling — what the blur cannot rise above over bright media |
-| `glass-border` | 1pt rgba(255,255,255,0.24) | Same value as Android |
+| `glass-border` | 1pt rgba(255,255,255,0.24) | iOS keeps a hairline border: `.ultraThinMaterial` is a real blur, so the border is read against a panel the blur has already separated from the media. Android has no blur and replaced this token with `over-media-edge` (above) |
 | `dock-caption` (iOS) | `caption2` / 500 | Five captioned items + the accent fit 402pt; at larger Dynamic Type sizes the dock falls back to icons, the accessibility label stays |
 
 **Bottom of the screen, in points** (measured on the 402 × 874pt iPhone 17, 34pt home

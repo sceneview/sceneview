@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +73,7 @@ import io.github.sceneview.demo.demos.internal.friendlyArSessionError
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
@@ -770,11 +770,9 @@ private fun MeshClassificationLegend(modifier: Modifier = Modifier) {
         modifier = modifier
             .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
             .background(color = legendScrim(), shape = shape)
-            .border(
-                width = SceneViewTokens.ArOverlay.borderWidth,
-                color = legendBorder(),
-                shape = shape,
-            )
+            // `over-media-edge`: the ground is a camera frame, so the edge is measured
+            // against WCAG 1.4.11's 3:1 on a white wall and on a night scene.
+            .overMediaEdge(shape)
             .padding(
                 horizontal = SceneViewTokens.Space.md,
                 vertical = SceneViewTokens.Space.sm,
@@ -830,14 +828,6 @@ private fun legendScrim(): Color = if (isLegendOnDarkTheme()) {
     SceneViewTokens.ArOverlay.scrimDark
 } else {
     SceneViewTokens.ArOverlay.scrimLight
-}
-
-/** @see legendScrim */
-@Composable
-private fun legendBorder(): Color = if (isLegendOnDarkTheme()) {
-    SceneViewTokens.ArOverlay.borderDark
-} else {
-    SceneViewTokens.ArOverlay.borderLight
 }
 
 @Composable
