@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS dark mode: containers now have a visible background.** In dark, `surface-container`, `chip-bg` and the floating surface sat at 1.11:1, 1.09:1 and 1.27:1 against the page, so cards, tiles, chips and rows dissolved into the background and the screen read as one flat sheet. They now clear 1.25:1 (#22293E, #222831, #2F3549), the floor below which a filled container reads as bare page. Light is unchanged.
