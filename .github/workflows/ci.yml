@@ -43,7 +43,23 @@ on:
     # No paths-ignore on PRs: the jobs below are the required checks on `main`,
     # so the workflow must run (and report `skipped` legs) on every PR — the
     # `changes` job does the path triage in seconds.
+  # `force-all` is declared HERE as well as under `workflow_call` because
+  # release-fast.yml dispatches this workflow on the release branch to start the
+  # release PR's checks (#3664), and that run must produce ALL nine required
+  # contexts deterministically. Without the input, the release run would depend
+  # on the release commit happening to touch a path under the `shared` anchor —
+  # it does today (`gradle.properties`), but "the required checks appear because
+  # the version bump lives in a filtered path" is the kind of implicit coupling
+  # that produced #3664 in the first place. An input costs four lines and says
+  # it out loud.
   workflow_dispatch:
+    inputs:
+      force-all:
+        description: >-
+          Run every job regardless of the path filter (used by release-fast.yml
+          to start a release PR's required checks).
+        type: boolean
+        default: false
   # Allows nightly-ci.yml to invoke this workflow as a reusable workflow so
   # the scheduled full-validation run reuses these job definitions instead
   # of copy-pasting them. See #1324.
