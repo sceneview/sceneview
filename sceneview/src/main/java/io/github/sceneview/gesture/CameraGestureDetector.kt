@@ -1,5 +1,6 @@
 package io.github.sceneview.gesture
 
+import android.content.res.Resources
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import com.google.android.filament.Camera
@@ -538,6 +539,24 @@ open class CameraGestureDetector(
     var isPanEnabled: Boolean = true
 
     /**
+     * How far, in pixels, one finger must travel before its stream becomes an orbit (#3641).
+     *
+     * Before this guard an orbit began on the third `ACTION_MOVE`, whatever the distance. A real
+     * fingertip reports several sub-slop moves during a plain tap, so every tap — including each
+     * half of a double-tap — started an orbit: `grabBegin` cancelled the double-tap zoom a few
+     * milliseconds after it started (the gesture looked dead on a device while
+     * `adb shell input tap`, which emits no move, passed), and any manipulator that hands an idle
+     * animation over to the user on `grabBegin` froze on a mere touch. Pan and zoom already
+     * required a confidence distance; this is the same guard for the one-finger gesture.
+     *
+     * Defaults to the platform's 8 dp touch slop — the very distance under which
+     * [android.view.GestureDetector] still calls a touch a tap, so a tap and an orbit can never
+     * both claim the same finger. `SceneView` overrides it with the device's own
+     * [ViewConfiguration.getScaledTouchSlop]. `0f` restores the previous behaviour.
+     */
+    var orbitTouchSlop: Float = defaultOrbitTouchSlop()
+
+    /**
      * Double-tap to zoom in, two-finger tap to zoom out — on by default (#3608).
      *
      * When on, [onDoubleTap] and the two-finger tap recognised below are forwarded to
@@ -721,7 +740,15 @@ open class CameraGestureDetector(
     }
 
     private fun isOrbitGesture(): Boolean {
-        return tentativeOrbitEvents.size > kGestureConfidenceCount
+        if (tentativeOrbitEvents.isEmpty()) return false
+        return isOrbitDrag(
+            moveCount = tentativeOrbitEvents.size,
+            travel = distance(
+                tentativeOrbitEvents.first().midpoint,
+                tentativeOrbitEvents.last().midpoint,
+            ),
+            touchSlop = orbitTouchSlop,
+        )
     }
 
     private fun isPanGesture(): Boolean {
@@ -743,6 +770,20 @@ open class CameraGestureDetector(
     }
 
     companion object {
+        /** The platform's default touch slop, in dp — `ViewConfiguration`'s own constant. */
+        private const val PLATFORM_TOUCH_SLOP_DP = 8f
+
+        /**
+         * The platform touch slop in pixels, without a `Context` — this class is built from a
+         * surface callback that has none. `Resources.getSystem()` carries the display density,
+         * which is all the 8 dp default needs; `SceneView` then substitutes the exact,
+         * OEM-configurable [ViewConfiguration.getScaledTouchSlop].
+         */
+        private fun defaultOrbitTouchSlop(): Float =
+            runCatching {
+                PLATFORM_TOUCH_SLOP_DP * Resources.getSystem().displayMetrics.density
+            }.getOrDefault(PLATFORM_TOUCH_SLOP_DP)
+
         fun createDefaultCameraManipulator(
             manipulator: Manipulator? = null,
         ): DefaultCameraManipulator? {

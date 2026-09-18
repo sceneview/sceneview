@@ -84,6 +84,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
+import io.github.sceneview.demo.HeroOrbitResume
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -420,6 +421,10 @@ private fun StudioSection(
             radius = heroOrbitRadius,
             yHeight = HERO_Y_HEIGHT,
             target = Position(0f, 0f, 0f),
+            // Eases back rather than keeping the user's framing (#3642): the flight out of
+            // Inspect starts from `handoverYaw + heroSpin`, the AUTHORED yaw, so a camera left
+            // on the user's azimuth for good would cut to it on every exit.
+            resume = HeroOrbitResume.ReturnToAuthoredPath,
         )
     }
 
@@ -473,6 +478,10 @@ private fun StudioSection(
                 Position(anchor.x * t, anchor.y * t, anchor.z * t)
             },
             yHeightProvider = { focusZoom.value * focusYHeightState.value },
+            // The wall sweep is a choreography, not a turntable: carried on from wherever the
+            // user left it — behind the wall, say — it would show nothing. It eases back onto
+            // its path instead of cutting to it (#3642).
+            resume = HeroOrbitResume.ReturnToAuthoredPath,
         )
     }
 
@@ -484,6 +493,12 @@ private fun StudioSection(
      * must start. Without that the transition is continuous in one direction only.
      */
     fun changeMode(target: MaterialsMode) {
+        if (target == MaterialsMode.Inspect && !inspecting) {
+            // Inspect opens on the hand-over pose, whatever the last visit left behind: a drag
+            // from a few seconds ago would otherwise still hold this camera when it comes back
+            // on screen. Nobody is looking through it right now, so there is no cut to see.
+            heroManipulator.resumeAuto(blendMillis = 0L)
+        }
         if (!DemoSettings.qaMode) {
             if (target == MaterialsMode.Inspect && !inspecting) {
                 handoverYaw.floatValue = galleryYaw()
@@ -530,8 +545,12 @@ private fun StudioSection(
         // because the flight has not started yet.
         if (!DemoSettings.qaMode) handoverYaw.floatValue = galleryYaw()
         // A drag earlier in the session leaves the manipulator in user control, where the two
-        // providers above are ignored — without this the dolly would simply not play.
-        galleryManipulator.resumeAuto()
+        // providers above are ignored — without this the dolly would simply not play. What the
+        // user changed is eased away across the flight itself (#3642), so the dolly leaves from
+        // the pose on screen and still lands on the authored one Inspect opens on.
+        galleryManipulator.resumeAuto(
+            blendMillis = if (DemoSettings.qaMode) 0L else FOCUS_FLIGHT_MILLIS.toLong(),
+        )
         flightJob?.cancel()
         flightJob = focusScope.launch {
             focusZoom.animateTo(

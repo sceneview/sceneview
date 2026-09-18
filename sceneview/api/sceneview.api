@@ -1481,12 +1481,14 @@ public class io/github/sceneview/gesture/CameraGestureDetector {
 	public fun <init> (Lkotlin/jvm/functions/Function0;Lcom/google/android/filament/utils/Manipulator;)V
 	public fun <init> (Lkotlin/jvm/functions/Function0;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;)V
 	public final fun getCameraManipulator ()Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;
+	public final fun getOrbitTouchSlop ()F
 	public final fun isDoubleTapZoomEnabled ()Z
 	public final fun isPanEnabled ()Z
 	public final fun onDoubleTap (Landroid/view/MotionEvent;)V
 	public final fun onTouchEvent (Landroid/view/MotionEvent;)V
 	public final fun setCameraManipulator (Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;)V
 	public final fun setDoubleTapZoomEnabled (Z)V
+	public final fun setOrbitTouchSlop (F)V
 	public final fun setPanEnabled (Z)V
 }
 

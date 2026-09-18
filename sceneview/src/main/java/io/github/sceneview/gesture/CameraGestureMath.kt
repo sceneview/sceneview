@@ -312,3 +312,37 @@ fun animatedZoomDistance(start: Float, target: Float, progress: Float): Float {
     val interpolated = start * exp(ln(target / start) * eased)
     return if (interpolated.isFinite() && interpolated > 0f) interpolated else target
 }
+
+/**
+ * How many `ACTION_MOVE` events a one-finger stream must have produced before it can be an orbit.
+ *
+ * Kept from Filament's original detector: two events are not yet a direction.
+ */
+internal const val ORBIT_CONFIDENCE_MOVE_COUNT = 2
+
+/**
+ * Whether a one-finger stream has become an orbit drag, or is still — possibly forever — a tap.
+ *
+ * ### Why this exists (#3641)
+ *
+ * The detector used to answer with the event count alone: three `ACTION_MOVE`s and the orbit
+ * began, even if the finger had not left its pixel. A fingertip is not a stylus — pressing and
+ * lifting shifts the contact centroid, so a plain tap on a device reports a handful of moves a
+ * pixel or two apart. Each of those taps therefore called `grabBegin`, which is every
+ * manipulator's "the user took over" signal:
+ *
+ * - the **second tap of a double-tap** cancelled the zoom animation its own `ACTION_DOWN` had just
+ *   started, so double-tap-to-zoom never visibly moved on hardware — while `adb shell input tap`,
+ *   which emits no move at all, kept passing;
+ * - a manipulator that plays an idle animation until the user grabs the camera (a turntable, a
+ *   fly-in) froze on a mere touch.
+ *
+ * Pan and zoom already needed a confidence **distance**; this gives the orbit the same one.
+ *
+ * @param moveCount how many `ACTION_MOVE` events the stream has produced so far.
+ * @param travel    distance, in pixels, between the first and the latest of those events.
+ * @param touchSlop distance, in pixels, under which a touch is still a tap. `0f` disables the
+ *   guard: the count alone decides, as it did before.
+ */
+internal fun isOrbitDrag(moveCount: Int, travel: Float, touchSlop: Float): Boolean =
+    moveCount > ORBIT_CONFIDENCE_MOVE_COUNT && travel >= touchSlop

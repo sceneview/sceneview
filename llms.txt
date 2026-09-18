@@ -3570,6 +3570,14 @@ a consumer's own `onDoubleTap` untouched — the camera and the listener both se
 Repeated double-taps do not dead-end: once the camera sits on the closest allowed distance, the
 next double-tap cycles back to the framing the scene was homed at.
 
+A tap is not an orbit (#3641): one finger only starts orbiting once it has travelled
+`CameraGestureDetector.orbitTouchSlop` pixels — the platform touch slop, which `SceneView` sets
+from `ViewConfiguration.scaledTouchSlop`. A fingertip reports a few sub-pixel moves during any
+tap; without the slop each of them called `grabBegin`, which cancelled the double-tap zoom it had
+just started and handed any idle camera animation over to the user on a mere touch. A custom
+manipulator can therefore treat `grabBegin` as "the user is really dragging". Set the property
+to `0f` on a hand-built detector to get the old third-move behaviour back.
+
 ```kotlin
 // Opt out, or re-tune the step, on the default manipulator:
 val manipulator = rememberCameraManipulator(orbitRadius = 3f)

@@ -12,6 +12,7 @@ import android.opengl.EGLContext
 import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.TextureView
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -741,7 +742,12 @@ fun SceneView(
                     CameraGestureDetector(
                         viewHeight = viewHeight,
                         cameraManipulator = cameraManipulator
-                    )
+                    ).apply {
+                        // The same slop `gestureDetector` uses to tell a tap from a scroll, so a
+                        // tap never starts an orbit that cancels its own double-tap zoom (#3641).
+                        orbitTouchSlop =
+                            ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                    }
                 )
             }
         }
