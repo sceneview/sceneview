@@ -1,15 +1,15 @@
 /**
  * Tests for the sponsor CTA appended to tool responses every N calls.
  *
- * The CTA is a non-intrusive monetization hook: every 10 tool calls, a single
- * line pointing to GitHub Sponsors is appended after the standard disclaimer.
+ * Every 10 tool calls, a single line pointing at the Open Collective donation
+ * page is appended after the standard disclaimer.
  * Users can opt out with `SCENEVIEW_SPONSOR_CTA=0`.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSponsorCounter, dispatchTool } from "./index.js";
 
-const SPONSOR_MARKER = "github.com/sponsors/sceneview";
+const SPONSOR_MARKER = "opencollective.com/sceneview";
 
 async function callStaticTool(): Promise<string> {
   // `get_platform_roadmap` is one of the simplest tools — no args, no side

@@ -7,10 +7,10 @@
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
-  <title>Sponsor SceneView</title>
-  <meta name="description" content="Support SceneView development — sponsor on GitHub.">
-  <meta http-equiv="refresh" content="1;url=https://github.com/sponsors/sceneview">
-  <meta property="og:title" content="Sponsor SceneView">
+  <title>Support SceneView</title>
+  <meta name="description" content="Support SceneView development on Open Collective.">
+  <meta http-equiv="refresh" content="1;url=https://opencollective.com/sceneview">
+  <meta property="og:title" content="Support SceneView">
   <meta property="og:description" content="Support open-source 3D & AR development for every platform.">
   <meta property="og:url" content="https://sceneview.github.io/go/sponsor">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -32,14 +32,14 @@
 <body>
   <div class="page">
     <div class="icon">&#10084;&#65039;</div>
-    <h1>Sponsor SceneView</h1>
+    <h1>Support SceneView</h1>
     <p class="desc">Support open-source 3D & AR for every platform</p>
-    <a class="cta" href="https://github.com/sponsors/sceneview">
+    <a class="cta" href="https://opencollective.com/sceneview">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-      Sponsor on GitHub
+      Donate on Open Collective
     </a>
     <p class="note">Redirecting...</p>
-    <p class="fallback">Not working? <a href="https://github.com/sponsors/sceneview">Click here</a> or go <a href="/go/">back</a></p>
+    <p class="fallback">Not working? <a href="https://opencollective.com/sceneview">Click here</a>, use <a href="https://github.com/sponsors/sceneview">GitHub Sponsors</a>, or go <a href="/go/">back</a></p>
   </div>
   <script>
     // Attribute the /go/ hub before leaving. `go_redirect` is what turns
@@ -53,7 +53,7 @@
     // setTimeout below bounds it when gtag never loads at all, and the 1s
     // `<meta http-equiv="refresh">` in <head> is the final no-JS fallback. `redirect()`
     // is idempotent, so whichever path wins, the visitor navigates exactly once.
-    var DESTINATION = 'https://github.com/sponsors/sceneview';
+    var DESTINATION = 'https://opencollective.com/sceneview';
     var redirected = false;
     function redirect() {
       if (redirected) return;

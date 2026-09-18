@@ -88,11 +88,11 @@
   },
   "funding": [
     {
-      "type": "github",
-      "url": "https://github.com/sponsors/sceneview"
+      "type": "opencollective",
+      "url": "https://opencollective.com/sceneview"
     },
     {
-      "type": "individual",
+      "type": "github",
       "url": "https://github.com/sponsors/sceneview"
     }
   ]
