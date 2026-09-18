@@ -612,6 +612,7 @@ SceneView is free and open source. Sponsors help keep it maintained across 9 pla
 
 | | Platform | Link |
 |---|---|---|
-| :heart: | **GitHub Sponsors** (0% fees) | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
+| :heart: | **Open Collective** — transparent ledger, one-off or monthly | [Donate on Open Collective](https://opencollective.com/sceneview) |
+| :star: | **GitHub Sponsors** (0% fees) | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
 
 See [SPONSORS.md](.github/SPONSORS.md) for tiers and current sponsors.

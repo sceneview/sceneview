@@ -72,15 +72,18 @@ const DISCLAIMER =
 
 // ─── Sponsor CTA (shown every N tool calls, opt-out via env var) ────────────
 //
-// Non-intrusive monetization: append a one-line sponsor call-to-action after
-// every `SPONSOR_CTA_INTERVAL` tool calls. Disabled by setting
-// `SCENEVIEW_SPONSOR_CTA=0`. The counter is module-scoped (per MCP process
-// lifetime), not persisted.
+// One line, every `SPONSOR_CTA_INTERVAL` tool calls, pointing at the donation
+// page. Disabled by setting `SCENEVIEW_SPONSOR_CTA=0`. The counter is
+// module-scoped (per MCP process lifetime), not persisted.
+//
+// One link only: an assistant's answer is a bad place for a menu, and Open
+// Collective is the channel that actually receives donations. GitHub Sponsors
+// stays listed in the README and on the site.
 
 const SPONSOR_CTA_INTERVAL = 10;
 
 const SPONSOR_CTA =
-  "\n\n💙 *Building SceneView is a one-dev labor of love. If it saved you time, consider [supporting on GitHub Sponsors](https://github.com/sponsors/sceneview).*";
+  "\n\n💙 *Building SceneView is a one-dev labor of love. If it saved you time, consider [supporting it on Open Collective](https://opencollective.com/sceneview).*";
 
 let toolCallCount = 0;
 

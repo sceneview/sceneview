@@ -64,6 +64,7 @@ supporting the project:
 
 | Platform | Link |
 |---|---|
+| Open Collective | [opencollective.com/sceneview](https://opencollective.com/sceneview) |
 | GitHub Sponsors | [github.com/sponsors/sceneview](https://github.com/sponsors/sceneview) |
 
 Your sponsorship helps maintain the SDK, review PRs, write documentation, and keep
