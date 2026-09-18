@@ -209,7 +209,7 @@ public struct DemoChromeModifier<Controls: View>: ViewModifier {
                 }
                 .padding(.horizontal, SceneViewTokens.Space.sm)
                 .frame(height: SceneViewTokens.Layout.dockHeight)
-                .background(glassBackground(in: Capsule()))
+                .glassBackground(in: Capsule())
                 .padding(.bottom, SceneViewTokens.Space.md)
                 .accessibilityIdentifier("demo-dock")
             }
@@ -240,13 +240,11 @@ private struct DockButton: View {
 
 // MARK: - Glass primitives
 
-/// `glass-surface` + `glass-border` on a blur, in the given shape.
-func glassBackground<S: InsettableShape>(in shape: S) -> some View {
-    shape
-        .fill(.ultraThinMaterial)
-        .overlay(shape.fill(SceneViewTokens.Glass.surface))
-        .overlay(shape.strokeBorder(SceneViewTokens.Glass.border, lineWidth: SceneViewTokens.Glass.borderWidth))
-}
+// The glass itself is `View.glassBackground(in:)` (Theme.swift) — the one
+// implementation. A free function of the same name used to live here; inside a
+// `View` the member wins overload resolution, so `.background(glassBackground(in:))`
+// resolved to `self.glassBackground(in:)`, drew the view as its own background
+// and overflowed the stack on the first frame of every `.demoChrome` screen.
 
 /// 44 pt glass circle carrying its content.
 struct GlassCircle<Content: View>: View {
@@ -255,7 +253,7 @@ struct GlassCircle<Content: View>: View {
     var body: some View {
         content()
             .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
-            .background(glassBackground(in: Circle()))
+            .glassBackground(in: Circle())
             .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
             .contentShape(Circle())
     }
@@ -289,7 +287,7 @@ struct GlassPill<Content: View>: View {
         HStack(spacing: SceneViewTokens.Space.xs) { content() }
             .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
             .frame(height: SceneViewTokens.Glass.pillHeight)
-            .background(glassBackground(in: Capsule()))
+            .glassBackground(in: Capsule())
     }
 }
 
