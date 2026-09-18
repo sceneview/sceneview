@@ -65,7 +65,9 @@ import io.github.sceneview.demo.LoadingScrim
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.initialDemoMode
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.sketchfab.SampleAssets
 import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
@@ -442,6 +444,14 @@ private fun AnimationSection(
     // it instead of (yaw,radius,yHeight). null means scripted spherical mode is active.
     val trackingEye = remember { androidx.compose.runtime.mutableStateOf<Position?>(null) }
 
+    // The one camera writer of the screen. Every shot below opens with a `snapTo` of its
+    // start pose, two of them snap again each time their loop goes round, the scripted and the
+    // free manipulator are different instances and a new subject rebuilds both — each of those
+    // drew the new pose on the very next frame, a cut of up to half a turn. `SceneView` is handed
+    // this manipulator instead, for good, and it eases from the pose on screen into whatever the
+    // current source shows.
+    val continuity = rememberContinuousCameraManipulator(pivot = target)
+
     // Cinematic easings — FastOutSlowInEasing is Material's standard, EaseInOutCubic
     // is a slightly more dramatic S-curve we use for the hero pause-and-resume.
     val easeInOutCubic: Easing = remember { CubicBezierEasing(0.65f, 0.0f, 0.35f, 1.0f) }
@@ -478,9 +488,13 @@ private fun AnimationSection(
             return@LifecyclePausingLaunchedEffect
         }
 
-        // Reset overrides on every mode switch so previous mode state doesn't bleed in.
+        // Reset overrides on every mode switch so previous mode state doesn't bleed in — as a
+        // camera move: the pose eases in from the one on screen, and the lens with it.
+        continuity.easeNextCut()
         trackingEye.value = null
-        fovAnim.snapTo(defaultFovDegrees)
+        if (cameraMode != CameraMode.VERTIGO) {
+            launch { fovAnim.animateTo(defaultFovDegrees, tween(CUT_EASE_MILLIS, easing = FastOutSlowInEasing)) }
+        }
 
         when (cameraMode) {
             CameraMode.HERO -> {
@@ -528,7 +542,8 @@ private fun AnimationSection(
                 // DOWN at the soldier and the rooftop ground line is always visible.
                 yawAnim.snapTo(15f)
                 while (true) {
-                    // Snap to the close-up start
+                    // Back to the close-up start — a push-in from the wide shot, not a cut.
+                    continuity.easeNextCut()
                     radiusAnim.snapTo(1.5f)
                     yHeightAnim.snapTo(0.9f)
                     // Park on the close-up boundary while backgrounded.
@@ -550,6 +565,10 @@ private fun AnimationSection(
                 // the background appears to compress. Then reverse for the vertigo-out.
                 yawAnim.snapTo(20f)
                 yHeightAnim.snapTo(baseYHeight)
+                radiusAnim.snapTo(2.0f)
+                // The lens opens to the shot's 60° while the camera eases onto its mark. Every
+                // later pass of the loop ends where it starts, so the snaps below are no-ops.
+                fovAnim.animateTo(60f, tween(CUT_EASE_MILLIS, easing = FastOutSlowInEasing))
                 while (true) {
                     radiusAnim.snapTo(2.0f)
                     fovAnim.snapTo(60f)
@@ -602,6 +621,9 @@ private fun AnimationSection(
                 }
                 try {
                     while (true) {
+                        // Back to the start of the track: swung round the subject, slowly
+                        // enough to read, rather than teleported across it.
+                        continuity.easeNextCut(TRACK_RETURN_MILLIS)
                         xAnim.snapTo(startX)
                         // Park on the sweep-start boundary while backgrounded.
                         gate.awaitResumed()
@@ -611,7 +633,7 @@ private fun AnimationSection(
                             targetValue = endX,
                             animationSpec = tween(8_000, easing = easeInOutCubic),
                         )
-                        // 1 s pause off-frame before resetting (instant teleport back).
+                        // 1 s pause at the end of the track before swinging back.
                         kotlinx.coroutines.delay(1_000)
                     }
                 } finally {
@@ -720,7 +742,9 @@ private fun AnimationSection(
             }
         } else null
     }
-    val activeManipulator = if (cameraMode == CameraMode.FREE) freeManipulator else scriptedManipulator
+    val activeManipulator = continuity.driving(
+        (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
+    )
 
     val firstFrame = rememberFirstFrameState()
 
@@ -1564,6 +1588,12 @@ internal fun trayLocalGravity(pitchDegrees: Float, rollDegrees: Float): Position
     val local = transpose(trayRotation) * Float4(0f, PhysicsBody.GRAVITY, 0f, 0f)
     return Position(local.x, local.y, local.z)
 }
+
+/** How long the lens takes to follow the camera into a new shot — the pose's own ease. */
+private const val CUT_EASE_MILLIS = 700
+
+/** The tracking shot's swing back to the start of its track: most of a half turn. */
+private const val TRACK_RETURN_MILLIS = 1_200L
 
 private const val PHYSICS_INITIAL_BODIES = 7
 private const val PHYSICS_MAX_BODIES = 30

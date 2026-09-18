@@ -4,7 +4,6 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -85,6 +84,7 @@ import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.HeroOrbitCameraManipulator
 import io.github.sceneview.demo.HeroOrbitResume
+import io.github.sceneview.demo.OrbitSpin
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -388,25 +388,18 @@ private fun StudioSection(
     )
     // Inspect's idle orbit. Built here rather than through
     // `rememberHeroOrbitCameraManipulator` for one reason: its yaw has to *start* at
-    // [handoverYaw] (#3624), and the factory's own animator owns the absolute yaw. The spin
-    // is therefore an offset from the hand-over, and it is re-zeroed on every entry into
-    // Inspect — including an entry with the orbit paused, where a stale offset would be a
-    // jump of whatever angle the last visit happened to stop at.
-    val heroSpin = remember { Animatable(0f) }
-    LaunchedEffect(inspecting, animating, DemoSettings.qaMode) {
-        heroSpin.snapTo(0f)
-        if (!inspecting || !animating || DemoSettings.qaMode) return@LaunchedEffect
-        while (true) {
-            heroSpin.snapTo(0f)
-            heroSpin.animateTo(
-                targetValue = 360f,
-                animationSpec = tween(
-                    durationMillis = MaterialStudio.ORBIT_PERIOD_MILLIS,
-                    easing = LinearEasing,
-                ),
-            )
-        }
-    }
+    // [handoverYaw] (#3624), and the factory's own turntable owns the absolute yaw. The spin
+    // is therefore an offset from the hand-over, re-zeroed on every crossing of the Inspect
+    // door — [changeMode] does it in the same breath as it writes [handoverYaw], so no frame
+    // ever draws the new hand-over with the old spin still on top of it.
+    //
+    // It is the shared [OrbitSpin], advanced by the manipulator on the render clock. The
+    // hand-rolled looping tween it replaces was re-zeroed whenever `animating` flipped: "Pause
+    // the camera" cut the view back to the hand-over yaw in one frame. Pausing now coasts to a
+    // stop where the orbit stands, and resuming eases off from there.
+    val heroSpin = remember { OrbitSpin() }
+    val heroSpinning = rememberUpdatedState(inspecting && animating)
+    LaunchedEffect(DemoSettings.qaMode) { heroSpin.reset() }
     // Deep-link zoom override (#1571), as `rememberHeroOrbitCameraManipulator` applies it.
     val heroOrbitRadius = DemoSettings.cameraDistance ?: heroRadius
     val heroManipulator = remember(heroOrbitRadius) {
@@ -415,12 +408,20 @@ private fun StudioSection(
                 if (DemoSettings.qaMode) {
                     MaterialStudio.STATIC_ORBIT_YAW
                 } else {
-                    handoverYaw.floatValue + heroSpin.value
+                    handoverYaw.floatValue + heroSpin.yawDegrees
                 }
             },
             radius = heroOrbitRadius,
             yHeight = HERO_Y_HEIGHT,
             target = Position(0f, 0f, 0f),
+            spin = heroSpin,
+            spinDegreesPerSecond = {
+                if (heroSpinning.value && !DemoSettings.qaMode) {
+                    OrbitSpin.degreesPerSecond(MaterialStudio.ORBIT_PERIOD_MILLIS)
+                } else {
+                    0f
+                }
+            },
             // Eases back rather than keeping the user's framing (#3642): the flight out of
             // Inspect starts from `handoverYaw + heroSpin`, the AUTHORED yaw, so a camera left
             // on the user's azimuth for good would cut to it on every exit.
@@ -502,10 +503,12 @@ private fun StudioSection(
         if (!DemoSettings.qaMode) {
             if (target == MaterialsMode.Inspect && !inspecting) {
                 handoverYaw.floatValue = galleryYaw()
+                heroSpin.reset()
             } else if (inspecting && target != MaterialsMode.Inspect) {
                 // Compare draws from a fixed camera node, so nothing has moved since the
                 // hand-over; the hero orbit adds its own travel on top of it.
-                if (!compare) handoverYaw.floatValue += heroSpin.value
+                if (!compare) handoverYaw.floatValue += heroSpin.yawDegrees
+                heroSpin.reset()
             }
         }
         onModeChange(target)

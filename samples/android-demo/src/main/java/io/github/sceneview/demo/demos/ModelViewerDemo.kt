@@ -104,6 +104,8 @@ import io.github.sceneview.demo.demos.internal.ParkSlot
 import io.github.sceneview.demo.demos.internal.parkCameraDistance
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
+import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.VIEWER_MAX_ZOOM_FACTOR
 import io.github.sceneview.demo.VIEWER_MIN_ZOOM_FACTOR
@@ -1159,7 +1161,7 @@ private fun MultiModelSection(
             // camera_distance 6.0` was a silent no-op and probing 2.5 / 3.5 / 4.5 m produced
             // three identical frames. That is why the extra "could not fix the framing".
             val orbitDistance = DemoSettings.cameraDistance ?: parkCameraDistance(viewportAspect)
-            val cameraManipulator = remember(orbitDistance) {
+            val parkManipulator = remember(orbitDistance) {
                 createDefaultCameraManipulator(
                     // Straight-on, at the mid-height of the tallest model, looking at the
                     // formation centre — which IS the world origin, see `autoCenterContent`.
@@ -1167,6 +1169,9 @@ private fun MultiModelSection(
                     targetPosition = Position(0f, 0f, 0f),
                 )
             }
+            // A new aspect (rotation, fold, split screen) is a new distance, hence a new
+            // manipulator — eased into by the section's one camera writer instead of cut to.
+            val cameraManipulator = rememberContinuousCameraManipulator().driving(parkManipulator)
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 onFrame = firstFrame.onFrame,
@@ -1465,6 +1470,9 @@ private fun GallerySection(
             ),
             yHeight = 0f,
             durationMillis = 24_000,
+            // The next chip's radius arrives while the stage is empty: taken at once. A rotation
+            // changes it with the model in frame: that one is a camera move.
+            contentShown = modelInstance != null,
         )
         Box(modifier = Modifier.fillMaxSize()) {
             SceneView(
