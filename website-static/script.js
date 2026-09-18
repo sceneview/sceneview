@@ -145,3 +145,73 @@ document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
     }
   }, { passive: true });
 })();
+
+// ===== AI ASSISTANT TABS (ARIA tablist, roving tabindex) =====
+document.querySelectorAll('[data-aitabs]').forEach(function (group) {
+  var tabs = Array.prototype.slice.call(group.querySelectorAll('.aiset__btn'));
+  if (!tabs.length) return;
+
+  function select(index, focus) {
+    tabs.forEach(function (tab, i) {
+      var on = i === index;
+      tab.classList.toggle('aiset__btn--active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      var panel = document.getElementById(tab.getAttribute('aria-controls'));
+      if (panel) {
+        panel.hidden = !on;
+        panel.classList.toggle('aiset__panel--active', on);
+      }
+    });
+    if (focus) tabs[index].focus();
+  }
+
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { select(i, false); });
+    tab.addEventListener('keydown', function (e) {
+      var last = tabs.length - 1;
+      var next = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = i === last ? 0 : i + 1;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = i === 0 ? last : i - 1;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = last;
+      if (next !== null) { e.preventDefault(); select(next, true); }
+    });
+  });
+});
+
+// ===== COPY BUTTONS =====
+document.querySelectorAll('.aiset__copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var snippet = btn.closest('.aiset__snippet');
+    var code = snippet && snippet.querySelector('code');
+    if (!code) return;
+    var text = code.innerText.replace(/\s+$/, '');
+    var label = btn.querySelector('.aiset__copy-text');
+    var done = function () {
+      btn.classList.add('aiset__copy--done');
+      if (label) label.textContent = 'Copied';
+      setTimeout(function () {
+        btn.classList.remove('aiset__copy--done');
+        if (label) label.textContent = 'Copy';
+      }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else {
+      fallback(text, done);
+    }
+  });
+});
+
+function fallback(text, done) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  document.body.removeChild(ta);
+}

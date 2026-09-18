@@ -2,7 +2,7 @@
   "name": "sceneview-mcp",
   "version": "4.1.0",
   "mcpName": "io.github.sceneview/mcp",
-  "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Give Claude the full SceneView SDK so it writes correct, compilable code.",
+  "description": "MCP server for SceneView — cross-platform 3D & AR SDK for Android and iOS. Gives your AI coding assistant the full SceneView SDK so it writes correct, compilable code.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -18,8 +18,9 @@
     "jetpack-compose",
     "swiftui",
     "kotlin-multiplatform",
-    "claude",
-    "ai"
+    "ai",
+    "ai-coding-assistant",
+    "llm"
   ],
   "license": "MIT",
   "author": "SceneView (https://github.com/sceneview)",
