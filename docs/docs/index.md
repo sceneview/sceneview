@@ -97,7 +97,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 
     ```html
     <!-- One-liner 3D for the web -->
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.37.0/sceneview-web.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
     <scene-view model="helmet.glb" auto-rotate camera-orbit></scene-view>
     ```
 
@@ -213,7 +213,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
 === "Web"
 
     ```html
-    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.37.0/sceneview-web.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
     ```
 
 ---

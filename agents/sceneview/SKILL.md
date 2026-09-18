@@ -41,9 +41,9 @@ SceneView is a declarative 3D and AR SDK. One mental model across every platform
   post-processing.** Android delegates to the Filament `SceneView { }` below; iOS needs a
   one-time renderer registration; Desktop draws a placeholder. Reach for it only when the
   ask is genuinely shared-source; for anything platform-specific, use the native API.
-- **Web** — `sceneview-web@4.37.0` on npm (Filament.js + WebXR).
+- **Web** — `sceneview-web@4` on npm (Filament.js + WebXR).
 - **Flutter** — `flutter_sceneview` plugin (PlatformView bridge; pub.dev name since #2735, directory `flutter/sceneview_flutter/`).
-- **React Native** — `@sceneview-sdk/react-native@4.37.0` (Fabric bridge).
+- **React Native** — `@sceneview-sdk/react-native@4` (Fabric bridge).
 - **MCP** — `sceneview-mcp` on npm — gives AI agents direct API access from chat.
 
 Nodes are declared as composables / SwiftUI views inside the parent SceneView's
