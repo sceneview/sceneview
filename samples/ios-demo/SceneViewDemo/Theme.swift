@@ -151,13 +151,27 @@ enum SceneViewTokens {
         static let heroSubtitle = Color.white.opacity(0.80)
         static let heroPillBackground = Color.white
         static let heroPillText = Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x2E / 255)
-        /// Hero placeholder / stage field — matches the viewer stage clear colour.
-        static let heroField = Stage.background
+        /// Hero stage field — an **embedded** stage, so it follows the
+        /// container scale in dark rather than the full-screen stage colour.
+        ///
+        /// It used to be `Stage.background` (#0B0F16) in both themes. On a
+        /// white page that reads at 18.71:1 and anchors the whole screen; on
+        /// the #0D1117 dark page it reads at **1.014:1** — the card had no
+        /// background at all, only its 1 pt hairline. A full-screen stage has
+        /// no page around it and keeps #0B0F16 (see `Stage.background`).
+        static let heroField = Color(
+            light: Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255),
+            dark: Color(red: 0x22 / 255, green: 0x29 / 255, blue: 0x3E / 255)
+        )
 
-        /// `chip-bg` = `surface-dim` — #F1F3F5 / #161B22.
+        /// `chip-bg` = `surface-dim` — #F1F3F5 / #222831.
+        ///
+        /// Dark was #161B22, which sits at 1.09:1 on `surface` — a container
+        /// whose background simply is not there. Raised to clear 1.25:1, the
+        /// floor below which a filled container reads as bare page.
         static let chipBackground = Color(
             light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
-            dark: Color(red: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255)
+            dark: Color(red: 0x22 / 255, green: 0x28 / 255, blue: 0x31 / 255)
         )
         /// `chip-text` = `on-surface-dim` — #3D4654 / #9CA3AF.
         static let chipText = Color(
@@ -231,18 +245,28 @@ enum SceneViewTokens {
             light: .white,
             dark: Color(red: 0x0D / 255, green: 0x11 / 255, blue: 0x17 / 255)
         )
-        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #161C2C.
+        /// DESIGN.md Surfaces, `surface-container` — #FFFFFF / #22293E.
         /// A lighter fill supplies dark elevation without a black shadow.
+        ///
+        /// Dark was #161C2C: 1.11:1 on `surface`, so every card, tile and row
+        /// dissolved into the page and the screen read as one flat sheet.
+        /// #22293E clears 1.25:1, the floor at which a container's background
+        /// is actually visible. (On a near-black page the flare term of the
+        /// WCAG ratio puts that floor at L* >= 15.1 — nothing darker can reach
+        /// it, whatever the page is set to.)
         static let surfaceContainer = Color(
             light: .white,
-            dark: Color(red: 0x16 / 255, green: 0x1C / 255, blue: 0x2C / 255)
+            dark: Color(red: 0x22 / 255, green: 0x29 / 255, blue: 0x3E / 255)
         )
         /// Derived from DESIGN.md dark `glass-surface`: 5 % white composited
-        /// over `surface-container`, rounded to #222737. Kept opaque so artwork
+        /// over `surface-container`, rounded to #2F3549. Kept opaque so artwork
         /// cannot bleed through floating status chips or the search field.
+        ///
+        /// Tracks `surface-container` upward so a floating element stays one
+        /// visible step above the card it sits on (1.56:1 on `surface`).
         static let floatingSurface = Color(
             light: .white,
-            dark: Color(red: 0x22 / 255, green: 0x27 / 255, blue: 0x37 / 255)
+            dark: Color(red: 0x2F / 255, green: 0x35 / 255, blue: 0x49 / 255)
         )
         /// Legacy light appearance only; dark uses `header-overlay` at 100 %.
         static let headerOverlayAlpha: Double = 0.94

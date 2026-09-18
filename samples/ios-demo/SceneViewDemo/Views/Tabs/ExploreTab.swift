@@ -506,7 +506,7 @@ struct ExploreTab: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.secondary.opacity(0.08))
+                    .fill(SceneViewTokens.HomeColor.chipBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

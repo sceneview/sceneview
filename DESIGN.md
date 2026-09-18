@@ -74,7 +74,8 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
 | `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
 | `glass-border` | 1px rgba(255,255,255,0.08) | 1px rgba(255,255,255,0.08) | Floating control outline |
-| `stage-background` | #0B0F16 | #0B0F16 | Model-viewer stage clear colour and hero placeholder field — identical in both themes |
+| `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes |
+| `stage-background-embedded` | #0B0F16 | #22293E | A 3D stage **embedded in a card** (home hero, card thumbnails). In dark it takes the elevated container value so the card keeps a visible background against the page; #0B0F16 there sits at 1.01:1 on `surface` and the card disappears |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 
