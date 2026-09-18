@@ -2,58 +2,50 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// 3D extruded text showcase -- different sizes, colors, and depths.
+/// `TextNode` — real 3D text: sized in metres, extruded in metres.
+///
+/// The strip changes the extrusion so the depth is something you see, not a
+/// number in a call. Orbit to look at the side of the letters.
 struct TextDemo: View {
-    var body: some View {
-        ZStack {
-            SceneView { root in
-                // Title -- large and deep
-                let title = TextNode(text: "SceneView", fontSize: 0.12, color: .white, depth: 0.03)
-                    .centered()
-                    .position(.init(x: 0, y: 0.5, z: -2.5))
-                root.addChild(title.entity)
+    enum Extrusion: String, CaseIterable {
+        case flat = "Flat", raised = "Raised", deep = "Deep"
 
-                // Subtitle -- medium, blue
-                let subtitle = TextNode(text: "3D & AR for SwiftUI", fontSize: 0.06, color: .systemBlue, depth: 0.01)
-                    .centered()
-                    .position(.init(x: 0, y: 0.25, z: -2.5))
-                root.addChild(subtitle.entity)
-
-                // Small labels next to shapes
-                let shapes: [(String, UIColor, Float)] = [
-                    ("Cube", .systemRed, -0.4),
-                    ("Sphere", .systemGreen, 0.0),
-                    ("Cone", .systemOrange, 0.4),
-                ]
-
-                for (name, color, xPos) in shapes {
-                    let shape: GeometryNode
-                    switch name {
-                    case "Cube":
-                        shape = GeometryNode.cube(size: 0.12, color: color, cornerRadius: 0.01)
-                    case "Sphere":
-                        shape = GeometryNode.sphere(radius: 0.08, color: color)
-                    default:
-                        shape = GeometryNode.cone(height: 0.15, radius: 0.08, color: color)
-                    }
-                    shape.entity.position = .init(x: xPos, y: -0.1, z: -2.5)
-                    root.addChild(shape.entity)
-
-                    let label = TextNode(text: name, fontSize: 0.04, color: color, depth: 0.005)
-                        .centered()
-                        .position(.init(x: xPos, y: -0.3, z: -2.5))
-                    root.addChild(label.entity)
-                }
-
-                // Thin caption at the bottom
-                let caption = TextNode(text: "TextNode -- 3D extruded text", fontSize: 0.03, color: .lightGray, depth: 0.003)
-                    .centered()
-                    .position(.init(x: 0, y: -0.5, z: -2.5))
-                root.addChild(caption.entity)
+        /// Depth as a share of the font size.
+        var ratio: Float {
+            switch self {
+            case .flat: 0.02
+            case .raised: 0.2
+            case .deep: 0.6
             }
-            .cameraControls(.orbit)
-            .ignoresSafeArea()
         }
-        .background(Color.black)
+    }
+
+    @State private var extrusion = Extrusion.raised
+
+    var body: some View {
+        DemoScaffold("3D Text") {
+            SceneView { root in
+                let lines: [(text: String, size: Float, color: SimpleMaterial.Color, y: Float)] = [
+                    ("SceneView", 0.12, .white, 0.14),
+                    ("3D text for SwiftUI", 0.05, .systemBlue, 0),
+                    ("sized and extruded in metres", 0.032, .lightGray, -0.09),
+                ]
+                for line in lines {
+                    // RealityKit text grows rightwards from its origin;
+                    // `centered()` puts the middle of the line on the position.
+                    let node = TextNode(text: line.text, fontSize: line.size, color: line.color,
+                                        depth: line.size * extrusion.ratio)
+                        .centered()
+                        .position([0, line.y, 0])
+                    root.addChild(node.entity)
+                }
+            }
+            .contentID(extrusion)
+            .cameraControls(.orbit)
+            // A three-quarter view: head-on, an extrusion is invisible.
+            .cameraOrbit(azimuth: 0.5, elevation: 0.2)
+        } accessory: {
+            DemoOptionStrip(Extrusion.allCases, selection: $extrusion) { $0.rawValue }
+        }
     }
 }

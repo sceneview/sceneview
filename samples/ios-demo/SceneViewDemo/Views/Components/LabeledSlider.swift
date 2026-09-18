@@ -56,7 +56,8 @@ struct LabeledSlider<V>: View where V: BinaryFloatingPoint, V.Stride: BinaryFloa
                 Spacer(minLength: 8)
                 Text(rendered)
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    // Not `.secondary`: the system grey measures 3.42:1 on a white sheet.
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
             }
             // Hiding the row rather than wrapping the whole control keeps the track's
             // "adjustable" trait: VoiceOver must still be able to swipe the value up and down.
