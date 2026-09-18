@@ -683,17 +683,25 @@ data class OrbitState(val yaw: Float, val radius: Float, val yHeight: Float) {
  * environment comparison) so the viewer sees the model from different angles without
  * the model rotating through its own light setup.
  *
- * On first gesture the manipulator captures the current orbit pose as the new
+ * On first gesture the manipulator captures the pose on screen as the new
  * [DefaultCameraManipulator.eyePosition], so there's no snap — the user's first
  * drag continues from exactly where the idle orbit left off.
  *
- * ### Auto-orbit resume after idle (#2225)
+ * ### Auto-orbit resume after idle (#2225, #3642)
  *
  * Once the user releases a grab/scroll the manipulator stays in user-control mode for
- * [resumeAfterMillis] of inactivity, then clears the fallback so the idle auto-orbit
- * resumes from the user's last pose (no snap — the next orbit yaw is read from
- * [yawProvider] when [getTransform] falls through to [orbitTransform]). Set
- * [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
+ * [resumeAfterMillis] of inactivity, then gives the camera back to the idle orbit **from the
+ * pose on screen**: the user's framing is measured against the authored one
+ * ([OrbitFramingOffset]) and the orbit carries on underneath it. [resume] picks what happens to
+ * that offset next — kept for good ([HeroOrbitResume.KeepUserFraming], the default) or eased
+ * away over [resumeBlendMillis] ([HeroOrbitResume.ReturnToAuthoredPath]).
+ *
+ * It used to simply drop the user-control manipulator, which put the camera back on the
+ * authored pose within one frame. That cut is what #3642 reports on every demo sharing this
+ * class, and what #3640 reads as "the camera resets when I flip a switch": the switch is just
+ * what the user is reaching for three seconds after framing the subject.
+ *
+ * Set [resumeAfterMillis] to `0L` or negative to disable the resume — the manipulator then
  * stays in user control forever after the first touch (legacy behaviour).
  */
 class HeroOrbitCameraManipulator(
@@ -720,18 +728,45 @@ class HeroOrbitCameraManipulator(
      * replaced by one tilted down cuts to a different angle at the last frame.
      */
     private val yHeightProvider: (() -> Float)? = null,
+    /** What becomes of the user's framing once the idle orbit has the camera back. */
+    private val resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
+    /** How long [HeroOrbitResume.ReturnToAuthoredPath] takes to ease back, in milliseconds. */
+    private val resumeBlendMillis: Long = DEFAULT_RESUME_BLEND_MILLIS,
+    /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
+    private val nanoTime: () -> Long = System::nanoTime,
+    /**
+     * Builds the manipulator the user drives, from the eye and pivot on screen. Injectable
+     * because the stock one owns a native Filament `Manipulator`, which a JVM test cannot load.
+     */
+    private val userControlFactory: (
+        eye: Position,
+        pivot: Position,
+    ) -> io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator = { eye, pivot ->
+        io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
+            eyePosition = eye,
+            targetPosition = pivot,
+        )
+    },
 ) : io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
-    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator? =
-        null
+    private var fallback: io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator? = null
+
+    /** The pivot [fallback] was built around — the stock manipulator does not publish its own. */
+    private var fallbackPivot: Position = target
     private var viewportW = 1
     private var viewportH = 1
 
     /**
-     * Timestamp (from [System.nanoTime]) when the last user gesture released, or `0L`
+     * Timestamp (from [nanoTime]) when the last user gesture released, or `0L`
      * if the user is still actively dragging / scrolling (or has never touched yet).
-     * Used by [update] to know when to clear the [fallback] and resume the auto-orbit.
+     * Used by [settle] to know when to give the camera back to the auto-orbit.
      */
     private var grabEndTimeNanos: Long = 0L
+
+    /**
+     * The user's framing, carried by the idle orbit after the hand-back. Empty while the camera
+     * is on the authored path — the state every demo starts in, and the only one QA mode sees.
+     */
+    private val carried = CarriedFraming(nanoTime)
 
     fun isPaused(): Boolean = fallback != null
 
@@ -747,13 +782,23 @@ class HeroOrbitCameraManipulator(
      * (#3609): the animation drives [radiusProvider] / [targetProvider], which the
      * user-control fallback ignores, so an un-cleared fallback would freeze the camera for
      * the whole animation and the zoom would simply not play.
+     *
+     * The user's framing is eased away over [blendMillis] **while** that animation plays, so
+     * the flight starts from the pose on screen instead of cutting to the authored one first
+     * (#3642). Pass the animation's own duration; `0` cuts, for QA mode's instant flights.
      */
-    fun resumeAuto() {
-        fallback = null
-        grabEndTimeNanos = 0L
+    fun resumeAuto(blendMillis: Long = resumeBlendMillis) {
+        handBack()
+        if (blendMillis <= 0L) {
+            dropUserFraming()
+        } else if (!carried.isEasing) {
+            // An ease already under way keeps its own clock: restarting it from weight 1 would
+            // throw the camera back out to the pose it is half-way home from.
+            carried.easeBack(blendMillis)
+        }
     }
 
-    private fun currentEye(): Position {
+    private fun authoredEye(): Position {
         val rad = Math.toRadians(yawProvider().toDouble()).toFloat()
         val radius = currentRadius()
         val target = currentTarget()
@@ -764,11 +809,21 @@ class HeroOrbitCameraManipulator(
         )
     }
 
+    private fun authoredFraming(): OrbitFraming = authoredOrbitFraming(
+        yawDegrees = yawProvider(),
+        radius = currentRadius(),
+        height = currentYHeight(),
+        target = currentTarget(),
+    )
+
     private fun orbitTransform(): io.github.sceneview.math.Transform {
-        val eye = currentEye()
+        // `null` on the bare authored path, which keeps the eye formula it always had rather
+        // than going through OrbitFraming: a round trip through atan2 / sqrt would move every
+        // golden by a float's last bit for no visible gain.
+        val framing = carried.over(::authoredFraming)
         val mat = dev.romainguy.kotlin.math.lookAt(
-            eye = eye,
-            target = currentTarget(),
+            eye = framing?.eye() ?: authoredEye(),
+            target = framing?.pivot ?: currentTarget(),
             up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
         )
         return io.github.sceneview.math.Transform(mat)
@@ -776,16 +831,68 @@ class HeroOrbitCameraManipulator(
 
     private fun ensureFallback() {
         if (fallback == null) {
-            // Capture the current orbit eye as the manipulator's home so the hand-off is
-            // seamless — the first drag begins exactly where we stopped orbiting.
-            fallback = io.github.sceneview.gesture.CameraGestureDetector.DefaultCameraManipulator(
-                eyePosition = currentEye(),
-                targetPosition = currentTarget(),
-            ).also { it.setViewport(viewportW, viewportH) }
+            // Capture the pose on screen — the authored orbit, the user's framing it carries, or
+            // wherever an ease back has got to — as the manipulator's home, so the hand-off is
+            // seamless: the first drag begins exactly where the idle camera stood.
+            val framing = carried.over(::authoredFraming)
+            val pivot = framing?.pivot ?: currentTarget()
+            fallbackPivot = pivot
+            fallback = userControlFactory(framing?.eye() ?: authoredEye(), pivot)
+                .also { it.setViewport(viewportW, viewportH) }
+            carried.clear()
         }
         // A new gesture is starting — clear the "idle since" stamp so the resume timer
         // doesn't fire mid-drag.
         grabEndTimeNanos = 0L
+    }
+
+    /**
+     * Gives the camera back to the idle orbit **on the pose it shows**: what the user changed is
+     * kept as an offset from the authored framing, so the next frame draws the same picture.
+     */
+    private fun handBack() {
+        if (fallback == null) return
+        val shown = userControlTransform()
+        val eye = shown.position
+        // A camera looks down its own -Z.
+        val back = shown.z
+        val depth = sqrt(
+            (eye.x - fallbackPivot.x) * (eye.x - fallbackPivot.x) +
+                (eye.y - fallbackPivot.y) * (eye.y - fallbackPivot.y) +
+                (eye.z - fallbackPivot.z) * (eye.z - fallbackPivot.z),
+        )
+        val pivot = lookPoint(eye, Position(-back.x, -back.y, -back.z), depth)
+        carried.hold(orbitFramingOffset(orbitFramingOf(eye, pivot), authoredFraming()))
+        fallback = null
+        grabEndTimeNanos = 0L
+    }
+
+    /** Back on the bare authored path, this frame. Only ever used where nobody can see the cut. */
+    private fun dropUserFraming() {
+        fallback = null
+        grabEndTimeNanos = 0L
+        carried.clear()
+    }
+
+    /** Runs the idle timer: past [resumeAfterMillis], the orbit gets the camera back. */
+    private fun settle() {
+        // `resumeAfterMillis <= 0L` disables the resume — legacy behaviour where the user
+        // keeps the camera for good after the first touch.
+        if (fallback == null || grabEndTimeNanos == 0L || resumeAfterMillis <= 0L) return
+        val idleNanos = nanoTime() - grabEndTimeNanos
+        val resumeNanos = resumeAfterMillis * NANOS_PER_MILLI
+        if (idleNanos <= resumeNanos) return
+        when {
+            resume == HeroOrbitResume.KeepUserFraming -> handBack()
+            // Far past the deadline means nobody was calling: the manipulator was swapped out
+            // (Materials' two cameras) or the app was in the background. The demo that swaps it
+            // back in expects the authored pose, and there is no frame to be continuous with.
+            idleNanos > resumeNanos + UNWATCHED_MARGIN_NANOS -> dropUserFraming()
+            else -> {
+                handBack()
+                if (resumeBlendMillis > 0L) carried.easeBack(resumeBlendMillis) else dropUserFraming()
+            }
+        }
     }
 
     override fun setViewport(width: Int, height: Int) {
@@ -795,6 +902,11 @@ class HeroOrbitCameraManipulator(
     }
 
     override fun getTransform(): io.github.sceneview.math.Transform {
+        settle()
+        return if (fallback != null) userControlTransform() else orbitTransform()
+    }
+
+    private fun userControlTransform(): io.github.sceneview.math.Transform {
         val fb = fallback ?: return orbitTransform()
         // While the user is dragging (or in the post-drag resume window) the camera
         // pose comes from the stock Filament orbit manipulator, which does NOT clamp
@@ -802,17 +914,16 @@ class HeroOrbitCameraManipulator(
         // the eye onto the orbit pole, the lookAt's fixed world-up collapses, and the
         // model snaps fully upside-down (#2487, Pixel 9 review). Re-derive the eye from
         // the manipulator's transform, clamp its pitch just shy of the poles, and
-        // re-aim it at the (unchanged) orbit target so the flip can never happen. The
-        // idle auto-orbit path (`orbitTransform`) sits at a gentle down-tilt well clear
-        // of the poles and needs no clamp.
+        // re-aim it at the orbit pivot so the flip can never happen. The pivot is the one
+        // the fallback was BUILT around: once the idle orbit carries the user's framing,
+        // that is no longer always the authored target.
         val transform = fb.getTransform()
         val eye = transform.position
-        val target = currentTarget()
-        val clampedEye = clampOrbitEyePitch(eye, target)
+        val clampedEye = clampOrbitEyePitch(eye, fallbackPivot)
         if (clampedEye == eye) return transform
         val mat = dev.romainguy.kotlin.math.lookAt(
             eye = clampedEye,
-            target = target,
+            target = fallbackPivot,
             up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
         )
         return io.github.sceneview.math.Transform(mat)
@@ -829,9 +940,10 @@ class HeroOrbitCameraManipulator(
 
     override fun grabEnd() {
         fallback?.grabEnd()
-        // Mark the moment the user released — `update` watches this timestamp and
-        // clears the fallback after `resumeAfterMillis`, restoring the auto-orbit.
-        grabEndTimeNanos = System.nanoTime()
+        // Mark the moment the user released — `settle` watches this timestamp and gives the
+        // camera back after `resumeAfterMillis`, restoring the auto-orbit. The detector also
+        // sends this for a plain tap, which never began a grab: nothing to time then.
+        if (fallback != null) grabEndTimeNanos = nanoTime()
     }
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
@@ -845,21 +957,31 @@ class HeroOrbitCameraManipulator(
 
     override fun scrollEnd() {
         fallback?.scrollEnd()
-        grabEndTimeNanos = System.nanoTime()
+        if (fallback != null) grabEndTimeNanos = nanoTime()
+    }
+
+    /**
+     * Double-tap to zoom (#3641). The interface's default is a no-op, so until this override
+     * existed the gesture was dead on every screen using this manipulator. The zoom is the
+     * stock manipulator's own — same factor, same ease, same toggle — started from the pose on
+     * screen like any other gesture, and the idle orbit then resumes from wherever it lands.
+     */
+    override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {
+        ensureFallback()
+        fallback?.doubleTapZoom(x, y, zoomIn)
+        grabEndTimeNanos = nanoTime()
     }
 
     override fun update(deltaTime: Float) {
         fallback?.update(deltaTime)
-        // Clear the fallback after `resumeAfterMillis` of post-gesture inactivity so the
-        // auto-orbit resumes (#2225). `resumeAfterMillis <= 0L` disables the resume —
-        // legacy behaviour where the fallback is never cleared.
-        if (fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L) {
-            val idleNs = System.nanoTime() - grabEndTimeNanos
-            if (idleNs > resumeAfterMillis * 1_000_000L) {
-                fallback = null
-                grabEndTimeNanos = 0L
-            }
-        }
+        settle()
+    }
+
+    private companion object {
+        const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Long enough to clear a dropped frame or two, short enough that nobody saw the pose. */
+        const val UNWATCHED_MARGIN_NANOS = 1_000L * NANOS_PER_MILLI
     }
 }
 
@@ -868,6 +990,17 @@ class HeroOrbitCameraManipulator(
  * animator. Returns the manipulator ready to drop into a `SceneView(cameraManipulator = ...)`.
  *
  * In [DemoSettings.qaMode] the yaw is frozen at [staticYaw] so screenshot tests stay stable.
+ *
+ * ### The yaw never jumps (#3640)
+ *
+ * [trigger] going `false` **pauses** the turntable and `true` lets it carry on from the same
+ * angle. It used to restart from 0° each time, so anything a demo wires into [trigger] — the
+ * Orbit switch of the lighting screens, Lines & Paths' Animate, a model chip whose instance
+ * goes `null` while the next one loads — threw the camera back to its opening azimuth.
+ *
+ * A new framing ([radius], [yHeight], [target]) is still a new manipulator, and so the authored
+ * pose: those change when the *subject* does, and a framing the user chose for the previous
+ * model means nothing for the next.
  *
  * ### Deep-link zoom override (#1571)
  *
@@ -887,19 +1020,22 @@ fun rememberHeroOrbitCameraManipulator(
     staticYaw: Float = 45f,
     target: Position = Position(0f, 0f, 0f),
     resumeAfterMillis: Long = 3_000L,
+    resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
 ): HeroOrbitCameraManipulator {
     val anim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode) {
+    androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode, durationMillis) {
         if (trigger && !DemoSettings.qaMode) {
             while (true) {
-                anim.snapTo(0f)
+                // Finish the turn the orbit is on, from the angle it stopped at, and only then
+                // wrap: 360° and 0° are the same pose, so that wrap is the one invisible snap.
                 anim.animateTo(
-                    targetValue = 360f,
+                    targetValue = FULL_TURN_DEGREES,
                     animationSpec = androidx.compose.animation.core.tween(
-                        durationMillis = durationMillis,
+                        durationMillis = remainingTurnMillis(anim.value, durationMillis),
                         easing = androidx.compose.animation.core.LinearEasing,
                     ),
                 )
+                anim.snapTo(0f)
             }
         }
     }
@@ -908,13 +1044,14 @@ fun rememberHeroOrbitCameraManipulator(
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis) {
+    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis, resume) {
         HeroOrbitCameraManipulator(
             yawProvider = { if (DemoSettings.qaMode) staticYaw else anim.value },
             radius = effectiveRadius,
             yHeight = yHeight,
             target = target,
             resumeAfterMillis = resumeAfterMillis,
+            resume = resume,
         )
     }
 }
