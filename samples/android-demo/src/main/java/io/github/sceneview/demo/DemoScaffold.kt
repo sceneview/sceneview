@@ -225,10 +225,32 @@ data class DockItem(
 /**
  * Height of the glass identity row (back button + title pill) plus its gutter,
  * provided to the `scene` slot so demos that draw their own top-centre status
- * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome. Zero
- * outside a [DemoScaffold] — `ArViewTab` draws the same pill in a plain tab.
+ * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome.
+ *
+ * Zero outside a [DemoScaffold] — which today means previews only. This line used
+ * to read "`ArViewTab` draws the same pill in a plain tab"; that stopped being true
+ * when the tab and the `ar-placement` demo were unified onto one scaffold, and the
+ * KDoc was never corrected.
  */
 val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
+ * The bottom mirror of [LocalDemoChromeTopInset]: how much room the dock band takes,
+ * **excluding** the system bars, provided to the `scene` slot so a demo that anchors
+ * something at the bottom of the camera — a coaching line, the SDK's plane-discovery
+ * pill — lands above the dock instead of behind it.
+ *
+ * The value is measured, not a token: the dock's height is `Layout.dockHeight` today,
+ * but a chip that wraps at 200 % text makes the band taller, and a constant would not
+ * know. A demo adds its own gutter (`Space.md`) on top of it.
+ *
+ * Zero outside a [DemoScaffold], which is the honest default rather than a real case:
+ * both AR hosts in this app — `ArViewTab` and `ARPlacementDemo` — go through the
+ * scaffold and both declare a dock, so in the app the value is always the measured
+ * one. The zero is for previews, and for a host that one day draws no chrome: it
+ * degrades to "one gutter off the safe area", which is the right answer there.
+ */
+val LocalDemoChromeBottomInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 @Composable
 fun DemoScaffold(
@@ -392,6 +414,7 @@ fun DemoScaffold(
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
+                        LocalDemoChromeBottomInset provides dockClearance,
                     ) {
                         if (arSessionFailed) {
                             Box(
@@ -472,8 +495,8 @@ fun DemoScaffold(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
                                 1f - SceneViewTokens.Glass.scrimPlateau to
-                                    SceneViewTokens.Glass.scrim,
-                                1f to SceneViewTokens.Glass.scrim,
+                                    SceneViewTokens.Glass.scrimDock,
+                                1f to SceneViewTokens.Glass.scrimDock,
                             )
                         ),
                 )
@@ -550,7 +573,11 @@ fun DemoScaffold(
                         )
                     )
                     .padding(horizontal = SceneViewTokens.Space.md)
-                    .padding(bottom = dockClearance + SceneViewTokens.Space.sm),
+                    // `Space.md`, the one gap this screen uses above the dock — not the
+                    // `Space.sm` that used to be here. 8 dp only ever cleared the dock
+                    // because `dockClearance` has a 104 dp floor against an 80 dp dock,
+                    // so the real gap was 32 dp by accident. Make it 16 dp on purpose.
+                    .padding(bottom = dockClearance + SceneViewTokens.Space.md),
             )
         }
     }

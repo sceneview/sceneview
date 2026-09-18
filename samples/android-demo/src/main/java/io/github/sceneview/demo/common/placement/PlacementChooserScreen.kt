@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -115,11 +116,25 @@ fun PlacementChooserScreen(
             )
         },
     ) { contentPadding ->
+        // `contentPadding` goes INSIDE the scroll, not outside it.
+        //
+        // Outside — `.padding(contentPadding).verticalScroll(…)`, which this was — shrinks
+        // the scroll *viewport* to sit above the CTA bar. That is not a bug: nothing is
+        // ever unreachable. But it means the catalogue stops dead at an edge nothing
+        // draws, and a half-visible card row simply ends in mid-air, which is what reads
+        // as "the CTA sliced the grid ~50 px above the bar". Inside, the viewport is the
+        // whole screen and the padding is content: the row slides *under* an opaque bar
+        // with a hairline on it, which is a boundary the eye can name, and the last row
+        // still clears the bar because the padding is still there.
+        //
+        // It also absorbs the CTA's own height changes: the bar grows a line of help text
+        // when the button is disabled, and that now re-pads content instead of resizing
+        // the viewport under a running scroll.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
                 .verticalScroll(rememberScrollState())
+                .padding(contentPadding)
                 .padding(horizontal = SceneViewTokens.Space.md),
         ) {
             Text(
@@ -294,46 +309,58 @@ private fun PlacementChooserCta(
     modelName: String?,
     onEnterAr: () -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(SceneViewTokens.Space.md),
-        ) {
-            Button(
-                onClick = onEnterAr,
-                enabled = state == PlacementCtaState.READY,
+    // `surfaceContainer` + a 1 dp `outlineVariant` hairline, not `surface` on a `surface`
+    // page. The bar was the same colour as the thing it sat on, so it had no container at
+    // all: the catalogue simply stopped 50-odd pixels above the bottom, with the last row
+    // sliced by an edge nothing drew. Giving the bar a ground *and* letting the content
+    // scroll under it (see the caller) turns that into a boundary you can point at.
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HorizontalDivider(
+                thickness = SceneViewTokens.Layout.hairlineWidth,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
-                contentPadding = ButtonDefaults.ContentPadding,
+                    .navigationBarsPadding()
+                    .padding(SceneViewTokens.Space.md),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ViewInAr,
-                    contentDescription = null,
-                    modifier = Modifier.size(CTA_ICON_SIZE),
-                )
-                Spacer(Modifier.size(SceneViewTokens.Space.sm))
-                Text(
-                    text = if (modelName != null) {
-                        stringResource(R.string.ar_placement_cta_named, modelName)
-                    } else {
-                        stringResource(R.string.ar_placement_cta)
-                    },
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            // A disabled button with no sentence under it is the app refusing without
-            // saying why — the "silent refusal" class AR Model Viewer catalogued (a locked
-            // pinch that moved nothing and printed nothing). Every non-READY state speaks.
-            placementCtaHelpRes(state)?.let { helpRes ->
-                Spacer(Modifier.height(SceneViewTokens.Space.xs))
-                Text(
-                    text = stringResource(helpRes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Button(
+                    onClick = onEnterAr,
+                    enabled = state == PlacementCtaState.READY,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget),
+                    contentPadding = ButtonDefaults.ContentPadding,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ViewInAr,
+                        contentDescription = null,
+                        modifier = Modifier.size(CTA_ICON_SIZE),
+                    )
+                    Spacer(Modifier.size(SceneViewTokens.Space.sm))
+                    Text(
+                        text = if (modelName != null) {
+                            stringResource(R.string.ar_placement_cta_named, modelName)
+                        } else {
+                            stringResource(R.string.ar_placement_cta)
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                // A disabled button with no sentence under it is the app refusing without
+                // saying why — the "silent refusal" class AR Model Viewer catalogued (a
+                // locked pinch that moved nothing and printed nothing). Every non-READY
+                // state speaks.
+                placementCtaHelpRes(state)?.let { helpRes ->
+                    Spacer(Modifier.height(SceneViewTokens.Space.xs))
+                    Text(
+                        text = stringResource(helpRes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -532,18 +533,38 @@ fun BoxScope.TapToPlaceStatusOverlays(
         startupStalled = true
     }
 
-    // Surface discovery, tracking loss and the first-run coaching are the guide's job.
+    // ── The one bottom anchor ─────────────────────────────────────────────────────────
     //
-    // The lift is what keeps the pill out of the bottom band. It was sized against the
-    // model bar this PR deletes; the band is now the scaffold's dock, and the lift no
-    // longer covers it — see [PLANE_GUIDE_LIFT], which carries the measurement and the
-    // follow-up.
+    // Everything this screen says lives in one stack, measured from one edge: the bottom
+    // of the safe area, plus the dock the scaffold parks there, plus one 16 dp gutter.
+    // Nothing below reads a constant for any of the three.
+    //
+    // Why the bottom and not the top: no platform *mandates* an anchor — ARCore's own
+    // guidance and Apple's `ARCoachingOverlayView` both leave it to the app — but
+    // Material puts transient messages at the bottom, above docked toolbars and FABs,
+    // and that is also where the user's hand already is on a screen whose whole
+    // interaction is "tap the floor". Thomas asked for the bottom; the guidelines do not
+    // contradict it. Five lines, as requested, and the PR body carries the citations.
+    val chromeBottom = io.github.sceneview.demo.LocalDemoChromeBottomInset.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var coachStackPx by remember { mutableIntStateOf(0) }
+    val coachStack = with(density) { coachStackPx.toDp() }
+
+    // Surface discovery and tracking loss are the guide's job — and the guide is the
+    // *second* floor of this stack, riding above whatever the coaching line is saying.
+    //
+    // It used to carry a 56 dp lift here on top of its own hardcoded 40 dp, measured
+    // against a model bar that no longer exists, with no window inset anywhere in the
+    // sum: 96 dp off the raw edge against a dock whose top edge is at inset + 80 dp, so
+    // the pill sat 8 dp inside the dock with a gesture bar and 32 dp inside it with
+    // three buttons. The lift is deleted. The clearance is now the real thing measured.
     PlaneDiscoveryGuide(
         cameraReady = state.cameraReady,
         isTracking = state.isTracking,
         anyPlaneTracked = state.anyPlaneTracked,
         trackingFailureReason = ForcedTrackingFailure.override ?: state.trackingFailureReason,
-        modifier = Modifier.padding(bottom = PLANE_GUIDE_LIFT),
+        bottomClearance = chromeBottom + SceneViewTokens.Space.md +
+            if (coachStackPx > 0) coachStack + SceneViewTokens.Space.sm else 0.dp,
     )
 
     val coaching = placementCoaching(
@@ -569,33 +590,40 @@ fun BoxScope.TapToPlaceStatusOverlays(
         null -> null
     }
 
-    // ONE top-anchored stack. A Column computes the gap between the coaching line and the
-    // resize read-out from the line's *measured* height, so it cannot go stale at a font
-    // scale, a locale or a string the arithmetic was never checked against (#3237).
+    // ONE bottom-anchored stack. A Column computes the gap between the coaching line and
+    // the resize read-out from the line's *measured* height, so it cannot go stale at a
+    // font scale, a locale or a string the arithmetic was never checked against (#3237).
+    //
+    // The coaching line is declared LAST, so it is the child nearest the dock. That is
+    // what makes this an anchor rather than a stack: the two transient pills above it
+    // appear and vanish with a pinch, and the line that is on screen the whole session
+    // does not move when they do. Declared first, it would hop 40 dp on every gesture.
+    //
+    // The 16 dp side padding is the same grid as the dock, the snackbar and the guide
+    // pill — four surfaces that used 16, 16, 0 and 24 dp before this PR.
     Column(
         modifier = Modifier
-            .align(Alignment.TopCenter)
+            .align(Alignment.BottomCenter)
+            .onSizeChanged { coachStackPx = it.height }
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                 )
             )
-            // Below the scaffold's glass identity row when there is one (#3250).
-            .padding(
-                top = SceneViewTokens.Space.sm +
-                    io.github.sceneview.demo.LocalDemoChromeTopInset.current
-            ),
+            .padding(horizontal = SceneViewTokens.Space.md)
+            // Above the scaffold's dock when there is one, by one gutter. `chromeBottom`
+            // is measured by the scaffold, so a dock that grows at 200 % text pushes
+            // this up with it.
+            .padding(bottom = chromeBottom + SceneViewTokens.Space.md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
-        // The same dark near-opaque scrim every other AR demo coaches through (#3295) —
-        // white 16 sp on ar-scrim reads over an arbitrary camera frame, where the old
-        // `surface.copy(alpha = 0.85f)` capsule with 14 sp label text did not. A null
-        // `text` animates the pill out, so "say nothing" needs no wrapper here.
-        DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
-            text = coachingText,
-            tone = coachingTone(coaching),
-            icon = coachingIcon(coaching),
+        // "Approximating → Tracked" (#3405). Only under instant placement, and only for a
+        // placement that actually landed on an InstantPlacementPoint — a plane-anchored one
+        // has no approximation to report, and a permanent "Tracked" pill would be chrome
+        // that says nothing.
+        PlacementInstantBadge(
+            label = state.instantTracking.takeIf { instantPlacement },
         )
 
         // Live resize read-out — on screen only while two fingers are on the model.
@@ -604,12 +632,16 @@ fun BoxScope.TapToPlaceStatusOverlays(
             isRealWorldSize = state.isRealWorldSize,
         )
 
-        // "Approximating → Tracked" (#3405). Only under instant placement, and only for a
-        // placement that actually landed on an InstantPlacementPoint — a plane-anchored one
-        // has no approximation to report, and a permanent "Tracked" pill would be chrome
-        // that says nothing.
-        PlacementInstantBadge(
-            label = state.instantTracking.takeIf { instantPlacement },
+        // The same dark near-opaque scrim every other AR demo coaches through (#3295) —
+        // white 16 sp on ar-scrim reads over an arbitrary camera frame, where the old
+        // `surface.copy(alpha = 0.85f)` capsule with 14 sp label text did not. A null
+        // `text` animates the pill out, so "say nothing" needs no wrapper here.
+        //
+        // Last in the Column = nearest the dock = the fixed point of the anchor.
+        DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
+            text = coachingText,
+            tone = coachingTone(coaching),
+            icon = coachingIcon(coaching),
         )
     }
 }
@@ -744,24 +776,6 @@ private fun PlacementScaleReadout(
         }
     }
 }
-
-/**
- * How far the [PlaneDiscoveryGuide] pill is lifted off the bottom edge.
- *
- * It was sized against the `PlacementModelBar` (16 dp off the edge, ~56 dp tall), which
- * this PR deletes. Both surfaces now put their actions in the scaffold's dock, and the
- * arithmetic no longer works: the guide anchors its pill 40 dp off the **raw** bottom edge
- * — it applies no window insets at all — so with this lift the pill's bottom sits 96 dp up,
- * while the dock's top edge sits at `safeDrawing.bottom + 16 dp + 64 dp`, i.e. 104 dp with
- * the gesture bar and 128 dp with 3-button navigation. The pill is 8 dp, then 32 dp, inside
- * the dock.
- *
- * Deleting the lift here would only push the pill further in, so it stays until the bottom
- * band is fixed where the defect actually lives: an inset-aware anchor on
- * [PlaneDiscoveryGuide] itself, with one measured clearance above the dock, in the
- * bottom-of-screen PR of this series.
- */
-private val PLANE_GUIDE_LIFT = 56.dp
 
 /**
  * Cross-fade duration for the reticle's searching / ready alpha, milliseconds. Short
