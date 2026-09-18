@@ -337,7 +337,9 @@ private struct SearchRow: View {
                 // Tertiary glyph only; the actual focus indication uses primary below.
                 .foregroundStyle(colorScheme == .dark ? SceneViewTokens.HomeColor.onSurfaceFaint
                                                      : SceneViewTokens.HomeColor.onSurfaceDim)
-            TextField("Search demos", text: $query)
+            TextField("Search demos", text: $query,
+                      prompt: Text("Search demos")
+                          .foregroundStyle(SceneViewTokens.HomeColor.placeholder))
                 .font(SceneViewTokens.TypeScale.body)
                 .focused($focused)
                 .submitLabel(.search)
@@ -361,7 +363,7 @@ private struct SearchRow: View {
         .background(colorScheme == .dark ? SceneViewTokens.HomeColor.floatingSurface
                                         : SceneViewTokens.HomeColor.surface, in: Capsule())
         .overlay(Capsule().strokeBorder(colorScheme == .dark
-                                       ? (focused ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.outline)
+                                       ? (focused ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.controlOutline)
                                        : (focused ? SceneViewTokens.HomeColor.onSurfaceDim : SceneViewTokens.HomeColor.outlineSubtle),
                                         lineWidth: SceneViewTokens.Home.cardOutlineWidth))
         .padding(.horizontal, SceneViewTokens.Home.contentPadding)

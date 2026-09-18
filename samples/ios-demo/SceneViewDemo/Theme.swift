@@ -246,17 +246,36 @@ enum SceneViewTokens {
             light: Color(red: 0x5C / 255, green: 0x63 / 255, blue: 0x70 / 255),
             dark: Color(red: 0x6B / 255, green: 0x72 / 255, blue: 0x80 / 255)
         )
+        /// Placeholder text in a field — `on-surface-faint` in light (#5C6370),
+        /// `on-surface-dim` in dark (#9CA3AF; the faint dark grey is 2.9:1 on a
+        /// field). The system placeholder measured 1.7:1 on the light field and
+        /// 2.4:1 on the dark one; this pair measures 6.05:1 and 5.69:1.
+        static let placeholder = Color(
+            light: Color(red: 0x5C / 255, green: 0x63 / 255, blue: 0x70 / 255),
+            dark: Color(red: 0x9C / 255, green: 0xA3 / 255, blue: 0xAF / 255)
+        )
         /// DESIGN.md Primary, `primary` — #005BC1 / #A4C1FF.
         /// Focus and action glyphs use the accent rather than a text grey.
         static let primary = Color(
             light: Color(red: 0x00 / 255, green: 0x5B / 255, blue: 0xC1 / 255),
             dark: Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
         )
+        /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
+        static let onPrimary = chipSelectedText
         /// DESIGN.md Borders, `outline` — #D6DAE0 / #2A3346.
         /// The Cards row specifies this 1 pt contour for elevated surfaces.
         static let outline = Color(
             light: Color(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255),
             dark: Color(red: 0x2A / 255, green: 0x33 / 255, blue: 0x46 / 255)
+        )
+        /// DESIGN.md Borders, `outline` as it reads today — #D6DAE0 / #8B95A6:
+        /// the boundary that identifies a control (WCAG 1.4.11). `outline`
+        /// above still carries the previous dark value (#2A3346, 1.5:1 on the
+        /// page) because the home cards draw their contour with it; a field at
+        /// rest takes this one, or it is invisible until focused.
+        static let controlOutline = Color(
+            light: Color(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255),
+            dark: Color(red: 0x8B / 255, green: 0x95 / 255, blue: 0xA6 / 255)
         )
         /// `outline-subtle` — #EBEDF0 / #46516A, the 1 pt card + header hairline.
         ///

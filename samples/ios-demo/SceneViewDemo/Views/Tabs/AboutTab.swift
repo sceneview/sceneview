@@ -24,10 +24,15 @@ struct AboutTab: View {
                     starCTA
                     footer
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                // One gutter and one bottom inset for the three tabs: the same
+                // tokens the Showcase grid uses, so a tab switch moves nothing.
+                .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+                .padding(.top, SceneViewTokens.Home.heroTopGap)
+                .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
+            // The page never set a ground, so dark fell back to the system
+            // black (#000) while Showcase and Explore sit on `surface` (#0D1117).
+            .background(SceneViewTokens.HomeColor.surface)
             .navigationTitle("About")
             .sheet(isPresented: $showCreditsSheet) {
                 CreditsSheet()
@@ -149,8 +154,9 @@ struct AboutTab: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(.tint, in: Capsule())
-            .foregroundStyle(.white)
+            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+            // White on the dark-scheme primary (#A4C1FF) measured 1.8:1.
+            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
         }
         .accessibilityLabel("Star SceneView on GitHub")
     }
