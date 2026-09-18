@@ -100,17 +100,28 @@ enum SceneViewTokens {
     /// `DESIGN.md` — Liquid Glass, the "button glass" row, as the demo chrome uses it.
     ///
     /// Theme-independent on purpose: the chrome floats over a live RealityKit /
-    /// ARKit viewport, which is media, not a themed surface. Same 8 % white fill
-    /// and 1 pt 8 % white border as Android; iOS adds `.ultraThinMaterial`
-    /// underneath because a RealityKit view *can* be sampled.
+    /// ARKit viewport, which is media, not a themed surface. Same 1 pt 24 % white
+    /// border as Android; the fill stays at 8 % because iOS puts `.ultraThinMaterial`
+    /// over it — a RealityKit view *can* be sampled.
     enum Glass {
         /// `glass-surface` over media — white at 8 %.
         static let surface = Color.white.opacity(0.08)
-        /// `glass-border` — white at 12 %, 1 pt.
+        /// `glass-ceiling` — `#2A2B2C` at 60 %, above the material, dark scheme only.
         ///
-        /// Raised from 8 % on 2026-09-18: at 8 % over a dark viewport the edge
-        /// is not perceptible, which is the whole job of this token.
-        static let border = Color.white.opacity(0.12)
+        /// The fill above is a *floor*: it keeps glass visible over black. Over
+        /// bright media the dark material resolves to the same grey as the
+        /// scrimmed ground behind it (measured 1.01:1 over the studio
+        /// backdrop, 2026-09-18) and the control loses its shape again, from
+        /// the other side. The ceiling pulls the container back to the tone it
+        /// already has over a dark stage, so it holds ≥ 1.25:1 against both.
+        static let ceiling = Color(red: 42 / 255, green: 43 / 255, blue: 44 / 255).opacity(0.6)
+        /// `glass-border` — white at 24 %, 1 pt: the Android value.
+        ///
+        /// 8 % was not perceptible over a dark viewport; 12 % measured 1.47:1
+        /// against the ground (2026-09-18), short of the 3:1 an edge needs to
+        /// count as the component's boundary. Over a mid-grey ground the fill
+        /// matches the ground and the edge is all that is left of the control.
+        static let border = Color.white.opacity(0.24)
         static let borderWidth: CGFloat = 1
         /// Foreground on glass over media: always white.
         static let onGlass = Color.white
@@ -142,6 +153,15 @@ enum SceneViewTokens {
         static let caption = Font.system(size: 13, weight: .medium)
         static let captionRegular = Font.system(size: 13, weight: .regular)
         static let captionSemibold = Font.system(size: 13, weight: .semibold)
+        /// Chrome text. Same 13 pt as `type-caption` at the default size, but a
+        /// text *style*, so it follows Dynamic Type; `DemoScaffold` caps the
+        /// chrome at XXL and lets the controls sheet scale freely.
+        static let chromeLabel = Font.footnote.weight(.semibold)
+        static let chromeCaption = Font.footnote.weight(.medium)
+        /// Dock captions: one word under a 22 pt icon, six across on a 402 pt
+        /// screen — the tab-bar size. Scales with Dynamic Type; when the row no
+        /// longer fits, the dock drops to icons and keeps the spoken labels.
+        static let chromeDockCaption = Font.caption2.weight(.medium)
     }
 
     /// Home screen colours that are NOT system roles (`DESIGN.md` "Demo App Home").
@@ -238,10 +258,14 @@ enum SceneViewTokens {
             light: Color(red: 0xD6 / 255, green: 0xDA / 255, blue: 0xE0 / 255),
             dark: Color(red: 0x2A / 255, green: 0x33 / 255, blue: 0x46 / 255)
         )
-        /// `outline-subtle` — #EBEDF0 / #1F2937, the 1 pt card + header hairline.
+        /// `outline-subtle` — #EBEDF0 / #46516A, the 1 pt card + header hairline.
+        ///
+        /// Dark was #1F2937 — darker than the `surface-container` it is drawn
+        /// on (#22293E), so a divider inside a sheet measured 1.04:1. `DESIGN.md`
+        /// already carried #46516A; this file had not followed.
         static let outlineSubtle = Color(
             light: Color(red: 0xEB / 255, green: 0xED / 255, blue: 0xF0 / 255),
-            dark: Color(red: 0x1F / 255, green: 0x29 / 255, blue: 0x37 / 255)
+            dark: Color(red: 0x46 / 255, green: 0x51 / 255, blue: 0x6A / 255)
         )
         /// `surface` — #FFFFFF / #0D1117 (the page ground).
         static let surface = Color(
@@ -390,6 +414,42 @@ enum SceneViewTokens {
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
     }
+
+    /// `DESIGN.md` — "Demo Scaffold (iOS)": where the chrome sits, in points.
+    ///
+    /// These are the only numbers that place chrome on a demo screen.
+    /// `DemoScaffold` applies them once; a demo never pads its own bottom,
+    /// never reads a safe-area inset and never picks a horizontal margin.
+    enum Chrome {
+        /// `chrome-margin` — the one horizontal margin. The back button, the
+        /// identity pill, every accessory and the sheet content all start and
+        /// end here.
+        static let margin: CGFloat = 16
+        /// `chrome-top-gap` — top safe-area edge (status bar, Dynamic Island)
+        /// to the visual top of the top row.
+        static let topGap: CGFloat = 8
+        /// `chrome-cluster-gap` — accessory to dock.
+        static let clusterGap: CGFloat = 12
+        /// `chrome-scrim-top` — height of the top scrim band, from the screen edge.
+        static let scrimTop: CGFloat = 160
+        /// `chrome-scrim-bottom` — minimum height of the bottom scrim band.
+        static let scrimBottomMin: CGFloat = 220
+        /// Share of a scrim band, nearest the screen edge, that stays flat.
+        static let scrimFlat: CGFloat = 0.55
+        /// `chrome-scrim` — black at 60 %.
+        static let scrim = Color.black.opacity(0.60)
+        /// Chrome entrance travel: the top row drops in, the bottom cluster rises.
+        static let enterTop: CGFloat = 12
+        static let enterBottom: CGFloat = 24
+
+        /// `dock-bottom` — distance from the **screen** edge to the dock's
+        /// bottom edge: 8 pt above the home-indicator safe area (34 + 8 = 42 pt
+        /// on a Face ID iPhone), never less than `chrome-margin` (16 pt on a
+        /// Home-button iPhone, where the inset is 0).
+        static func dockBottom(safeArea: CGFloat) -> CGFloat {
+            max(margin, safeArea + 8)
+        }
+    }
 }
 
 // MARK: - Color Extension for Light/Dark
@@ -481,8 +541,8 @@ extension View {
         #endif
     }
 
-    /// The `Glass` contract from `DESIGN.md`, as a single modifier: material,
-    /// then the 8 % white fill, then the 1 pt white border.
+    /// The `Glass` contract from `DESIGN.md`, as a single modifier: the 8 % white
+    /// floor, the material, the dark-scheme ceiling, then the 1 pt white border.
     ///
     /// A bare `.ultraThinMaterial` is a *blur of what is behind it*, not a
     /// colour. Over a live 3D viewport that has gone dark — an unlit scene, an
@@ -495,15 +555,7 @@ extension View {
     /// Use this anywhere chrome sits over media. Themed surfaces inside a page
     /// take `HomeColor.surfaceContainer` instead.
     func glassBackground<S: InsettableShape>(in shape: S) -> some View {
-        self
-            .background(.ultraThinMaterial, in: shape)
-            .background(SceneViewTokens.Glass.surface, in: shape)
-            .overlay(
-                shape.strokeBorder(
-                    SceneViewTokens.Glass.border,
-                    lineWidth: SceneViewTokens.Glass.borderWidth
-                )
-            )
+        modifier(GlassBackground(shape: shape))
     }
 
     /// Edge-to-edge variant for bars that have no corner radius of their own.
@@ -527,5 +579,26 @@ extension View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+}
+
+/// Body of `glassBackground(in:)` — a modifier only because the ceiling depends
+/// on the colour scheme.
+private struct GlassBackground<S: InsettableShape>: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let shape: S
+
+    func body(content: Content) -> some View {
+        content
+            // Nearest the content first: ceiling, material, floor.
+            .background(colorScheme == .dark ? SceneViewTokens.Glass.ceiling : .clear, in: shape)
+            .background(.ultraThinMaterial, in: shape)
+            .background(SceneViewTokens.Glass.surface, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    SceneViewTokens.Glass.border,
+                    lineWidth: SceneViewTokens.Glass.borderWidth
+                )
+            )
     }
 }

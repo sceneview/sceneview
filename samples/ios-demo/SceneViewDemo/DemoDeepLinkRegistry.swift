@@ -154,12 +154,12 @@ enum DemoDeepLinkRegistry {
     /// `.fullScreenCover` / `.sheet`) already runs on the main actor.
     @MainActor
     static func destination(for id: String) -> AnyView {
-        if let view = GeneratedScenes.destination(for: id) {
-            return view
-        }
-        if let canonical = legacyAliases[id],
-           let view = GeneratedScenes.destination(for: canonical) {
-            return view
+        // A deep link skips the Showcase grid, which is what normally tells the
+        // demo chrome its title — so a linked demo opened with no identity pill.
+        let canonical = GeneratedScenes.allowedIds.contains(id) ? id : legacyAliases[id]
+        if let canonical, let view = GeneratedScenes.destination(for: canonical) {
+            let title = GeneratedScenes.all().first { $0.sceneId == canonical }?.title
+            return AnyView(view.environment(\.demoTitle, title))
         }
         return AnyView(DeepLinkPlaceholder(
             id: id,

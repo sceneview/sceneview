@@ -409,7 +409,8 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   feed — the panel edge was a guess. 0.14 / 0.24 is the first pair that clears
   1.25:1 on both grounds with margin (fill 1.47:1 and 1.35:1; border 2.09:1 and
   1.93:1) while still reading as glass rather than a solid sheet. Web and iOS keep
-  0.08 wherever they have a genuine `backdrop-filter`.
+  0.08 wherever they have a genuine `backdrop-filter` — iOS pairs it with a ceiling
+  and the same 0.24 border, see *Demo Scaffold (iOS demo)*.
 - **The chrome bands sit on `chrome-scrim`.** White on media reads only when the
   media is dark, and a demo scene can be any brightness — a near-white studio
   erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
@@ -449,6 +450,52 @@ with `motion-fade`.
   apart from the labelled items the way a FAB is set apart from a navigation bar.
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
+
+### Demo Scaffold (iOS demo)
+
+`DemoScaffold` is the one SwiftUI shell every iOS demo screen stands in: the scene
+full-bleed, the chrome above it, one settings sheet. A demo passes its `SceneView` and,
+at most, one accessory and its controls — it never places chrome, reads a safe area or
+presents a sheet itself. Same tokens as the two Android sections above; what differs is
+listed here.
+
+| Token | Value | Usage |
+|---|---|---|
+| `glass-surface` (iOS) | rgba(255,255,255,0.08) under `.ultraThinMaterial` | Floor — what the blur cannot fall under over dark media |
+| `glass-ceiling` (iOS, dark scheme) | rgba(42,43,44,0.60) over the material | Ceiling — what the blur cannot rise above over bright media |
+| `glass-border` | 1pt rgba(255,255,255,0.24) | Same value as Android |
+| `dock-caption` (iOS) | `caption2` / 500 | Five captioned items + the accent fit 402pt; at larger Dynamic Type sizes the dock falls back to icons, the accessibility label stays |
+
+**Bottom of the screen, in points** (measured on the 402 × 874pt iPhone 17, 34pt home
+indicator; every value follows the safe area, none is a constant offset from the edge):
+
+| Element | Value |
+|---|---|
+| Dock bottom edge → screen bottom | `max(16, safe-area + 8)` = **42pt** (16pt with a home button) |
+| Dock height | 64pt |
+| Accessory (option strip / hint) → dock | 12pt |
+| Option strip height | 48pt (44pt segments) |
+| Horizontal margin, every chrome block | 16pt |
+| Back button → safe-area top | 8pt |
+| Settings sheet, resting | hugs the measured controls + 24pt inset top and bottom, capped at half the screen; never a fraction that can cut a control |
+| Settings sheet, last control → sheet edge | 24pt + the bottom safe area (68pt visual on iPhone 17) |
+| Shared rows (Reset · Send feedback · QA mode) | below the fold, `safe-area + 8pt` past the resting edge; scroll or expand to reach them |
+
+- **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
+  is a blur of what is behind it. Over dark media it resolves to nearly black (hence
+  the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
+  the backdrop itself — measured **1.01:1**, a pill with no edge. The ceiling is the
+  dark-scheme counterpart of the floor, and with the 24 % border the better of
+  fill-vs-ground and border-vs-ground never drops under **1.43:1** on dark, mid and
+  bright grounds (border 3.12:1 on the dark stage).
+- **The sheet is a themed surface, not glass.** `surface-container`, the app's
+  light/dark colours, `outline-subtle` hairline. The stage and its chrome are media and
+  stay dark in both schemes; the sheet is the only part of a demo that follows the theme.
+- **Motion.** Stage fades in (`motion-fade`, 300 ms); chrome rises 12pt (top) / 24pt
+  (bottom) on `motion-spring` — measured 333 ms; an option change moves the selection
+  capsule on the same spring. Under Reduce Motion the travel is dropped and the opacity
+  fade stays.
+- **VoiceOver order** is back, title, scene, accessory, dock — Settings last.
 
 ---
 

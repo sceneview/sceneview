@@ -211,7 +211,7 @@ struct ModelViewerDemo: View {
     private var dock: [DockItem] {
         var items = [
             DockItem(icon: "scope", label: "Recenter") { recenterGeneration += 1 },
-            DockItem(icon: "sun.max", label: "Environment") { sheet = .environment },
+            DockItem(icon: "sun.max", label: "Environment", caption: "Lighting") { sheet = .environment },
             DockItem(icon: "cube.transparent", label: "Models") { sheet = .models },
         ]
         if !animationNames.isEmpty {

@@ -88,6 +88,32 @@ final class TextNodeTests: XCTestCase {
         XCTAssertNotNil(node.entity)
     }
 
+    func testCenteredPutsTheTextOnItsPosition() {
+        let target = SIMD3<Float>(0.5, 1.0, -2.0)
+        // Both orders: the documented one used to leave the text uncentred, the
+        // other one used to send it back to the origin.
+        let nodes = [
+            TextNode(text: "Center me", fontSize: 0.1).centered().position(target),
+            TextNode(text: "Center me", fontSize: 0.1).position(target).centered(),
+        ]
+        for node in nodes {
+            let center = node.entity.visualBounds(relativeTo: nil).center
+            XCTAssertEqual(center.x, target.x, accuracy: 0.001)
+            XCTAssertEqual(center.y, target.y, accuracy: 0.001)
+            XCTAssertEqual(center.z, target.z, accuracy: 0.001)
+            XCTAssertEqual(node.position, target)
+        }
+    }
+
+    func testCenteredIsIdempotent() {
+        let node = TextNode(text: "Center me", fontSize: 0.1).centered()
+        let once = node.entity.visualBounds(relativeTo: nil)
+        node.centered()
+        let twice = node.entity.visualBounds(relativeTo: nil)
+        XCTAssertEqual(twice.center.x, once.center.x, accuracy: 0.001)
+        XCTAssertEqual(twice.extents.x, once.extents.x, accuracy: 0.001)
+    }
+
     // MARK: - Chaining
 
     func testChainingTransforms() {
