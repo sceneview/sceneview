@@ -294,7 +294,7 @@ struct ARTab: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
+        .glassBackground(in: Capsule())
         .overlay(
             Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
@@ -344,7 +344,7 @@ struct ARTab: View {
                 .foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .glassBackground(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
@@ -373,7 +373,7 @@ struct ARTab: View {
                 .foregroundStyle(.primary)
         }
         .buttonStyle(.plain)
-        .background(.regularMaterial, in: Circle())
+        .glassBackground(in: Circle())
         .overlay(Circle().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
         .accessibilityLabel(label)
     }
@@ -415,8 +415,7 @@ struct ARTab: View {
                                     .lineLimit(1)
                             }
                             .padding(8)
-                            .background(
-                                .regularMaterial,
+                            .glassBackground(
                                 in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                             )
                             .overlay(
@@ -833,7 +832,7 @@ private struct ARDemoCard: View {
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 150, alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)

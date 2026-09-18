@@ -86,7 +86,7 @@ struct CreditsSheet: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
@@ -185,7 +185,7 @@ struct CreditsSheet: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private static func icon(for sectionTitle: String) -> String {

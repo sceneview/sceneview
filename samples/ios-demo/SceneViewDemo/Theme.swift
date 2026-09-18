@@ -106,8 +106,11 @@ enum SceneViewTokens {
     enum Glass {
         /// `glass-surface` over media — white at 8 %.
         static let surface = Color.white.opacity(0.08)
-        /// `glass-border` — white at 8 %, 1 pt.
-        static let border = Color.white.opacity(0.08)
+        /// `glass-border` — white at 12 %, 1 pt.
+        ///
+        /// Raised from 8 % on 2026-09-18: at 8 % over a dark viewport the edge
+        /// is not perceptible, which is the whole job of this token.
+        static let border = Color.white.opacity(0.12)
         static let borderWidth: CGFloat = 1
         /// Foreground on glass over media: always white.
         static let onGlass = Color.white
@@ -476,6 +479,36 @@ extension View {
         #else
         self
         #endif
+    }
+
+    /// The `Glass` contract from `DESIGN.md`, as a single modifier: material,
+    /// then the 8 % white fill, then the 1 pt white border.
+    ///
+    /// A bare `.ultraThinMaterial` is a *blur of what is behind it*, not a
+    /// colour. Over a live 3D viewport that has gone dark — an unlit scene, an
+    /// AR camera feed in a dim room, a `stage-background` clear colour — it has
+    /// nothing bright to sample and resolves to very nearly the black behind
+    /// it, so the control loses its background and only the label floats. The
+    /// fill gives it a floor that does not depend on the scene; the border
+    /// gives it an edge where even the floor is not enough.
+    ///
+    /// Use this anywhere chrome sits over media. Themed surfaces inside a page
+    /// take `HomeColor.surfaceContainer` instead.
+    func glassBackground<S: InsettableShape>(in shape: S) -> some View {
+        self
+            .background(.ultraThinMaterial, in: shape)
+            .background(SceneViewTokens.Glass.surface, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    SceneViewTokens.Glass.border,
+                    lineWidth: SceneViewTokens.Glass.borderWidth
+                )
+            )
+    }
+
+    /// Edge-to-edge variant for bars that have no corner radius of their own.
+    func glassBackground() -> some View {
+        self.glassBackground(in: Rectangle())
     }
 
     /// Apply SceneView card styling

@@ -1020,7 +1020,7 @@ private struct FeaturedGalleryCard: View {
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(.thinMaterial, in: Capsule())
+                            .glassBackground(in: Capsule())
                             .padding(8)
                     }
                 }
@@ -1238,7 +1238,7 @@ private struct RecentSearchRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -1328,7 +1328,7 @@ private struct ModelCard: View {
                             .font(.body)
                             .foregroundStyle(isFavorite ? .red : .secondary)
                             .padding(8)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .glassBackground(in: Circle())
                     }
                     .padding(6)
                 }
@@ -1415,7 +1415,7 @@ struct ModelViewerScreen: View {
                         .padding(.horizontal)
                 }
                 .padding()
-                .background(.ultraThinMaterial)
+                .glassBackground()
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding()
             }
@@ -1567,7 +1567,7 @@ struct ModelViewerScreen: View {
                 .foregroundStyle(.white.opacity(0.5))
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding()
     }
@@ -1710,7 +1710,7 @@ struct GalleryModelViewerScreen: View {
                             .foregroundStyle(.white.opacity(0.6))
                     }
                     .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .glassBackground(in: RoundedRectangle(cornerRadius: 16))
                 }
 
                 if let errorMessage {
@@ -1882,7 +1882,7 @@ struct GalleryModelViewerScreen: View {
             .padding(.top, 4)
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding()
     }
@@ -1997,7 +1997,7 @@ struct GalleryModelViewerScreen: View {
             .foregroundStyle(.white.opacity(0.7))
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .glassBackground()
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding()
     }
