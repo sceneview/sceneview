@@ -534,12 +534,10 @@ fun BoxScope.TapToPlaceStatusOverlays(
 
     // Surface discovery, tracking loss and the first-run coaching are the guide's job.
     //
-    // The bottom padding is not decoration: the guide anchors its pill 40 dp off the bottom
-    // edge and `TapToPlaceExperience` floats the model bar 16 dp off the same edge, so
-    // unlifted they occupy the same band and collide on first launch — before the user has
-    // done anything at all. Lifting the guide clear is a one-line fix here rather than a
-    // signature change in `arsceneview`, because the collision is between two *demo*
-    // decisions about the bottom band (#3326).
+    // The lift is what keeps the pill out of the bottom band. It was sized against the
+    // model bar this PR deletes; the band is now the scaffold's dock, and the lift no
+    // longer covers it — see [PLANE_GUIDE_LIFT], which carries the measurement and the
+    // follow-up.
     PlaneDiscoveryGuide(
         cameraReady = state.cameraReady,
         isTracking = state.isTracking,
@@ -748,10 +746,20 @@ private fun PlacementScaleReadout(
 }
 
 /**
- * How far the [PlaneDiscoveryGuide] pill is lifted off the bottom edge so it clears the
- * model bar. The bar is 16 dp off the edge and roughly 56 dp tall; the guide's own 40 dp
- * offset then lands it inside the bar. 56 dp of lift puts a readable gap between them at
- * every font scale the bar itself survives.
+ * How far the [PlaneDiscoveryGuide] pill is lifted off the bottom edge.
+ *
+ * It was sized against the `PlacementModelBar` (16 dp off the edge, ~56 dp tall), which
+ * this PR deletes. Both surfaces now put their actions in the scaffold's dock, and the
+ * arithmetic no longer works: the guide anchors its pill 40 dp off the **raw** bottom edge
+ * — it applies no window insets at all — so with this lift the pill's bottom sits 96 dp up,
+ * while the dock's top edge sits at `safeDrawing.bottom + 16 dp + 64 dp`, i.e. 104 dp with
+ * the gesture bar and 128 dp with 3-button navigation. The pill is 8 dp, then 32 dp, inside
+ * the dock.
+ *
+ * Deleting the lift here would only push the pill further in, so it stays until the bottom
+ * band is fixed where the defect actually lives: an inset-aware anchor on
+ * [PlaneDiscoveryGuide] itself, with one measured clearance above the dock, in the
+ * bottom-of-screen PR of this series.
  */
 private val PLANE_GUIDE_LIFT = 56.dp
 

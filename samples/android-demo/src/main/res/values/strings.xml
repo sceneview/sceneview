@@ -110,6 +110,13 @@
     <string name="ar_picker_no_model">No model</string>
     <string name="ar_picker_source_streamed">Streamed</string>
     <string name="ar_picker_source_streaming">Streaming…</string>
+    <!-- Dock items of the tap-to-place screen. `*_label` is the accessible name, `*_caption`
+         the one word drawn under the icon (DockItem). Both AR surfaces use these, so the
+         demo and the AR View tab cannot word the same action differently. -->
+    <string name="ar_dock_models_label">Choose a model</string>
+    <string name="ar_dock_models_caption">Models</string>
+    <string name="ar_dock_clear_label">Clear every placed model</string>
+    <string name="ar_dock_clear_caption">Clear</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
     <!-- Placement coaching — ONE line at a time, Scene Viewer parity (#3326).
          See PlacementInteraction.placementCoaching for which one shows when. -->

@@ -11,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,19 +20,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -314,78 +308,16 @@ fun List<PlacementModel>.armed(picker: PlacementPickerState): PlacementModel? =
     firstOrNull { it.id == picker.selectedId } ?: firstOrNull()
 
 /**
- * The canonical bottom action bar of the tap-to-place experience: an extended FAB naming
- * exactly what the next tap will place (tapping it opens the picker) plus an optional
- * Reset that wipes every placement.
+ * The name the picker and the status pill agree on — "Streaming X…" while X is downloading.
  *
- * Both hosts render *this* composable — the AR View tab floats it over the camera, the
- * `ar-placement` demo hands it to [io.github.sceneview.demo.DemoScaffold]'s `bottomOverlay`
- * slot so it stacks clear of the Settings FAB. The container differs because the two
- * screens *are* different containers; the control does not.
+ * It used to feed a `PlacementModelBar`, an extended FAB floated over the camera (AR View
+ * tab) or handed to the scaffold's bottom band (`ar-placement` demo). That bar is gone: it
+ * was a theme-coloured control over an untheme-able camera frame, it duplicated the dock's
+ * job, and no other demo in the app puts its two main actions anywhere but the dock. The
+ * label survives because the *sheet* and the coaching line still name the armed model.
  */
 @Composable
-fun PlacementModelBar(
-    model: PlacementModel?,
-    onPickModel: () -> Unit,
-    modifier: Modifier = Modifier,
-    onReset: (() -> Unit)? = null,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ExtendedFloatingActionButton(
-            onClick = onPickModel,
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = PLACEMENT_BAR_HEIGHT),
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            expanded = true,
-            icon = {
-                Icon(imageVector = Icons.Filled.ViewInAr, contentDescription = null)
-            },
-            text = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.ar_picker_model_label),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        text = model?.let { modelBarLabel(it) }
-                            ?: stringResource(R.string.ar_picker_no_model),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                    )
-                }
-            },
-        )
-
-        if (onReset != null) {
-            FilledIconButton(
-                onClick = onReset,
-                modifier = Modifier.size(PLACEMENT_BAR_HEIGHT),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = stringResource(R.string.ar_reset_scene),
-                )
-            }
-        }
-    }
-}
-
-/** The name the bar and the status pill agree on — "Streaming X…" while X is downloading. */
-@Composable
-private fun modelBarLabel(model: PlacementModel): String =
+fun placementModelLabel(model: PlacementModel): String =
     if (model.pending) {
         stringResource(R.string.ar_picker_streaming, model.displayName)
     } else {
@@ -557,13 +489,6 @@ internal fun PlacementModelCard(
         }
     }
 }
-
-/**
- * Height of the bar's two controls — the M3 minimum touch target for a primary action,
- * and the diameter that makes the Reset button read as its equal rather than as an
- * afterthought beside it.
- */
-private val PLACEMENT_BAR_HEIGHT = 56.dp
 
 // Picker-card geometry. Not `DESIGN.md` tokens, because none of these is one: they are the
 // size of a model thumbnail and the height at which the grid stops growing and starts
