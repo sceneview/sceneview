@@ -4,8 +4,9 @@
 #
 #   dispatch(version) ─▶ web device-QA gate (BLOCKING) ─▶ bump via the now-complete
 #   sync-versions.sh --fix (M7b, 0 residuals) ─▶ changelog collate ─▶ release PR
-#   with auto-merge ─▶ this workflow's own `tag` job waits for that PR to merge,
-#   tags the merge commit and dispatches release.yml on the tag ref.
+#   with auto-merge ─▶ explicit `gh workflow run ci.yml --ref release/vX.Y.Z` to
+#   start that PR's required checks ─▶ this workflow's own `tag` job waits for the
+#   PR to merge, tags the merge commit and dispatches release.yml on the tag ref.
 #
 # WHY PR-then-tag and not a direct push: main is protected by required status
 # checks (ci.yml job names) with no push restrictions but no GITHUB_TOKEN
@@ -13,10 +14,16 @@
 # can, which is exactly what the manual recipe did). The PR path keeps the
 # required checks honest AND gives the bump diff a reviewable surface for free.
 #
-# WHY THIS WORKFLOW TAGS ITSELF INSTEAD OF HANDING OFF (#3358): GitHub emits NO
+# WHY THIS WORKFLOW DRIVES EVERY STEP ITSELF (#3358, #3664): GitHub emits NO
 # workflow events for anything done with the default `GITHUB_TOKEN`. That bites
-# twice on this pipeline, one step apart:
+# THREE times on this pipeline, in pipeline order:
 #
+#   * the release BRANCH PUSH and the PR opened on it are GITHUB_TOKEN work, so
+#     neither `push` nor `pull_request` fires and the release PR opens with no
+#     checks at all. The required contexts never appear, `--auto` has nothing to
+#     wait on, and the `tag` job below burns its full 170-minute timeout. Three
+#     releases out of three died this way — 4.35.0 and 4.37.0 were rescued by
+#     hand, 4.36.0 was never tagged nor published (#3664);
 #   * the auto-MERGE of the release PR is performed with GITHUB_TOKEN, so the
 #     resulting push to main fires no `push` event — a companion workflow keyed
 #     on `on: push: branches: [main]` never runs. This is exactly how v4.33.0
@@ -24,12 +31,15 @@
 #   * the TAG this pipeline pushes is likewise GITHUB_TOKEN-made, so release.yml's
 #     `on: push: tags:` trigger would not fire either.
 #
-# The fix for the first is to stop depending on the event chain at all: the `tag`
-# job below belongs to THIS run, waits for the PR it just opened to merge, and
-# tags the merge commit directly. If the merge never happens, that job fails red
-# instead of the release evaporating in silence. The fix for the second is
-# unchanged — an explicit `gh workflow run release.yml --ref v$V` (release.yml
-# already accepts workflow_dispatch, which is equivalent to the tag-push path).
+# All three fixes are the same move: stop depending on the event chain and ask
+# for the run explicitly, because `workflow_dispatch` through the API is the one
+# trigger GITHUB_TOKEN CAN start. The first is `gh workflow run ci.yml --ref
+# release/vX.Y.Z` in the checkpoint job. The second is the `tag` job below, which
+# belongs to THIS run, waits for the PR it just opened to merge, and tags the
+# merge commit directly — if the merge never happens, that job fails red instead
+# of the release evaporating in silence. The third is `gh workflow run
+# release.yml --ref v$V` (release.yml already accepts workflow_dispatch, which is
+# equivalent to the tag-push path).
 #
 # A PAT/App token for the merge was the other candidate. Rejected: it makes the
 # release depend on a credential that expires silently and fails back into the
@@ -67,6 +77,13 @@ jobs:
     name: QA gate + bump PR (${{ inputs.version }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Job-level permissions REPLACE the workflow-level block, so restate the two
+    # it already had. `actions: write` is the new one: the step below dispatches
+    # ci.yml on the release branch to start the PR's required checks (#3664).
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     outputs:
       branch: ${{ steps.open_pr.outputs.branch }}
     # Shell-injection hardening: the version input reaches shell ONLY via this
@@ -160,6 +177,53 @@ jobs:
             --body "One-click release pipeline (release-fast.yml). Web device-QA gate passed (or explicitly skipped: \`${{ inputs.skip_web_qa }}\`); sync-versions 0 mismatch; changelog collated. **Merging this PR tags \`v$V\`** (the \`tag\` job of this same release-fast run) and launches release.yml." \
             --base main --head "$BRANCH"
           gh pr merge "$BRANCH" --squash --auto
+
+      # ── Start the release PR's checks by hand (#3664) ────────────────────
+      # The push and the PR above were both made with GITHUB_TOKEN, and GitHub
+      # emits no `push` / `pull_request` events for anything that token does —
+      # the same rule that already forces this workflow to tag itself. The
+      # consequence here is that the release PR opens with ZERO checks: the
+      # required contexts never appear, `--auto` has nothing to wait on and
+      # never fires, and the `tag` job below burns its full 170-minute timeout.
+      # That is not a hypothesis — it is 3 releases out of 3 (4.35.0, 4.36.0,
+      # 4.37.0), and 4.36.0 was never tagged nor published because of it.
+      #
+      # `workflow_dispatch` is the documented exception to the no-events rule:
+      # a run explicitly requested through the API starts even when the request
+      # carries GITHUB_TOKEN. So ask for it explicitly, exactly as the `tag` job
+      # already does for release.yml on the tag ref.
+      #
+      # This works because branch protection grades a PR on the check runs
+      # attached to its HEAD SHA, not on which event produced them. All nine
+      # required contexts ("Path filter completed", "Build libraries & samples",
+      # "Lint", "Unit tests", "API compatibility", "Build web targets",
+      # "Flutter plugin + demo APK", "Compile KMP core", "KMP native unit tests
+      # (iOS sim)") are jobs of ci.yml and keep their names on a dispatch run,
+      # and `--ref "$BRANCH"` runs them against the branch head — which IS the
+      # PR head. `force-all=true` makes all nine appear without depending on the
+      # path filter's verdict for the bump diff.
+      - name: Start CI on the release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.open_pr.outputs.branch }}
+        run: |
+          gh workflow run ci.yml --ref "$BRANCH" -f force-all=true
+
+          # Confirm the run actually exists. A dispatch that silently no-ops
+          # would reproduce #3664 exactly — a PR with no checks, discovered
+          # 170 minutes later by the `tag` job's timeout. Fail here instead,
+          # while the branch and the PR are the only things that exist yet.
+          for _ in $(seq 1 12); do
+            sleep 10
+            COUNT=$(gh run list --workflow=ci.yml --branch "$BRANCH" \
+              --event workflow_dispatch --json databaseId -q 'length' || echo 0)
+            if [ "${COUNT:-0}" -gt 0 ]; then
+              echo "CI started on $BRANCH ($COUNT run(s))."
+              exit 0
+            fi
+          done
+          echo "::error::'gh workflow run ci.yml --ref $BRANCH' produced no run after 2 min. The release PR has no checks, so auto-merge can never fire (#3664). Start CI on that branch by hand, or push an empty commit to it with non-GITHUB_TOKEN credentials."
+          exit 1
 
   # The release is NOT done when the PR is open — it is done when the tag exists.
   # This job owns that gap end to end (#3358): it waits for its own PR to merge
