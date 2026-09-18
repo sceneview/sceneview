@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -65,6 +64,7 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.DepthOcclusionCopy
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -496,11 +496,6 @@ private fun OcclusionStatePill(occlusionOn: Boolean) {
     } else {
         SceneViewTokens.ArOverlay.scrimLight
     }
-    val borderColor = if (dark) {
-        SceneViewTokens.ArOverlay.borderDark
-    } else {
-        SceneViewTokens.ArOverlay.borderLight
-    }
     // Active state gets the overlay's own accent; inactive gets the same white the text
     // is on, dimmed. No new colour token, and the pair reads as on/off in both themes.
     val dotColor = if (occlusionOn) {
@@ -514,11 +509,9 @@ private fun OcclusionStatePill(occlusionOn: Boolean) {
         modifier = Modifier
             .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
             .background(color = scrim, shape = shape)
-            .border(
-                width = SceneViewTokens.ArOverlay.borderWidth,
-                color = borderColor,
-                shape = shape,
-            )
+            // `over-media-edge`: the ground is a camera frame, so the edge is measured
+            // against WCAG 1.4.11's 3:1 on a white wall and on a night scene.
+            .overMediaEdge(shape)
             .padding(
                 horizontal = SceneViewTokens.Space.md,
                 vertical = SceneViewTokens.Space.sm,

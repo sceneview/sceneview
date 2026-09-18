@@ -1,7 +1,6 @@
 package io.github.sceneview.demo.common
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +43,7 @@ import io.github.sceneview.demo.demos.internal.filledSegments
 import io.github.sceneview.demo.demos.internal.label
 import io.github.sceneview.demo.demos.internal.shortCloudAnchorCode
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 
 /**
  * The one card surface of the Cloud Anchor demo (#3421) — whatever the current step needs
@@ -205,11 +205,10 @@ private fun DemoBottomOverlayScope.CardShell(
                 // rather than clipped inside it — same order as the coaching pill.
                 .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
                 .background(color = cardScrim(), shape = shape)
-                .border(
-                    width = SceneViewTokens.ArOverlay.borderWidth,
-                    color = cardBorder(),
-                    shape = shape,
-                )
+                // `over-media-edge`, not a theme hairline: the ground is a camera frame,
+                // so the edge is measured against WCAG 1.4.11's 3:1 on a white wall and on
+                // a night scene, not against a 1.25:1 surface bar.
+                .overMediaEdge(shape)
                 .padding(SceneViewTokens.Space.md)
                 .testTag(testTag),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -232,14 +231,6 @@ private fun cardScrim(): Color = if (isDarkTheme()) {
     SceneViewTokens.ArOverlay.scrimDark
 } else {
     SceneViewTokens.ArOverlay.scrimLight
-}
-
-/** @see cardScrim */
-@Composable
-private fun cardBorder(): Color = if (isDarkTheme()) {
-    SceneViewTokens.ArOverlay.borderDark
-} else {
-    SceneViewTokens.ArOverlay.borderLight
 }
 
 @Composable

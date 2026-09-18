@@ -112,6 +112,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
 import kotlinx.coroutines.flow.filter
@@ -752,16 +753,22 @@ private fun BoxScope.DemoDock(
             .onSizeChanged { onHeightChanged(it.height) }
             .padding(bottom = SceneViewTokens.Space.md),
     ) {
+        // The dock had no edge at all: a 14 % white fill straight onto the camera frame,
+        // which is 1.47:1 over a dark scene and vanishes entirely over a bright one. It is
+        // the app's most-used control surface, so it gets the same `over-media-edge` as
+        // every other floating element (WCAG 1.4.11, 3:1).
+        val dockShape = RoundedCornerShape(SceneViewTokens.Radius.full)
         HorizontalFloatingToolbar(
             expanded = true,
             modifier = Modifier
+                .overMediaEdge(dockShape)
                 .height(SceneViewTokens.Layout.dockHeight)
                 .testTag(DemoScaffoldTestTags.DOCK),
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                 toolbarContainerColor = SceneViewTokens.Glass.surface,
                 toolbarContentColor = SceneViewTokens.Glass.onGlass,
             ),
-            shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+            shape = dockShape,
             // The accent stays icon-only: it is a 48 dp filled button, and a caption under
             // it needs 66 dp in a 64 dp toolbar — it was silently clipped. Its filled,
             // primary-tinted treatment is what distinguishes it from the labelled items,
