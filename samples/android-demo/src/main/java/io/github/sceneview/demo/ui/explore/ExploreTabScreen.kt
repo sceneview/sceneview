@@ -415,7 +415,7 @@ private fun ExploreBody(
                             .fillMaxWidth()
                             .height(SceneViewTokens.Layout.heroStageHeight)
                             .clip(RoundedCornerShape(SceneViewTokens.Radius.xl))
-                            .background(MaterialTheme.colorScheme.surfaceDim),
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (loadingFeeds) CircularProgressIndicator()
@@ -550,7 +550,7 @@ private fun FloatingSearchPill(sourceName: String, onClick: () -> Unit, modifier
     Surface(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
-        color = MaterialTheme.colorScheme.surfaceDim,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(
             colors.glassBorderWidth,
             if (dark) colors.glassBorderDark else colors.glassBorderLight,
@@ -863,7 +863,7 @@ private fun SampleCard(sample: DemoEntry, onClick: () -> Unit) {
                 brush = androidx.compose.ui.graphics.Brush.linearGradient(
                     colors = listOf(
                         accent.copy(alpha = SceneViewTokens.SpatialGalleryColor.glassSurfaceLight.alpha),
-                        MaterialTheme.colorScheme.surfaceDim,
+                        MaterialTheme.colorScheme.surfaceContainerHigh,
                     ),
                 ),
             )

@@ -48,14 +48,27 @@ object SceneViewTokens {
      *
      * Theme-independent on purpose: the chrome floats over a live Filament/ARCore
      * viewport, which is media, not a themed surface. White on media reads in both
-     * themes, and the fill is the same 8 % in light and dark per the spec. There is
-     * no blur: a `SurfaceView` cannot be sampled by a Compose render effect.
+     * themes, so the same values serve light and dark. There is no blur: a
+     * `SurfaceView` cannot be sampled by a Compose render effect.
+     *
+     * ## Why this is no longer the spec's 8 % (#3681)
+     *
+     * 8 % white is a value borrowed from platforms that back it with a real backdrop
+     * blur, which separates the panel from the media by *structure* — the fill alone was
+     * never doing the work. Without blur it has to, and it cannot: 8 % over the
+     * `#0B0F16` stage is 1.47 → **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera
+     * feed. The panel edge was a guess in both themes.
+     *
+     * 14 % fill / 24 % border is the first pair that clears 1.25:1 on both grounds with
+     * margin — 1.47:1 and 1.35:1 for the fill, 2.09:1 and 1.93:1 for the 1 dp border —
+     * while staying obviously glass rather than a solid sheet. `DESIGN.md` carries the
+     * same two numbers; the web and iOS surfaces keep 8 % where they have real blur.
      */
     object Glass {
-        /** `glass-surface` over media — white at 8 %. */
-        val surface = Color(0x14FFFFFF)
-        /** `glass-border` — white at 8 %, 1 dp. */
-        val border = Color(0x14FFFFFF)
+        /** `glass-surface` over media — white at 14 %. */
+        val surface = Color(0x24FFFFFF)
+        /** `glass-border` — white at 24 %, 1 dp. */
+        val border = Color(0x3DFFFFFF)
         val borderWidth = 1.dp
         /** Foreground on glass over media: always white. */
         val onGlass = Color.White
@@ -130,13 +143,35 @@ object SceneViewTokens {
         val heroSubtitle = Color(0xCCFFFFFF)
         val heroPillBackground = Color(0xFFFFFFFF)
         val heroPillText = Color(0xFF1A1A2E)
-        /** Hero placeholder / stage field, `#0B0F16` — matches the viewer stage clear colour. */
+        /**
+         * Hero placeholder / stage field, `#0B0F16` — matches the viewer stage clear
+         * colour. This is the **light** and full-screen value; see
+         * [heroFieldEmbeddedDark] for why a stage inside a card needs its own.
+         */
         val heroField = Color(0xFF0B0F16)
 
+        /**
+         * A stage **embedded in a card**, in dark: `surface-container`.
+         *
+         * `#0B0F16` against the `#0D1117` dark page is 1.01:1 — the stage field, and so
+         * the whole card carrying it, is the page. Painted over the card fill it also
+         * defeats whatever surface role the card was given, which is why this cannot be
+         * fixed from the colour scheme alone. A full-screen stage keeps `#0B0F16`: there
+         * is no card for it to disappear into.
+         */
+        val heroFieldEmbeddedDark = Color(0xFF232A39)
+
         val chipBackgroundLight = Color(0xFFF1F3F5)
-        val chipBackgroundDark = Color(0xFF161B22)
+        /**
+         * Tracks `surfaceContainerHigh`: a chip is a container and has to read as one.
+         * #161B22 was 1.09:1 against the page — in light the identical construction is
+         * 1.11:1 and reads, because at the light end that ratio is a visible step and at
+         * the dark end it is not. 1.54:1 now.
+         */
+        val chipBackgroundDark = Color(0xFF2C3546)
         val chipTextLight = Color(0xFF3D4654)
-        val chipTextDark = Color(0xFF9CA3AF)
+        /** Tracks `onSurfaceVariant`; 5.33:1 on the chip background above. */
+        val chipTextDark = Color(0xFFA4ABB7)
         val chipSelectedBackgroundLight = Color(0xFF1A1A2E)
         val chipSelectedBackgroundDark = Color(0xFFF3F4F6)
         val chipSelectedTextLight = Color(0xFFFFFFFF)
@@ -151,9 +186,17 @@ object SceneViewTokens {
         const val primaryLightAlphaLight = 0.08f
         const val primaryLightAlphaDark = 0.10f
 
-        /** `outline-subtle` — #EBEDF0 / #1F2937, the 1 dp card + header hairline. */
+        /**
+         * `outline-subtle` — the 1 dp card + header hairline, and the home search
+         * field's unfocused border.
+         *
+         * The dark value was #1F2937: 1.29:1 against the page, which is why the search
+         * field only existed once you focused it. It now tracks `outlineVariant`
+         * (2.38:1 on the page, 1.81:1 on a card) so the hairline is a boundary rather
+         * than a texture. Light is unchanged.
+         */
         val outlineSubtleLight = Color(0xFFEBEDF0)
-        val outlineSubtleDark = Color(0xFF1F2937)
+        val outlineSubtleDark = Color(0xFF46516A)
 
         const val headerOverlayAlpha = 1f
     }
@@ -361,6 +404,13 @@ object SceneViewTokens {
         val viewerEnvironmentTile = 72.dp
         val viewerAnimationButton = 48.dp
         val selectedOutlineWidth = 2.dp
+        /**
+         * The 1 dp `outlineVariant` hairline that separates a container from the
+         * container behind it, where the tonal step alone cannot: nesting two deep
+         * (page → sheet → tile) leaves 1.17:1 at the dark end, short of the 1.25:1 a
+         * fill needs to read. See the ramp note in `Color.kt`.
+         */
+        val hairlineWidth = 1.dp
         val heroStageHeight = 360.dp
         const val mediaAspect = 1.25f
     }

@@ -65,8 +65,11 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
 | `surface` | #ffffff | #0D1117 | Page background |
-| `surface-dim` | #f1f3f5 | #161B22 | Secondary background, cards |
-| `surface-container` | #ffffff | #161c2c | Elevated surfaces |
+| `surface-dim` | #f1f3f5 | #0B0E14 | Recessed ground. In dark this sits *below* the page; see the note under this table |
+| `surface-container-low` | #ffffff | #1B212D | Low-emphasis container |
+| `surface-container` | #ffffff | #232A39 | Cards, bottom sheets, dialogs |
+| `surface-container-high` | #f1f3f5 | #2C3546 | Tiles, chips, thumbnails — a container on a container |
+| `surface-container-highest` | #e9ecef | #354056 | Fields inside a sheet |
 | `stage-scrim-start` | transparent | transparent | Spatial Gallery media scrim start |
 | `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
 | `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
@@ -75,6 +78,25 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
 
+**The dark ramp is solved for ratio, not picked by eye.** Contrast ratio compresses at
+the dark end, where `(Y+0.05)` is dominated by the constant: against a `#0D1117` page a
+container needs `L* ≥ 15` before it reaches even **1.25:1**, the point where a fill starts
+to read as a distinct surface. The dark column above was previously three tones — the two
+`surface-container` rows were within 0.9 L\* of each other and of `surface-dim` — so every
+card, sheet and chip was drawn the same colour as its background. Reported as *"you cannot
+see the background of elements at all, unlike light, which makes it confusing."*
+
+Nesting in these products is two deep at most (page → card/sheet → tile/field), so the
+ramp targets that depth rather than stacking 1.25:1 at every step, which would end pale
+grey and off-brand. The two depth-2 pairs that still land at 1.17:1 — a tile inside a
+sheet, a dialog over a sheet — carry an `outline-subtle` hairline instead of more tone.
+
+`surface-dim` is *not* the role for "a tile that must stand out": at the dark end there is
+no room below the page, and elevation reads as lighter. Use a `surface-container-*` role.
+
+Light keeps every value it had except `surface-container-highest`, which gains a step so a
+field inside a sheet separates there too.
+
 ### Demo App Home (Android)
 
 Tokens the demo app's home screen uses that are not Material roles. Chips follow
@@ -82,8 +104,8 @@ the surface ramp above, not the M3 tonal ramp.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `chip-bg` | #f1f3f5 (`surface-dim`) | #161B22 | Unselected category chip |
-| `chip-text` | #3d4654 (`on-surface-dim`) | #9ca3af | Unselected chip label |
+| `chip-bg` | #f1f3f5 (`surface-container-high`) | #2C3546 | Unselected category chip |
+| `chip-text` | #3d4654 (`on-surface-dim`) | #a4abb7 | Unselected chip label |
 | `chip-selected-bg` | #1a1a2e (`on-surface`) | #f3f4f6 | Selected category chip |
 | `chip-selected-text` | #ffffff (`surface`) | #0D1117 | Selected chip label |
 | `hero-title` | #ffffff | #ffffff | Hero headline — the hero is an image card that stays dark in both themes |
@@ -91,7 +113,7 @@ the surface ramp above, not the M3 tonal ramp.
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | Sticky home header over the scrolling grid |
-| `outline-subtle` | #ebedf0 | #1f2937 | 1dp card and header hairline (see Borders) |
+| `outline-subtle` | #ebedf0 | #46516a | 1dp card and header hairline (see Borders) |
 
 Catalogue **section headers** (the full-span label above each group of demo cards)
 use `on-surface` at `titleMedium` / `weight-semibold` — no colour of their own, because
@@ -134,7 +156,7 @@ so the eye lands on the one thing the screen is for.
 | Token | Light | Dark | Usage |
 |---|---|---|---|
 | `on-surface` | #1a1a2e | #f3f4f6 | Primary text |
-| `on-surface-dim` | #3d4654 | #9ca3af | Secondary text |
+| `on-surface-dim` | #3d4654 | #a4abb7 | Secondary text. Lifted with the surface ramp: #9ca3af was 7.45:1 on the dark page but only 3.79:1 on the new lightest container, i.e. it would have failed 4.5:1 exactly where the ramp fix made surfaces lighter |
 | `on-surface-faint` | #5c6370 | #6b7280 | Tertiary text, captions |
 | `on-ar-scrim` | #ffffff | #ffffff | AR coaching overlay text — white in both themes, the ground is the camera |
 | `on-ar-scrim-dim` | rgba(255,255,255,0.72) | rgba(255,255,255,0.72) | AR coaching overlay secondary text |
@@ -143,8 +165,8 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `outline` | #d6dae0 | #2a3346 | Default borders |
-| `outline-subtle` | #ebedf0 | #1f2937 | Light dividers |
+| `outline` | #d6dae0 | #8b95a6 | Default borders, and the boundary that identifies a control (WCAG 1.4.11). #2a3346 was 1.50:1 on the dark page — an unfocused search field was invisible until focused |
+| `outline-subtle` | #ebedf0 | #46516a | Light dividers, and the hairline that separates a container from the container behind it where tone alone cannot |
 
 ### Status
 
@@ -368,8 +390,8 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 | Token | Value | Usage |
 |---|---|---|
-| `glass-surface` (over media) | rgba(255,255,255,0.08) | Back button, identity pill, dock |
-| `glass-border` | 1px rgba(255,255,255,0.08) | Outline of every glass element |
+| `glass-surface` (over media) | rgba(255,255,255,0.14) | Back button, identity pill, dock — **0.14, not 0.08, wherever there is no backdrop blur**; see below |
+| `glass-border` | 1px rgba(255,255,255,0.24) | Outline of every glass element — same condition |
 | `on-glass` | #ffffff | Icons and labels on glass |
 | `on-glass-muted` | rgba(255,255,255,0.72) | Secondary label on glass |
 | `chrome-scrim` | rgba(0,0,0,0.60) → transparent | Ground under the chrome bands |
@@ -378,6 +400,15 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
+- **Which is why the fill is 0.14 and the border 0.24, not 0.08.** 8 % white is a
+  value borrowed from surfaces that back it with a real backdrop blur, where the
+  blur separates the panel from the media by *structure* and the fill was never
+  doing the work alone. Without blur it has to, and at 8 % it cannot: measured over
+  the `#0B0F16` stage that is **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera
+  feed — the panel edge was a guess. 0.14 / 0.24 is the first pair that clears
+  1.25:1 on both grounds with margin (fill 1.47:1 and 1.35:1; border 2.09:1 and
+  1.93:1) while still reading as glass rather than a solid sheet. Web and iOS keep
+  0.08 wherever they have a genuine `backdrop-filter`.
 - **The chrome bands sit on `chrome-scrim`.** White on media reads only when the
   media is dark, and a demo scene can be any brightness — a near-white studio
   erases an 8 % white fill and white glyphs alike. The top band (160dp) and the
