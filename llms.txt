@@ -6591,7 +6591,7 @@ npm install sceneview-web filament
 Script-tag usage (no bundler):
 ```html
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4.37.0/sceneview-web.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
 ```
 
 After loading, the library registers itself on `window.sceneview`.
