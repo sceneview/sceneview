@@ -340,9 +340,9 @@ struct ExploreTab: View {
                         recentSearchesSection
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+                .padding(.top, SceneViewTokens.Home.heroTopGap)
+                .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
             // Explore never set a page ground, so dark mode fell back to the
             // system black (#000) while every other screen sits on the DESIGN.md
@@ -355,10 +355,14 @@ struct ExploreTab: View {
             // the picked source (Sketchfab / Icosa Gallery / Poly Haven), #2645.
             // The selected source is always usable (Sketchfab is dropped from the
             // picker when it has no key), so the field is always live.
-            .searchable(
+            // Standalone only: pushed from Showcase the page already carries
+            // `inlineSearchField`, and the bar the push brings back revealed a
+            // second, native field on the first pull-down.
+            .modifier(NativeSearchField(
+                enabled: !embedded,
                 text: $searchText,
                 prompt: "Search 3D models on \(selectedSource.id.displayName)"
-            )
+            ))
             .onSubmit(of: .search) { submitSearch() }
             // Clearing the field cancels the active search at once and restores
             // the default carousels — it must not wait out the debounce below.
@@ -575,7 +579,9 @@ struct ExploreTab: View {
         HStack(spacing: SceneViewTokens.Space.sm) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-            TextField("Search 3D models on \(selectedSource.id.displayName)", text: $searchText)
+            TextField("Search", text: $searchText,
+                      prompt: Text("Search 3D models on \(selectedSource.id.displayName)")
+                          .foregroundStyle(SceneViewTokens.HomeColor.placeholder))
                 .font(SceneViewTokens.TypeScale.body)
                 .focused($inlineSearchFocused)
                 .submitLabel(.search)
@@ -608,9 +614,11 @@ struct ExploreTab: View {
         // `outline`, not `outline-subtle`: at rest the fill is one step off the
         // ground and, with no shadow to lean on in dark, the contour is the only
         // thing that says "input" rather than "smudge". Focus goes to `primary`.
+        // `controlOutline` is that token at its DESIGN.md value (1.47:1 → 6:1
+        // on the dark page).
         .overlay(Capsule().strokeBorder(
             inlineSearchFocused ? SceneViewTokens.HomeColor.primary
-                                : SceneViewTokens.HomeColor.outline,
+                                : SceneViewTokens.HomeColor.controlOutline,
             lineWidth: SceneViewTokens.Home.cardOutlineWidth))
     }
 
@@ -879,9 +887,10 @@ struct ExploreTab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Categories")
                 .font(.title2.weight(.bold))
-            // FlowLayout-style category chips. Uses LazyVGrid for portable wrapping.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)],
-                      alignment: .leading, spacing: 8) {
+            // Chips sized to their label and wrapped by `ChipFlow`. The grid this
+            // replaces gave every chip a third of the width, narrower than one
+            // word, so labels broke mid-word — "Architec-ture", "Electron-ics".
+            ChipFlow(spacing: 8) {
                 ForEach(SketchfabCategory.allCases) { category in
                     CategoryChip(category: category) {
                         selectedCategory = category
@@ -1182,6 +1191,62 @@ private struct SourceChip: View {
     }
 }
 
+// MARK: - Native search field (standalone only)
+
+private struct NativeSearchField: ViewModifier {
+    let enabled: Bool
+    @Binding var text: String
+    let prompt: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $text, prompt: prompt)
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Chip flow
+
+/// Lays chips out left to right at their own width and wraps to a new row when
+/// the next one no longer fits.
+private struct ChipFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, in: proposal.width ?? .infinity)
+        return CGSize(width: proposal.width ?? rows.width, height: rows.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(subviews, in: bounds.width)
+        for (subview, origin) in zip(subviews, rows.origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                          proposal: .unspecified)
+        }
+    }
+
+    private func arrange(_ subviews: Subviews, in width: CGFloat)
+        -> (origins: [CGPoint], width: CGFloat, height: CGFloat) {
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return (origins, widest, y + rowHeight)
+    }
+}
+
 // MARK: - Category chip
 
 private struct CategoryChip: View {
@@ -1196,10 +1261,14 @@ private struct CategoryChip: View {
                 Text(category.displayName)
                     .font(.subheadline.weight(.medium))
             }
+            .lineLimit(1)
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
+            // 12 + a 20 pt line + 12 = the 44 pt touch target (was 38).
+            .padding(.vertical, 12)
             .background(.tint.opacity(0.12), in: Capsule())
+            // The 12 % fill alone measured 1.25:1 on the dark ground — the
+            // contour is what keeps the capsule readable there.
+            .overlay(Capsule().strokeBorder(.tint.opacity(0.3), lineWidth: 1))
             .foregroundStyle(.tint)
         }
         .buttonStyle(.plain)
