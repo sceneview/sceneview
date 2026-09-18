@@ -2,107 +2,61 @@ import SwiftUI
 import RealityKit
 import SceneViewSwift
 
-/// Custom mesh from raw vertex data -- a colored pyramid and a diamond.
+/// `MeshNode.fromVertices` — geometry from raw positions and triangle indices.
+///
+/// Two meshes, two ways to light them: the pyramid passes its own normals, the
+/// diamond passes `nil` and lets the node compute them.
 struct CustomMeshDemo: View {
     var body: some View {
-        ZStack {
+        DemoScaffold("Custom Mesh") {
             SceneView { root in
-                // -- Pyramid from raw vertices --
-                if let pyramid = try? MeshNode.fromVertices(
+                let pyramid = try? MeshNode.fromVertices(
                     positions: [
-                        // Base
-                        SIMD3<Float>(-0.15, -0.15, -0.15),
-                        SIMD3<Float>(0.15, -0.15, -0.15),
-                        SIMD3<Float>(0.15, -0.15, 0.15),
-                        SIMD3<Float>(-0.15, -0.15, 0.15),
-                        // Apex
-                        SIMD3<Float>(0, 0.2, 0),
+                        [-0.15, -0.15, -0.15], [0.15, -0.15, -0.15],   // base
+                        [0.15, -0.15, 0.15], [-0.15, -0.15, 0.15],
+                        [0, 0.2, 0],                                   // apex
                     ],
-                    normals: [
-                        SIMD3<Float>(0, -1, 0),
-                        SIMD3<Float>(0, -1, 0),
-                        SIMD3<Float>(0, -1, 0),
-                        SIMD3<Float>(0, -1, 0),
-                        SIMD3<Float>(0, 1, 0),
-                    ],
+                    normals: [[0, -1, 0], [0, -1, 0], [0, -1, 0], [0, -1, 0], [0, 1, 0]],
                     indices: [
-                        // Base (2 triangles)
-                        0, 1, 2, 0, 2, 3,
-                        // Front face
-                        0, 1, 4,
-                        // Right face
-                        1, 2, 4,
-                        // Back face
-                        2, 3, 4,
-                        // Left face
-                        3, 0, 4,
+                        0, 1, 2, 0, 2, 3,                              // base, two triangles
+                        0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4,            // four sides
                     ],
                     material: .pbr(color: .systemTeal, metallic: 0.7, roughness: 0.25)
-                ) {
-                    pyramid.entity.position = .init(x: -0.35, y: 0, z: -2)
-                    root.addChild(pyramid.entity)
-                }
-
-                // Label
-                let pyramidLabel = TextNode(text: "Pyramid", fontSize: 0.04, color: .systemTeal, depth: 0.005)
-                    .centered()
-                    .position(.init(x: -0.35, y: -0.3, z: -2))
-                root.addChild(pyramidLabel.entity)
-
-                // -- Diamond (double pyramid) --
-                if let diamond = try? MeshNode.fromVertices(
+                )
+                let diamond = try? MeshNode.fromVertices(
                     positions: [
-                        // Equator ring
-                        SIMD3<Float>(0.15, 0, -0.15),
-                        SIMD3<Float>(0.15, 0, 0.15),
-                        SIMD3<Float>(-0.15, 0, 0.15),
-                        SIMD3<Float>(-0.15, 0, -0.15),
-                        // Top apex
-                        SIMD3<Float>(0, 0.2, 0),
-                        // Bottom apex
-                        SIMD3<Float>(0, -0.2, 0),
+                        [0.15, 0, -0.15], [0.15, 0, 0.15],             // equator
+                        [-0.15, 0, 0.15], [-0.15, 0, -0.15],
+                        [0, 0.2, 0], [0, -0.2, 0],                     // top and bottom apex
                     ],
                     normals: nil,
                     indices: [
-                        // Top faces
-                        0, 1, 4,
-                        1, 2, 4,
-                        2, 3, 4,
-                        3, 0, 4,
-                        // Bottom faces
-                        1, 0, 5,
-                        2, 1, 5,
-                        3, 2, 5,
-                        0, 3, 5,
+                        0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4,            // top faces
+                        1, 0, 5, 2, 1, 5, 3, 2, 5, 0, 3, 5,            // bottom faces
                     ],
                     material: .pbr(color: .systemPink, metallic: 0.9, roughness: 0.1)
-                ) {
-                    diamond.entity.position = .init(x: 0.35, y: 0, z: -2)
-                    root.addChild(diamond.entity)
-                }
+                )
 
-                // Label
-                let diamondLabel = TextNode(text: "Diamond", fontSize: 0.04, color: .systemPink, depth: 0.005)
-                    .centered()
-                    .position(.init(x: 0.35, y: -0.3, z: -2))
-                root.addChild(diamondLabel.entity)
+                let meshes: [(name: String, color: SimpleMaterial.Color, x: Float, node: MeshNode?)] = [
+                    ("Pyramid", .systemTeal, -0.35, pyramid),
+                    ("Diamond", .systemPink, 0.35, diamond),
+                ]
+                for mesh in meshes {
+                    guard let node = mesh.node else { continue }
+                    root.addChild(node.position([mesh.x, 0, 0]).entity)
+
+                    let label = TextNode(text: mesh.name, fontSize: 0.04, color: mesh.color, depth: 0.005)
+                        .centered()
+                        .position([mesh.x, -0.3, 0])
+                    root.addChild(label.entity)
+                }
             }
             .cameraControls(.orbit)
-            // Both the pyramid and the diamond use a metallic/rough `.pbr()`
-            // material — with no IBL they have nothing to reflect and render
-            // as flat silhouettes despite being built from raw PBR vertex
-            // data. Same `.studio` preset as ModelViewerDemo (#2114).
-            .environment(.studio)
-            .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                Text("MeshNode.fromVertices -- raw vertex data")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 12)
-            }
+            // Metallic PBR needs an IBL to have anything to reflect (#2114) — lit by
+            // the studio HDR, not drawn in front of it.
+            .environment(.custom(name: "Studio", hdrFile: "studio.hdr", showSkybox: false))
+        } accessory: {
+            DemoHint("MeshNode.fromVertices — positions, normals, indices")
         }
-        .background(Color.black)
     }
 }
