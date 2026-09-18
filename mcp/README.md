@@ -148,9 +148,23 @@ your own keys, your own rate limits, or `analyze_project` against a local checko
 
 ## What you get
 
-Every developer tool is **free**: setup guides for every platform, code samples, the API reference, the migration tooling, the validator, model search, and the project analyzer.
+Every tool is free and there is no API key. The three generation tools that talk to a
+third-party service use *your* credentials; everything else works the moment the server starts.
 
-### Free tools
+### Start here
+
+Six tools carry most of what assistants actually do with SceneView. If you read nothing else:
+
+| Tool | What it does | Ask your assistant |
+|---|---|---|
+| `validate_code` | Compile-checks generated Kotlin or Swift against the real public API — symbol existence, 30+ rules, did-you-mean suggestions — before it reaches you | *"Check that this SceneView code actually compiles"* |
+| `get_node_reference` | The exact signature, defaults and example for any of 48+ node types, instead of an invented one | *"What are the parameters of ModelNode?"* |
+| `list_samples` | Browse 38 scenarios by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, …) | *"What SceneView samples involve AR planes?"* |
+| `get_sample` | Returns one of them complete and compilable, in Kotlin or Swift | *"Give me the AR plane-placement sample in Kotlin"* |
+| `get_setup` | Gradle and manifest setup for Android 3D or AR | *"Set up SceneView in my Android app"* |
+| `get_ar_setup` | Permissions, session options, plane detection, image tracking | *"Add ARCore plane detection to this screen"* |
+
+### Full tool reference
 
 #### Setup & integration
 
@@ -166,7 +180,7 @@ Every developer tool is **free**: setup guides for every platform, code samples,
 
 | Tool | What it does |
 |---|---|
-| `get_sample` | Returns a complete, compilable code sample for any of 33 scenarios (Kotlin or Swift) |
+| `get_sample` | Returns a complete, compilable code sample for any of 38 scenarios (Kotlin or Swift) |
 | `list_samples` | Browse all samples, filter by tag (`ar`, `3d`, `ios`, `animation`, `geometry`, ...) |
 | `validate_code` | Checks generated code against 30+ rules — including symbol existence against the real public API, with did-you-mean suggestions — before presenting it to the user |
 | `migrate_code` | Automatically migrates SceneView 2.x / 3.x code with detailed changelog |
@@ -317,7 +331,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 - Generate correct **SwiftUI-native** code for iOS/macOS/visionOS
 - Know about all 48+ node types and their exact parameters
 - Validate code against 30+ rules before presenting it
-- Provide working, tested sample code for 33 scenarios
+- Provide working, tested sample code for 38 scenarios
 
 ---
 
@@ -326,7 +340,7 @@ The assistant calls `validate_code` with the generated snippet and checks it aga
 The MCP server is tested with **2,001 unit tests** across 86 test suites covering:
 
 - Every tool response (correct output, error handling, edge cases)
-- All 33 code samples (compilable structure, correct imports, no deprecated APIs)
+- All 38 code samples (compilable structure, correct imports, no deprecated APIs)
 - Code validator rules (true positives and false-positive resistance)
 - Node reference parsing (all node types extracted correctly from `llms.txt`)
 - Resource responses (API reference, GitHub issues integration, the 3D viewer widget)

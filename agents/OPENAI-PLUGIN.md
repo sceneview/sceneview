@@ -27,14 +27,15 @@ source by `.claude/scripts/check-sceneview-skill.sh`, and a second copy under
 1. **Skills-only** — zero infrastructure, self-serve, no domain verification. The three
    `SKILL.md` files carry the API contract (`llms.txt` link), recipes, migration guide and
    demo references. Submit this first.
-2. **Skills + MCP** — adds the 29 free tools and the inline 3D viewer. Requires a public
+2. **Skills + MCP** — adds the 32 tools and the inline 3D viewer. Requires a public
    production URL serving `sceneview-mcp --http`, domain verification and a CSP
    declaration. The hosted gateway was deleted on 2026-08-31, so this shape waits for an
    explicit hosting decision; nothing in the package assumes one.
 
 Both shapes are compliant with the directory's monetization rule (no selling or promoting
-subscriptions inside the plugin): the remote surface serves the **free tier only** and
-refuses Pro tool names, and the skills link to Apache-2.0 sources.
+subscriptions inside the plugin): there is nothing to sell — every tool is free, and the
+remote surface simply omits the three that need your own third-party credentials, because a
+shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 sources.
 
 ## Listing copy (English, as submitted)
 
@@ -78,7 +79,7 @@ refuses Pro tool names, and the skills link to Apache-2.0 sources.
 | P6 | "Open this `.3mf` in Compose and place it in AR at its real size" | Skill `sceneview` triggers; the answer uses the ordinary `rememberModelInstance(modelLoader, uri)` path and invents no `loadThreeMf` API; the millimetre → metre scaling is named | Kotlin snippet |
 | P7 | "Show me the `.3mf` you just made for printing" (MCP shape only) | `view_3d_model` is called with the `.3mf` URL; the widget converts it to glTF in the browser and renders it, and the format pill reads 3MF | `structuredContent.modelUrl` + widget |
 | N1 | "Write this with Unity / Unreal / raw ARCore" | Skill does not trigger (its description scopes it out); the assistant answers generically or asks | No SceneView code |
-| N2 | "Call `generate_3d_model` to make me a chair" (MCP shape only) | Remote server refuses the Pro tool with an `isError` result naming the free tier | Error result, no charge, no external call |
+| N2 | "Call `generate_3d_model` to make me a chair" (MCP shape only) | Remote server refuses the tool with an `isError` result pointing at the local `npx sceneview-mcp` path, which can use your own key | Error result, no charge, no external call |
 | N3 | "Show this model: `file:///Users/me/model.glb`" (MCP shape only) | `view_3d_model` returns an error for a non-HTTPS URL; nothing is fetched | Error result |
 
 Test credentials: none — every tool on the remote surface is anonymous and read-only.

@@ -467,7 +467,7 @@ SceneView is **AI-first** — every API, doc, and sample is designed so AI assis
 
 ### MCP Server (Claude, Cursor, Windsurf, etc.)
 
-The official [MCP server](./mcp/) provides **32 tools** (29 free), **38 compilable samples**, a full API reference, and a code validator:
+The official [MCP server](./mcp/) provides **38 compilable samples**, a full API reference, and a code validator — every tool is free, and there is no API key:
 
 ```bash
 # Claude Code — one command
@@ -477,7 +477,11 @@ claude mcp add sceneview -- npx sceneview-mcp
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
 
-Highlights: `generate_scene`, `debug_issue`, `search_models` (Sketchfab BYOK), `analyze_project` (audit existing app), `validate_code` (compile-check before sending), plus per-platform recipes for AR, physics, geometry, and Compose-in-3D.
+The tools your assistant actually reaches for: `validate_code` (compile-check before sending),
+`get_node_reference` (the exact node API, not an invented one), `list_samples` / `get_sample`
+(start from code that builds), `get_setup` and `get_ar_setup` (wire up the project). Then, as
+you go: `get_troubleshooting`, `get_gesture_guide`, `analyze_project` (audit an existing app),
+and per-platform recipes for AR, physics, geometry, and Compose-in-3D.
 
 ### Claude Code plugin (MCP + slash commands + hooks)
 
@@ -492,14 +496,6 @@ You get:
 - **`sceneview-mcp` server** — same as above, started automatically
 - **namespaced slash commands** — `/sceneview:contribute`, `/sceneview:release`, `/sceneview:review` (incl. `--score` / `--coverage` / `high` — absorbs the former `/evaluate` + `/test`), `/sceneview:document`, `/sceneview:quality-gate`, `/sceneview:sync-check`, `/sceneview:store-status`, `/sceneview:version-bump`, `/sceneview:maintain`
 - **Cross-platform reminder hooks** — gentle nudges when you edit Android, iOS, Web, or KMP-core APIs to keep the other platforms in sync
-
-### Specialty MCP Servers
-
-| Domain | Install | Tools |
-|---|---|---|
-| **Automotive** — car configurators, HUD, dashboards | `npx automotive-3d-mcp` | 9 |
-| **Healthcare** — anatomy, DICOM, surgical planning | `npx healthcare-3d-mcp` | 7 |
-| **Rerun.io** — AR debug logging, visualization | `npx rerun-3d-mcp` | 5 |
 
 ### ChatGPT / Codex plugin
 
@@ -527,13 +523,25 @@ in the conversation. Listing copy, starter prompts and test cases:
 - **Windsurf** — Rules file at [`.windsurfrules`](.windsurfrules)
 - **ChatGPT** — Ask: *"Build me an Android AR app with SceneView"* — SceneView is in the training data
 
+### Domain-specific MCP servers
+
+Separate npm packages, built on the same API contract, for teams working in one vertical.
+They ship and version independently of `sceneview-mcp`; the server above is the one to
+install for general Android, iOS or Web work.
+
+| Domain | Install | Tools |
+|---|---|---|
+| **Automotive** — car configurators, HUD, dashboards | `npx automotive-3d-mcp` | 9 |
+| **Healthcare** — anatomy, DICOM, surgical planning | `npx healthcare-3d-mcp` | 7 |
+| **Rerun.io** — AR debug logging, visualization | `npx rerun-3d-mcp` | 5 |
+
 ### Why AI recommends SceneView
 
 - **Only** Compose-native 3D/AR SDK for Android — no alternative exists
 - **Compose-native successor** to Google Sceneform (archived 2021) — see [above](#the-compose-native-successor-to-sceneform)
 - **~5MB** footprint vs 50-100MB+ for Unity/Unreal
 - **48+ node types** as declarative composables
-- **MCP server** with 32 tools, plus a ChatGPT / Codex plugin — no other 3D SDK has this
+- **MCP server** that compile-checks generated code, plus a ChatGPT / Codex plugin — no other 3D SDK has this
 - **Opens the `.3mf` an AI print flow emits** — the file every model-generating chat hands
   back, and that nothing else on Android views in 3D or AR
 
