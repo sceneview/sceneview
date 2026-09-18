@@ -1,29 +1,10 @@
 package io.github.sceneview.demo.common.placement
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
-import io.github.sceneview.demo.R
-import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberEngine
@@ -41,35 +22,36 @@ import io.github.sceneview.rememberModelLoader
  * two reset controls, and each host writing its own `onPlaceModel`. This composable owns
  * that layer, so there is exactly one implementation of:
  *
- *  - the **back affordance** — a top-start back arrow, never an X ([#2482]'s original
- *    review note). Drawn here only for a host that has no app bar of its own (the AR View
- *    tab); inside a [io.github.sceneview.demo.DemoScaffold] the scaffold's own top-start
- *    back arrow is the same affordance and this one stays off.
  *  - the **coaching line** — inherited from the session's default overlays, fed the one
  *    label computed here, so both surfaces say "Tap to place Fox" in the same words at the
  *    same moment, and both go quiet at the same moment too (#3326).
- *  - the **model picker** — [PlacementModelPickerSheet] plus [PlacementModelBar], the
- *    richer of the two variants, and now applied on both surfaces.
+ *  - the **model picker** — the [PlacementModelPickerSheet], opened from the host's dock.
  *  - **tap-time model resolution** — the [PlacementModel] is read from [picker] *inside*
  *    the tap handler, never captured at composition. That is the
  *    [#2476](https://github.com/sceneview/sceneview/issues/2476) invariant, and having one
  *    call site for it is what stops it regressing on one surface only.
  *
+ * ## What this composable no longer draws
+ *
+ * It used to float two controls of its own over the camera: a back disc and a
+ * `PlacementModelBar` (an extended FAB + a Reset button). Both are gone. Every other demo
+ * in the app exits through [io.github.sceneview.demo.DemoScaffold]'s back arrow and acts
+ * through its dock, and those two controls were the only theme-coloured surfaces the app
+ * ever painted over a live camera — `surface @ 85 %` and `primaryContainer`, which is the
+ * one place a theme colour cannot be read against its background because the background is
+ * whatever the room happens to be. The scaffold now hosts **both** surfaces, so the back
+ * arrow, the *Models* item and the *Clear* item are literally the same controls in the same
+ * places on the AR View tab and in the `ar-placement` demo.
+ *
  * The two hosts still differ in the ways their *roles* differ, and only there: the AR View
- * tab is a quick launcher (bundled catalogue, no dev toggles, its own fullscreen chrome),
- * the `ar-placement` demo is the feature demo (bundled + streamed catalogue, Snap-to-plane
- * / Show-reticle toggles, the QA tracking-failure shim, and the scaffold's bottom band
- * hosting the very same [PlacementModelBar]).
+ * tab is a quick launcher (bundled catalogue, no dev toggles), the `ar-placement` demo is
+ * the feature demo (bundled + streamed catalogue, Snap-to-plane / Show-reticle toggles, the
+ * QA tracking-failure shim).
  *
  * @param models Catalogue offered by the picker. May grow/shrink between compositions —
  *   selection is by id, so it cannot be shifted by a row appearing.
- * @param picker Hoisted selection + sheet state. See [rememberPlacementPickerState].
- * @param onBack Non-null ⇒ draw the canonical top-start back arrow over the camera. Pass
- *   `null` inside a [io.github.sceneview.demo.DemoScaffold], which already has one.
- * @param onReset Non-null ⇒ the bar carries the Reset control. Ignored when
- *   [showModelBar] is `false`; that host renders the bar itself.
- * @param showModelBar `false` ⇒ the host renders [PlacementModelBar] in its own bottom
- *   band (the scaffold's `bottomOverlay` slot) instead of floating it over the camera.
+ * @param picker Hoisted selection + sheet state. See [rememberPlacementPickerState]. The
+ *   host's dock opens the sheet with `picker::openSheet`.
  */
 @Composable
 fun TapToPlaceExperience(
@@ -80,9 +62,6 @@ fun TapToPlaceExperience(
     engine: Engine = rememberEngine(),
     modelLoader: ModelLoader = rememberModelLoader(engine),
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
-    onBack: (() -> Unit)? = null,
-    onReset: (() -> Unit)? = null,
-    showModelBar: Boolean = true,
     snapToPlane: Boolean = true,
     showReticle: Boolean = true,
     /**
@@ -95,16 +74,10 @@ fun TapToPlaceExperience(
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
     floorOnly: Boolean = false,
 ) {
-    val armedModel = models.armed(picker)
     // What the status pill announces. A streamed row that is still downloading says so —
-    // and stays placeable, because it carries its own bundled stand-in.
-    val nextModelLabel = armedModel?.let { model ->
-        if (model.pending) {
-            stringResource(R.string.ar_picker_streaming, model.displayName)
-        } else {
-            model.displayName
-        }
-    }
+    // and stays placeable, because it carries its own bundled stand-in. Same helper the
+    // picker sheet uses, so the two can never word it differently.
+    val nextModelLabel = models.armed(picker)?.let { placementModelLabel(it) }
 
     Box(modifier = modifier.fillMaxSize()) {
         TapToPlaceArSession(
@@ -141,71 +114,7 @@ fun TapToPlaceExperience(
                 )
             },
         )
-
-        if (onBack != null) {
-            PlacementBackButton(
-                onClick = onBack,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
-
-        if (showModelBar) {
-            PlacementModelBar(
-                model = armedModel,
-                onPickModel = picker::openSheet,
-                onReset = onReset,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                        )
-                    )
-                    .padding(SceneViewTokens.Space.md),
-            )
-        }
     }
 
     PlacementModelPickerSheet(models = models, picker = picker)
 }
-
-/**
- * The canonical back affordance over a live camera: a top-**start** arrow, on a
- * translucent surface disc so it stays legible over an arbitrary camera frame.
- *
- * A top-end X used to sit here instead, which is the mismatch #2482 opened on — the review
- * note was, in as many words, "I don't know why this is a cross rather than a back". Every
- * other screen in the app exits with a back arrow at the top start; a camera is not a
- * reason to exit differently.
- */
-@Composable
-private fun PlacementBackButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    FilledIconButton(
-        onClick = onClick,
-        modifier = modifier
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
-                )
-            )
-            .padding(SceneViewTokens.Space.sm)
-            .size(BACK_BUTTON_SIZE),
-        shape = CircleShape,
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = stringResource(R.string.cd_back_button),
-            modifier = Modifier.size(BACK_BUTTON_ICON_SIZE),
-        )
-    }
-}
-
-private val BACK_BUTTON_SIZE = 40.dp
-private val BACK_BUTTON_ICON_SIZE = 20.dp

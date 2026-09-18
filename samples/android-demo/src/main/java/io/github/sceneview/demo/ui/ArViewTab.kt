@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
@@ -81,6 +82,8 @@ import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.isArDemo
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
@@ -315,27 +318,53 @@ fun ArViewTabContent(
     }
 
     // The one canonical tap-to-place experience (#2482) — the same composable the
-    // `ar-placement` demo renders. It owns the session, the top-start back arrow, the
-    // model bar and the picker sheet, so this tab holds no placement UI of its own and
-    // cannot drift away from the demo again.
+    // `ar-placement` demo renders, inside the same chrome. [TapToPlaceExperience] used to
+    // float its own back disc and model bar over the camera; both are gone, so this tab
+    // and the demo now share one back arrow, one dock (Models · Clear · Settings) and one
+    // picker sheet, and this tab holds no placement UI of its own.
     //
-    // `key(arSceneId)` is how Reset works: bumping the UUID recomposes the whole AR
-    // subtree, which is the only way to discard ARCore state without a wrapper-level
-    // resetSession() API (iOS does the same via arViewID).
-    key(arSceneId) {
-        TapToPlaceExperience(
-            models = BUNDLED_PLACEMENT_MODELS,
-            picker = picker,
-            state = state,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            onBack = exitArSession,
-            onReset = {
-                state.clearAll()
-                arSceneId = UUID.randomUUID()
-            },
-        )
+    // The scaffold sits *outside* `key(arSceneId)`: a Reset must recreate the ARCore
+    // session, not the chrome around it. `RootScreen` has already hidden the tab bar and
+    // the system bars for the live session (#2238), so the dock has the bottom band to
+    // itself here exactly as it does in the demo.
+    DemoScaffold(
+        title = stringResource(R.string.tab_ar_view),
+        onBack = exitArSession,
+        // Hard reset, from the Settings sheet: bumping the UUID recomposes the whole AR
+        // subtree, which is the only way to discard ARCore state without a wrapper-level
+        // resetSession() API (iOS does the same via arViewID).
+        onReset = {
+            state.clearAll()
+            arSceneId = UUID.randomUUID()
+        },
+        // Same two items, same order, same words as the `ar-placement` demo — the
+        // scaffold appends Settings itself.
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.ViewInAr,
+                label = stringResource(R.string.ar_dock_models_label),
+                caption = stringResource(R.string.ar_dock_models_caption),
+                onClick = picker::openSheet,
+            ),
+            DockItem(
+                icon = Icons.Filled.Refresh,
+                label = stringResource(R.string.ar_dock_clear_label),
+                caption = stringResource(R.string.ar_dock_clear_caption),
+                onClick = { state.clearAll() },
+                enabled = state.placedCount > 0,
+            ),
+        ),
+    ) {
+        key(arSceneId) {
+            TapToPlaceExperience(
+                models = BUNDLED_PLACEMENT_MODELS,
+                picker = picker,
+                state = state,
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+            )
+        }
     }
 }
 

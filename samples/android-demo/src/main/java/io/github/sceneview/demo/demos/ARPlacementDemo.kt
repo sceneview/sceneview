@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.demos
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +21,7 @@ import com.google.ar.core.ArCoreApk
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
@@ -26,11 +29,9 @@ import io.github.sceneview.demo.common.placement.PlacementChooserScreen
 import io.github.sceneview.demo.common.placement.OPENED_FILE_PLACEMENT_ROW_ID
 import io.github.sceneview.demo.common.placement.PlacementFlowPhase
 import io.github.sceneview.demo.common.placement.PlacementModel
-import io.github.sceneview.demo.common.placement.PlacementModelBar
 import io.github.sceneview.demo.common.placement.PlacementModelSource
 import io.github.sceneview.demo.common.placement.PlacementBackAction
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
-import io.github.sceneview.demo.common.placement.armed
 import io.github.sceneview.demo.common.placement.placementBackAction
 import io.github.sceneview.demo.common.placement.rememberPlacementFlowState
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
@@ -318,21 +319,27 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             // can only stage while a session is running (#1881).
             ForceTrackingFailureMenu()
         },
-        // The SAME bar the AR View tab floats over the camera, handed to the scaffold's
-        // bottom band so it stacks clear of the Settings FAB instead of fighting it
-        // (#3237). Tapping it opens the in-AR picker sheet — swapping a model mid-session
-        // without walking back to the chooser.
-        bottomOverlay = {
-            PlacementModelBar(
-                model = models.armed(picker),
-                onPickModel = picker::openSheet,
-                onReset = { state.clearAll() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(SceneViewTokens.Space.md)
-                    .padding(end = settingsFabReservedSpace),
-            )
-        },
+        // The two in-session actions, in the dock — where every other demo in the app puts
+        // its actions. They used to be a `PlacementModelBar` floated in the scaffold's
+        // bottom band (and over the camera on the AR View tab): a `primaryContainer` FAB
+        // and a `secondaryContainer` disc, i.e. theme colours over a camera frame that has
+        // no theme. The dock's Controls item (Settings) is appended by the scaffold, so
+        // this screen's dock is Models · Clear · Settings.
+        dock = listOf(
+            DockItem(
+                icon = Icons.Filled.ViewInAr,
+                label = stringResource(R.string.ar_dock_models_label),
+                caption = stringResource(R.string.ar_dock_models_caption),
+                onClick = picker::openSheet,
+            ),
+            DockItem(
+                icon = Icons.Filled.Refresh,
+                label = stringResource(R.string.ar_dock_clear_label),
+                caption = stringResource(R.string.ar_dock_clear_caption),
+                onClick = { state.clearAll() },
+                enabled = state.placedCount > 0,
+            ),
+        ),
     ) {
         TapToPlaceExperience(
             models = models,
@@ -341,11 +348,6 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
-            // DemoScaffold's app bar already carries the app-wide top-start back arrow,
-            // and the bar lives in the scaffold's bottom band — so the experience draws
-            // neither here. Everything else it renders is identical to the AR View tab.
-            onBack = null,
-            showModelBar = false,
             snapToPlane = flow.snapToPlane,
             showReticle = flow.showReticle,
             instantPlacement = flow.instantEnabled,
