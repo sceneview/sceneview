@@ -455,7 +455,7 @@ struct ModelViewerDemo: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, SceneViewTokens.Space.md)
             .padding(.vertical, SceneViewTokens.Space.sm)
-            .background(glassBackground(in: Capsule()))
+            .glassBackground(in: Capsule())
             .padding(.horizontal, SceneViewTokens.Space.lg)
     }
 

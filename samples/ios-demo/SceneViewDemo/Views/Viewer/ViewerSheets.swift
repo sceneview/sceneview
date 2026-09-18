@@ -328,6 +328,6 @@ struct AnimationBar: View {
         }
         .padding(.horizontal, SceneViewTokens.Space.sm)
         .padding(.vertical, SceneViewTokens.Space.xs)
-        .background(glassBackground(in: Capsule()))
+        .glassBackground(in: Capsule())
     }
 }
