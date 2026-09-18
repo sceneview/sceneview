@@ -9,13 +9,17 @@ copyright: Copyright &copy; 2021-2026 Thomas Gorisse — Apache 2.0 License
 theme:
   name: material
   palette:
-    - scheme: default
+    # Without a `media:` key Material always starts on the first palette, so the docs
+    # stayed pure white for readers whose OS is in dark mode until they found the toggle.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: custom
       accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    - scheme: slate
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
       primary: custom
       accent: custom
       toggle:

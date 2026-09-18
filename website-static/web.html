@@ -189,10 +189,11 @@
       margin: 0 auto;
       overflow-x: auto;
       text-align: left;
-      border: 1px solid rgba(48, 54, 61, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.14);
     }
 
-    .web-hero__code .syn-comment { color: rgba(148, 163, 184, 0.6); }
+    /* 0.6 alpha put the comment at 2.96:1 on the code surface. */
+    .web-hero__code .syn-comment { color: rgba(148, 163, 184, 0.9); }
     .web-hero__code .syn-string { color: #4ade80; }
     .web-hero__code .syn-fn { color: #60a5fa; }
     .web-hero__code .syn-tag { color: #f472b6; }
@@ -236,7 +237,7 @@
       overflow: hidden;
       background: #0d1117;
       box-shadow: var(--shadow-xl);
-      border: 1px solid rgba(48, 54, 61, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.14);
     }
 
     .web-demo__canvas-wrap canvas {
@@ -323,6 +324,15 @@
       font-size: 1.125rem;
       color: var(--color-on-surface-variant);
       max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Same pattern as .comparison__wrapper on the home page: this table has a
+       min-content width of ~530px, so with no scroll container it widened the whole
+       page at 390px instead of scrolling on its own. */
+    .web-compare__wrapper {
+      overflow-x: auto;
+      max-width: 900px;
       margin: 0 auto;
     }
 
@@ -504,6 +514,12 @@
     }
 
     .web-install-card {
+      /* A grid item's automatic minimum size is its content's min-content width, and the
+         `white-space: pre` CDN line inside .web-install-card__code has no wrap point — so
+         the card forced the track to 810px and the whole page to scroll sideways at 390px.
+         min-width: 0 lets the track shrink; the code block then scrolls on its own, which
+         is what its overflow-x: auto was always for. */
+      min-width: 0;
       background: var(--color-surface-container-lowest);
       border: 1px solid var(--color-outline-variant);
       border-radius: 16px;
@@ -535,7 +551,7 @@
       line-height: 1.7;
       overflow-x: auto;
       white-space: pre;
-      border: 1px solid rgba(48, 54, 61, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.14);
     }
 
     /* API reference */
@@ -905,6 +921,7 @@
         </p>
       </div>
 
+      <div class="web-compare__wrapper">
       <table class="web-compare__table">
         <thead>
           <tr>
@@ -965,6 +982,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   </section>
 

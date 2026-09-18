@@ -76,36 +76,86 @@
   --color-on-surface: #f0f6fc;
   --color-on-surface-variant: #c9d1d9;
   --color-on-primary: #001d3d;
+  /* Surface ramp. The old tiers sat 1.09–1.24:1 above the page background, so cards,
+     panels and fields all melted into the page — the single biggest readability gap
+     against light mode, where the same containers sit on white and read instantly.
+     Every tier is now >= 1.30:1 against --color-surface, with a visible step between
+     tiers: 1.31 / 1.46 / 1.65 / 1.92 / 2.05. */
   --color-surface: #0d1117;
-  --color-surface-container-lowest: #161b22;
-  --color-surface-container-low: #1c2128;
-  --color-surface-container: #21262d;
-  --color-surface-container-high: #282e36;
-  --color-surface-container-highest: #30363d;
+  --color-surface-container-lowest: #242a33;
+  --color-surface-container-low: #2b323d;
+  --color-surface-container: #323a47;
+  --color-surface-container-high: #3a4452;
+  --color-surface-container-highest: #3f4859;
   --color-primary-container: #0d419d;
   --color-secondary-container: #0a3069;
   --color-tertiary-container: #5a32a3;
   --color-on-primary-container: #a5d6ff;
   --color-on-secondary-container: #d2e5ff;
   --color-on-tertiary-container: #d2a8ff;
-  --color-outline: #30363d;
-  --color-outline-variant: #484f58;
+  /* Outline tiers were inverted vs. light mode: the "strong" token was darker than
+     its variant, so borders sat at 1.1–1.5:1 and the muted text that reuses these
+     tokens was unreadable. Strong = light enough for 4.5:1 body text on the base
+     surfaces; variant = subtle divider, still above 3:1 where it matters. */
+  --color-outline: #8b949e;
+  --color-outline-variant: #7d8590;
   --color-inverse-surface: #f0f6fc;
   --color-primary-fixed-dim: #79c0ff;
-  --color-surface-dim: #161b22;
+  --color-surface-dim: #1a2028;
   --color-inverse-on-surface: #484f58;
 
   --color-status-stable: #56d364;
   --color-status-beta: #58a6ff;
   --color-status-alpha: #bc8cff;
-  --color-status-soon: #8b949e;
+  /* Also the "Coming soon" badge text, which fell to 4.04:1 once the card tier rose. */
+  --color-status-soon: #a3acb9;
 
   --gradient-hero: linear-gradient(135deg, #0d419d 0%, #5a32a3 100%);
 
-  --shadow-card: 0px 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(48, 54, 61, 0.5);
+  /* The card ring was #30363d at 50% — 1.1:1 on the page background, i.e. nothing.
+     A hairline of white at 12% is what actually draws the edge of a card in dark. */
+  --shadow-card: 0px 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.12);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
 
-  --glass-nav-bg: rgba(13, 17, 23, 0.90);
+  /* Was the exact page background, so the nav had no edge at all once scrolled. */
+  --glass-nav-bg: rgba(26, 32, 40, 0.92);
+}
+
+/* Code and terminal blocks are near-black by design, which reads well on a white page
+   but disappears on a near-black one. In dark they get their own lifted surface plus a
+   hairline so the block still has an edge. */
+[data-theme="dark"] .code-card,
+[data-theme="dark"] .code-card--kotlin,
+[data-theme="dark"] .tabs__panels,
+[data-theme="dark"] .tabs__btn--active,
+[data-theme="dark"] .ai-section .code-block,
+[data-theme="dark"] .usecase-card__code,
+[data-theme="dark"] .web-hero__code,
+[data-theme="dark"] .web-install-card__code {
+  background: #222b3a;
+}
+
+/* Sits inside .tabs__panels, so it needs the next step up, not the same tone. */
+[data-theme="dark"] .mcp-tool-card {
+  background: #323a47;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* The snippet inside the card has no background of its own, so once the card was
+   lifted the syntax colours lost their near-black backdrop (purple fell to 4.34:1).
+   Give the snippet the code tone back. */
+[data-theme="dark"] .mcp-tool-card__code {
+  background: #1b2230;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+[data-theme="dark"] .code-card,
+[data-theme="dark"] .ai-section .code-block,
+[data-theme="dark"] .usecase-card__code,
+[data-theme="dark"] .terminal-mockup__code,
+[data-theme="dark"] .cta__terminal-body {
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 /* ===== RESET ===== */
@@ -1144,7 +1194,8 @@ ul { list-style: none; }
 
 .cta__terminal-title {
   font-size: 0.625rem;
-  color: rgba(255, 255, 255, 0.4);
+  /* 0.4 alpha on a #0d1117 terminal is 3.8:1 — under the 4.5:1 bar in both modes. */
+  color: rgba(255, 255, 255, 0.62);
   margin-left: 16px;
   font-family: var(--font-mono);
 }
@@ -1170,7 +1221,7 @@ ul { list-style: none; }
 }
 
 .cta__terminal-output {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.62);
   margin-top: 8px;
   font-size: 0.875rem;
 }
@@ -1222,12 +1273,12 @@ ul { list-style: none; }
 }
 
 .footer__copyright {
-  color: rgba(30, 50, 86, 0.4);
+  color: rgba(30, 50, 86, 0.75);
   font-size: 0.75rem;
 }
 
 [data-theme="dark"] .footer__copyright {
-  color: rgba(156, 163, 175, 0.5);
+  color: #a3acb9;
 }
 
 .footer__col-title {
@@ -1416,7 +1467,7 @@ ul { list-style: none; }
 
 .mcp-install__or {
   font-size: 0.8125rem;
-  color: rgba(203, 213, 225, 0.5);
+  color: rgba(203, 213, 225, 0.78);
   font-style: italic;
 }
 
@@ -1431,7 +1482,7 @@ ul { list-style: none; }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: rgba(203, 213, 225, 0.35);
+  color: rgba(203, 213, 225, 0.72);
   position: relative;
   margin-top: 8px;
 }
@@ -1494,7 +1545,7 @@ ul { list-style: none; }
   background: rgba(203, 213, 225, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
-  color: rgba(203, 213, 225, 0.5);
+  color: rgba(203, 213, 225, 0.85);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1502,7 +1553,7 @@ ul { list-style: none; }
 .mcp-tool-card__file {
   font-size: 0.6875rem;
   font-family: var(--font-mono);
-  color: rgba(203, 213, 225, 0.4);
+  color: rgba(203, 213, 225, 0.78);
 }
 
 .mcp-tool-card__code {
@@ -1713,7 +1764,7 @@ ul { list-style: none; }
   border-radius: 12px;
   overflow: hidden;
   box-shadow: var(--shadow-xl);
-  border: 1px solid rgba(48, 54, 61, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .terminal-mockup__titlebar {
@@ -1722,7 +1773,7 @@ ul { list-style: none; }
   gap: 12px;
   padding: 12px 16px;
   background: rgba(22, 27, 34, 1);
-  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .terminal-mockup__dots {
@@ -1742,7 +1793,7 @@ ul { list-style: none; }
 
 .terminal-mockup__title {
   font-size: 0.6875rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.62);
   font-family: var(--font-mono);
 }
 
@@ -2579,7 +2630,7 @@ ul { list-style: none; }
   font-size: 0.6875rem;
   font-family: var(--font-mono);
   color: var(--color-on-surface-variant);
-  opacity: 0.6;
+  opacity: 0.8;
   margin-top: auto;
 }
 
@@ -2617,7 +2668,10 @@ ul { list-style: none; }
 .feature-card__title { font-size: 1.2rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
 .feature-card__text { font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; margin: 0 0 16px; flex-grow: 1; }
 .feature-card__text code { font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.06); }
-@media (prefers-color-scheme: dark) { .feature-card__text code { background: rgba(255,255,255,0.08); } }
+/* Was keyed on `prefers-color-scheme` alone, so a light-OS reader who used the site's
+   own theme toggle kept the light chip (black at 6%) on a dark card — invisible. Keyed on
+   `data-theme` like the rest of the sheet, and lifted to clear 1.25:1 against the card. */
+[data-theme="dark"] .feature-card__text code { background: rgba(255,255,255,0.14); }
 .feature-card__chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .feature-card__chip { font-size: 0.72rem; font-weight: 600; background: rgba(var(--accent-rgb, 59,130,246), 0.12); color: var(--color-primary, var(--accent)); padding: 4px 10px; border-radius: 999px; letter-spacing: 0.01em; }
 
@@ -2660,6 +2714,9 @@ ul { list-style: none; }
   letter-spacing: 0.01em;
 }
 .hero__store-badge--web:hover { background: var(--color-primary-dim, #1557b0); color: #fff; }
+/* Dark primary is a light blue, so white-on-primary drops to 1.95:1. */
+[data-theme="dark"] .hero__store-badge--web,
+[data-theme="dark"] .hero__store-badge--web:hover { color: var(--color-on-primary); }
 .hero__store-badge--web::before {
   content: ''; width: 18px; height: 18px;
   background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z'/></svg>") center/contain no-repeat;
@@ -2821,8 +2878,11 @@ ul { list-style: none; }
   transition: all var(--duration-medium) var(--ease-spring);
 }
 
+/* Secondary button: 8% of the accent over the page background is 1.14:1, i.e. no visible
+   button at all until you hover it. */
 [data-theme="dark"] .showcase-link__cta {
-  background: rgba(121, 192, 255, 0.08);
+  background: rgba(121, 192, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .showcase-link__cta:hover {
