@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
 import dev.romainguy.kotlin.math.inverse
@@ -16,6 +17,7 @@ import io.github.sceneview.math.quaternion
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The one camera writer of a screen that has several sources of camera poses.
@@ -40,6 +42,14 @@ import kotlin.math.ln
  * underneath, the path goes **around** [pivot] rather than through the subject, and the last
  * frame of the ease is exactly the live pose. The speed the camera had going in is carried and
  * decays ([COAST_SECONDS]) instead of stopping dead: position *and* velocity are continuous.
+ *
+ * The ease runs on **drawn** time, not wall-clock time: a frame counts for at most
+ * [MAX_FRAME_SECONDS]. A model decoding on the main thread freezes the picture for seconds, and
+ * an ease timed on the wall clock would be over before the next frame — a cut again. For the
+ * same reason a long gap between two frames is itself treated as a cut: the source moved on
+ * unseen, and the camera is eased from the last picture drawn to wherever it is now — on the
+ * frame after the gap and the [SETTLING_FRAMES] that follow, because a source animated from
+ * another frame callback is a frame stale and only shows afterwards how far it went.
  *
  * QA mode ([eased] `false`) keeps every change instantaneous, so goldens never catch a camera
  * half-way.
@@ -66,6 +76,9 @@ class ContinuousCameraManipulator(
     private var cutMillis = NO_CUT
     private var ease: Ease? = null
 
+    /** Frames left, after a freeze, in which a step of the source still belongs to that freeze. */
+    private var settlingFrames = 0
+
     /** `true` once [drive] has named a source. */
     val hasSource: Boolean get() = source != null
 
@@ -76,11 +89,16 @@ class ContinuousCameraManipulator(
     val isEasing: Boolean get() = ease != null
 
     /**
-     * Whether the scene had anything to show at the last composition ([driving]). A camera that
-     * moves in front of an empty viewport is not seen moving, and easing it would only make the
-     * subject land in a frame that is still travelling: that change stays a cut.
+     * Whether the viewport has a subject in it ([driving]). A camera that moves behind a loading
+     * cover or in front of an empty stage is not seen moving, and easing it would only make the
+     * subject land in a frame that is still travelling: while this is `false` every change is
+     * taken at once, and the first picture drawn afterwards has nothing to be continuous with.
      */
-    internal var contentShown = true
+    var contentShown: Boolean = true
+        set(value) {
+            field = value
+            if (!value) forget()
+        }
 
     /**
      * Make [next] the source of poses and gestures. Idempotent for the current one. [cut] takes
@@ -114,16 +132,53 @@ class ContinuousCameraManipulator(
 
     override fun getTransform(): Transform {
         val live = source?.getTransform() ?: return shown ?: Transform()
+        if (!contentShown) {
+            forget()
+            return live
+        }
         val now = nanoTime()
         val center = pivot()
         val liveFraming = orbitFramingOf(live.position, center)
+        val sinceShown = (now - shownNanos) / NANOS_PER_SECOND
+        // Nothing was drawn for a while: whatever the source did meanwhile is, on screen, a cut.
+        if (shown != null && sinceShown > STALL_SECONDS) settlingFrames = SETTLING_FRAMES
+        if (settlingFrames > 0) {
+            settlingFrames--
+            if (cutMillis == NO_CUT && sourceStepped(liveFraming)) cutMillis = blendMillis
+        }
         if (cutMillis != NO_CUT) {
             ease = beginEase(live, liveFraming, cutMillis, now)
             cutMillis = NO_CUT
         }
-        val out = ease?.let { applyEase(it, live, liveFraming, now) }?.takeIf(::isFinite) ?: live
+        val frameSeconds = sinceShown.coerceIn(0f, MAX_FRAME_SECONDS)
+        val out = ease?.let { applyEase(it, live, liveFraming, now, frameSeconds) }
+            ?.takeIf(::isFinite)
+            ?: live
         record(out, center, now)
         return out
+    }
+
+    /** Whether the source stands further from the picture on screen than a frame of any move. */
+    private fun sourceStepped(liveFraming: OrbitFraming): Boolean {
+        val from = shown ?: return false
+        if (ease != null) return false
+        val offset = orbitFramingOffset(
+            user = orbitFramingOf(from.position, liveFraming.pivot),
+            authored = liveFraming,
+        )
+        return abs(offset.yawDegrees) > STEP_DEGREES ||
+            abs(Math.toDegrees(offset.elevation.toDouble())) > STEP_DEGREES ||
+            abs(ln(offset.distanceScale.coerceAtLeast(MIN_DISTANCE))) > STEP_ZOOM
+    }
+
+    /** Nothing on screen to be continuous with any more. */
+    private fun forget() {
+        settlingFrames = 0
+        shown = null
+        shownFraming = null
+        speed = FramingSpeed.REST
+        ease = null
+        cutMillis = NO_CUT
     }
 
     private fun beginEase(live: Transform, liveFraming: OrbitFraming, millis: Long, now: Long): Ease? {
@@ -152,18 +207,26 @@ class ContinuousCameraManipulator(
         )
     }
 
-    private fun applyEase(ease: Ease, live: Transform, liveFraming: OrbitFraming, now: Long): Transform {
-        val elapsed = (now - ease.startNanos) / NANOS_PER_SECOND
+    private fun applyEase(
+        ease: Ease,
+        live: Transform,
+        liveFraming: OrbitFraming,
+        now: Long,
+        frameSeconds: Float,
+    ): Transform {
+        ease.elapsed += frameSeconds
+        val elapsed = ease.elapsed
         val weight = resumeBlendWeight(elapsed, ease.seconds)
         if (weight <= 0f) {
             this.ease = null
             return live
         }
-        if (!ease.relative && elapsed > MIN_SPEED_WINDOW_SECONDS) {
+        val sinceStart = (now - ease.startNanos) / NANOS_PER_SECOND
+        if (!ease.relative && sinceStart > MIN_SPEED_WINDOW_SECONDS) {
             // The new source moves too: what is carried is the speed *relative* to it, known as
             // soon as it has shown a second pose. One frame late, and exact from then on.
-            if (elapsed < MAX_SPEED_WINDOW_SECONDS) {
-                ease.carried = ease.carried - FramingSpeed.between(ease.liveAtStart, liveFraming, elapsed)
+            if (sinceStart < MAX_SPEED_WINDOW_SECONDS) {
+                ease.carried = ease.carried - FramingSpeed.between(ease.liveAtStart, liveFraming, sinceStart)
             }
             ease.relative = true
         }
@@ -274,6 +337,9 @@ class ContinuousCameraManipulator(
     ) {
         /** Whether [carried] has been made relative to the new source's own speed yet. */
         var relative = false
+
+        /** Drawn time into the ease — see [MAX_FRAME_SECONDS]. */
+        var elapsed = 0f
     }
 
     companion object {
@@ -283,7 +349,18 @@ class ContinuousCameraManipulator(
         /** Time constant of the carried speed's decay. */
         const val COAST_SECONDS: Float = 0.25f
 
+        /** The most one frame advances an ease by, however long it took to arrive. */
+        const val MAX_FRAME_SECONDS: Float = 0.05f
+
+        /** A gap between two frames longer than this is a freeze, and what follows it a cut. */
+        const val STALL_SECONDS: Float = 0.25f
+
+        /** How many frames after a freeze a step of the source is still put down to it. */
+        const val SETTLING_FRAMES: Int = 3
+
         private const val NO_CUT = -1L
+        private const val STEP_DEGREES = 2f
+        private const val STEP_ZOOM = 0.03f
         private const val HALF_TURN_DEGREES = 180f
         private const val SEAMLESS_DEGREES = 0.25f
         private const val SEAMLESS_DISTANCE_RATIO = 0.005f
@@ -299,6 +376,29 @@ class ContinuousCameraManipulator(
         private val UP = Float3(0f, 1f, 0f)
     }
 }
+
+/**
+ * Suspends until frames come at a steady pace again — [STEADY_FRAMES] in a row less than
+ * [STEADY_FRAME_NANOS] apart — or [timeoutMillis] have passed.
+ *
+ * The frames that first show a model are the ones it drops: shaders link, textures upload, the
+ * picture freezes. A camera move timed on the wall clock and started on that frame is spent
+ * before anything is drawn — on screen, a cut. Started after this, it is seen.
+ */
+suspend fun awaitSteadyFrames(timeoutMillis: Long = 1_500L) {
+    withTimeoutOrNull(timeoutMillis) {
+        var last = withFrameNanos { it }
+        var steady = 0
+        while (steady < STEADY_FRAMES) {
+            val now = withFrameNanos { it }
+            steady = if (now - last < STEADY_FRAME_NANOS) steady + 1 else 0
+            last = now
+        }
+    }
+}
+
+private const val STEADY_FRAMES = 3
+private const val STEADY_FRAME_NANOS = 100_000_000L
 
 /**
  * A [ContinuousCameraManipulator] that survives every recomposition. [pivot] is the point the
@@ -324,10 +424,10 @@ fun rememberContinuousCameraManipulator(
  * Keeps [this] driving [source] — the manipulator the screen would have handed to `SceneView`
  * directly, however often it is rebuilt or swapped — and returns it for `SceneView`.
  *
- * [contentShown] is whether the viewport has a subject in it. A new source is eased into only if
- * it had one *before* the change: the framing that arrives with a model (its measured fit, the
- * next chip's radius behind an empty stage) is taken at once, so the model lands in a camera that
- * already stands still.
+ * [contentShown] is whether the viewport has a subject in it. While it has none — a loading
+ * cover, an empty stage between two models — every change is taken at once, so the framing that
+ * arrives with a model (its measured fit, the next chip's radius) is not a camera move: the model
+ * lands in a camera that already stands still.
  */
 @Composable
 fun ContinuousCameraManipulator.driving(
@@ -338,8 +438,8 @@ fun ContinuousCameraManipulator.driving(
     // `SceneView` may read the pose before the first side effect runs.
     if (!hasSource) drive(source)
     SideEffect {
-        drive(source, cut = !this.contentShown)
         this.contentShown = contentShown
+        drive(source)
     }
     return this
 }

@@ -49,7 +49,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -101,6 +103,7 @@ import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -445,17 +448,17 @@ private fun AnimationSection(
     val trackingEye = remember { androidx.compose.runtime.mutableStateOf<Position?>(null) }
 
     // The one camera writer of the screen. Every shot below opens with a `snapTo` of its
-    // start pose, two of them snap again each time their loop goes round, the scripted and the
+    // start pose, the scripted and the
     // free manipulator are different instances and a new subject rebuilds both — each of those
     // drew the new pose on the very next frame, a cut of up to half a turn. `SceneView` is handed
     // this manipulator instead, for good, and it eases from the pose on screen into whatever the
     // current source shows.
     val continuity = rememberContinuousCameraManipulator(pivot = target)
+    val subjectShown = rememberUpdatedState(modelInstance != null)
 
     // Cinematic easings — FastOutSlowInEasing is Material's standard, EaseInOutCubic
     // is a slightly more dramatic S-curve we use for the hero pause-and-resume.
     val easeInOutCubic: Easing = remember { CubicBezierEasing(0.65f, 0.0f, 0.35f, 1.0f) }
-    val easeOutQuart: Easing = remember { CubicBezierEasing(0.25f, 1.0f, 0.5f, 1.0f) }
 
     // ---------------------------------------------------------------------------
     // Mode driver: each case below is a self-contained cinematic loop. We
@@ -488,6 +491,19 @@ private fun AnimationSection(
             return@LifecyclePausingLaunchedEffect
         }
 
+        // A shot's clock starts when its subject is on screen and frames are being drawn again. It
+        // used to run on under the loading scrim and through the freeze of the model's first
+        // frame, so the reveal showed the camera wherever the script had got to — a quarter of a
+        // turn from the frame the scrim had been dimming.
+        var staged = false
+        suspend fun awaitStage() {
+            gate.awaitResumed()
+            if (staged) return
+            snapshotFlow { subjectShown.value }.first { it }
+            io.github.sceneview.demo.awaitSteadyFrames()
+            staged = true
+        }
+
         // Reset overrides on every mode switch so previous mode state doesn't bleed in — as a
         // camera move: the pose eases in from the one on screen, and the lens with it.
         continuity.easeNextCut()
@@ -511,18 +527,19 @@ private fun AnimationSection(
                 while (true) {
                     yawAnim.snapTo(0f)
                     // Quarter 1: 0° → 45° (front-3/4) over 5 s, ease-in-out.
-                    // gate.awaitResumed() parks on a clean boundary while the
+                    // awaitStage() parks on a clean boundary while the
                     // app is backgrounded — yaw is preserved, no teleport.
-                    gate.awaitResumed()
+                    awaitStage()
                     yawAnim.animateTo(45f, tween(5_000, easing = easeInOutCubic))
                     // Hold the front-3/4 angle for 2 s (the cinematic beat).
                     // animateTo to the same value returns immediately, so use delay.
                     kotlinx.coroutines.delay(2_000)
-                    // Quarter 2: 45° → 180° over 8 s, ease-out
-                    gate.awaitResumed()
-                    yawAnim.animateTo(180f, tween(8_000, easing = easeOutQuart))
+                    // Quarter 2: 45° → 180° over 8 s. It leaves a 2 s hold, so it has to start
+                    // from rest: an ease-*out* here launched the camera at 66°/s in one frame.
+                    awaitStage()
+                    yawAnim.animateTo(180f, tween(8_000, easing = easeInOutCubic))
                     // Half: 180° → 360° over 10 s, ease-in-out
-                    gate.awaitResumed()
+                    awaitStage()
                     yawAnim.animateTo(360f, tween(10_000, easing = easeInOutCubic))
                 }
             }
@@ -541,13 +558,11 @@ private fun AnimationSection(
                 // close-up. Bumped to 0.9 → 1.2 (camY 1.4 → 1.7) so we look slightly
                 // DOWN at the soldier and the rooftop ground line is always visible.
                 yawAnim.snapTo(15f)
+                radiusAnim.snapTo(1.5f)
+                yHeightAnim.snapTo(0.9f)
                 while (true) {
-                    // Back to the close-up start — a push-in from the wide shot, not a cut.
-                    continuity.easeNextCut()
-                    radiusAnim.snapTo(1.5f)
-                    yHeightAnim.snapTo(0.9f)
                     // Park on the close-up boundary while backgrounded.
-                    gate.awaitResumed()
+                    awaitStage()
                     // 6 s pull-back to wide, ease-in-out — matches a real dolly-out
                     val pullBack = tween<Float>(6_000, easing = FastOutSlowInEasing)
                     val sync = launch { radiusAnim.animateTo(5.0f, pullBack) }
@@ -556,6 +571,13 @@ private fun AnimationSection(
                     // 2 s hold on the wide shot before looping (delay, not animateTo
                     // — the latter returns immediately when target == current).
                     kotlinx.coroutines.delay(2_000)
+                    // Back to the close-up as a shot of its own: a 3 s push-in. The loop used to
+                    // snap there (a 3.5 m cut), and easing that snap over 0.7 s was still a lurch.
+                    awaitStage()
+                    val pushIn = tween<Float>(REVEAL_PUSH_IN_MILLIS, easing = easeInOutCubic)
+                    val syncIn = launch { radiusAnim.animateTo(1.5f, pushIn) }
+                    yHeightAnim.animateTo(0.9f, pushIn)
+                    syncIn.join()
                 }
             }
 
@@ -573,7 +595,7 @@ private fun AnimationSection(
                     radiusAnim.snapTo(2.0f)
                     fovAnim.snapTo(60f)
                     // Park on the vertigo-start boundary while backgrounded.
-                    gate.awaitResumed()
+                    awaitStage()
                     // Vertigo IN: 10 s. Radius grows 2 → 5, FOV shrinks 60 → 25.
                     // The subject stays roughly the same screen size; the background
                     // appears to crush in. Easing: gentle ease-in-out for the build.
@@ -584,7 +606,7 @@ private fun AnimationSection(
                     // Hold at the extreme for 1 s — lets the eye register the warp.
                     kotlinx.coroutines.delay(1_000)
                     // Vertigo OUT: 8 s. Reverse — radius 5 → 2, FOV 25 → 60.
-                    gate.awaitResumed()
+                    awaitStage()
                     val vOut = tween<Float>(8_000, easing = easeInOutCubic)
                     val syncR2 = launch { radiusAnim.animateTo(2.0f, vOut) }
                     fovAnim.animateTo(60f, vOut)
@@ -620,21 +642,25 @@ private fun AnimationSection(
                     }
                 }
                 try {
+                    // Onto the start of the track: swung round the subject, slowly enough to
+                    // read, rather than teleported across it.
+                    continuity.easeNextCut(TRACK_ENTRY_MILLIS)
+                    xAnim.snapTo(startX)
+                    var towards = endX
                     while (true) {
-                        // Back to the start of the track: swung round the subject, slowly
-                        // enough to read, rather than teleported across it.
-                        continuity.easeNextCut(TRACK_RETURN_MILLIS)
-                        xAnim.snapTo(startX)
-                        // Park on the sweep-start boundary while backgrounded.
-                        gate.awaitResumed()
+                        // Park on the end of the track while backgrounded.
+                        awaitStage()
                         // 8 s lateral sweep, ease-in-out so the pass accelerates
                         // smoothly and decelerates at the end (real dolly track feel).
                         xAnim.animateTo(
-                            targetValue = endX,
+                            targetValue = towards,
                             animationSpec = tween(8_000, easing = easeInOutCubic),
                         )
-                        // 1 s pause at the end of the track before swinging back.
+                        // 1 s hold, then the dolly runs back the way it came. The loop used to
+                        // jump to the start of the track — a 116° cut — and swinging round the
+                        // subject in 1.2 s instead was still a whip pan.
                         kotlinx.coroutines.delay(1_000)
+                        towards = if (towards == endX) startX else endX
                     }
                 } finally {
                     publisher.cancel()
@@ -742,8 +768,10 @@ private fun AnimationSection(
             }
         } else null
     }
+    // The loading scrim is translucent — the rooftop shows through it — so a new subject's camera
+    // is eased in like any other change, and is in place by the time the scrim lifts.
     val activeManipulator = continuity.driving(
-        (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
+        source = (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
     )
 
     val firstFrame = rememberFirstFrameState()
@@ -1592,8 +1620,11 @@ internal fun trayLocalGravity(pitchDegrees: Float, rollDegrees: Float): Position
 /** How long the lens takes to follow the camera into a new shot — the pose's own ease. */
 private const val CUT_EASE_MILLIS = 700
 
-/** The tracking shot's swing back to the start of its track: most of a half turn. */
-private const val TRACK_RETURN_MILLIS = 1_200L
+/** The swing onto the start of the tracking shot's track: up to most of a half turn. */
+private const val TRACK_ENTRY_MILLIS = 1_200L
+
+/** The Reveal shot's way back from the wide frame to its close-up, before the next pull-back. */
+private const val REVEAL_PUSH_IN_MILLIS = 3_000
 
 private const val PHYSICS_INITIAL_BODIES = 7
 private const val PHYSICS_MAX_BODIES = 30

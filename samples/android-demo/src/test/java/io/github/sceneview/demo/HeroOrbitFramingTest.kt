@@ -185,6 +185,34 @@ class HeroOrbitFramingTest {
         assertNull(carried.over { error("the authored framing is only read when there is an offset") })
     }
 
+    @Test
+    fun `a long way home takes longer, a short one keeps the length it was given`() {
+        val near = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 8f, elevation = 0f, distanceScale = 1.1f)
+        val far = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = -75f, elevation = 0f, distanceScale = 1f)
+        val zoomed = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 0f, elevation = 0f, distanceScale = 0.2f)
+        val opposite = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 180f, elevation = 0f, distanceScale = 1f)
+
+        assertEquals(1_200L, resumeBlendMillisFor(near, 1_200L))
+        // 75° under a 45°/s peak: 1.5 × 75 / 45 = 2.5 s.
+        assertEquals(2_500.0, resumeBlendMillisFor(far, 1_200L).toDouble(), 2.0)
+        assertTrue(resumeBlendMillisFor(zoomed, 1_200L) > 2_500L)
+        assertEquals(3_600L, resumeBlendMillisFor(opposite, 1_200L))
+        assertEquals(0L, resumeBlendMillisFor(far, 0L))
+    }
+
+    @Test
+    fun `a paced ease back is still on its way when the asked length has passed`() {
+        var now = 0L
+        val carried = CarriedFraming { now }
+        carried.hold(OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 75f, elevation = 0f, distanceScale = 1f))
+
+        carried.easeBack(millis = 1_200L, paced = true)
+        now += 1_250_000_000L
+
+        // Half of 2.5 s in: half of the turn is left, where the unpaced ease had already landed.
+        assertEquals(authored.yawDegrees + 37.5f, checkNotNull(carried.over { authored }).yawDegrees, 0.5f)
+    }
+
     // ── The turntable's clock ────────────────────────────────────────────────────────────────────
 
     @Test

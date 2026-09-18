@@ -260,6 +260,89 @@ class ContinuousCameraManipulatorTest {
         assertTrue("worst step $worst m against a cruise of $cruise", worst < cruise * 2.2f)
     }
 
+    // ── Frames that never came ───────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a freeze does not eat the ease`() {
+        val first = Turntable(yawDegrees = 0f)
+        val second = Turntable(yawDegrees = 150f, radius = 3.5f)
+        val camera = manipulator().apply { drive(first) }
+        val before = camera.frame()
+        camera.drive(second)
+        camera.frame()
+
+        // A model decodes on the main thread: the next frame arrives three seconds later.
+        nanos += 3_000_000_000L
+        val after = camera.frame()
+
+        assertTrue(camera.isEasing)
+        assertTrue("stepped ${distance(before, after)} m", distance(before, after) < 0.15f)
+    }
+
+    @Test
+    fun `a source that moved on during a freeze is eased back into, not cut to`() {
+        val script = Turntable(yawDegrees = 0f)
+        val camera = manipulator().apply { drive(script) }
+        val before = camera.frame()
+
+        nanos += 2_000_000_000L
+        script.yawDegrees = 120f
+        val after = camera.frame()
+
+        assertTrue(camera.isEasing)
+        assertTrue("stepped ${distance(before, after)} m", distance(before, after) < 0.15f)
+    }
+
+    @Test
+    fun `a source one frame stale shows its move a frame after the freeze - still no cut`() {
+        val script = Turntable(yawDegrees = 0f)
+        val camera = manipulator().apply { drive(script) }
+        camera.frame()
+
+        // The script is animated from another frame callback: on the first frame after the
+        // freeze it still shows the old pose, and only on the next one how far it went.
+        nanos += 4_000_000_000L
+        val before = camera.frame()
+        assertFalse(camera.isEasing)
+        script.yawDegrees = 43f
+        val after = camera.frame()
+
+        assertTrue(camera.isEasing)
+        assertTrue("stepped ${distance(before, after)} m", distance(before, after) < 0.15f)
+    }
+
+    @Test
+    fun `long after a freeze a moving source is left alone`() {
+        val turning = Turntable(yawDegrees = 0f, degreesPerSecond = 60f)
+        val camera = manipulator().apply { drive(turning) }
+        camera.frame()
+        nanos += 4_000_000_000L
+        repeat(ContinuousCameraManipulator.SETTLING_FRAMES + 1) { camera.frame() }
+        while (camera.isEasing) camera.frame()
+
+        turning.yawDegrees += 10f
+        val drawn = camera.frame()
+        assertEquals(0f, maxElementDelta(turning.getTransform(), drawn), 1e-5f)
+        assertFalse(camera.isEasing)
+    }
+
+    @Test
+    fun `behind a loading cover every change is taken at once, and the reveal adds no move`() {
+        val first = Turntable(yawDegrees = 0f)
+        val second = Turntable(yawDegrees = 120f, radius = 4f)
+        val camera = manipulator().apply { drive(first) }
+        camera.frame()
+
+        camera.contentShown = false
+        camera.drive(second)
+        assertEquals(0f, maxElementDelta(second.getTransform(), camera.frame()), 0f)
+
+        nanos += 2_000_000_000L
+        camera.contentShown = true
+        assertEquals(0f, maxElementDelta(second.getTransform(), camera.frame()), 0f)
+        assertFalse(camera.isEasing)
+    }
+
     // ── Robustness ───────────────────────────────────────────────────────────────────────────────
 
     @Test

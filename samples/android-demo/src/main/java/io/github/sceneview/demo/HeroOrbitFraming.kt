@@ -1,8 +1,11 @@
 package io.github.sceneview.demo
 
 import io.github.sceneview.math.Position
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -175,6 +178,39 @@ private val MAX_ELEVATION: Float = Math.toRadians(89.0).toFloat()
 const val DEFAULT_RESUME_BLEND_MILLIS: Long = 1_200L
 
 /**
+ * How long the ease back over [offset] really takes when [millis] was asked for: the same, stretched
+ * until the way home is not covered at a whip. A camera left a quarter turn away came back in
+ * 1.2 s — continuous, eased at both ends, and still ~100°/s in the middle, which reads as a jump.
+ * Smoothstep peaks at 1.5× its mean speed, so the turn is held under
+ * [RESUME_PEAK_DEGREES_PER_SECOND] and the dolly under [RESUME_PEAK_ZOOM_PER_SECOND] — up to
+ * [MAX_RESUME_STRETCH]× [millis], past which the camera would seem not to answer at all.
+ */
+internal fun resumeBlendMillisFor(offset: OrbitFramingOffset, millis: Long): Long {
+    if (millis <= 0L) return millis
+    val turnDegrees = max(
+        abs(offset.yawDegrees),
+        abs(Math.toDegrees(offset.elevation.toDouble()).toFloat()),
+    )
+    val zoom = offset.distanceScale.takeIf { it.isFinite() && it > 0f }?.let { abs(ln(it)) } ?: 0f
+    val seconds = SMOOTHSTEP_PEAK *
+        max(turnDegrees / RESUME_PEAK_DEGREES_PER_SECOND, zoom / RESUME_PEAK_ZOOM_PER_SECOND)
+    if (!seconds.isFinite()) return millis
+    return (seconds * 1_000f).toLong().coerceIn(millis, millis * MAX_RESUME_STRETCH)
+}
+
+/** Peak speed of a smoothstep, in units of its mean speed. */
+private const val SMOOTHSTEP_PEAK = 1.5f
+
+/** The fastest a hand-back turns the camera round the subject, at the middle of its ease. */
+internal const val RESUME_PEAK_DEGREES_PER_SECOND = 45f
+
+/** The fastest a hand-back dollies, in natural-log distance per second (≈ ×2.2 each second). */
+internal const val RESUME_PEAK_ZOOM_PER_SECOND = 0.8f
+
+/** A hand-back never lasts more than this many times the length it was given. */
+internal const val MAX_RESUME_STRETCH = 3L
+
+/**
  * The user's framing while the idle orbit carries it: held at full weight for good, or easing
  * away. The ease runs on [nanoTime] rather than on frame deltas so that a manipulator nobody is
  * drawing from — Materials swaps between two — still finishes its way home in the meantime.
@@ -194,11 +230,15 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
         easeNanos = 0L
     }
 
-    /** Start easing what is carried away over [millis]. Nothing carried, nothing to ease. */
-    fun easeBack(millis: Long) {
-        if (offset == null) return
+    /**
+     * Start easing what is carried away over [millis] — or, with [paced], over as long as the way
+     * home needs ([resumeBlendMillisFor]). A demo that times the ease against an animation of its
+     * own asks for the exact length. Nothing carried, nothing to ease.
+     */
+    fun easeBack(millis: Long, paced: Boolean = false) {
+        val held = offset ?: return
         easeStartNanos = nanoTime()
-        easeNanos = millis * NANOS_PER_MILLI
+        easeNanos = (if (paced) resumeBlendMillisFor(held, millis) else millis) * NANOS_PER_MILLI
     }
 
     fun clear() {

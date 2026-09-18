@@ -550,6 +550,9 @@ private fun SingleModelSection(
         }
         entranceProgress.snapTo(0f)
         fitProgress.snapTo(0f)
+        // The tween below runs on the wall clock, and the frame that shows the model is followed
+        // by the ones its upload drops: started there, those frames come out of the flight.
+        io.github.sceneview.demo.awaitSteadyFrames()
         launch { fitProgress.animateTo(1f, SceneViewTokens.Motion.spring()) }
         entranceProgress.animateTo(
             targetValue = 1f,

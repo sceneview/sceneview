@@ -334,29 +334,32 @@ private fun StudioSection(
     // Gallery: a flat wall cannot be orbited — a quarter turn shows the spheres edge-on and a
     // half turn shows the back of the grid. The phase drives a bounded cosine sweep instead.
     val sweepPhase = remember { mutableFloatStateOf(MaterialStudio.STATIC_SWEEP_PHASE) }
-    // Two ways to stop the sweep, and they end differently. `sweepPinned` — the pause button
-    // or QA mode — also returns the phase to its canonical value, so the wall is framed the
-    // same way every time it is stilled. A focus flight (#3609) merely *suspends* it: a yaw
-    // still travelling under the dolly drags the picked sphere out of frame, and resetting
-    // the phase mid-flight would snap it there in one frame.
-    val sweepPinned = !animating || DemoSettings.qaMode
-    val sweepStopped = inspecting || sweepPinned || focusing
+    val sweepMotion = remember { MaterialStudio.SweepMotion() }
+    // Three ways to stop the sweep, and they end differently. The pause button **glides** the
+    // wall to its canonical framing, so it is framed the same way every time it is stilled —
+    // writing the phase there was a one-frame jump of the whole wall. QA mode, and a wall
+    // nobody is looking at (Inspect), take that framing at once. A focus flight (#3609) merely
+    // *suspends* the sweep: a yaw still travelling under the dolly drags the picked sphere out
+    // of frame, and moving the phase mid-flight would move the sphere with it.
     LifecycleAwareLaunchedEffect(animating, inspecting, focusing, DemoSettings.qaMode) {
-        if (sweepStopped) {
-            if (sweepPinned && !focusing) {
-                sweepPhase.floatValue = MaterialStudio.STATIC_SWEEP_PHASE
+        when {
+            focusing -> sweepMotion.hold()
+            DemoSettings.qaMode || (inspecting && !animating) -> {
+                sweepMotion.pin()
+                sweepPhase.floatValue = sweepMotion.phase
             }
-            return@LifecycleAwareLaunchedEffect
-        }
-        var lastNanos = 0L
-        while (true) {
-            withFrameNanos { nanos ->
-                if (lastNanos != 0L) {
-                    val advance =
-                        (nanos - lastNanos) / (MaterialStudio.SWEEP_PERIOD_MILLIS * 1_000_000.0)
-                    sweepPhase.floatValue = ((sweepPhase.floatValue + advance) % 1.0).toFloat()
+            inspecting -> sweepMotion.hold()
+            else -> {
+                var lastNanos = 0L
+                var settled = false
+                while (!settled) {
+                    withFrameNanos { nanos ->
+                        val delta = if (lastNanos == 0L) 0f else (nanos - lastNanos) / 1e9f
+                        lastNanos = nanos
+                        if (animating) sweepMotion.cruise(delta) else settled = sweepMotion.settle(delta)
+                        sweepPhase.floatValue = sweepMotion.phase
+                    }
                 }
-                lastNanos = nanos
             }
         }
     }

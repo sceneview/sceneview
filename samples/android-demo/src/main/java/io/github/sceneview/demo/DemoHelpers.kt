@@ -900,7 +900,12 @@ class HeroOrbitCameraManipulator(
             idleNanos > resumeNanos + UNWATCHED_MARGIN_NANOS -> dropUserFraming()
             else -> {
                 handBack()
-                if (resumeBlendMillis > 0L) carried.easeBack(resumeBlendMillis) else dropUserFraming()
+                // Nobody timed this one: it takes as long as the way home needs.
+                if (resumeBlendMillis > 0L) {
+                    carried.easeBack(resumeBlendMillis, paced = true)
+                } else {
+                    dropUserFraming()
+                }
             }
         }
     }
