@@ -153,6 +153,22 @@ fun HomeScreen(
      */
     hasUnseenWhatsNew: Boolean = false,
     onWhatsNewSinceClick: () -> Unit = {},
+    /**
+     * The version the freshness markers are measured against — `VERSION_NAME`
+     * in the app, a pinned value in the snapshot tests.
+     *
+     * Read as a parameter rather than straight off `BuildConfig` because that
+     * read is what coupled the home goldens to `gradle.properties` (#3666).
+     * Freshness is a *relative* verdict: a demo declaring `updatedIn = "4.35.0"`
+     * is inside the window at build 4.36 and outside it at 4.37, so the release
+     * commit's own version bump silently repaints the grid. The goldens then
+     * failed on the release PR — the one PR where a red check is most expensive
+     * and least informative — and were re-recorded under time pressure at 4.35.0
+     * and again at 4.37.0, which is not review, it is ratification. Hoisting the
+     * version makes the badge set a function of what the demos declare, and of
+     * nothing else.
+     */
+    buildVersion: String = BuildConfig.VERSION_NAME,
 ) {
     val home = SceneViewTokens.Home
     val gridState = rememberLazyGridState()
@@ -184,9 +200,10 @@ fun HomeScreen(
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
-    // `sinceVersion` / `updatedIn` against the running build, so it expires on
+    // `sinceVersion` / `updatedIn` against `buildVersion`, so it expires on
     // its own and nothing here is hand-maintained. See `DemoFreshness.kt`.
-    val buildVersion = BuildConfig.VERSION_NAME
+    // `buildVersion` is a parameter, defaulting to `BuildConfig.VERSION_NAME`:
+    // see its KDoc for why the snapshot tests must be able to pin it (#3666).
     val freshnessById = remember(demos, buildVersion) {
         demos.associate { it.id to it.freshness(buildVersion) }
     }
