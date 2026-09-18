@@ -131,7 +131,7 @@ way to build 3D and AR on Android:
 - **Multiplatform** — the same concepts run on iOS, Web, Desktop, TV, Flutter, and React Native
 
 Coming from the archived Sceneform repo? See the
-[migration guide](https://sceneview.github.io/migration/) for a concept-by-concept mapping
+[migration guide](https://sceneview.github.io/docs/migration/) for a concept-by-concept mapping
 (`ArFragment` → `ARScene { }`, `ModelRenderable` → `rememberModelInstance`, and so on).
 
 ---
