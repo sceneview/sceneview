@@ -418,8 +418,14 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
+      # `:samples:android-demo:lintDebug` is here because it was NOT, and that gap is
+      # the whole of #3660: three Compose lint errors sat on `main` behind a green
+      # "Lint" job, because this step only ever linted the two library modules while
+      # the Detekt step below already covered the demo. Local `lintDebug` was the only
+      # thing that saw them. The demo's release-secret guard (#1915) hangs off
+      # `assembleRelease` only, so the debug lint variant needs no secrets.
       - name: Lint
-        run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug --stacktrace
+        run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug :samples:android-demo:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
@@ -458,6 +464,7 @@ jobs:
           path: |
             sceneview/build/reports/lint-results-debug.html
             arsceneview/build/reports/lint-results-debug.html
+            samples/android-demo/build/reports/lint-results-debug.html
           if-no-files-found: ignore
 
   # ── PR-blocking unit-test gate ───────────────────────────────────────────

@@ -54,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
@@ -369,10 +370,16 @@ private fun AnimationSection(
     val modelNodeRef = remember { androidx.compose.runtime.mutableStateOf<ModelNodeImpl?>(null) }
 
     val node = modelNodeRef.value
-    val animationNames = remember(node) {
+    // `LocalResources`, not `LocalContext.current.getString(…)`: a `Context` read is not
+    // invalidated by a configuration change, so the "Clip N" fallbacks would keep the
+    // previous locale's wording after an in-place locale switch
+    // (`LocalContextGetResourceValueCall`, #3660). Keying the `remember` on `resources`
+    // is what actually re-derives the list when that happens.
+    val resources = LocalResources.current
+    val animationNames = remember(node, resources) {
         if (node == null) emptyList() else (0 until node.animationCount).map { index ->
             node.animator.getAnimationName(index).orEmpty().ifBlank {
-                context.getString(R.string.demo_animation_physics_clip_fallback, index + 1)
+                resources.getString(R.string.demo_animation_physics_clip_fallback, index + 1)
             }
         }
     }
