@@ -369,6 +369,48 @@ jobs:
       - name: Check changelog fragment format
         run: bash .claude/scripts/check-changelog-fragments.sh
 
+  # ── Demo-catalogue parity (#3650) — ADVISORY, never a gate ───────────────
+  # `parity-manifest.yml` is the Android↔iOS demo ledger. From #2801 until
+  # this job existed, its header named a blocking check in `ci.yml` ->
+  # `repo-hygiene` — a job that never existed, pointing at a script that had
+  # been deleted with the agent harness (#3244). That is the failure mode
+  # #3650 is about: not an absent guard, a guard everyone believed was there.
+  # Four contradictory tallies accumulated in that header behind a green CI
+  # before anyone noticed.
+  #
+  # It is advisory by maintainer decision, and the reason is in the script's
+  # own header: the ledger records a JUDGEMENT ("genuinely Android-only" vs
+  # "not ported yet") that no script can make. A blocking check would force
+  # every PR adding a demo to also edit a cross-platform ledger, correctly, on
+  # the spot, or go red — buying ledger accuracy with friction on the work the
+  # ledger describes. So the drift is annotated on the PR and summarised in the
+  # run, and the job is green either way.
+  #
+  # NOT a required status check on `main`, and must not become one. Belt and
+  # braces: the script exits 0 by construction AND the job is
+  # `continue-on-error`, so even a bug in the script (a bad `sed`, a missing
+  # file) cannot turn this into a gate by accident.
+  #
+  # No path filter: it is a checkout plus a bash script over ~100 small source
+  # files, it needs no JDK / Xcode / Gradle, and it finishes in seconds. Gating
+  # it on a filter would mostly add a filter to maintain.
+  demo-parity:
+    name: Demo catalogue parity (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      # The script reads the ledger with PyYAML. It already degrades to a
+      # warning when the import fails, so this is about the report actually
+      # running, not about keeping the job green.
+      - name: Ensure PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || pip3 install --quiet pyyaml
+
+      - name: Compare both demo catalogues with parity-manifest.yml
+        run: bash .claude/scripts/check-demo-id-parity.sh
+
   # ── Android build / test / lint ──────────────────────────────────────────
   # Gap #6 (#1311): the former single "Build & lint" job ran assembleDebug +
   # 2 demo APKs + JaCoCo unit tests + lint sequentially (~8.5 min long pole).

@@ -67,9 +67,10 @@
 # exactly how this header came to carry four mutually contradictory counts at
 # once (22/18/13, then 28/25, then 29/24, then 30/23) while the real numbers
 # were something else again. Update these two places in the same PR — BY HAND.
-# Nothing in CI recounts them: `check-demo-id-parity.sh`, which used to, was
-# deleted with the agent harness (#3244, commit 72e5709) and was never
-# replaced. A stale tally passes CI today, so recount before you touch a row.
+# CI recounts them since #3650 — but ADVISORY only: the `demo-parity` job
+# warns with the right number and stays green, so a stale tally still merges
+# if you ignore it. Recount before you touch a row; if you forget, read the
+# job's warning and fix the banner in a follow-up.
 #
 # Recount, never hand-edit:
 #   python3 -c "import yaml,collections; print(collections.Counter(
@@ -122,8 +123,9 @@
 #   - Of the 49 rows: 31 working, 0 stub, 18 android-only. The banners below
 #     said 32 / 0 / 20 before this pass and had said so since before #3405 —
 #     the two paragraphs above were both wrong, in different directions, which
-#     is what "recount, never inherit" is for. No script recounts them today:
-#     `check-demo-id-parity.sh` does not exist in the repository.
+#     is what "recount, never inherit" is for. No script recounted them at the
+#     time: `check-demo-id-parity.sh` was absent from the repository then, and
+#     came back (advisory) only with #3650.
 #   - `ar-cloud-anchor`'s `androidStatus` was corrected here too (KnownIssue →
 #     InReview): #3451 rebuilt that screen and moved the fragment to InReview
 #     without touching this row.
@@ -179,15 +181,28 @@
 #     Android id lands in iOS's `working` bucket once its port is real,
 #     exactly like a `Working` one.
 #
-# NOT checked by anything, as of 2026-09-16. This file used to name
-# `.claude/scripts/check-demo-id-parity.sh` (`ci.yml` -> `repo-hygiene`) as a
-# blocking gate; that script was deleted by #3244 (commit 72e5709, "Remove the
-# agent harness") and there is no `repo-hygiene` job in `ci.yml` either.
-# Nothing today fails when a row's `iosStatus` disagrees with the live iOS
-# registry, when a retired Android id keeps its row, or when a banner tally
-# drifts — all three had happened by the 2026-09-16 recount below.
+# WATCHED, NOT ENFORCED (#3650). `.claude/scripts/check-demo-id-parity.sh`
+# runs on every PR as the `demo-parity` job in `ci.yml`. It reads the live
+# Android fragments, the live iOS registry and this file, and it reports each
+# disagreement as a `::warning` annotation plus a job-summary table. It always
+# exits 0, and the job is `continue-on-error` — nothing here can turn a PR red.
 #
-# What DOES verify something, and is what to run/read instead:
+# That is deliberate, and it is the second attempt. The first version of this
+# script WAS a blocking gate (named here, wrongly, as `ci.yml` -> `repo-hygiene`
+# — a job that never existed); it was deleted wholesale with the agent harness
+# by #3244 (commit 72e5709) and nothing replaced it for three months, during
+# which this header went on asserting a guard that was not there. A gate that
+# fails an honest Android-first PR gets deleted; a warning gets read. If you
+# find yourself wanting to make this blocking again, read #3650 first.
+#
+# So: a row's `iosStatus` disagreeing with the live iOS registry, a retired
+# Android id keeping its row, a banner tally drifting — all three had happened
+# by the 2026-09-16 recount below, all three now WARN on the PR that introduces
+# them, and all three still merge if nobody reads the warning. The manual pass
+# described at the bottom of this block is still the thing that keeps this file
+# honest; the job only makes forgetting it visible.
+#
+# What else verifies something, and is worth running/reading:
 #   - `samples/android-demo/scripts/collate-demos.sh --check` — Android's id
 #     set (`GeneratedDemos.all`) is the left-hand column of this ledger.
 #   - `samples/ios-demo/scripts/collate-ios-demos.sh --check` — iOS's scene id
