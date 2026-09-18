@@ -69,7 +69,7 @@ fun ModelPickerSheet(
                                 .then(if (selected) Modifier.border(BorderStroke(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary), RoundedCornerShape(SceneViewTokens.Radius.md)) else Modifier)
                                 .clickable { onSelect(model) }.padding(SceneViewTokens.Space.sm)
                         ) {
-                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceDim), contentAlignment = Alignment.Center) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(SceneViewTokens.Radius.sm)).background(MaterialTheme.colorScheme.surfaceContainerHigh).border(SceneViewTokens.Layout.hairlineWidth, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(SceneViewTokens.Radius.sm)), contentAlignment = Alignment.Center) {
                                 ModelThumbnails.resourceFor(model.assetName)?.let { Image(painterResource(it), null, Modifier.fillMaxSize()) }
                                     ?: Icon(Icons.Outlined.ViewInAr, null)
                             }

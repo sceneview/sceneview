@@ -36,8 +36,24 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
                 ) {
                     Box(
                         Modifier.size(SceneViewTokens.Layout.viewerEnvironmentTile).clip(shape)
-                            .background(MaterialTheme.colorScheme.surfaceDim)
-                            .then(if (selected) Modifier.border(SceneViewTokens.Layout.selectedOutlineWidth, MaterialTheme.colorScheme.primary, shape) else Modifier),
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .border(
+                                // Unselected tiles used to have no edge at all: in dark the
+                                // tile and the sheet under it were the same tone, so an
+                                // unselected environment read as a gap. The hairline is the
+                                // complement to the tonal step, not a replacement for it.
+                                width = if (selected) {
+                                    SceneViewTokens.Layout.selectedOutlineWidth
+                                } else {
+                                    SceneViewTokens.Layout.hairlineWidth
+                                },
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                                shape = shape,
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         EnvironmentThumbnails.resourceFor(env.assetName)?.let {

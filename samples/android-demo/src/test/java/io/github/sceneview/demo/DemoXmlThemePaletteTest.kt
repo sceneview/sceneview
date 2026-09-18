@@ -1,7 +1,10 @@
 package io.github.sceneview.demo
 
 import android.util.TypedValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.test.core.app.ApplicationProvider
+import io.github.sceneview.demo.theme.md_theme_dark_surface
+import io.github.sceneview.demo.theme.md_theme_light_surface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,6 +34,17 @@ import org.robolectric.annotation.Config
  * says so: unused colour resources do not warn, and a snapshot test renders Compose
  * only, so it never sees the window at all. Hence this test rather than a gate — the
  * assertion needs a resolved theme, which only a device or Robolectric can give.
+ *
+ * ## Why the expectation is a token and not a literal (#3681)
+ *
+ * This test used to spell the expected colour as a hex literal, and by the time the
+ * dark-contrast work opened it the literals had gone stale in *both* themes —
+ * `#F9F9FF` against a Compose surface of `#FFFFFF`, `#111318` against `#0D1117`. It
+ * asserted the XML equalled a number, which is not what its own name claims; the
+ * seam it exists to catch was open the whole time and the test was green.
+ *
+ * Reading [md_theme_light_surface] / [md_theme_dark_surface] directly is the only
+ * form of this assertion that cannot drift: there is now no third place to update.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -38,13 +52,19 @@ class DemoXmlThemePaletteTest {
 
     @Test
     fun `light theme binds colorSurface to the SceneView surface, not the M3 baseline`() {
-        assertSurfaceBinding(expected = 0xFFF9F9FF.toInt(), baseline = 0xFFFEF7FF.toInt())
+        assertSurfaceBinding(
+            expected = md_theme_light_surface.toArgb(),
+            baseline = 0xFFFEF7FF.toInt(),
+        )
     }
 
     @Test
     @Config(qualifiers = "night")
     fun `dark theme binds colorSurface to the SceneView surface, not the M3 baseline`() {
-        assertSurfaceBinding(expected = 0xFF111318.toInt(), baseline = 0xFF141218.toInt())
+        assertSurfaceBinding(
+            expected = md_theme_dark_surface.toArgb(),
+            baseline = 0xFF141218.toInt(),
+        )
     }
 
     @Test
