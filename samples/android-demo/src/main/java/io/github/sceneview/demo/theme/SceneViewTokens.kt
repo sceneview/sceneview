@@ -59,17 +59,62 @@ object SceneViewTokens {
      * `#0B0F16` stage is 1.47 → **1.20:1**, and 1.14:1 over a 60 %-scrimmed camera
      * feed. The panel edge was a guess in both themes.
      *
-     * 14 % fill / 24 % border is the first pair that clears 1.25:1 on both grounds with
-     * margin — 1.47:1 and 1.35:1 for the fill, 2.09:1 and 1.93:1 for the 1 dp border —
-     * while staying obviously glass rather than a solid sheet. `DESIGN.md` carries the
-     * same two numbers; the web and iOS surfaces keep 8 % where they have real blur.
+     * 14 % is the first fill that clears 1.25:1 on both grounds with margin — 1.47:1 and
+     * 1.35:1 — while staying obviously glass rather than a solid sheet. The web and iOS
+     * surfaces keep 8 % where they have real blur.
+     *
+     * ## And why the border became an edge (#3503)
+     *
+     * 1.25:1 is a *fill* bar. The line that tells you where a control begins is measured by
+     * WCAG 1.4.11 at **3:1**, and the 24 % white border never came close — not because of
+     * its opacity but because of where Compose drew it: `Modifier.border` strokes inside
+     * the bounds, on top of the panel's own 14 % white fill, which is 1.03:1. Every value
+     * we could have chosen was invisible. The replacement is [edgeRing] + [edgeHalo],
+     * painted outside the shape, on the media itself.
      */
     object Glass {
         /** `glass-surface` over media — white at 14 %. */
         val surface = Color(0x24FFFFFF)
-        /** `glass-border` — white at 24 %, 1 dp. */
-        val border = Color(0x3DFFFFFF)
+        /**
+         * `glass-border` — white at 24 %, 1 dp.
+         *
+         * Kept as a *width* only. The colour is gone: a hairline painted inside a glass
+         * panel is 1.03:1 against its own fill, so it never identified anything. The edge
+         * of an over-media control is [edgeRing] + [edgeHalo], applied with
+         * `Modifier.overMediaEdge(shape)`.
+         */
         val borderWidth = 1.dp
+
+        /**
+         * `over-media-edge`, inner band — white at 36 %, 1 dp.
+         *
+         * The boundary that says "this is a control" on an element floating over a camera
+         * frame. It is measured against WCAG 1.4.11, which asks **3:1** for the visual
+         * information needed to identify a component — not against the 1.25:1 surface bar
+         * the old `glass-border` was tuned to, which is a *fill* threshold and was never
+         * the right test for an edge.
+         *
+         * White alone cannot pass it: over a white wall (#F5F5F5) a 36 % white line is
+         * 1.4:1, and raising the opacity makes it worse, not better. The edge therefore has
+         * two bands — this one plus [edgeHalo] immediately outside it — so whichever band
+         * loses against the room, the other one wins. Applied with
+         * `Modifier.overMediaEdge(shape)`.
+         */
+        val edgeRing = Color(0x5CFFFFFF)
+
+        /**
+         * `over-media-edge`, outer band — black at 75 %, 1 dp, drawn **outside** the shape.
+         *
+         * Outside is the whole point. Compose's `Modifier.border` strokes *inside* the
+         * bounds, i.e. on top of the element's own fill, where a 14 % white glass panel and
+         * a white line differ by 1.03:1 — the border was invisible by construction, on every
+         * ground, in both themes. Painted outside, the pair is read against the media:
+         * ≥ 3:1 on a white wall via the halo, ≥ 3:1 on a night scene via the ring.
+         */
+        val edgeHalo = Color(0xBF000000)
+
+        /** Width of each of the two [edgeRing] / [edgeHalo] bands. */
+        val edgeWidth = 1.dp
         /** Foreground on glass over media: always white. */
         val onGlass = Color.White
         /** Secondary foreground on glass — white at 72 %. */
@@ -299,10 +344,6 @@ object SceneViewTokens {
          * fill every other over-media element uses for "present but empty".
          */
         val meterTrack = Color(0x14FFFFFF)
-
-        val borderLight = Color(0x29FFFFFF)
-        val borderDark = Color(0x1AFFFFFF)
-        val borderWidth = 1.dp
 
         /** Transient work in progress — spinner accent. `primary` (dark value). */
         val accentProgress = Color(0xFFA4C1FF)
