@@ -245,16 +245,6 @@
       color: #f0f6fc;
     }
 
-    .pg__action-btn--claude {
-      background: #d97757;
-      color: #fff;
-    }
-
-    .pg__action-btn--claude:hover {
-      background: #c4622e;
-      color: #fff;
-    }
-
     .pg__action-btn--copied {
       background: rgba(22, 163, 74, 0.12) !important;
       color: #16a34a !important;
@@ -1633,68 +1623,30 @@
       position: relative;
     }
 
-    .pg__ai-more-btn {
-      padding: 6px 6px;
-      border-radius: 0 var(--pg-radius-sm) var(--pg-radius-sm) 0;
-      margin-left: -1px;
-      background: #c4622e;
+    .pg__ai-group > .pg__action-btn {
+      white-space: nowrap;
+    }
+
+    .pg__ai-btn--copy {
+      background: rgba(255, 255, 255, 0.10);
+      color: #f0f6fc;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .pg__ai-btn--copy:hover {
+      background: rgba(255, 255, 255, 0.16);
       color: #fff;
     }
 
-    .pg__ai-more-btn:hover {
-      background: #b55520;
-      color: #fff;
+    [data-theme="light"] .pg__ai-btn--copy {
+      background: rgba(15, 23, 42, 0.06);
+      color: #1f2937;
+      border: 1px solid rgba(15, 23, 42, 0.16);
     }
 
-    .pg__action-btn--claude {
-      border-radius: var(--pg-radius-sm) 0 0 var(--pg-radius-sm);
-    }
-
-    .pg__ai-dropdown {
-      display: none;
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-radius: var(--pg-radius-md);
-      box-shadow: var(--pg-shadow-float);
-      overflow: hidden;
-      z-index: 30;
-      min-width: 200px;
-    }
-
-    [data-theme="dark"] .pg__ai-dropdown {
-      background: rgba(33, 38, 45, 0.95);
-    }
-
-    .pg__ai-group.pg__ai-dropdown--open .pg__ai-dropdown {
-      display: block;
-    }
-
-    .pg__ai-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--color-on-surface, #2e333a);
-      text-decoration: none;
-      transition: background var(--pg-transition);
-    }
-
-    .pg__ai-option:hover {
-      background: var(--color-surface-container-high, #e5e8f1);
-    }
-
-    [data-theme="dark"] .pg__ai-option {
-      color: #c9d1d9;
-    }
-
-    [data-theme="dark"] .pg__ai-option:hover {
-      background: rgba(121, 192, 255, 0.08);
+    [data-theme="light"] .pg__ai-btn--copy:hover {
+      background: rgba(15, 23, 42, 0.11);
+      color: #0f172a;
     }
 
     /* ===== PLATFORM PILLS OVERFLOW ===== */
@@ -1792,27 +1744,18 @@
           <span id="shareLabel">Share</span>
         </button>
         <div class="pg__ai-group" id="aiGroup">
-          <a class="pg__action-btn pg__action-btn--claude" id="claudeLink" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open in Claude">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
-            <span>Open in Claude</span>
-          </a>
-          <button class="pg__action-btn pg__ai-more-btn" id="aiMoreBtn" title="More AI tools" aria-haspopup="true" aria-expanded="false">
-            <span class="material-symbols-outlined" style="font-size:14px">expand_more</span>
+          <button class="pg__action-btn" id="askAiBtn" title="Copy a ready-to-paste prompt with this example's code">
+            <span class="material-symbols-outlined">assistant</span>
+            <span id="askAiLabel">Copy prompt</span>
           </button>
-          <div class="pg__ai-dropdown" id="aiDropdown">
-            <a class="pg__ai-option" id="aiCursor" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">terminal</span>
-              Open Cursor
-            </a>
-            <a class="pg__ai-option" id="aiWindsurf" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">air</span>
-              Open Windsurf
-            </a>
-            <a class="pg__ai-option" id="aiCopilot" href="#" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:16px">smart_toy</span>
-              Open GitHub Copilot
-            </a>
-          </div>
+          <a class="pg__action-btn" id="claudeLink" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
+            <span>Claude</span>
+          </a>
+          <a class="pg__action-btn" id="chatgptLink" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
+            <span>ChatGPT</span>
+          </a>
         </div>
       </div>
     </div>
@@ -1838,6 +1781,10 @@
           <div class="pg__ai-form">
             <textarea class="pg__ai-textarea" id="aiPromptInput" placeholder="e.g. An AR app that lets users place furniture in their room with tap-to-place and pinch-to-scale..." rows="3"></textarea>
             <div class="pg__ai-actions">
+              <button class="pg__ai-btn pg__ai-btn--copy" id="aiGenCopy" type="button">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg>
+                <span id="aiGenCopyLabel">Copy prompt</span>
+              </button>
               <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
                 Open in Claude
@@ -2471,6 +2418,7 @@
     var shareBtn = $('shareBtn');
     var shareLabel = $('shareLabel');
     var claudeLink = $('claudeLink');
+    var chatgptLink = $('chatgptLink');
     var modelSelect = $('modelSelect');
     var previewCanvas = $('previewCanvas');
     var orbitHint = $('orbitHint');
@@ -2727,11 +2675,12 @@
       });
       descTags.innerHTML = tagsHtml;
 
-      // Claude link
+      // Assistant links — Claude and ChatGPT both take the prompt as ?q=
       var prompt = encodeURIComponent(
         'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code
       );
       claudeLink.href = 'https://claude.ai/new?q=' + prompt;
+      chatgptLink.href = 'https://chatgpt.com/?q=' + prompt;
 
       // Update sidebar active state
       exampleList.querySelectorAll('.pg__item').forEach(function(el) {
@@ -3368,42 +3317,33 @@
     });
 
     // ====================================================================
-    //  AI TOOLS DROPDOWN
+    //  ASK YOUR ASSISTANT
     // ====================================================================
-    var aiMoreBtn = $('aiMoreBtn');
-    var aiGroup = $('aiGroup');
+    // Only Claude and ChatGPT document a ?q= prompt parameter, so only those
+    // two get a link. Every other assistant — Cursor, Copilot, Codex, Cline,
+    // Gemini, JetBrains, whatever you use — is served by "Copy prompt", which
+    // works everywhere and transmits nothing to a third party.
+    var askAiBtn = $('askAiBtn');
+    var askAiLabel = $('askAiLabel');
 
-    aiMoreBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      aiGroup.classList.toggle('pg__ai-dropdown--open');
-      aiMoreBtn.setAttribute('aria-expanded', aiGroup.classList.contains('pg__ai-dropdown--open'));
-    });
+    function currentPrompt() {
+      var ex = EXAMPLES[currentExample];
+      if (!ex) return '';
+      var platData = ex[currentPlatform] || generateFallback(currentPlatform, ex);
+      return 'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + platData.code;
+    }
 
-    document.addEventListener('click', function() {
-      aiGroup.classList.remove('pg__ai-dropdown--open');
-      aiMoreBtn.setAttribute('aria-expanded', 'false');
+    askAiBtn.addEventListener('click', function() {
+      copyToClipboard(currentPrompt(), askAiBtn, askAiLabel, 'Copy prompt');
     });
 
     // Update AI links with code context
     function updateAILinks() {
       var ex = EXAMPLES[currentExample];
       if (!ex) return;
-      var platData = ex[currentPlatform] || generateFallback(currentPlatform, ex);
-      var code = platData.code;
-      var prompt = encodeURIComponent('Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code);
-      // Cursor / Windsurf / Copilot have no prompt deep-link protocol — these
-      // links just open the product. Labels say "Open <tool>" (not "Open in")
-      // so the playground does not imply the prompt is transmitted. Only the
-      // Claude and ChatGPT links actually carry the prompt via a query param.
-      var cursorEl = $('aiCursor');
-      cursorEl.href = 'https://cursor.com';
-      cursorEl.title = 'Open Cursor (prompt not transmitted)';
-      var windsurfEl = $('aiWindsurf');
-      windsurfEl.href = 'https://windsurf.com';
-      windsurfEl.title = 'Open Windsurf (prompt not transmitted)';
-      var copilotEl = $('aiCopilot');
-      copilotEl.href = 'https://github.com/features/copilot';
-      copilotEl.title = 'Open GitHub Copilot (prompt not transmitted)';
+      var prompt = encodeURIComponent(currentPrompt());
+      $('claudeLink').href = 'https://claude.ai/new?q=' + prompt;
+      $('chatgptLink').href = 'https://chatgpt.com/?q=' + prompt;
     }
 
     // ====================================================================
@@ -3544,6 +3484,16 @@
       }
 
       aiInput.addEventListener('input', updateAIGenerateLinks);
+
+      var aiGenCopy = $('aiGenCopy');
+      var aiGenCopyLabel = $('aiGenCopyLabel');
+      aiGenCopy.addEventListener('click', function() {
+        var desc = aiInput.value.trim();
+        if (!desc) {
+          desc = 'a 3D model viewer with orbit controls and environment lighting';
+        }
+        copyToClipboard(buildPrompt(desc), aiGenCopy, aiGenCopyLabel, 'Copy prompt');
+      });
 
       // Update links when platform changes
       var origPlatformChange = null;

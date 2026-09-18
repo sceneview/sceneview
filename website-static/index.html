@@ -562,7 +562,7 @@
               <pre class="code-block aiset__code"><code>https://mcp.sceneview.dev/mcp</code></pre>
               <button class="aiset__copy" type="button" aria-label="Copy URL"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
             </div>
-            <p class="aiset__note">Three config shapes exist across the ecosystem: <code class="aiset__file">mcpServers</code> (most clients), <code class="aiset__file">servers</code> (VS Code) and <code class="aiset__file">[mcp_servers.*]</code> (Codex TOML). The command and arguments are the same in all three.</p>
+            <p class="aiset__note">Config shapes differ across the ecosystem, the command and its arguments never do. The common one is <code class="aiset__file">mcpServers</code>; VS Code uses <code class="aiset__file">servers</code> with <code>"type": "stdio"</code>, Codex a <code class="aiset__file">[mcp_servers.*]</code> TOML table, Copilot CLI <code>"type": "local"</code>, and Kilo Code a <code class="aiset__file">mcp</code> key in <code class="aiset__file">kilo.jsonc</code> where <code>command</code> is an array and the environment block is called <code>environment</code>. When in doubt, paste the command above into whatever field your client offers.</p>
           </div>
 
           <div class="aiset__panel" role="tabpanel" id="aip-claude" aria-labelledby="ait-claude" tabindex="0" hidden>
@@ -630,7 +630,7 @@
 } } }</code></pre>
               <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
             </div>
-            <p class="aiset__note">Reference: <a href="https://developer.android.com/studio/gemini/add-mcp-server" target="_blank" rel="noopener">developer.android.com/studio/gemini/add-mcp-server</a></p>
+            <p class="aiset__note">Gemini in Android Studio accepts <code>httpUrl</code> only &mdash; the local <code>npx -y sceneview-mcp</code> stdio command cannot be registered here, so this entry points at the hosted server instead. If you would rather run it locally inside the same IDE, use Junie: put the <strong>Any MCP client</strong> snippet in <code>.junie/mcp/mcp.json</code>. Reference: <a href="https://developer.android.com/studio/gemini/add-mcp-server" target="_blank" rel="noopener">developer.android.com/studio/gemini/add-mcp-server</a></p>
           </div>
 
           <div class="aiset__panel" role="tabpanel" id="aip-copilot" aria-labelledby="ait-copilot" tabindex="0" hidden>
@@ -647,7 +647,7 @@
               <pre class="code-block aiset__code"><code><span class="syn-purple">copilot</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
               <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
             </div>
-            <p class="aiset__note">VS Code also accepts an install link: <a class="aiset__link" href="vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D">open in VS Code</a> (requires VS Code installed). Reference: <a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration" target="_blank" rel="noopener">code.visualstudio.com/docs/agents/reference/mcp-configuration</a></p>
+            <p class="aiset__note">Writing the CLI's file by hand takes a third shape: <code>~/.copilot/mcp-config.json</code> uses <code>mcpServers</code> like most clients, but each server needs <code>"type": "local"</code> instead of <code>"stdio"</code>. VS Code also accepts an install link: <a class="aiset__link" href="vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D">open in VS Code</a> (requires VS Code installed). References: <a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration" target="_blank" rel="noopener">code.visualstudio.com/docs/agents/reference/mcp-configuration</a> and <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers" target="_blank" rel="noopener">docs.github.com &mdash; add MCP servers to Copilot CLI</a></p>
           </div>
 
           <div class="aiset__panel" role="tabpanel" id="aip-jetbrains" aria-labelledby="ait-jetbrains" tabindex="0" hidden>
@@ -658,7 +658,7 @@
 } } }</code></pre>
               <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
             </div>
-            <p class="aiset__note">Works for AI Assistant and Junie, in IntelliJ IDEA, Android Studio and the other JetBrains IDEs. Reference: <a href="https://www.jetbrains.com/help/ai-assistant/mcp.html" target="_blank" rel="noopener">jetbrains.com/help/ai-assistant/mcp.html</a></p>
+            <p class="aiset__note">Works for AI Assistant and Junie, in IntelliJ IDEA, Android Studio and the other JetBrains IDEs. Junie also reads the same JSON straight from a file &mdash; <code>.junie/mcp/mcp.json</code> for one project, <code>~/.junie/mcp/mcp.json</code> for every project. Reference: <a href="https://www.jetbrains.com/help/ai-assistant/mcp.html" target="_blank" rel="noopener">jetbrains.com/help/ai-assistant/mcp.html</a></p>
           </div>
 
           <div class="aiset__panel" role="tabpanel" id="aip-xcode" aria-labelledby="ait-xcode" tabindex="0" hidden>
