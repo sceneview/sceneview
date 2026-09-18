@@ -152,7 +152,17 @@ public struct CameraControls: Sendable {
     /// Auto-rotation speed in radians per second.
     public var autoRotateSpeed: Float = 0.3
 
-    /// Inertia velocity for smooth deceleration after drag ends.
+    /// Seconds the auto-rotation takes to get back to full speed after
+    /// ``suspendAutoRotation()`` — after a gesture, or when it is switched on.
+    public var autoRotateResumeDuration: Float = 0.6
+
+    /// Share (0…1) of ``autoRotateSpeed`` applied right now. A gesture drops it
+    /// to 0 and ``applyAutoRotation(dt:)`` eases it back to 1, so the turntable
+    /// picks its speed up instead of kicking in at full rate.
+    public private(set) var autoRotateRamp: Float = 1
+
+    /// Inertia velocity for smooth deceleration after drag ends, in screen
+    /// points per 1/60 s.
     public var inertiaVelocity: CGSize = .zero
 
     /// Inertia damping factor (0 = instant stop, 0.99 = very slow deceleration).
@@ -520,7 +530,63 @@ public struct CameraControls: Sendable {
         }
     }
 
-    /// Applies inertia deceleration. Call this on each frame after drag ends.
+    /// Hands the camera over from the finger when a drag ends.
+    ///
+    /// The release velocity becomes the coast ``advance(dt:)`` decays, so the
+    /// camera leaves the finger at the speed the finger had instead of stopping
+    /// dead. A finger that stopped before lifting leaves no coast.
+    ///
+    /// - Parameter velocity: The drag's velocity at release, in screen points
+    ///   per second (`DragGesture.Value.velocity`).
+    public mutating func endDrag(velocity: CGSize) {
+        guard isEnabled else {
+            inertiaVelocity = .zero
+            return
+        }
+        let limit = Self.maxReleaseVelocity
+        inertiaVelocity = CGSize(
+            width: Swift.min(Swift.max(velocity.width, -limit), limit) / 60,
+            height: Swift.min(Swift.max(velocity.height, -limit), limit) / 60
+        )
+    }
+
+    /// Fastest release, in points per second, a coast starts from.
+    static let maxReleaseVelocity: CGFloat = 3000
+
+    /// Longest step, in seconds, ``advance(dt:)`` integrates at once. A frame
+    /// that arrives late (a model landing, a shader compiling) then pauses the
+    /// motion for the length of the hitch instead of leaping across it.
+    public static let maxMotionStep: Float = 0.05
+
+    /// Advances everything that moves the camera on its own — the coast a
+    /// released drag leaves and the auto-rotation — by `dt` seconds.
+    ///
+    /// This is the single writer for self-driven motion: call it from one
+    /// frame loop, and not at all while a finger is down. The two blend, so a
+    /// release hands over without a step in velocity: the coast decays while
+    /// the auto-rotation eases back in.
+    ///
+    /// - Returns: `true` while there is motion left to advance.
+    @discardableResult
+    public mutating func advance(dt: Float) -> Bool {
+        let step = Swift.min(Swift.max(dt, 0), Self.maxMotionStep)
+        let coasting = applyInertia(dt: step)
+        applyAutoRotation(dt: step)
+        return coasting || isAutoRotating
+    }
+
+    /// Applies one 60 Hz frame of inertia. See ``applyInertia(dt:)``.
+    ///
+    /// - Returns: `true` while inertia is still active.
+    @discardableResult
+    public mutating func applyInertia() -> Bool {
+        applyInertia(dt: 1.0 / 60.0)
+    }
+
+    /// Applies `dt` seconds of inertia deceleration after a drag ends.
+    ///
+    /// Frame-rate independent: ``inertiaVelocity`` is in points per 1/60 s and
+    /// ``inertiaDamping`` is per 1/60 s, whatever the rate this is called at.
     ///
     /// Mode-gated so `.pan` doesn't see ghost rotation from the last drag's
     /// stored `inertiaVelocity` (drag in `.pan` mutates `target`, not
@@ -531,7 +597,7 @@ public struct CameraControls: Sendable {
     ///
     /// - Returns: `true` while inertia is still active.
     @discardableResult
-    public mutating func applyInertia() -> Bool {
+    public mutating func applyInertia(dt: Float) -> Bool {
         let threshold: CGFloat = 0.01
         guard abs(inertiaVelocity.width) > threshold
                 || abs(inertiaVelocity.height) > threshold else {
@@ -539,27 +605,44 @@ public struct CameraControls: Sendable {
             return false
         }
 
+        // Exact travel of a velocity decaying by `damping` per 1/60 s over
+        // `frames` such frames — one frame travels exactly `inertiaVelocity`.
+        let frames = dt * 60
+        let damping = Swift.min(Swift.max(inertiaDamping, 0), 0.999)
+        let decay = pow(damping, frames)
+        let travel = (1 - decay) / (1 - damping)
+        let dx = Float(inertiaVelocity.width) * travel
+        let dy = Float(inertiaVelocity.height) * travel
+
         switch mode {
         case .orbit, .firstPerson:
-            azimuth -= Float(inertiaVelocity.width) * sensitivity
-            elevation += Float(inertiaVelocity.height) * sensitivity
+            azimuth -= dx * sensitivity
+            elevation += dy * sensitivity
             clampElevation()
+            if mode == .orbit { clampAzimuth() }
         case .pan:
             // Inertia in pan mode keeps translating the target so the scene
             // continues to glide after release — same semantics as
             // `handleDrag(.pan)`.
             let right = SIMD3<Float>(cos(azimuth), 0, -sin(azimuth))
             let up = SIMD3<Float>(0, 1, 0)
-            target += right * Float(inertiaVelocity.width) * panSpeed
-            target += up * Float(-inertiaVelocity.height) * panSpeed
+            target += right * dx * panSpeed
+            target += up * -dy * panSpeed
         case .none, .tilt, .dolly:
             // Native modes: Apple's realityViewCameraControls(_:) handles inertia.
             break
         }
 
-        inertiaVelocity.width *= CGFloat(inertiaDamping)
-        inertiaVelocity.height *= CGFloat(inertiaDamping)
+        inertiaVelocity.width *= CGFloat(decay)
+        inertiaVelocity.height *= CGFloat(decay)
         return true
+    }
+
+    /// Drops the auto-rotation to a standstill; ``applyAutoRotation(dt:)``
+    /// eases it back in over ``autoRotateResumeDuration``. Call it while a
+    /// gesture owns the camera, and when the auto-rotation is switched on.
+    public mutating func suspendAutoRotation() {
+        autoRotateRamp = 0
     }
 
     /// Advances auto-rotation by the given time delta.
@@ -567,7 +650,14 @@ public struct CameraControls: Sendable {
     /// - Parameter dt: Time elapsed since last frame in seconds.
     public mutating func applyAutoRotation(dt: Float) {
         guard isAutoRotating else { return }
-        azimuth += autoRotateSpeed * dt
+        let from = autoRotateRamp
+        let to = autoRotateResumeDuration > 0
+            ? Swift.min(1, from + dt / autoRotateResumeDuration)
+            : 1
+        autoRotateRamp = to
+        // Smoothstep, sampled mid-step: zero acceleration at both ends.
+        let x = (from + to) / 2
+        azimuth += autoRotateSpeed * (x * x * (3 - 2 * x)) * dt
     }
 
     // MARK: - Convenience builders

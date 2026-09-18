@@ -52,4 +52,14 @@ struct AutoRotatePolicy: Hashable {
     var isActive: Bool { isEnabled && speed != 0 && modeIsCustom }
 }
 
+/// Identity of `SceneView`'s camera-motion loop.
+///
+/// The loop restarts when the auto-rotation policy changes, and when a drag is
+/// released (`coast`) — so a scene that does not auto-rotate, whose loop exits
+/// at once, still gets one to decay the coast.
+struct CameraMotionKey: Hashable {
+    let policy: AutoRotatePolicy
+    let coast: Int
+}
+
 #endif
