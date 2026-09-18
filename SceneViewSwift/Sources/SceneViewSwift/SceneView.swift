@@ -881,7 +881,10 @@ private struct SceneViewRepresentation: View {
         nonmutating set { cameraBox.value = newValue }
     }
     @StateObject private var entities = SceneEntities()
-    @State private var lastDragTranslation: CGSize = .zero
+    @State private var dragBaseline = CameraDragBaseline()
+    /// Bumped when a drag ends, so the camera-motion loop restarts to decay the
+    /// coast even on a scene that does not auto-rotate.
+    @State private var coastGeneration = 0
 
     /// Per-entity drag baseline + the cumulative→per-frame-delta conversion that
     /// `entityDragGesture` performs, extracted into the directly-testable
@@ -1033,6 +1036,9 @@ private struct SceneViewRepresentation: View {
         /// armed from, so a re-run `.task(id:)` with an unchanged token is a
         /// no-op and cannot fight a drag in progress.
         var recenterToken: AnyHashable? = nil
+        /// Whether the previous camera-motion loop was auto-rotating — a loop
+        /// restarted by a release must not restart the turntable's ease-in.
+        var autoRotateWasActive: Bool? = nil
 
         // MARK: Auto-framing latch (#3595)
         //
@@ -1116,10 +1122,14 @@ private struct SceneViewRepresentation: View {
             .simultaneousGesture(entityMagnifyGesture)
             .simultaneousGesture(entityRotateGesture)
             .simultaneousGesture(entityLongPressGesture)
-            .task(id: autoRotatePolicy) {
-                // Auto-rotation loop — custom modes only (#1049).
-                // For native-mode cameras (none/tilt/dolly) Apple owns
-                // the camera transform, so our azimuth mutation would fight it.
+            .task(id: CameraMotionKey(policy: autoRotatePolicy, coast: coastGeneration)) {
+                // Camera-motion loop — custom modes only (#1049). It is the ONE
+                // writer for motion nobody's finger is driving: the coast a
+                // released drag leaves and the auto-rotation, blended by
+                // `CameraControls.advance(dt:)` so a release hands over without
+                // a step in velocity. For native-mode cameras (none/tilt/dolly)
+                // Apple owns the camera transform, so our azimuth mutation
+                // would fight it.
                 //
                 // KEYED on the policy (#2935). As a plain `.task` this loop read
                 // `autoRotateSpeed` exactly once, at view appear, so a host that
@@ -1129,7 +1139,9 @@ private struct SceneViewRepresentation: View {
                 // documented against (it leaves an iOS 26 Simulator scene
                 // permanently blank). With the policy as the task's identity,
                 // SwiftUI cancels this loop and starts the matching one whenever
-                // the caller's `.autoRotate(speed:)` changes.
+                // the caller's `.autoRotate(speed:)` changes. It is keyed on the
+                // coast generation too, so a release restarts it on a scene that
+                // does not auto-rotate — where it otherwise exits at once.
                 //
                 // A zero speed exits here rather than spinning a 60 Hz timer
                 // that advances the azimuth by 0 rad every frame: callers freeze
@@ -1140,28 +1152,42 @@ private struct SceneViewRepresentation: View {
                 // loop this one replaced.
                 let policy = autoRotatePolicy
                 camera.isAutoRotating = policy.isActive
-                guard policy.isActive else { return }
-                camera.autoRotateSpeed = policy.speed
+                if policy.isActive {
+                    camera.autoRotateSpeed = policy.speed
+                    // A turntable that starts — view appear, or the host
+                    // switching it on — picks its speed up from a standstill.
+                    if appliedCache.autoRotateWasActive != true {
+                        camera.suspendAutoRotation()
+                    }
+                }
+                appliedCache.autoRotateWasActive = policy.isActive
+                guard cameraControlMode.isCustom,
+                      policy.isActive || camera.inertiaVelocity != .zero else { return }
                 var lastTime = CFAbsoluteTimeGetCurrent()
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 16_666_667) // ~60 fps
                     let now = CFAbsoluteTimeGetCurrent()
                     let dt = Float(now - lastTime)
                     lastTime = now
-                    if !isDragging {
-                        // Mutate the boxed orbit state (no body invalidation —
-                        // #2277) and push the new transform straight onto the
-                        // camera entity. `applyCamera()` only reads `camera` and
-                        // writes `entities.*`, so calling it here reproduces the
-                        // per-frame visual update the `RealityView.update:`
-                        // closure used to give us when this loop forced a body
-                        // re-eval every 16 ms — but now without rebuilding the
-                        // gesture chains, the light-slot diffs, the framing pass,
-                        // or the skybox diff every frame. `.task` is MainActor-
-                        // isolated, so the `@MainActor applyCamera()` call is safe.
-                        camera.applyAutoRotation(dt: dt)
-                        applyCamera()
+                    if isDragging {
+                        // The finger is the only writer while it is down. The
+                        // auto-rotation restarts from a standstill afterwards.
+                        camera.suspendAutoRotation()
+                        continue
                     }
+                    // Mutate the boxed orbit state (no body invalidation —
+                    // #2277) and push the new transform straight onto the
+                    // camera entity. `applyCamera()` only reads `camera` and
+                    // writes `entities.*`, so calling it here reproduces the
+                    // per-frame visual update the `RealityView.update:`
+                    // closure used to give us when this loop forced a body
+                    // re-eval every 16 ms — but now without rebuilding the
+                    // gesture chains, the light-slot diffs, the framing pass,
+                    // or the skybox diff every frame. `.task` is MainActor-
+                    // isolated, so the `@MainActor applyCamera()` call is safe.
+                    let moving = camera.advance(dt: dt)
+                    applyCamera()
+                    if !moving { break }
                 }
             }
             .task(id: recenterToken) {
@@ -2280,16 +2306,15 @@ private struct SceneViewRepresentation: View {
                 //
                 // The baseline is updated FIRST, and unconditionally. Returning early
                 // instead — which is what an earlier version did, with a comment
-                // asserting the opposite — freezes `lastDragTranslation` while the finger
+                // asserting the opposite — freezes the drag baseline while the finger
                 // keeps travelling, so re-enabling mid-drag computes a delta spanning the
                 // whole suppressed distance and the camera snaps across it in one frame.
                 // Keeping the baseline current means a re-enabled drag resumes from where
                 // the finger actually is.
-                let delta = CGSize(
-                    width: value.translation.width - lastDragTranslation.width,
-                    height: value.translation.height - lastDragTranslation.height
-                )
-                lastDragTranslation = value.translation
+                // The first tick only takes the baseline: it carries the whole
+                // minimum distance of the `DragGesture`, which as a delta kicked
+                // the camera at the start of every orbit.
+                let delta = dragBaseline.delta(to: value.translation)
                 guard cameraGesturesEnabled else { return }
                 // A two-finger pinch also feeds this drag (its centroid moves),
                 // so orbiting on it spun the model while the user was only
@@ -2299,16 +2324,27 @@ private struct SceneViewRepresentation: View {
                 // resumes from where the finger is, not with a jump.
                 guard !isPinching else { return }
                 camera.handleDrag(delta)
-                isDragging = true
+                if !isDragging {
+                    camera.suspendAutoRotation()
+                    isDragging = true
+                }
                 // Push the dragged orbit straight onto the camera entity.
                 // Now that `camera` lives in a reference box (#2277), mutating
                 // it no longer invalidates the body, so the `RealityView.update:`
                 // closure no longer re-fires per drag tick — apply directly.
                 applyCamera()
             }
-            .onEnded { _ in
-                lastDragTranslation = .zero
+            .onEnded { value in
+                dragBaseline.reset()
+                guard isDragging else { return }
                 isDragging = false
+                // Hand over to the camera-motion loop at the finger's speed: the
+                // orbit coasts and decays instead of stopping dead under a
+                // moving finger. A release that ends a pinch, or lands while the
+                // host froze the camera, leaves nothing to coast on.
+                let coasts = cameraGesturesEnabled && !isPinching
+                camera.endDrag(velocity: coasts ? value.velocity : .zero)
+                coastGeneration &+= 1
             }
     }
 
@@ -2321,14 +2357,19 @@ private struct SceneViewRepresentation: View {
             .onChanged { value in
                 // Same shape as the drag: snapshot the baseline first, gate second.
                 // `initialPinchRadius` is the pinch's equivalent of
-                // `lastDragTranslation` — left unsnapshotted while disabled, re-enabling
+                // the drag baseline — left unsnapshotted while disabled, re-enabling
                 // at magnification 2.0 would take it as the first tick and dolly to half
                 // the radius instantly.
                 //
                 // Note this path does NOT go through `CameraControls.handlePinch` (it
                 // scales a snapshotted baseline instead), so `CameraControls.isEnabled`
                 // alone would silently disable orbit while leaving zoom live.
-                if !isPinching { isPinching = true }
+                if !isPinching {
+                    isPinching = true
+                    // The pinch takes over: a coast still running must not
+                    // keep turning the camera under it.
+                    camera.inertiaVelocity = .zero
+                }
                 if initialPinchRadius == nil, camera.mode == .orbit || camera.mode == .pan {
                     initialPinchRadius = camera.orbitRadius
                 }
@@ -2374,11 +2415,11 @@ private struct SceneViewRepresentation: View {
                 initialPinchRadius = nil
                 initialPinchFov = nil
                 isPinching = false
-                // The pinch swallowed the drag deltas, so the orbit baseline is
-                // stale by the whole pinch. Clearing it means the next drag tick
-                // measures from the finger's current position instead of
-                // snapping the camera across the pinch's travel in one frame.
-                lastDragTranslation = .zero
+                // Lifting one finger moves the drag's centroid to the other.
+                // Forgetting the baseline makes the next drag tick measure from
+                // where the finger now is; zeroing it instead — as this did —
+                // made that tick span the drag's whole translation.
+                dragBaseline.reset()
                 camera.inertiaVelocity = .zero
             }
     }
