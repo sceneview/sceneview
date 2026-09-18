@@ -57,7 +57,7 @@ struct AssetSourcePill: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Asset source: \(label)")
         // The QA harness and the screenshot suite locate the pill by this id;
