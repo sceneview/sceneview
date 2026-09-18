@@ -94,7 +94,7 @@ kotlinxSerialization = "1.11.0"
 
 # UI
 googleMaterial = "1.14.0"
-media3 = "1.11.0"
+media3 = "1.11.1"
 
 # TV
 tvFoundation = "1.0.0"
