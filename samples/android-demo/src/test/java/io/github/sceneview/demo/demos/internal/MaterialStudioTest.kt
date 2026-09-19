@@ -230,7 +230,8 @@ class MaterialStudioTest {
         val before = motion.phase
         motion.cruise(4f) // the frame after a four-second freeze
         val advanced = ((motion.phase - before) % 1f + 1f) % 1f
-        assertTrue(advanced <= MaterialStudio.SweepMotion.CRUISE_RATE * MaterialStudio.SweepMotion.MAX_FRAME_SECONDS + 1e-5f)
+        val oneFrame = MaterialStudio.SweepMotion.CRUISE_RATE * MaterialStudio.SweepMotion.MAX_FRAME_SECONDS
+        assertTrue(advanced <= oneFrame + 1e-5f)
     }
 
     // ── The environment ──────────────────────────────────────────────────────────────────

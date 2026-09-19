@@ -257,9 +257,8 @@ class ContinuousCameraManipulator(
         val framing = orbitFramingOf(out.position, center)
         val before = shownFraming
         val dt = (now - shownNanos) / NANOS_PER_SECOND
-        speed = if (before != null && before.pivot == center &&
-            dt > MIN_SPEED_WINDOW_SECONDS && dt < MAX_SPEED_WINDOW_SECONDS
-        ) {
+        val measurable = dt > MIN_SPEED_WINDOW_SECONDS && dt < MAX_SPEED_WINDOW_SECONDS
+        speed = if (before != null && before.pivot == center && measurable) {
             FramingSpeed.between(before, framing, dt)
         } else {
             FramingSpeed.REST

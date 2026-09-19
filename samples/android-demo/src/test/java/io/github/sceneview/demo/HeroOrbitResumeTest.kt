@@ -86,6 +86,15 @@ class HeroOrbitResumeTest {
 
     private fun authoredTransform(): Transform = manipulator().getTransform()
 
+    /** How long the idle hand-back from [USER_EYE] really lasts when [BLEND_MILLIS] is asked for. */
+    private fun pacedBlendMillis(): Long = resumeBlendMillisFor(
+        orbitFramingOffset(
+            user = orbitFramingOf(USER_EYE, ORIGIN),
+            authored = orbitFramingOf(authoredTransform().position, ORIGIN),
+        ),
+        BLEND_MILLIS,
+    )
+
     private fun distance(a: Position, b: Position): Float {
         val dx = a.x - b.x
         val dy = a.y - b.y
@@ -198,12 +207,16 @@ class HeroOrbitResumeTest {
         manipulator.advance(20)
         assertSamePicture(before, manipulator.getTransform())
 
-        manipulator.advance(BLEND_MILLIS / 2)
+        // The idle hand-back is paced by the way home (#3698): this far, longer than it was asked.
+        val paced = pacedBlendMillis()
+        assertTrue("a quarter turn away is not whipped home in $BLEND_MILLIS ms: $paced", paced > BLEND_MILLIS)
+
+        manipulator.advance(paced / 2)
         val halfWay = distance(manipulator.getTransform().position, authored.position)
         assertTrue("half way home is closer than the start: $halfWay of $wayHome", halfWay < wayHome)
         assertTrue("and not home yet: $halfWay", halfWay > 0.05f)
 
-        manipulator.advance(BLEND_MILLIS / 2 + 1)
+        manipulator.advance(paced - paced / 2 + 1)
         assertEquals("landed: bit for bit the authored pose", authored, manipulator.getTransform())
     }
 
@@ -265,13 +278,14 @@ class HeroOrbitResumeTest {
         val manipulator = manipulator(HeroOrbitResume.ReturnToAuthoredPath)
         manipulator.dragTo(USER_EYE)
         manipulator.advance(RESUME_AFTER_MILLIS + 10)
-        manipulator.advance(BLEND_MILLIS / 2)
+        val paced = pacedBlendMillis()
+        manipulator.advance(paced / 2)
         val halfWay = manipulator.getTransform()
 
         manipulator.resumeAuto(blendMillis = 5_000L)
 
         assertSamePicture(halfWay, manipulator.getTransform())
-        manipulator.advance(BLEND_MILLIS / 2 + 1)
+        manipulator.advance(paced - paced / 2 + 1)
         assertEquals("home on the original schedule", authoredTransform(), manipulator.getTransform())
     }
 
