@@ -15,6 +15,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Box
@@ -1519,6 +1520,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         content: (@Composable NodeScope.() -> Unit)? = null,
         viewContent: @Composable () -> Unit
     ) {
+        // The node is remembered, so the `viewContent` lambda handed to its constructor is the one
+        // from the FIRST composition — and a composable lambda captures the state it reads. A card
+        // whose label comes from `if (spinning) "Pause spin" else "Resume spin"` therefore kept
+        // saying "Resume spin" while the model span: the hosted view re-drew faithfully, from a
+        // closure frozen at construction (#3718). Route it through `rememberUpdatedState` and let
+        // the node call through the state, so each draw runs the current lambda. This is the same
+        // treatment `SceneView` already gives `onFrame` and the gesture callbacks.
+        val currentViewContent = rememberUpdatedState(viewContent)
         val node = remember(engine, windowManager) {
             ViewNodeImpl(
                 engine = engine,
@@ -1526,7 +1535,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 materialLoader = materialLoader,
                 unlit = unlit,
                 invertFrontFaceWinding = invertFrontFaceWinding,
-                content = viewContent
+                content = { currentViewContent.value() }
             ).apply(apply)
         }
         // Keyed on scalar components (Float3 is a mutable data class — keying on the wrapper
