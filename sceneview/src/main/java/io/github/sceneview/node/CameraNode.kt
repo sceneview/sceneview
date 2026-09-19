@@ -34,7 +34,16 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
      * [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — nothing else would: a
      * Filament manager is write-only from here. A no-op while this node is not in a scene.
      */
-    override fun onComponentChanged() = requestRender()
+    override fun onComponentChanged() {
+        // Two of those mutators — `lookAt(...)` and `modelTransform = …` — write this entity's
+        // transform through the Filament `Camera`, never through this node's `transform` setter
+        // (#3718). Drop the local matrix mirror so the next read re-fetches the pose the camera
+        // helper wrote, and so a later `cameraNode.position = p` is never skipped as a redundant
+        // write of a matrix Filament no longer holds. Nulling one field on the mutators that do
+        // not touch the transform (projection, exposure…) is cheaper than telling them apart.
+        invalidateTransformCache()
+        requestRender()
+    }
 
     private var _focalLength = 28.0
     override var focalLength: Double

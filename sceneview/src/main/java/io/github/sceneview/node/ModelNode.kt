@@ -536,11 +536,19 @@ open class ModelNode(
             animator.updateBoneMatrices()
             // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
             // into the Filament TransformManager, bypassing the Node setters that normally
-            // invalidate the world-space cache (#2264). Invalidate the sub-nodes explicitly
-            // on any frame an animation was active (including the final stop-frame) so reads
-            // of their worldPosition / worldQuaternion / etc. never return a stale value.
+            // invalidate the caches. Invalidate the sub-nodes explicitly on any frame an
+            // animation was active (including the final stop-frame):
+            //  - the world cache (#2264), so reads of their worldPosition / worldQuaternion /
+            //    etc. never return a stale value;
+            //  - the local matrix mirror (#3718), so a later `subNode.position = p` is not
+            //    mistaken for a redundant write of the value the node last pushed itself. The
+            //    animator has moved the entity since, and skipping that write would leave
+            //    Filament on the last keyframe for good.
             if (wasAnimating) {
-                nodes.forEach { it.onWorldTransformChanged() }
+                nodes.forEach {
+                    it.invalidateTransformCache()
+                    it.onWorldTransformChanged()
+                }
             }
         } catch (e: Exception) {
             onFrameError?.invoke(e)

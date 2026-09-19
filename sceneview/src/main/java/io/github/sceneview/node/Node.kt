@@ -245,12 +245,17 @@ open class Node protected constructor(
     // collision/query read — and each read otherwise paid a `TransformManager.getTransform()`
     // JNI round-trip (which itself allocates a `FloatArray(16)` + a `Mat4`).
     //
-    // The two — and ONLY two — writers of this node's local Filament matrix (the `transform`
-    // setter and `applyCachedTransform()`) POPULATE this cache with the exact matrix they push,
-    // so even mid-animation (write then read each frame) the read is served without JNI. Filament
-    // round-trips the matrix unchanged, so the cached value is byte-identical to a `getTransform()`
-    // read. A reparent does NOT change the local (parent-relative) matrix, so it deliberately
-    // leaves this cache valid; only a LOCAL transform write refreshes it.
+    // This node's own writers (the `transform` setter and `applyCachedTransform()`) POPULATE this
+    // cache with a copy of the exact matrix they push, so even mid-animation (write then read each
+    // frame) the read is served without JNI. Filament round-trips the matrix unchanged, so the
+    // cached value is byte-identical to a `getTransform()` read. A reparent does NOT change the
+    // local (parent-relative) matrix, so it deliberately leaves this cache valid; only a LOCAL
+    // transform write refreshes it.
+    //
+    // They are NOT the only writers of the entity's Filament matrix: glTF animation
+    // (`Animator.applyAnimation`), the camera helpers (`Camera.lookAt` / `Camera.setModelMatrix`)
+    // and any third-party `TransformManager.setTransform()` on [entity] move it behind this Node's
+    // back. Every such writer must call [invalidateTransformCache] — see it for why.
     private var _transform: Transform? = null
 
     // World-space TRS cache (#2264, completes the #2187 fix for world-space getters).
@@ -266,6 +271,30 @@ open class Node protected constructor(
     private var _worldQuaternion: Quaternion = Quaternion()
     private var _worldScale: Scale = Scale(1.0f)
     private var _worldRotation: Rotation = Rotation()
+
+    /**
+     * Drops the cached mirror of this node's local Filament matrix.
+     *
+     * [transform] reads are served from that mirror (#2405) and redundant writes are skipped
+     * against it (#3718), both of which assume the mirror still describes what Filament holds for
+     * [entity]. Anything that writes the entity's transform **without going through this node**
+     * breaks that assumption:
+     *
+     * - glTF animation — `Animator.applyAnimation()` writes every animated sub-node of a
+     *   [ModelNode] straight into the `TransformManager`;
+     * - the camera helpers — `Camera.lookAt()` and `Camera.setModelMatrix()` write the camera
+     *   entity's transform ([CameraNode]);
+     * - any application code calling `TransformManager.setTransform()` on [entity] itself.
+     *
+     * Call this right after such a write. The next [transform] read then re-fetches from Filament,
+     * and the next write of the same value the node already believed it had pushed is no longer
+     * mistaken for a no-op. It costs one field assignment, is idempotent, and does **not** touch
+     * the world-space cache — [onWorldTransformChanged] does that, and an out-of-band writer that
+     * moves the node in world space needs both.
+     */
+    fun invalidateTransformCache() {
+        _transform = null
+    }
 
     private fun refreshWorldCache(): Transform {
         val world = transformManager.getWorldTransform(transformInstance)
@@ -300,10 +329,14 @@ open class Node protected constructor(
         // sampler re-pushes the last keyframe. The matrix is then byte-identical to the one
         // Filament already holds, so both the JNI write and the notification below are no-ops —
         // except that the notification calls `requestRender()`, which alone held a settled scene
-        // at full cadence for as long as the stepper ran. `_transform` is the exact matrix last
-        // pushed (this site and the `transform` setter are its only writers), so comparing against
-        // it is comparing against Filament's own state. A null cache means "unknown", and falls
-        // through to the write.
+        // at full cadence for as long as the stepper ran.
+        //
+        // `_transform` is the exact matrix this Node last pushed — which is Filament's own state
+        // ONLY as long as nothing writes the entity behind the Node's back. An out-of-band writer
+        // (glTF `Animator`, `Camera.lookAt`, a third-party `TransformManager.setTransform()`) makes
+        // the mirror stale, and skipping the write there would strand Filament on the out-of-band
+        // pose for good. Hence [invalidateTransformCache], which every such writer calls: a null
+        // cache means "unknown" and falls through to the write.
         if (_transform == composed) return
         transformManager.setTransform(transformInstance, composed)
         // Populate the local-matrix cache with the exact matrix just pushed to Filament, so a
@@ -491,9 +524,13 @@ open class Node protected constructor(
         set(value) {
             transformManager.setTransform(transformInstance, value)
             // Populate the local-matrix cache (#2405): Filament round-trips the matrix unchanged, so
-            // the cached `value` is byte-identical to a subsequent `getTransform()` read. This keeps
+            // the cached matrix is byte-identical to a subsequent `getTransform()` read. This keeps
             // the per-frame `node.transform` read free even while a smooth animation writes every tick.
-            _transform = value
+            // Cache a COPY: `Transform` is a `Mat4`, mutable in place, and a caller that reuses one
+            // scratch matrix per frame would otherwise keep mutating the cache after the write —
+            // serving reads that Filament never received and, worse, letting the redundant-write
+            // guard in `applyCachedTransform()` compare against a matrix that was never pushed.
+            _transform = Transform(value)
             // Synchronise the TRS caches from the new matrix so that any subsequent
             // getter for `position`, `quaternion`, or `scale` reads the pristine value
             // rather than re-decomposing the matrix (#2187).
