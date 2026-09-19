@@ -14,10 +14,12 @@ import com.google.android.filament.View.QualityLevel
  * Choose the preset based on what the user is doing in the scene:
  * - [Cinematic] for hero shots, product showcases, single-model viewers where the GPU budget
  *   can afford the full bells and whistles.
- * - [Default] for general use — matches the out-of-the-box `SceneView` defaults shipped in
- *   v4.0.12+ (shadows on, SSAO on, subtle bloom, Filmic tone mapping, 1× resolution).
+ * - [Default] for general use — matches the out-of-the-box `SceneView` defaults (shadows on,
+ *   SSAO on, subtle bloom, Filmic tone mapping, MSAA 4× + FXAA, and dynamic resolution acting
+ *   as a safety valve rather than a fixed 1× resolution).
  * - [Performance] for low-end Android devices, AR camera-feed backgrounds, or anywhere the GPU
- *   is constrained — disables shadows, AO and bloom, enables dynamic resolution.
+ *   is constrained — disables shadows, AO, bloom and MSAA, and lets dynamic resolution scale
+ *   further down than [Default] allows.
  *
  * The preset can be combined with finer-grained tweaks: explicit calls to
  * `view.colorGrading = ...` or `view.bloomOptions = bloomOptions.apply { strength = 0.2f }`
@@ -45,10 +47,15 @@ enum class RenderQuality {
      * - Shadows: on, default quality
      * - SSAO: on, MEDIUM quality
      * - Bloom: on, strength 0.10
-     * - Anti-aliasing: FXAA
+     * - Anti-aliasing: MSAA 4× + FXAA
      * - HDR color buffer: MEDIUM
-     * - Dynamic resolution: off
+     * - Dynamic resolution: on, MEDIUM, homogeneous, never below 0.75× per axis
      * - Tone mapping: Filmic
+     *
+     * The dynamic resolution here is a safety valve, not a quality knob: the preset asks for
+     * more than every mid-range GPU can always afford, and Filament is given the authority to
+     * take some of it back on the frames where it would otherwise cost stutter. The 0.75 floor
+     * bounds that authority — softer, never broken.
      *
      * Matches the settings applied by [createView] when no preset is specified.
      */
@@ -122,11 +129,18 @@ private fun View.applyDefault() {
     renderQuality = renderQuality.apply {
         hdrColorBuffer = QualityLevel.MEDIUM
     }
+    // Kept in step with `createView` — this preset is what an unconfigured SceneView already is,
+    // so the two must not drift. See the KDoc on [RenderQuality.Default] for why dynamic
+    // resolution is on here: it is the safety valve that pays for the MSAA below.
     dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
+        enabled = true
+        homogeneousScaling = true
+        quality = QualityLevel.MEDIUM
+        minScale = 0.75f
     }
     multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
+        enabled = true
+        sampleCount = 4
     }
     antiAliasing = AntiAliasing.FXAA
     ambientOcclusionOptions = ambientOcclusionOptions.apply {
