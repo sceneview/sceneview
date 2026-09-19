@@ -43,6 +43,24 @@
 	<string>SceneView saves AR session recordings (videos) you capture to your Photos library so you can share or revisit them later.</string>
 	<key>UIRequiresFullScreen</key>
 	<false/>
+	<!--
+		Opt out of the 60 fps cap iOS applies to apps on ProMotion iPhones.
+		Without this key a 120 Hz iPhone will not grant SceneViewSwift's
+		`CADisplayLink.preferredFrameRateRange` request above 60, so the
+		`.frameRatePolicy(_:)` cadence request is only half testable (#3108).
+
+		The key lives in the HOST APP's bundle by design — a framework cannot
+		set it for its host — which is why it is here and not in SceneViewSwift.
+		iPhone only; iPad and Mac are unaffected. Apple's guidance is that an
+		app taking this opt-in must actually be able to sustain the higher rate.
+
+		NOT VERIFIED on device: developed without a ProMotion iPhone, and the
+		Simulator cannot exceed its host's refresh rate. A 2024 developer-forums
+		report that this key has no effect on a `RealityView` is still
+		unanswered, so treat 120 Hz here as untested rather than as shipped.
+	-->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportsDocumentBrowser</key>

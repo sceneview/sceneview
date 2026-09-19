@@ -7270,7 +7270,75 @@ View modifiers (chainable):
 .onCameraChanged(_ handler: @escaping (SceneCameraPose) -> Void) -> SceneView  // v4.27.0+ — fires after EVERY camera change: drag, pinch, auto-rotate step, fit-to-bounds re-frame, and a clamped .cameraPose write
 .cameraGesturesEnabled(_ enabled: Bool) -> SceneView        // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which hands the camera to Apple and disables .cameraPose too
 .onEntityTapHit(_ handler: @escaping (SceneTapHit) -> Void) -> SceneView  // v4.27.0+ — tap + world position. Distinct BASE name on purpose: a `hit:` label overload made every existing `.onEntityTapped { entity in }` ambiguous
+.frameRatePolicy(_ policy: FrameRatePolicy) -> SceneView    // v4.38.0+ — .onDemand(maxFps:) default / .continuous(maxFps:). Parks OUR driver + the cadence request; does NOT stop RealityKit presenting
+.renderInvalidator(_ invalidator: SceneRenderInvalidator) -> SceneView  // v4.38.0+ — requestRender() re-arms a parked driver. NOT required for an entity edit to be drawn on iOS
 ```
+
+**Frame-rate policy (v4.38.0+, #3108) — same name as Android, weaker guarantee.**
+
+```swift
+public enum FrameRatePolicy: Sendable, Hashable {
+    case onDemand(maxFps: Int? = nil)    // DEFAULT
+    case continuous(maxFps: Int? = nil)
+    public var maxFps: Int? { get }          // as written
+    public var resolvedMaxFps: Int? { get }  // clamped: values < 1 become 1
+    public var ticksWhenIdle: Bool { get }   // true only for .continuous
+}
+
+public final class SceneRenderInvalidator: ObservableObject {
+    @Published public private(set) var generation: Int { get }
+    @MainActor public func requestRender()
+}
+```
+
+Android owns the Filament render loop, so `OnDemand` there means **no GPU frame is produced**.
+iOS does not: `SceneView` is a SwiftUI `RealityView`, RealityKit owns its loop, and there is no
+public gate — no `isPaused`, no `setNeedsDisplay`, no cadence option on `ARView.RenderOptions`.
+`.onDemand` therefore **cannot stop RealityKit from presenting**. Do not tell users it saves
+GPU frames on iOS.
+
+What it does control, and all it controls:
+
+1. **SceneViewSwift's own per-frame driver** — the camera-motion loop that advances a released
+   drag's coast and the `.autoRotate(speed:)` turntable. `.onDemand` stops it once nothing is
+   moving; `.continuous` never does.
+2. **The display cadence request** — a running driver carries a
+   `CADisplayLink.preferredFrameRateRange`; a parked one is invalidated, so nothing is requested
+   and a variable-refresh-rate panel may idle down. This is the iOS counterpart of Android's
+   `Surface.setFrameRate` vote, and is equally a request the system may ignore. **macOS has
+   none**: `CADisplayLink.init(target:selector:)` is unavailable there and a SwiftUI
+   `RealityView` vends no `NSView`/`NSWindow`/`NSScreen` to get one from, so macOS keeps only
+   the parking and the cap.
+3. **The cap** — `maxFps` bounds both the driver's tick rate and the request.
+
+| | Android (Filament) | iOS / visionOS (RealityKit) |
+|---|---|---|
+| Skip the GPU submit when idle | ✅ | ❌ not possible |
+| Park the library's per-frame work | ✅ | ✅ |
+| Cadence request | ✅ `Surface.setFrameRate` | ✅ `CADisplayLink.preferredFrameRateRange`; ❌ macOS |
+| `maxFps` cap | ✅ whole vsync multiples | ⚠️ caps our driver + our request only |
+| `maxFps` ≤ 0 | throws `require(fps > 0)` | clamped to `1` (an enum case cannot fail) |
+| `requestRender()` after a raw mutation | **required**, else never drawn | not required — RealityKit draws it anyway |
+| 120 Hz on iPhone | (n/a) | ⚠️ needs `CADisableMinimumFrameDurationOnPhone` in the **host app's** Info.plist; **unverified** |
+
+`SceneRenderInvalidator` on iOS is a **cadence** hint, not a draw trigger. Use it when your app
+drives entity transforms from its own timer and you want the panel held at rate:
+
+```swift
+@StateObject private var invalidator = SceneRenderInvalidator()
+
+SceneView { root in root.addChild(model) }
+    .renderInvalidator(invalidator)
+    .onReceive(timer) { _ in
+        model.position.y = bounce()
+        invalidator.requestRender()   // holds the rate; the edit would be drawn regardless
+    }
+```
+
+Also in v4.38.0: the camera-motion driver moved from a hard-coded `Task.sleep(16_666_667)` —
+60 Hz written into the source, no vsync phase — to a `CADisplayLink`. Motion has always
+integrated against elapsed time, so speeds do not need retuning; what changes is that the
+turntable and the release coast no longer judder against RealityKit's presentation.
 
 **Two-way camera (v4.27.0+).** `.cameraPose(_:)` writes, `.onCameraChanged(_:)` reads
 back. Without the read-back a hoisted camera state can only report what it last wrote —

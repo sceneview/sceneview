@@ -57,6 +57,10 @@ SceneView { root in
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
 .renderQuality(.default)           // v4.2.0+ — .cinematic | .default | .performance
+.frameRatePolicy(.onDemand())      // v4.38.0+ — DEFAULT. Parks OUR per-frame driver + drops the cadence request when idle. Does NOT stop RealityKit presenting
+.frameRatePolicy(.continuous())    // v4.38.0+ — never parks; for a scene you animate yourself every frame
+.frameRatePolicy(.onDemand(maxFps: 30))  // v4.38.0+ — caps our driver and our CADisplayLink request (values ≤ 0 are clamped to 1, Android throws)
+.renderInvalidator(invalidator)    // v4.38.0+ — SceneRenderInvalidator; requestRender() re-arms the parked driver + cadence. NOT needed for your entity edit to be drawn on iOS
 .contentID(model == nil ? nil : selectedID)  // v4.26.0+ — re-runs the content closure IN PLACE when the id changes. Use this to swap the model, NEVER SwiftUI's .id()
 ```
 
@@ -492,6 +496,26 @@ model?.stopAllAnimations()
 | `PhysicsNode(node, mass)` | `PhysicsNode.dynamic(entity, mass:)` |
 | `SpatialAudioNode { }` composable (v4.12.0+, `#1900`) | `SpatialAudioNode.spatial(named:falloff:loop:)` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
 | `rememberHapticFeedback()` (v4.12.0+, `#1901`) | `SceneViewHaptic()` — see [Spatial Audio & Haptic parity](#spatial-audio--haptic-parity-1900-1901) below |
+| `SceneView(frameRatePolicy = FrameRatePolicy.OnDemand())` (v4.38.0+, `#3108`) | `.frameRatePolicy(.onDemand())` — **same name, weaker guarantee**; see [Frame-rate policy parity](#frame-rate-policy-parity-3108) below |
+| `rememberRenderInvalidator()` + `SceneView(renderInvalidator = …)` | `SceneRenderInvalidator()` + `.renderInvalidator(_:)` — rarely needed on iOS, see below |
+
+### Frame-rate policy parity (#3108)
+
+Same type name, same two cases, same default (`.onDemand()`), **different guarantee**. Android
+owns the Filament render loop, so `OnDemand` means no GPU frame is produced. iOS does not:
+RealityKit owns its loop and presents every vsync no matter what SceneViewSwift does.
+
+| | Android | iOS / visionOS |
+|---|---|---|
+| Skip the GPU submit when idle | ✅ | ❌ **not possible** |
+| Park SceneView's own per-frame work | ✅ | ✅ camera / coast / turntable driver |
+| Cadence request | ✅ `Surface.setFrameRate` | ✅ `CADisplayLink.preferredFrameRateRange`; ❌ none on macOS |
+| `maxFps` ≤ 0 | throws | clamped to `1` |
+| `requestRender()` after a raw mutation | **required** or the frame is never drawn | not required — RealityKit draws it anyway; only re-arms the driver + cadence |
+| 120 Hz on iPhone | (n/a) | ⚠️ needs `CADisableMinimumFrameDurationOnPhone` in **your** app's `Info.plist`, and is **unverified** |
+
+Full explanation, including when `SceneRenderInvalidator` is actually worth holding, in
+[Performance → Stop rendering an idle scene — iOS / visionOS](performance.md#stop-rendering-an-idle-scene-ios-visionos).
 
 ### Spatial Audio & Haptic parity (#1900, #1901)
 

@@ -54,12 +54,41 @@ struct AutoRotatePolicy: Hashable {
 
 /// Identity of `SceneView`'s camera-motion loop.
 ///
-/// The loop restarts when the auto-rotation policy changes, and when a drag is
+/// The loop restarts when the auto-rotation policy changes, when a drag is
 /// released (`coast`) — so a scene that does not auto-rotate, whose loop exits
-/// at once, still gets one to decay the coast.
+/// at once, still gets one to decay the coast — when the ``FrameRatePolicy``
+/// changes, and when the host asks for a frame.
 struct CameraMotionKey: Hashable {
     let policy: AutoRotatePolicy
     let coast: Int
+
+    /// The frame-rate policy in force. Part of the identity because the driver
+    /// reads it once at start: a host toggling `.onDemand` ↔ `.continuous`, or
+    /// changing `maxFps`, must get a driver built for the new policy rather than
+    /// one that keeps running under the old one — the same reactivity bug #2935
+    /// fixed for `autoRotate(speed:)`.
+    let frameRate: FrameRatePolicy
+
+    /// Monotonic count of ``SceneRenderInvalidator/requestRender()`` calls.
+    ///
+    /// This is the whole mechanism behind the invalidator: a parked driver has
+    /// returned from its `.task`, and nothing inside a finished task can restart
+    /// it. Changing the task's identity is how SwiftUI is asked to start a new
+    /// one, so the counter belongs in the key rather than in a flag the dead
+    /// loop would have to be alive to read.
+    let renderRequest: Int
+
+    init(
+        policy: AutoRotatePolicy,
+        coast: Int,
+        frameRate: FrameRatePolicy = .onDemand(),
+        renderRequest: Int = 0
+    ) {
+        self.policy = policy
+        self.coast = coast
+        self.frameRate = frameRate
+        self.renderRequest = renderRequest
+    }
 }
 
 #endif
