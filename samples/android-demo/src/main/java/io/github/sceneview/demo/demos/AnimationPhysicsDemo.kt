@@ -368,8 +368,13 @@ private fun AnimationSection(
     // to keep the soldier lit in step with the bright sky behind it (#1468) — a lower
     // value left the model looking like an unlit black silhouette. Re-runs whenever the
     // active environment OR the slider value change, so dragging it updates in real time.
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
+        // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
+        // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
+        // ambient would sit there with no frame coming to show it (#3718).
+        renderInvalidator.requestRender()
     }
 
     // Captured ref to the ModelNode once it's created — used by the LaunchedEffect
@@ -802,7 +807,6 @@ private fun AnimationSection(
     //    no clock running. The pose is applied *here*, outside the loop, and
     //    [renderInvalidator] asks for the one frame that shows it. Applying it from
     //    `onFrame` instead would draw the previous pose and park — one frame behind, for good.
-    val renderInvalidator = rememberRenderInvalidator()
     val playing = isPlaying && !DemoSettings.qaMode
     val applyPose: (ModelNodeImpl) -> Unit = { animatedNode ->
         val animator = animatedNode.animator

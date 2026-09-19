@@ -30,6 +30,14 @@ open class RenderableNode(
 ) : Node(engine, entity), RenderableComponent {
 
     /**
+     * Every mutator inherited from [io.github.sceneview.components.RenderableComponent] that changes what is drawn lands here, and asks the
+     * scene for the frame that will show it. Under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — nothing else would: a
+     * Filament manager is write-only from here. A no-op while this node is not in a scene.
+     */
+    override fun onComponentChanged() = requestRender()
+
+    /**
      * Cached [RenderableManager] instance handle for this entity.
      *
      * `0` means "not yet looked up". The handle is stable for the lifetime of the

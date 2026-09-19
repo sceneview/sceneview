@@ -127,6 +127,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.sample.ui.LabeledSlider
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberRenderInvalidator
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -517,8 +518,13 @@ private fun SingleModelSection(
     }
     val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
     if (loadedEnvironment != null) firstEnvironmentLoaded = true
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(viewerEnvironment, iblIntensity) {
         viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
+        // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
+        // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
+        // ambient would sit there with no frame coming to show it (#3718).
+        renderInvalidator.requestRender()
     }
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on
     // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
@@ -791,6 +797,7 @@ private fun SingleModelSection(
             }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                renderInvalidator = renderInvalidator,
                 onFrame = onFrame,
                 engine = engine,
                 modelLoader = modelLoader,

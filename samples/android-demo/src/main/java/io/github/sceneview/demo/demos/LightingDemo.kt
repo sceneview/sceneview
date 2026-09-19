@@ -247,6 +247,15 @@ fun LightingDemo(onBack: () -> Unit) {
             shutterSpeed = LightingStage.CAMERA_SHUTTER_SPEED,
             sensitivity = LightingStage.sensitivityFor(exposure),
         )
+        // `IndirectLight` is a *raw* Filament object: the SDK hands it out and never sees it
+        // again, so rotating or dimming it reaches the engine and nothing else. Under
+        // `OnDemand` — and this screen parks, by design, whenever `Animate` is off — the new
+        // lighting would sit in the engine with no frame coming to show it. Measured before
+        // this line existed: dragging *Environment rotation* 302° → 100° and *Exposure*
+        // 1.00 → 2.72 on the parked scene produced 0 Filament frames and a viewport still lit
+        // the old way (#3718). `cameraNode.setExposure` invalidates on its own — it is an SDK
+        // mutator — and this covers the two that cannot.
+        cameraNode.requestRender()
     }
 
     // ── Rig geometry ─────────────────────────────────────────────────────────────────────────

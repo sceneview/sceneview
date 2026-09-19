@@ -93,6 +93,43 @@ SceneView { /* … */ }
 library cannot observe — an external simulation writing into Filament each frame, a custom
 `Renderer` hook, a texture updated off-thread.
 
+### Where the line is: SDK mutators invalidate, raw Filament objects do not
+
+This is the one rule to carry out of the migration, and it is the adoption risk the whole default
+turns on — a missed invalidation does not crash, log or fail a test. It shows the previous frame,
+forever, and reads as "the slider is broken".
+
+**Anything you change through a SceneView type asks for its own frame.** Setting
+`lightNode.intensity`, `lightNode.color`, `lightNode.lightDirection`, `cameraNode.setExposure(…)`,
+a projection, `focusDistance`, a node's transform, `materialInstance` / `setMaterialInstanceAt`,
+`setGeometry`, `setLayerVisible`, morph weights or bone matrices *through the node*, shadow flags,
+priority, culling, blend order — all of these invalidate on their own. You do not call
+`requestRender()` after them, and you do not need `Continuous()` to make them show.
+
+**Anything you change on a raw Filament object does not.** The SDK hands these out and never sees
+them again, so nothing is left to observe the write:
+
+```kotlin
+// Raw Filament object → the SDK cannot see this. Ask for the frame yourself.
+indirectLight.intensity = 30_000f
+indirectLight.setRotation(rotation)
+materialInstance.setParameter("baseColorFactor", color)
+view.ambientOcclusionOptions = options
+scene.skybox = skybox
+lightManager.setIntensity(instance, lux)   // through the manager, not the node
+
+renderInvalidator.requestRender()          // ← the missing line
+```
+
+Take the invalidator with `rememberRenderInvalidator()` and pass it as
+`SceneView(renderInvalidator = …)`, or call `requestRender()` on any node you hold. The rule of
+thumb that costs nothing to apply: **if the type you are writing to came from `com.google.android
+.filament`, ask for a frame.**
+
+Measured, so it is not hypothetical: a demo screen dragging *Environment rotation* from 302° to
+100° and *Exposure* from 1.00 to 2.72 on a parked scene produced **0** frames and a viewport still
+lit the old way. Both writes went into an `IndirectLight`.
+
 ### Check your app for heuristics that read the frame rate
 
 This is the failure mode that survives the mechanical migration, because it compiles, it is in

@@ -850,6 +850,7 @@ public final class io/github/sceneview/components/CameraComponent$DefaultImpls {
 	public static fun getUpDirection (Lio/github/sceneview/components/CameraComponent;)Ldev/romainguy/kotlin/math/Float3;
 	public static fun getViewTransform (Lio/github/sceneview/components/CameraComponent;)Ldev/romainguy/kotlin/math/Mat4;
 	public static fun lookAt (Lio/github/sceneview/components/CameraComponent;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
+	public static fun onComponentChanged (Lio/github/sceneview/components/CameraComponent;)V
 	public static fun setCustomProjection (Lio/github/sceneview/components/CameraComponent;Ldev/romainguy/kotlin/math/Mat4;DDLdev/romainguy/kotlin/math/Mat4;)V
 	public static synthetic fun setCustomProjection$default (Lio/github/sceneview/components/CameraComponent;Ldev/romainguy/kotlin/math/Mat4;DDLdev/romainguy/kotlin/math/Mat4;ILjava/lang/Object;)V
 	public static fun setExposure (Lio/github/sceneview/components/CameraComponent;F)V
@@ -871,6 +872,11 @@ public final class io/github/sceneview/components/CameraComponent$DefaultImpls {
 public abstract interface class io/github/sceneview/components/Component {
 	public abstract fun getEngine ()Lcom/google/android/filament/Engine;
 	public abstract fun getEntity ()I
+	public fun onComponentChanged ()V
+}
+
+public final class io/github/sceneview/components/Component$DefaultImpls {
+	public static fun onComponentChanged (Lio/github/sceneview/components/Component;)V
 }
 
 public abstract interface class io/github/sceneview/components/LightComponent : io/github/sceneview/components/Component {
@@ -923,6 +929,7 @@ public final class io/github/sceneview/components/LightComponent$DefaultImpls {
 	public static fun getSunHaloSize (Lio/github/sceneview/components/LightComponent;)F
 	public static fun getType (Lio/github/sceneview/components/LightComponent;)Lcom/google/android/filament/LightManager$Type;
 	public static fun isShadowCaster (Lio/github/sceneview/components/LightComponent;)Z
+	public static fun onComponentChanged (Lio/github/sceneview/components/LightComponent;)V
 	public static fun setColor (Lio/github/sceneview/components/LightComponent;Ldev/romainguy/kotlin/math/Float4;)V
 	public static fun setFalloff (Lio/github/sceneview/components/LightComponent;F)V
 	public static fun setIntensity (Lio/github/sceneview/components/LightComponent;F)V
@@ -993,6 +1000,7 @@ public final class io/github/sceneview/components/RenderableComponent$DefaultImp
 	public static fun getRenderableManager (Lio/github/sceneview/components/RenderableComponent;)Lcom/google/android/filament/RenderableManager;
 	public static fun isShadowCaster (Lio/github/sceneview/components/RenderableComponent;)Z
 	public static fun isShadowReceiver (Lio/github/sceneview/components/RenderableComponent;)Z
+	public static fun onComponentChanged (Lio/github/sceneview/components/RenderableComponent;)V
 	public static fun set (Lio/github/sceneview/components/RenderableComponent;Ljava/util/List;ILcom/google/android/filament/MaterialInstance;)V
 	public static fun setAxisAlignedBoundingBox (Lio/github/sceneview/components/RenderableComponent;Lcom/google/android/filament/Box;)V
 	public static fun setBlendOrder (Lio/github/sceneview/components/RenderableComponent;I)V
@@ -2344,6 +2352,7 @@ public class io/github/sceneview/node/BillboardNode : io/github/sceneview/node/I
 	public static final field $stable I
 	public fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun isFrameActive ()Z
 	public final fun updateBitmap (Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;)V
 	public static synthetic fun updateBitmap$default (Lio/github/sceneview/node/BillboardNode;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;ILjava/lang/Object;)V
 }
@@ -2383,6 +2392,7 @@ public class io/github/sceneview/node/CameraNode : io/github/sceneview/node/Node
 	public fun isTouchable ()Z
 	public fun lookAt (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun motionEventToRay (Landroid/view/MotionEvent;)Lio/github/sceneview/collision/Ray;
+	public fun onComponentChanged ()V
 	public final fun screenPointToRay (FF)Lio/github/sceneview/collision/Ray;
 	public fun setCustomProjection (Ldev/romainguy/kotlin/math/Mat4;DDLdev/romainguy/kotlin/math/Mat4;)V
 	public fun setEditable (Z)V
@@ -2573,6 +2583,7 @@ public class io/github/sceneview/node/LightNode : io/github/sceneview/node/Node,
 	public fun isEditable ()Z
 	public fun isShadowCaster ()Z
 	public fun isTouchable ()Z
+	public fun onComponentChanged ()V
 	public fun setColor (Ldev/romainguy/kotlin/math/Float4;)V
 	public fun setEditable (Z)V
 	public fun setFalloff (F)V
@@ -3164,6 +3175,7 @@ public class io/github/sceneview/node/RenderableNode : io/github/sceneview/node/
 	public fun getRenderableManager ()Lcom/google/android/filament/RenderableManager;
 	public fun isShadowCaster ()Z
 	public fun isShadowReceiver ()Z
+	public fun onComponentChanged ()V
 	public fun set (Ljava/util/List;ILcom/google/android/filament/MaterialInstance;)V
 	public fun setAxisAlignedBoundingBox (Lcom/google/android/filament/Box;)V
 	public fun setBlendOrder (I)V

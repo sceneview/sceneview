@@ -261,6 +261,11 @@ fun LightingLabDemo(onBack: () -> Unit) {
             shutterSpeed = LightingStage.CAMERA_SHUTTER_SPEED,
             sensitivity = LightingStage.sensitivityFor(exposure),
         )
+        // `IndirectLight` and the `View` options below are raw Filament objects: the SDK hands
+        // them out and never sees them again, so nothing here would ask for the frame that shows
+        // the change. `cameraNode.setExposure` invalidates on its own — it is an SDK mutator —
+        // and this covers the ones that cannot (#3718).
+        cameraNode.requestRender()
         // Filament's options getters currently hand back the same mutable struct, so writing
         // through them works; going via the setter keeps that an implementation detail rather
         // than a dependency, in case a future release starts returning a defensive copy.

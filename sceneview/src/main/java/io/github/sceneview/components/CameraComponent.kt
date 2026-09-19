@@ -70,7 +70,10 @@ interface CameraComponent : Component {
         top: Double,
         near: Double,
         far: Double
-    ) = camera.setProjection(projection, left, right, bottom, top, near, far)
+    ) {
+        camera.setProjection(projection, left, right, bottom, top, near, far)
+        onComponentChanged()
+    }
 
     /**
      * Sets the projection matrix from the field-of-view.
@@ -102,7 +105,10 @@ interface CameraComponent : Component {
         near: Double,
         far: Double,
         direction: Camera.Fov
-    ) = camera.setProjection(fovInDegrees, aspect, near, far, direction)
+    ) {
+        camera.setProjection(fovInDegrees, aspect, near, far, direction)
+        onComponentChanged()
+    }
 
     /**
      * Sets the projection matrix from the focal length.
@@ -122,8 +128,10 @@ interface CameraComponent : Component {
      * `far` != `near`
      * for [Projection.ORTHO].
      */
-    fun setLensProjection(focalLength: Double, aspect: Double, near: Double, far: Double) =
+    fun setLensProjection(focalLength: Double, aspect: Double, near: Double, far: Double) {
         camera.setLensProjection(focalLength, aspect, near, far)
+        onComponentChanged()
+    }
 
     /**
      * Sets a custom projection matrix.
@@ -151,7 +159,10 @@ interface CameraComponent : Component {
         near: Double = camera.near.toDouble(),
         far: Double = camera.cullingFar.toDouble(),
         inProjectionForCulling: Transform = inProjection
-    ) = camera.setCustomProjection(inProjection, near, far, inProjectionForCulling)
+    ) {
+        camera.setCustomProjection(inProjection, near, far, inProjectionForCulling)
+        onComponentChanged()
+    }
 
     /**
      * Sets an additional matrix that scales the projection matrix.
@@ -178,7 +189,10 @@ interface CameraComponent : Component {
      * @see Camera.setLensProjection
      * @see Camera.setCustomProjection
      */
-    fun setScaling(scaling: Float2) = camera.setScaling(scaling)
+    fun setScaling(scaling: Float2) {
+        camera.setScaling(scaling)
+        onComponentChanged()
+    }
 
     /**
      * Sets an additional matrix that shifts (translates) the projection matrix.
@@ -194,7 +208,10 @@ interface CameraComponent : Component {
      * @see Camera.setLensProjection
      * @see Camera.setCustomProjection
      */
-    fun setShift(xShift: Double, yShift: Double) = camera.setShift(xShift, yShift)
+    fun setShift(xShift: Double, yShift: Double) {
+        camera.setShift(xShift, yShift)
+        onComponentChanged()
+    }
 
     /**
      * Sets the camera's model matrix.
@@ -203,7 +220,10 @@ interface CameraComponent : Component {
      * @param center position of the point in world space the camera is looking at
      * @param up unit vector denoting the camera's "up" direction
      */
-    fun lookAt(eye: Position, center: Position, up: Direction) = camera.lookAt(eye, center, up)
+    fun lookAt(eye: Position, center: Position, up: Direction) {
+        camera.lookAt(eye, center, up)
+        onComponentChanged()
+    }
 
     /**
      * Gets the distance to the near plane
@@ -228,6 +248,7 @@ interface CameraComponent : Component {
         get() = camera.projectionTransform
         set(value) {
             camera.projectionTransform = value
+            onComponentChanged()
         }
 
     /**
@@ -269,6 +290,7 @@ interface CameraComponent : Component {
         get() = camera.modelTransform
         set(value) {
             camera.modelTransform = value
+            onComponentChanged()
         }
 
     /**
@@ -366,8 +388,10 @@ interface CameraComponent : Component {
      *
      * @see LightManager
      */
-    fun setExposure(aperture: Float, shutterSpeed: Float, sensitivity: Float) =
+    fun setExposure(aperture: Float, shutterSpeed: Float, sensitivity: Float) {
         camera.setExposure(aperture, shutterSpeed, sensitivity)
+        onComponentChanged()
+    }
 
     /**
      * Sets this camera's exposure directly. Calling this method will set the aperture to 1.0, the
@@ -380,7 +404,10 @@ interface CameraComponent : Component {
      *
      * @see LightManager
      */
-    fun setExposure(exposure: Float) = camera.setExposure(exposure)
+    fun setExposure(exposure: Float) {
+        camera.setExposure(exposure)
+        onComponentChanged()
+    }
 
     /**
      * Gets the aperture in f-stops
@@ -407,6 +434,7 @@ interface CameraComponent : Component {
         get() = camera.focusDistance
         set(value) {
             camera.focusDistance = value
+            onComponentChanged()
         }
 
     /**
