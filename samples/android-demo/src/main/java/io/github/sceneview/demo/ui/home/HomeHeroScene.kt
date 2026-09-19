@@ -34,6 +34,7 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import kotlin.math.abs
 import kotlin.math.exp
@@ -223,6 +224,17 @@ internal fun HomeHeroScene(
     // stops turning on its own. Read once per composition, not per frame.
     val idleTurntable = LocalMotionEnabled.current
 
+    // …but "not advancing IS the pause" only works in one direction (#3718). The turntable
+    // keeps itself awake while it turns — the `rotation` write below is a push source — and
+    // `onFrame` fires only *after* a frame reached the surface, so once the band has parked
+    // there is no callback left to notice that `advancing` went back to `true`. Scrolling the
+    // hero back into view would leave a frozen subject on a screen that looks alive. One
+    // frame is all this needs: its `onFrame` writes a rotation, and that pushes the next.
+    val renderInvalidator = rememberRenderInvalidator()
+    LaunchedEffect(advancing, idleTurntable) {
+        if (advancing) renderInvalidator.requestRender()
+    }
+
     val density = LocalDensity.current
     val dragToDegrees = remember(density) { HERO_DEGREES_PER_DP / density.density }
 
@@ -274,6 +286,7 @@ internal fun HomeHeroScene(
             cameraManipulator = null,
             onGestureListener = null,
             renderQuality = RenderQuality.Performance,
+            renderInvalidator = renderInvalidator,
             onFrame = { frameTimeNanos ->
                 val previous = lastFrameNanos[0]
                 lastFrameNanos[0] = frameTimeNanos

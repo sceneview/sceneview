@@ -116,6 +116,35 @@ behind — a second accepted submission is itself the evidence that the first wa
 Do **not** fix this by holding the loop awake to feed the heuristic. That re-creates exactly the
 drain this release exists to remove, and hides the bug instead of closing it.
 
+### `onFrame` cannot be what keeps your loop awake
+
+The same shape, one level down, and it is the one that costs you a screen rather than a cover.
+
+`onFrame` fires **once per presented frame, right after that frame reached the surface**. Under
+`Continuous` that was indistinguishable from "every vsync, forever", so it became the natural home
+for anything per-frame: advancing an animation clock, stepping a physics simulation, driving a
+turntable, syncing an audio listener pose. Under `OnDemand` it closes on itself. Nothing else
+invalidates the scene, so the loop settles and parks; parked means no presented frame; no presented
+frame means no `onFrame`; and the clock that was going to ask for the next frame is the one that
+just stopped running. The screen does not stutter — it freezes on open, with a fully drawn, entirely
+correct first frame, which is why it reads as "the animation is broken" and not as "the loop
+stopped".
+
+Two things to check in every per-frame callback you own:
+
+- **Does it drive motion?** Then say so: `frameRatePolicy = FrameRatePolicy.Continuous()` while it
+  runs, and back to `OnDemand()` when the user pauses it. This is what the mode is for, and it also
+  lets the cadence vote tell the display. A `RenderInvalidator.requestRender()` called from inside
+  `onFrame` works too — each rendered frame buys the next — but it says "one more frame" sixty times
+  a second to mean "keep going", and nothing tells the panel.
+- **Does it apply a change the user just made?** Then apply it **outside** `onFrame` and request the
+  frame after: `onFrame` runs after presentation, so a pose written there lands in the *next* frame.
+  One `requestRender()` would draw the old pose, then park one frame behind, permanently.
+
+The state that decides — `isPlaying`, `isReplaying`, "is this band on screen" — also needs a rising
+edge. Going from paused to playing while the loop is parked changes a flag no one is reading;
+request one frame from a `LaunchedEffect` on that flag, and the callback takes it from there.
+
 ---
 
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`

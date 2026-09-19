@@ -191,6 +191,15 @@ import io.github.sceneview.node.findActivity
  *                              called" is a sound signal that there are pixels on screen. Use it to
  *                              drop a loading cover or drive per-frame logic; it does not fire
  *                              while the render loop is parked on a settled scene.
+ *                              **It therefore cannot be what keeps the loop awake.** A callback
+ *                              that advances a clock or steps a simulation, and relies on nothing
+ *                              but its own next invocation to run again, stops the first time the
+ *                              scene parks — and never restarts. If your screen wants every vsync,
+ *                              say so with [FrameRatePolicy.Continuous]; if it wants one more frame
+ *                              after a change the library cannot see, push it through
+ *                              [renderInvalidator], *before* `onFrame` rather than from inside it:
+ *                              this fires after the frame it is named for was already presented, so
+ *                              what you write here lands in the next one.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable

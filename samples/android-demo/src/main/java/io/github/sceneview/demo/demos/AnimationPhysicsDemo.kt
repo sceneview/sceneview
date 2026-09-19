@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
+import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -94,6 +95,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
@@ -779,6 +781,47 @@ private fun AnimationSection(
 
     val firstFrame = rememberFirstFrameState(engine)
 
+    // ── Who keeps this screen awake (#3718) ──────────────────────────────────────────────
+    //
+    // This screen animates from its own clock, and `onFrame` fires *after* a frame reached
+    // the surface — so the callback that advances the clip cannot also be the thing that
+    // asks for the next frame. Under render-on-demand that closes on itself: the scene
+    // settles, parks, `onFrame` stops, the clip stops, and the soldier stands still from the
+    // moment the screen opens. Nothing in the SDK can see it either — `applyAnimation` /
+    // `updateBoneMatrices` write bone matrices straight into Filament, and the
+    // `onWorldTransformChanged()` below only invalidates the node's world-space cache;
+    // `onTransformChanged()` is the one that pushes an invalidation, and an animator
+    // write-back never goes through it.
+    //
+    // Two different answers, because these are two different questions:
+    //
+    //  * **while it plays** the screen genuinely wants every vsync — that is what
+    //    [FrameRatePolicy.Continuous] is for, and it also lets the cadence vote tell the
+    //    panel. Pausing hands the screen back to on-demand.
+    //  * **while it is paused** a scrub, a clip chip or the blend slider moves the pose with
+    //    no clock running. The pose is applied *here*, outside the loop, and
+    //    [renderInvalidator] asks for the one frame that shows it. Applying it from
+    //    `onFrame` instead would draw the previous pose and park — one frame behind, for good.
+    val renderInvalidator = rememberRenderInvalidator()
+    val playing = isPlaying && !DemoSettings.qaMode
+    val applyPose: (ModelNodeImpl) -> Unit = { animatedNode ->
+        val animator = animatedNode.animator
+        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
+            val blendDuration = animator.getAnimationDuration(blendIndex)
+            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
+            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
+        } else animator.applyAnimation(selectedAnim, clipTime)
+        animator.updateBoneMatrices()
+        animatedNode.onWorldTransformChanged()
+    }
+    LaunchedEffect(playing, clipTime, selectedAnim, blendIndex, blendWeight, modelNodeRef.value) {
+        if (playing) return@LaunchedEffect
+        val animatedNode = modelNodeRef.value ?: return@LaunchedEffect
+        if (selectedAnim !in animationNames.indices || duration <= 0f) return@LaunchedEffect
+        applyPose(animatedNode)
+        renderInvalidator.requestRender()
+    }
+
     DemoScaffold(
         bottomOverlayReservesScene = true,
         title = stringResource(R.string.demo_animation_physics_title),
@@ -1016,21 +1059,26 @@ private fun AnimationSection(
                     if (animatedNode != null && selectedAnim in animationNames.indices && duration > 0f) {
                         val previous = previousFrame[0]
                         previousFrame[0] = nanos
-                        if (isPlaying && !DemoSettings.qaMode && previous != 0L) {
+                        // Advance the clip only while playing. The paused pose is applied by the
+                        // `LaunchedEffect` above, not here: `onFrame` runs after the frame it is
+                        // named for was already presented.
+                        if (playing && previous != 0L) {
                             val next = clipTime + ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f) * speed
                             clipTime = if (loop) next % duration else next.coerceAtMost(duration)
                             if (!loop && clipTime >= duration) isPlaying = false
+                            applyPose(animatedNode)
                         }
-                        val animator = animatedNode.animator
-                        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
-                            val blendDuration = animator.getAnimationDuration(blendIndex)
-                            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
-                            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
-                        } else animator.applyAnimation(selectedAnim, clipTime)
-                        animator.updateBoneMatrices()
-                        animatedNode.onWorldTransformChanged()
                     }
                 },
+                // Continuous *only* while the clip is running — see the block above
+                // `DemoScaffold`. Pausing returns the screen to on-demand, and a paused scene
+                // here presents nothing at all.
+                frameRatePolicy = if (playing) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
+                },
+                renderInvalidator = renderInvalidator,
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
@@ -1446,6 +1494,16 @@ private fun PhysicsSection(
                     simulation.onFrame(nanos, replaying && simulation.bodies.size == bodyCount)
                     liveBodyCount = simulation.bodies.size
                     collisions = simulation.collisions
+                },
+                // The simulation is stepped from `onFrame`, which fires only *after* a frame
+                // reached the surface — so it cannot be what keeps the loop awake (#3718). A
+                // replay that runs wants every vsync, and says so; `Pause` hands the screen
+                // back to on-demand, where the tray still repaints on a tilt drag because
+                // `Node.position` / `Node.rotation` invalidate on their own.
+                frameRatePolicy = if (replaying) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
                 },
                 cameraManipulator = rememberCameraManipulator(
                     orbitHomePosition = cameraNode.worldPosition
