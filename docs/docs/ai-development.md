@@ -7,17 +7,17 @@ in a machine-readable format, and the setup below is the same for all of them.
 
 ## Why this matters
 
-When you ask an AI to help you build a 3D scene, it needs to know the exact API — function names, parameter types, threading rules, common patterns. Most 3D libraries have large, complex APIs that AI tools hallucinate about.
+When you ask an AI to help you build a 3D scene, it needs to know the exact API — function names, parameter types, threading rules, common patterns. An assistant that has to infer a 3D API from prose documentation invents plausible-looking calls that do not exist.
 
-SceneView solves this with three layers:
+SceneView addresses this with three layers:
 
 1. **`llms.txt`** — a machine-readable API reference at the repo root, readable
    by anything that can fetch a URL
 2. **`sceneview-mcp`** — an MCP server that gives any MCP client the full API
    context, over stdio or over Streamable HTTP
 3. **Rules files** — the same API contract under each of the filenames the
-   tools look for: `AGENTS.md`, `CLAUDE.md`, `.cursorrules`,
-   `.github/copilot-instructions.md`, `.windsurfrules`
+   tools look for: `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
+   plus the legacy-but-still-read `.cursorrules` and `.windsurfrules`
 
 ---
 
@@ -39,11 +39,10 @@ https://mcp.sceneview.dev/mcp
 ```
 
 What differs between tools is only *where the config lives and what the keys
-are called*. The common shape is `mcpServers`; VS Code uses `servers` with
-`"type": "stdio"`, Codex a `[mcp_servers.*]` TOML table, Copilot CLI
-`"type": "local"`, and Kilo Code an `mcp` key in `kilo.jsonc` where `command`
-is an array. When in doubt, paste the command above into whatever field your
-client offers.
+are called*. The common shape is a JSON `mcpServers` object; the per-tool
+sections below give the exceptions. When in doubt, paste the command above into
+whatever field your client offers, and check that client's own documentation
+for the file it reads.
 
 ### Per-tool setup
 
@@ -57,8 +56,8 @@ claude mcp add sceneview -- npx -y sceneview-mcp
 ```
 
 Or commit it for the whole team, in `.mcp.json` **at the project root** — the
-only project-scoped MCP file Claude Code reads. `.claude/mcp.json` and
-`~/.claude/mcp.json` are silently ignored:
+project-scoped file named by the documentation (local and user scopes live in
+`~/.claude.json`):
 
 ```json
 {
@@ -72,7 +71,8 @@ Verify with `claude mcp list` — `sceneview` should show `✔ Connected`. There
 also a plugin that bundles the MCP server with the contributor commands below:
 `/plugin marketplace add sceneview/claude-marketplace`, then
 `/plugin install sceneview@sceneview`.
-Reference: [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp)
+References: [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp)
+and [code.claude.com/docs/en/plugin-marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
 
 #### Cline
 
@@ -106,14 +106,16 @@ command = "npx"
 args = ["-y", "sceneview-mcp"]
 ```
 
-The repository is also an OpenAI plugin: `.codex-plugin/plugin.json` points at
-the three skills under `agents/` — `sceneview` (Compose), `sceneview-ios`
-(SwiftUI) and `sceneview-web` (Filament.js / WebXR). From a checkout,
-`codex plugin marketplace add "$PWD"` then
-`codex plugin add sceneview@sceneview-local` (an absolute path — a relative one
-does not resolve). Codex also picks the skills up on its own from
-`.agents/skills/`.
-Reference: [learn.chatgpt.com/docs/extend/mcp](https://learn.chatgpt.com/docs/extend/mcp)
+The repository is also a Codex plugin, carrying three skills — `sceneview`
+(Compose), `sceneview-ios` (SwiftUI) and `sceneview-web` (Filament.js / WebXR).
+Codex scans `.agents/skills` in every directory from your working directory up
+to the repository root, so in a checkout it finds them with no setup;
+`.agents/plugins/marketplace.json` declares the repository as a local
+marketplace, installable with `codex plugin marketplace add .`, and
+`.codex-plugin/plugin.json` is kept as the documented compatibility fallback.
+References: [learn.chatgpt.com/docs/extend/mcp](https://learn.chatgpt.com/docs/extend/mcp),
+[learn.chatgpt.com/docs/build-skills](https://learn.chatgpt.com/docs/build-skills)
+and [developers.openai.com/plugins/build/plugins](https://developers.openai.com/plugins/build/plugins)
 
 #### Cursor
 
@@ -127,8 +129,10 @@ Reference: [learn.chatgpt.com/docs/extend/mcp](https://learn.chatgpt.com/docs/ex
 }
 ```
 
-Cursor also accepts an [install link](https://sceneview.github.io/#ai-setup).
-Reference: [cursor.com/docs/mcp/install-links](https://cursor.com/docs/mcp/install-links)
+A one-click Cursor install link — a `cursor://anysphere.cursor-deeplink/mcp/install`
+deeplink — is on [the setup page](https://sceneview.github.io/#ai-setup).
+References: [cursor.com/docs/mcp](https://cursor.com/docs/mcp) and
+[cursor.com/docs/mcp/install-links](https://cursor.com/docs/mcp/install-links)
 
 #### Gemini in Android Studio
 
@@ -144,8 +148,6 @@ stdio, so this entry points at the hosted server — the local
 }
 ```
 
-To run it locally inside the same IDE, use Junie instead: the standard
-`mcpServers` snippet in `.junie/mcp/mcp.json`.
 Reference: [developer.android.com/studio/gemini/add-mcp-server](https://developer.android.com/studio/gemini/add-mcp-server)
 
 #### GitHub Copilot
@@ -166,11 +168,14 @@ Reference: [developer.android.com/studio/gemini/add-mcp-server](https://develope
 For Copilot CLI: `copilot mcp add sceneview -- npx -y sceneview-mcp`. Writing
 that file by hand takes a third shape — `~/.copilot/mcp-config.json` uses
 `mcpServers` like most clients, but each server needs `"type": "local"` rather
-than `"stdio"`. In a SceneView checkout, Copilot also reads
-`.github/copilot-instructions.md` with no setup at all.
+than `"stdio"`. In a SceneView checkout, Copilot also picks up the repository
+instructions in `.github/copilot-instructions.md`, which are "available for use
+by Copilot as soon as you save the file"; for Copilot code review only, custom
+instructions must be enabled in your personal settings (on by default).
 References:
-[code.visualstudio.com/docs/agents/reference/mcp-configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration)
-and [docs.github.com — add MCP servers to Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers)
+[code.visualstudio.com/docs/agents/reference/mcp-configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
+[docs.github.com — add MCP servers to Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers)
+and [docs.github.com — add repository instructions](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)
 
 #### JetBrains AI Assistant
 
@@ -185,29 +190,28 @@ paste:
 }
 ```
 
-Works for AI Assistant and Junie, in IntelliJ IDEA, Android Studio and the
-other JetBrains IDEs. Junie also reads the same JSON straight from a file —
-`.junie/mcp/mcp.json` for one project, `~/.junie/mcp/mcp.json` for every
+The documentation lists Junie among the external clients it detects, and
+IntelliJ IDEA among the IDEs. Junie also reads the same JSON straight from a
+file — `.junie/mcp/mcp.json` for one project, `~/.junie/mcp/mcp.json` for every
 project.
-Reference: [jetbrains.com/help/ai-assistant/mcp.html](https://www.jetbrains.com/help/ai-assistant/mcp.html)
+References: [jetbrains.com/help/ai-assistant/mcp.html](https://www.jetbrains.com/help/ai-assistant/mcp.html)
+and [junie.jetbrains.com — CLI MCP configuration](https://junie.jetbrains.com/docs/junie-cli-mcp-configuration.html)
 
 #### Xcode
 
-Agents running inside Xcode read the rules files at your project root —
-`AGENTS.md` and `CLAUDE.md`. Xcode 26.3 itself exposes *its own* tools to
-external agents rather than hosting this server: enable it under
-Settings → Intelligence → Model Context Protocol, then run your CLI alongside
-Xcode with both servers registered — for instance
+Xcode exposes *its own* tools to external agents rather than hosting this
+server: enable it under Settings → Intelligence → Model Context Protocol, then
+run your CLI alongside Xcode with both servers registered — for instance
 `claude mcp add --transport stdio xcode -- xcrun mcpbridge` or
 `codex mcp add xcode -- xcrun mcpbridge`, plus SceneView from the same CLI.
 Reference: [developer.apple.com — giving external agents access to Xcode](https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode)
 
 #### Any other client
 
-Antigravity, Continue, Devin Desktop, Goose, Kilo Code, Kiro, OpenCode,
-OpenHands, Qwen Code, Windsurf, Zed and any other MCP-compatible client take
-the same command. Consult your client's own documentation for where its config
-file lives.
+Antigravity, Continue, Devin Desktop (formerly Windsurf), Goose, Kilo Code,
+Kiro, OpenCode, OpenHands, Qwen Code, Zed and any other MCP-compatible client
+take the same command. Consult your client's own documentation for where its
+config file lives.
 
 ### No MCP support?
 
@@ -235,8 +239,12 @@ Once the context is in place, ask in plain language:
 
 A checkout carries one context file per convention, holding the same guidance:
 `AGENTS.md` (Codex and every agent following the AGENTS.md convention),
-`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` and
-`.windsurfrules`. Whichever tool you run in the repo, it finds its own.
+`CLAUDE.md`, `.github/copilot-instructions.md`, plus `.cursorrules` and
+`.windsurfrules` — both documented by their vendors as legacy single files that
+are still read, the current mechanisms being `.cursor/rules/*.mdc` for Cursor
+and `.devin/rules/` (or `.windsurf/rules/`) for Devin Desktop / Windsurf,
+alongside `AGENTS.md` in both cases. Whichever tool you run in the repo, it
+finds its own.
 
 ### Slash commands
 
@@ -277,26 +285,37 @@ The file is maintained alongside the source code and updated with every release.
 
 ## What's in the MCP server
 
-The `sceneview-mcp` package provides tools that AI assistants can call:
+The `sceneview-mcp` package provides 32 tools that AI assistants can call, in
+five families:
 
-- **`get_api_reference`** — returns the full `llms.txt` content
-- **`get_node_reference`** — look up a specific node type's API
-- **`get_sample_code`** — get working example code for a use case
-- **`get_threading_rules`** — threading and lifecycle rules
+- **Reference** — `get_node_reference`, `get_best_practices`, `get_material_guide`,
+  `get_animation_guide`, `get_gesture_guide`, `get_collision_guide`,
+  `get_performance_tips`, `get_model_optimization_guide`, `get_web_rendering_guide`
+- **Setup** — `get_setup`, `get_platform_setup`, `get_ar_setup`, `get_ios_setup`,
+  `get_web_setup`, `list_platforms`, `get_platform_roadmap`
+- **Samples and code** — `get_sample`, `list_samples`, `generate_scene`,
+  `validate_code`, `analyze_project`
+- **Migration and diagnosis** — `get_migration_guide`, `migrate_code`,
+  `debug_issue`, `get_troubleshooting`
+- **Assets, preview and docs search** — `search_models`, `generate_3d_model`,
+  `view_3d_model`, `render_3d_preview`, `create_3d_artifact`,
+  `search_android_docs`, `fetch_android_doc`
 
 Any MCP client can call them; see [per-tool setup](#per-tool-setup) for the
-config shape yours expects.
+config shape yours expects. This list is the server's own registry
+(`mcp/src/tools/`) — ask your client to list the server's tools if you want to
+check it against the version you have installed.
 
 ---
 
-## Why no other 3D library has this
+## What SceneView ships for AI tooling
 
-| Library | AI support |
+| Layer | Where it lives |
 |---|---|
-| **SceneView** | `llms.txt` + MCP server + a rules file per convention |
-| Unity | Generic docs, frequent hallucinations on API |
-| Sceneform | Archived, AI trained on outdated code |
-| Raw ARCore | Low-level API, AI struggles with GL/Vulkan boilerplate |
-| Rajawali | Minimal docs, AI has no training data |
+| Machine-readable API reference | `llms.txt`, at the repo root and at [sceneview.github.io/llms.txt](https://sceneview.github.io/llms.txt) |
+| MCP server | `sceneview-mcp`, over stdio or Streamable HTTP |
+| Rules files | one per convention, in every checkout |
+| Skills | `agents/sceneview`, `agents/sceneview-ios`, `agents/sceneview-web` |
 
-SceneView's AI tooling means faster development, fewer bugs, and correct code on the first try. This is a competitive advantage that compounds — the more developers use AI tools, the more SceneView's AI-first approach matters.
+All four are maintained alongside the source and updated with every release, so
+an assistant reading them is reading the API that actually shipped.

@@ -26,7 +26,7 @@ thing — 32 tools: code generation, validation, samples, model search
 (Sketchfab) and the complete API reference.
 
 ```bash
-npx sceneview-mcp
+npx -y sceneview-mcp
 ```
 
 Any MCP client can run it. The config file and its exact shape differ per
@@ -34,28 +34,19 @@ client — see
 [AI-assisted development](ai-development.md#per-tool-setup) for the one your
 assistant reads, or the client's own documentation.
 
-## Industry-specific MCPs
-
-| Domain | Install | Tools |
-|--------|---------|-------|
-| Automotive | `npx automotive-3d-mcp` | Car configurators, HUD, showrooms |
-| Healthcare | `npx healthcare-3d-mcp` | Anatomy, imaging, surgical planning |
-| Gaming | `npx gaming-3d-mcp` | Game scenes, characters, terrain |
-| Interior Design | `npx interior-design-3d-mcp` | Room planners, furniture, lighting |
-
 ## Rules files in the repo
 
 A checkout of SceneView carries the context file each of these tools reads on
 its own, with no setup. They hold the same API contract; only the filename
-differs, because each tool looks for its own.
+differs, because each tool looks for its own. Alphabetical:
 
-| File | Read by |
+| Read by | File |
 |---|---|
-| `AGENTS.md` | Codex, and any agent that follows the AGENTS.md convention |
-| `CLAUDE.md` | Claude Code |
-| `.cursorrules` | Cursor |
-| `.github/copilot-instructions.md` | GitHub Copilot |
-| `.windsurfrules` | Windsurf |
+| Claude Code | `CLAUDE.md` |
+| Codex, and any agent that follows the AGENTS.md convention | `AGENTS.md` |
+| Cursor | `.cursorrules` — documented as a legacy single file that is still read; Cursor's current mechanism is `.cursor/rules/*.mdc` plus `AGENTS.md` |
+| Devin Desktop / Windsurf | `.windsurfrules` — documented as a legacy single file that is still read; the current mechanism is `.devin/rules/` (or `.windsurf/rules/`) plus `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
 
 Working in your own project rather than in a SceneView checkout? Copy the one
 your tool reads, or point your assistant at `llms.txt`.

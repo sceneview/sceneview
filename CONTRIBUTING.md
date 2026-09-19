@@ -151,9 +151,9 @@ look for, so yours picks them up with no setup (alphabetical):
 |---|---|
 | Claude Code | `CLAUDE.md` |
 | Codex, and any agent following the AGENTS.md convention | `AGENTS.md` |
-| Cursor | `.cursorrules` — legacy single file, still read; current rules live in `.cursor/rules/*.mdc` and `AGENTS.md` |
+| Cursor | `.cursorrules` — legacy single file, still read; Cursor's current mechanism is `.cursor/rules/*.mdc` plus `AGENTS.md` |
+| Devin Desktop / Windsurf | `.windsurfrules` — legacy single file, still read; the current mechanism is `.devin/rules/` (or `.windsurf/rules/`) plus `AGENTS.md` |
 | GitHub Copilot | `.github/copilot-instructions.md` |
-| Windsurf / Devin | `.windsurfrules` — legacy single file, still read; current rules live in `.devin/rules/` (or `.windsurf/rules/`) and `AGENTS.md` |
 
 Point your assistant at [AGENTS.md](AGENTS.md) and ask for the workflow you want.
 [CLAUDE.md](CLAUDE.md) carries the module map, architecture overview and threading rules

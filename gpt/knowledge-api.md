@@ -2960,7 +2960,7 @@ Once the three modes are on **and** the Earth state has reached `TrackingState.T
 Requirements:
 - ARCore Cloud API key + `ACCESS_FINE_LOCATION` permission (same as the rest of the Geospatial API — see the API key warning above).
 - Device with a back-facing camera config that supports `DepthMode` (most ARCore-supported devices since 2020).
-- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/coverage).
+- A VPS-covered location (city centres of supported regions: https://developers.google.com/ar/develop/geospatial).
 
 See #1731.
 

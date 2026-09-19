@@ -1,104 +1,98 @@
-# Every crawler gets the same rules. The named groups below exist only because
-# robots.txt group matching is winner-takes-all: a crawler that matches a named
-# group ignores the `*` group entirely, so a named group that lists only
-# `Allow: /` would silently hand that crawler the two paths everyone else is
-# kept out of. Each named group therefore repeats the full rule set, and adding
-# a crawler here grants it nothing the default group does not already grant.
-# The list is alphabetical and favours no assistant.
+# Every crawler gets the same rules, and nothing here is disallowed.
+#
+# `/embed/` and `/preview/` used to be listed as `Disallow:`. They already
+# carry `<meta name="robots" content="noindex, nofollow">`, and the two
+# mechanisms cancel each other out: a crawler forbidden to fetch a URL can
+# never read the `noindex` it contains, so a blocked-but-linked URL can stay
+# in an index with no content — the opposite of what was wanted. The `noindex`
+# is the one that does the work, so the `Disallow:` lines are gone. This also
+# unblocks `/go/web`, which is listed in the sitemap and redirects to
+# `/preview/`.
+#
+# The named groups below are a statement, not a rule change: robots.txt group
+# matching is winner-takes-all, so a crawler that matches a named group ignores
+# the `*` group entirely. They are listed to say explicitly that AI crawlers
+# are as welcome as any other, and each one repeats the full rule set.
+# IMPORTANT: if a `Disallow:` is ever added to `*`, it must be added to every
+# named group too, or these crawlers silently keep the access everyone else
+# loses. The list is alphabetical and favours no assistant.
 
 User-agent: *
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 # AI crawlers and AI-powered search — same access as everyone else.
-# Alphabetical. `Claude-Web` was retired by Anthropic in favour of `ClaudeBot`
-# (fetching) and `Claude-User` (user-initiated fetches); both are listed.
+# Alphabetical. Anthropic documents three agents — `ClaudeBot` (crawling),
+# `Claude-User` (user-initiated fetches) and `Claude-SearchBot` (search
+# indexing); `Claude-Web` is no longer among them. All three are listed.
 
 User-agent: AI2Bot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: Applebot-Extended
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: Bytespider
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: CCBot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: ChatGPT-User
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
-User-agent: ClaudeBot
+User-agent: Claude-SearchBot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: Claude-User
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
 
 User-agent: Google-Extended
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: GPTBot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: Meta-ExternalAgent
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: OAI-SearchBot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
 User-agent: PerplexityBot
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
+# Two sitemaps: the marketing root, and the MkDocs tree under `/docs/`, which
+# otherwise depends entirely on being reached by links.
 Sitemap: https://sceneview.github.io/sitemap.xml
+Sitemap: https://sceneview.github.io/docs/sitemap.xml
