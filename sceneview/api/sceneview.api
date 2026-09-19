@@ -2847,6 +2847,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public final fun getWorldTransform ()Ldev/romainguy/kotlin/math/Mat4;
 	public final fun getWorldTransform (Ldev/romainguy/kotlin/math/Mat4;)Ldev/romainguy/kotlin/math/Mat4;
 	public final fun getWorldTransform (Lio/github/sceneview/node/Node;)Ldev/romainguy/kotlin/math/Mat4;
+	public final fun invalidateTransformCache ()V
 	public final fun isDestroyed ()Z
 	public fun isEditable ()Z
 	public fun isFrameActive ()Z
