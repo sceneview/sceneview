@@ -309,12 +309,22 @@ private fun PlacementChooserCta(
     modelName: String?,
     onEnterAr: () -> Unit,
 ) {
-    // `surfaceContainer` + a 1 dp `outlineVariant` hairline, not `surface` on a `surface`
-    // page. The bar was the same colour as the thing it sat on, so it had no container at
-    // all: the catalogue simply stopped 50-odd pixels above the bottom, with the last row
-    // sliced by an edge nothing drew. Giving the bar a ground *and* letting the content
-    // scroll under it (see the caller) turns that into a boundary you can point at.
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+    // `surfaceContainerHigh` + a 1 dp `outlineVariant` hairline, not `surface` on a
+    // `surface` page. The bar was the same colour as the thing it sat on, so it had no
+    // container at all: the catalogue simply stopped 50-odd pixels above the bottom, with
+    // the last row sliced by an edge nothing drew. Giving the bar a ground *and* letting
+    // the content scroll under it (see the caller) turns that into a boundary you can
+    // point at.
+    //
+    // `surfaceContainerHigh` rather than `surfaceContainer`, for two reasons that agree:
+    // it is the role every other container in this app already uses (`DemoMediaCard`,
+    // `WhatsNewUi`, the model picker, the Explore tiles), and it is the lowest role that
+    // has a tone in BOTH schemes. In the light scheme `surfaceContainerLowest`,
+    // `surfaceContainerLow` and `surfaceContainer` are all literally `0xFFFFFFFF` — the
+    // same collapse #3681 fixed for dark, still present at the bottom of the light ramp —
+    // so `surfaceContainer` here would have shipped a bar that is visible in dark and
+    // invisible in light, which is the defect this line claims to fix.
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(modifier = Modifier.fillMaxWidth()) {
             HorizontalDivider(
                 thickness = SceneViewTokens.Layout.hairlineWidth,

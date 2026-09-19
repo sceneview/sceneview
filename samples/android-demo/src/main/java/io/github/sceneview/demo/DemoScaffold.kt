@@ -244,6 +244,12 @@ val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp
  * but a chip that wraps at 200 % text makes the band taller, and a constant would not
  * know. A demo adds its own gutter (`Space.md`) on top of it.
  *
+ * This is the dock **band** — the toolbar and its gutter, what you can see — and not the
+ * scaffold's own `dockClearance` reserve, which floors at 104 dp against an 80 dp dock so
+ * the scene viewport and the bottom-overlay stack keep extra room. A demo that published
+ * the reserve here would put its coaching line 40 dp above the dock while believing it
+ * had asked for 16.
+ *
  * Zero outside a [DemoScaffold], which is the honest default rather than a real case:
  * both AR hosts in this app — `ArViewTab` and `ARPlacementDemo` — go through the
  * scaffold and both declare a dock, so in the app the value is always the measured
@@ -366,7 +372,24 @@ fun DemoScaffold(
         // always exists now (#3328): it carries the Controls item that opens the
         // one settings surface, even on a demo with no controls of its own, so
         // the clearance is unconditional.
+        // Two different jobs, two values — conflating them is what put every bottom
+        // overlay 40 dp above a dock it was supposed to clear by 16 dp.
+        //
+        // `dockClearance` is a RESERVE: room the scene viewport and the bottom-overlay
+        // stack keep free. Its 104 dp floor is deliberately more than the dock is tall
+        // (`SETTINGS_FAB_RESERVED_SPACE` budgets 64 + 16 + 24 dp of breathing room), so
+        // an overlay reads as stacked above the dock rather than resting on it.
+        //
+        // `dockBandClearance` is the BAND you can see: the toolbar plus its gutter, and
+        // nothing else. Anything that positions itself a gutter above the dock has to
+        // measure from this one, or it inherits the reserve's 24 dp on top of its own
+        // gutter and lands 40 dp up. Floored at the token band rather than 104 dp so the
+        // first frame, before `onDockBandHeight` reports, is already the right height.
         val dockClearance = maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand)
+        val dockBandClearance = maxOf(
+            SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
+            dockBand,
+        )
 
         // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
         // reference frame (#3237). With `contentWindowInsets = 0` the padding is
@@ -414,7 +437,7 @@ fun DemoScaffold(
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
-                        LocalDemoChromeBottomInset provides dockClearance,
+                        LocalDemoChromeBottomInset provides dockBandClearance,
                     ) {
                         if (arSessionFailed) {
                             Box(
@@ -573,11 +596,21 @@ fun DemoScaffold(
                         )
                     )
                     .padding(horizontal = SceneViewTokens.Space.md)
-                    // `Space.md`, the one gap this screen uses above the dock — not the
-                    // `Space.sm` that used to be here. 8 dp only ever cleared the dock
-                    // because `dockClearance` has a 104 dp floor against an 80 dp dock,
-                    // so the real gap was 32 dp by accident. Make it 16 dp on purpose.
-                    .padding(bottom = dockClearance + SceneViewTokens.Space.md),
+                    // `Space.md` above the measured dock BAND — not `dockClearance`, and
+                    // not the `Space.sm` that used to be here. The old 8 dp only ever
+                    // cleared the dock because the reserve's 104 dp floor stood against
+                    // an 80 dp dock, so the visible gap was 32 dp by accident; adding
+                    // `Space.md` to that same reserve would have made it 40 dp, also by
+                    // accident. Measured from the band it is 16 dp on purpose, and it
+                    // matches the gap the scene's own bottom stack uses.
+                    //
+                    // What this still does NOT clear is a demo's `bottomOverlay` stack,
+                    // which reserves `dockClearance + bottomOverlayBand` above the same
+                    // dock: a snackbar raised during a pinch read-out overlaps it and
+                    // wins on z-order. That was true before this change too — the
+                    // snackbar has never read `bottomOverlayBand` — so it is left alone
+                    // here rather than fixed silently on the way past.
+                    .padding(bottom = dockBandClearance + SceneViewTokens.Space.md),
             )
         }
     }
