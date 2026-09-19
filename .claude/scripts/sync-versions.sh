@@ -787,8 +787,9 @@ SPM_FILES=(
     # NOTE: `docs/docs/llms.txt` is intentionally NOT listed — it is no longer
     # committed. It is regenerated from root `llms.txt` (already swept above)
     # at docs-build time and `.gitignore`d (issue #899 hardening), so its SPM
-    # snippet is fresh by construction.
-    website-static/.well-known/llms.txt
+    # snippet is fresh by construction. `website-static/.well-known/llms.txt`
+    # is likewise absent: it was a stale hand-kept copy of root `llms.txt` that
+    # docs.yml has never deployed, and it was deleted rather than swept.
     website-static/playground.html
     .github/copilot-instructions.md
     gpt/system-prompt.md
@@ -881,10 +882,9 @@ for docfile in docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-t
 done
 
 # Website static pages carrying Maven artifact refs (index.html, web.html,
-# geometry-demo.html, playground.html) and the AI-context llms.txt mirrors.
+# geometry-demo.html, playground.html).
 for webfile in website-static/index.html website-static/web.html \
-               website-static/geometry-demo.html website-static/playground.html \
-               website-static/.well-known/llms.txt; do
+               website-static/geometry-demo.html website-static/playground.html; do
     F="$REPO_ROOT/$webfile"
     if [ -f "$F" ]; then
         V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$F" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
@@ -948,19 +948,20 @@ fi
 # the source of truth; llms.txt + llms-full.txt quote it in prose and drift —
 # and so did their website-static siblings, which sat outside this list and
 # rotted to 2.3.20 while the covered pair was fixed to 2.4.10 (#2886 follow-up).
-# `website-static/.well-known/llms.txt` is repo-internal (docs.yml drops it
-# from the deployed site, #1998) but still a versioned surface swept above for
-# its Maven prose, so it must track the toml like the first pair.
-# `website-static/llms-full.txt` is GONE: it was a hand-maintained duplicate of
-# `docs/docs/llms-full.txt` whose SceneView/Filament/ARCore prose no scan here
-# covered, so it rotted five minors behind AND shadowed the canonical file on
-# the deployed site. `/llms-full.txt` is now copied from `docs/docs/` by
-# docs.yml, and `check-llms-drift.sh` fails if the committed copy returns.
+# Both website-static siblings are GONE now. `website-static/llms-full.txt` was
+# a hand-maintained duplicate of `docs/docs/llms-full.txt` whose
+# SceneView/Filament/ARCore prose no scan here covered, so it rotted five
+# minors behind AND shadowed the canonical file on the deployed site;
+# `website-static/.well-known/llms.txt` was the same story one directory down,
+# a stale copy of root `llms.txt` that docs.yml has dropped from the deploy
+# since #1998 — nothing ever served it, so it was deleted rather than kept in
+# sync. `/llms.txt` and `/llms-full.txt` are both copied in by docs.yml, whose
+# `rm -f` lines keep a committed copy from shadowing them again.
 # Reported under a separate "Kotlin" banner since it's not VERSION_NAME.
 # `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
 # (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
-KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt website-static/.well-known/llms.txt"
+KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt"
 if [ -n "$KOTLIN_TOML" ]; then
     for kfile in $KOTLIN_PROSE_FILES; do
         F="$REPO_ROOT/$kfile"
@@ -1013,25 +1014,6 @@ pkg = d.get('packages', {}).get('', {})
 if isinstance(pkg, dict) and 'version' in pkg: vs.append(pkg['version'])
 print('\n'.join(sorted(set(vs))))
 " 2>/dev/null)
-fi
-
-# website-static/.well-known/llms.txt — the "(version X.Y.Z)" prose label on
-# the Maven artifacts line. Distinct from the artifact coordinate scan above
-# which catches the next two lines (`io.github.sceneview:sceneview:X.Y.Z`).
-# Also catches the `sceneview-web` prose `vX.Y.Z` references further down.
-WELLKNOWN_LLMS="$REPO_ROOT/website-static/.well-known/llms.txt"
-if [ -f "$WELLKNOWN_LLMS" ]; then
-    V=$(grep -m1 -oE 'Maven artifacts \(version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\)' "$WELLKNOWN_LLMS" \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    if [ "$V" != "NOT FOUND" ]; then
-        add_check ".well-known/llms.txt (Maven prose)" "$V"
-    fi
-    # The two `sceneview-web vX.Y.Z` prose refs further down the file.
-    V=$(grep -m1 -oE 'sceneview-web` v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$WELLKNOWN_LLMS" \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
-    if [ "$V" != "NOT FOUND" ]; then
-        add_check ".well-known/llms.txt (sceneview-web prose)" "$V"
-    fi
 fi
 
 # ROADMAP.md — "## Current: vX.Y.Z stable" header + the "GitHub Release"
@@ -1615,8 +1597,7 @@ with open('$WEBSITE_JS_PKG', 'w') as f:
                  docs/docs/nodes.md docs/docs/comparison.md docs/docs/quickstart-tv.md \
                  docs/docs/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-ar-compose.md \
                  website-static/index.html website-static/web.html \
-                 website-static/geometry-demo.html website-static/playground.html \
-                 website-static/.well-known/llms.txt; do
+                 website-static/geometry-demo.html website-static/playground.html; do
             F="$REPO_ROOT/$f"
             if [ -f "$F" ] && grep -q "io\.github\.sceneview:[^:]*:$OLD_V_RE" "$F" 2>/dev/null; then
                 _sed_inplace "s/io\.github\.sceneview:\([^:]*\):$OLD_V_RE/io.github.sceneview:\1:$SOURCE_VERSION/g" "$F"
@@ -1681,26 +1662,6 @@ if changed:
     print(old)
 " 2>/dev/null || echo "")
         [ -n "$CHANGED" ] && echo -e "  Fixed: samples/web-demo/package-lock.json ($CHANGED -> $SOURCE_VERSION)"
-    fi
-
-    # website-static/.well-known/llms.txt — Maven prose label + sceneview-web prose.
-    if [ -f "$WELLKNOWN_LLMS" ]; then
-        # "Maven artifacts (version X.Y.Z)" prose label.
-        CURRENT=$(grep -m1 -oE 'Maven artifacts \(version [0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?\)' "$WELLKNOWN_LLMS" \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/Maven artifacts (version $CURRENT)/Maven artifacts (version $SOURCE_VERSION)/g" "$WELLKNOWN_LLMS"
-            echo -e "  Fixed: .well-known/llms.txt (Maven prose $CURRENT -> $SOURCE_VERSION)"
-        fi
-        # All `sceneview-web vX.Y.Z` prose references.
-        CURRENT=$(grep -m1 -oE 'sceneview-web` v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' "$WELLKNOWN_LLMS" \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
-        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
-            _sed_inplace "s/sceneview-web\` v$CURRENT/sceneview-web\` v$SOURCE_VERSION/g" "$WELLKNOWN_LLMS"
-            # Also catches "(sceneview-web vX.Y.Z)" form without the backtick.
-            _sed_inplace "s/(sceneview-web v$CURRENT)/(sceneview-web v$SOURCE_VERSION)/g" "$WELLKNOWN_LLMS"
-            echo -e "  Fixed: .well-known/llms.txt (sceneview-web prose $CURRENT -> $SOURCE_VERSION)"
-        fi
     fi
 
     # ROADMAP.md — Current version header + GitHub Release row.

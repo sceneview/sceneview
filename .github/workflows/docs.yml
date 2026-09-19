@@ -100,14 +100,20 @@ jobs:
           # from source; `/llms-full.txt` is now served from
           # `docs/docs/llms-full.txt` (the file `sync-versions.sh` keeps
           # current), so the published surface cannot drift by construction.
-          # `check-llms-drift.sh` fails if the committed copy ever returns.
+          # (An earlier version of this comment credited a
+          # `check-llms-drift.sh` guard; no such script exists in the repo.
+          # The `rm -f` below and this one are the whole mechanism.)
           rm -f site/llms-full.txt
 
           # `.well-known/` ships only the two verified deep-link manifests
           # (`assetlinks.json` + `apple-app-site-association`). The
-          # `README.md` and `llms.txt` that sit alongside them in source
-          # are repo-internal docs — drop them so they are not published
-          # under the live `/.well-known/` route (#1998).
+          # `README.md` that sits alongside them in source is a repo-internal
+          # doc — drop it so it is not published under the live
+          # `/.well-known/` route (#1998). The third file this line used to
+          # drop, `.well-known/llms.txt`, was a stale copy of the root
+          # `llms.txt` that nothing ever served; it has been deleted from
+          # source, and the `rm -f` still names it so a returning copy stays
+          # unpublished.
           rm -f site/.well-known/README.md site/.well-known/llms.txt
 
           # `.nojekyll` disables GitHub Pages' Jekyll build on the
