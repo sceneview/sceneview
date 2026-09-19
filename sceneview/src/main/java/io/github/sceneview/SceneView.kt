@@ -182,6 +182,9 @@ import io.github.sceneview.node.findActivity
  *                              recording (no MediaProjection). Use [rememberSurfaceMirrorer].
  * @param onGestureListener     Gesture callbacks — tap, double-tap, drag, pinch, etc.
  * @param onTouchEvent          Raw touch event callback with optional hit-test result.
+ * @param isTouchEnabled        Whether this scene handles touch at all. See the parameter's own
+ *                              doc: `false` installs no touch listener, so the view consumes
+ *                              nothing and never ray-casts.
  * @param activity              Host [ComponentActivity] (auto-resolved from [LocalContext]).
  * @param lifecycle             Lifecycle that drives rendering resume/pause.
  * @param onFrame               Called once per **presented** frame, right after it reached the
@@ -395,6 +398,23 @@ fun SceneView(
      */
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    /**
+     * Whether this scene handles touch at all.
+     *
+     * The default, `true`, is every interactive scene: the view installs a touch listener, ray-casts
+     * each event against the scene's touchable nodes, and reports the event handled.
+     *
+     * `false` installs **no listener**. The view consumes nothing, so a gesture that starts over it
+     * reaches whatever is arbitrating above — a `LazyVerticalGrid`, a `HorizontalPager`, a parent
+     * `scrollable` — and no collision ray is cast per event. That is the setting for a scene used as
+     * a passive backdrop under scrollable content: a home-screen hero, a decorative header, a
+     * thumbnail.
+     *
+     * Passing `cameraManipulator = null`, `onGestureListener = null` and `onTouchEvent = null` does
+     * **not** do this. The listener is installed regardless and reports every event handled, which
+     * is what silently swallows a parent's scroll. This parameter is the supported way to opt out.
+     */
+    isTouchEnabled: Boolean = true,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     /**
@@ -1144,26 +1164,34 @@ fun SceneView(
             modifier = modifier,
             factory = { ctx ->
                 SurfaceView(ctx).also { sv ->
-                    sceneRenderer.attachToSurfaceView(sv, isOpaque, ctx, display, touchDispatcher)
+                    sceneRenderer.attachToSurfaceView(
+                        sv, isOpaque, ctx, display,
+                        touchDispatcher.takeIf { isTouchEnabled },
+                    )
                     // Record the owner view so the ViewNode off-screen WindowManager can attach to
                     // its parent window once the lifecycle is RESUMED.
                     ownerViewRef.set(sv)
                     if (isResumed.get()) viewNodeWindowManager?.resume(sv)
                 }
             },
-            update = {}
+            // `isTouchEnabled` can flip after the factory ran (a hero that becomes interactive once
+            // it is docked), so the listener is (un)installed here, not only at attach time.
+            update = { sv -> sv.setTouchDispatcher(touchDispatcher.takeIf { isTouchEnabled }) }
         )
 
         SurfaceType.TextureSurface -> AndroidView(
             modifier = modifier,
             factory = { ctx ->
                 TextureView(ctx).also { tv ->
-                    sceneRenderer.attachToTextureView(tv, isOpaque, ctx, display, touchDispatcher)
+                    sceneRenderer.attachToTextureView(
+                        tv, isOpaque, ctx, display,
+                        touchDispatcher.takeIf { isTouchEnabled },
+                    )
                     ownerViewRef.set(tv)
                     if (isResumed.get()) viewNodeWindowManager?.resume(tv)
                 }
             },
-            update = {}
+            update = { tv -> tv.setTouchDispatcher(touchDispatcher.takeIf { isTouchEnabled }) }
         )
     }
 
@@ -1181,6 +1209,24 @@ fun SceneView(
             )
         }
         scope.content()
+    }
+}
+
+// ── Touch wiring ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Installs [dispatch] as this view's touch listener, or removes the listener entirely when it is
+ * `null`.
+ *
+ * Removing it is what `isTouchEnabled = false` is for: with no listener the view returns `false`
+ * from `onTouchEvent` for the whole gesture, so a `LazyColumn`, a `HorizontalPager` or any parent
+ * arbitrating above gets the stream — and no collision ray is cast per event.
+ */
+private fun android.view.View.setTouchDispatcher(dispatch: ((MotionEvent) -> Unit)?) {
+    if (dispatch == null) {
+        setOnTouchListener(null)
+    } else {
+        setOnTouchListener { _, event -> dispatch(event); true }
     }
 }
 
