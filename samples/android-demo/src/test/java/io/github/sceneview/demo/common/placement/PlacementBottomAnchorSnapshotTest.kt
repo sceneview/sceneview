@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.ui.Modifier
@@ -174,11 +172,6 @@ class PlacementBottomAnchorSnapshotTest {
                     title = "Tap to place",
                     onBack = {},
                     dock = DOCK,
-                    dockAccent = DockItem(
-                        icon = Icons.Filled.ViewInAr,
-                        label = "View in AR",
-                        onClick = {},
-                    ),
                     scene = {
                         // Stands in for the camera feed. Flat white and flat black are
                         // the two ends of the range the overlay can be asked to read
@@ -293,10 +286,16 @@ class PlacementBottomAnchorSnapshotTest {
         /** `xhdpi` from the qualifiers — 1 dp = 2 px, and every number below is in dp. */
         const val DENSITY = 2f
 
+        /**
+         * `ARPlacementDemo`'s own dock, item for item: Models and Clear, with the
+         * scaffold appending Controls itself. No `dockAccent` — the placement screen
+         * declares none, and the accent item is the one piece of this band that is
+         * themed, so a harness that adds one photographs a light/dark difference the
+         * screen does not have.
+         */
         val DOCK = listOf(
-            DockItem(icon = Icons.Filled.Add, label = "Add", onClick = {}),
-            DockItem(icon = Icons.Filled.Refresh, label = "Reset", onClick = {}),
-            DockItem(icon = Icons.Filled.Delete, label = "Clear", onClick = {}),
+            DockItem(icon = Icons.Filled.ViewInAr, label = "Models", onClick = {}),
+            DockItem(icon = Icons.Filled.Refresh, label = "Clear", onClick = {}),
         )
     }
 }
