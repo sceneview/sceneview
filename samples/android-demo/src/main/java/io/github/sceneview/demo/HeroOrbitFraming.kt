@@ -300,8 +300,11 @@ class OrbitSpin(private val easeSeconds: Float = DEFAULT_SPIN_EASE_SECONDS) {
 
     /**
      * Move on by [deltaSeconds], easing the speed towards [goalDegreesPerSecond] (`0` to pause).
-     * A frame longer than [MAX_STEP_SECONDS] — the app coming back from the background — counts as
-     * that much and no more, so the orbit never leaps on resume.
+     * A frame longer than [MAX_STEP_SECONDS] — a model upload, the app coming back from the
+     * background — counts as that much and no more. Ordinary jank still carries its own motion;
+     * a freeze leaves nothing to catch up. At a quarter of a second, the step after a 350 ms
+     * freeze was 3°, which the screen's camera then eased as a cut — a 1.5× surge of the orbit for
+     * half a second, measured on Lighting. A tenth keeps the step under what that camera calls one.
      */
     fun advance(deltaSeconds: Float, goalDegreesPerSecond: Float) {
         if (!deltaSeconds.isFinite() || deltaSeconds <= 0f) return
@@ -326,7 +329,7 @@ class OrbitSpin(private val easeSeconds: Float = DEFAULT_SPIN_EASE_SECONDS) {
         /** Time constant of the speed ease: ~95 % of the way to the goal after three of these. */
         const val DEFAULT_SPIN_EASE_SECONDS: Float = 0.45f
 
-        const val MAX_STEP_SECONDS: Float = 0.25f
+        const val MAX_STEP_SECONDS: Float = 0.1f
 
         /** Angular speed of one full turn per [fullTurnMillis]. */
         fun degreesPerSecond(fullTurnMillis: Int): Float =

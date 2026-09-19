@@ -251,7 +251,7 @@ class HeroOrbitFramingTest {
         val smooth = OrbitSpin()
         val janky = OrbitSpin()
         repeat(60) { smooth.advance(FRAME, 18f) }
-        repeat(6) { janky.advance(FRAME * 10f, 18f) }
+        repeat(12) { janky.advance(FRAME * 5f, 18f) }
 
         // Same clock time, same place: a dropped frame carries its own motion, not the next one's.
         assertEquals(smooth.yawDegrees, janky.yawDegrees, 0.05f)
