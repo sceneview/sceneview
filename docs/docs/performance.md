@@ -384,8 +384,9 @@ SceneView(frameRatePolicy = FrameRatePolicy.OnDemand(30)) { }     // on demand, 
 
 Under `OnDemand` the library tracks what makes the picture change, so the call site computes
 nothing. It holds full cadence while **any** of these is true — a touch in flight, a camera
-manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding
-`VideoNode`, a `ViewNode`, a sorting `SplatNode`, an async model or environment load
+manipulator still coasting or easing, a playing glTF animation, a smooth transform, a `VideoNode`
+or `ViewNode` whose surface just received a frame, a sorting `SplatNode`, an async model or
+environment load
 (`modelLoader.progress < 1f`), an active `surfaceMirrorer`, a pending auto-center or auto-fit —
 and it wakes on every one-shot change: a node added, moved or removed, a surface resize, a
 lifecycle resume, a recomposition. Once everything stops it draws a short tail of settle frames
@@ -412,6 +413,17 @@ resumes the loop directly, so a touch on a parked scene reaches the screen on th
     materialInstance.setParameter("baseColorFactor", 1f, 0f, 0f, 1f)
     invalidator.requestRender()
     ```
+
+!!! warning "`onFrame` cannot be what keeps the loop awake"
+    It fires once per **presented** frame, right after that frame reached the surface. A callback
+    that advances an animation clock or steps a simulation and relies on nothing but its own next
+    invocation stops the first time the scene parks, and never restarts — the screen freezes on
+    open, with a perfectly correct first frame. A screen that drives motion states it
+    (`FrameRatePolicy.Continuous()` while it runs, `OnDemand()` when it pauses) and takes a rising
+    edge on the flag that decides, because flipping that flag on a parked loop otherwise changes a
+    value nobody is reading. A change the *user* just made is applied **outside** `onFrame` and
+    followed by `requestRender()`: written inside, it lands in the next frame, which under
+    `OnDemand` never comes.
 
     A **new or resized surface** is *not* one of these cases: a swap chain is created empty, so
     first attach, app foregrounded, foldable folded or unfolded and split-screen resize all
