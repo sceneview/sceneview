@@ -2,14 +2,17 @@
 <!-- breaking -->
 <!-- RELEASE NOTE (maintainer-only):
      No signature changes — `apiCheck` is green on all three modules without an `apiDump`.
-     The `<!-- breaking -->` marker is here for the *behaviour*, not the ABI:
+     The `breaking` marker on line 2 is here for the *behaviour*, not the ABI:
      `Node.worldQuaternion` and `Node.worldRotation` return different numbers than they did,
      for every node that has a scale or sits under a scaled ancestor. The old numbers were
      wrong, so anyone who compensated for them in application code — a hand-tuned offset on a
      billboard under a scaled parent, an AR anchor alignment nudged until it looked right —
      will see their compensation become the new error. `check-breaking-change-bump.sh` exists
      to keep exactly this off a patch tag and into a minor, which is what the marker buys;
-     the earlier `<!-- breaking: false -->` opt-out would have disarmed it (README.md:112-117).
+     the earlier explicit `breaking: false` opt-out would have disarmed it (README.md:112-117).
+     Do not spell either marker out inside this note: the stripper ends a comment at the first
+     closing sequence it sees, so an embedded one leaks the rest of the note into CHANGELOG.md
+     (caught by `check-changelog-fragments.sh`, which is exactly what it is for).
 
      Unscaled hierarchies are bit-identical: `rotation()` divides by column lengths of exactly
      1.0. Scenes that only ever use a pure yaw under a uniform scale are also unaffected at
