@@ -1638,7 +1638,7 @@ ul { list-style: none; }
   margin-bottom: 24px;
 }
 
-/* AI tools brand strip (Claude / Cursor / Windsurf) */
+/* AI tools strip */
 .ai-tools-strip {
   display: flex;
   flex-wrap: wrap;
@@ -2289,7 +2289,7 @@ ul { list-style: none; }
   line-height: 1.6;
 }
 
-/* ===== CODE CARDS — JS & Claude ===== */
+/* ===== CODE CARDS — JS & MCP ===== */
 .code-card--js {
   background: #1a1a2e;
   border-radius: 16px;

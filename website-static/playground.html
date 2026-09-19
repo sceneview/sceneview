@@ -212,6 +212,12 @@
       flex-shrink: 0;
     }
 
+    /* The 1px outline is what carries the boundary, on both themes: the fill
+       measures 1.17:1 against the header in light and 1.26:1 in dark, so
+       without it these buttons have no visible edge at all. Same treatment as
+       the AI panel's buttons below — one border token for the whole page.
+       The header is a fixed 52px flex row with align-items: center, so the 2px
+       the border adds to each button changes no layout. */
     .pg__action-btn {
       display: inline-flex;
       align-items: center;
@@ -220,7 +226,7 @@
       font-size: 0.75rem;
       font-weight: 600;
       border-radius: var(--pg-radius-sm);
-      border: none;
+      border: 1px solid var(--color-outline, #4c5f85);
       cursor: pointer;
       transition: all var(--pg-transition);
       font-family: var(--font-body, 'Inter', sans-serif);
@@ -238,6 +244,7 @@
     [data-theme="dark"] .pg__action-btn {
       background: #323a47;
       color: #c9d1d9;
+      border: 1px solid #8b949e;
     }
 
     [data-theme="dark"] .pg__action-btn:hover {
@@ -418,19 +425,24 @@
       background: linear-gradient(135deg, rgba(217, 119, 87, 0.15), rgba(0, 91, 193, 0.08));
     }
 
+    /* Four equal buttons in a 240px sidebar column, so two rows of two rather
+       than one row of four: on a single row each button gets 41.5px of content
+       and "ChatGPT" measures 52px, which spills past its own border. A 2x2 grid
+       gives every button the same 117px box with room to spare, and no button
+       is favoured by its position. */
     .pg__ai-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 6px;
       margin-top: 8px;
     }
 
-    /* Three equal buttons in a 240px sidebar column. Side by side on one line,
-       "ChatGPT" alone is ~94px of min-content and the row overflowed its panel
-       (273px of content in 240px of room). Icon above label instead: the widest
-       item is then the word, not icon + gap + word, and all three keep exactly
-       the same box — which is the point of this panel. */
+    /* Icon above label rather than beside it: the widest item is then the word,
+       not icon + gap + word. Side by side on one line, "ChatGPT" alone is ~94px
+       of min-content and the row overflowed its panel (273px of content in
+       240px of room). All four keep exactly the same box — which is the point
+       of this panel. */
     .pg__ai-btn {
-      flex: 1 1 0;
       min-width: 0;
       display: flex;
       flex-direction: column;
@@ -450,11 +462,14 @@
       transition: all var(--pg-transition);
     }
 
-    /* No vendor colour on these two. Claude and ChatGPT are the only assistants
-       that document a ?q= prompt parameter, so they are the only two that can be
-       opened directly — a protocol fact, not a recommendation, and it must not
-       read as one. They share the neutral treatment of "Copy prompt" below,
-       which is the path every other assistant takes. */
+    /* No vendor colour on any of them. The rule for getting a button here is
+       "the vendor documents a link that accepts a prefilled prompt", nothing
+       else — a protocol fact, not a recommendation, and it must not read as
+       one. Three qualify today: claude.ai/new?q=, chatgpt.com/?q= and Codex's
+       codex://new?prompt= (learn.chatgpt.com/docs/reference/commands, which
+       prescribes encodeURIComponent). Alphabetical order, no featured slot.
+       "Copy prompt" comes first because it is the path that works for every
+       assistant, including the ones with no link at all. */
 
     .pg__ai-btn svg {
       width: 14px;
@@ -1625,37 +1640,41 @@
       white-space: nowrap;
     }
 
-    /* One treatment for all three, taken from .pg__action-btn so the panel and
-       the header agree. Light is the base here, as everywhere in this file;
-       [data-theme="dark"] overrides. The 1px outline is what carries the
-       button boundary — a tinted fill alone does not reach 3:1 on either
-       theme at this surface. */
+    /* One treatment for all four, the same tokens as .pg__action-btn in the
+       header, so the panel and the header agree. Light is the base here, as
+       everywhere in this file; [data-theme="dark"] overrides. The 1px outline
+       is what carries the button boundary — a tinted fill alone does not reach
+       3:1 on either theme at this surface. */
     .pg__ai-btn--copy,
+    .pg__ai-btn--chatgpt,
     .pg__ai-btn--claude,
-    .pg__ai-btn--chatgpt {
+    .pg__ai-btn--codex {
       background: var(--color-surface-container, #ecedf6);
       color: var(--color-on-surface-variant, #5b5f68);
       border: 1px solid var(--color-outline, #4c5f85);
     }
 
     .pg__ai-btn--copy:hover,
+    .pg__ai-btn--chatgpt:hover,
     .pg__ai-btn--claude:hover,
-    .pg__ai-btn--chatgpt:hover {
+    .pg__ai-btn--codex:hover {
       background: var(--color-surface-container-high, #e5e8f1);
       color: var(--color-on-surface, #2e333a);
     }
 
     [data-theme="dark"] .pg__ai-btn--copy,
+    [data-theme="dark"] .pg__ai-btn--chatgpt,
     [data-theme="dark"] .pg__ai-btn--claude,
-    [data-theme="dark"] .pg__ai-btn--chatgpt {
+    [data-theme="dark"] .pg__ai-btn--codex {
       background: #323a47;
       color: #c9d1d9;
       border: 1px solid #8b949e;
     }
 
     [data-theme="dark"] .pg__ai-btn--copy:hover,
+    [data-theme="dark"] .pg__ai-btn--chatgpt:hover,
     [data-theme="dark"] .pg__ai-btn--claude:hover,
-    [data-theme="dark"] .pg__ai-btn--chatgpt:hover {
+    [data-theme="dark"] .pg__ai-btn--codex:hover {
       background: #30363d;
       color: #f0f6fc;
     }
@@ -1759,13 +1778,17 @@
             <span class="material-symbols-outlined">assistant</span>
             <span id="askAiLabel">Copy prompt</span>
           </button>
+          <a class="pg__action-btn" id="chatgptLink" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
+            <span>ChatGPT</span>
+          </a>
           <a class="pg__action-btn" id="claudeLink" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
             <span>Claude</span>
           </a>
-          <a class="pg__action-btn" id="chatgptLink" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
-            <span>ChatGPT</span>
+          <a class="pg__action-btn" id="codexLink" href="codex://new" rel="noopener" title="Open Codex with this prompt. Requires the Codex desktop app.">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+            <span>Codex</span>
           </a>
         </div>
       </div>
@@ -1796,16 +1819,20 @@
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg>
                 <span id="aiGenCopyLabel">Copy prompt</span>
               </button>
-              <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
-                Claude
-              </a>
               <a class="pg__ai-btn pg__ai-btn--chatgpt" id="aiGenChatGPT" href="#" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.28 9.37a5.9 5.9 0 00-.51-4.85 5.97 5.97 0 00-6.44-2.87A5.9 5.9 0 0010.88 0a5.97 5.97 0 00-5.7 4.15 5.9 5.9 0 00-3.95 2.86 5.97 5.97 0 00.74 7.01 5.9 5.9 0 00.51 4.85 5.97 5.97 0 006.44 2.87A5.9 5.9 0 0013.37 24a5.97 5.97 0 005.7-4.15 5.9 5.9 0 003.95-2.86 5.97 5.97 0 00-.74-7.01zM13.37 22.5a4.43 4.43 0 01-2.85-1.03l.14-.08 4.73-2.73a.77.77 0 00.39-.67v-6.67l2 1.15a.07.07 0 01.04.05v5.53a4.46 4.46 0 01-4.45 4.45zM3.63 18.37a4.43 4.43 0 01-.53-2.98l.14.08 4.73 2.73a.77.77 0 00.77 0l5.78-3.34v2.31a.07.07 0 01-.03.06l-4.79 2.76a4.46 4.46 0 01-6.07-1.62zM2.34 7.87a4.43 4.43 0 012.32-1.95V11.6a.77.77 0 00.39.67l5.78 3.34-2 1.15a.07.07 0 01-.07 0L4 14.01a4.46 4.46 0 01-1.66-6.14zm17.14 3.99l-5.78-3.34 2-1.15a.07.07 0 01.07 0l4.79 2.76a4.46 4.46 0 01-.69 8.05v-5.65a.77.77 0 00-.39-.67zM21.6 9.55l-.14-.08-4.73-2.73a.77.77 0 00-.77 0L10.18 10.08V7.77a.07.07 0 01.03-.06l4.79-2.76a4.46 4.46 0 016.6 4.6zM8.99 13.3l-2-1.15a.07.07 0 01-.04-.06V6.56A4.46 4.46 0 0114.28 3.2l-.14.08-4.73 2.73a.77.77 0 00-.39.67l-.03 6.62zm1.09-2.34L12 9.72l1.92 1.11v2.22L12 14.16l-1.92-1.11v-2.09z"/></svg>
                 ChatGPT
               </a>
+              <a class="pg__ai-btn pg__ai-btn--claude" id="aiGenClaude" href="#" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.1 2.96l-4.44 11.87L7.22 2.96H2L9.8 21.04h3.6L21.2 2.96h-5.1z"/></svg>
+                Claude
+              </a>
+              <a class="pg__ai-btn pg__ai-btn--codex" id="aiGenCodex" href="#" rel="noopener" title="Opens the Codex app with this prompt in the composer. Requires the Codex desktop app.">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></svg>
+                Codex
+              </a>
             </div>
-            <div class="pg__ai-hint">Generates SceneView code for <strong id="aiPlatformLabel">Android</strong>. <em>Copy prompt</em> works with any assistant &mdash; Cursor, Copilot, Codex, Cline, Gemini, JetBrains, whichever you use.</div>
+            <div class="pg__ai-hint">Generates SceneView code for <strong id="aiPlatformLabel">Android</strong>. <em>Codex</em> opens the desktop app. <em>Copy prompt</em> works with any assistant &mdash; Cursor, Copilot, Cline, Gemini, JetBrains, whichever you use.</div>
           </div>
         </div>
 
@@ -2430,6 +2457,7 @@
     var shareLabel = $('shareLabel');
     var claudeLink = $('claudeLink');
     var chatgptLink = $('chatgptLink');
+    var codexLink = $('codexLink');
     var modelSelect = $('modelSelect');
     var previewCanvas = $('previewCanvas');
     var orbitHint = $('orbitHint');
@@ -2686,12 +2714,14 @@
       });
       descTags.innerHTML = tagsHtml;
 
-      // Assistant links — Claude and ChatGPT both take the prompt as ?q=
+      // Assistant links — every vendor that documents a prefilled-prompt link.
+      // Same URI-encoded prompt for all three; only the parameter name differs.
       var prompt = encodeURIComponent(
         'Help me build a SceneView ' + currentPlatform + ' app. Here is the code:\n\n' + code
       );
-      claudeLink.href = 'https://claude.ai/new?q=' + prompt;
       chatgptLink.href = 'https://chatgpt.com/?q=' + prompt;
+      claudeLink.href = 'https://claude.ai/new?q=' + prompt;
+      codexLink.href = 'codex://new?prompt=' + prompt;
 
       // Update sidebar active state
       exampleList.querySelectorAll('.pg__item').forEach(function(el) {
@@ -3353,8 +3383,9 @@
       var ex = EXAMPLES[currentExample];
       if (!ex) return;
       var prompt = encodeURIComponent(currentPrompt());
-      $('claudeLink').href = 'https://claude.ai/new?q=' + prompt;
       $('chatgptLink').href = 'https://chatgpt.com/?q=' + prompt;
+      $('claudeLink').href = 'https://claude.ai/new?q=' + prompt;
+      $('codexLink').href = 'codex://new?prompt=' + prompt;
     }
 
     // ====================================================================
@@ -3425,6 +3456,7 @@
       var aiInput = $('aiPromptInput');
       var aiClaude = $('aiGenClaude');
       var aiChatGPT = $('aiGenChatGPT');
+      var aiCodex = $('aiGenCodex');
       var aiPlatLabel = $('aiPlatformLabel');
 
       aiToggle.addEventListener('click', function() {
@@ -3483,8 +3515,9 @@
           desc = 'a 3D model viewer with orbit controls and environment lighting';
         }
         var prompt = buildPrompt(desc);
-        aiClaude.href = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
         aiChatGPT.href = 'https://chatgpt.com/?q=' + encodeURIComponent(prompt);
+        aiClaude.href = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
+        aiCodex.href = 'codex://new?prompt=' + encodeURIComponent(prompt);
 
         var platNames = {
           android: 'Android', ios: 'iOS', web: 'Web',
