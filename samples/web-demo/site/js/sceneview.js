@@ -400,10 +400,21 @@
       this._running = true;
       this._isDragging = false;
       this._lastMouse = { x: 0, y: 0 };
-      // Inertia for smooth orbit deceleration
+      // Inertia for smooth orbit deceleration. The velocities seed the tail a
+      // RELEASED drag coasts on; a drag under the finger is applied straight to
+      // _angle/_orbitHeight by the handlers. _dragTravel* banks what the
+      // handlers applied since the last frame, so the render loop can express
+      // it per unit TIME rather than per pointer event — a 144 Hz panel splits
+      // the same flick into more, smaller moves than a 60 Hz one and the
+      // release must hand over the same speed either way.
       this._velocityAngle = 0;
       this._velocityHeight = 0;
-      this._dampingFactor = 0.95;
+      this._dragTravelAngle = 0;
+      this._dragTravelHeight = 0;
+      this._lastFrameCount = 1; // most recent frame, in 1/60 s reference frames
+      this._dampingFactor = 0.95; // per 1/60 s, like the velocities above
+      this._autoRotateSpeed = 30 * Math.PI / 180; // radians per SECOND (30°/s)
+      this._lastFrameTime = 0;
       this._wantsAutoRotate = true; // Remember initial preference for resume after drag
       this._autoRotateTimer = null;
       this._cameraMode = 'orbit'; // 'orbit', 'map', or 'freelook'
@@ -1456,37 +1467,65 @@
     // Controls (existing)
     // ---------------------------------------------------------------
 
+    // A pointer took hold of the camera: drop the previous flick's inertia so
+    // grabbing a coasting model stops it dead under the finger.
+    _beginDrag() {
+      this._isDragging = true;
+      this._velocityAngle = 0;
+      this._velocityHeight = 0;
+      this._dragTravelAngle = 0;
+      this._dragTravelHeight = 0;
+    }
+
+    // A pointer move: apply it now — the gesture's gain is the distance the
+    // finger travelled, never a function of the refresh rate — and bank it so
+    // the render loop can turn it into the velocity a release coasts on.
+    _orbitBy(dAngle, dHeight) {
+      this._angle += dAngle;
+      this._orbitHeight += dHeight;
+      this._dragTravelAngle += dAngle;
+      this._dragTravelHeight += dHeight;
+    }
+
+    // The pointer let go. Travel that arrived since the last frame — a flick
+    // ending between two rAF ticks, which is most of them — has not been turned
+    // into velocity yet; credit it at the most recent frame's length.
+    _endDrag() {
+      if (this._dragTravelAngle !== 0 || this._dragTravelHeight !== 0) {
+        this._velocityAngle = this._dragTravelAngle / this._lastFrameCount;
+        this._velocityHeight = this._dragTravelHeight / this._lastFrameCount;
+        this._dragTravelAngle = 0;
+        this._dragTravelHeight = 0;
+      }
+      this._isDragging = false;
+    }
+
     _setupControls() {
       var canvas = this._canvas;
       var self = this;
 
       canvas.addEventListener('mousedown', function(e) {
-        self._isDragging = true;
+        self._beginDrag();
         self._lastMouse = { x: e.clientX, y: e.clientY };
         self._autoRotate = false;
-        self._velocityAngle = 0;
-        self._velocityHeight = 0;
         if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
       });
       canvas.addEventListener('mousemove', function(e) {
         if (!self._isDragging) return;
         var dx = (e.clientX - self._lastMouse.x) * 0.005;
         var dy = (e.clientY - self._lastMouse.y) * 0.01;
-        self._velocityAngle = -dx;
-        self._velocityHeight = dy;
-        self._angle -= dx;
-        self._orbitHeight += dy;
+        self._orbitBy(-dx, dy);
         self._lastMouse = { x: e.clientX, y: e.clientY };
       });
       canvas.addEventListener('mouseup', function() {
-        self._isDragging = false;
+        self._endDrag();
         // Resume auto-rotate after 3s idle (like model-viewer)
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
       });
       canvas.addEventListener('mouseleave', function() {
-        self._isDragging = false;
+        self._endDrag();
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
@@ -1500,11 +1539,9 @@
 
       canvas.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) {
-          self._isDragging = true;
+          self._beginDrag();
           self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           self._autoRotate = false;
-          self._velocityAngle = 0;
-          self._velocityHeight = 0;
           if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
         }
       });
@@ -1513,14 +1550,11 @@
         e.preventDefault();
         var dx = (e.touches[0].clientX - self._lastMouse.x) * 0.005;
         var dy = (e.touches[0].clientY - self._lastMouse.y) * 0.01;
-        self._velocityAngle = -dx;
-        self._velocityHeight = dy;
-        self._angle -= dx;
-        self._orbitHeight += dy;
+        self._orbitBy(-dx, dy);
         self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       }, { passive: false });
       canvas.addEventListener('touchend', function() {
-        self._isDragging = false;
+        self._endDrag();
         if (self._wantsAutoRotate) {
           self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
         }
@@ -1545,18 +1579,49 @@
 
     _startRenderLoop() {
       var self = this;
-      function render() {
+      function render(timestamp) {
         if (!self._running) return;
 
-        // Auto-rotate: 30°/sec ÷ 60fps (matches model-viewer)
-        if (self._autoRotate) self._angle += 0.00873;
+        // Elapsed wall-clock time, not a frame count: a 120 Hz panel gets twice
+        // as many ticks as a 60 Hz one and must not spin twice as fast. Clamped
+        // to 0.05 s so a tab returning from the background resumes rather than
+        // leaps; the first frame has no previous timestamp and advances nothing.
+        var now = timestamp || 0;
+        var dt = self._lastFrameTime > 0 ? (now - self._lastFrameTime) / 1000 : 0;
+        self._lastFrameTime = now;
+        if (dt < 0) dt = 0;
+        if (dt > 0.05) dt = 0.05;
 
-        // Inertia damping after drag release
-        if (!self._isDragging) {
-          self._angle += self._velocityAngle;
-          self._orbitHeight += self._velocityHeight;
-          self._velocityAngle *= self._dampingFactor;
-          self._velocityHeight *= self._dampingFactor;
+        // Auto-rotate: 30°/sec (matches model-viewer)
+        if (self._autoRotate) self._angle += self._autoRotateSpeed * dt;
+
+        // While the button is down, this frame's pointer travel — already
+        // applied to _angle/_orbitHeight by the handlers — becomes the velocity
+        // the release will coast on, expressed per 1/60 s. Dividing by the
+        // frame's own length is what keeps the tail rate-independent.
+        if (dt > 0) {
+          self._lastFrameCount = dt * 60;
+          if (self._isDragging) {
+            self._velocityAngle = self._dragTravelAngle / self._lastFrameCount;
+            self._velocityHeight = self._dragTravelHeight / self._lastFrameCount;
+            self._dragTravelAngle = 0;
+            self._dragTravelHeight = 0;
+          }
+        }
+
+        // Inertia damping after drag release. The velocities are expressed per
+        // 1/60 s, so decaying them over `dt` means raising the damping factor to
+        // the number of 60 Hz frames `dt` covers, and the distance travelled
+        // while decaying is the sum of that geometric series. At exactly 60 Hz
+        // this collapses to the single multiply it replaces.
+        if (!self._isDragging && dt > 0) {
+          var frames = dt * 60;
+          var decay = Math.pow(self._dampingFactor, frames);
+          var travel = (1 - decay) / (1 - self._dampingFactor);
+          self._angle += self._velocityAngle * travel;
+          self._orbitHeight += self._velocityHeight * travel;
+          self._velocityAngle *= decay;
+          self._velocityHeight *= decay;
           if (Math.abs(self._velocityAngle) < 0.00005) self._velocityAngle = 0;
           if (Math.abs(self._velocityHeight) < 0.00005) self._velocityHeight = 0;
         }

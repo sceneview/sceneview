@@ -4487,14 +4487,14 @@ controller.distance         // distance from target
 controller.minDistance      // default 0.5
 controller.maxDistance      // default 50.0
 controller.autoRotate       // Boolean
-controller.autoRotateSpeed  // radians/frame (default 30°/s at 60fps)
+controller.autoRotateSpeed  // radians per SECOND (default 30°/s) — frame-rate independent
 controller.enableDamping    // inertia (default true)
 controller.dampingFactor    // default 0.95
 controller.rotateSensitivity // default 0.005
 controller.zoomSensitivity   // default 0.1
 controller.panSensitivity    // default 0.003
 controller.target(x, y, z) // set look-at point
-controller.update(): Boolean // call each frame (automatic inside SceneView render loop); returns true if the camera moved this frame — the on-demand render gate repaints only when update() reports moved (#2332)
+controller.update(deltaSeconds): Boolean // call each frame with the seconds since the previous one (automatic inside SceneView render loop); returns true if the camera moved this frame — the on-demand render gate repaints only when update() reports moved (#2332)
 controller.dispose()
 ```
 
@@ -4538,7 +4538,7 @@ sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
 sv.setCameraOrbit(theta, phi, distance)  // radians
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
-sv.setAutoRotateSpeed(radiansPerFrame)
+sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)  // 0-1 range
 sv.setAutoCenterContent(enabled)   // Boolean — center loaded content (default true)

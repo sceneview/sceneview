@@ -42,7 +42,7 @@ sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
 sv.setCameraOrbit(theta, phi, distance) // radians
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)
-sv.setAutoRotateSpeed(radiansPerFrame)
+sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s
 sv.setZoomLimits(min, max)
 sv.setBackgroundColor(r, g, b, a)       // 0-1 range
 sv.fitToModels()                        // frame every loaded model
