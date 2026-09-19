@@ -335,7 +335,7 @@ implementation("io.github.sceneview:arsceneview:4.37.0")
 
 ### 4. `sceneview-mcp` gained a `@next` dist-tag
 
-If you use the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package in Claude Desktop / Cursor / etc., the `@latest` tag is still on `3.6.4` (unchanged, intentionally). The `@next` tag is on `4.0.0`, which includes the Rerun integration docs and v4 lite-proxy routing to the hosted gateway. Opt in with:
+If you use the [`sceneview-mcp`](https://www.npmjs.com/package/sceneview-mcp) npm package in your MCP client, the `@latest` tag is still on `3.6.4` (unchanged, intentionally). The `@next` tag is on `4.0.0`, which includes the Rerun integration docs and v4 lite-proxy routing to the hosted gateway. Opt in with:
 
 ```json
 "sceneview": {

@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
+       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <script src="/assets/analytics.js"></script>
+  <title>AI-Powered 3D — SceneView</title>
+  <meta name="description" content="See how an AI coding assistant generates interactive 3D content with SceneView. Live demos of AI-powered 3D model generation, procedural geometry, and AR experiences.">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#005bc1">
+  <link rel="canonical" href="https://sceneview.github.io/ai-3d.html">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="AI-Powered 3D — SceneView">
+  <meta property="og:description" content="See how an AI coding assistant generates interactive 3D content with SceneView. Live demos of AI-powered 3D model generation, procedural geometry, and AR experiences.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/ai-3d.html">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="AI + 3D — an AI assistant generating SceneView 3D content">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AI-Powered 3D — SceneView">
+  <meta name="twitter:description" content="See how an AI coding assistant generates interactive 3D content with SceneView MCP.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
+
+  <link rel="preload" href="styles.css" as="style">
+  <link rel="preload" href="js/filament/filament.js" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.37.0" as="script">
+
+  <!-- Filament.js v1.72.1 WASM engine (required by SceneView Web) — version pinned by
+       gradle/libs.versions.toml `filamentWebsite` + js/filament/RUNTIME.json (#2783) -->
+  <script src="js/filament/filament.js"></script>
+  <!-- SceneView Web library -->
+  <script src="js/sceneview.js?v=4.37.0"></script>
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    /* ===== AI-3D PAGE-SPECIFIC STYLES ===== */
+
+    .ai3d-page {
+      padding-top: var(--nav-height);
+    }
+
+    /* --- Hero --- */
+    .ai3d-hero {
+      padding: 80px 0 96px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .ai3d-hero__container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+    }
+
+    .ai3d-hero__header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .ai3d-hero__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(100, 70, 205, 0.12);
+      color: var(--color-tertiary);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 24px;
+    }
+
+    [data-theme="dark"] .ai3d-hero__badge {
+      background: rgba(210, 168, 255, 0.15);
+      color: var(--color-tertiary);
+    }
+
+    .ai3d-hero__title {
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 50%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+
+    .ai3d-hero__subtitle {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--color-on-surface-variant);
+      max-width: 640px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    .ai3d-hero__tools {
+      font-size: 0.9375rem;
+      color: var(--color-on-surface-variant);
+      max-width: 720px;
+      margin: 16px auto 0;
+      line-height: 1.7;
+    }
+
+    .ai3d-hero__tools a {
+      color: var(--color-primary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* --- AI assistant chat window --- */
+    .ai3d-window {
+      max-width: 1100px;
+      margin: 0 auto;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--color-surface-container-lowest);
+      box-shadow: var(--shadow-xl);
+      border: 1px solid var(--color-outline);
+    }
+
+    [data-theme="dark"] .ai3d-window {
+      background: #242a33;
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .ai3d-window__titlebar {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--color-surface-container-high);
+      border-bottom: 1px solid var(--color-outline);
+    }
+
+    [data-theme="dark"] .ai3d-window__titlebar {
+      background: #2b323d;
+      border-bottom-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .ai3d-window__dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .ai3d-window__dots span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .ai3d-window__dots span:nth-child(1) { background: #ff5f57; }
+    .ai3d-window__dots span:nth-child(2) { background: #febc2e; }
+    .ai3d-window__dots span:nth-child(3) { background: #28c840; }
+
+    .ai3d-window__title {
+      flex: 1;
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--color-on-surface-variant);
+      letter-spacing: 0.02em;
+      /* opacity was dimming an already-muted token to 4.07:1 in dark. */
+      opacity: 0.85;
+    }
+
+    .ai3d-window__body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 480px;
+    }
+
+    /* --- Chat Panel --- */
+    .ai3d-chat {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border-right: 1px solid var(--color-outline);
+      overflow-y: auto;
+      max-height: 520px;
+    }
+
+    [data-theme="dark"] .ai3d-chat {
+      border-right-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .ai3d-chat__label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-on-surface-variant);
+      opacity: 0.8;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--color-outline);
+    }
+
+    .ai3d-msg {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .ai3d-msg--user {
+      flex-direction: row-reverse;
+    }
+
+    .ai3d-msg__avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .ai3d-msg__avatar--assistant {
+      background: linear-gradient(135deg, #6b7a8f, #4a5766);
+      color: white;
+    }
+
+    .ai3d-msg__avatar--user {
+      background: var(--color-primary);
+      color: white;
+    }
+
+    .ai3d-msg__bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      max-width: 85%;
+    }
+
+    .ai3d-msg__bubble--user {
+      background: var(--color-primary);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    /* Dark primary is a light blue → white text is 1.95:1. */
+    [data-theme="dark"] .ai3d-msg__bubble--user,
+    [data-theme="dark"] .ai3d-msg__avatar--user {
+      color: var(--color-on-primary);
+    }
+
+    .ai3d-msg__bubble--assistant {
+      background: var(--color-surface-container);
+      color: var(--color-on-surface);
+      border-bottom-left-radius: 4px;
+    }
+
+    [data-theme="dark"] .ai3d-msg__bubble--assistant {
+      background: var(--color-surface-container-high);
+    }
+
+    .ai3d-msg__bubble code {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: rgba(0, 0, 0, 0.15);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .ai3d-msg__typing {
+      display: flex;
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .ai3d-msg__typing span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-on-surface-variant);
+      opacity: 0.4;
+      animation: ai3d-typing 1.4s infinite;
+    }
+
+    .ai3d-msg__typing span:nth-child(2) { animation-delay: 0.2s; }
+    .ai3d-msg__typing span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes ai3d-typing {
+      0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+      30% { opacity: 1; transform: translateY(-4px); }
+    }
+
+    /* --- Preview Panel --- */
+    .ai3d-preview {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      background: var(--color-surface-container-low);
+    }
+
+    [data-theme="dark"] .ai3d-preview {
+      background: #0d1117;
+    }
+
+    .ai3d-preview__label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-on-surface-variant);
+      opacity: 0.8;
+      padding: 16px 20px 8px;
+    }
+
+    .ai3d-preview canvas {
+      flex: 1;
+      width: 100%;
+      min-height: 420px;
+      cursor: grab;
+    }
+
+    .ai3d-preview__badge {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      font-size: 0.65rem;
+      font-weight: 500;
+      color: var(--color-on-surface-variant);
+      opacity: 0.75;
+      letter-spacing: 0.03em;
+      pointer-events: none;
+    }
+
+    /* --- Examples Section --- */
+    .ai3d-examples {
+      padding: 96px 0;
+    }
+
+    .ai3d-examples__container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+    }
+
+    .ai3d-examples__header {
+      margin-bottom: 64px;
+    }
+
+    .ai3d-examples__title {
+      font-size: clamp(1.875rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--color-on-surface);
+      margin-bottom: 16px;
+    }
+
+    .ai3d-examples__accent-bar {
+      height: 6px;
+      width: 96px;
+      background: linear-gradient(135deg, var(--color-tertiary), var(--color-primary));
+      border-radius: 9999px;
+      margin-bottom: 16px;
+    }
+
+    .ai3d-examples__subtitle {
+      font-size: 1.0625rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+      max-width: 640px;
+    }
+
+    .ai3d-examples__grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    /* --- Example Card --- */
+    .example-card {
+      background: var(--color-surface-container-lowest);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      transition: transform var(--duration-medium) var(--ease-spring);
+    }
+
+    .example-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .example-card__viewer {
+      position: relative;
+      aspect-ratio: 16 / 10;
+      background: var(--color-surface-container-low);
+    }
+
+    [data-theme="dark"] .example-card__viewer {
+      background: #0d1117;
+    }
+
+    .example-card__viewer canvas {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    .example-card__body {
+      padding: 24px;
+    }
+
+    .example-card__prompt {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .example-card__prompt-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #6b7a8f, #4a5766);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .example-card__prompt-text {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-on-surface);
+    }
+
+    .example-card__desc {
+      font-size: 0.875rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    .example-card__code-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 12px;
+      background: rgba(0, 91, 193, 0.08);
+      border: none;
+      transition: background var(--duration-short), transform var(--duration-short) var(--ease-spring);
+    }
+
+    [data-theme="dark"] .example-card__code-toggle {
+      background: rgba(121, 192, 255, 0.1);
+    }
+
+    .example-card__code-toggle:hover {
+      background: rgba(0, 91, 193, 0.14);
+      transform: scale(1.02);
+    }
+
+    [data-theme="dark"] .example-card__code-toggle:hover {
+      background: rgba(121, 192, 255, 0.18);
+    }
+
+    .example-card__code {
+      margin-top: 16px;
+      display: none;
+    }
+
+    .example-card__code.open {
+      display: block;
+    }
+
+    .example-card__code pre {
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 16px 20px;
+      border-radius: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.7;
+      overflow-x: auto;
+      white-space: pre;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .example-card__code .kw { color: #ff7b72; }
+    .example-card__code .fn { color: #d2a8ff; }
+    .example-card__code .str { color: #a5d6ff; }
+    .example-card__code .num { color: #79c0ff; }
+    .example-card__code .cm { color: #8b949e; }
+
+    /* --- How It Works --- */
+    .ai3d-how {
+      padding: 96px 0;
+      background: var(--color-surface-container-low);
+    }
+
+    .ai3d-how__container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+    }
+
+    .ai3d-how__header {
+      margin-bottom: 64px;
+    }
+
+    .ai3d-how__title {
+      font-size: clamp(1.875rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--color-on-surface);
+      margin-bottom: 16px;
+    }
+
+    .ai3d-how__accent-bar {
+      height: 6px;
+      width: 96px;
+      background: var(--color-primary);
+      border-radius: 9999px;
+      margin-bottom: 16px;
+    }
+
+    .ai3d-how__subtitle {
+      font-size: 1.0625rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+    }
+
+    .ai3d-how__steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .ai3d-step {
+      background: var(--color-surface-container-lowest);
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-card);
+      text-align: center;
+      transition: transform var(--duration-medium) var(--ease-spring);
+    }
+
+    .ai3d-step:hover {
+      transform: translateY(-4px);
+    }
+
+    .ai3d-step__number {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--color-tertiary), var(--color-primary));
+      color: var(--color-on-primary);
+      font-weight: 800;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+
+    .ai3d-step__title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--color-on-surface);
+      margin-bottom: 8px;
+    }
+
+    .ai3d-step__desc {
+      font-size: 0.875rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+    }
+
+    /* --- CTA Section --- */
+    .ai3d-cta {
+      padding: 96px 0;
+    }
+
+    .ai3d-cta__container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+    }
+
+    .ai3d-cta__card {
+      background: var(--color-primary);
+      border-radius: 48px;
+      padding: 64px;
+      display: flex;
+      align-items: center;
+      gap: 48px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: var(--shadow-xl);
+    }
+
+    [data-theme="dark"] .ai3d-cta__card {
+      background: #003a7f;
+    }
+
+    .ai3d-cta__glow {
+      position: absolute;
+      top: -96px;
+      left: -96px;
+      width: 384px;
+      height: 384px;
+      background: #ffffff;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.1;
+      pointer-events: none;
+    }
+
+    .ai3d-cta__left {
+      flex: 1;
+      position: relative;
+      z-index: 10;
+    }
+
+    .ai3d-cta__title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--color-on-primary);
+      margin-bottom: 16px;
+    }
+
+    [data-theme="dark"] .ai3d-cta__title {
+      color: #ffffff;
+    }
+
+    .ai3d-cta__desc {
+      font-size: 1.0625rem;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.7;
+      margin-bottom: 32px;
+      max-width: 480px;
+    }
+
+    .ai3d-cta__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .ai3d-cta__btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 12px 32px;
+      border-radius: 12px;
+      transition: all var(--duration-short) var(--ease-spring);
+    }
+
+    .ai3d-cta__btn:active {
+      transform: scale(0.95);
+    }
+
+    .ai3d-cta__btn--white {
+      background: var(--color-surface-container-lowest);
+      color: var(--color-primary);
+    }
+
+    [data-theme="dark"] .ai3d-cta__btn--white {
+      background: #ffffff;
+      color: #005bc1;
+    }
+
+    .ai3d-cta__btn--white:hover {
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .ai3d-cta__btn--glass {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--color-on-primary);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="dark"] .ai3d-cta__btn--glass {
+      color: #ffffff;
+    }
+
+    .ai3d-cta__btn--glass:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .ai3d-cta__right {
+      flex: 1;
+      position: relative;
+      z-index: 10;
+    }
+
+    .ai3d-cta__terminal {
+      background: #0d1117;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-xl);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .ai3d-cta__terminal-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(22, 27, 34, 1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .ai3d-cta__terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .ai3d-cta__terminal-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .ai3d-cta__terminal-dots span:nth-child(1) { background: #ff5f57; }
+    .ai3d-cta__terminal-dots span:nth-child(2) { background: #febc2e; }
+    .ai3d-cta__terminal-dots span:nth-child(3) { background: #28c840; }
+
+    .ai3d-cta__terminal-title {
+      font-size: 0.75rem;
+      color: #8b949e;
+      font-weight: 500;
+    }
+
+    .ai3d-cta__terminal-body {
+      padding: 20px;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      line-height: 1.8;
+    }
+
+    .ai3d-cta__terminal-prompt {
+      color: #56d364;
+    }
+
+    .ai3d-cta__terminal-cmd {
+      color: #c9d1d9;
+    }
+
+    .ai3d-cta__terminal-success {
+      color: var(--color-primary-fixed-dim);
+    }
+
+    /* --- Responsive --- */
+    @media (max-width: 1024px) {
+      .ai3d-examples__grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .ai3d-cta__card {
+        flex-direction: column;
+        padding: 48px;
+        border-radius: 32px;
+        text-align: center;
+      }
+
+      .ai3d-cta__desc {
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .ai3d-cta__actions {
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .ai3d-window__body {
+        grid-template-columns: 1fr;
+      }
+
+      .ai3d-chat {
+        max-height: 360px;
+        border-right: none;
+        border-bottom: 1px solid var(--color-outline);
+      }
+
+      [data-theme="dark"] .ai3d-chat {
+        border-bottom-color: rgba(255, 255, 255, 0.14);
+      }
+
+      .ai3d-preview canvas {
+        min-height: 320px;
+      }
+
+      .ai3d-how__steps {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .ai3d-examples__grid {
+        grid-template-columns: 1fr;
+      }
+
+      .ai3d-cta__card {
+        padding: 32px;
+        border-radius: 24px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .ai3d-hero {
+        padding: 48px 0 64px;
+      }
+
+      .ai3d-hero__header {
+        margin-bottom: 40px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .ai3d-cta__actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .ai3d-cta__btn {
+        justify-content: center;
+      }
+    }
+  </style>
+  <link href="assets/fonts/fonts.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="ai3d-page">
+
+    <!-- ===== HERO: AI ASSISTANT MOCKUP ===== -->
+    <section class="ai3d-hero reveal">
+      <div class="ai3d-hero__container">
+        <div class="ai3d-hero__header">
+          <div class="ai3d-hero__badge">
+            <span class="material-symbols-outlined" style="font-size: 16px;">auto_awesome</span>
+            AI-Powered 3D
+          </div>
+          <h1 class="ai3d-hero__title">Ask your assistant. Get 3D.</h1>
+          <p class="ai3d-hero__subtitle">Describe what you want in natural language. Your AI coding assistant generates the SceneView code. See the result instantly in interactive 3D.</p>
+          <p class="ai3d-hero__tools">The chat window below stands for whichever assistant you use. SceneView ships one MCP server and one set of rules files, and they are the same for <a href="/#ai-setup">Claude&nbsp;Code, Cline, Codex, Cursor, Gemini in Android&nbsp;Studio, GitHub&nbsp;Copilot, JetBrains AI&nbsp;Assistant, Xcode</a> &mdash; and any other MCP client.</p>
+        </div>
+
+        <!-- AI assistant chat window -->
+        <div class="ai3d-window">
+          <div class="ai3d-window__titlebar">
+            <div class="ai3d-window__dots">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="ai3d-window__title">Your AI assistant &mdash; SceneView MCP</div>
+            <div style="width: 52px;"></div>
+          </div>
+          <div class="ai3d-window__body">
+            <!-- Chat Side -->
+            <div class="ai3d-chat" id="heroChat">
+              <div class="ai3d-chat__label">Conversation</div>
+
+              <div class="ai3d-msg ai3d-msg--user">
+                <div class="ai3d-msg__avatar ai3d-msg__avatar--user">T</div>
+                <div class="ai3d-msg__bubble ai3d-msg__bubble--user">Show me a 3D chair for my living room</div>
+              </div>
+
+              <div class="ai3d-msg">
+                <div class="ai3d-msg__avatar ai3d-msg__avatar--assistant">AI</div>
+                <div class="ai3d-msg__bubble ai3d-msg__bubble--assistant">
+                  I'll load a chair model using SceneView. Here's a sheen fabric chair rendered in real-time with PBR materials and environment lighting.
+                </div>
+              </div>
+
+              <div class="ai3d-msg ai3d-msg--user">
+                <div class="ai3d-msg__avatar ai3d-msg__avatar--user">T</div>
+                <div class="ai3d-msg__bubble ai3d-msg__bubble--user">Can I rotate it and see the back?</div>
+              </div>
+
+              <div class="ai3d-msg">
+                <div class="ai3d-msg__avatar ai3d-msg__avatar--assistant">AI</div>
+                <div class="ai3d-msg__bubble ai3d-msg__bubble--assistant">
+                  Of course! The 3D preview is fully interactive. Drag to orbit, scroll to zoom, and pinch on mobile. Try it in the preview panel.
+                </div>
+              </div>
+
+              <div class="ai3d-msg">
+                <div class="ai3d-msg__avatar ai3d-msg__avatar--assistant">AI</div>
+                <div class="ai3d-msg__bubble ai3d-msg__bubble--assistant">
+                  <div class="ai3d-msg__typing"><span></span><span></span><span></span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview Side -->
+            <div class="ai3d-preview">
+              <div class="ai3d-preview__label">Preview</div>
+              <canvas id="viewer-1"></canvas>
+              <div class="ai3d-preview__badge">Rendered by SceneView</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== INTERACTIVE EXAMPLES ===== -->
+    <section class="ai3d-examples reveal">
+      <div class="ai3d-examples__container">
+        <div class="ai3d-examples__header">
+          <div class="ai3d-examples__accent-bar"></div>
+          <h2 class="ai3d-examples__title">Try it yourself</h2>
+          <p class="ai3d-examples__subtitle">Click any example to see what an assistant generates. Every 3D scene below is interactive &mdash; drag to orbit, scroll to zoom.</p>
+        </div>
+
+        <div class="ai3d-examples__grid">
+
+          <!-- Example 1: Product Viewer -->
+          <div class="example-card">
+            <div class="example-card__viewer">
+              <canvas id="viewer-2"></canvas>
+            </div>
+            <div class="example-card__body">
+              <div class="example-card__prompt">
+                <div class="example-card__prompt-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                </div>
+                <span class="example-card__prompt-text">"Show me a 3D product viewer for a water bottle"</span>
+              </div>
+              <p class="example-card__desc">The assistant generates a product viewer with PBR materials, soft shadows, and auto-rotation. The model loads with camera orbit controls for a complete 360-degree view.</p>
+              <button class="example-card__code-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">code</span>
+                View code
+              </button>
+              <div class="example-card__code">
+                <pre><code><span class="kw">Scene</span>(
+    modifier = Modifier.<span class="fn">fillMaxSize</span>(),
+    engine = <span class="fn">rememberEngine</span>(),
+    modelLoader = <span class="fn">rememberModelLoader</span>(engine),
+    environment = <span class="fn">rememberEnvironment</span>(
+        environmentLoader, <span class="str">"envs/neutral.hdr"</span>
+    ),
+    cameraNode = <span class="fn">rememberCameraNode</span>(engine) {
+        <span class="fn">position</span>(<span class="num">0f</span>, <span class="num">0.5f</span>, <span class="num">2f</span>)
+    },
+    cameraManipulator = <span class="fn">rememberCameraManipulator</span>()
+) {
+    <span class="kw">ModelNode</span>(
+        modelInstance = <span class="fn">rememberModelInstance</span>(
+            modelLoader,
+            <span class="str">"models/water_bottle.glb"</span>
+        )
+    )
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Example 2: Sneakers / E-Commerce -->
+          <div class="example-card">
+            <div class="example-card__viewer">
+              <canvas id="viewer-3"></canvas>
+            </div>
+            <div class="example-card__body">
+              <div class="example-card__prompt">
+                <div class="example-card__prompt-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                </div>
+                <span class="example-card__prompt-text">"Show me these sneakers in 3D"</span>
+              </div>
+              <p class="example-card__desc">Perfect for e-commerce. The assistant loads a product model with material variants, letting customers inspect every angle before purchase.</p>
+              <button class="example-card__code-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">code</span>
+                View code
+              </button>
+              <div class="example-card__code">
+                <pre><code><span class="kw">Scene</span>(
+    modifier = Modifier.<span class="fn">fillMaxSize</span>(),
+    engine = <span class="fn">rememberEngine</span>(),
+    modelLoader = <span class="fn">rememberModelLoader</span>(engine),
+    cameraNode = <span class="fn">rememberCameraNode</span>(engine) {
+        <span class="fn">position</span>(<span class="num">0f</span>, <span class="num">0f</span>, <span class="num">0.5f</span>)
+        <span class="fn">lookAt</span>(<span class="num">0f</span>, <span class="num">0f</span>, <span class="num">0f</span>)
+    },
+    cameraManipulator = <span class="fn">rememberCameraManipulator</span>()
+) {
+    <span class="kw">ModelNode</span>(
+        modelInstance = <span class="fn">rememberModelInstance</span>(
+            modelLoader,
+            <span class="str">"models/sneaker.glb"</span>
+        )
+    ) {
+        <span class="fn">scale</span>(<span class="num">3f</span>)
+        <span class="fn">centerOrigin</span>()
+    }
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Example 3: Animated Character -->
+          <div class="example-card">
+            <div class="example-card__viewer">
+              <canvas id="viewer-4"></canvas>
+            </div>
+            <div class="example-card__body">
+              <div class="example-card__prompt">
+                <div class="example-card__prompt-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                </div>
+                <span class="example-card__prompt-text">"Show an animated 3D character"</span>
+              </div>
+              <p class="example-card__desc">The assistant loads an animated glTF model with skeletal animations playing automatically. Great for games, education, and interactive storytelling.</p>
+              <button class="example-card__code-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">code</span>
+                View code
+              </button>
+              <div class="example-card__code">
+                <pre><code><span class="kw">Scene</span>(
+    modifier = Modifier.<span class="fn">fillMaxSize</span>(),
+    engine = <span class="fn">rememberEngine</span>(),
+    modelLoader = <span class="fn">rememberModelLoader</span>(engine),
+    cameraNode = <span class="fn">rememberCameraNode</span>(engine) {
+        <span class="fn">position</span>(<span class="num">0f</span>, <span class="num">50f</span>, <span class="num">150f</span>)
+    },
+    cameraManipulator = <span class="fn">rememberCameraManipulator</span>()
+) {
+    <span class="kw">ModelNode</span>(
+        modelInstance = <span class="fn">rememberModelInstance</span>(
+            modelLoader,
+            <span class="str">"models/fox.glb"</span>
+        ),
+        autoAnimate = <span class="kw">true</span>
+    )
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Example 4: AR Furniture Placement -->
+          <div class="example-card">
+            <div class="example-card__viewer">
+              <canvas id="viewer-5"></canvas>
+            </div>
+            <div class="example-card__body">
+              <div class="example-card__prompt">
+                <div class="example-card__prompt-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                </div>
+                <span class="example-card__prompt-text">"Place this chair in my room using AR"</span>
+              </div>
+              <p class="example-card__desc">The assistant generates an ARScene with plane detection and tap-to-place. On supported devices, tap the AR icon to try it live.</p>
+              <button class="example-card__code-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">code</span>
+                View code
+              </button>
+              <div class="example-card__code">
+                <pre><code><span class="kw">ARScene</span>(
+    modifier = Modifier.<span class="fn">fillMaxSize</span>(),
+    engine = <span class="fn">rememberEngine</span>(),
+    modelLoader = <span class="fn">rememberModelLoader</span>(engine),
+    planeRenderer = <span class="kw">true</span>,
+    onSessionUpdated = { session, frame ->
+        <span class="cm">// Handle AR frame updates</span>
+    },
+    onTap = { hitResult ->
+        <span class="cm">// Place furniture at tap location</span>
+        <span class="fn">addAnchorNode</span>(hitResult)
+    }
+) {
+    <span class="kw">ModelNode</span>(
+        modelInstance = <span class="fn">rememberModelInstance</span>(
+            modelLoader,
+            <span class="str">"models/chair.glb"</span>
+        )
+    ) {
+        <span class="fn">scale</span>(<span class="num">0.5f</span>)
+    }
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section class="ai3d-how reveal">
+      <div class="ai3d-how__container">
+        <div class="ai3d-how__header">
+          <div class="ai3d-how__accent-bar"></div>
+          <h2 class="ai3d-how__title">How it works</h2>
+          <p class="ai3d-how__subtitle">Three steps from idea to interactive 3D scene.</p>
+        </div>
+
+        <div class="ai3d-how__steps">
+          <div class="ai3d-step">
+            <div class="ai3d-step__number">1</div>
+            <h3 class="ai3d-step__title">Describe your scene</h3>
+            <p class="ai3d-step__desc">Tell your assistant what you want in plain language. A product viewer, an AR experience, a data visualization &mdash; anything 3D.</p>
+          </div>
+          <div class="ai3d-step">
+            <div class="ai3d-step__number">2</div>
+            <h3 class="ai3d-step__title">Your assistant generates code</h3>
+            <p class="ai3d-step__desc">Through the SceneView MCP server, the assistant reads the API reference, the samples and the best practices before it writes anything. The Compose code comes out correct on the first try.</p>
+          </div>
+          <div class="ai3d-step">
+            <div class="ai3d-step__number">3</div>
+            <h3 class="ai3d-step__title">See it live in 3D</h3>
+            <p class="ai3d-step__desc">The generated scene renders instantly. Orbit, zoom, and interact. Deploy to Android, iOS, Web, or any supported platform.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="ai3d-cta reveal">
+      <div class="ai3d-cta__container">
+        <div class="ai3d-cta__card">
+          <div class="ai3d-cta__glow"></div>
+          <div class="ai3d-cta__left">
+            <h2 class="ai3d-cta__title">Start building with AI&nbsp;+&nbsp;3D</h2>
+            <p class="ai3d-cta__desc">Add the SceneView MCP to your AI assistant and start generating 3D scenes in seconds.</p>
+            <div class="ai3d-cta__actions">
+              <a href="https://github.com/sceneview/sceneview#install" class="ai3d-cta__btn ai3d-cta__btn--white">
+                <span class="material-symbols-outlined" style="font-size: 20px;">rocket_launch</span>
+                Get Started
+              </a>
+              <a href="https://github.com/sceneview/sceneview" class="ai3d-cta__btn ai3d-cta__btn--glass" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                View on GitHub
+              </a>
+              <a href="/" class="ai3d-cta__btn ai3d-cta__btn--glass">
+                <span class="material-symbols-outlined" style="font-size: 20px;">home</span>
+                Back to Home
+              </a>
+            </div>
+          </div>
+          <div class="ai3d-cta__right">
+            <div class="ai3d-cta__terminal">
+              <div class="ai3d-cta__terminal-titlebar">
+                <div class="ai3d-cta__terminal-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="ai3d-cta__terminal-title">Terminal</div>
+              </div>
+              <div class="ai3d-cta__terminal-body">
+                <div><span class="ai3d-cta__terminal-prompt">$</span> <span class="ai3d-cta__terminal-cmd">npx sceneview-mcp</span></div>
+                <div><span class="ai3d-cta__terminal-success">SceneView MCP server started</span></div>
+                <div><span class="ai3d-cta__terminal-prompt">$</span> <span class="ai3d-cta__terminal-cmd">32 tools available</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+  <script>
+    SceneView.modelViewer('viewer-1', 'models/platforms/SheenChair.glb');
+    SceneView.modelViewer('viewer-2', 'models/platforms/WaterBottle.glb');
+    SceneView.modelViewer('viewer-3', 'models/platforms/MaterialsVariantsShoe.glb');
+    SceneView.modelViewer('viewer-4', 'models/platforms/Fox.glb');
+    SceneView.modelViewer('viewer-5', 'models/platforms/SheenChair.glb');
+  </script>
+</body>
+</html>

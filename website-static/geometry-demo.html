@@ -73,9 +73,11 @@
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     flex-wrap: wrap; justify-content: center;
   }
+  /* 0.36 white on the panel is a 3.2:1 outline; below that the controls stop
+     being distinguishable from the scene behind the blur. */
   .controls select, .controls button {
     font-family: inherit; font-size: 12px; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.36); border-radius: 8px;
     background: rgba(255,255,255,0.08); color: #fff;
     padding: 6px 12px; cursor: pointer; outline: none;
     transition: all 0.2s;
@@ -92,13 +94,44 @@
     font-weight: 600;
   }
   .controls .add-btn:hover { background: rgba(26,115,232,0.7); }
-  .controls .claude-btn {
-    background: linear-gradient(135deg, rgba(204,119,51,0.6), rgba(180,90,40,0.6));
-    border-color: rgba(204,119,51,0.5); font-weight: 600;
-    display: flex; align-items: center; gap: 5px;
+  /* No vendor colour on any of them, and the same rule as the playground for
+     who gets a button: "the assistant has a link that accepts a prefilled
+     prompt" — a protocol fact, not a recommendation. Three qualify today.
+     Alphabetical, no featured slot. "Copy prompt" comes first because it is the
+     path that works for every assistant, including the ones with no link. */
+  .controls .ai-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.36); border-radius: 8px;
+    background: rgba(255,255,255,0.08); color: #fff;
+    padding: 6px 12px; cursor: pointer; outline: none;
+    text-decoration: none; transition: all 0.2s;
   }
-  .controls .claude-btn:hover {
-    background: linear-gradient(135deg, rgba(204,119,51,0.8), rgba(180,90,40,0.8));
+  .controls .ai-btn:hover {
+    background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.5);
+  }
+  .controls .ai-btn:focus-visible {
+    outline: 2px solid #8ab4f8; outline-offset: 2px;
+  }
+  /* Its own row, full width of the panel: on a phone the scene controls
+     already wrap, and without this the label lands beside "Reset" and reads
+     as a caption for it. */
+  .controls .ai-row {
+    flex-basis: 100%;
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: center; gap: 8px;
+    margin-top: 4px; padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+  .controls .ai-label {
+    color: rgba(255,255,255,0.75); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  /* On a phone the panel wraps to several rows and the "Powered by SceneView"
+     badge wraps to two lines; 50px of clearance is no longer enough and the
+     panel lands on top of it. */
+  @media (max-width: 600px) {
+    .controls { bottom: 72px; }
   }
   .controls .reset-btn {
     background: rgba(255,60,60,0.3); border-color: rgba(255,60,60,0.3);
@@ -174,17 +207,23 @@
   <label>Rough <input type="range" class="slider" id="roughSlider" min="0" max="100" value="40"></label>
   <button class="add-btn" onclick="addUserShape()">+ Add Shape</button>
   <button class="reset-btn" onclick="loadScene(currentPreset)">Reset</button>
-  <button class="claude-btn" onclick="openClaude()">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Generate with Claude
-  </button>
+  <div class="ai-row">
+    <span class="ai-label">Build this in</span>
+    <button class="ai-btn" id="aiCopy" type="button" title="Copy the prompt to your clipboard — works with any assistant">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="aiCopyText">Copy prompt</span>
+    </button>
+    <a class="ai-btn" id="aiChatGPT" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">ChatGPT</a>
+    <a class="ai-btn" id="aiClaude" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">Claude</a>
+    <a class="ai-btn" id="aiCodex" href="codex://new" rel="noopener" title="Open Codex with this prompt. Requires the Codex desktop app.">Codex</a>
+  </div>
 </div>
 
 <div class="badge">Powered by <a href="https://sceneview.github.io" target="_blank">SceneView</a> — Procedural 3D Geometry</div>
 
 <script>
 // SceneView Geometry Renderer — procedural 3D shapes with PBR shading
-// Zero dependencies, pure WebGL2, designed for Claude artifacts
+// Zero dependencies, pure WebGL2, embeddable anywhere a single HTML file runs
 
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
@@ -945,16 +984,39 @@ function addUserShape() {
   updateShapeCount();
 }
 
-function openClaude() {
-  const prompt = encodeURIComponent(
-    "Using SceneView for Android (Jetpack Compose), create a 3D scene with procedural geometry. " +
-    "Use SceneView { } composable with CubeNode, SphereNode, CylinderNode to build a miniature city " +
-    "with buildings of different heights, a park with trees (cylinder trunks + sphere canopies), " +
-    "and a reflective water feature. Apply PBR materials with varying metallic and roughness values. " +
-    "Include the dependency: io.github.sceneview:sceneview:4.37.0"
-  );
-  window.open('https://claude.ai/new?q=' + prompt, '_blank');
-}
+// One prompt, four ways out of this page. The three links are the assistants
+// that accept a prefilled prompt in a URL today; "Copy prompt" is the path for
+// every other one. Each link is built once at load, so a middle-click or
+// "open in new tab" carries the prompt like a normal href.
+const AI_PROMPT =
+  "Using SceneView for Android (Jetpack Compose), create a 3D scene with procedural geometry. " +
+  "Use SceneView { } composable with CubeNode, SphereNode, CylinderNode to build a miniature city " +
+  "with buildings of different heights, a park with trees (cylinder trunks + sphere canopies), " +
+  "and a reflective water feature. Apply PBR materials with varying metallic and roughness values. " +
+  "Include the dependency: io.github.sceneview:sceneview:4.37.0";
+
+(function wireAiButtons() {
+  const encoded = encodeURIComponent(AI_PROMPT);
+  document.getElementById('aiChatGPT').href = 'https://chatgpt.com/?q=' + encoded;
+  document.getElementById('aiClaude').href = 'https://claude.ai/new?q=' + encoded;
+  document.getElementById('aiCodex').href = 'codex://new?prompt=' + encoded;
+
+  const btn = document.getElementById('aiCopy');
+  const label = document.getElementById('aiCopyText');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(AI_PROMPT);
+      label.textContent = 'Copied';
+    } catch (e) {
+      // Clipboard API refused (insecure context, or permission denied): fall
+      // back to a selectable prompt rather than silently doing nothing.
+      window.prompt('Copy the prompt:', AI_PROMPT);
+      label.textContent = 'Copy prompt';
+      return;
+    }
+    setTimeout(() => { label.textContent = 'Copy prompt'; }, 1600);
+  });
+})();
 
 // Initialize with architecture scene
 loadScene('architecture');

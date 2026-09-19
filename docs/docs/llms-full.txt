@@ -213,7 +213,9 @@ Install the SceneView MCP server for AI-assisted development:
 npx -y sceneview-mcp
 ```
 
-Add to your AI assistant's MCP configuration (Claude, Cursor, etc.):
+Add to your AI assistant's MCP configuration. The common shape is `mcpServers`;
+VS Code uses `servers`, Codex a `[mcp_servers.*]` TOML table. See
+https://sceneview.github.io/#ai-setup for the exact file each client reads.
 ```json
 {
   "mcpServers": {

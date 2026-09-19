@@ -16,12 +16,12 @@
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
-  <title>SceneView + Claude — AI-Powered 3D Development</title>
-  <meta name="description" content="Open Claude with SceneView context — build 3D &amp; AR apps with AI assistance.">
-  <meta http-equiv="refresh" content="2;url=https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
-  <meta property="og:title" content="SceneView + Claude — AI-Powered 3D Development">
-  <meta property="og:description" content="Open Claude with SceneView context — build 3D &amp; AR apps with AI assistance.">
-  <meta property="og:url" content="https://sceneview.github.io/go/claude">
+  <title>SceneView + ChatGPT — AI-Powered 3D Development</title>
+  <meta name="description" content="Open ChatGPT with SceneView context — build 3D &amp; AR apps with AI assistance.">
+  <meta http-equiv="refresh" content="2;url=https://chatgpt.com/?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
+  <meta property="og:title" content="SceneView + ChatGPT — AI-Powered 3D Development">
+  <meta property="og:description" content="Open ChatGPT with SceneView context — build 3D &amp; AR apps with AI assistance.">
+  <meta property="og:url" content="https://sceneview.github.io/go/chatgpt">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,22 +43,22 @@
 <body>
   <div class="page">
     <div class="icon">&#9889;</div>
-    <h1>SceneView + Claude</h1>
-    <p class="desc">Open Claude with SceneView context to build 3D &amp; AR apps with AI assistance</p>
-    <a class="cta" href="https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
+    <h1>SceneView + ChatGPT</h1>
+    <p class="desc">Open ChatGPT with SceneView context to build 3D &amp; AR apps with AI assistance</p>
+    <a class="cta" href="https://chatgpt.com/?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      Open Claude
+      Open ChatGPT
     </a>
     <div class="tip">
       <strong>Pro tip:</strong> install the SceneView MCP server so your assistant has full API access:<br>
       <code style="color:#a6e3a1; font-family:monospace;">npx sceneview-mcp</code>
     </div>
-    <p class="note">Redirecting to Claude...</p>
-    <p class="fallback">Not working? <a href="https://claude.ai">Open Claude manually</a> or go <a href="/go/">back</a></p>
+    <p class="note">Redirecting to ChatGPT...</p>
+    <p class="fallback">Not working? <a href="https://chatgpt.com">Open ChatGPT manually</a> or go <a href="/go/">back</a></p>
   </div>
   <script>
     // Attribute the /go/ hub before leaving. `go_redirect` is what turns
-    // "someone hit /go/claude" into a funnel step in GA4 — the interstitial used to
+    // "someone hit /go/chatgpt" into a funnel step in GA4 — the interstitial used to
     // navigate away without ever reporting itself.
     //
     // Ordering matters: the shared loader in <head> defines `gtag` synchronously, so the
@@ -68,7 +68,7 @@
     // setTimeout below bounds it when gtag never loads at all, and the
     // `<meta http-equiv="refresh">` in <head> is the final no-JS fallback. `redirect()`
     // is idempotent, so whichever path wins, the visitor navigates exactly once.
-    var DESTINATION = 'https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.';
+    var DESTINATION = 'https://chatgpt.com/?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.';
     var redirected = false;
     function redirect() {
       if (redirected) return;
@@ -77,7 +77,7 @@
     }
     if (typeof gtag === 'function') {
       gtag('event', 'go_redirect', {
-        target: 'claude',
+        target: 'chatgpt',
         destination: DESTINATION,
         transport_type: 'beacon',
         event_timeout: 600,

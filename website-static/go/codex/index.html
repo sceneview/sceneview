@@ -16,12 +16,11 @@
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
-  <title>SceneView + Claude — AI-Powered 3D Development</title>
-  <meta name="description" content="Open Claude with SceneView context — build 3D &amp; AR apps with AI assistance.">
-  <meta http-equiv="refresh" content="2;url=https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
-  <meta property="og:title" content="SceneView + Claude — AI-Powered 3D Development">
-  <meta property="og:description" content="Open Claude with SceneView context — build 3D &amp; AR apps with AI assistance.">
-  <meta property="og:url" content="https://sceneview.github.io/go/claude">
+  <title>SceneView + Codex — AI-Powered 3D Development</title>
+  <meta name="description" content="Open Codex with SceneView context — build 3D &amp; AR apps with AI assistance.">
+  <meta property="og:title" content="SceneView + Codex — AI-Powered 3D Development">
+  <meta property="og:description" content="Open Codex with SceneView context — build 3D &amp; AR apps with AI assistance.">
+  <meta property="og:url" content="https://sceneview.github.io/go/codex">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,48 +42,35 @@
 <body>
   <div class="page">
     <div class="icon">&#9889;</div>
-    <h1>SceneView + Claude</h1>
-    <p class="desc">Open Claude with SceneView context to build 3D &amp; AR apps with AI assistance</p>
-    <a class="cta" href="https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
+    <h1>SceneView + Codex</h1>
+    <p class="desc">Open Codex with SceneView context to build 3D &amp; AR apps with AI assistance</p>
+    <a class="cta" id="cta" href="codex://new?prompt=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      Open Claude
+      Open Codex
     </a>
     <div class="tip">
       <strong>Pro tip:</strong> install the SceneView MCP server so your assistant has full API access:<br>
       <code style="color:#a6e3a1; font-family:monospace;">npx sceneview-mcp</code>
     </div>
-    <p class="note">Redirecting to Claude...</p>
-    <p class="fallback">Not working? <a href="https://claude.ai">Open Claude manually</a> or go <a href="/go/">back</a></p>
+    <p class="note">Requires the Codex desktop app &mdash; <code style="font-family:monospace;">codex://</code> is an app scheme, so this page waits for your click instead of redirecting on its own.</p>
+    <p class="fallback">No Codex app? <a href="/go/">Pick another assistant</a> or read the <a href="/docs/ai-development/">setup guide</a>.</p>
   </div>
   <script>
-    // Attribute the /go/ hub before leaving. `go_redirect` is what turns
-    // "someone hit /go/claude" into a funnel step in GA4 — the interstitial used to
-    // navigate away without ever reporting itself.
-    //
-    // Ordering matters: the shared loader in <head> defines `gtag` synchronously, so the
-    // event is queued here, and `event_callback` fires the redirect the moment the hit is
-    // on the wire (`transport_type: 'beacon'` -> navigator.sendBeacon, which survives the
-    // navigation). `event_timeout` bounds the wait when the tag is blocked or slow, the
-    // setTimeout below bounds it when gtag never loads at all, and the
-    // `<meta http-equiv="refresh">` in <head> is the final no-JS fallback. `redirect()`
-    // is idempotent, so whichever path wins, the visitor navigates exactly once.
-    var DESTINATION = 'https://claude.ai/new?q=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.';
-    var redirected = false;
-    function redirect() {
-      if (redirected) return;
-      redirected = true;
-      window.location.href = DESTINATION;
-    }
-    if (typeof gtag === 'function') {
-      gtag('event', 'go_redirect', {
-        target: 'claude',
-        destination: DESTINATION,
-        transport_type: 'beacon',
-        event_timeout: 600,
-        event_callback: redirect
-      });
-    }
-    setTimeout(redirect, 700);
+    // No auto-redirect here, unlike the sibling interstitials: `codex://` is an
+    // application scheme, and a browser with no handler registered for it simply
+    // does nothing — the visitor would be left on a page that claims to be
+    // redirecting. The GA `go_redirect` event therefore fires on the click, not
+    // on load, so the funnel step still exists and still means what it says.
+    var DESTINATION = 'codex://new?prompt=I%20want%20to%20build%20a%203D%20app%20with%20SceneView.%20Help%20me%20get%20started%20with%20Jetpack%20Compose.';
+    document.getElementById('cta').addEventListener('click', function() {
+      if (typeof gtag === 'function') {
+        gtag('event', 'go_redirect', {
+          target: 'codex',
+          destination: DESTINATION,
+          transport_type: 'beacon'
+        });
+      }
+    });
   </script>
 </body>
 </html>

@@ -14,15 +14,17 @@ cd sceneview
 # Open in Android Studio, build, and run a sample to verify setup
 ```
 
-## AI-assisted workflow (recommended)
+## AI-assisted workflow
 
-SceneView ships with a full [Claude Code](https://claude.ai/code) setup so you can contribute
-with AI assistance from the first keystroke:
+Contribute with whichever assistant you already use. The repo carries a rules
+file under each of the names the tools look for — `AGENTS.md`, `CLAUDE.md`,
+`.cursorrules`, `.github/copilot-instructions.md`, `.windsurfrules` — so yours
+finds the codebase conventions with no setup. Point it at `AGENTS.md` and ask
+for the workflow you want; setup for every tool is in
+[AI-assisted development](ai-development.md#per-tool-setup).
 
-```bash
-# Install Claude Code, then inside the project root:
-claude
-```
+The repo also ships slash commands, which are a Claude Code feature. Inside the
+project root:
 
 | Command | What it does |
 |---|---|
@@ -30,6 +32,9 @@ claude
 | `/review` | Checks threading, Compose API, Kotlin style, module boundaries |
 | `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
 | `/review --coverage` | Audits coverage and generates missing tests |
+
+`AGENTS.md` describes the same workflows in prose, so another assistant can run
+them by name.
 
 ---
 

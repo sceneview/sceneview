@@ -6,7 +6,7 @@
   <url><loc>https://sceneview.github.io/playground.html</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://sceneview.github.io/platforms-showcase.html</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://sceneview.github.io/web.html</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://sceneview.github.io/claude-3d.html</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://sceneview.github.io/ai-3d.html</loc><lastmod>2026-09-19</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://sceneview.github.io/geometry-demo.html</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://sceneview.github.io/privacy.html</loc><lastmod>2026-04-11</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://sceneview.github.io/go/</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
@@ -15,7 +15,9 @@
   <url><loc>https://sceneview.github.io/go/web</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://sceneview.github.io/go/github</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://sceneview.github.io/go/mcp</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
-  <url><loc>https://sceneview.github.io/go/claude</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://sceneview.github.io/go/chatgpt</loc><lastmod>2026-09-19</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://sceneview.github.io/go/claude</loc><lastmod>2026-09-19</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://sceneview.github.io/go/codex</loc><lastmod>2026-09-19</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://sceneview.github.io/go/discord</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://sceneview.github.io/go/npm</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://sceneview.github.io/go/sponsor</loc><lastmod>2026-04-11</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
