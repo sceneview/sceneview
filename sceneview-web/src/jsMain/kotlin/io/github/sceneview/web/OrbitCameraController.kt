@@ -68,7 +68,7 @@ class OrbitCameraController(
          *
          * Every frame at or below it is integrated at its **true** length. The
          * distinction is the whole point: truncating the step instead (what
-         * this constant did until PLACEHOLDER_PR, at 0.05 s) silently reintroduced the
+         * this constant did until #3742, at 0.05 s) silently reintroduced the
          * frame-rate dependence #3711 had just removed — on a software
          * rasteriser at ~8 fps *every* frame exceeded the bound, so the
          * turntable ran at 12.5°/s instead of its stated 30°/s, and a drag's
@@ -277,7 +277,7 @@ class OrbitCameraController(
             // travel for the whole of a backgrounded minute, the handlers just
             // banked whatever arrived before the tab froze. Crediting it at any
             // rate at all invents a flick, so the bank is dropped instead. (A
-            // truncated divisor, the pre-PLACEHOLDER_PR behaviour, inflated it: the same
+            // truncated divisor, the pre-#3742 behaviour, inflated it: the same
             // travel over a 1 s frame read as a 0.05 s flick, 20× too fast.)
             if (isDragging) {
                 if (hitch) {
