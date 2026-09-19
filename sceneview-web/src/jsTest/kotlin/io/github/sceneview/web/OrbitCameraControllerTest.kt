@@ -412,6 +412,122 @@ class OrbitCameraControllerTest {
         return controller
     }
 
+    /**
+     * Horizontal travel, in pixels, the held-drag helper below covers in one
+     * simulated second. Divisible by every rate it is replayed at (30, 60, 120,
+     * 144), so each frame's step is a whole number of pixels —
+     * `MouseEventInit.clientX` is an IDL `long` and would truncate a fraction,
+     * quietly changing the total the test is pinning.
+     */
+    private val DRAG_PIXELS = 720
+
+    /** Y the held drag stays on: horizontal-only, so phi never nears its clamp. */
+    private val DRAG_Y = 100.0
+
+    /** X the held drag starts from. */
+    private val DRAG_START_X = 100.0
+
+    /**
+     * Drive a drag that is still HELD: `mousedown`, then one `mousemove` and
+     * one `update()` per frame for one simulated second at [hz], covering
+     * [DRAG_PIXELS] in total. No `mouseup` — the button is still down when this
+     * returns.
+     *
+     * This is the trajectory [coastingController] never reaches: it fires
+     * press-move-release before the first `update()`, so every inertia test
+     * above starts from an already-released gesture and the live gesture — the
+     * controller's most common state by far — went unexercised.
+     *
+     * The same pointer distance in the same wall-clock time must turn the
+     * camera by the same angle at every rate: that is what "frame-rate
+     * independent" means for the gesture the user is actually making.
+     */
+    private fun heldDragForOneSecond(hz: Int): Pair<OrbitCameraController, HTMLCanvasElement> {
+        val canvas = newCanvas()
+        val controller = OrbitCameraController(canvas, FakeCamera().toCamera())
+        controller.theta = 0.0
+        controller.phi = PI / 2.0
+        val pixelsPerFrame = DRAG_PIXELS / hz
+        dispatchMouse(canvas, "mousedown", DRAG_START_X, DRAG_Y)
+        for (frame in 1..hz) {
+            dispatchMouse(canvas, "mousemove", DRAG_START_X + (frame * pixelsPerFrame).toDouble(), DRAG_Y)
+            controller.update(1.0 / hz)
+        }
+        return controller to canvas
+    }
+
+    @Test
+    fun aHeldDragTurnsTheSameAngleAtEveryRefreshRate() {
+        // The contract the user feels: N pixels of pointer travel is N ×
+        // rotateSensitivity radians of orbit, on a 30 Hz tab and on a 144 Hz
+        // panel alike. Nothing about the gesture may be scaled by how often the
+        // host happens to call update().
+        for (hz in listOf(30, 60, 120, 144)) {
+            val (c, _) = heldDragForOneSecond(hz)
+            val expected = -DRAG_PIXELS * c.rotateSensitivity
+            assertEquals(
+                expected,
+                c.theta,
+                1e-9,
+                "a $DRAG_PIXELS px drag held for one second at $hz Hz must turn " +
+                    "${expected * 180.0 / PI}°, not ${c.theta * 180.0 / PI}°",
+            )
+        }
+    }
+
+    @Test
+    fun aReleasedDragLeavesTheSameInertiaAtEveryRefreshRate() {
+        // And the tail the release leaves must match too: the velocity is
+        // seeded from pointer travel per unit TIME, so the same flick hands the
+        // same inertia to the damping model whatever rate sampled it.
+        val coastByRate = mutableListOf<Pair<Int, Double>>()
+        for (hz in listOf(30, 60, 120, 144)) {
+            val (c, canvas) = heldDragForOneSecond(hz)
+            dispatchMouse(canvas, "mouseup", DRAG_START_X + DRAG_PIXELS, DRAG_Y)
+            val atRelease = c.theta
+            repeat(hz) { c.update(1.0 / hz) } // one second of coasting
+            coastByRate += hz to (c.theta - atRelease)
+        }
+
+        val at60 = coastByRate.first { it.first == 60 }.second
+        // Guard against agreeing for the wrong reason — four controllers that
+        // never coasted at all would also agree.
+        assertTrue(abs(at60) > 1e-3, "the released drag must actually coast — travelled only $at60")
+        for ((hz, coast) in coastByRate) {
+            assertEquals(
+                at60,
+                coast,
+                1e-9,
+                "one second of inertia after the same flick must travel the same angle at " +
+                    "$hz Hz ($coast) as at 60 Hz ($at60)",
+            )
+        }
+    }
+
+    @Test
+    fun grabbingACoastingCameraCancelsTheOldInertia() {
+        // A held pointer owns the camera: the tail of the PREVIOUS flick must
+        // not keep turning the model under the finger, nor come back to life
+        // when a motionless press is released.
+        val canvas = newCanvas()
+        val c = OrbitCameraController(canvas, FakeCamera().toCamera())
+        c.theta = 0.0
+        c.phi = PI / 2.0
+        dispatchMouse(canvas, "mousedown", 100.0, 100.0)
+        dispatchMouse(canvas, "mousemove", 140.0, 100.0)
+        dispatchMouse(canvas, "mouseup", 140.0, 100.0)
+        c.update(FRAME_60) // coasting now
+
+        dispatchMouse(canvas, "mousedown", 200.0, 100.0) // grab it again, and hold still
+        val grabbed = c.theta
+        repeat(30) { c.update(FRAME_60) }
+        assertEquals(grabbed, c.theta, EPS, "a held pointer must freeze the camera, not let it coast on")
+
+        dispatchMouse(canvas, "mouseup", 200.0, 100.0)
+        repeat(30) { c.update(FRAME_60) }
+        assertEquals(grabbed, c.theta, 1e-9, "releasing a motionless press must not resume the old coast")
+    }
+
     @Test
     fun autoRotationIsFrameRateIndependent() {
         val at60 = controller().first
@@ -586,7 +702,15 @@ class OrbitCameraControllerTest {
 
         // Re-derive the legacy per-frame loop from the velocity the same drag
         // seeds: 40 px at the 0.005 default sensitivity.
-        var expected = 0.0
+        //
+        // Baseline is the post-drag theta, not zero: the 40 px now land on
+        // theta when the pointer moves instead of on the following frame. On a
+        // 60 Hz panel that is a one-frame shift of the same displacement — with
+        // real frames interleaved the legacy loop applied it on the next
+        // update() — and it is the whole point of the held-drag fix above. What
+        // this test pins is the COAST that follows, which must still reproduce
+        // `theta += velocity; velocity *= dampingFactor` frame for frame.
+        var expected = c.theta
         var velocity = -40.0 * c.rotateSensitivity
         repeat(120) {
             expected += autoStep

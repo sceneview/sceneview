@@ -33,6 +33,11 @@ import kotlin.math.sin
  * leaves — is integrated against **elapsed time**, not against the frame count,
  * so the camera turns at the same speed on a 60 Hz panel and on a 120 Hz
  * ProMotion / Android display. See [update].
+ *
+ * A drag under the finger is not self-driven: the pointer handlers apply it to
+ * [theta]/[phi] as it happens, so its gain is exactly the distance travelled ×
+ * [rotateSensitivity] — no refresh rate in the expression at all. The velocity
+ * they bank alongside it only seeds the inertia the release coasts on.
  */
 class OrbitCameraController(
     private val canvas: HTMLCanvasElement,
@@ -135,12 +140,37 @@ class OrbitCameraController(
     var dampingFactor = 0.95
 
     /**
-     * Orbit velocity left by a drag, in **radians per 1/60 s** — the unit the
-     * pointer handlers below write it in ([rotateSensitivity] × pixels moved).
-     * Paired with [dampingFactor], which decays at the same reference rate.
+     * Orbit velocity a drag left behind, in **radians per 1/60 s**. Paired with
+     * [dampingFactor], which decays at the same reference rate.
+     *
+     * It is the seed of the inertia tail a *released* drag coasts on — never
+     * the drag itself. While the button is down the pointer handlers write
+     * [theta]/[phi] directly, so the gesture's gain is exactly
+     * `pixels × rotateSensitivity` whatever the refresh rate.
      */
     private var velocityTheta = 0.0
     private var velocityPhi = 0.0
+
+    /**
+     * Orbit the pointer handlers applied since the velocity was last resampled,
+     * in radians. [update] divides it by the elapsed reference frames to get a
+     * velocity in the unit above — i.e. pointer travel per unit *time*, not per
+     * pointer event. A 144 Hz panel splits the same flick into more, smaller
+     * `mousemove`s than a 60 Hz one; dividing by elapsed time is what makes the
+     * release hand the same inertia to the damping model at either rate.
+     */
+    private var dragTravelTheta = 0.0
+    private var dragTravelPhi = 0.0
+
+    /**
+     * Length of the most recent frame, counted in 1/60 s reference frames.
+     *
+     * Used to convert the drag travel that arrives *after* the last frame — a
+     * flick that ends between two `update()` calls — into the same velocity
+     * unit on release. Starts at one reference frame, so a press-move-release
+     * that never saw a frame at all is credited at the documented 60 Hz rate.
+     */
+    private var lastFrameCount = 1.0
 
     // Mouse state
     private var isDragging = false
@@ -213,16 +243,38 @@ class OrbitCameraController(
             theta += autoRotateSpeed * step
         }
 
-        // Apply damping. `velocityTheta`/`velocityPhi` are per 1/60 s and
-        // `dampingFactor` decays per 1/60 s, so first express the step in those
-        // reference frames, then integrate the decaying velocity in closed form:
-        // a velocity shrinking by `damping` each reference frame travels
+        if (step > 0.0) {
+            lastFrameCount = step * DAMPING_REFERENCE_HZ
+            // While the button is down, this frame's pointer travel — already
+            // applied to theta/phi by the handlers — becomes the velocity the
+            // release will coast on, expressed per 1/60 s. Dividing by the
+            // frame's own length is what keeps the tail rate-independent: the
+            // same flick is one 12 px `mousemove` per frame at 60 Hz and two
+            // 6 px ones at 120 Hz, and both must read as the same speed.
+            if (isDragging) {
+                velocityTheta = dragTravelTheta / lastFrameCount
+                velocityPhi = dragTravelPhi / lastFrameCount
+                dragTravelTheta = 0.0
+                dragTravelPhi = 0.0
+            }
+        }
+
+        // Apply damping — the tail of a RELEASED drag, never the live one. A
+        // held drag writes theta/phi straight from the pointer handlers, so
+        // running this while `isDragging` would multiply the gesture's own gain
+        // by `travel` below (×1.95 at 30 Hz, ×0.42 at 144 Hz) and make the drag
+        // depend on the refresh rate — the very defect this class fixes.
+        //
+        // `velocityTheta`/`velocityPhi` are per 1/60 s and `dampingFactor`
+        // decays per 1/60 s, so first express the step in those reference
+        // frames, then integrate the decaying velocity in closed form: a
+        // velocity shrinking by `damping` each reference frame travels
         // `(1 - damping^frames) / (1 - damping)` times its current value over
         // `frames` of them. At exactly 60 Hz, frames = 1 and the travel is 1 —
         // the expression collapses to the previous `theta += velocityTheta;
         // velocityTheta *= dampingFactor`, so 60 Hz behaviour is bit-for-bit
         // what it was. Mirrors iOS `CameraControls.applyInertia(dt:)`.
-        if (enableDamping) {
+        if (enableDamping && !isDragging) {
             val frames = step * DAMPING_REFERENCE_HZ
             val damping = min(max(dampingFactor, 0.0), MAX_DAMPING_FACTOR)
             val decay = damping.pow(frames)
@@ -285,6 +337,51 @@ class OrbitCameraController(
         listeners.clear()
     }
 
+    /**
+     * A pointer took hold of the camera. Any inertia still running belongs to
+     * the previous flick: drop it, so grabbing a coasting model stops it dead
+     * under the finger instead of letting the old tail keep turning it — and so
+     * a motionless press followed by a release cannot resurrect it.
+     */
+    private fun beginDrag() {
+        isDragging = true
+        velocityTheta = 0.0
+        velocityPhi = 0.0
+        dragTravelTheta = 0.0
+        dragTravelPhi = 0.0
+    }
+
+    /**
+     * Orbit by the angles a pointer move just covered.
+     *
+     * The move lands on [theta]/[phi] immediately — a gesture's gain is the
+     * distance the finger travelled, never a function of how often the host
+     * calls [update] — and is banked in the drag travel so [update] can turn it
+     * into the velocity a release will coast on.
+     */
+    private fun orbitBy(deltaTheta: Double, deltaPhi: Double) {
+        theta += deltaTheta
+        phi += deltaPhi
+        dragTravelTheta += deltaTheta
+        dragTravelPhi += deltaPhi
+    }
+
+    /**
+     * The pointer let go. Travel that arrived since the last frame — a flick
+     * that ends between two [update] calls, which is most of them — has not
+     * been turned into velocity yet; credit it at the most recent frame's
+     * length so the tail it seeds is the same at any refresh rate.
+     */
+    private fun endDrag() {
+        if (dragTravelTheta != 0.0 || dragTravelPhi != 0.0) {
+            velocityTheta = dragTravelTheta / lastFrameCount
+            velocityPhi = dragTravelPhi / lastFrameCount
+            dragTravelTheta = 0.0
+            dragTravelPhi = 0.0
+        }
+        isDragging = false
+    }
+
     /** Register [handler] on the canvas and record it for later removal. */
     private fun listen(type: String, handler: (Event) -> Unit) {
         val listener = EventListener { handler(it) }
@@ -298,7 +395,7 @@ class OrbitCameraController(
         listen("mousedown") { event ->
             val e = event as MouseEvent
             when (e.button.toInt()) {
-                0 -> { isDragging = true }    // Left button = orbit
+                0 -> beginDrag()                // Left button = orbit
                 2 -> { isRightDragging = true } // Right button = pan
             }
             lastX = e.clientX.toDouble()
@@ -316,13 +413,7 @@ class OrbitCameraController(
 
             if (isDragging) {
                 // Orbit
-                if (enableDamping) {
-                    velocityTheta = -dx * rotateSensitivity
-                    velocityPhi = -dy * rotateSensitivity
-                } else {
-                    theta -= dx * rotateSensitivity
-                    phi -= dy * rotateSensitivity
-                }
+                orbitBy(-dx * rotateSensitivity, -dy * rotateSensitivity)
             } else if (isRightDragging) {
                 // Pan
                 targetX += dx * panSensitivity * distance
@@ -332,12 +423,12 @@ class OrbitCameraController(
 
         // Mouse up
         listen("mouseup") {
-            isDragging = false
+            endDrag()
             isRightDragging = false
         }
 
         listen("mouseleave") {
-            isDragging = false
+            endDrag()
             isRightDragging = false
         }
 
@@ -359,7 +450,7 @@ class OrbitCameraController(
         listen("touchstart") { event ->
             val e = event.asDynamic()
             if (e.touches.length == 1) {
-                isDragging = true
+                beginDrag()
                 lastX = (e.touches[0].clientX as Number).toDouble()
                 lastY = (e.touches[0].clientY as Number).toDouble()
             }
@@ -374,13 +465,7 @@ class OrbitCameraController(
                 lastX = (e.touches[0].clientX as Number).toDouble()
                 lastY = (e.touches[0].clientY as Number).toDouble()
 
-                if (enableDamping) {
-                    velocityTheta = -dx * rotateSensitivity
-                    velocityPhi = -dy * rotateSensitivity
-                } else {
-                    theta -= dx * rotateSensitivity
-                    phi -= dy * rotateSensitivity
-                }
+                orbitBy(-dx * rotateSensitivity, -dy * rotateSensitivity)
             } else if (e.touches.length == 2) {
                 // Pinch-to-zoom
                 val dx = (e.touches[0].clientX as Number).toDouble() - (e.touches[1].clientX as Number).toDouble()
@@ -398,7 +483,7 @@ class OrbitCameraController(
         }
 
         listen("touchend") {
-            isDragging = false
+            endDrag()
             lastPinchDistance = -1.0
         }
     }
