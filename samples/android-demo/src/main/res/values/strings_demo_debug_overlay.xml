@@ -16,6 +16,8 @@
     <string name="demo_debug_overlay_start">Stress test (1 → %1$d)</string>
     <string name="demo_debug_overlay_fps">Frame rate: %1$.1f fps · target 60</string>
     <string name="demo_debug_overlay_frame">Frame time: %1$.1f ms · aim ≤ 16.7</string>
+    <string name="demo_debug_overlay_fps_idle">Frame rate: idle · rendering on demand</string>
+    <string name="demo_debug_overlay_frame_idle">Frame time: — · the scene is parked</string>
     <string name="demo_debug_overlay_nodes">Rendered spheres: %1$d · lower costs less</string>
     <string name="demo_debug_overlay_triangles">Estimated triangles: %1$s · lower costs less</string>
     <string name="demo_debug_overlay_sparkline">FPS history → now · reference line: 60 fps</string>

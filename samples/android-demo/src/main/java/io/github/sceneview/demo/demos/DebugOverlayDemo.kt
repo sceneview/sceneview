@@ -142,9 +142,15 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     // sparkline width matters more than wall-clock time so we just show the most recent
     // 120 frame samples). Updated each frame; bypasses Compose state to avoid one
     // recomposition per frame — the overlay reads it on its own 250 ms tick instead.
+    //
+    // The cursor is in the same remembered array as the samples, and for the same reason. It
+    // used to be two `mutableIntStateOf`, written from `onFrame`: the samples avoided the
+    // per-frame recomposition and the two ints handed it straight back, so the comment above
+    // was false for as long as it existed. A screen that recomposes once per frame to show its
+    // own frame rate is measuring itself, and it is the exact pattern render-on-demand asks
+    // applications not to write.
     val fpsHistory = remember { FloatArray(FPS_HISTORY_SIZE) }
-    var fpsHead by remember { mutableIntStateOf(0) }
-    var historySize by remember { mutableIntStateOf(0) }
+    val fpsCursor = remember { FpsCursor() }
 
     // Auto-fit camera target (the distance we WANT). Recomputed on every targetCount
     // change. The animated distance below tweens toward this.
@@ -356,8 +362,7 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
             DebugOverlay(
                 stats = stats,
                 fpsHistory = fpsHistory,
-                fpsHistoryHead = fpsHead,
-                fpsHistorySize = historySize,
+                fpsCursor = fpsCursor,
                 modifier = Modifier
                     .align(Alignment.Start)
                     .padding(horizontal = SceneViewTokens.Space.sm)
@@ -395,9 +400,8 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                     stats.onFrame(frameTimeNanos, nodeCount = currentCount)
                     // Push the just-computed FPS into the ring buffer. We read
                     // stats.fps after onFrame() so we get the freshest value.
-                    fpsHistory[fpsHead] = stats.fps
-                    fpsHead = (fpsHead + 1) % fpsHistory.size
-                    if (historySize < fpsHistory.size) historySize++
+                    fpsHistory[fpsCursor.head] = stats.fps
+                    fpsCursor.advance(fpsHistory.size)
                 }
             ) {
                 // Key light — without an explicit light the scene was unlit and the
@@ -488,12 +492,29 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
  * the SDK doesn't expose engine-level draw-call/triangle counters yet, so we can't make
  * it accurate for arbitrary scenes.
  */
+/**
+ * Head and fill level of [fpsHistory], as plain mutable ints.
+ *
+ * A class rather than two `mutableIntStateOf`: these are written once per rendered frame, and a
+ * snapshot write is a recomposition. Read them from a composable that ticks on its own.
+ */
+private class FpsCursor {
+    var head = 0
+        private set
+    var size = 0
+        private set
+
+    fun advance(capacity: Int) {
+        head = (head + 1) % capacity
+        if (size < capacity) size++
+    }
+}
+
 @Composable
 private fun DebugOverlay(
     stats: io.github.sceneview.utils.DebugStats,
     fpsHistory: FloatArray,
-    fpsHistoryHead: Int,
-    fpsHistorySize: Int,
+    fpsCursor: FpsCursor,
     modifier: Modifier = Modifier,
 ) {
     // Periodic recomposition so the text updates even when no other state changes.
@@ -509,6 +530,11 @@ private fun DebugOverlay(
     }
     @Suppress("UNUSED_EXPRESSION") tick
 
+    // Read through the tick, never through a subscription: everything below is a plain field.
+    val isIdle = stats.isIdle()
+    val fpsHistoryHead = fpsCursor.head
+    val fpsHistorySize = fpsCursor.size
+
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
@@ -517,16 +543,25 @@ private fun DebugOverlay(
         val mono = FontFamily.Monospace
         val fps = stats.fps
         val fpsColor = when {
+            isIdle -> MaterialTheme.colorScheme.secondary
             fps >= 55f -> MaterialTheme.colorScheme.primary
             fps >= 30f -> MaterialTheme.colorScheme.tertiary
             else -> MaterialTheme.colorScheme.error
         }
         BasicText(
-            text = stringResource(R.string.demo_debug_overlay_fps, fps),
+            text = if (isIdle) {
+                stringResource(R.string.demo_debug_overlay_fps_idle)
+            } else {
+                stringResource(R.string.demo_debug_overlay_fps, fps)
+            },
             style = MaterialTheme.typography.labelSmall.copy(color = fpsColor, fontFamily = mono)
         )
         BasicText(
-            text = stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs),
+            text = if (isIdle) {
+                stringResource(R.string.demo_debug_overlay_frame_idle)
+            } else {
+                stringResource(R.string.demo_debug_overlay_frame, stats.frameTimeMs)
+            },
             style = MaterialTheme.typography.labelSmall.copy(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = mono,

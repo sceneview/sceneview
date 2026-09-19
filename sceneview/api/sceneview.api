@@ -3465,12 +3465,19 @@ public final class io/github/sceneview/utils/DebugOverlayKt {
 
 public final class io/github/sceneview/utils/DebugStats {
 	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/utils/DebugStats$Companion;
+	public static final field IDLE_AFTER_MS J
 	public fun <init> ()V
 	public final fun getFps ()F
 	public final fun getFrameTimeMs ()F
 	public final fun getNodeCount ()I
+	public final fun isIdle (J)Z
+	public static synthetic fun isIdle$default (Lio/github/sceneview/utils/DebugStats;JILjava/lang/Object;)Z
 	public final fun onFrame (JI)V
 	public static synthetic fun onFrame$default (Lio/github/sceneview/utils/DebugStats;JIILjava/lang/Object;)V
+}
+
+public final class io/github/sceneview/utils/DebugStats$Companion {
 }
 
 public final class io/github/sceneview/utils/FileCache {
