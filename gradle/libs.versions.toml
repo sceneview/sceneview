@@ -85,7 +85,7 @@ filamentWebsite = "1.72.1"
 # runtime pins above — this artifact vendors its own native Filament
 # (0.4.0 ships 1.75.0). Used only by sceneview-compose desktopMain.
 filamentKmp = "0.4.0"
-arCore = "1.54.0"
+arCore = "1.56.0"
 
 # Networking
 fuel = "2.3.1"
