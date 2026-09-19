@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
@@ -563,6 +564,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
         isTracking = state.isTracking,
         anyPlaneTracked = state.anyPlaneTracked,
         trackingFailureReason = ForcedTrackingFailure.override ?: state.trackingFailureReason,
+        modifier = Modifier.testTag(PlacementTestTags.DISCOVERY_GUIDE),
         bottomClearance = chromeBottom + SceneViewTokens.Space.md +
             if (coachStackPx > 0) coachStack + SceneViewTokens.Space.sm else 0.dp,
     )
@@ -604,7 +606,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     Column(
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .onSizeChanged { coachStackPx = it.height }
+            .testTag(PlacementTestTags.COACH_STACK)
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
@@ -614,7 +616,23 @@ fun BoxScope.TapToPlaceStatusOverlays(
             // Above the scaffold's dock when there is one, by one gutter. `chromeBottom`
             // is measured by the scaffold, so a dock that grows at 200 % text pushes
             // this up with it.
-            .padding(bottom = chromeBottom + SceneViewTokens.Space.md),
+            .padding(bottom = chromeBottom + SceneViewTokens.Space.md)
+            // LAST in the chain, and that placement is the whole measurement.
+            //
+            // `onSizeChanged` reports the size of the node *at its own point in the
+            // chain* — i.e. everything to its right, nothing to its left. Declared
+            // first, it would report the content PLUS the window inset PLUS
+            // `chromeBottom + 16 dp`, and `bottomClearance` below adds those same two
+            // terms again: the pill would climb `navInset + 96 dp` too high (≈ 120 dp
+            // on gesture navigation, ≈ 144 dp on three buttons), and the
+            // `coachStackPx > 0` guard could never be false, because an empty Column
+            // would already measure 96 dp of padding.
+            //
+            // Declared last it reports the coaching stack's own content and nothing
+            // else, which is the only term `bottomClearance` is missing. `DemoDock`
+            // pins the same reading one file over; `DemoBottomOverlay` deliberately
+            // pins the opposite one, and says so — the two are not interchangeable.
+            .onSizeChanged { coachStackPx = it.height },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
@@ -642,8 +660,42 @@ fun BoxScope.TapToPlaceStatusOverlays(
             text = coachingText,
             tone = coachingTone(coaching),
             icon = coachingIcon(coaching),
+            modifier = Modifier.testTag(PlacementTestTags.COACHING_LINE),
         )
     }
+}
+
+/**
+ * Test tags for the placement screen's bottom anchor.
+ *
+ * The anchor is arithmetic — a clearance handed to a composable that draws somewhere
+ * else — so the only way to assert it is to measure the two surfaces it separates on
+ * real bounds. `PlacementBottomAnchorTest` does exactly that.
+ */
+object PlacementTestTags {
+    /**
+     * [PlaneDiscoveryGuide]'s own elements.
+     *
+     * The guide applies one `modifier` to three of them (hand hint, message pill, help
+     * card), so this tag is only unambiguous in a phase where exactly one is composed —
+     * `LOST` shows the pill alone, which is the phase the anchor test drives.
+     */
+    const val DISCOVERY_GUIDE = "placement-discovery-guide"
+
+    /** The single coaching sentence, last child of the anchor and nearest the dock. */
+    const val COACHING_LINE = "placement-coaching-line"
+
+    /**
+     * The anchored Column itself — the node whose measured content height *is*
+     * `coachStackPx`.
+     *
+     * Its bounds run from the top of its content to the bottom of the window, because
+     * every padding in its chain is applied to this same layout node. So the content
+     * height the anchor feeds back to [PlaneDiscoveryGuide] is observable from a test as
+     * `window.bottom - node.top - chromeBottom - 16 dp` — and it is `0` when nothing is
+     * speaking, which is the precondition the `coachStackPx > 0` guard depends on.
+     */
+    const val COACH_STACK = "placement-coach-stack"
 }
 
 /**

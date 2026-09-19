@@ -33,9 +33,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,23 +93,64 @@ fun PlacementChooserScreen(
     val armedModel = models.armed(picker)
     val ctaState = placementCtaState(arSupported = arSupported, hasArmedModel = armedModel != null)
 
+    // Letting the catalogue scroll *under* the bar (see `contentPadding` below) is only an
+    // improvement if the bar is something to slide under. A bare `TopAppBar` is `surface`
+    // on a `surface` page — 1.00:1 in both schemes — which is the same "edge nothing
+    // draws" this screen fixes at the bottom, recreated at the top.
+    //
+    // Two things draw it, the same two the CTA bar uses at the other end:
+    //
+    //  - **a tone**, through the Material 3 mechanism rather than a constant: a pinned
+    //    scroll behaviour raises the bar to `scrolledContainerColor` exactly while
+    //    content is underneath it, and leaves it flat with the page when there is
+    //    nothing to separate. `surfaceContainerHigh` for the same reason the CTA bar
+    //    picks it — it is the lowest role with a tone in BOTH schemes, since the light
+    //    ramp collapses `surfaceContainerLowest`/`Low`/`Container` onto `#FFFFFF`.
+    //  - **an edge**, the same hairline, always on, because tone alone is 1.11:1 in
+    //    light and 1.54:1 in dark: real, but not a line you could point at.
+    //
+    // The hairline is `outline`, not `outlineVariant`: `outline` is the role that carries
+    // WCAG 1.4.11 in this theme, and in dark it is 6.26:1 on the page and 4.08:1 on the
+    // raised bar, i.e. conformant. In light, `outline` is `#D6DAE0` — 1.40:1 and 1.26:1 —
+    // so the top boundary is *drawn* in both schemes but only *conformant* in dark. That
+    // is the light ramp's gap, not this screen's: nothing in the light scale sits between
+    // `#D6DAE0` and `onSurfaceVariant`'s `#3D4654`, and a 3:1 hairline on white needs
+    // roughly `#8D8D8D`. Fixing it means moving the light `outline` token, which lands
+    // on every control border in the app and belongs in the light-ramp PR, next to the
+    // dark one #3681 already did.
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            // The exact string the Maestro per-demo crash gate asserts on
-                            // (`assertVisible: "Navigate back"`), so the flow keeps working
-                            // now that the demo's first screen is no longer the scaffold.
-                            contentDescription = stringResource(R.string.cd_back_button),
-                        )
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = { Text(title) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                // The exact string the Maestro per-demo crash gate asserts
+                                // on (`assertVisible: "Navigate back"`), so the flow keeps
+                                // working now that the demo's first screen is no longer the
+                                // scaffold.
+                                contentDescription = stringResource(R.string.cd_back_button),
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    scrollBehavior = scrollBehavior,
+                )
+                HorizontalDivider(
+                    thickness = SceneViewTokens.Layout.hairlineWidth,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.testTag(PlacementChooserTestTags.TOP_BAR_EDGE),
+                )
+            }
         },
         bottomBar = {
             PlacementChooserCta(
@@ -133,6 +177,7 @@ fun PlacementChooserScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .testTag(PlacementChooserTestTags.CATALOGUE)
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
                 .padding(horizontal = SceneViewTokens.Space.md),
@@ -326,9 +371,18 @@ private fun PlacementChooserCta(
     // invisible in light, which is the defect this line claims to fix.
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            // `outline`, not `outlineVariant`, and the same line the top bar now draws.
+            // `outlineVariant` is the *separator inside a container* role; this is the
+            // boundary between the page and a control surface, which is `outline`'s job
+            // (WCAG 1.4.11) and what the dark ramp sized it for: 6.26:1 on the page and
+            // 4.08:1 on this bar, against `outlineVariant`'s 2.38:1 and 1.55:1. The light
+            // token is still `#D6DAE0` (1.40:1 / 1.26:1) — strictly better than the 1.17:1
+            // / 1.05:1 it replaces, still short of 3:1, and only the light-ramp PR can
+            // close that.
             HorizontalDivider(
                 thickness = SceneViewTokens.Layout.hairlineWidth,
-                color = MaterialTheme.colorScheme.outlineVariant,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.testTag(PlacementChooserTestTags.CTA_BAR_EDGE),
             )
             Column(
                 modifier = Modifier
@@ -391,6 +445,24 @@ private fun placementCtaHelpRes(state: PlacementCtaState): Int? = when (state) {
     PlacementCtaState.CHECKING -> R.string.ar_placement_cta_checking
     PlacementCtaState.AR_UNSUPPORTED -> R.string.ar_placement_cta_unsupported
     PlacementCtaState.NO_MODEL -> R.string.ar_placement_cta_no_model
+}
+
+/**
+ * Test tags for the chooser's two chrome boundaries.
+ *
+ * Both are one hairline over a container, and both exist to be *seen*, so the test that
+ * covers them renders the screen and measures the pixels either side rather than
+ * asserting a token name — see `PlacementChooserBoundaryTest`.
+ */
+object PlacementChooserTestTags {
+    /** Hairline under the top app bar — the edge the catalogue scrolls under. */
+    const val TOP_BAR_EDGE = "placement-chooser-top-bar-edge"
+
+    /** Hairline over the CTA bar — the edge the catalogue scrolls behind. */
+    const val CTA_BAR_EDGE = "placement-chooser-cta-bar-edge"
+
+    /** The scrolling catalogue itself. */
+    const val CATALOGUE = "placement-chooser-catalogue"
 }
 
 // Chooser geometry. Two columns on a phone: the cards are a touch larger than the in-AR
