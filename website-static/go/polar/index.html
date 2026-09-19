@@ -1,11 +1,30 @@
 <!DOCTYPE html>
+<!--
+  Redirect stub for `/go/polar/`. The interstitial that used to live here was
+  written when sponsorship ran through a third platform, and its copy promised
+  paying supporters "priority features" and "premium support" — commitments
+  this project does not make. Support now has a single entry point,
+  `/go/sponsor/`, which sends people to Open Collective, with GitHub Sponsors
+  offered as the alternative.
+
+  The old URL was live and has been shared outside the site, so it keeps
+  answering 200 instead of starting to 404. `noindex, follow` plus a canonical
+  link so search engines consolidate on `/go/sponsor`; sitemap.xml lists
+  `/go/sponsor` only and never listed this path.
+
+  The GA4 loader and the `go_redirect` event are deliberately gone: a stub is
+  not a funnel step, and dropping them lets the policy below be the narrowest
+  on the site.
+-->
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <!-- `script-src 'self' 'unsafe-inline'` is here for exactly one thing: the
+       theme bootstrap below. Without it this stub would be the only page on the
+       site that cannot read the visitor's stored theme, and it would render dark
+       on a light system. No CDN, no analytics origin, no 'unsafe-eval' — the
+       stub loads no external script at all. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
   <script>
-    // Same bootstrap as every other page on the site: the stored choice first,
-    // then the system preference, applied before first paint so an interstitial
-    // that lives for 700ms never flashes the wrong theme.
     (function() {
       try {
         var t = localStorage.getItem('sceneview-theme');
@@ -20,148 +39,54 @@
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
-       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
-  <script src="/assets/analytics.js"></script>
-  <title>SceneView — GitHub Sponsors</title>
-  <meta name="description" content="Sponsor SceneView on GitHub — support development, get priority features, and more.">
-  <meta http-equiv="refresh" content="1;url=https://github.com/sponsors/sceneview">
-  <meta property="og:title" content="Sponsor SceneView">
-  <meta property="og:description" content="Support SceneView development on GitHub Sponsors.">
-  <meta property="og:url" content="https://sceneview.github.io/go/polar">
+  <title>Support SceneView</title>
+  <meta name="description" content="The SceneView support page has moved to /go/sponsor.">
+  <meta name="robots" content="noindex, follow">
+  <link rel="canonical" href="https://sceneview.github.io/go/sponsor">
+  <meta http-equiv="refresh" content="0; url=/go/sponsor">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    /* ── Theme ─────────────────────────────────────────────────────────────
-       This page had no theme at all: hardcoded dark, on a site where every
-       other page follows localStorage['sceneview-theme'] and then
-       prefers-color-scheme. The bootstrap in <head> sets data-theme before
-       first paint; the @media block below is the no-JS path and is placed
-       AFTER the :root defaults it overrides, because both have the same
-       specificity and source order is what decides. `:not([data-theme="dark"])`
-       keeps a stored dark choice winning on a light system, and the explicit
-       [data-theme="light"] rule after it wins the other way.
-
-       Every ratio in the comments is measured on the rendered pixel at
-       375 / 768 / 1280px, in both themes — not computed from the declared
-       colour, which is the same mistake the old rgba() borders made. */
+    /* The @media block is the no-JS path and comes after the :root defaults it
+       overrides; `:not([data-theme="dark"])` leaves a stored dark choice alone,
+       and the explicit [data-theme="light"] rule after it wins the other way.
+       Ratios measured on the rendered pixel, both themes, 375 / 768 / 1280px. */
     :root {
       color-scheme: dark light;
-      --go-bg: #0D2137;
-      --go-fg: #f0f4f8;          /* 14.7:1 */
-      --go-faint: #94a7bb;       /* 6.57:1 — was #4a5e73, measured 2.42:1 */
-      --go-link: #8ab4f8;        /* 7.62:1 — was #5e7a94, measured 3.59:1 */
-      --go-ok: #4ade80;          /* 9.28:1 */
-      --go-edge: #626f7c;        /* 3.15:1 — was rgba(255,255,255,0.12), 1.4:1 */
-      --go-panel: rgba(255,255,255,0.04);
-      --go-chip: rgba(26,115,232,0.12);
-      --go-code-ink: #a6e3a1;   /* 10.9:1 on --go-panel */
-      --go-muted: #7b8fa6;       /* 4.88:1 */
-      --go-glow: rgba(52,168,83,0.15);
-      /* #34a853 → #1e7d3c and #2e8b47 → #14632e: the white label measured
-         3.06:1 and 4.29:1 on the old fills, in both themes. 5.25:1 / 7.23:1. */
-      --go-head-a: #4cc46a; --go-head-b: #34a853;
-      --go-cta-a: #1e7d3c; --go-cta-b: #14632e;
-      /* 2px, measured on composited pixels against the page behind it: 8.32:1.
-         The dark CTA fill sits 1.87-2.90:1 against the dark page on ten of
-         these twelve pages, so the button's own boundary failed 1.4.11 in
-         dark; the fill cannot fix that alone, because a white label wants a
-         dark fill and the boundary wants a light one. This is a tint of the
-         button's own hue, so no brand colour moves. The light theme keeps it
-         transparent — there the fill already carries the boundary at
-         4.79-7.51:1 — and the border box keeps both themes the same size. */
-      --go-cta-edge: #72cf8d;
+      --bg: #0D2137;
+      --fg: #f0f4f8;   /* 14.7:1 */
+      --muted: #b8c7d9; /* 9.49:1 */
+      --link: #8ab4f8;  /* 7.62:1 */
     }
-
     @media (prefers-color-scheme: light) {
       :root:not([data-theme="dark"]) {
-        --go-bg: #f5f8fc;
-        --go-fg: #0d2137;          /* 15.3:1 */
-        --go-muted: #45586c;       /* 6.96:1 */
-        --go-faint: #56697d;       /* 5.33:1 */
-        --go-link: #005bc1;        /* 5.97:1 */
-        --go-ok: #12703a;          /* 5.72:1 */
-        --go-edge: #848e98;        /* 3.13:1 */
-        --go-panel: rgba(13,33,55,0.05);
-        --go-chip: rgba(0,91,193,0.10);
-        --go-code-ink: #146c31;   /* 5.5:1 on --go-panel */
-        --go-glow: rgba(52,168,83,0.10);
-        --go-head-a: #15803d; --go-head-b: #0f6b33;
-        --go-cta-edge: transparent;
+        --bg: #f5f8fc;
+        --fg: #0d2137;   /* 15.3:1 */
+        --muted: #45586c; /* 6.96:1 */
+        --link: #005bc1;  /* 5.97:1 */
       }
     }
-
     :root[data-theme="light"] {
-        --go-bg: #f5f8fc;
-        --go-fg: #0d2137;          /* 15.3:1 */
-        --go-muted: #45586c;       /* 6.96:1 */
-        --go-faint: #56697d;       /* 5.33:1 */
-        --go-link: #005bc1;        /* 5.97:1 */
-        --go-ok: #12703a;          /* 5.72:1 */
-        --go-edge: #848e98;        /* 3.13:1 */
-        --go-panel: rgba(13,33,55,0.05);
-        --go-chip: rgba(0,91,193,0.10);
-        --go-code-ink: #146c31;   /* 5.5:1 on --go-panel */
-        --go-glow: rgba(52,168,83,0.10);
-        --go-head-a: #15803d; --go-head-b: #0f6b33;
-        --go-cta-edge: transparent;
+      --bg: #f5f8fc;
+      --fg: #0d2137;
+      --muted: #45586c;
+      --link: #005bc1;
     }
-
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--go-bg); color: var(--go-fg); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    body::before { content: ''; position: fixed; top: -40%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(circle, var(--go-glow) 0%, transparent 70%); pointer-events: none; }
-    .page { position: relative; z-index: 1; text-align: center; padding: 2rem; max-width: 480px; }
-    .icon { font-size: 3rem; margin-bottom: 1rem; }
-    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(135deg, var(--go-head-a), var(--go-head-b)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .desc { color: var(--go-muted); margin-bottom: 1.5rem; font-size: 0.95rem; }
-    .cta { display: inline-flex; align-items: center; gap: 10px; padding: 14px 34px; border: 2px solid var(--go-cta-edge); border-radius: 16px; font-size: 1rem; font-weight: 700; text-decoration: none; color: #fff; background: linear-gradient(135deg, var(--go-cta-a), var(--go-cta-b)); box-shadow: 0 4px 20px rgba(52,168,83,0.35); transition: transform 0.2s, box-shadow 0.2s; }
-    .cta:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(52,168,83,0.45); }
-    .note { color: var(--go-ok); font-size: 0.8rem; margin-top: 1rem; }
-    .fallback { margin-top: 2rem; color: var(--go-faint); font-size: 0.8rem; }
-    .fallback a { color: var(--go-link); text-decoration: underline; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--fg);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 16px; text-align: center; line-height: 1.6;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p { color: var(--muted); font-size: 0.95rem; }
+    a { color: var(--link); }
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="icon">&#11088;</div>
-    <h1>Sponsor SceneView</h1>
-    <p class="desc">Support development, get priority features, and premium support</p>
-    <a class="cta" href="https://github.com/sponsors/sceneview">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      Open GitHub Sponsors
-    </a>
-    <p class="note">Redirecting...</p>
-    <p class="fallback">Not working? <a href="https://github.com/sponsors/sceneview">Click here</a> or go <a href="/go/">back</a></p>
-  </div>
-  <script>
-    // Attribute the /go/ hub before leaving. `go_redirect` is what turns
-    // "someone hit /go/polar" into a funnel step in GA4 — the interstitial used to
-    // navigate away without ever reporting itself.
-    //
-    // Ordering matters: the shared loader in <head> defines `gtag` synchronously, so the
-    // event is queued here, and `event_callback` fires the redirect the moment the hit is
-    // on the wire (`transport_type: 'beacon'` → navigator.sendBeacon, which survives the
-    // navigation). `event_timeout` bounds the wait when the tag is blocked or slow, the
-    // setTimeout below bounds it when gtag never loads at all, and the 1s
-    // `<meta http-equiv="refresh">` in <head> is the final no-JS fallback. `redirect()`
-    // is idempotent, so whichever path wins, the visitor navigates exactly once.
-    var DESTINATION = 'https://github.com/sponsors/sceneview';
-    var redirected = false;
-    function redirect() {
-      if (redirected) return;
-      redirected = true;
-      window.location.href = DESTINATION;
-    }
-    if (typeof gtag === 'function') {
-      gtag('event', 'go_redirect', {
-        target: 'polar',
-        destination: DESTINATION,
-        transport_type: 'beacon',
-        event_timeout: 600,
-        event_callback: redirect
-      });
-    }
-    setTimeout(redirect, 700);
-  </script>
+  <main>
+    <h1>This page has moved</h1>
+    <p>Support for SceneView now lives at <a href="/go/sponsor">sceneview.github.io/go/sponsor</a>.</p>
+  </main>
 </body>
 </html>
