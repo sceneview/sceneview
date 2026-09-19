@@ -3369,6 +3369,8 @@ public final class io/github/sceneview/node/ViewNode$Layout : android/widget/Fra
 	public fun <init> (Lio/github/sceneview/node/ViewNode;Landroid/content/Context;Landroid/util/AttributeSet;I)V
 	public fun <init> (Lio/github/sceneview/node/ViewNode;Landroid/content/Context;Landroid/util/AttributeSet;II)V
 	public synthetic fun <init> (Lio/github/sceneview/node/ViewNode;Landroid/content/Context;Landroid/util/AttributeSet;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun invalidateChildInParent ([ILandroid/graphics/Rect;)Landroid/view/ViewParent;
+	public fun onDescendantInvalidated (Landroid/view/View;Landroid/view/View;)V
 }
 
 public final class io/github/sceneview/node/ViewNode$WindowManager {
