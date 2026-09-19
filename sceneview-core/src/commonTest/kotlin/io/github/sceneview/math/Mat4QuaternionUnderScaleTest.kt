@@ -97,8 +97,10 @@ class Mat4QuaternionUnderScaleTest {
     fun traceExtractionIsWrongUnderUniformScale() {
         val world = Transform(position = position, quaternion = rotXMinus90, scale = Scale(2f, 2f, 2f))
         val viaTrace = world.toQuaternion()
+        // The measured |dot| is 0.98994958 (an analytic cos 8.13°, so deterministic), which
+        // clears a 0.99 bar by 5e-5 — too thin to survive a different libm. 0.995 costs nothing.
         assertTrue(
-            abs(dot(normalize(rotXMinus90), normalize(viaTrace))) < 0.99f,
+            abs(dot(normalize(rotXMinus90), normalize(viaTrace))) < 0.995f,
             "kotlin-math's Mat4.toQuaternion() is expected to mis-extract a scaled basis, " +
                 "but it returned $viaTrace for rotX(-90) at uniform scale 2"
         )
@@ -145,10 +147,11 @@ class Mat4QuaternionUnderScaleTest {
     }
 
     /**
-     * One collapsed axis: normalising a zero-length column is `0 / 0`. The unguarded accessor
-     * returned NaN, which then propagated into every child transform and into any frame-loop
-     * driver integrating the value. The orientation is still fully determined by the two
-     * surviving axes, so it is recovered exactly.
+     * One collapsed axis: normalising a zero-length column is `0 / 0`. The NaN is [Mat4.quaternion]'s
+     * own — the trace method `Node` used before #3738 stayed finite here and returned a silently
+     * wrong rotation (12.73° off) — so without the guard this fix would have swapped a wrong value
+     * for one that propagates into every child transform and any frame-loop driver integrating it.
+     * The orientation is still fully determined by the two surviving axes, so it is recovered exactly.
      */
     @Test
     fun oneCollapsedAxisIsRecoveredExactlyInsteadOfNaN() {
@@ -179,13 +182,13 @@ class Mat4QuaternionUnderScaleTest {
     }
 
     /**
-     * A negative scale mirrors the basis, which is not a rotation at all — there is no right
-     * answer to return, and nothing downstream can even detect the case, since [Mat4.scale]
-     * reports column *lengths* (a scale of `(-2, -2, -2)` reads back as `(2, 2, 2)`). The only
-     * contract is that the value stays finite and unit so it cannot poison a scene graph.
+     * An *odd* number of negative axes mirrors the basis, which is not a rotation at all — there
+     * is no right answer to return, and nothing downstream can even detect the case, since
+     * [Mat4.scale] reports column *lengths* (a scale of `(-2, -2, -2)` reads back as `(2, 2, 2)`).
+     * The only contract is that the value stays finite and unit so it cannot poison a scene graph.
      */
     @Test
-    fun mirroredBasisStaysFiniteAndUnit() {
+    fun oddNegativeScaleStaysFiniteAndUnit() {
         listOf(Scale(-1f, 1f, 1f), Scale(-2f, -2f, -2f), Scale(1f, -3f, 1f)).forEach { scale ->
             val world = Transform(position = position, quaternion = tilted, scale = scale)
             assertFiniteUnit(world.extractWorldQuaternion(), "mirrored basis at scale $scale")
@@ -193,35 +196,70 @@ class Mat4QuaternionUnderScaleTest {
     }
 
     /**
-     * The genuinely unsolvable case: a non-uniformly scaled ancestor followed by a rotated
-     * descendant shears the world basis (`dot(col0, col1) = -0.8` here), so no quaternion equals
-     * the child's rotation. Column normalisation cannot restore orthogonality; the result is an
-     * approximation, and this pins how far it may drift rather than pretending it is exact.
+     * An *even* number of negative axes is not a mirror: the determinant stays positive, so the
+     * basis is a genuine rotation — `R` followed by a 180° turn about the axis that kept its sign
+     * — and is extracted exactly. Pinned so the caveat documented on [Mat4.quaternion] stays as
+     * narrow as the maths: only an odd count is unanswerable.
+     */
+    @Test
+    fun evenNegativeScaleIsARealRotationAndIsExact() {
+        listOf(
+            Scale(-1f, -1f, 1f) to Float3(0f, 0f, 1f),
+            Scale(-1f, 1f, -1f) to Float3(0f, 1f, 0f),
+            Scale(1f, -1f, -1f) to Float3(1f, 0f, 0f),
+            Scale(-2f, -2f, 2f) to Float3(0f, 0f, 1f)
+        ).forEach { (scale, keptAxis) ->
+            val world = Transform(position = position, quaternion = tilted, scale = scale)
+            assertSameRotation(
+                tilted * Quaternion.fromAxisAngle(keptAxis, 180f),
+                world.extractWorldQuaternion(),
+                message = "an even negative scale $scale is a 180° turn about $keptAxis"
+            )
+        }
+    }
+
+    /**
+     * A non-uniformly scaled ancestor followed by a rotated descendant shears the world basis
+     * (`dot(col0, col1) = -0.8` here), so no quaternion equals the child's rotation. Normalising
+     * the columns rescales that basis without re-orthogonalising it, so what comes back is *a*
+     * unit rotation — not the nearest one, and not bounded in any useful way once the parent is
+     * itself rotated (29.13° under this scale, ~180° in the worst pose under `(0.25, 2, 10)`).
+     * An exact answer does exist for a single scaled ancestor and is tracked in #3744; this case
+     * pins today's behaviour so that landing it is a visible change rather than a silent one.
+     *
+     * The bar below is empirical, not a contract: it is tight enough to catch a regression on
+     * this fixed parent and child, and says nothing about the general case.
      */
     @Test
     fun shearedWorldBasisIsApproximatedNotExact() {
         val parentWorld = Transform(scale = Scale(3f, 1f, 1f))
-        listOf(15f, 45f, 90f).forEach { angle ->
+        // Every 15°, not just 15/45/90: the error is not monotonic in the angle, and sampling
+        // three points had put the worst case in the wrong place.
+        listOf(15f, 30f, 45f, 60f, 75f, 90f).forEach { angle ->
             val childLocal = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), angle)
             val childWorld = parentWorld * rotation(childLocal)
             val extracted = childWorld.extractWorldQuaternion()
 
             assertFiniteUnit(extracted, "sheared basis, child rotZ($angle)")
             val cos = abs(dot(normalize(childLocal), normalize(extracted)))
+            // |dot| is the half-angle cosine, so 0.996 allows 10.25° of rotation error against
+            // a worst measured 8.64°. The 0.99 this used to assert allowed 16.22°.
             assertTrue(
-                cos > 0.99f,
-                "the approximation must stay within a few degrees of the child rotation " +
-                    "(rotZ($angle), |dot| = $cos)"
+                cos > 0.996f,
+                "the approximation must stay within 10.25° of the child rotation for this " +
+                    "parent (rotZ($angle), |dot| = $cos)"
             )
         }
-        // rotZ(15°) under this parent is the worst measured case (6.46°): no exact answer
-        // exists, so the 1e-5 bar every unsheared case meets is deliberately NOT asserted here.
-        val worstAngle = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), 15f)
+        // Measured on this parent: 6.46° at 15°, 3.71° at 30°, 2.64° at 45°, 8.24° at 60°,
+        // 8.64° at 75°, 0.00° at 90° — so 75°, not 15°, is the worst, and the error is not
+        // monotonic. No exact answer exists here, so the 1e-5 bar every unsheared case meets is
+        // deliberately NOT asserted.
+        val worstAngle = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), 75f)
         val worst = (parentWorld * rotation(worstAngle)).extractWorldQuaternion()
         assertTrue(
             abs(dot(normalize(worstAngle), normalize(worst))) < 1f - 1e-5f,
             "a sheared basis is expected to be inexact — if this now passes the 1e-5 bar, " +
-                "the extraction has become shear-aware and this case can be tightened"
+                "the extraction has become shear-aware (#3744) and this case can be tightened"
         )
     }
 

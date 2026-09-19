@@ -146,46 +146,60 @@ fun Mat4.toColumnsDoubleArray() = doubleArrayOf(
  * renormalised into a *different* rotation — uniform scale included, which is the surprising
  * part. Measured against `R = rotX(-90°)`, `|scale| = 2`: the trace method returns a rotation
  * 16.26° off; on a tilted axis at scale 10 it is 32.38° off, and at scale `(0.25, 2, 10)`,
- * 78.11° off. This accessor divides each basis column by its length first, and is exact
- * (measured error 0.00° through float32 rounding) for every single-level `T·R·S`, uniform
- * or not. See #3738.
+ * 78.11° off. This accessor divides each basis column by its length first, which is exact
+ * (measured error 0.00° through float32 rounding) wherever the basis is still orthogonal:
+ * every single-level `T·R·S`, uniform or not, and every chain whose scales are all uniform.
+ * See #3738.
  *
  * A pure yaw at exactly 0° or 180° happens to survive the trace method unscathed, and *any*
  * pure yaw keeps the axis exactly (only the angle is corrupted) — which is why scale bugs here
  * hide from axis-only or turntable-only test scenes.
  *
- * Three families of matrix have no exact rotation to extract, and this accessor returns a
- * best-effort answer rather than failing:
+ * Three families of matrix are not a plain rotation, and this accessor returns a best-effort
+ * answer rather than failing:
  *
- *  - **Shear** — a non-uniformly scaled ancestor followed by a rotated descendant leaves a
+ *  - **Shear** — a non-uniformly scaled *ancestor* with a rotation below it leaves a
  *    non-orthogonal world basis (measured `dot(col0, col1) = -0.8` for a parent scaled
- *    `(3, 1, 1)` under a child `rotZ`). Column normalisation cannot restore orthogonality, so
- *    the result is an approximation whose error depends on the shear (measured 0.04°–6.46°
- *    over `rotZ` 15°–90°, versus 5.03°–36.87° for the trace method). No decomposition can do
- *    better; only avoiding non-uniform scale on an ancestor of a rotated node can.
- *  - **Mirror** — a negative scale makes the basis left-handed, which is not a rotation at all.
- *    The result is finite and unit but arbitrary, and nothing downstream can detect the case:
- *    [Mat4.scale] reports column *lengths*, so it returns `(2, 2, 2)` for a scale of `(-2, -2, -2)`.
+ *    `(3, 1, 1)` under a child `rotZ`). Dividing each column by its length rescales the basis;
+ *    it does not re-orthogonalise it. What comes back is therefore *a* unit basis, neither the
+ *    nearest rotation nor bounded in any useful way: 8.64° off for that parent and child,
+ *    29.13° once the parent is itself tilted, and up to ~180° in the worst pose under
+ *    `(0.25, 2, 10)`. An exact answer does exist for a chain with one scaled ancestor —
+ *    composing the local quaternions, or the orthogonal factor of a polar decomposition, which
+ *    lands within 0.056° across a 37 × 19 pose sweep — and this accessor does not compute it;
+ *    that is tracked in #3744. Keep an ancestor's scale uniform if you need exactness below it.
+ *  - **Mirror** — an *odd* number of negative scale axes makes the basis left-handed, which is
+ *    not a rotation at all: the result is finite and unit but arbitrary. An *even* number is a
+ *    genuine rotation — `(-1, -1, 1)` is a 180° turn about Z — and is extracted exactly. Nothing
+ *    downstream can tell the two apart: [Mat4.scale] reports column *lengths*, so it returns
+ *    `(2, 2, 2)` for a scale of `(-2, -2, -2)`.
  *  - **Collapse** — a zero scale on an axis makes that column zero-length, so normalising it is
- *    `0 / 0 = NaN`. Left unguarded that NaN propagates into every child transform and into any
- *    frame-loop driver integrating this value (see the [Scale] doc). When exactly one axis has
- *    collapsed the rotation is still fully determined by the other two, and is recovered exactly
- *    from their cross product; with two or three axes gone nothing is left to recover and the
- *    identity is returned. Either way the result is finite.
+ *    `0 / 0 = NaN`, and unguarded that NaN would propagate into every child transform and into
+ *    any frame-loop driver integrating this value (see the [Scale] doc). The NaN belongs to this
+ *    accessor, not to the defect it fixes: the trace method stays finite on a collapsed basis and
+ *    returns a silently wrong rotation instead (12.73° off with one axis gone, up to 180° with
+ *    three). When exactly one axis has collapsed the rotation is still fully determined by the
+ *    other two, and is recovered exactly from their cross product; with two or three axes gone
+ *    nothing is left to recover and the identity is returned. Either way the result is finite.
  */
 val Mat4.quaternion: Quaternion
     get() {
         val quaternion = rotation(this).toQuaternion()
         // `rotation()` divides each column by its length, so a collapsed axis yields NaN.
         // Only then pay for the reconstruction below.
-        return if (quaternion.x.isNaN() || quaternion.y.isNaN() ||
-            quaternion.z.isNaN() || quaternion.w.isNaN()
-        ) {
-            collapsedBasisQuaternion()
-        } else {
-            quaternion
-        }
+        return if (quaternion.hasNaNComponent) collapsedBasisQuaternion() else quaternion
     }
+
+/**
+ * True when any component is NaN — what [rotation] hands back for a basis with a zero-length
+ * column, since normalising it is `0 / 0`.
+ *
+ * Answered by one sum rather than four `isNaN()` tests: NaN propagates through addition, so the
+ * two agree on every value a normalised basis can produce, and the check reads as the single
+ * question it is.
+ */
+private val Quaternion.hasNaNComponent: Boolean
+    get() = (x + y + z + w).isNaN()
 
 /**
  * Best-effort rotation for a basis with at least one zero-length column, keeping [quaternion]
@@ -214,11 +228,7 @@ private fun Mat4.collapsedBasisQuaternion(): Quaternion {
     val rebuilt = rotation(basis).toQuaternion()
     // The rebuilt axis is itself zero when the two survivors are parallel (a fully sheared,
     // collapsed basis), which would hand back a NaN again.
-    return if (rebuilt.x.isNaN() || rebuilt.y.isNaN() || rebuilt.z.isNaN() || rebuilt.w.isNaN()) {
-        Quaternion()
-    } else {
-        rebuilt
-    }
+    return if (rebuilt.hasNaNComponent) Quaternion() else rebuilt
 }
 
 /** Transforms a 3D point by this matrix (applies translation, rotation, and scale). */

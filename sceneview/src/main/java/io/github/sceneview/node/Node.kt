@@ -435,13 +435,17 @@ open class Node protected constructor(
      *    it was not: the extraction folded the scale into the rotation, so a node under a
      *    parent scaled 2 reported a 106° rotation where 90° was set.)
      *  - **Non-uniform scale on an *ancestor*, with a rotation below it** — the world basis is
-     *    sheared, so no quaternion equals the rotation you set; the value returned is the
-     *    closest orthonormal frame, measured within a few degrees. Round trips through the
-     *    setter are correspondingly approximate. If you need exact world orientation under a
-     *    scaled ancestor, keep the ancestor's scale uniform.
-     *  - **Negative scale (mirror)** — a mirrored basis is not a rotation at all. The value is
-     *    finite and unit but otherwise meaningless, and nothing can detect the case from
-     *    [worldScale], which reports column lengths (a scale of `-2` reads back as `2`).
+     *    sheared, so no quaternion equals the rotation you set. The extraction normalises each
+     *    basis column, which rescales the basis without re-orthogonalising it: the value you
+     *    read is *a* unit rotation, not the nearest one to the pose, and it carries **no useful
+     *    error bound** — 29.13° off under a parent scaled `(3, 1, 1)`, up to ~180° in the worst
+     *    pose under `(0.25, 2, 10)`. Setter round trips are off by the same amount. An exact
+     *    answer does exist for this case and is tracked in #3744; until then, keep an ancestor's
+     *    scale uniform if you need an exact world orientation below it.
+     *  - **Negative scale (mirror)** — an *odd* number of negative axes leaves a left-handed
+     *    basis, which is not a rotation at all: the value is finite and unit but otherwise
+     *    meaningless. An *even* number is a real rotation and comes back exact. Nothing can tell
+     *    the two apart from [worldScale], which reports column lengths (`-2` reads back as `2`).
      *  - **Zero scale on an axis** — the collapsed axis is rebuilt from the other two rather
      *    than returning NaN; with two or more axes collapsed the identity is returned.
      *
