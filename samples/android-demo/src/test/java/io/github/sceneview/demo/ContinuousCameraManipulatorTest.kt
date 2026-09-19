@@ -215,6 +215,44 @@ class ContinuousCameraManipulatorTest {
         assertTrue(camera.isEasing)
     }
 
+    @Test
+    fun `a snap that only lands a frame after easeNextCut is still eased`() {
+        val script = Turntable(yawDegrees = 0f)
+        val camera = manipulator().apply { drive(script) }
+        camera.frame()
+
+        // The script announces its cut and then suspends: `Animatable.snapTo` waits on the mutex
+        // an animation of the outgoing mode still holds, so a frame goes by with the pose it had.
+        camera.easeNextCut()
+        val before = camera.frame()
+        assertFalse("nothing has moved yet", camera.isEasing)
+
+        script.yawDegrees = 170f
+        script.radius = 1.5f
+        val after = camera.frame()
+
+        assertTrue("the snap was drawn as a cut", camera.isEasing)
+        assertTrue("stepped ${distance(before, after)} m", distance(before, after) < 0.01f)
+    }
+
+    @Test
+    fun `an announced cut nothing came of is dropped, not spent on a later change`() {
+        val script = Turntable(yawDegrees = 0f)
+        val camera = manipulator().apply { drive(script) }
+        camera.frame()
+
+        // Announced, then abandoned — the branch that would have snapped returned early.
+        camera.easeNextCut()
+        repeat(CUT_ARM_FRAMES) { camera.frame() }
+
+        // Long afterwards, an unrelated move: it is the source's own, not a cut to protect.
+        script.yawDegrees = 170f
+        val drawn = camera.frame()
+
+        assertFalse(camera.isEasing)
+        assertEquals(0f, maxElementDelta(script.getTransform(), drawn), 1e-5f)
+    }
+
     // ── Velocity ─────────────────────────────────────────────────────────────────────────────────
 
     @Test
@@ -361,5 +399,9 @@ class ContinuousCameraManipulatorTest {
     private companion object {
         const val FRAME_SECONDS = 1f / 60f
         const val FRAME_NANOS = 16_666_667L
+
+        /** Comfortably past [ContinuousCameraManipulator.CUT_ARM_SECONDS] at 60 fps. */
+        val CUT_ARM_FRAMES =
+            (ContinuousCameraManipulator.CUT_ARM_SECONDS / FRAME_SECONDS).toInt() + 5
     }
 }

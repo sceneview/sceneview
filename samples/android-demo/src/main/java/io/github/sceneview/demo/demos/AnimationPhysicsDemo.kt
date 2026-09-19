@@ -769,7 +769,10 @@ private fun AnimationSection(
         } else null
     }
     // The loading scrim is translucent — the rooftop shows through it — so a new subject's camera
-    // is eased in like any other change, and is in place by the time the scrim lifts.
+    // is eased in like any other change, and is in place by the time the scrim lifts. Hence the
+    // default `contentShown = true`, where Model Viewer and the Explore viewer pass
+    // `instance != null`: what this screen has to wait for is its script, and `awaitStage()`
+    // already parks that on the subject and on steady frames.
     val activeManipulator = continuity.driving(
         source = (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
     )

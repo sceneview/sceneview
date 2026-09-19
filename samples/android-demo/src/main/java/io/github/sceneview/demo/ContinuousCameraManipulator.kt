@@ -22,12 +22,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The one camera writer of a screen that has several sources of camera poses.
  *
- * `SceneView` draws `cameraManipulator.getTransform()` every frame, so the two ordinary ways a demo
- * changes its camera are both **cuts**: handing `SceneView` a *different* manipulator (a new
- * `remember(key)` for a new framing, a scripted/free swap) shows the newcomer's pose on the very
- * next frame, and a script that `snapTo`s its start pose — a new camera mode, a loop going round
- * again — does the same without even changing instance. On screen that is the camera teleporting,
- * by up to half a turn, which is what "the camera jumps" comes down to.
+ * `SceneView` draws `cameraManipulator.getTransform()` on every tick of its frame loop, so the
+ * two ordinary ways a demo changes its camera are both **cuts**: handing `SceneView` a
+ * *different* manipulator (a new `remember(key)` for a new framing, a scripted/free swap) shows
+ * the newcomer's pose on the very next frame, and a script that `snapTo`s its start pose — a new
+ * camera mode, a loop going round again — does the same without even changing instance. On screen
+ * that is the camera teleporting, by up to half a turn, which is what "the camera jumps" comes
+ * down to.
  *
  * This manipulator is remembered **once** per screen, so `SceneView` never sees a swap, and every
  * change of source goes through it:
@@ -43,13 +44,20 @@ import kotlinx.coroutines.withTimeoutOrNull
  * frame of the ease is exactly the live pose. The speed the camera had going in is carried and
  * decays ([COAST_SECONDS]) instead of stopping dead: position *and* velocity are continuous.
  *
- * The ease runs on **drawn** time, not wall-clock time: a frame counts for at most
- * [MAX_FRAME_SECONDS]. A model decoding on the main thread freezes the picture for seconds, and
- * an ease timed on the wall clock would be over before the next frame — a cut again. For the
- * same reason a long gap between two frames is itself treated as a cut: the source moved on
- * unseen, and the camera is eased from the last picture drawn to wherever it is now — on the
- * frame after the gap and the [SETTLING_FRAMES] that follow, because a source animated from
- * another frame callback is a frame stale and only shows afterwards how far it went.
+ * The ease is advanced by the render loop, not by the wall clock: one call to [getTransform]
+ * counts for at most [MAX_FRAME_SECONDS], however long it took to arrive. A model decoding on the
+ * main thread freezes the picture for seconds, and an ease timed on the wall clock would be over
+ * before the next call — a cut again. For the same reason a long gap between two calls is itself
+ * treated as a cut: the source moved on unseen, and the camera is eased from the last picture
+ * drawn to wherever it is now — on the call after the gap and the [SETTLING_FRAMES] that follow,
+ * because a source animated from another frame callback is a frame stale and only shows
+ * afterwards how far it went.
+ *
+ * That clock is the loop's **tick**, which is not the same as a frame **presented**: `SceneView`
+ * reads the manipulator on every tick, while `Renderer.beginFrame` refuses the frame itself when
+ * the GPU is behind. So [MAX_FRAME_SECONDS] bounds what a *freeze* costs the ease — not what a
+ * run of ticks whose frames never reached the surface costs it: those spend the ease at their own
+ * pace while the picture stands still.
  *
  * QA mode ([eased] `false`) keeps every change instantaneous, so goldens never catch a camera
  * half-way.
@@ -74,6 +82,10 @@ class ContinuousCameraManipulator(
     private var speed = FramingSpeed.REST
 
     private var cutMillis = NO_CUT
+
+    /** When the pending [cutMillis] was armed, so an arm nothing came of can be dropped. */
+    private var cutArmedNanos = 0L
+
     private var ease: Ease? = null
 
     /** Frames left, after a freeze, in which a step of the source still belongs to that freeze. */
@@ -109,7 +121,7 @@ class ContinuousCameraManipulator(
         source = next
         if (viewportW > 0 && viewportH > 0) next.setViewport(viewportW, viewportH)
         if (cut) {
-            cutMillis = NO_CUT
+            disarmCut()
             ease = null
         } else {
             easeNextCut()
@@ -119,9 +131,23 @@ class ContinuousCameraManipulator(
     /**
      * The source is about to change its pose discontinuously (a `snapTo`, a loop restart): ease
      * from the pose on screen into whatever it shows next, over [millis], instead of cutting.
+     *
+     * The move being announced need not have happened yet — a suspending `snapTo` waiting on its
+     * mutex lands a tick or two later — so the arm is held until an ease actually starts, and at
+     * most [CUT_ARM_SECONDS].
      */
     fun easeNextCut(millis: Long = blendMillis) {
+        armCut(millis, nanoTime())
+    }
+
+    private fun armCut(millis: Long, now: Long) {
         cutMillis = millis
+        cutArmedNanos = now
+    }
+
+    private fun disarmCut() {
+        cutMillis = NO_CUT
+        cutArmedNanos = 0L
     }
 
     override fun setViewport(width: Int, height: Int) {
@@ -130,6 +156,18 @@ class ContinuousCameraManipulator(
         source?.setViewport(width, height)
     }
 
+    /**
+     * The pose to draw — and the one place this class advances anything: it spends the tick's
+     * time, counts down [SETTLING_FRAMES], starts and steps the ease, and records the pose as the
+     * picture the next change has to be continuous with.
+     *
+     * It is therefore not a query. It has to be called **exactly once per tick** of the render
+     * loop, by the caller that draws what it returns; asking it a second time — to compare
+     * transforms and decide whether a frame is worth drawing, say — advances the ease twice and
+     * breaks the continuity it exists for. By the same token the ease, and the [OrbitSpin] a
+     * source may be turning on ([update]), only move while that loop runs: a loop that parks
+     * itself when nothing invalidates the scene leaves both where they stand.
+     */
     override fun getTransform(): Transform {
         val live = source?.getTransform() ?: return shown ?: Transform()
         if (!contentShown) {
@@ -144,11 +182,20 @@ class ContinuousCameraManipulator(
         if (shown != null && sinceShown > STALL_SECONDS) settlingFrames = SETTLING_FRAMES
         if (settlingFrames > 0) {
             settlingFrames--
-            if (cutMillis == NO_CUT && sourceStepped(liveFraming)) cutMillis = blendMillis
+            if (cutMillis == NO_CUT && sourceStepped(liveFraming)) armCut(blendMillis, now)
         }
         if (cutMillis != NO_CUT) {
-            ease = beginEase(live, liveFraming, cutMillis, now)
-            cutMillis = NO_CUT
+            val started = beginEase(live, liveFraming, cutMillis, now)
+            ease = started
+            // An arm is spent by the ease it starts, not by the first tick that finds nothing to
+            // ease. A script announces its cut and only then suspends — `Animatable.snapTo` waits
+            // on its mutex — so on the tick in between the source still stands on the picture and
+            // there is nothing to ease yet; consuming the arm there would let the snap through as
+            // the very cut this class removes. Hold it instead, for at most [CUT_ARM_SECONDS], so
+            // an arm nothing ever came of cannot ease an unrelated change much later.
+            val awaiting = started == null && shown != null && eased() &&
+                (now - cutArmedNanos) / NANOS_PER_SECOND <= CUT_ARM_SECONDS
+            if (!awaiting) disarmCut()
         }
         val frameSeconds = sinceShown.coerceIn(0f, MAX_FRAME_SECONDS)
         val out = ease?.let { applyEase(it, live, liveFraming, now, frameSeconds) }
@@ -178,7 +225,7 @@ class ContinuousCameraManipulator(
         shownFraming = null
         speed = FramingSpeed.REST
         ease = null
-        cutMillis = NO_CUT
+        disarmCut()
     }
 
     private fun beginEase(live: Transform, liveFraming: OrbitFraming, millis: Long, now: Long): Ease? {
@@ -337,7 +384,7 @@ class ContinuousCameraManipulator(
         /** Whether [carried] has been made relative to the new source's own speed yet. */
         var relative = false
 
-        /** Drawn time into the ease — see [MAX_FRAME_SECONDS]. */
+        /** Loop time into the ease, a tick counting for at most [MAX_FRAME_SECONDS]. */
         var elapsed = 0f
     }
 
@@ -353,6 +400,9 @@ class ContinuousCameraManipulator(
 
         /** A gap between two frames longer than this is a freeze, and what follows it a cut. */
         const val STALL_SECONDS: Float = 0.25f
+
+        /** How long an announced cut waits for the move it protects before it is dropped. */
+        const val CUT_ARM_SECONDS: Float = 0.25f
 
         /** How many frames after a freeze a step of the source is still put down to it. */
         const val SETTLING_FRAMES: Int = 3
@@ -400,9 +450,13 @@ private const val STEADY_FRAMES = 3
 private const val STEADY_FRAME_NANOS = 100_000_000L
 
 /**
- * A [ContinuousCameraManipulator] that survives every recomposition. [pivot] is the point the
- * screen's cameras look at; name the source with [driving], or with [ContinuousCameraManipulator.drive]
- * when it only exists further down the composition.
+ * A [ContinuousCameraManipulator] that survives every recomposition of the screen it belongs to.
+ * [pivot] is the point the screen's cameras look at; name the source with [driving], or with
+ * [ContinuousCameraManipulator.drive] when it only exists further down the composition.
+ *
+ * It is `remember`ed, not saved: a configuration change builds a new one with nothing on screen
+ * to be continuous with, and takes the first pose as it comes — which is what a rotation is
+ * anyway.
  */
 @Composable
 fun rememberContinuousCameraManipulator(
