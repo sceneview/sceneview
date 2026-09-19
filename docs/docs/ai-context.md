@@ -55,6 +55,14 @@ your tool reads, or point your assistant at `llms.txt`.
 
 For AI system prompts, use:
 
-- **Compact**: `https://sceneview.github.io/llms-full.txt` (fits most context windows)
-- **Complete**: `https://sceneview.github.io/llms.txt` (full API reference)
+- **Compact**: `https://sceneview.github.io/llms-full.txt` (~12 kB, fits most context windows)
+- **Complete**: `https://sceneview.github.io/llms.txt` (full API reference, and an index of these docs at the top)
 - **MCP resource**: `sceneview://api` (served by sceneview-mcp)
+
+Yes, the names are the reverse of the [llmstxt.org](https://llmstxt.org)
+convention, which reserves `llms.txt` for a short linked index and
+`llms-full.txt` for the whole content. `/llms.txt` has served the full
+reference since it was first published and is what the sitemap, `AGENTS.md`,
+the per-tool rule files, the `sceneview-mcp` package and outside indexes all
+point at, so the URLs stay put; the index the convention asks for was added to
+the top of `/llms.txt` instead.

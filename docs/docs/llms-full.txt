@@ -1,6 +1,13 @@
-# SceneView — Complete API Reference for AI Systems
+# SceneView — Compact API Reference for AI Systems
 
 > The #1 open-source 3D & AR SDK for Android and iOS. Compose-native on Android (Filament + ARCore), SwiftUI-native on iOS (RealityKit + ARKit), shared core via Kotlin Multiplatform.
+
+This file is the short one: about 12 kB, sized to fit a small context window.
+The complete reference — every composable, every node type, every recipe — is
+`https://sceneview.github.io/llms.txt`, and it also carries an index of the
+documentation. The two file names are the reverse of the llmstxt.org
+convention; that is deliberate, and the reason is written down at the top of
+`llms.txt`.
 
 ## What SceneView is, and when it fits
 
