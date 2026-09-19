@@ -99,7 +99,7 @@ class SceneRenderer(
      * Distinct from [maxRefreshRate], which is the panel's ceiling: on a variable-refresh-rate
      * device the current mode is what the Choreographer's vsyncs actually land on, and that period
      * — not a compile-time constant — is the only honest tolerance for
-     * [FrameRatePolicy.Capped]'s phase lock. See [shouldPresentAtCap].
+     * the [FrameRatePolicy.maxFps] phase lock. See [shouldPresentAtCap].
      */
     val refreshRate: Float?
         get() = display?.refreshRate?.takeIf { it > 0f }

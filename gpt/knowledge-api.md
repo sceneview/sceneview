@@ -27,7 +27,7 @@ fun SceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
-    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand,   // render-on-demand by default — see note below
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(), // render-on-demand by default — see note below
     renderInvalidator: RenderInvalidator? = null,   // escape hatch for changes made below the library (direct Filament edits)
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
@@ -54,13 +54,13 @@ fun SceneView(
 
 **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
-**`frameRatePolicy` (default `FrameRatePolicy.OnDemand`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
+**`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
 Three policies:
 
-- **`FrameRatePolicy.OnDemand`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a surface resize, a lifecycle resume, a new ARCore camera image. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
-- **`FrameRatePolicy.Continuous`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
-- **`FrameRatePolicy.Capped(fps)`** — render continuously but never faster than `fps`, and vote for `fps` rather than the display maximum. For a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. `fps` must be strictly positive (`require` at construction).
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a surface resize, a lifecycle resume, a new ARCore camera image. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
+- **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
 **The one case `OnDemand` cannot see** is a mutation made *below* the library's bookkeeping: a Filament `MaterialInstance` parameter, a light intensity, an engine-level edit. Nothing in the scene graph changed, so nothing invalidates and the change is not drawn. Two escape hatches:
 
@@ -82,7 +82,7 @@ Migration from `isRendering`:
 
 ```kotlin
 // Before                                    // After
-SceneView(isRendering = true)  { }           SceneView(frameRatePolicy = FrameRatePolicy.Continuous) { }
+SceneView(isRendering = true)  { }           SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { }
 SceneView(isRendering = isDirty) { }         SceneView { }   // OnDemand is the default — delete the dirty-tracking
 ```
 

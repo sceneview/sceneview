@@ -54,7 +54,7 @@ class FrameRatePolicyTest {
     @Test
     fun returnsImmediatelyWhileTheSceneIsDirty() = runTest {
         val gate = FrameRateGate()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         var completed = false
 
         launch {
@@ -74,7 +74,7 @@ class FrameRatePolicyTest {
     fun returnsImmediatelyUnderContinuous() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.Continuous)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.Continuous())
         var completed = false
 
         launch {
@@ -94,7 +94,7 @@ class FrameRatePolicyTest {
     fun parksWhileTheSceneIsSettled() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         var completed = false
 
         val job = launch {
@@ -116,7 +116,7 @@ class FrameRatePolicyTest {
     fun resumesOnTheSnapshotApplyRatherThanOnAPollTick() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         var resumedAtVirtualTime = -1L
 
         val job = launch {
@@ -146,7 +146,7 @@ class FrameRatePolicyTest {
     fun switchingToContinuousAtRuntimeWakesTheParkedLoop() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         var completed = false
 
         val job = launch {
@@ -157,7 +157,7 @@ class FrameRatePolicyTest {
         runCurrent()
         assertFalse(completed)
 
-        policy.value = FrameRatePolicy.Continuous
+        policy.value = FrameRatePolicy.Continuous()
         Snapshot.sendApplyNotifications()
         runCurrent()
 
@@ -172,7 +172,7 @@ class FrameRatePolicyTest {
     fun unrelatedSnapshotWritesDoNotResumeTheLoop() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         val somethingElse = mutableStateOf(0)
         var completed = false
 
@@ -212,7 +212,7 @@ class FrameRatePolicyTest {
     fun anOwedFrameWakesTheParkedLoopOnASettledScene() = runTest {
         val gate = FrameRateGate()
         gate.settle()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         var resumedAtVirtualTime = -1L
 
         val job = launch {
@@ -252,7 +252,7 @@ class FrameRatePolicyTest {
     @Test
     fun settlingTheOwedFramesParksTheLoopAgain() = runTest {
         val gate = FrameRateGate()
-        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand)
+        val policy = mutableStateOf<FrameRatePolicy>(FrameRatePolicy.OnDemand())
         val shouldRender = shouldRenderState(policy, gate)
 
         // First pass: the gate starts dirty, so the loop does not park at all.

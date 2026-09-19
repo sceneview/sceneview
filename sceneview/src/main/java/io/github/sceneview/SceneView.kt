@@ -132,7 +132,8 @@ import io.github.sceneview.node.findActivity
  * @param frameRatePolicy       How often the scene presents. Default [FrameRatePolicy.OnDemand]:
  *                              full cadence while anything moves, a short settle tail, then the
  *                              loop parks. [FrameRatePolicy.Continuous] restores the pre-1.0
- *                              "draw every vsync" behaviour. See the parameter's own KDoc.
+ *                              "draw every vsync" behaviour, and [FrameRatePolicy.maxFps] caps
+ *                              either of them. See the parameter's own KDoc.
  * @param renderInvalidator     Escape hatch for scene changes the library cannot observe — a
  *                              Filament material or texture written directly. Use
  *                              [rememberRenderInvalidator] and call `requestRender()` after.
@@ -250,14 +251,19 @@ fun SceneView(
      * Choose another policy when the scene is driven from outside the library and a late frame is
      * worse than the power it saves:
      *
+     * The two questions the type asks — *when may a frame be drawn* and *how fast at most* — are
+     * independent, and [FrameRatePolicy.maxFps] answers the second one on either mode:
+     *
      * ```kotlin
      * // The pre-1.0 default, verbatim:
-     * SceneView(frameRatePolicy = FrameRatePolicy.Continuous) { … }
-     * // A background scene held at 30 fps while the foreground UI runs at 120:
-     * SceneView(frameRatePolicy = FrameRatePolicy.Capped(30)) { … }
+     * SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { … }
+     * // A background scene drawn every vsync but held at 30 fps while the UI runs at 120:
+     * SceneView(frameRatePolicy = FrameRatePolicy.Continuous(maxFps = 30)) { … }
+     * // Render-on-demand, and even when it wakes, never faster than 30 fps:
+     * SceneView(frameRatePolicy = FrameRatePolicy.OnDemand(maxFps = 30)) { … }
      * ```
      */
-    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
     /**
      * Escape hatch for scene changes [frameRatePolicy] cannot observe. A no-op under
      * [FrameRatePolicy.Continuous], where every vsync is drawn anyway.
@@ -700,7 +706,7 @@ fun SceneView(
 
     val lastFrameTimeNanosRef = remember { AtomicLong(0L) }
     // Timestamp of the last frame that actually reached the surface — the phase reference for
-    // [FrameRatePolicy.Capped]. `0L` means "none yet". Distinct from `lastFrameTimeNanosRef`,
+    // [FrameRatePolicy.maxFps]. `0L` means "none yet". Distinct from `lastFrameTimeNanosRef`,
     // which tracks every *tick* and feeds the manipulator's delta.
     val lastPresentNanosRef = remember { AtomicLong(0L) }
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
@@ -1004,19 +1010,17 @@ fun SceneView(
                             sceneRenderer.setFrameRateVote(
                                 frameRateVote(policy, active, sceneRenderer.maxRefreshRate)
                             )
-                            when (policy) {
-                                is FrameRatePolicy.Capped -> shouldPresentAtCap(
-                                    fps = policy.fps,
-                                    frameTimeNanos = frameTimeNanos,
-                                    lastPresentNanos = lastPresentNanosRef.get(),
-                                    // The panel's *current* mode, not a constant and not its
-                                    // ceiling: the cap can only be met on whole vsyncs, and on a
-                                    // VRR panel which vsyncs those are changes under us.
-                                    vsyncPeriodNanos = vsyncPeriodNanos(sceneRenderer.refreshRate)
-                                )
-                                FrameRatePolicy.Continuous -> true
-                                FrameRatePolicy.OnDemand -> frameRateGate.shouldRender(active)
-                            }
+                            // Both questions of [FrameRatePolicy] — the mode and the optional cap —
+                            // in the order that keeps them independent. See [shouldPresentFrame].
+                            shouldPresentFrame(
+                                policy = policy,
+                                frameTimeNanos = frameTimeNanos,
+                                lastPresentNanos = lastPresentNanosRef.get(),
+                                // The panel's *current* mode, not a constant and not its
+                                // ceiling: the cap can only be met on whole vsyncs, and on a
+                                // VRR panel which vsyncs those are changes under us.
+                                vsyncPeriodNanos = vsyncPeriodNanos(sceneRenderer.refreshRate)
+                            ) { frameRateGate.shouldRender(active) }
                         }
                     ) {
                         modelLoader.updateLoad()
@@ -2146,7 +2150,7 @@ fun Scene(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
-    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,

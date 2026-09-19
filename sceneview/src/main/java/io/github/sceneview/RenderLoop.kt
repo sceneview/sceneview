@@ -142,12 +142,17 @@ internal fun vsyncPeriodNanos(refreshRate: Float?): Long =
     if (refreshRate != null && refreshRate > 0f) (1_000_000_000.0 / refreshRate).toLong() else 0L
 
 /**
- * Whether a [FrameRatePolicy.Capped] scene may present at [frameTimeNanos], given the timestamp of
- * the last presented frame (`0L` = none yet) and the display's real [vsyncPeriodNanos].
+ * Whether a scene carrying a [FrameRatePolicy.maxFps] ceiling may present at [frameTimeNanos], given
+ * the timestamp of the last presented frame (`0L` = none yet) and the display's real
+ * [vsyncPeriodNanos].
+ *
+ * Orthogonal to *why* the frame was wanted: it caps an [FrameRatePolicy.OnDemand] scene that woke on
+ * a change exactly as it caps a [FrameRatePolicy.Continuous] one. The gate decides whether there is
+ * anything to draw, this decides whether it is too soon to draw it.
  *
  * A cap can only ever be met by presenting on a **whole number of vsyncs**: nothing else exists to
  * present on. So the requested period is rounded to a whole number of vsyncs, and it is rounded
- * **up**, because `Capped(fps)` promises "never faster than fps". `Capped(90)` on a 120 Hz panel
+ * **up**, because `maxFps` promises "never faster than that". `maxFps = 90` on a 120 Hz panel
  * therefore runs at 60, not at 120: 90 is not reachable there, and of the two reachable neighbours
  * only 60 honours the promise.
  *
@@ -158,9 +163,9 @@ internal fun vsyncPeriodNanos(refreshRate: Float?): Long =
  *
  * This used to be a hard-coded `8_000_000L`, "half a 60 Hz vsync", subtracted from the requested
  * period. On a 120 Hz panel that slack (8 ms) was larger than the whole vsync (8.33 ms), so every
- * vsync cleared the deadline and the cap capped nothing: `Capped(90)` rendered 120, `Capped(60)`
- * on a 90 Hz panel rendered 90. The rule was general — a constant tolerance stops working as soon
- * as `fps > refresh / 2` — and the tests only ever ran it at 60 Hz.
+ * vsync cleared the deadline and the cap capped nothing: a 90 fps cap rendered 120, a 60 fps cap on
+ * a 90 Hz panel rendered 90. The rule was general — a constant tolerance stops working as soon as
+ * `fps > refresh / 2` — and the tests only ever ran it at 60 Hz.
  */
 internal fun shouldPresentAtCap(
     fps: Int,
@@ -181,6 +186,45 @@ private fun ceilDiv(value: Long, divisor: Long): Long =
     if (value <= 0L) 0L else (value + divisor - 1L) / divisor
 
 /**
+ * The whole per-frame decision of [FrameRatePolicy]: may this tick present?
+ *
+ * [FrameRatePolicy] asks two independent questions — *when may a frame be drawn* (the mode) and *how
+ * fast at most* ([FrameRatePolicy.maxFps]) — and they compose in one direction only. The cap is
+ * asked **first**, deliberately: [onDemandGate] is a consuming read (it clears
+ * [FrameRateGate]'s dirty flag and re-arms the settle window), so asking it on a tick the cap
+ * forbids would spend a change on a frame that is never drawn. The change would then wait for the
+ * *next* invalidation to be shown — a dropped frame turning into a stale picture. Asked in this
+ * order, a change that lands between two capped ticks stays pending and is presented on the first
+ * tick the cap allows.
+ *
+ * Kept here, next to [shouldPresentAtCap], because it is the only place both terms meet, and
+ * `SceneView.kt` is at detekt's `allowedFunctionsPerFile` ceiling (see the file header).
+ *
+ * @param onDemandGate the [FrameRateGate.shouldRender] call for this tick — consulted only under
+ * [FrameRatePolicy.OnDemand], and only on a tick the cap allows.
+ */
+internal inline fun shouldPresentFrame(
+    policy: FrameRatePolicy,
+    frameTimeNanos: Long,
+    lastPresentNanos: Long,
+    vsyncPeriodNanos: Long,
+    onDemandGate: () -> Boolean
+): Boolean {
+    val maxFps = policy.maxFps
+    val capAllows = maxFps == null || shouldPresentAtCap(
+        fps = maxFps,
+        frameTimeNanos = frameTimeNanos,
+        lastPresentNanos = lastPresentNanos,
+        vsyncPeriodNanos = vsyncPeriodNanos
+    )
+    if (!capAllows) return false
+    return when (policy) {
+        is FrameRatePolicy.Continuous -> true
+        is FrameRatePolicy.OnDemand -> onDemandGate()
+    }
+}
+
+/**
  * The cadence, in frames per second, that the scene asks the display for — see
  * [SceneRenderer.setFrameRateVote], which turns this into a `Surface.setFrameRate` call.
  *
@@ -188,19 +232,27 @@ private fun ceilDiv(value: Long, divisor: Long): Long =
  * refresh rate panel is what lets it drop to its idle mode. It is the resting value, not a request
  * for zero frames.
  *
- * @param maxRefreshRate The highest mode the display advertises, or `null` when unknown — a
- *                       [FrameRatePolicy.Continuous] scene on an unknown display votes nothing
- *                       rather than guessing a number the panel may not support.
+ * Two independent terms, exactly as in [FrameRatePolicy] itself: the mode decides *whether* a
+ * cadence is wanted at all right now, and [FrameRatePolicy.maxFps] decides *which* one. A capped
+ * scene must not vote the panel maximum — that is the whole reason a variable-refresh-rate panel
+ * would stay at its ceiling to serve frames the cap forbids.
+ *
+ * @param maxRefreshRate The highest mode the display advertises, or `null` when unknown — an
+ *                       uncapped [FrameRatePolicy.Continuous] scene on an unknown display votes
+ *                       nothing rather than guessing a number the panel may not support.
  */
 internal fun frameRateVote(
     policy: FrameRatePolicy,
     active: Boolean,
     maxRefreshRate: Float?
-): Float = when (policy) {
-    // Never vote above what the panel can do: `Capped(240)` on a 120 Hz display is a request the
+): Float {
+    val wantsCadence = when (policy) {
+        is FrameRatePolicy.Continuous -> true
+        is FrameRatePolicy.OnDemand -> active
+    }
+    if (!wantsCadence) return 0f
+    val cap = policy.maxFps?.toFloat() ?: return maxRefreshRate ?: 0f
+    // Never vote above what the panel can do: a 240 fps cap on a 120 Hz display is a request the
     // system would clamp anyway, and an out-of-range vote is worth no more than an honest one.
-    is FrameRatePolicy.Capped ->
-        maxRefreshRate?.let { minOf(policy.fps.toFloat(), it) } ?: policy.fps.toFloat()
-    FrameRatePolicy.Continuous -> maxRefreshRate ?: 0f
-    FrameRatePolicy.OnDemand -> if (active) maxRefreshRate ?: 0f else 0f
+    return maxRefreshRate?.let { minOf(cap, it) } ?: cap
 }

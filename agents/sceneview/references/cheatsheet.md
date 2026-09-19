@@ -26,7 +26,7 @@ SceneView(
     mainLightNode = rememberMainLightNode(engine),     // null to disable
     fillLightNode = rememberFillLightNode(engine),     // null to disable
     isOpaque = true,
-    frameRatePolicy = FrameRatePolicy.OnDemand,         // default: draw on change, then park. Continuous / Capped(fps)
+    frameRatePolicy = FrameRatePolicy.OnDemand(),       // default: draw on change, then park. Continuous(); maxFps caps either
     renderQuality = RenderQuality.Default,              // Cinematic / Default / Performance
     onGestureListener = rememberOnGestureListener(/* … */),
     onFrame = { frameTimeNanos -> /* … */ },

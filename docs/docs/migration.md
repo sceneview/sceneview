@@ -12,7 +12,7 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 ### `SceneView(isRendering:)` is removed; render-on-demand is the default ([#3108](https://github.com/sceneview/sceneview/issues/3108))
 
 A `SceneView` no longer renders every vsync for as long as it is composed. The new
-`frameRatePolicy` parameter defaults to `FrameRatePolicy.OnDemand`: the library tracks what makes
+`frameRatePolicy` parameter defaults to `FrameRatePolicy.OnDemand()`: the library tracks what makes
 the picture change, holds the display's full cadence while anything is happening, then draws a
 short tail of settle frames and parks the loop.
 
@@ -37,7 +37,7 @@ SceneView { /* … */ }
 **Key differences:**
 
 - `isRendering = true` (or omitting the parameter) becomes
-  `frameRatePolicy = FrameRatePolicy.Continuous` if you genuinely want a frame every vsync. If you
+  `frameRatePolicy = FrameRatePolicy.Continuous()` if you genuinely want a frame every vsync. If you
   never passed the parameter at all, the honest migration is usually to change **nothing** and take
   the new default.
 - The `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window — **delete
@@ -58,8 +58,10 @@ SceneView { /* … */ }
 - Pre-compiled consumers must recompile. A caller passing nine or more **positional** arguments
   gets a type error at slot 9 rather than a silent behaviour change — the slot went from `Boolean`
   to `FrameRatePolicy`.
-- `FrameRatePolicy.Capped(fps)` is new: render continuously but never faster than `fps`, and vote
-  `fps` to the display rather than the panel maximum.
+- `maxFps` is new, and it is an argument of both modes rather than a policy of its own:
+  `OnDemand(maxFps = 30)` renders on demand and, when it does render, never faster than 30 fps;
+  `Continuous(maxFps = 30)` is a steady 30 fps. Either way the display is voted `maxFps` rather
+  than the panel maximum. `null` (the default) means the display's own cadence.
 - **Direct Filament edits are the one thing the default cannot see.** Anything written below the
   scene graph leaves nothing to invalidate on. The full list, and it is a list rather than an
   example, because the cost of missing one is a frozen image:
@@ -84,7 +86,7 @@ SceneView { /* … */ }
   unaffected.
 
 **Action:** delete the `isRendering` argument and the dirty-tracking behind it. Pass
-`frameRatePolicy = FrameRatePolicy.Continuous` only if your scene is driven by something the
+`frameRatePolicy = FrameRatePolicy.Continuous()` only if your scene is driven by something the
 library cannot observe — an external simulation writing into Filament each frame, a custom
 `Renderer` hook, a texture updated off-thread.
 

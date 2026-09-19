@@ -3,6 +3,7 @@ package io.github.sceneview
 import androidx.compose.runtime.snapshots.Snapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -198,35 +199,54 @@ class FrameRateGateTest {
         assertEquals(
             "max cadence during the gesture and the animation",
             120f,
-            frameRateVote(FrameRatePolicy.OnDemand, active = true, maxRefreshRate = 120f),
+            frameRateVote(FrameRatePolicy.OnDemand(), active = true, maxRefreshRate = 120f),
             0f
         )
         assertEquals(
             "rest afterwards: 0 means 'no preference', which is what lets a variable refresh rate " +
                 "panel drop to its idle mode — it is not a request for zero frames",
             0f,
-            frameRateVote(FrameRatePolicy.OnDemand, active = false, maxRefreshRate = 120f),
-            0f
-        )
-        assertEquals(
-            30f,
-            frameRateVote(FrameRatePolicy.Capped(30), active = false, maxRefreshRate = 120f),
+            frameRateVote(FrameRatePolicy.OnDemand(), active = false, maxRefreshRate = 120f),
             0f
         )
         assertEquals(
             120f,
-            frameRateVote(FrameRatePolicy.Continuous, active = false, maxRefreshRate = 120f),
+            frameRateVote(FrameRatePolicy.Continuous(), active = false, maxRefreshRate = 120f),
             0f
         )
         assertEquals(
             "an unknown display gets no vote rather than a guessed number it may not support",
             0f,
-            frameRateVote(FrameRatePolicy.Continuous, active = true, maxRefreshRate = null),
+            frameRateVote(FrameRatePolicy.Continuous(), active = true, maxRefreshRate = null),
             0f
         )
     }
 
-    // ── Capped, on a display that is not 60 Hz ────────────────────────────────────────────────
+    @Test
+    fun theVoteCarriesTheCapOnEitherMode() {
+        assertEquals(
+            "a Continuous scene capped at 30 asks the panel for 30, not for its maximum: a " +
+                "variable refresh rate panel held at 120 to serve frames the cap forbids is the " +
+                "exact power draw the cap exists to avoid",
+            30f,
+            frameRateVote(FrameRatePolicy.Continuous(maxFps = 30), active = false, 120f),
+            0f
+        )
+        assertEquals(
+            "an on-demand scene that woke up is drawing, and it is drawing at its cap",
+            30f,
+            frameRateVote(FrameRatePolicy.OnDemand(maxFps = 30), active = true, 120f),
+            0f
+        )
+        assertEquals(
+            "an on-demand scene at rest still withdraws the vote, cap or no cap",
+            0f,
+            frameRateVote(FrameRatePolicy.OnDemand(maxFps = 30), active = false, 120f),
+            0f
+        )
+    }
+
+    // ── The maxFps cap, on a display that is not 60 Hz ────────────────────────────────────────
     //
     // #3108 blocker 4. The slack used to be `8_000_000L`, "half a 60 Hz vsync", and every test ran
     // at 60 Hz. On a 120 Hz panel that constant is larger than a whole vsync (8.33 ms), so every
@@ -267,7 +287,7 @@ class FrameRateGateTest {
         // The regression this pins: with the old constant slack this read 120.
         val presented = presentedInOneSecond(fps = 90, refreshRate = 120f)
         assertTrue(
-            "Capped(90) must never present faster than 90 on a 120 Hz panel — it read $presented",
+            "maxFps = 90 must never present faster than 90 on a 120 Hz panel — it read $presented",
             presented <= 90
         )
         assertEquals(
@@ -282,7 +302,7 @@ class FrameRateGateTest {
     fun aCapIsNeverExceededOnA90HzPanel() {
         val presented = presentedInOneSecond(fps = 60, refreshRate = 90f)
         assertTrue(
-            "Capped(60) must never present faster than 60 on a 90 Hz panel — it read $presented",
+            "maxFps = 60 must never present faster than 60 on a 90 Hz panel — it read $presented",
             presented <= 60
         )
         assertEquals("one frame every two vsyncs of 90 Hz", 45, presented)
@@ -301,7 +321,7 @@ class FrameRateGateTest {
     @Test
     fun aCapAtOrAboveTheRefreshRatePresentsEveryVsync() {
         assertEquals(
-            "Capped(60) on 60 Hz is every vsync, not every other one",
+            "maxFps = 60 on a 60 Hz panel is every vsync, not every other one",
             60,
             presentedInOneSecond(fps = 60, refreshRate = 60f)
         )
@@ -336,24 +356,113 @@ class FrameRateGateTest {
 
     @Test
     fun aNonPositiveCapIsRejectedAtConstruction() {
-        // The cap arithmetic divides by `fps`, so a zero or negative one has no meaning. It is
-        // refused where the caller can see it rather than silently treated as "present always".
-        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Capped(0) }
-        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Capped(-30) }
+        // The cap arithmetic divides by `maxFps`, so a zero or negative one has no meaning. It is
+        // refused where the caller can see it rather than silently treated as "present always" —
+        // and on both modes, because the cap is now a property of the type, not a third case.
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.OnDemand(0) }
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.OnDemand(-30) }
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Continuous(0) }
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Continuous(-30) }
+    }
+
+    @Test
+    fun noCapMeansTheDisplaysOwnCadence() {
+        assertNull(
+            "the default on both modes is `null`, which is 'whatever the panel does' — not a " +
+                "number, so nothing has to be updated when panels get faster",
+            FrameRatePolicy.OnDemand().maxFps
+        )
+        assertNull(FrameRatePolicy.Continuous().maxFps)
     }
 
     @Test
     fun aCapNeverVotesAboveWhatThePanelCanDo() {
         assertEquals(
-            "Capped(240) on a 120 Hz panel votes 120, not a number the panel cannot honour",
+            "a 240 fps cap on a 120 Hz panel votes 120, not a number the panel cannot honour",
             120f,
-            frameRateVote(FrameRatePolicy.Capped(240), active = true, maxRefreshRate = 120f),
+            frameRateVote(FrameRatePolicy.Continuous(maxFps = 240), active = true, 120f),
             0f
         )
         assertEquals(
-            30f,
-            frameRateVote(FrameRatePolicy.Capped(30), active = false, maxRefreshRate = 120f),
+            120f,
+            frameRateVote(FrameRatePolicy.OnDemand(maxFps = 240), active = true, 120f),
             0f
+        )
+    }
+
+    // ── The cap and the mode, composed ───────────────────────────────────────────────────────────
+    //
+    // The two questions are independent — *when* may a frame be drawn, and *how fast at most* — and
+    // the old three-case shape (OnDemand | Continuous | Capped(fps)) could not express their
+    // product: asking for a cap silently meant "and draw every frame, forever", so the one
+    // combination a battery-conscious caller actually wants — render on demand, and even then never
+    // faster than N — was unreachable. These pin the product itself, on [shouldPresentFrame], which
+    // is the whole of `SceneView`'s per-frame decision.
+
+    /** Frames presented over one virtual second of [refreshRate] vsyncs, gate always saying yes. */
+    private fun presentedInOneSecond(policy: FrameRatePolicy, refreshRate: Float): Int {
+        val vsync = vsyncPeriodNanos(refreshRate)
+        val base = 1_000_000_000L
+        var last = 0L
+        var presented = 0
+        for (i in 0 until refreshRate.toInt()) {
+            val now = base + i * vsync
+            if (shouldPresentFrame(policy, now, last, vsync) { true }) {
+                presented++
+                last = now
+            }
+        }
+        return presented
+    }
+
+    @Test
+    fun aCapAppliesToAnOnDemandSceneThatWokeUp() {
+        assertEquals(
+            "a scene that renders on demand and is currently being dragged must still honour its " +
+                "cap: 30 fps on a 60 Hz panel is every other vsync",
+            30,
+            presentedInOneSecond(FrameRatePolicy.OnDemand(maxFps = 30), refreshRate = 60f)
+        )
+        assertEquals(
+            "the same cap on the same scene drawn unconditionally",
+            30,
+            presentedInOneSecond(FrameRatePolicy.Continuous(maxFps = 30), refreshRate = 60f)
+        )
+    }
+
+    @Test
+    fun anUncappedPolicyPresentsOnEveryVsyncInEitherMode() {
+        assertEquals(60, presentedInOneSecond(FrameRatePolicy.OnDemand(), refreshRate = 60f))
+        assertEquals(120, presentedInOneSecond(FrameRatePolicy.Continuous(), refreshRate = 120f))
+    }
+
+    @Test
+    fun aCappedTickNeverConsumesTheGatesInvalidation() {
+        // The gate's read is *consuming*: it clears the dirty flag and re-arms the settle window.
+        // So the cap has to be asked first. Asked the other way round, a change landing between two
+        // capped ticks would be spent on a frame that is never drawn, and the screen would keep
+        // showing the old picture until something else invalidated — a dropped frame turning into a
+        // stale one, which is the "frozen image" family this whole change is trying to close.
+        var pendingChange = true
+        var gateReads = 0
+        val vsync = vsyncPeriodNanos(60f)
+        val lastPresent = 1_000_000_000L
+
+        val presented = shouldPresentFrame(
+            policy = FrameRatePolicy.OnDemand(maxFps = 30),
+            frameTimeNanos = lastPresent + vsync,   // one vsync too early for a 30 fps cap
+            lastPresentNanos = lastPresent,
+            vsyncPeriodNanos = vsync
+        ) {
+            gateReads++
+            pendingChange.also { pendingChange = false }
+        }
+
+        assertFalse("the cap forbids this tick", presented)
+        assertEquals("the gate must not even be asked on a tick the cap forbids", 0, gateReads)
+        assertTrue(
+            "the invalidation must survive to the first tick the cap allows",
+            pendingChange
         )
     }
 

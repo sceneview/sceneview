@@ -99,7 +99,7 @@ class DebugStats {
          * How long without a presented frame counts as parked.
          *
          * Comfortably longer than the slowest cadence a scene can legitimately be running at —
-         * [io.github.sceneview.FrameRatePolicy.Capped] rejects anything below 1 fps at
+         * [io.github.sceneview.FrameRatePolicy.maxFps] rejects anything below 1 fps at
          * construction — so a slow scene is never mislabelled idle.
          */
         const val IDLE_AFTER_MS = 1_200L

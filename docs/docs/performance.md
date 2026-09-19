@@ -373,12 +373,13 @@ a second. On devices whose Choreographer keeps ticking a visually static UI that
 source of battery drain and thermal throttling (#3108).
 
 `frameRatePolicy` now decides when a frame is submitted, and it defaults to
-`FrameRatePolicy.OnDemand`:
+`FrameRatePolicy.OnDemand()`:
 
 ```kotlin
-SceneView { /* … */ }                                            // OnDemand — the default
-SceneView(frameRatePolicy = FrameRatePolicy.Continuous) { }       // a frame every vsync
-SceneView(frameRatePolicy = FrameRatePolicy.Capped(30)) { }       // never faster than 30 fps
+SceneView { /* … */ }                                            // OnDemand() — the default
+SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { }     // a frame every vsync
+SceneView(frameRatePolicy = FrameRatePolicy.Continuous(30)) { }   // a steady 30 fps
+SceneView(frameRatePolicy = FrameRatePolicy.OnDemand(30)) { }     // on demand, never above 30 fps
 ```
 
 Under `OnDemand` the library tracks what makes the picture change, so the call site computes
@@ -419,7 +420,7 @@ resumes the loop directly, so a touch on a parked scene reaches the screen on th
 
 !!! info "Migrating from `isRendering`"
     `isRendering: Boolean` is **removed**, with no deprecated overload.
-    `isRendering = true` becomes `frameRatePolicy = FrameRatePolicy.Continuous`. Everything
+    `isRendering = true` becomes `frameRatePolicy = FrameRatePolicy.Continuous()`. Everything
     else — the `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window the
     old parameter needed — is now the library's job: **delete it**, do not translate it.
 
