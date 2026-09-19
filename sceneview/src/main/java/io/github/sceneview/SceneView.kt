@@ -133,8 +133,12 @@ import io.github.sceneview.node.findActivity
  *                              on a completely idle scene to park the loop and stop drawing; a new
  *                              or resized surface still gets one frame. See the parameter's own
  *                              KDoc for how to drive it — the dirty signal must be Compose state.
- * @param renderQuality         One-line preset applied to `view` ([RenderQuality.Default],
+ * @param renderQuality         One-line preset ([RenderQuality.Default],
  *                              [RenderQuality.Cinematic], or [RenderQuality.Performance]).
+ *                              Applied to **both** [view] (post-processing, anti-aliasing,
+ *                              dynamic resolution) and [renderer] (the tuning of the
+ *                              dynamic-resolution controller), so a caller-supplied [renderer]
+ *                              gets the whole preset and not two thirds of it.
  * @param autoCenterContent     When `true` (default), the library translates all DSL [content]
  *                              nodes once — on the first frame their union bounding box is
  *                              non-empty — so the content centroid lands on the **world origin**
@@ -418,6 +422,14 @@ fun SceneView(
     // they will not be undone".
     LaunchedEffect(view, renderQuality) {
         view.applyRenderQuality(renderQuality)
+    }
+    // The other half of the preset, on the other Filament object. `Renderer.frameRateOptions`
+    // tunes how fast the dynamic resolution enabled just above reacts, and it used to be written
+    // only inside `createRenderer` — so `SceneView(renderer = myRenderer)`, a public parameter,
+    // got the View half of the preset and Filament's stock controller. Keyed on the renderer in
+    // use, so every path gets the whole preset.
+    LaunchedEffect(renderer, renderQuality) {
+        renderer.applyRenderQuality(renderQuality)
     }
 
     // Force a per-frame color-buffer clear so stale renderable pixels never survive

@@ -209,22 +209,12 @@ fun createARView(engine: Engine): View = engine.createView().apply {
 }
 
 fun createRenderer(engine: Engine): Renderer = engine.createRenderer().apply {
-    // Tuning for the dynamic resolution enabled in [createView]: these options are the controller
-    // of that feedback loop, and Filament ignores them when dynamic resolution is off.
-    //
-    // `scaleRate` is raised from Filament's stock 1/15 to 1/8 so the valve reacts within a few
-    // frames of a spike instead of a quarter second. It is the pair of the 0.75 `minScale` floor:
-    // a loop that cannot go far may as well go quickly, and the two together turn a stutter into
-    // a brief softening the user is unlikely to catch.
-    //
-    // `headRoomRatio` and `history` are set to Filament's own defaults on purpose — writing them
-    // down states what this preset depends on, so a future Filament default change shows up as a
-    // diff here rather than as a silent behaviour change in every SceneView.
-    frameRateOptions = frameRateOptions.apply {
-        headRoomRatio = 0.0f
-        scaleRate = 0.125f
-        history = 15
-    }
+    // The `Renderer` half of `RenderQuality.Default`, delegated rather than duplicated: this used
+    // to be the only place the dynamic-resolution controller was tuned, so a caller who passed
+    // their own `Renderer` to `SceneView` got the `View` half of the preset and Filament's stock
+    // controller. `SceneView` now applies this to whatever `Renderer` it is actually given, and
+    // this factory and the preset can no longer drift apart.
+    applyRenderQuality(RenderQuality.Default)
 }
 
 fun createCameraNode(engine: Engine): CameraNode = DefaultCameraNode(engine)

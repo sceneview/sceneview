@@ -214,6 +214,7 @@ public final class io/github/sceneview/RenderQuality : java/lang/Enum {
 }
 
 public final class io/github/sceneview/RenderQualityKt {
+	public static final fun applyRenderQuality (Lcom/google/android/filament/Renderer;Lio/github/sceneview/RenderQuality;)V
 	public static final fun applyRenderQuality (Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;)V
 }
 
