@@ -18,10 +18,13 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.dropbox.differ.SimpleImageComparator
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.demo.DemoScaffold
@@ -98,6 +101,14 @@ class PlacementBottomAnchorSnapshotTest {
 
     private val state = TapToPlaceState()
 
+    /**
+     * What `WindowInsets.safeDrawing` reported to the composition itself, read from inside
+     * it. Held on the class rather than in a local because the value that matters is the
+     * one *after* [injectNavigationBarInset] has run, i.e. after the composing call has
+     * already returned.
+     */
+    private var observedBottomInsetPx = 0
+
     @Before
     fun setUp() {
         // LOST is the one phase where exactly one of the guide's three elements carries
@@ -163,8 +174,23 @@ class PlacementBottomAnchorSnapshotTest {
         navInsetDp: Int = 0,
     ) {
         state.scalePercent = scalePercent
-        var observedBottomInsetPx = 0
+        composeScreen(darkTheme, ground)
+        if (navInsetDp > 0) injectNavigationBarInset(navInsetDp)
+        settleAnimations()
 
+        // What `safeDrawing` actually reported, so a silently-ignored dispatch shows up as
+        // a number in the log instead of passing as a proof it never made.
+        val observedNavInset = with(composeRule.density) { observedBottomInsetPx.toDp() }
+
+        composeRule.onRoot().captureRoboImage(
+            "src/test/snapshots/placement_bottom_$name.png",
+            roborazziOptions = CROSS_PLATFORM_TOLERANT,
+        )
+        assertAnchor(name, navInsetDp, observedNavInset)
+    }
+
+    /** The real scaffold, the real dock, the real overlays, over a flat stand-in scene. */
+    private fun composeScreen(darkTheme: Boolean, ground: Color) {
         composeRule.setContent {
             observedBottomInsetPx = WindowInsets.safeDrawing.getBottom(LocalDensity.current)
             SceneViewDemoTheme(darkTheme = darkTheme) {
@@ -184,28 +210,34 @@ class PlacementBottomAnchorSnapshotTest {
                 )
             }
         }
-        if (navInsetDp > 0) {
-            // Robolectric hands the window no system bars at all, so `safeDrawing` is 0 on
-            // every side and the two navigation modes are indistinguishable — the exact
-            // limitation `PlacementBottomAnchorTest` documents. Dispatching the insets by
-            // hand is the only way to render the three-button case off-device. Whether it
-            // takes is *measured* below, not assumed.
-            composeRule.activityRule.scenario.onActivity { activity ->
-                val insets = WindowInsetsCompat.Builder()
-                    .setInsets(
-                        WindowInsetsCompat.Type.navigationBars(),
-                        Insets.of(0, 0, 0, (navInsetDp * DENSITY).toInt()),
-                    )
-                    .build()
-                // Compose listens on the `AndroidComposeView`, not on the decor view, and
-                // a decor-level dispatch does not reach it under Robolectric. Hand the
-                // insets to the composition's own host view instead.
-                val content = activity.findViewById<ViewGroup>(android.R.id.content)
-                generateSequence(content as View) { v ->
-                    (v as? ViewGroup)?.takeIf { it.childCount > 0 }?.getChildAt(0)
-                }.forEach { ViewCompat.dispatchApplyWindowInsets(it, insets) }
-            }
+    }
+
+    /**
+     * Robolectric hands the window no system bars at all, so `safeDrawing` is 0 on every
+     * side and the two navigation modes are indistinguishable — the exact limitation
+     * [PlacementBottomAnchorTest] documents. Dispatching the insets by hand is the only
+     * way to render the three-button case off-device. Whether it takes is *measured* by
+     * the caller, not assumed.
+     */
+    private fun injectNavigationBarInset(navInsetDp: Int) {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(
+                    WindowInsetsCompat.Type.navigationBars(),
+                    Insets.of(0, 0, 0, (navInsetDp * DENSITY).toInt()),
+                )
+                .build()
+            // Compose listens on the `AndroidComposeView`, not on the decor view, and a
+            // decor-level dispatch does not reach it under Robolectric. Hand the insets to
+            // the composition's own host view instead.
+            val content = activity.findViewById<ViewGroup>(android.R.id.content)
+            generateSequence(content as View) { v ->
+                (v as? ViewGroup)?.takeIf { it.childCount > 0 }?.getChildAt(0)
+            }.forEach { ViewCompat.dispatchApplyWindowInsets(it, insets) }
         }
+    }
+
+    private fun settleAnimations() {
         composeRule.waitForIdle()
         // The guide is a time-driven state machine and its pill arrives through a 150 ms
         // `fadeIn`, so an *idle* composition is not necessarily a *settled* one — advance
@@ -218,14 +250,10 @@ class PlacementBottomAnchorSnapshotTest {
         // see the class KDoc.
         composeRule.mainClock.advanceTimeBy(2_000)
         composeRule.waitForIdle()
+    }
 
-        // What `safeDrawing` actually reported, so a silently-ignored dispatch shows up as
-        // a number in the log instead of passing as a proof it never made.
-        val observedNavInset = with(composeRule.density) { observedBottomInsetPx.toDp() }
-
-        composeRule.onRoot().captureRoboImage("src/test/snapshots/placement_bottom_$name.png")
-
-        // ── the measurement, on the photographed frame ───────────────────────────────
+    /** The measurement, on the frame that was just photographed. */
+    private fun assertAnchor(name: String, navInsetDp: Int, observedNavInset: Dp) {
         val pill = composeRule.onNodeWithTag(PlacementTestTags.DISCOVERY_GUIDE)
             .getUnclippedBoundsInRoot()
         val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK)
@@ -296,6 +324,28 @@ class PlacementBottomAnchorSnapshotTest {
         val DOCK = listOf(
             DockItem(icon = Icons.Filled.ViewInAr, label = "Models", onClick = {}),
             DockItem(icon = Icons.Filled.Refresh, label = "Clear", onClick = {}),
+        )
+
+        /**
+         * Same tolerance, same reason, as `ContactShadowControlsSnapshotTest`: goldens
+         * recorded on macOS are verified on the CI's Linux runners, and the two round some
+         * composited colours differently.
+         *
+         * Measured here, not inherited on faith. Run 35455042711 rejected all ten of these
+         * goldens; comparing each one against the runner's own `_actual.png` gives a
+         * **largest single-channel delta of 2/255** and not one pixel beyond it — on a frame
+         * whose own contrast range spans 0..255. The geometry is identical: every
+         * `MEASURE[…]` line the runner printed matches the local one to the dp.
+         *
+         * `maxDistance` rather than a change-percentage: the drift is spread thinly over the
+         * scrim's gradient, so a percentage big enough to absorb it would wave through a
+         * moved pill. This keeps every pixel compared and forgives only sub-perceptual
+         * rounding — a real regression here moves whole glyph blocks, distances near 1.0.
+         */
+        private val CROSS_PLATFORM_TOLERANT = RoborazziOptions(
+            compareOptions = RoborazziOptions.CompareOptions(
+                imageComparator = SimpleImageComparator(maxDistance = 0.02f),
+            ),
         )
     }
 }
