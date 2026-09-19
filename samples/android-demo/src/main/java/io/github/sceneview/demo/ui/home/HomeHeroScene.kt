@@ -2,11 +2,9 @@ package io.github.sceneview.demo.ui.home
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -15,10 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.google.android.filament.Camera
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -26,7 +22,6 @@ import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -37,7 +32,6 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import kotlin.math.abs
-import kotlin.math.exp
 import kotlin.math.min
 
 /** The subject of the live home hero — the app's own Model Viewer subject, already bundled. */
@@ -49,135 +43,114 @@ private const val HERO_LOAD_TIMEOUT_MILLIS = 8_000L
 /** Idle turntable speed. A full revolution in 24 s — present, never distracting. */
 private const val HERO_IDLE_DEGREES_PER_SECOND = 15f
 
-/** Degrees of yaw per dp dragged: a screen-width swipe turns the subject about half around. */
-private const val HERO_DEGREES_PER_DP = 0.45f
+/** Seconds of stillness before the idle turntable arms itself. */
+private const val HERO_IDLE_ARM_SECONDS = 1.6f
 
-/** Exponential decay of a fling, per second. */
-private const val HERO_FLING_FRICTION = 3.2f
+/** Past this progress the idle turntable never runs: the dock is a resting state, not a toy. */
+private const val HERO_IDLE_MAX_PROGRESS = 0.5f
 
-/** Under this the fling is over and the turntable takes back over. */
-private const val HERO_FLING_CUTOFF_DEGREES_PER_SECOND = 2f
+/** Size the subject is normalised to, whatever the glTF's intrinsic scale. This is `U`. */
+internal const val HERO_SUBJECT_UNITS = 1.55f
 
-/** Seconds the idle turntable takes to fade back in after a touch. */
-private const val HERO_IDLE_RESUME_SECONDS = 1.6f
+/** Clamp for a delta across a dropped frame or a resumed app — one turntable step, not a jump. */
+private const val MAX_FRAME_SECONDS = 0.1f
 
-/** Elevation of the subject — the 3/4 view `DESIGN.md` frames every preview from. */
-private const val HERO_PITCH_DEGREES = -12f
-
-/** Distance the camera sits at, for a subject scaled to [HERO_SUBJECT_UNITS]. */
-private const val HERO_CAMERA_DISTANCE = 2.6f
-
-/** Size the subject is normalised to, whatever the glTF's intrinsic scale. */
-private const val HERO_SUBJECT_UNITS = 1.55f
+/** Below this, two poses are the same pose and the render loop is allowed to park. */
+private const val POSE_EPSILON = 1e-3f
 
 /**
- * Yaw of the hero subject: a slow turntable, a drag that takes it over, and a fling
- * that hands it back.
+ * The bounded idle turntable — `psi` in the pose.
  *
- * Not Compose state, deliberately. It is written once per rendered frame from
- * `SceneView`'s `onFrame` and read only by the Filament node it drives — publishing
- * it as state would recompose the whole home grid sixty times a second to move one
- * transform the composition never reads.
+ * Bounded is the whole design: it arms [HERO_IDLE_ARM_SECONDS] after the last contact, turns at
+ * [HERO_IDLE_DEGREES_PER_SECOND] until it reaches the next whole revolution, and then stops dead
+ * and lets the render loop park. A hero that turns forever is a hero that costs a frame every
+ * 16 ms for the whole time the catalogue is open, which is the one thing a decorative band may
+ * not do.
+ *
+ * Not Compose state, deliberately: it is written once per rendered frame from `onFrame` and read
+ * only by the camera it drives. Publishing it as state would recompose the home grid sixty times
+ * a second to move a transform the composition never reads.
  */
 @Stable
 internal class HeroTurntable {
-    var yawDegrees: Float = INITIAL_YAW_DEGREES
+    /** Degrees added to the camera azimuth. Always a finite, settled value once [running] is false. */
+    var yawDegrees: Float = 0f
         private set
 
-    private var flingDegreesPerSecond = 0f
-    private var idleBlend = 1f
+    private var armedSeconds = 0f
+    private var goalDegrees = 0f
 
-    /** A finger is down: the subject follows it exactly, and the turntable steps aside. */
-    fun drag(deltaDegrees: Float) {
-        yawDegrees += deltaDegrees
-        flingDegreesPerSecond = 0f
-        idleBlend = 0f
-    }
+    /** Whether the turntable still owes the render loop frames. */
+    var running: Boolean = false
+        private set
 
-    fun fling(degreesPerSecond: Float) {
-        flingDegreesPerSecond = degreesPerSecond
-        idleBlend = 0f
+    /** The user touched something, or the pose is past the dock: stand down, keep the angle. */
+    fun stop() {
+        running = false
+        armedSeconds = 0f
     }
 
     /**
-     * Advances the turntable by [deltaSeconds] and returns the yaw to draw.
+     * Advances by [deltaSeconds] and returns the yaw to draw.
      *
-     * [idle] is the system's "remove animations" answer. A fling is the tail of a
-     * gesture the reader started, so it still plays out; the unprompted turntable is
-     * exactly the kind of perpetual motion that setting exists to stop, so with
-     * [idle] false the subject simply holds wherever it was left.
+     * @param enabled false when "remove animations" is on, when the pose is past
+     *   [HERO_IDLE_MAX_PROGRESS], or when anything else is moving. The turntable then holds
+     *   exactly where it is — it never snaps back, so nothing jumps when it is re-enabled.
      */
-    fun advance(deltaSeconds: Float, idle: Boolean): Float {
-        if (abs(flingDegreesPerSecond) > HERO_FLING_CUTOFF_DEGREES_PER_SECOND) {
-            yawDegrees += flingDegreesPerSecond * deltaSeconds
-            flingDegreesPerSecond *= exp(-HERO_FLING_FRICTION * deltaSeconds)
-        } else {
-            flingDegreesPerSecond = 0f
-            if (idle) {
-                // The turntable does not snap back on: it fades in over
-                // [HERO_IDLE_RESUME_SECONDS], so letting go of the model does not look
-                // like the app grabbing it.
-                idleBlend = min(1f, idleBlend + deltaSeconds / HERO_IDLE_RESUME_SECONDS)
-                yawDegrees += HERO_IDLE_DEGREES_PER_SECOND * idleBlend * deltaSeconds
-            }
+    fun advance(deltaSeconds: Float, enabled: Boolean): Float {
+        if (!enabled) {
+            stop()
+            return yawDegrees
+        }
+        if (!running) {
+            armedSeconds += deltaSeconds
+            if (armedSeconds < HERO_IDLE_ARM_SECONDS) return yawDegrees
+            // Aim at the next whole revolution — and at the one after it if the current one is
+            // nearly done, so the turntable is never a two-degree twitch.
+            val next = (kotlin.math.floor(yawDegrees / 360f) + 1f) * 360f
+            goalDegrees = if (next - yawDegrees < 90f) next + 360f else next
+            running = true
+        }
+        yawDegrees = min(goalDegrees, yawDegrees + HERO_IDLE_DEGREES_PER_SECOND * deltaSeconds)
+        if (yawDegrees >= goalDegrees - POSE_EPSILON) {
+            yawDegrees = goalDegrees
+            running = false
+            armedSeconds = 0f
         }
         return yawDegrees
-    }
-
-    private companion object {
-        /** Opening pose — three-quarter, the angle every bundled preview is framed from. */
-        const val INITIAL_YAW_DEGREES = -28f
     }
 }
 
 /**
  * The live 3D subject behind the home hero (#3620).
  *
- * The catalogue's first card is the one place in the app where showing what the SDK
- * *does* costs nothing the user has to ask for: the model is already in the APK, the
- * IBL is the one every model demo shares, and the band is on screen for as long as it
- * takes to read the first row of titles. So it renders, rather than showing a picture
- * of itself.
+ * This is the **stage**: a viewport of a fixed size, pinned under the header for the whole life of
+ * the home screen. It never translates, never resizes, and — the part that matters — **receives no
+ * input at all** (`isTouchEnabled = false`). That single parameter is what fixes the bug this whole
+ * change exists for: the SDK used to install a touch listener unconditionally and report every
+ * event handled, so a thumb that started its downward travel over the hero had its scroll swallowed
+ * and a collision ray cast per motion event. With no listener, the gesture reaches whatever is
+ * arbitrating above — here, the grid — and the vertical scroll always passes.
  *
- * Four constraints shape everything here, and each is enforced in one place:
+ * Nothing on this screen animates the camera. [HomeHeroPose] *derives* it, from scroll progress and
+ * from nothing else, so there is exactly one writer with no memory: the four "camera jumps" the
+ * previous hero could produce (interrupt a fling, swipe mid-collapse, rotate, come back from the
+ * viewer) are all unrepresentable here.
  *
- *  - **One Filament engine on this screen, released when the screen goes.**
- *    [rememberEngine] owns that: its `DisposableEffect` destroys the engine and the
- *    EGL context when this composable leaves — which is what the "Engine destroyed"
- *    line in logcat is. Nothing else on the home screen creates one, and this
- *    composable is only ever composed once, from the first featured page.
- *  - **The scroll is never paid for.** [SceneView] renders on demand, so a still hero
- *    costs no GPU frames and no CPU wake-up. What keeps it awake here is the turntable
- *    writing a rotation every frame; while the grid is being dragged, or once the band
- *    has scrolled away, [rendering] goes `false`, the turntable stops advancing and the
- *    loop settles and parks by itself. The load needs no special handling — the library
- *    keeps drawing while `modelLoader.progress < 1f`, because Filament finalises texture
- *    uploads inside the frame loop and a model that landed during a park would otherwise
- *    render untextured.
- *  - **Quality is sized to the band, not to the phone.** [RenderQuality.Performance]
- *    on a 320 dp strip that is decoration, not the subject of the screen; the
- *    Cinematic preset belongs to the Model Viewer this page opens.
- *  - **It is allowed to fail.** [rememberModelInstance] returns `null` while the
- *    model loads *and* if it never loads; [visible] stays `false` until there is
- *    something to see, so the caller keeps its bundled still underneath and the
- *    worst case is the screen that shipped before this one.
+ * Frames are owed, never scheduled. `onFrame` applies the pose only when it actually moved; a pose
+ * that has settled writes nothing, so nothing pushes the next frame and the on-demand loop parks by
+ * itself. Scroll -> full rate; at rest, docked, or off screen -> zero.
  *
- * @param collapseFraction 0 when the band is at rest, 1 when it has scrolled out.
- *   A lambda, read inside the `graphicsLayer` block at *draw* time: a `Float` parameter
- *   would recompose this composable — and the pager and card around it — on every
- *   frame of every scroll, to move a transform nothing in the composition reads.
- *   Drives the drawn stage only, never layout, so the hero collapses without the
- *   grid's own scroll maths ever depending on a height this composable chose.
- * @param rendering whether the subject should be turning right now (on screen, not being
- *                  flung). It drives the turntable, and the turntable is what holds the
- *                  render-on-demand loop awake.
- * @param onVisibilityChange raised with `true` on the first frame there is a model to draw.
+ * @param pose the pose to draw, given the idle turntable's current contribution. A lambda, not a
+ *   value: a `HeroPose` parameter would recompose this composable — and the grid around it — once
+ *   per scrolled frame, to move a camera the composition never reads.
+ * @param rendering whether the hero is allowed to draw at all (on screen, no search open, app
+ *   resumed). False is a hard stop, not a hint.
  */
 @Composable
 internal fun HomeHeroScene(
-    collapseFraction: () -> Float,
+    pose: (idleYaw: Float) -> HeroPose,
     rendering: Boolean,
-    onVisibilityChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val engine = rememberEngine()
@@ -187,59 +160,42 @@ internal fun HomeHeroScene(
     val environmentLoader = rememberEnvironmentLoader(engine)
     val environment = rememberModelDemoEnvironment(environmentLoader)
     val cameraNode = rememberCameraNode(engine) {
-        position = Position(z = HERO_CAMERA_DISTANCE)
+        position = Position(z = 2.6f)
     }
 
     val modelInstance = rememberModelInstance(modelLoader, HOME_HERO_MODEL)
 
-    // The hero declares itself visible one composition after the model exists, and
-    // never declares itself invisible again — the caller crossfades its still out, and
-    // a still that came back would read as a glitch, not as a fallback.
+    // A model that never arrives must not hold the render loop open for the life of the screen:
+    // past the timeout the hero stops waiting and lets the pose decide, empty stage or not.
     var gaveUp by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(HERO_LOAD_TIMEOUT_MILLIS)
         gaveUp = true
     }
-    DisposableEffect(modelInstance != null) {
-        if (modelInstance != null) onVisibilityChange(true)
-        onDispose { }
-    }
 
     val turntable = remember { HeroTurntable() }
     val nodeHolder = remember { arrayOfNulls<ModelNodeImpl>(1) }
-    // A plain holder, deliberately not Compose state: `onFrame` writes it on every
-    // rendered frame, and a `mutableStateOf` written there would recompose this
-    // composable 60 times a second to carry a timestamp nothing in the composition
-    // reads — the exact jank this hero is not allowed to add to the scroll.
+    // Plain holders, deliberately not Compose state: `onFrame` writes them on every rendered frame
+    // and nothing in the composition reads them.
     val lastFrameNanos = remember { longArrayOf(0L) }
+    val lastApplied = remember { floatArrayOf(Float.NaN, Float.NaN, Float.NaN) }
 
-    // Filament has to keep drawing until the instance is there whatever the scroll is
-    // doing, or the model lands untextured; after that, the caller decides.
+    // Filament has to keep drawing until the instance is there whatever the scroll is doing, or the
+    // model lands untextured; after that, the pose decides.
     val loaded = modelInstance != null || gaveUp
-    // Render-on-demand: "I want frames" is not something the caller states any more, it is
-    // something the scene observes. Not advancing the turntable IS the pause.
-    val advancing = !loaded || rendering
 
-    // "Remove animations" is on: the subject is still there, still draggable, it just
-    // stops turning on its own. Read once per composition, not per frame.
-    val idleTurntable = LocalMotionEnabled.current
+    // "Remove animations" is on: the stage, the dock and the gesture fix are all unchanged — only
+    // the movement goes. The dolly becomes two poses (see `HomeScreen`), and the turntable stops.
+    val motionEnabled = LocalMotionEnabled.current
 
-    // …but "not advancing IS the pause" only works in one direction (#3718). The turntable
-    // keeps itself awake while it turns — the `rotation` write below is a push source — and
-    // `onFrame` fires only *after* a frame reached the surface, so once the band has parked
-    // there is no callback left to notice that `advancing` went back to `true`. Scrolling the
-    // hero back into view would leave a frozen subject on a screen that looks alive. One
-    // frame is all this needs: its `onFrame` writes a rotation, and that pushes the next.
+    // On-demand rendering (#3718): a frame has to be *asked for*. The pose write below is a push
+    // source that asks for the next one, but a loop that has already parked has no callback left to
+    // notice that `rendering` came back. One explicit request restarts the chain.
     val renderInvalidator = rememberRenderInvalidator()
-    LaunchedEffect(advancing, idleTurntable) {
-        if (advancing) renderInvalidator.requestRender()
+    LaunchedEffect(rendering, motionEnabled, loaded) {
+        if (rendering || !loaded) renderInvalidator.requestRender()
     }
 
-    val density = LocalDensity.current
-    val dragToDegrees = remember(density) { HERO_DEGREES_PER_DP / density.density }
-
-    // The stage shrinks and fades as the band leaves, drawn only: no re-measure, so
-    // the grid's scroll offset can never depend on a height this collapse produced.
     val stageAlpha by animateFloatAsState(
         targetValue = if (modelInstance != null) 1f else 0f,
         animationSpec = tween(SceneViewTokens.Duration.mediumMillis),
@@ -248,30 +204,19 @@ internal fun HomeHeroScene(
 
     Box(
         modifier = modifier
-            // The scene is decoration over a card that already names itself; a screen
-            // reader must hear "Model Viewer", not a second, unlabelled 3D view.
+            // The scene is decoration over a page that already names itself; a screen reader must
+            // hear "Model Viewer", not a second, unlabelled 3D view.
             .clearAndSetSemantics { },
     ) {
         SceneView(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val collapse = collapseFraction().coerceIn(0f, 1f)
-                    alpha = stageAlpha * (1f - collapse)
-                    val scale = 1f - COLLAPSE_SCALE * collapse
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = -size.height * COLLAPSE_RISE * collapse
-                },
-            // A TextureView, not the default SurfaceView. A SurfaceView is punched
-            // through the window below the whole Compose hierarchy: it cannot be
-            // alpha-blended, cannot be clipped to the card's `radius-xl` corners and
-            // cannot be crossfaded with the still it replaces — all three of which this
-            // band needs. The cost is one extra copy per frame, on a paused-by-default
-            // 320 dp strip.
+                .graphicsLayer { alpha = stageAlpha },
+            // A TextureView, not the default SurfaceView: a SurfaceView is punched through the
+            // window below the whole Compose hierarchy, so it could be neither crossfaded with the
+            // bundled still nor clipped to the stage's live height. The cost is one extra copy per
+            // frame on a band that draws nothing at rest.
             surfaceType = SurfaceType.TextureSurface,
-            // Transparent clear, so the subject floats on the card's own `hero-field`
-            // and the bundled still can fade out from under it.
             isOpaque = false,
             engine = engine,
             view = view,
@@ -280,63 +225,59 @@ internal fun HomeHeroScene(
             environmentLoader = environmentLoader,
             environment = environment,
             cameraNode = cameraNode,
-            // No manipulator and no gesture listener: the one gesture this band answers
-            // is the horizontal drag below, and a camera the SDK also moves would fight
-            // the grid's vertical scroll for the same finger.
+            // No manipulator, no gesture listener — and, the part that actually works,
+            // `isTouchEnabled = false`. The first two have never been enough: the SDK installed its
+            // listener regardless and returned `true` for every event.
             cameraManipulator = null,
             onGestureListener = null,
+            isTouchEnabled = false,
             renderQuality = RenderQuality.Performance,
             renderInvalidator = renderInvalidator,
             onFrame = { frameTimeNanos ->
                 val previous = lastFrameNanos[0]
                 lastFrameNanos[0] = frameTimeNanos
-                if (previous == 0L) return@SceneView
-                if (!advancing) return@SceneView
-                val deltaSeconds = ((frameTimeNanos - previous) / 1_000_000_000.0).toFloat()
-                    .coerceIn(0f, MAX_FRAME_SECONDS)
-                val yaw = turntable.advance(deltaSeconds, idleTurntable)
-                nodeHolder[0]?.rotation = Rotation(x = HERO_PITCH_DEGREES, y = yaw)
+                if (!rendering && loaded) return@SceneView
+                val deltaSeconds = if (previous == 0L) {
+                    0f
+                } else {
+                    ((frameTimeNanos - previous) / 1_000_000_000.0).toFloat()
+                        .coerceIn(0f, MAX_FRAME_SECONDS)
+                }
+
+                val settled = pose(turntable.yawDegrees)
+                val idleAllowed = motionEnabled && rendering &&
+                    settled.progress < HERO_IDLE_MAX_PROGRESS
+                val drawn = pose(turntable.advance(deltaSeconds, idleAllowed))
+
+                // The whole render policy, in four lines: apply the pose only when it moved. A
+                // settled pose writes nothing, so nothing pushes the next frame and the loop parks.
+                val moved = abs(drawn.eye.x - lastApplied[0]) > POSE_EPSILON ||
+                    abs(drawn.eye.y - lastApplied[1]) > POSE_EPSILON ||
+                    abs(drawn.eye.z - lastApplied[2]) > POSE_EPSILON
+                if (!moved && !turntable.running) return@SceneView
+                lastApplied[0] = drawn.eye.x
+                lastApplied[1] = drawn.eye.y
+                lastApplied[2] = drawn.eye.z
+
+                cameraNode.setProjection(
+                    fovInDegrees = HomeHeroPose.VERTICAL_FOV_DEGREES,
+                    direction = Camera.Fov.VERTICAL,
+                )
+                cameraNode.position = Position(drawn.eye.x, drawn.eye.y, drawn.eye.z)
+                cameraNode.lookAt(
+                    targetWorldPosition = Position(drawn.target.x, drawn.target.y, drawn.target.z),
+                    smooth = false,
+                )
+                renderInvalidator.requestRender()
             },
         ) {
             modelInstance?.let { instance ->
                 ModelNode(
                     modelInstance = instance,
                     scaleToUnits = HERO_SUBJECT_UNITS,
-                    rotation = Rotation(x = HERO_PITCH_DEGREES, y = turntable.yawDegrees),
                     apply = { nodeHolder[0] = this },
                 )
             }
         }
-
-        // Drag, on top of the viewport so it sees the finger first. Horizontal only —
-        // `detectHorizontalDragGestures` waits for horizontal touch slop, so a thumb
-        // travelling down the catalogue still reaches the grid untouched, and a tap
-        // never becomes a drag and so still opens the demo underneath.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(dragToDegrees) {
-                    val tracker = VelocityTracker()
-                    detectHorizontalDragGestures(
-                        onDragStart = { tracker.resetTracking() },
-                        onDragEnd = {
-                            turntable.fling(tracker.calculateVelocity().x * dragToDegrees)
-                        },
-                        onDragCancel = { tracker.resetTracking() },
-                    ) { change, dragAmount ->
-                        tracker.addPosition(change.uptimeMillis, change.position)
-                        turntable.drag(dragAmount * dragToDegrees)
-                    }
-                },
-        )
     }
 }
-
-/** How much of its size the stage gives up by the time the band has fully scrolled out. */
-private const val COLLAPSE_SCALE = 0.35f
-
-/** How far the stage rises into the collapse, as a fraction of its own height. */
-private const val COLLAPSE_RISE = 0.18f
-
-/** Clamp for a delta across a dropped frame or a resumed app — one turntable step, not a jump. */
-private const val MAX_FRAME_SECONDS = 0.1f
