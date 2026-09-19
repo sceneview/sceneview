@@ -165,12 +165,12 @@ class WhatsNewChangelogParserTest {
 
             ### Added
 
-            - **`SceneView(frameRatePolicy = FrameRatePolicy.OnDemand)` parks the [frame loop](https://example.com) ([#3108](https://github.com/sceneview/sceneview/issues/3108), [#3110](https://github.com/sceneview/sceneview/issues/3110)).** Prose.
+            - **`SceneView(frameRatePolicy = FrameRatePolicy.OnDemand())` parks the [frame loop](https://example.com) ([#3108](https://github.com/sceneview/sceneview/issues/3108), [#3110](https://github.com/sceneview/sceneview/issues/3110)).** Prose.
             """.trimIndent()
         )
         val highlight = releases.single().highlights.single()
         assertEquals(
-            "SceneView(frameRatePolicy = FrameRatePolicy.OnDemand) parks the frame loop",
+            "SceneView(frameRatePolicy = FrameRatePolicy.OnDemand()) parks the frame loop",
             highlight.headline
         )
         assertEquals(3108, highlight.issueNumber)
