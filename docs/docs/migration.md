@@ -51,10 +51,13 @@ SceneView { /* … */ }
   presented frame recomposes its host on every presented frame; if any of that feeds back into the
   scene, the screen is measuring its own loop rather than the scene's. `DebugStats` holds plain
   fields and `DebugOverlay` reads them on a 250 ms tick, which is the pattern to copy.
-- **A single `ViewNode` anywhere in the tree keeps the whole scene at full cadence, permanently.**
-  `ViewNode.isFrameActive` is constantly `true`, because the Android `View` it hosts can animate
-  at any time and the library cannot see inside it. That is deliberate, but it means a screen with
-  a `ViewNode` gets none of this. Same for a `VideoNode` while its player reports playing.
+- **A `ViewNode` keeps the scene awake while its view is drawing, and only then.** The hosted
+  Android `View` animates on its own schedule — a ripple, a spinner, a cursor, an inner fling — and
+  the library cannot see inside it, so the node reports itself active from the one thing that is
+  observable: every buffer the view hierarchy queues onto its `SurfaceTexture`. An animating view
+  therefore holds the full cadence for as long as it animates, and a view that has finished drawing
+  parks with the rest of the scene. A `VideoNode` answers the same way, plus a direct read of
+  `player.isPlaying`.
 - Pre-compiled consumers must recompile. A caller passing nine or more **positional** arguments
   gets a type error at slot 9 rather than a silent behaviour change — the slot went from `Boolean`
   to `FrameRatePolicy`.

@@ -18,18 +18,18 @@ import org.junit.Test
  * A `MediaPlayer` cannot be driven from the JVM, so what is pinned here is the decision itself,
  * which is the whole of the fix: the frames come from the surface, not from the player.
  */
-class VideoFrameSignalTest {
+class SurfaceFrameSignalTest {
 
     @Test
     fun aPlayingVideoHoldsTheCadenceWithoutWaitingForACallback() {
-        val signal = VideoFrameSignal(requestRender = {})
+        val signal = SurfaceFrameSignal(requestRender = {})
 
         repeat(10) {
             assertTrue(
                 "a playing video produces frames continuously; reading it from the player keeps " +
                     "the scene at full cadence even on a device whose callback delivery lags " +
                     "behind the decoder",
-                signal.isActive(isPlaying = true)
+                signal.isActive(forcedActive = true)
             )
         }
     }
@@ -37,7 +37,7 @@ class VideoFrameSignalTest {
     @Test
     fun aSeekOnAPausedPlayerWakesTheScene() {
         var renderRequests = 0
-        val signal = VideoFrameSignal(requestRender = { renderRequests++ })
+        val signal = SurfaceFrameSignal(requestRender = { renderRequests++ })
 
         // The scene is parked and the player is paused: what a `seekTo()` produces is one frame on
         // the SurfaceTexture and nothing else. No transform changed, no animation is playing, no
@@ -54,45 +54,45 @@ class VideoFrameSignalTest {
             "and it must also report active for the tick it wakes, because the callback can land " +
                 "at any point in a tick — including after the gate was already asked — and one " +
                 "frame must not be lost to that race",
-            signal.isActive(isPlaying = false)
+            signal.isActive(forcedActive = false)
         )
     }
 
     @Test
     fun oneSeekBuysOneTickAndNotAPermanentWakefulness() {
-        val signal = VideoFrameSignal(requestRender = {})
+        val signal = SurfaceFrameSignal(requestRender = {})
         signal.onFrameAvailable()
 
-        assertTrue(signal.isActive(isPlaying = false))
+        assertTrue(signal.isActive(forcedActive = false))
         assertFalse(
             "the latch is consumed on read: a seek must hold the scene awake for the tick that " +
                 "presents it, then let it park again — a latch that stayed set would turn every " +
                 "paused video into a scene that renders forever",
-            signal.isActive(isPlaying = false)
+            signal.isActive(forcedActive = false)
         )
     }
 
     @Test
     fun aPausedPlayerThatProducedNothingLetsTheSceneSettle() {
-        val signal = VideoFrameSignal(requestRender = {})
+        val signal = SurfaceFrameSignal(requestRender = {})
 
         assertFalse(
             "a paused video with no new frame is exactly the case render-on-demand exists for",
-            signal.isActive(isPlaying = false)
+            signal.isActive(forcedActive = false)
         )
     }
 
     @Test
     fun everyFrameStepInARowIsNoticed() {
         var renderRequests = 0
-        val signal = VideoFrameSignal(requestRender = { renderRequests++ })
+        val signal = SurfaceFrameSignal(requestRender = { renderRequests++ })
 
         // Frame-stepping: the user taps "next frame" five times, and each tap must reach the
         // screen. A signal that only fired on the transition from "no frame" would show the first
         // step and freeze on it.
         repeat(5) {
             signal.onFrameAvailable()
-            assertTrue(signal.isActive(isPlaying = false))
+            assertTrue(signal.isActive(forcedActive = false))
         }
 
         assertEquals(5, renderRequests)

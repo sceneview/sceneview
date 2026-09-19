@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
 import android.graphics.SurfaceTexture
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import android.view.LayoutInflater
@@ -129,21 +131,35 @@ class ViewNode(
     var isTouchForwardingEnabled: Boolean = true
 
     /**
-     * Always `true`: an embedded Android [View] redraws on its own schedule — a ripple, a progress
-     * spinner, a blinking cursor, an inner `RecyclerView` fling — and pushes the result into this
-     * node's `SurfaceTexture` without going through anything the library can observe.
+     * An embedded Android [View] redraws on its own schedule — a ripple, a progress spinner, a
+     * blinking cursor, an inner `RecyclerView` fling — and pushes the result into this node's
+     * `SurfaceTexture` without going through anything the library can observe.
      *
-     * A scene holding a `ViewNode` therefore does not settle under
-     * [io.github.sceneview.FrameRatePolicy.OnDemand]. That is the deliberate trade: a frozen
-     * embedded UI is a bug, while extra frames are only a cost. Scenes that want the idle saving
-     * back should render the view's content as a texture rather than embed a live view.
+     * This used to be a flat `true`, and it was never a frozen picture: it was the whole scene
+     * never settling. One decorative label hosted in a `ViewNode` held every other node at full
+     * cadence for as long as it existed — measured on emulator-5554 at **57 fps on a scene nobody
+     * was touching**, which is the entire saving [io.github.sceneview.FrameRatePolicy.OnDemand]
+     * exists for, spent on a label that had not changed a pixel since it was laid out.
+     *
+     * The view's own surface answers exactly the question the flat `true` was standing in for:
+     * [SurfaceFrameSignal] latches every buffer the view hierarchy queues, so an animating view
+     * keeps the loop at full cadence for as long as it animates, and a view that has finished
+     * drawing lets the scene park with it. Nothing about the embedded UI is frozen — the loop is
+     * simply not awake for frames the view is not producing.
      */
-    override val isFrameActive: Boolean get() = true
+    override val isFrameActive: Boolean
+        get() = frameSignal.isActive() || super.isFrameActive
 
     private val touchForwarder = ViewTouchForwarder(layout)
 
     private val surfaceTexture = SurfaceTexture(0).also { it.detachFromGLContext() }
     private val surface = Surface(surfaceTexture)
+
+    /**
+     * Bridges "the hosted view drew something" to the render gate. Delivered on the main thread
+     * (see the [Handler] below) because the gate it marks is the render loop's own state.
+     */
+    private val frameSignal = SurfaceFrameSignal(::requestRender)
 
     val stream: Stream = Stream.Builder()
         .stream(surfaceTexture)
@@ -179,6 +195,16 @@ class ViewNode(
             setMaterialInstanceAt(0, value)
             materialLoader.destroyMaterialInstance(old)
         }
+
+    init {
+        // Every buffer the hosted view hierarchy queues — a ripple, a spinner tick, a blinking
+        // cursor, a recomposition, the very first layout pass — wakes the render loop. Dispatched
+        // on the main looper so `requestRender()` reaches the gate from the thread that owns it.
+        surfaceTexture.setOnFrameAvailableListener(
+            { frameSignal.onFrameAvailable() },
+            Handler(Looper.getMainLooper())
+        )
+    }
 
     constructor(
         engine: Engine,
@@ -333,6 +359,7 @@ class ViewNode(
     override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 
     override fun destroy() {
+        surfaceTexture.setOnFrameAvailableListener(null)
         windowManager.removeView(layout)
         // Capture MI before super.destroy() removes the renderable component (after which
         // getMaterialInstanceAt would fail). Order: renderable (via super) → MI → texture → stream.

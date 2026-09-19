@@ -143,7 +143,7 @@ open class VideoNode(
      * main thread (see the [Handler] below) because the gate it ends up marking is the render
      * loop's own state.
      */
-    private val frameSignal = VideoFrameSignal(::requestRender)
+    private val frameSignal = SurfaceFrameSignal(::requestRender)
 
     /**
      * A playing video pushes new frames into the node's `SurfaceTexture` from outside the library,
@@ -153,11 +153,11 @@ open class VideoNode(
      * `isPlaying` is not the whole answer, though, and that was a real "frozen picture" case: a
      * **seek** or a **frame-step** on a paused player produces exactly one new frame and leaves
      * `isPlaying` false throughout, so a parked scene kept showing the frame from before the seek.
-     * [VideoFrameSignal] answers for those — every frame the surface receives, playing or not.
+     * [SurfaceFrameSignal] answers for those — every frame the surface receives, playing or not.
      */
     override val isFrameActive: Boolean
         get() = frameSignal.isActive(
-            isPlaying = runCatching { player.isPlaying }.getOrDefault(false)
+            forcedActive = runCatching { player.isPlaying }.getOrDefault(false)
         ) || super.isFrameActive
 
     private val onVideoSizeChanged = MediaPlayer.OnVideoSizeChangedListener { _, width, height ->
@@ -210,46 +210,6 @@ open class VideoNode(
         materialLoader.engine.safeDestroyTexture(texture)
         materialLoader.engine.safeDestroyStream(stream)
         surfaceTexture.release()
-    }
-}
-
-/**
- * The rule [VideoNode] follows to decide whether a video still owes the scene a frame.
- *
- * `player.isPlaying` alone was wrong in one direction and the failure was silent. A video pushes its
- * frames into a `SurfaceTexture` from outside the library, so the only thing that can report them is
- * the surface itself — and a **seek** or a **frame-step** on a paused player produces a frame with
- * `isPlaying` false from beginning to end. A render-on-demand scene therefore kept presenting the
- * frame from before the seek: the picture was stale, nothing was in an error state, and there was no
- * cadence anomaly to find in a profiler, because the loop was correctly parked.
- *
- * So the signal is the surface's, not the player's, and it is *latched*: the callback can land at
- * any point in a tick, including after the gate has already been asked, and one frame must not be
- * lost to that race. [onFrameAvailable] both wakes the loop immediately (push) and arms one tick of
- * [isActive] (pull), which is the same belt-and-braces pairing the rest of the gate uses.
- *
- * Playing is still answered directly rather than through the latch: a playing video produces frames
- * continuously, and reading it from the player keeps the scene at full cadence even on a device
- * whose callback delivery lags behind the decoder.
- */
-internal class VideoFrameSignal(private val requestRender: () -> Unit) {
-
-    private var frameSinceLastTick = false
-
-    /** A frame reached the surface. Call on the main thread. */
-    fun onFrameAvailable() {
-        frameSinceLastTick = true
-        requestRender()
-    }
-
-    /**
-     * Whether the node should report itself active this tick. Consuming: the latch is cleared on
-     * read, so one seek holds the scene awake for one tick rather than forever.
-     */
-    fun isActive(isPlaying: Boolean): Boolean {
-        val hadFrame = frameSinceLastTick
-        frameSinceLastTick = false
-        return isPlaying || hadFrame
     }
 }
 
