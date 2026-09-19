@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npm install @sceneview/sceneview-web
+npm install sceneview-web
 ```
 
 ## Quick Start
