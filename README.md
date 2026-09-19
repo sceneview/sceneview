@@ -159,11 +159,9 @@ https://github.com/sceneview/sceneview.git  (from: 4.37.0)
 <script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.37.0/website-static/js/sceneview.js"></script>
 ```
 
-**Web** (Kotlin/JS):
-```kotlin
-dependencies {
-    implementation("io.github.sceneview:sceneview-web:4.37.0")
-}
+**Web** (Kotlin/JS, for bundler-based projects):
+```bash
+npm install sceneview-web
 ```
 
 **Claude Code / Claude Desktop:**
@@ -451,13 +449,23 @@ const vr = await SceneView.startVR("canvas")                       // immersive-
 
 ### Kotlin/JS power-user API
 
-For Kotlin Multiplatform projects, the same engine is exposed as a Kotlin/JS class with an `OrbitCameraController`, a geometry DSL, and reactive node updates:
+`OrbitCameraController`, the geometry DSL and reactive node updates live in the
+`sceneview-web` module, which ships **on npm only**. It builds a webpack bundle
+(`binaries.executable()`) rather than a Kotlin/JS library, so it has no Maven coordinate:
 
-```kotlin
-implementation("io.github.sceneview:sceneview-web:4.37.0")
+```bash
+npm install sceneview-web
 ```
 
-**Install:** `npm install sceneview-web` or CDN — [Landing page](https://sceneview.github.io/) — [Playground](https://sceneview.github.io/playground.html) — [npm](https://www.npmjs.com/package/sceneview-web)
+A Kotlin Multiplatform project that wants the shared core as a Gradle dependency — collision,
+math, geometry, animation and physics, but not the renderer — uses the published Kotlin/JS
+artifact instead:
+
+```kotlin
+implementation("io.github.sceneview:sceneview-core-js:4.37.0")
+```
+
+**Links:** CDN — [Landing page](https://sceneview.github.io/) — [Playground](https://sceneview.github.io/playground.html) — [npm](https://www.npmjs.com/package/sceneview-web)
 
 ---
 
