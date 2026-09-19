@@ -56,19 +56,36 @@ class OrbitCameraController(
         private const val MOVE_EPSILON: Double = 1e-6
 
         /**
-         * Longest step, in seconds, [update] integrates at once.
+         * Longest frame, in seconds, [update] still treats as real time.
          *
-         * A frame that arrives late — a model landing on the main thread, a
-         * shader compiling, or a background tab that rAF stopped ticking for a
-         * minute — then pauses the motion for the length of the hitch instead
-         * of leaping across it. Without this bound, returning to a backgrounded
-         * tab would hand `update` a multi-second `deltaSeconds` and snap the
-         * camera a third of the way round the model in one frame.
+         * This is a *hitch detector*, not a clamp on the integration step. A
+         * frame longer than this — a model landing on the main thread, a shader
+         * compiling, or a background tab that rAF stopped ticking for a minute
+         * — pauses the self-driven motion for the length of the hitch instead
+         * of leaping across it. Without it, returning to a backgrounded tab
+         * would hand `update` a multi-second `deltaSeconds` and snap the camera
+         * a third of the way round the model in one frame.
          *
-         * Same value as iOS `CameraControls.maxMotionStep`, so a hitch reads
-         * the same on both platforms.
+         * Every frame at or below it is integrated at its **true** length. The
+         * distinction is the whole point: truncating the step instead (what
+         * this constant did until PLACEHOLDER_PR, at 0.05 s) silently reintroduced the
+         * frame-rate dependence #3711 had just removed — on a software
+         * rasteriser at ~8 fps *every* frame exceeded the bound, so the
+         * turntable ran at 12.5°/s instead of its stated 30°/s, and a drag's
+         * banked travel was divided by a frame count of at most 3 however long
+         * the frame really was, inflating the inertia the release handed over.
+         *
+         * 0.25 s sits an order of magnitude below the shortest gap worth
+         * calling a hitch and well above the slowest sustained rate a WebGL
+         * canvas plausibly runs at (4 fps).
+         *
+         * Kept in step with `MAX_FRAME_STEP` in the web demo's
+         * `samples/web-demo/site/js/sceneview.js`: both viewers must agree on
+         * what counts as a hitch. iOS `CameraControls.maxMotionStep` still
+         * truncates at 0.05 s and carries the same defect — tracked separately,
+         * out of scope for this web fix.
          */
-        const val MAX_MOTION_STEP: Double = 0.05
+        const val MAX_FRAME_STEP: Double = 0.25
 
         /**
          * Reference rate the damping model is expressed against: [dampingFactor]
@@ -217,11 +234,13 @@ class OrbitCameraController(
      * Converts spherical coordinates (theta, phi, distance) to Cartesian
      * and calls camera.lookAt() with float3 arrays as required by Filament.js.
      *
-     * Every self-driven motion is integrated against [deltaSeconds], so the
-     * camera behaves identically whatever rate the host's `requestAnimationFrame`
-     * fires at. The step is clamped to [MAX_MOTION_STEP] so a hitch — or a tab
-     * returning from the background with a multi-second gap — pauses the motion
-     * rather than leaping across it.
+     * Every self-driven motion is integrated against the **true**
+     * [deltaSeconds], so the camera behaves identically whatever rate the
+     * host's `requestAnimationFrame` fires at — including the low sustained
+     * rates a software rasteriser produces. A frame longer than
+     * [MAX_FRAME_STEP] is read as a hitch — a tab returning from the background
+     * with a multi-second gap — and pauses the motion rather than leaping
+     * across it.
      *
      * @param deltaSeconds Seconds elapsed since the previous frame. Pass `0.0`
      *   on the very first frame (there is no previous timestamp to subtract):
@@ -234,26 +253,40 @@ class OrbitCameraController(
      *   reflects the current pose even on frames the gate skips drawing.
      */
     fun update(deltaSeconds: Double): Boolean {
-        // A late frame pauses the motion for the length of the hitch; a first
-        // frame (dt = 0) advances nothing at all.
-        val step = min(max(deltaSeconds, 0.0), MAX_MOTION_STEP)
+        // The true elapsed time — a frame is never shortened to make it fit.
+        // A first frame (dt = 0) advances nothing at all; a frame longer than
+        // MAX_FRAME_STEP is a hitch and pauses the self-driven motion.
+        val dt = max(deltaSeconds, 0.0)
+        val hitch = dt > MAX_FRAME_STEP
 
         // Apply auto-rotation — rad/s integrated over the elapsed time.
-        if (autoRotate && !isDragging) {
-            theta += autoRotateSpeed * step
+        if (autoRotate && !isDragging && !hitch) {
+            theta += autoRotateSpeed * dt
         }
 
-        if (step > 0.0) {
-            lastFrameCount = step * DAMPING_REFERENCE_HZ
+        if (dt > 0.0) {
+            lastFrameCount = dt * DAMPING_REFERENCE_HZ
             // While the button is down, this frame's pointer travel — already
             // applied to theta/phi by the handlers — becomes the velocity the
             // release will coast on, expressed per 1/60 s. Dividing by the
             // frame's own length is what keeps the tail rate-independent: the
             // same flick is one 12 px `mousemove` per frame at 60 Hz and two
             // 6 px ones at 120 Hz, and both must read as the same speed.
+            //
+            // Across a hitch that division is meaningless — the pointer did not
+            // travel for the whole of a backgrounded minute, the handlers just
+            // banked whatever arrived before the tab froze. Crediting it at any
+            // rate at all invents a flick, so the bank is dropped instead. (A
+            // truncated divisor, the pre-PLACEHOLDER_PR behaviour, inflated it: the same
+            // travel over a 1 s frame read as a 0.05 s flick, 20× too fast.)
             if (isDragging) {
-                velocityTheta = dragTravelTheta / lastFrameCount
-                velocityPhi = dragTravelPhi / lastFrameCount
+                if (hitch) {
+                    velocityTheta = 0.0
+                    velocityPhi = 0.0
+                } else {
+                    velocityTheta = dragTravelTheta / lastFrameCount
+                    velocityPhi = dragTravelPhi / lastFrameCount
+                }
                 dragTravelTheta = 0.0
                 dragTravelPhi = 0.0
             }
@@ -274,8 +307,16 @@ class OrbitCameraController(
         // the expression collapses to the previous `theta += velocityTheta;
         // velocityTheta *= dampingFactor`, so 60 Hz behaviour is bit-for-bit
         // what it was. Mirrors iOS `CameraControls.applyInertia(dt:)`.
+        //
+        // This one runs on the true `dt` even across a hitch, and needs no
+        // guard of its own: `travel` is `(1 - decay) / (1 - damping)` with
+        // `decay` in [0, 1), so however long the frame, the tail advances at
+        // most `velocity / (1 - damping)` — 20× the current velocity at the
+        // shipped 0.95, about a third of a second of coasting — and lands
+        // exactly where it would have had the frames arrived on time. It is
+        // the tail finishing, not a leap across the gap.
         if (enableDamping && !isDragging) {
-            val frames = step * DAMPING_REFERENCE_HZ
+            val frames = dt * DAMPING_REFERENCE_HZ
             val damping = min(max(dampingFactor, 0.0), MAX_DAMPING_FACTOR)
             val decay = damping.pow(frames)
             val travel = (1.0 - decay) / (1.0 - damping)

@@ -655,25 +655,199 @@ class OrbitCameraControllerTest {
     }
 
     @Test
-    fun aLateFrameIsClampedInsteadOfLeaping() {
+    fun aLateFramePausesInsteadOfLeaping() {
         // A tab returning from the background hands rAF a multi-second gap.
-        // Unclamped, 90 s × 30°/s would spin the model seven times in one
-        // frame. The motion pauses for the hitch instead.
+        // Ungated, 90 s × 30°/s would spin the model seven times in one frame.
+        // The self-driven motion pauses for the length of the hitch instead.
         val c = controller().first
         c.enableDamping = false
         c.autoRotate = true
         c.theta = 0.0
         c.update(90.0)
         assertEquals(
-            c.autoRotateSpeed * OrbitCameraController.MAX_MOTION_STEP,
+            0.0,
             c.theta,
             EPS,
-            "a 90 s gap must advance at most one clamped step, not ${c.theta} rad",
+            "a 90 s gap is a hitch and must advance nothing, not ${c.theta} rad",
         )
+    }
+
+    @Test
+    fun aFiveSecondFrameAfterAPauseAdvancesNothing() {
+        // The brief's case, and the shape of a real hitch: normal frames, a
+        // stall, then one enormous frame. The stall must cost the turntable
+        // exactly the stall — no catch-up, no leap.
+        val c = controller().first
+        c.enableDamping = false
+        c.autoRotate = true
+        c.theta = 0.0
+        repeat(10) { c.update(FRAME_60) }
+        val beforeTheHitch = c.theta
+        c.update(5.0)
+        assertEquals(
+            beforeTheHitch,
+            c.theta,
+            EPS,
+            "a 5 s frame must not advance the turntable at all",
+        )
+        // …and the very next normal frame must resume at the normal rate.
+        c.update(FRAME_60)
+        assertEquals(
+            beforeTheHitch + c.autoRotateSpeed * FRAME_60,
+            c.theta,
+            EPS,
+            "the frame after a hitch must be an ordinary frame again",
+        )
+    }
+
+    @Test
+    fun aSustainedLowFrameRateStillTurnsAtTheAuthoredSpeed() {
+        // The #3711 regression this fix undoes (#3739). A software rasteriser
+        // — a GPU-less CI runner, a low-end phone — settles at ~8 fps, i.e.
+        // 0.125 s frames, every one of them longer than the old 0.05 s bound.
+        // Truncating the *step* therefore truncated EVERY frame and the
+        // turntable ran at 0.05/0.125 = 40 % of its authored speed: the frame
+        // rate crept straight back into a speed expressed in seconds.
+        //
+        // One simulated second at 8 fps must turn exactly one second's worth.
+        val slow = controller().first
+        slow.enableDamping = false
+        slow.autoRotate = true
+        slow.theta = 0.0
+        repeat(8) { slow.update(0.125) }
+
+        assertEquals(
+            slow.autoRotateSpeed * 1.0,
+            slow.theta,
+            1e-9,
+            "8 fps for one second must turn one second's worth — was ${slow.theta} rad",
+        )
+
+        // …and it must agree with 60 Hz over the same wall-clock second, which
+        // is the whole promise of expressing the speed in rad/s.
+        val fast = controller().first
+        fast.enableDamping = false
+        fast.autoRotate = true
+        fast.theta = 0.0
+        repeat(60) { fast.update(FRAME_60) }
+        assertEquals(fast.theta, slow.theta, 1e-9, "8 fps and 60 Hz must agree after one second")
+    }
+
+    @Test
+    fun aReleaseAfterALongFrameDoesNotInflateTheCoast() {
+        // The same truncation seen from the drag side. `update` banks the
+        // frame's pointer travel and the release converts it with the last
+        // frame's length as the divisor. With that length truncated to 0.05 s,
+        // travel that really took 1 s read as a 20× faster flick, and letting
+        // go of a stationary finger launched the model.
+        //
+        // Two identical gestures, one sampled on a 1 s frame and one on a
+        // 1/60 s frame: the slow one must coast LESS, never more.
+        fun coastAfter(frameLength: Double): Double {
+            val canvas = newCanvas()
+            val c = OrbitCameraController(canvas, FakeCamera().toCamera())
+            c.theta = 0.0
+            c.phi = PI / 2.0
+            dispatchMouse(canvas, "mousedown", 100.0, DRAG_Y)
+            c.update(frameLength)          // sets the divisor the release will use
+            dispatchMouse(canvas, "mousemove", 140.0, DRAG_Y)
+            dispatchMouse(canvas, "mouseup", 140.0, DRAG_Y)
+            val atRelease = c.theta
+            repeat(120) { c.update(FRAME_60) }   // let the tail run out
+            return abs(c.theta - atRelease)
+        }
+
+        val afterASlowFrame = coastAfter(1.0)
+        val afterANormalFrame = coastAfter(FRAME_60)
         assertTrue(
-            c.theta < 0.1,
-            "the clamped step must stay far below a visible jump — was ${c.theta} rad",
+            afterASlowFrame < afterANormalFrame,
+            "40 px sampled over a 1 s frame must coast less than over a 1/60 s one — " +
+                "got $afterASlowFrame vs $afterANormalFrame rad",
         )
+        // Pin the ratio, not just the ordering: a 1 s frame is 60 reference
+        // frames, so the velocity — and the whole closed-form tail with it —
+        // must be exactly 60× smaller. Truncation made it 20× (0.05 s → 3
+        // reference frames) whatever the real frame length was.
+        assertEquals(
+            afterANormalFrame / 60.0,
+            afterASlowFrame,
+            1e-9,
+            "the coast must scale with the TRUE frame length",
+        )
+    }
+
+    @Test
+    fun aHitchWhileDraggingDoesNotInventAFlick() {
+        // Travel banked before a tab froze is not a gesture that happened over
+        // the whole freeze. Crediting it at any rate invents a flick the user
+        // never made, so the bank is dropped and the release coasts nowhere.
+        val canvas = newCanvas()
+        val c = OrbitCameraController(canvas, FakeCamera().toCamera())
+        c.theta = 0.0
+        c.phi = PI / 2.0
+        dispatchMouse(canvas, "mousedown", 100.0, DRAG_Y)
+        dispatchMouse(canvas, "mousemove", 140.0, DRAG_Y)
+        c.update(30.0)   // the freeze: banked travel must be dropped here
+        dispatchMouse(canvas, "mouseup", 140.0, DRAG_Y)
+        val atRelease = c.theta
+        repeat(120) { c.update(FRAME_60) }
+        assertEquals(
+            atRelease,
+            c.theta,
+            1e-9,
+            "a release after a 30 s freeze must not coast — moved ${c.theta - atRelease} rad",
+        )
+    }
+
+    @Test
+    fun noFrameLengthEverProducesANonFiniteOrOutOfBoundsPose() {
+        // A blanket guard over the whole range a host can hand `update`: the
+        // pose must stay finite and inside its clamps for every one of them.
+        // `Camera.lookAt` with a NaN eye is what a blank canvas looks like.
+        val lengths = listOf(
+            0.0, -1.0, -0.0, 1e-9, FRAME_120, FRAME_60, 0.125, 0.25, 0.2501,
+            1.0, 5.0, 90.0, 3600.0,
+        )
+        for (dt in lengths) {
+            val canvas = newCanvas()
+            val cam = FakeCamera()
+            val c = OrbitCameraController(canvas, cam.toCamera())
+            c.autoRotate = true
+            c.enableDamping = true
+            c.minPhi = 0.1
+            c.maxPhi = PI - 0.1
+            c.minDistance = 0.5
+            c.maxDistance = 50.0
+            // Seed a live gesture and a zoom so every branch of update() runs.
+            dispatchMouse(canvas, "mousedown", 100.0, 100.0)
+            dispatchMouse(canvas, "mousemove", 900.0, 900.0)
+            dispatchWheel(canvas, -5000.0)
+            repeat(5) { c.update(dt) }
+            dispatchMouse(canvas, "mouseup", 900.0, 900.0)
+            repeat(20) { c.update(dt) }
+
+            assertTrue(c.theta.isFinite(), "theta must stay finite at dt = $dt — was ${c.theta}")
+            assertTrue(c.phi.isFinite(), "phi must stay finite at dt = $dt — was ${c.phi}")
+            assertTrue(
+                c.distance.isFinite(),
+                "distance must stay finite at dt = $dt — was ${c.distance}",
+            )
+            assertTrue(
+                c.phi >= 0.1 - EPS && c.phi <= PI - 0.1 + EPS,
+                "phi must stay inside [minPhi, maxPhi] at dt = $dt — was ${c.phi}",
+            )
+            assertTrue(
+                c.distance >= 0.5 - EPS && c.distance <= 50.0 + EPS,
+                "distance must stay inside [minDistance, maxDistance] at dt = $dt — " +
+                    "was ${c.distance}",
+            )
+            for (axis in 0..2) {
+                assertTrue(
+                    cam.eye[axis].isFinite(),
+                    "eye[$axis] handed to Filament must be finite at dt = $dt — was ${cam.eye[axis]}",
+                )
+            }
+        }
     }
 
     @Test

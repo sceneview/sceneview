@@ -27,6 +27,20 @@
   // Filament.js is loaded via <script> tag in HTML (js/filament/filament.js)
   // This avoids dynamic script injection issues with WASM resolution.
 
+  // Zoom window, expressed as a multiple of the distance the model was framed
+  // at rather than in world units. A glTF may be authored in metres,
+  // centimetres or millimetres; an absolute window fits exactly one of those
+  // and throws the camera inside the mesh for the rest.
+  var MIN_ZOOM_FACTOR = 0.15;
+  var MAX_ZOOM_FACTOR = 14;
+
+  // Longest frame the self-driven motion integrates in full. Beyond it the
+  // frame is a HITCH — a model landing on the main thread, a backgrounded tab —
+  // not a frame rate, and the motion pauses for its length instead of leaping.
+  // A sustained 8 fps is a slow renderer, not a hitch, and must still turn the
+  // turntable at its stated degrees per second.
+  var MAX_FRAME_STEP = 0.25;
+
   /**
    * Wait for Filament to be available (loaded by the script tag).
    */
@@ -395,6 +409,7 @@
       this._angle = 0.785; // Start at ~45° like model-viewer
       this._autoRotate = true;
       this._orbitRadius = 3.5;
+      this._framedRadius = 3.5; // distance the current model was framed at
       this._orbitHeight = 0.8;
       this._orbitTarget = [0, 0, 0];
       this._running = true;
@@ -525,8 +540,49 @@
           // Tighter framing than before (1.8x instead of 2.5x)
           this._orbitRadius = maxDim * 1.8;
           this._orbitHeight = cy;
+          // Remember what "framed" means for THIS model. Zoom limits and the
+          // projection frustum are both expressed against it, because a glTF
+          // may be authored in metres, centimetres or millimetres and a fixed
+          // world-space window only ever fits one of those.
+          this._framedRadius = this._orbitRadius;
+          this._applyProjection();
+          // The camera just teleported to a new framing. A velocity banked
+          // against the previous model's scale means nothing here, so the
+          // damping tail does not survive the reframe.
+          this._velocityAngle = 0;
+          this._velocityHeight = 0;
+          this._dragTravelAngle = 0;
+          this._dragTravelHeight = 0;
         }
       } catch (e) { /* use defaults */ }
+    }
+
+    /**
+     * Push a perspective projection sized for the model currently framed.
+     *
+     * The near/far pair used to be hard-coded at 0.1 / 1000 world units, which
+     * silently assumes every model is a metre or two across. A glTF authored in
+     * millimetres frames at thousands of units, so the whole subject sat beyond
+     * the far plane and the canvas rendered empty at every orbit angle.
+     *
+     * Small models keep exactly the previous frustum — the bounds only widen,
+     * never tighten, so nothing that renders today starts clipping.
+     */
+    _applyProjection() {
+      var canvas = this._canvas;
+      if (!canvas || !canvas.width || !canvas.height) return;
+      var framed = this._framedRadius || this._orbitRadius || 3.5;
+      // Far must still cover the camera fully zoomed out (MAX_ZOOM_FACTOR x
+      // the framed distance) plus the model's own half-extent behind the
+      // target; near must survive being zoomed all the way in.
+      var near = Math.min(0.1, framed * 0.001);
+      var far = Math.max(1000, framed * (MAX_ZOOM_FACTOR + 2));
+      this._near = near;
+      this._far = far;
+      this._camera.setProjectionFov(
+        this._fov || 45, canvas.width / canvas.height, near, far,
+        Filament.Camera$Fov.VERTICAL
+      );
     }
 
     setAutoRotate(enabled) { this._autoRotate = enabled; this._wantsAutoRotate = enabled; return this; }
@@ -1500,6 +1556,29 @@
       this._isDragging = false;
     }
 
+    // The user is interacting: stop the turntable and cancel any pending
+    // resume, so it cannot fire in the middle of the gesture.
+    _suspendAutoRotate() {
+      this._autoRotate = false;
+      if (this._autoRotateTimer) {
+        clearTimeout(this._autoRotateTimer);
+        this._autoRotateTimer = null;
+      }
+    }
+
+    // The interaction ended: resume the turntable after 3 s idle (like
+    // model-viewer). Every interaction restarts the countdown.
+    _scheduleAutoRotateResume() {
+      var self = this;
+      if (this._autoRotateTimer) {
+        clearTimeout(this._autoRotateTimer);
+        this._autoRotateTimer = null;
+      }
+      if (this._wantsAutoRotate) {
+        this._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
+      }
+    }
+
     _setupControls() {
       var canvas = this._canvas;
       var self = this;
@@ -1507,8 +1586,7 @@
       canvas.addEventListener('mousedown', function(e) {
         self._beginDrag();
         self._lastMouse = { x: e.clientX, y: e.clientY };
-        self._autoRotate = false;
-        if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
+        self._suspendAutoRotate();
       });
       canvas.addEventListener('mousemove', function(e) {
         if (!self._isDragging) return;
@@ -1519,30 +1597,39 @@
       });
       canvas.addEventListener('mouseup', function() {
         self._endDrag();
-        // Resume auto-rotate after 3s idle (like model-viewer)
-        if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
-        }
+        self._scheduleAutoRotateResume();
       });
       canvas.addEventListener('mouseleave', function() {
         self._endDrag();
-        if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
-        }
+        self._scheduleAutoRotateResume();
       });
 
       canvas.addEventListener('wheel', function(e) {
         e.preventDefault();
+        // Zooming is interacting. Like a drag, it suspends the turntable and
+        // restarts the 3 s idle countdown — otherwise the model keeps spinning
+        // under the wheel and the camera the user just aimed drifts away on its
+        // own (the resume timer only ever watched the pointer).
+        self._suspendAutoRotate();
+        // Zoom limits are a multiple of the framed distance, not fixed world
+        // units: the old `min(50, …)` overrode the auto-framing of any model
+        // whose natural framing sits further out than 50 units (a glTF in
+        // millimetres frames at thousands), dropping the camera inside the
+        // mesh where most orbit angles see nothing at all.
+        var framed = self._framedRadius || 3.5;
         self._orbitRadius *= (1 + e.deltaY * 0.001);
-        self._orbitRadius = Math.max(0.5, Math.min(50, self._orbitRadius));
+        self._orbitRadius = Math.max(
+          framed * MIN_ZOOM_FACTOR,
+          Math.min(framed * MAX_ZOOM_FACTOR, self._orbitRadius)
+        );
+        self._scheduleAutoRotateResume();
       }, { passive: false });
 
       canvas.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) {
           self._beginDrag();
           self._lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-          self._autoRotate = false;
-          if (self._autoRotateTimer) { clearTimeout(self._autoRotateTimer); self._autoRotateTimer = null; }
+          self._suspendAutoRotate();
         }
       });
       canvas.addEventListener('touchmove', function(e) {
@@ -1555,9 +1642,7 @@
       }, { passive: false });
       canvas.addEventListener('touchend', function() {
         self._endDrag();
-        if (self._wantsAutoRotate) {
-          self._autoRotateTimer = setTimeout(function() { self._autoRotate = true; }, 3000);
-        }
+        self._scheduleAutoRotateResume();
       });
     }
 
@@ -1569,10 +1654,9 @@
         canvas.width = canvas.clientWidth * dpr;
         canvas.height = canvas.clientHeight * dpr;
         self._view.setViewport([0, 0, canvas.width, canvas.height]);
-        self._camera.setProjectionFov(
-          self._fov || 45, canvas.width / canvas.height, 0.1, 1000,
-          Filament.Camera$Fov.VERTICAL
-        );
+        // Same frustum the current framing asked for — a resize must not
+        // silently reset near/far back to the metre-scale defaults.
+        self._applyProjection();
       });
       this._resizeObserver.observe(this._canvas);
     }
@@ -1583,27 +1667,42 @@
         if (!self._running) return;
 
         // Elapsed wall-clock time, not a frame count: a 120 Hz panel gets twice
-        // as many ticks as a 60 Hz one and must not spin twice as fast. Clamped
-        // to 0.05 s so a tab returning from the background resumes rather than
-        // leaps; the first frame has no previous timestamp and advances nothing.
+        // as many ticks as a 60 Hz one and must not spin twice as fast. The
+        // first frame has no previous timestamp and advances nothing.
+        //
+        // A frame LONGER than MAX_FRAME_STEP is a hitch, not a frame rate: the
+        // motion pauses for its length rather than leaping across it. The
+        // previous code truncated the step to 0.05 s instead of pausing, which
+        // quietly put the frame rate back into the speeds it had just taken out
+        // — on a software rasteriser holding ~8 fps every single frame was
+        // truncated, so the turntable ran at 12.5°/s instead of its stated 30,
+        // and a drag's banked travel was divided by 3 reference frames however
+        // long the frame really was, inflating the inertia a release hands over.
         var now = timestamp || 0;
         var dt = self._lastFrameTime > 0 ? (now - self._lastFrameTime) / 1000 : 0;
         self._lastFrameTime = now;
         if (dt < 0) dt = 0;
-        if (dt > 0.05) dt = 0.05;
+        var hitch = dt > MAX_FRAME_STEP;
 
         // Auto-rotate: 30°/sec (matches model-viewer)
-        if (self._autoRotate) self._angle += self._autoRotateSpeed * dt;
+        if (self._autoRotate && !hitch) self._angle += self._autoRotateSpeed * dt;
 
         // While the button is down, this frame's pointer travel — already
         // applied to _angle/_orbitHeight by the handlers — becomes the velocity
         // the release will coast on, expressed per 1/60 s. Dividing by the
-        // frame's own length is what keeps the tail rate-independent.
+        // frame's OWN length (never a truncated stand-in) is what keeps the
+        // tail rate-independent. Travel banked across a hitch has no measurable
+        // speed, so it is dropped rather than credited at a made-up rate.
         if (dt > 0) {
           self._lastFrameCount = dt * 60;
           if (self._isDragging) {
-            self._velocityAngle = self._dragTravelAngle / self._lastFrameCount;
-            self._velocityHeight = self._dragTravelHeight / self._lastFrameCount;
+            if (hitch) {
+              self._velocityAngle = 0;
+              self._velocityHeight = 0;
+            } else {
+              self._velocityAngle = self._dragTravelAngle / self._lastFrameCount;
+              self._velocityHeight = self._dragTravelHeight / self._lastFrameCount;
+            }
             self._dragTravelAngle = 0;
             self._dragTravelHeight = 0;
           }
@@ -1613,7 +1712,10 @@
         // 1/60 s, so decaying them over `dt` means raising the damping factor to
         // the number of 60 Hz frames `dt` covers, and the distance travelled
         // while decaying is the sum of that geometric series. At exactly 60 Hz
-        // this collapses to the single multiply it replaces.
+        // this collapses to the single multiply it replaces. The closed form is
+        // exact for ANY dt and its total travel can never exceed
+        // velocity / (1 - damping) — the tail's whole remaining distance — so
+        // the step needs no ceiling here, even across a hitch.
         if (!self._isDragging && dt > 0) {
           var frames = dt * 60;
           var decay = Math.pow(self._dampingFactor, frames);
