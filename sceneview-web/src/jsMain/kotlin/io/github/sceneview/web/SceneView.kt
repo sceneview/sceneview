@@ -1502,7 +1502,7 @@ class SceneView private constructor(
         // Track animation time. Resolved BEFORE the camera update, which needs
         // the same step: driving the orbit camera off the frame count instead
         // made auto-rotation and inertia run at the display's refresh rate —
-        // twice too fast on a 120 Hz panel.
+        // twice too fast on a 120 Hz panel (#3711).
         val deltaSeconds = if (lastTimestamp > 0) (timestamp - lastTimestamp) / 1000.0 else 0.0
         lastTimestamp = timestamp
 
