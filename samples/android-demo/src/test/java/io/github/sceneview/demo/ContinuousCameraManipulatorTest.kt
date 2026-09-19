@@ -432,6 +432,26 @@ class ContinuousCameraManipulatorTest {
     }
 
     @Test
+    fun `an announced cut nobody came to spend stops asking for frames`() {
+        val script = Turntable(yawDegrees = 0f)
+        val camera = manipulator().apply { drive(script) }
+        camera.frame()
+
+        // A script announces its cut and only then suspends — and this one suspends on something
+        // that never arrives (a stage that never shows, a model that never loads). Nothing will
+        // ever come to spend the arm, and no tick will run to drop it.
+        camera.easeNextCut()
+        assertTrue("the move it protects may still be a tick or two away", camera.isFrameActive)
+
+        nanos += (ContinuousCameraManipulator.CUT_ARM_SECONDS * 1e9f).toLong() + FRAME_NANOS
+
+        assertFalse(
+            "an announcement is a wait, and a wait past its deadline is not work",
+            camera.isFrameActive,
+        )
+    }
+
+    @Test
     fun `an ease of its own keeps the loop awake without any source pending`() {
         val first = Turntable(yawDegrees = 0f)
         val second = Turntable(yawDegrees = 90f)

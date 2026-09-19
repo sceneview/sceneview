@@ -109,10 +109,22 @@ class ContinuousCameraManipulator(
      * after the last gesture. Under [io.github.sceneview.FrameRatePolicy.OnDemand] the loop must
      * stay alive across that gap or the hand-back never happens; see
      * [io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator.isFrameActive].
+     *
+     * The arm carries its own deadline here rather than waiting to be dropped by the next
+     * [getTransform]. Dropping it there is enough to keep the *ease* honest, because the tick that
+     * would spend it is the same tick that reads it — but it is not enough for this answer, which
+     * is what decides whether that tick happens at all. A script that announces a cut and then
+     * suspends on something that never arrives leaves an arm nothing will ever spend, and the loop
+     * would hold the full cadence on it for as long as anything else kept the loop alive: an
+     * announcement is a *wait*, and a wait is not work.
      */
     override val isFrameActive: Boolean
-        get() = source?.isFrameActive == true || isEasing || settlingFrames > 0 ||
-            cutMillis != NO_CUT
+        get() = source?.isFrameActive == true || isEasing || settlingFrames > 0 || isCutArmed
+
+    /** A cut announced and not yet spent, within the [CUT_ARM_SECONDS] it is allowed to wait. */
+    private val isCutArmed: Boolean
+        get() = cutMillis != NO_CUT &&
+            (nanoTime() - cutArmedNanos) / NANOS_PER_SECOND <= CUT_ARM_SECONDS
 
     /**
      * Whether the viewport has a subject in it ([driving]). A camera that moves behind a loading
