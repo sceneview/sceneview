@@ -71,13 +71,19 @@ class OrbitCameraController(
          * this constant did until #3742, at 0.05 s) silently reintroduced the
          * frame-rate dependence #3711 had just removed — on a software
          * rasteriser at ~8 fps *every* frame exceeded the bound, so the
-         * turntable ran at 12.5°/s instead of its stated 30°/s, and a drag's
+         * turntable ran at 12°/s instead of its stated 30°/s, and a drag's
          * banked travel was divided by a frame count of at most 3 however long
          * the frame really was, inflating the inertia the release handed over.
          *
-         * 0.25 s sits an order of magnitude below the shortest gap worth
-         * calling a hitch and well above the slowest sustained rate a WebGL
-         * canvas plausibly runs at (4 fps).
+         * 0.25 s is simply the slowest sustained rate a WebGL canvas
+         * plausibly holds (4 fps): below it, whatever the renderer is doing it
+         * is still drawing frames, and the motion must follow the clock. There
+         * is no clean gap above it to aim for — a shader compile stalls for a
+         * few tenths of a second and a backgrounded tab for minutes — so
+         * anything slower is treated as a hitch. The cost of being wrong is
+         * asymmetric and that is why the threshold sits here: mistaking a
+         * hitch for a frame teleports the camera, mistaking a frame for a
+         * hitch loses a quarter-second of turntable.
          *
          * Kept in step with `MAX_FRAME_STEP` in the web demo's
          * `samples/web-demo/site/js/sceneview.js`: both viewers must agree on

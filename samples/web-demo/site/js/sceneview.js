@@ -1675,7 +1675,7 @@
         // previous code truncated the step to 0.05 s instead of pausing, which
         // quietly put the frame rate back into the speeds it had just taken out
         // — on a software rasteriser holding ~8 fps every single frame was
-        // truncated, so the turntable ran at 12.5°/s instead of its stated 30,
+        // truncated, so the turntable ran at 12°/s instead of its stated 30,
         // and a drag's banked travel was divided by 3 reference frames however
         // long the frame really was, inflating the inertia a release hands over.
         var now = timestamp || 0;
@@ -2223,6 +2223,10 @@
     renderer.setClearOptions({ clearColor: bg, clear: true });
 
     var fov = options.fov || 45;
+    // Provisional frustum: near/far are placeholders for the empty scene and are
+    // replaced by _applyProjection() as soon as a model is framed. Never rely on
+    // these two numbers — a model larger than 1000 units would fall behind the
+    // far plane and render nothing.
     camera.setProjectionFov(fov, canvas.width / canvas.height, 0.1, 1000, Filament.Camera$Fov.VERTICAL);
     camera.lookAt([0, 1, 5], [0, 0, 0], [0, 1, 0]);
 
