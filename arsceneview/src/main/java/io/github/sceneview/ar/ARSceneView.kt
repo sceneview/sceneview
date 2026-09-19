@@ -590,16 +590,27 @@ fun ARSceneView(
      */
     view: View = rememberARView(engine),
     /**
-     * One-line Filament quality preset for the AR `view`, mirroring `SceneView(renderQuality = …)`.
+     * One-line Filament quality preset, mirroring `SceneView(renderQuality = …)`.
      *
-     * Unlike the 3D composable, this parameter is **nullable and defaults to `null`**: when `null`
-     * the AR `view` keeps the camera-feed-tuned defaults set up by [rememberARView] /
-     * [io.github.sceneview.createARView] (minimal post-processing over the live feed — no SSAO, no
-     * bloom, MEDIUM HDR buffer). Passing a preset explicitly opts into it instead — e.g.
-     * [RenderQuality.Performance] for battery-sensitive AR overlays, or [RenderQuality.Cinematic]
-     * for a hero placement showcase. The Filmic tone mapper that round-trips the AR camera
-     * background (#1434) is preserved across every preset — [applyRenderQuality] never writes
-     * `view.colorGrading`. Reapplied only when the value changes (keyed effect).
+     * **AR does not inherit the 3D default preset.** Unlike the 3D composable — where the
+     * parameter defaults to [RenderQuality.Default] — this one is **nullable and defaults to
+     * `null`**, and `null` means *no preset at all*: the AR `view` keeps the camera-feed-tuned
+     * defaults set up by [rememberARView] / [io.github.sceneview.createARView], which deliberately
+     * turn MSAA, SSAO and bloom **off** and dynamic resolution **off**, so nothing post-processes
+     * the live camera feed (#657).
+     *
+     * So passing [RenderQuality.Default] here explicitly is not "the same as a 3D SceneView, in
+     * AR": on this view it **turns MSAA 4× on and dynamic resolution on** over a render that
+     * contains the camera background, plus SSAO and bloom. That is a legitimate choice for a
+     * scene whose virtual content dominates the frame, but it is an opt-in with a real cost on the
+     * camera feed, not a neutral default. [RenderQuality.Performance] (battery-sensitive overlays)
+     * and [RenderQuality.Cinematic] (a hero placement showcase) are the more usual reasons to pass
+     * anything at all.
+     *
+     * Applied to both `view` and [renderer] when non-null, as in the 3D composable, so a
+     * caller-supplied [renderer] gets the whole preset. The Filmic tone mapper that round-trips
+     * the AR camera background (#1434) is preserved across every preset — [applyRenderQuality]
+     * never writes `view.colorGrading`. Reapplied only when the value changes (keyed effect).
      */
     renderQuality: RenderQuality? = null,
     /**
@@ -894,8 +905,16 @@ fun ARSceneView(
     // would re-enable). Keyed on (view, renderQuality) so the preset is reapplied only when it
     // changes; the AR Filmic tone mapper (#1434) survives because `applyRenderQuality` never
     // writes `view.colorGrading`.
-    LaunchedEffect(view, renderQuality) {
-        renderQuality?.let { view.applyRenderQuality(it) }
+    LaunchedEffect(view, renderer, renderQuality) {
+        renderQuality?.let {
+            view.applyRenderQuality(it)
+            // Both halves, as in the 3D composable: `Renderer.frameRateOptions` tunes the
+            // dynamic-resolution controller the `View` half may have just enabled. Inert while
+            // dynamic resolution is off, which is the case for `Cinematic` and for the AR
+            // defaults — written anyway so switching presets never leaves the previous one's
+            // controller behind.
+            renderer.applyRenderQuality(it)
+        }
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }

@@ -95,13 +95,24 @@ fun createView(engine: Engine): View = engine.createView().apply {
     renderQuality = renderQuality.apply {
         hdrColorBuffer = QualityLevel.MEDIUM
     }
+    // Dynamic resolution is the safety valve, not a quality setting: it lets the default preset
+    // ask for more than a mid-range GPU can always afford, and gives Filament the authority to
+    // take it back where it costs frames. `minScale = 0.75` bounds how far it may go — a quarter
+    // off each axis is recoverable by the FXAA pass below; the stock 0.5 floor is not, and a
+    // scene that drops there looks broken rather than merely softer. `homogeneousScaling` keeps
+    // both axes together so the picture softens instead of stretching.
     dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
+        enabled = true
         homogeneousScaling = true
         quality = QualityLevel.MEDIUM
+        minScale = 0.75f
     }
+    // 4x MSAA on top of FXAA: MSAA fixes the geometry edges FXAA can only blur, and FXAA still
+    // earns its place on the shading and alpha-tested edges MSAA does not see. Kept together
+    // deliberately — they solve different halves of the same artifact.
     multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
+        enabled = true
+        sampleCount = 4
     }
     antiAliasing = AntiAliasing.FXAA
     // SSAO on by default — adds visible grounding under geometry crevices (toy_car, helmet)
@@ -197,7 +208,14 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     setShadowingEnabled(true)
 }
 
-fun createRenderer(engine: Engine): Renderer = engine.createRenderer()
+fun createRenderer(engine: Engine): Renderer = engine.createRenderer().apply {
+    // The `Renderer` half of `RenderQuality.Default`, delegated rather than duplicated: this used
+    // to be the only place the dynamic-resolution controller was tuned, so a caller who passed
+    // their own `Renderer` to `SceneView` got the `View` half of the preset and Filament's stock
+    // controller. `SceneView` now applies this to whatever `Renderer` it is actually given, and
+    // this factory and the preset can no longer drift apart.
+    applyRenderQuality(RenderQuality.Default)
+}
 
 fun createCameraNode(engine: Engine): CameraNode = DefaultCameraNode(engine)
 
