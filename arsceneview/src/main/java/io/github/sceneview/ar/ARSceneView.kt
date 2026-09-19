@@ -513,9 +513,11 @@ fun ARSceneView(
     semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
     /**
      * ARCore [Config.UpdateMode] — controls whether [Session.update] blocks until a new camera
-     * frame is available (`LATEST_CAMERA_IMAGE`) or returns immediately (`BLOCKING`). Defaults
-     * to [Config.UpdateMode.LATEST_CAMERA_IMAGE], the value SceneView's render loop is built
-     * for. Applied BEFORE [sessionConfiguration] (#1766).
+     * frame is available (`BLOCKING`) or returns immediately with the latest one it already has
+     * (`LATEST_CAMERA_IMAGE`). Defaults to [Config.UpdateMode.LATEST_CAMERA_IMAGE], the value
+     * SceneView's render loop is built for: the loop is driven by the display's vsync, so
+     * `update` must hand back whatever frame is current rather than park the render thread
+     * waiting for the next one. Applied BEFORE [sessionConfiguration] (#1766).
      */
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     /**
