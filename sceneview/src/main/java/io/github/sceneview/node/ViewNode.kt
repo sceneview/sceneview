@@ -5,7 +5,9 @@ import android.content.ContextWrapper
 import android.graphics.Canvas
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
+import android.graphics.Rect
 import android.graphics.SurfaceTexture
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -14,12 +16,14 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
+import android.view.ViewParent
 import android.view.WindowManager.LayoutParams
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.setViewTreeFullyDrawnReporterOwner
 import androidx.activity.setViewTreeOnBackPressedDispatcherOwner
 import androidx.annotation.LayoutRes
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -411,6 +415,35 @@ class ViewNode(
             super.onSizeChanged(width, height, oldWidth, oldHeight)
 
             viewSize = Size(width.toFloat(), height.toFloat())
+        }
+
+        /**
+         * A descendant asked to be redrawn — mark **this** layout dirty too (#3718).
+         *
+         * [dispatchDraw] is the only place the hosted hierarchy is copied into the node's
+         * `Surface`, and a hardware-accelerated child that invalidates only re-records its own
+         * display list: the parent's `dispatchDraw` is never re-run, so the copy never happens
+         * again and the quad keeps the pixels of the very first draw. Measured on a hosted card
+         * whose label toggles on tap: the content recomposed on both taps (16.834 `Pause`, 23.307
+         * `Resume`) for exactly **one** `dispatchDraw` and **one** queued buffer over the whole
+         * scenario, both at 16.861 — the label on the quad never changed.
+         *
+         * Invalidating here is the event-driven half of what the class KDoc above describes as
+         * "every frame": the copy happens once per real change to the hosted view instead of once
+         * per rendered frame, which is what lets the scene park under
+         * [io.github.sceneview.FrameRatePolicy.OnDemand] while still showing a current picture.
+         */
+        @RequiresApi(Build.VERSION_CODES.O)
+        override fun onDescendantInvalidated(child: View, target: View) {
+            super.onDescendantInvalidated(child, target)
+            invalidate()
+        }
+
+        /** The pre-API-26 half of [onDescendantInvalidated] — same reason, older walk (#3718). */
+        @Suppress("DEPRECATION")
+        override fun invalidateChildInParent(location: IntArray?, dirty: Rect?): ViewParent? {
+            invalidate()
+            return super.invalidateChildInParent(location, dirty)
         }
 
         override fun dispatchDraw(canvas: Canvas) {
