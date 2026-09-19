@@ -605,7 +605,7 @@ private val GUIDE_GUTTER = 16.dp
  * put the pill *under* the gesture bar on a modern device and under any host chrome on
  * every device. See the migration note in the changelog.
  */
-private val GUIDE_BOTTOM_CLEARANCE = 16.dp
+internal val GUIDE_BOTTOM_CLEARANCE = 16.dp
 
 // Translucent scrim colors — fixed (not theme-derived) because the overlay always sits on a
 // live camera feed, where a dark pill + white text is legible in both light and dark themes.

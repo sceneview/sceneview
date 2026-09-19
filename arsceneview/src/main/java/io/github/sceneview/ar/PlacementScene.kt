@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
@@ -132,6 +133,15 @@ import java.io.File
  *                              (live camera).
  * @param sessionConfiguration  Escape-hatch ARCore [Config] callback, forwarded verbatim to
  *                              [ARSceneView]. Runs after the typed params above.
+ * @param coachingBottomClearance Room to leave between the coaching pill and the bottom of the
+ *                              safe area, forwarded to [PlaneDiscoveryGuide]. The pill already
+ *                              clears the system bars on its own; this is what **your** own
+ *                              bottom chrome takes — a dock, a toolbar, a call-to-action —
+ *                              which neither this composable nor the guide can measure, because
+ *                              it is drawn by you, outside them. Default 16 dp: a plain gutter
+ *                              for a host with nothing down there, which is exactly what the
+ *                              guide already used, so a caller that does not pass it sees no
+ *                              change. Only read while [coaching] is `true`.
  * @param onPlaced              Invoked inside the [ARSceneScope] once per created [Anchor]. Declare
  *                              the content (typically an `AnchorNode { ModelNode(...) }`) to ride
  *                              that anchor. Composed once per anchor; recomposes on placement.
@@ -159,6 +169,10 @@ fun PlacementScene(
     groundShadows: Boolean = false,
     playbackDataset: File? = null,
     sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
+    // Appended at the end of the optional block rather than next to `coaching`, where it
+    // reads better, so that every existing positional slot keeps its index: a caller that
+    // passes `groundShadows` or `playbackDataset` positionally still compiles unchanged.
+    coachingBottomClearance: Dp = GUIDE_BOTTOM_CLEARANCE,
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
@@ -315,6 +329,11 @@ fun PlacementScene(
                 isTracking = isTracking,
                 anyPlaneTracked = anyPlaneTracked,
                 trackingFailureReason = trackingFailure,
+                // The guide measures the safe area itself but cannot see the host's own
+                // bottom chrome, which is drawn outside this composable. Left unset, the
+                // pill lands one 16 dp gutter off the safe area — under any dock or
+                // call-to-action the host parks there (#3712 / #3735).
+                bottomClearance = coachingBottomClearance,
             )
         }
     }

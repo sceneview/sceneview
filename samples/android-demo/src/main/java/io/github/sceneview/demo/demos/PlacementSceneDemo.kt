@@ -45,6 +45,7 @@ import io.github.sceneview.ar.PlacementReticleVisual
 import io.github.sceneview.ar.PlacementScene
 import io.github.sceneview.ar.ReticlePhase
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -311,6 +312,13 @@ private fun PlacementSceneAr(onBack: () -> Unit) {
             PlacedCountPill(controllerHolder.value?.count ?: 0)
         },
     ) {
+        // The scaffold parks a dock at the bottom of this screen, and the coaching pill
+        // inside PlacementScene has no way to see it: it measures the safe area, not the
+        // chrome drawn over the camera by the host. Left to its own 16 dp gutter the pill
+        // lands under the dock. Same measured value, same source, as the other AR host in
+        // this app (#3712) — a real measurement, not a constant.
+        val chromeBottom = LocalDemoChromeBottomInset.current
+
         PlacementScene(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
@@ -321,6 +329,10 @@ private fun PlacementSceneAr(onBack: () -> Unit) {
             // reticle that flips to "ready" on a surface, and a contact shadow under each
             // placed model. The plane grid fades after the first placement (default).
             coaching = true,
+            // Dock band + one gutter. Nothing else rides the bottom of this screen — the
+            // placed-count pill is a `topOverlay` — so there is no third term here, unlike
+            // the tap-to-place host which stacks its own coaching line under the guide.
+            coachingBottomClearance = chromeBottom + SceneViewTokens.Space.md,
             groundShadows = true,
             onPlaced = { anchor ->
                 // Declare what rides each placed anchor. PlacementScene already created the
