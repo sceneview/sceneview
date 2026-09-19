@@ -54,7 +54,8 @@ import kotlin.math.roundToInt
  * The fix is structural, not arithmetic: the editable node keeps an identity-then-pure-yaw
  * rotation, and the asset correction moves to a **non-editable content child** underneath
  * it. The two orientations then compose in the other order, and the twist is a yaw about
- * the anchor's up axis whatever the asset needed to stand up. See `PlacedModelNode`.
+ * the anchor's up axis whatever the asset needed to stand up. See `PivotedModelNode`, the one
+ * composable every placement screen builds that hierarchy through.
  *
  * The invariant every function here exists to pin: the rotation a twist applies **in the
  * anchor's frame** — `current ∘ rest⁻¹`, i.e. [appliedInAnchorFrame] — must be a pure yaw,
@@ -138,8 +139,7 @@ object PlacementRotation {
  * rotation it gives each node come from here and from nowhere else. Putting the correction
  * back on the node the twist turns is therefore not something a call site can do on its
  * own — it means editing [pivot] or [content], which is what
- * [PlacementHierarchyTest][io.github.sceneview.demo.common.placement.PlacementInteractionTest]
- * asserts against.
+ * [PlacementInteractionTest] asserts against.
  *
  * What this cannot pin is that the composable calls it at all, or that Filament builds the
  * two nodes in that relationship — a Filament node needs an engine and cannot exist on the
