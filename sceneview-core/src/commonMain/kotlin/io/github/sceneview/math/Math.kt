@@ -136,9 +136,90 @@ fun Mat4.toColumnsDoubleArray() = doubleArrayOf(
     w.x.toDouble(), w.y.toDouble(), w.z.toDouble(), w.w.toDouble()
 )
 
-/** Extracts the rotation component of this transform as a [Quaternion]. */
+/**
+ * Extracts the rotation component of this transform as a [Quaternion].
+ *
+ * **Use this, never `Mat4.toQuaternion()`, on any matrix that may carry a scale.** The
+ * kotlin-math member `toQuaternion()` (and the same-named `dev.romainguy.kotlin.math.quaternion`
+ * extension) runs Shepperd's trace method straight on the raw basis, which is only valid for an
+ * orthonormal one. A `T·R·S` matrix folds `S` into the trace, so the extracted quaternion is
+ * renormalised into a *different* rotation — uniform scale included, which is the surprising
+ * part. Measured against `R = rotX(-90°)`, `|scale| = 2`: the trace method returns a rotation
+ * 16.26° off; on a tilted axis at scale 10 it is 32.38° off, and at scale `(0.25, 2, 10)`,
+ * 78.11° off. This accessor divides each basis column by its length first, and is exact
+ * (measured error 0.00° through float32 rounding) for every single-level `T·R·S`, uniform
+ * or not. See #3738.
+ *
+ * A pure yaw at exactly 0° or 180° happens to survive the trace method unscathed, and *any*
+ * pure yaw keeps the axis exactly (only the angle is corrupted) — which is why scale bugs here
+ * hide from axis-only or turntable-only test scenes.
+ *
+ * Three families of matrix have no exact rotation to extract, and this accessor returns a
+ * best-effort answer rather than failing:
+ *
+ *  - **Shear** — a non-uniformly scaled ancestor followed by a rotated descendant leaves a
+ *    non-orthogonal world basis (measured `dot(col0, col1) = -0.8` for a parent scaled
+ *    `(3, 1, 1)` under a child `rotZ`). Column normalisation cannot restore orthogonality, so
+ *    the result is an approximation whose error depends on the shear (measured 0.04°–6.46°
+ *    over `rotZ` 15°–90°, versus 5.03°–36.87° for the trace method). No decomposition can do
+ *    better; only avoiding non-uniform scale on an ancestor of a rotated node can.
+ *  - **Mirror** — a negative scale makes the basis left-handed, which is not a rotation at all.
+ *    The result is finite and unit but arbitrary, and nothing downstream can detect the case:
+ *    [Mat4.scale] reports column *lengths*, so it returns `(2, 2, 2)` for a scale of `(-2, -2, -2)`.
+ *  - **Collapse** — a zero scale on an axis makes that column zero-length, so normalising it is
+ *    `0 / 0 = NaN`. Left unguarded that NaN propagates into every child transform and into any
+ *    frame-loop driver integrating this value (see the [Scale] doc). When exactly one axis has
+ *    collapsed the rotation is still fully determined by the other two, and is recovered exactly
+ *    from their cross product; with two or three axes gone nothing is left to recover and the
+ *    identity is returned. Either way the result is finite.
+ */
 val Mat4.quaternion: Quaternion
-    get() = rotation(this).toQuaternion()
+    get() {
+        val quaternion = rotation(this).toQuaternion()
+        // `rotation()` divides each column by its length, so a collapsed axis yields NaN.
+        // Only then pay for the reconstruction below.
+        return if (quaternion.x.isNaN() || quaternion.y.isNaN() ||
+            quaternion.z.isNaN() || quaternion.w.isNaN()
+        ) {
+            collapsedBasisQuaternion()
+        } else {
+            quaternion
+        }
+    }
+
+/**
+ * Best-effort rotation for a basis with at least one zero-length column, keeping [quaternion]
+ * finite instead of NaN. Rebuilds a single collapsed axis from the cross product of the two
+ * survivors (exact, since a right-handed frame is determined by any two of its axes); gives up
+ * on the identity when two or more axes are gone, or when the survivors are parallel and their
+ * cross product is itself zero.
+ */
+private fun Mat4.collapsedBasisQuaternion(): Quaternion {
+    val right = x.xyz
+    val up = y.xyz
+    val forward = z.xyz
+    val rightAlive = dot(right, right) > 0f
+    val upAlive = dot(up, up) > 0f
+    val forwardAlive = dot(forward, forward) > 0f
+    val basis = when {
+        !rightAlive && upAlive && forwardAlive ->
+            Transform(right = cross(up, forward), up = up, forward = forward)
+        rightAlive && !upAlive && forwardAlive ->
+            Transform(right = right, up = cross(forward, right), forward = forward)
+        rightAlive && upAlive && !forwardAlive ->
+            Transform(right = right, up = up, forward = cross(right, up))
+        // Two or three axes gone: nothing is left to recover the orientation from.
+        else -> return Quaternion()
+    }
+    val rebuilt = rotation(basis).toQuaternion()
+    // The rebuilt axis is itself zero when the two survivors are parallel (a fully sheared,
+    // collapsed basis), which would hand back a NaN again.
+    return if (rebuilt.x.isNaN() || rebuilt.y.isNaN() || rebuilt.z.isNaN() || rebuilt.w.isNaN()) {
+        Quaternion()
+    } else {
+        rebuilt
+    }
+}
 
 /** Transforms a 3D point by this matrix (applies translation, rotation, and scale). */
 operator fun Mat4.times(v: Float3) = (this * Float4(v, 1f)).xyz
@@ -207,7 +288,10 @@ fun normalToTangent(normal: Float3): Quaternion {
         bitangent = normalize(cross(normal, tangent))
     }
     // Rotation of a 4x4 Transformation Matrix is represented by the top-left 3x3 elements.
-    return Transform(right = tangent, up = bitangent, forward = normal).toQuaternion()
+    // `tangent` and `bitangent` are unit by construction but `normal` is the caller's vector,
+    // so the forward column can be any length: extract through `quaternion`, which normalises
+    // the columns first. With a length-5 normal the raw trace method lands 18.92° off (#3738).
+    return Transform(right = tangent, up = bitangent, forward = normal).quaternion
 }
 
 /**

@@ -11,6 +11,7 @@ import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.createEglContext
 import io.github.sceneview.createEngine
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
 import io.github.sceneview.safeDestroy
 import org.junit.After
@@ -42,7 +43,11 @@ import kotlin.math.abs
  * requires a real Filament `Engine` (the world transform is read from `TransformManager`, a JNI
  * call), so it cannot be exercised in a pure-JVM unit test.
  *
- * Refs: #2392 #2284 #2280 #2264 #2294 #2267
+ * The last two cases cover #3738 instead: the world **extraction** itself, which folded any
+ * ancestor scale into the rotation it reported. Every #2392 case above uses an unscaled parent,
+ * so none of them could see it.
+ *
+ * Refs: #2392 #2284 #2280 #2264 #2294 #2267 #3738
  */
 @RunWith(AndroidJUnit4::class)
 class NodeWorldQuaternionRoundTripTest {
@@ -183,6 +188,66 @@ class NodeWorldQuaternionRoundTripTest {
 
             child.destroy()
             parent.destroy()
+        }
+    }
+
+    /**
+     * Reading a child's `worldQuaternion` under a **scaled, tilted** parent must return the
+     * rotation that was set, with the scale factored out (#3738).
+     *
+     * This is the case every test above misses: their parents are all unscaled, so they never
+     * exercised the extraction defect. It is also the case the #3738 analysis could only verify
+     * against a hand-rebuilt `T·R·S` — this is the only version that reads a real Filament
+     * `TransformManager` world matrix, which is why it lives here.
+     *
+     * Pre-fix, `Node.refreshWorldCache()` ran kotlin-math's trace method on the raw world basis,
+     * so a parent scaled 2 made a child's 90° pitch read back as ≈106°.
+     */
+    @Test
+    fun worldQuaternion_isScaleIndependent_underScaledTiltedParent() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            listOf(0.25f, 2f, 10f).forEach { uniformScale ->
+                val parent = Node(engine)
+                val child = Node(engine)
+                // Tilted: a pure yaw preserves the quaternion axis and would mask the defect.
+                parent.quaternion = Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), -90f)
+                parent.scale = Scale(uniformScale)
+                parent.addChildNode(child)
+
+                val target = Quaternion.fromAxisAngle(normalize(Float3(0.3f, 0.7f, -0.6f)), 37f)
+                child.worldQuaternion = target
+
+                assertQuaternionsEqual(
+                    "worldQuaternion must ignore a parent uniform scale of $uniformScale (#3738)",
+                    target,
+                    child.worldQuaternion,
+                )
+
+                child.destroy()
+                parent.destroy()
+            }
+        }
+    }
+
+    /**
+     * The parent's own `worldQuaternion` must equal its local rotation when it is scaled but
+     * unparented — the simplest statement of #3738, with no composition involved.
+     */
+    @Test
+    fun worldQuaternion_equalsLocalRotation_onAScaledRootNode() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val node = Node(engine)
+            val rotation = Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), -90f)
+            node.quaternion = rotation
+            node.scale = Scale(2f)
+
+            assertQuaternionsEqual(
+                "a scaled root node's worldQuaternion is its local quaternion (#3738)",
+                rotation,
+                node.worldQuaternion,
+            )
+
+            node.destroy()
         }
     }
 
