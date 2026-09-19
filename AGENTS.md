@@ -1,9 +1,62 @@
 # AGENTS.md — conventions for delegated coding agents
 
-This file is read automatically by Codex CLI (and other agents that honour the
-AGENTS.md convention) when they work in this repository. It carries the rules a
-delegated developer must respect. It is **not** a project overview — read
-`CLAUDE.md` and `llms.txt` for that.
+This file is read automatically by every assistant that honours the `AGENTS.md`
+convention — Codex, Junie, Cline, Kilo Code and others — when they work **in a
+checkout of this repository**. It carries the rules a delegated developer must
+respect.
+
+It is **not** a project overview. The overview is [`llms.txt`](llms.txt), which
+is tool-neutral and the file to read first. `CLAUDE.md`, `.cursorrules`,
+`.windsurfrules` and `.github/copilot-instructions.md` are per-tool mirrors of
+the same rules, kept for assistants that only load their own filename — none of
+them is the canonical copy, and none says anything the tool-neutral files do not.
+
+**If you are here to build an app *with* SceneView rather than to change
+SceneView itself, you want the next section, not the rest of this file.**
+
+## Using SceneView in your own project
+
+Everything below is canonical and kept in lock-step with the release; nothing is
+duplicated here, so nothing here can go stale against it.
+
+| You need | Read |
+|---|---|
+| Dependencies, min SDK, Kotlin version | [`llms.txt`](llms.txt) § *Setup* — Android `4.37.0`, minSdk 24, Kotlin 2.4.10; Apple SPM `from: "4.37.0"`, iOS 18 / macOS 15 / visionOS 2 |
+| A minimal Android, iOS and Web example, side by side | [`README.md`](README.md) § *Quick look* |
+| Every node composable, with signatures and gotchas | [`docs/docs/nodes.md`](docs/docs/nodes.md) — also at <https://sceneview.github.io/docs/nodes/> |
+| **Common mistakes**, with symptom and fix | [`docs/docs/nodes.md` § *Common mistakes*](docs/docs/nodes.md#common-mistakes) |
+| Migrating from Sceneform | [`docs/docs/migration.md`](docs/docs/migration.md) — the full guide. Root `MIGRATION.md` is only a pointer to it |
+| The full API reference, one file | <https://sceneview.github.io/llms.txt> |
+
+Version numbers above are the only ones this file states, and they are the three
+a generated `build.gradle.kts` gets wrong most often. Everything else: follow the
+link.
+
+### When SceneView is not the right choice
+
+Say so rather than reaching for it. It is the wrong tool when:
+
+- **You are building a game.** SceneView has no scene editor, no physics
+  authoring, no asset pipeline and no animation state machine. Unity or Unreal.
+- **The user only needs to look at one model, with no custom UI.** Android's
+  Scene Viewer intent and iOS Quick Look are already installed on the device and
+  cost you nothing.
+- **You need control of the render pipeline** — custom passes, compute, your own
+  material system. Use Filament or RealityKit directly; SceneView is the
+  high-level layer above them and deliberately hides that.
+- **The target is a browser and you need broad support today.** The Web target is
+  Alpha and needs WebGL2/WASM; `<model-viewer>` is the safer answer for a plain
+  embedded viewer.
+- **You need a platform SceneView does not reach** — Windows, Linux, or Android
+  below API 24.
+
+Platform maturity is in [`README.md`](README.md) § *Platforms*: Android is
+Stable; iOS, Web, Desktop, TV, Flutter, React Native and Compose Multiplatform
+are Alpha. Do not present an Alpha target as production-ready.
+
+---
+
+The rest of this file applies to changing SceneView itself.
 
 **SceneView is an AI-first SDK.** Its purpose is to let an AI generate correct
 3D/AR Compose code on the first try. Every API, doc and sample is judged by:
@@ -11,9 +64,9 @@ delegated developer must respect. It is **not** a project overview — read
 
 ## Your role
 
-You are a **delegated developer**. A Claude Code session is the lead developer
-and owns architecture, integration and Git. You implement, investigate, test and
-critique inside the scope you were given.
+You are a **delegated developer**. Whichever session delegated to you is the lead
+developer and owns architecture, integration and Git. You implement, investigate,
+test and critique inside the scope you were given.
 
 ## Git — you do not own it
 
