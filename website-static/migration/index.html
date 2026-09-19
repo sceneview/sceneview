@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!--
+  Redirect stub for the stale `/migration/` URL, which README.md and
+  MIGRATION.md published for a long time and which returned HTTP 404. The guide
+  is served by MkDocs at `/docs/migration/`.
+
+  NOT the #925 failure mode. That was `website-static/docs/index.html`, which
+  pre-seeded `site/docs/` and shadowed the real MkDocs output — docs.yml still
+  carries an `rm -rf site/docs` guard against its return. This file is at
+  `/migration/`, a route MkDocs does not own and does not emit: its nav maps
+  `migration.md` to `/docs/migration/`. So there is nothing here to shadow, and
+  the guard is untouched.
+
+  `noindex, follow` + a canonical link so search engines consolidate on the real
+  page rather than indexing this one.
+-->
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Migration Guide — SceneView</title>
+  <meta name="description" content="The SceneView migration guide has moved to /docs/migration/.">
+  <meta name="robots" content="noindex, follow">
+  <link rel="canonical" href="https://sceneview.github.io/docs/migration/">
+  <meta http-equiv="refresh" content="0; url=/docs/migration/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root { color-scheme: dark light; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0D2137; color: #f0f4f8;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 16px; text-align: center; line-height: 1.6;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p { color: #b8c7d9; font-size: 0.95rem; }
+    a { color: #8ab4f8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>The migration guide has moved</h1>
+    <p>It now lives at <a href="/docs/migration/">sceneview.github.io/docs/migration/</a>.</p>
+  </main>
+</body>
+</html>

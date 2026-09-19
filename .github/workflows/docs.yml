@@ -136,7 +136,16 @@ jobs:
             cp marketing/codelabs/codelab-3d-compose.md docs/docs/codelabs/codelab-3d-compose.md 2>/dev/null || true
             cp marketing/codelabs/codelab-ar-compose.md docs/docs/codelabs/codelab-ar-compose.md 2>/dev/null || true
           fi
-          cp MIGRATION.md docs/docs/migration.md 2>/dev/null || true
+          # NOT `cp MIGRATION.md docs/docs/migration.md`. That direction is
+          # backwards and it published an empty migration guide for as long as
+          # it was here: `docs/docs/migration.md` is the 29 kB source (tracked,
+          # NOT in .gitignore, updated by every release commit), while root
+          # `MIGRATION.md` is a 1.3 kB pointer *to* it. The copy overwrote the
+          # guide with the pointer on every docs build, so `/docs/migration/`
+          # served a stub that referred the reader to itself — and to
+          # `sceneview.github.io/migration/`, which is a 404. Compare
+          # `docs/docs/llms.txt`, a genuine generated mirror: it is
+          # `.gitignore`d (line 193), which is how a mirror is marked here.
           cp CHANGELOG.md docs/docs/changelog.md 2>/dev/null || true
           cp CONTRIBUTING.md docs/docs/contributing.md 2>/dev/null || true
 
