@@ -138,6 +138,35 @@ object SceneViewTokens {
          * brightest scene the demos ship and stays unobtrusive on the darkest.
          */
         val scrim = Color(0x99000000)
+
+        /**
+         * `chrome-scrim-dock` — the same wash, two points darker, under the **bottom**
+         * band only.
+         *
+         * The bottom band carries something the top band does not: the dock's captions
+         * sit on the dock's own [surface] fill — white at 14 % — and *that* sits on the
+         * scrim. [scrim]'s own "~5.6:1" is measured for text directly on the wash, and
+         * it is right for the identity row. It does not describe the dock, because the
+         * glass fill lifts the ground back up before the caption ever lands on it.
+         *
+         * Over a white scene, composing the real stack (white caption / white 14 % /
+         * black α / white):
+         *
+         * ```
+         * 60 %  scene 255 -> scrim 102.0 -> glass 123.6  ->  white text  4.20:1   FAIL
+         * 68 %  scene 255 -> scrim  82.0 -> glass 106.4  ->  white text  5.37:1   pass
+         * ```
+         *
+         * Computed from the tokens, not sampled: it takes a white *camera frame* to
+         * photograph, and 1.4.3's threshold is about the worst case anyway. On a black
+         * scene both values are the same 15.5:1 — the scrim is doing nothing there.
+         *
+         * It is deliberately *not* applied to [scrim] wholesale. The top band's text
+         * lands on the wash directly, already clears 4.5:1 at 60 %, and darkening the
+         * status-bar end of the screen would buy contrast nobody asked for at the cost
+         * of hiding more of the scene. One number moves, where the defect is.
+         */
+        val scrimDock = Color(0xAD000000)
         /** Height of the top scrim: the identity row, its gutter and the status bar. */
         val scrimTopHeight = 160.dp
         /**

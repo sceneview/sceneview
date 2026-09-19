@@ -225,10 +225,38 @@ data class DockItem(
 /**
  * Height of the glass identity row (back button + title pill) plus its gutter,
  * provided to the `scene` slot so demos that draw their own top-centre status
- * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome. Zero
- * outside a [DemoScaffold] — `ArViewTab` draws the same pill in a plain tab.
+ * (e.g. the AR "Scanning for surfaces…" pill) can start below the chrome.
+ *
+ * Zero outside a [DemoScaffold] — which today means previews only. This line used
+ * to read "`ArViewTab` draws the same pill in a plain tab"; that stopped being true
+ * when the tab and the `ar-placement` demo were unified onto one scaffold, and the
+ * KDoc was never corrected.
  */
 val LocalDemoChromeTopInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
+ * The bottom mirror of [LocalDemoChromeTopInset]: how much room the dock band takes,
+ * **excluding** the system bars, provided to the `scene` slot so a demo that anchors
+ * something at the bottom of the camera — a coaching line, the SDK's plane-discovery
+ * pill — lands above the dock instead of behind it.
+ *
+ * The value is measured, not a token: the dock's height is `Layout.dockHeight` today,
+ * but a chip that wraps at 200 % text makes the band taller, and a constant would not
+ * know. A demo adds its own gutter (`Space.md`) on top of it.
+ *
+ * This is the dock **band** — the toolbar and its gutter, what you can see — and not the
+ * scaffold's own `dockClearance` reserve, which floors at 104 dp against an 80 dp dock so
+ * the scene viewport and the bottom-overlay stack keep extra room. A demo that published
+ * the reserve here would put its coaching line 40 dp above the dock while believing it
+ * had asked for 16.
+ *
+ * Zero outside a [DemoScaffold], which is the honest default rather than a real case:
+ * both AR hosts in this app — `ArViewTab` and `ARPlacementDemo` — go through the
+ * scaffold and both declare a dock, so in the app the value is always the measured
+ * one. The zero is for previews, and for a host that one day draws no chrome: it
+ * degrades to "one gutter off the safe area", which is the right answer there.
+ */
+val LocalDemoChromeBottomInset = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 @Composable
 fun DemoScaffold(
@@ -344,7 +372,24 @@ fun DemoScaffold(
         // always exists now (#3328): it carries the Controls item that opens the
         // one settings surface, even on a demo with no controls of its own, so
         // the clearance is unconditional.
+        // Two different jobs, two values — conflating them is what put every bottom
+        // overlay 40 dp above a dock it was supposed to clear by 16 dp.
+        //
+        // `dockClearance` is a RESERVE: room the scene viewport and the bottom-overlay
+        // stack keep free. Its 104 dp floor is deliberately more than the dock is tall
+        // (`SETTINGS_FAB_RESERVED_SPACE` budgets 64 + 16 + 24 dp of breathing room), so
+        // an overlay reads as stacked above the dock rather than resting on it.
+        //
+        // `dockBandClearance` is the BAND you can see: the toolbar plus its gutter, and
+        // nothing else. Anything that positions itself a gutter above the dock has to
+        // measure from this one, or it inherits the reserve's 24 dp on top of its own
+        // gutter and lands 40 dp up. Floored at the token band rather than 104 dp so the
+        // first frame, before `onDockBandHeight` reports, is already the right height.
         val dockClearance = maxOf(SETTINGS_FAB_RESERVED_SPACE, dockBand)
+        val dockBandClearance = maxOf(
+            SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
+            dockBand,
+        )
 
         // `consumeWindowInsets(padding)` gives this Box's whole subtree ONE inset
         // reference frame (#3237). With `contentWindowInsets = 0` the padding is
@@ -392,6 +437,7 @@ fun DemoScaffold(
                 content = {
                     androidx.compose.runtime.CompositionLocalProvider(
                         LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
+                        LocalDemoChromeBottomInset provides dockBandClearance,
                     ) {
                         if (arSessionFailed) {
                             Box(
@@ -472,8 +518,8 @@ fun DemoScaffold(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
                                 1f - SceneViewTokens.Glass.scrimPlateau to
-                                    SceneViewTokens.Glass.scrim,
-                                1f to SceneViewTokens.Glass.scrim,
+                                    SceneViewTokens.Glass.scrimDock,
+                                1f to SceneViewTokens.Glass.scrimDock,
                             )
                         ),
                 )
@@ -550,7 +596,21 @@ fun DemoScaffold(
                         )
                     )
                     .padding(horizontal = SceneViewTokens.Space.md)
-                    .padding(bottom = dockClearance + SceneViewTokens.Space.sm),
+                    // `Space.md` above the measured dock BAND — not `dockClearance`, and
+                    // not the `Space.sm` that used to be here. The old 8 dp only ever
+                    // cleared the dock because the reserve's 104 dp floor stood against
+                    // an 80 dp dock, so the visible gap was 32 dp by accident; adding
+                    // `Space.md` to that same reserve would have made it 40 dp, also by
+                    // accident. Measured from the band it is 16 dp on purpose, and it
+                    // matches the gap the scene's own bottom stack uses.
+                    //
+                    // What this still does NOT clear is a demo's `bottomOverlay` stack,
+                    // which reserves `dockClearance + bottomOverlayBand` above the same
+                    // dock: a snackbar raised during a pinch read-out overlaps it and
+                    // wins on z-order. That was true before this change too — the
+                    // snackbar has never read `bottomOverlayBand` — so it is left alone
+                    // here rather than fixed silently on the way past.
+                    .padding(bottom = dockBandClearance + SceneViewTokens.Space.md),
             )
         }
     }

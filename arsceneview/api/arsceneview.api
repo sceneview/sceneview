@@ -637,10 +637,10 @@ public final class io/github/sceneview/ar/ComposableSingletons$ARSceneViewKt {
 public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt;
 	public fun <init> ()V
-	public final fun getLambda$-245446278$arsceneview_release ()Lkotlin/jvm/functions/Function3;
-	public final fun getLambda$-608761358$arsceneview_release ()Lkotlin/jvm/functions/Function2;
-	public final fun getLambda$-705560747$arsceneview_release ()Lkotlin/jvm/functions/Function3;
-	public final fun getLambda$1423115325$arsceneview_release ()Lkotlin/jvm/functions/Function2;
+	public final fun getLambda$-1008820669$arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$-812085157$arsceneview_release ()Lkotlin/jvm/functions/Function2;
+	public final fun getLambda$1020683774$arsceneview_release ()Lkotlin/jvm/functions/Function3;
+	public final fun getLambda$818721414$arsceneview_release ()Lkotlin/jvm/functions/Function2;
 }
 
 public final class io/github/sceneview/ar/FloorWallSeam {
@@ -741,8 +741,8 @@ public final class io/github/sceneview/ar/PlaneDiscoveryGuideDurations {
 }
 
 public final class io/github/sceneview/ar/PlaneDiscoveryGuideKt {
-	public static final fun PlaneDiscoveryGuide (Landroidx/compose/foundation/layout/BoxScope;ZZZLcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideState;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
-	public static final fun PlaneDiscoveryGuideOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/PlaneDiscoveryPhase;Lcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
+	public static final fun PlaneDiscoveryGuide-xKBSf-U (Landroidx/compose/foundation/layout/BoxScope;ZZZLcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideState;FLjava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public static final fun PlaneDiscoveryGuideOverlay-6qCrX9Q (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/PlaneDiscoveryPhase;Lcom/google/ar/core/TrackingFailureReason;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;FLjava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public static final fun PlaneDiscoveryHelpCard (Landroidx/compose/ui/Modifier;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
 	public static final fun rememberPlaneDiscoveryGuideState (Lio/github/sceneview/ar/PlaneDiscoveryGuideDurations;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/PlaneDiscoveryGuideState;
 }
