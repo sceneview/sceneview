@@ -109,7 +109,7 @@
       else parent.appendChild(el);
     }
     // Align the overlay to the canvas box (handles parents with sibling content,
-    // e.g. claude-3d's label/badge, without covering them).
+    // e.g. ai-3d's label/badge, without covering them).
     el.style.left = canvas.offsetLeft + 'px';
     el.style.top = canvas.offsetTop + 'px';
     el.style.width = (canvas.offsetWidth || canvas.clientWidth) + 'px';

@@ -121,7 +121,7 @@ v4.0 will add `XRScene` for spatial computing headsets and cross-framework bridg
 ### AI-assisted development
 
 SceneView ships with an MCP server (`sceneview-mcp`) and a machine-readable `llms.txt` API
-reference. Claude, Cursor, and other AI tools always have the current API — no hallucinated
+reference. Whichever assistant you use, it has the current API — no hallucinated
 methods, no outdated patterns.
 
 ---

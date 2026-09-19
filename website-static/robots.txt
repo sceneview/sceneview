@@ -1,30 +1,98 @@
+# Every crawler gets the same rules, and nothing here is disallowed.
+#
+# `/embed/` and `/preview/` used to be listed as `Disallow:`. They already
+# carry `<meta name="robots" content="noindex, nofollow">`, and the two
+# mechanisms cancel each other out: a crawler forbidden to fetch a URL can
+# never read the `noindex` it contains, so a blocked-but-linked URL can stay
+# in an index with no content — the opposite of what was wanted. The `noindex`
+# is the one that does the work, so the `Disallow:` lines are gone. This also
+# unblocks `/go/web`, which is listed in the sitemap and redirects to
+# `/preview/`.
+#
+# The named groups below are a statement, not a rule change: robots.txt group
+# matching is winner-takes-all, so a crawler that matches a named group ignores
+# the `*` group entirely. They are listed to say explicitly that AI crawlers
+# are as welcome as any other, and each one repeats the full rule set.
+# IMPORTANT: if a `Disallow:` is ever added to `*`, it must be added to every
+# named group too, or these crawlers silently keep the access everyone else
+# loses. The list is alphabetical and favours no assistant.
+
 User-agent: *
 Allow: /
 Allow: /llms.txt
 Allow: /llms-full.txt
-Disallow: /embed/
-Disallow: /preview/
 
-# AI Crawlers — full access to documentation
-User-agent: GPTBot
-Allow: /
+# AI crawlers and AI-powered search — same access as everyone else.
+# Alphabetical. Anthropic documents three agents — `ClaudeBot` (crawling),
+# `Claude-User` (user-initiated fetches) and `Claude-SearchBot` (search
+# indexing); `Claude-Web` is no longer among them. All three are listed.
 
-User-agent: ChatGPT-User
+User-agent: AI2Bot
 Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-User-agent: Claude-Web
-Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
 
 User-agent: Applebot-Extended
 Allow: /
-
-User-agent: PerplexityBot
-Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
 
 User-agent: Bytespider
 Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
 
+User-agent: CCBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: ChatGPT-User
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: Claude-SearchBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: Claude-User
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: Google-Extended
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: GPTBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: Meta-ExternalAgent
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: OAI-SearchBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+# Two sitemaps: the marketing root, and the MkDocs tree under `/docs/`, which
+# otherwise depends entirely on being reached by links.
 Sitemap: https://sceneview.github.io/sitemap.xml
+Sitemap: https://sceneview.github.io/docs/sitemap.xml
