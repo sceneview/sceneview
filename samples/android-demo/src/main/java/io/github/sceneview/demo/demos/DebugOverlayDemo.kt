@@ -6,9 +6,6 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import android.util.Log
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
@@ -50,7 +47,11 @@ import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
+import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
@@ -62,7 +63,6 @@ import io.github.sceneview.utils.rememberDebugStats
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.max
-import kotlin.math.round
 import kotlin.math.sqrt
 import kotlin.math.tan
 
@@ -88,10 +88,9 @@ import kotlin.math.tan
  *     and the camera manipulator is re-keyed via `eyePosition` so the home actually
  *     applies (the previous `SideEffect`-only assignment was overridden by the manipulator
  *     each frame).
- *  2. **Smooth dolly between presets** — distance is animated through an [Animatable]
- *     with a low-stiffness spring, snapped to a 5 cm grid for re-keying the manipulator
- *     (each manipulator rebuild is ~free, and the snap cap keeps re-builds at ≤ 30 over
- *     a typical transition).
+ *  2. **Smooth dolly between presets** — one manipulator per auto-fit distance, eased into by
+ *     the screen's single camera writer ([rememberContinuousCameraManipulator]): the camera
+ *     dollies from the pose on screen, along the line of sight the user set.
  *  3. **Stress-test crash hardened** — cap lowered 5 000 → 2 000, spawn wrapped in
  *     try/catch with graceful auto-stop + Logcat tag `DebugOverlayDemo` for debugging.
  *
@@ -151,37 +150,26 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
     // change. The animated distance below tweens toward this.
     val targetDistance = remember(targetCount) { autoFitDistance(targetCount) }
 
-    // Animated distance — low-stiffness spring so transitions feel like a smooth dolly
-    // instead of a hard snap. Initial value matches the first targetDistance so we don't
-    // open with a jarring outward zoom on screen entry.
-    val animatedDistance = remember { Animatable(targetDistance) }
-    LaunchedEffect(targetDistance) {
-        animatedDistance.animateTo(
-            targetValue = targetDistance,
-            animationSpec = spring(
-                stiffness = Spring.StiffnessLow,
-                dampingRatio = Spring.DampingRatioNoBouncy,
-            ),
-        )
-    }
-
-    // The manipulator caches its orbit home at construction. We re-key it on each
-    // *snapped* distance value so the smooth tween is re-rendered as a series of small
-    // dolly steps. CAMERA_REKEY_SNAP_M = 5 cm, so a 0.6 → 6 m transition produces ≤ ~108
-    // rebuilds spread over the spring duration; in practice the spring resolves in < 1 s
-    // and we get ~10–25 rebuilds, which is essentially free (a `Manipulator.Builder()`
-    // is just a few field writes + one JNI call).
-    val snappedDistance = round(animatedDistance.value / CAMERA_REKEY_SNAP_M) * CAMERA_REKEY_SNAP_M
+    // The stock manipulator takes its orbit home at construction, so a new auto-fit distance is a
+    // new manipulator — one per stress-test toggle. `SceneView` never sees it: it is handed the
+    // screen's one camera writer, which dollies from the pose on screen to the new distance. This
+    // used to be a spring re-keying a fresh manipulator every 5 cm of travel: some twenty
+    // rebuilds a second, each one a cut, and each one dropping whatever orbit the user had set —
+    // the camera juddered out in steps and snapped back onto the +Z axis.
     val cameraNode = rememberCameraNode(engine)
-    // Explicit key on snappedDistance — the SDK's `rememberCameraManipulator` already
-    // re-keys when its `creator` lambda identity changes, but going through `remember`
-    // ourselves makes the rebuild contract obvious (one rebuild per 5 cm of dolly).
-    val cameraManipulator = remember(snappedDistance) {
+    val continuity = rememberContinuousCameraManipulator(blendMillis = FIT_DOLLY_MILLIS)
+    val fitManipulator = remember(targetDistance) {
+        // A new count reframes, it does not re-aim: dolly along the line of sight the user set.
+        val sightLine = continuity.eyePosition
+            ?.takeIf { length(it) > MIN_SIGHT_LINE_M }
+            ?.let { normalize(it) }
+            ?: Position(z = 1f)
         createDefaultCameraManipulator(
-            eyePosition = Position(z = snappedDistance),
+            eyePosition = sightLine * targetDistance,
             targetPosition = Position(0f),
         )
     }
+    val cameraManipulator = continuity.driving(fitManipulator)
 
     // Progressive spawn: incrementally bring `currentCount` toward `targetCount` so the
     // user sees nodes appear in real time instead of staring at a frozen UI thread.
@@ -646,13 +634,11 @@ private const val STRESS_TICK_MS = 50L
 /** Distance for a single sphere — close enough to fill ~25 % of vertical FOV at 35°. */
 private const val SINGLE_SPHERE_DISTANCE = 0.8f
 
-/**
- * Snap the animated camera distance to this grid (in metres) when re-keying the
- * orbit manipulator. 5 cm is below visible-step threshold for a smooth dolly while
- * keeping rebuild count bounded for any reasonable transition (max ~120 rebuilds for
- * a 0 → 6 m sweep, all of them cheap).
- */
-private const val CAMERA_REKEY_SNAP_M = 0.05f
+/** How long the camera takes to dolly to a new auto-fit distance. */
+private const val FIT_DOLLY_MILLIS = 900L
+
+/** Closer to the grid's centre than this, the eye has no line of sight worth keeping. */
+private const val MIN_SIGHT_LINE_M = 1e-3f
 
 /**
  * Camera distance that frames a 10×10×N sphere grid (sphere radius [NODE_RADIUS],

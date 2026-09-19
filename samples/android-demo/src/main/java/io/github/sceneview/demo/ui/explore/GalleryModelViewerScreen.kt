@@ -528,6 +528,9 @@ private fun RenderContent(
         // centre of the surface. Measured on Scifi Girl + Porsche.
         target = Position(0f, framing?.lookAtY ?: 0f, 0f),
         durationMillis = 20_000,
+        // The measured fit arrives with the model, in front of an empty stage: taken at once.
+        // A rotation re-fits with the model in frame: that one is a camera move.
+        contentShown = instance != null,
     )
 
     Column(

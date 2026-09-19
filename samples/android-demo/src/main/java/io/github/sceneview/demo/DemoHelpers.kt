@@ -735,6 +735,16 @@ class HeroOrbitCameraManipulator(
     /** Monotonic clock, in nanoseconds. The JVM tests drive it by hand. */
     private val nanoTime: () -> Long = System::nanoTime,
     /**
+     * The turntable behind [yawProvider], when the manipulator is to drive it itself: [update]
+     * then advances it once per rendered frame, towards [spinDegreesPerSecond], and only while
+     * the idle orbit has the camera. One writer, one clock — and a speed that eases in at open,
+     * after a hand-back, and out on pause, where a looping tween cut from rest to full speed in
+     * a frame. `null` leaves the yaw entirely to [yawProvider] (a choreographed sweep).
+     */
+    private val spin: OrbitSpin? = null,
+    /** Goal speed of [spin], read every frame; `0` pauses it where it stands. */
+    private val spinDegreesPerSecond: () -> Float = { 0f },
+    /**
      * Builds the manipulator the user drives, from the eye and pivot on screen. Injectable
      * because the stock one owns a native Filament `Manipulator`, which a JVM test cannot load.
      */
@@ -890,7 +900,12 @@ class HeroOrbitCameraManipulator(
             idleNanos > resumeNanos + UNWATCHED_MARGIN_NANOS -> dropUserFraming()
             else -> {
                 handBack()
-                if (resumeBlendMillis > 0L) carried.easeBack(resumeBlendMillis) else dropUserFraming()
+                // Nobody timed this one: it takes as long as the way home needs.
+                if (resumeBlendMillis > 0L) {
+                    carried.easeBack(resumeBlendMillis, paced = true)
+                } else {
+                    dropUserFraming()
+                }
             }
         }
     }
@@ -975,6 +990,9 @@ class HeroOrbitCameraManipulator(
     override fun update(deltaTime: Float) {
         fallback?.update(deltaTime)
         settle()
+        // While the user holds the camera the turntable winds down out of sight, so the orbit
+        // that gets it back starts from rest instead of lurching off at full speed.
+        spin?.advance(deltaTime, if (fallback == null) spinDegreesPerSecond() else 0f)
     }
 
     private companion object {
@@ -991,16 +1009,25 @@ class HeroOrbitCameraManipulator(
  *
  * In [DemoSettings.qaMode] the yaw is frozen at [staticYaw] so screenshot tests stay stable.
  *
- * ### The yaw never jumps (#3640)
+ * ### The yaw never jumps (#3640), and neither does its speed
+ *
+ * The yaw is an [OrbitSpin] the manipulator advances on the render loop's own clock, with an
+ * eased angular speed: the orbit accelerates in at open and after every hand-back from a gesture,
+ * and coasts to a stop on pause, instead of cutting between rest and full speed in one frame.
  *
  * [trigger] going `false` **pauses** the turntable and `true` lets it carry on from the same
  * angle. It used to restart from 0° each time, so anything a demo wires into [trigger] — the
  * Orbit switch of the lighting screens, Lines & Paths' Animate, a model chip whose instance
  * goes `null` while the next one loads — threw the camera back to its opening azimuth.
  *
+ * ### A new framing is a camera move, not a cut
+ *
  * A new framing ([radius], [yHeight], [target]) is still a new manipulator, and so the authored
  * pose: those change when the *subject* does, and a framing the user chose for the previous
- * model means nothing for the next.
+ * model means nothing for the next. But `SceneView` never sees that swap: what it is handed is a
+ * [ContinuousCameraManipulator] remembered once, which eases from the pose on screen into the
+ * new framing. It used to cut there — on the next model of a viewer, when a loaded model's
+ * measured bounds replaced the placeholder fit, on a rotation that re-fits the radius.
  *
  * ### Deep-link zoom override (#1571)
  *
@@ -1021,39 +1048,38 @@ fun rememberHeroOrbitCameraManipulator(
     target: Position = Position(0f, 0f, 0f),
     resumeAfterMillis: Long = 3_000L,
     resume: HeroOrbitResume = HeroOrbitResume.KeepUserFraming,
-): HeroOrbitCameraManipulator {
-    val anim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    androidx.compose.runtime.LaunchedEffect(trigger, DemoSettings.qaMode, durationMillis) {
-        if (trigger && !DemoSettings.qaMode) {
-            while (true) {
-                // Finish the turn the orbit is on, from the angle it stopped at, and only then
-                // wrap: 360° and 0° are the same pose, so that wrap is the one invisible snap.
-                anim.animateTo(
-                    targetValue = FULL_TURN_DEGREES,
-                    animationSpec = androidx.compose.animation.core.tween(
-                        durationMillis = remainingTurnMillis(anim.value, durationMillis),
-                        easing = androidx.compose.animation.core.LinearEasing,
-                    ),
-                )
-                anim.snapTo(0f)
-            }
-        }
-    }
+    contentShown: Boolean = true,
+): io.github.sceneview.gesture.CameraGestureDetector.CameraManipulator {
+    val continuity = rememberContinuousCameraManipulator(pivot = target)
+    // The turntable outlives the manipulator: a new framing rebuilds the latter, and the yaw —
+    // and its speed — carry on across the rebuild.
+    val spin = androidx.compose.runtime.remember { OrbitSpin() }
+    val running = androidx.compose.runtime.rememberUpdatedState(trigger)
+    val turnMillis = androidx.compose.runtime.rememberUpdatedState(durationMillis)
     // Deep-link zoom override (#1571): a non-null DemoSettings.cameraDistance wins over the
     // caller's auto-fit `radius`. Reading the Compose state here (not inside remember{})
     // keeps it a recomposition input; it is also a remember{} key so the manipulator is
     // rebuilt with the new orbit distance if the zoom changes (e.g. a warm-start onNewIntent).
     val effectiveRadius = DemoSettings.cameraDistance ?: radius
-    return androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis, resume) {
+    val orbit = androidx.compose.runtime.remember(effectiveRadius, yHeight, target, resumeAfterMillis, resume) {
         HeroOrbitCameraManipulator(
-            yawProvider = { if (DemoSettings.qaMode) staticYaw else anim.value },
+            yawProvider = { if (DemoSettings.qaMode) staticYaw else spin.yawDegrees },
             radius = effectiveRadius,
             yHeight = yHeight,
             target = target,
             resumeAfterMillis = resumeAfterMillis,
             resume = resume,
+            spin = spin,
+            spinDegreesPerSecond = {
+                if (running.value && !DemoSettings.qaMode) {
+                    OrbitSpin.degreesPerSecond(turnMillis.value)
+                } else {
+                    0f
+                }
+            },
         )
     }
+    return continuity.driving(orbit, contentShown = contentShown)
 }
 
 /**

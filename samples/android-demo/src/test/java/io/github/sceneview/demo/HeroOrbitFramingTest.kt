@@ -185,17 +185,103 @@ class HeroOrbitFramingTest {
         assertNull(carried.over { error("the authored framing is only read when there is an offset") })
     }
 
-    // ── The turntable's clock ────────────────────────────────────────────────────────────────────
-
     @Test
-    fun `the yaw finishes the turn it is on instead of starting another`() {
-        assertEquals(20_000, remainingTurnMillis(fromYawDegrees = 0f, fullTurnMillis = 20_000))
-        assertEquals(5_000, remainingTurnMillis(fromYawDegrees = 270f, fullTurnMillis = 20_000))
+    fun `a long way home takes longer, a short one keeps the length it was given`() {
+        val near = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 8f, elevation = 0f, distanceScale = 1.1f)
+        val far = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = -75f, elevation = 0f, distanceScale = 1f)
+        val zoomed = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 0f, elevation = 0f, distanceScale = 0.2f)
+        val opposite = OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 180f, elevation = 0f, distanceScale = 1f)
+
+        assertEquals(1_200L, resumeBlendMillisFor(near, 1_200L))
+        // 75° under a 45°/s peak: 1.5 × 75 / 45 = 2.5 s.
+        assertEquals(2_500.0, resumeBlendMillisFor(far, 1_200L).toDouble(), 2.0)
+        assertTrue(resumeBlendMillisFor(zoomed, 1_200L) > 2_500L)
+        assertEquals(3_600L, resumeBlendMillisFor(opposite, 1_200L))
+        assertEquals(0L, resumeBlendMillisFor(far, 0L))
     }
 
     @Test
-    fun `a turn that is already finished still takes a tick, so the loop suspends`() {
-        assertEquals(1, remainingTurnMillis(fromYawDegrees = 360f, fullTurnMillis = 20_000))
-        assertEquals(1, remainingTurnMillis(fromYawDegrees = 400f, fullTurnMillis = 20_000))
+    fun `a paced ease back is still on its way when the asked length has passed`() {
+        var now = 0L
+        val carried = CarriedFraming { now }
+        carried.hold(OrbitFramingOffset(Position(0f, 0f, 0f), yawDegrees = 75f, elevation = 0f, distanceScale = 1f))
+
+        carried.easeBack(millis = 1_200L, paced = true)
+        now += 1_250_000_000L
+
+        // Half of 2.5 s in: half of the turn is left, where the unpaced ease had already landed.
+        assertEquals(authored.yawDegrees + 37.5f, checkNotNull(carried.over { authored }).yawDegrees, 0.5f)
+    }
+
+    // ── The turntable's clock ────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `the turntable eases in from rest instead of starting at full speed`() {
+        val spin = OrbitSpin()
+        val goal = OrbitSpin.degreesPerSecond(fullTurnMillis = 20_000)
+        assertEquals(18f, goal, 1e-4f)
+
+        spin.advance(deltaSeconds = FRAME, goalDegreesPerSecond = goal)
+
+        // One frame in, the orbit has barely moved: the old looping tween was at 18°/s here.
+        assertTrue(spin.degreesPerSecond < goal * 0.05f)
+        repeat(240) { spin.advance(FRAME, goal) }
+        assertEquals(goal, spin.degreesPerSecond, 0.01f)
+    }
+
+    @Test
+    fun `pausing coasts to a stop and keeps the angle`() {
+        val spin = OrbitSpin()
+        repeat(240) { spin.advance(FRAME, 18f) }
+        val yawAtPause = spin.yawDegrees
+
+        spin.advance(FRAME, goalDegreesPerSecond = 0f)
+
+        // Still moving the frame after the switch flips: no velocity cut…
+        assertTrue(spin.degreesPerSecond > 18f * 0.9f)
+        repeat(240) { spin.advance(FRAME, 0f) }
+        // …then at rest, a few degrees further on — never back at 0° (#3640).
+        assertEquals(0f, spin.degreesPerSecond, 0.01f)
+        assertTrue(spin.yawDegrees > yawAtPause)
+        assertTrue(spin.yawDegrees - yawAtPause < 18f * OrbitSpin.DEFAULT_SPIN_EASE_SECONDS * 1.1f)
+    }
+
+    @Test
+    fun `the speed is continuous whatever the frame pacing`() {
+        val smooth = OrbitSpin()
+        val janky = OrbitSpin()
+        repeat(60) { smooth.advance(FRAME, 18f) }
+        repeat(12) { janky.advance(FRAME * 5f, 18f) }
+
+        // Same clock time, same place: a dropped frame carries its own motion, not the next one's.
+        assertEquals(smooth.yawDegrees, janky.yawDegrees, 0.05f)
+        assertEquals(smooth.degreesPerSecond, janky.degreesPerSecond, 0.01f)
+    }
+
+    @Test
+    fun `a frame that lasted the whole background stay does not leap the orbit`() {
+        val spin = OrbitSpin()
+        repeat(240) { spin.advance(FRAME, 18f) }
+        val before = spin.yawDegrees
+
+        spin.advance(deltaSeconds = 90f, goalDegreesPerSecond = 18f)
+
+        assertEquals(before + 18f * OrbitSpin.MAX_STEP_SECONDS, spin.yawDegrees, 0.01f)
+    }
+
+    @Test
+    fun `the yaw wraps and reset puts it back at rest`() {
+        val spin = OrbitSpin(easeSeconds = 0f)
+        repeat(25) { spin.advance(1f / 4f, 360f) }
+        assertTrue(spin.yawDegrees in 0f..360f)
+
+        spin.reset()
+
+        assertEquals(0f, spin.yawDegrees, 0f)
+        assertEquals(0f, spin.degreesPerSecond, 0f)
+    }
+
+    private companion object {
+        const val FRAME = 1f / 60f
     }
 }

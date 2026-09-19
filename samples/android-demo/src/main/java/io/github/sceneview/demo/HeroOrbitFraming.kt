@@ -1,8 +1,11 @@
 package io.github.sceneview.demo
 
 import io.github.sceneview.math.Position
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -175,6 +178,39 @@ private val MAX_ELEVATION: Float = Math.toRadians(89.0).toFloat()
 const val DEFAULT_RESUME_BLEND_MILLIS: Long = 1_200L
 
 /**
+ * How long the ease back over [offset] really takes when [millis] was asked for: the same, stretched
+ * until the way home is not covered at a whip. A camera left a quarter turn away came back in
+ * 1.2 s — continuous, eased at both ends, and still ~100°/s in the middle, which reads as a jump.
+ * Smoothstep peaks at 1.5× its mean speed, so the turn is held under
+ * [RESUME_PEAK_DEGREES_PER_SECOND] and the dolly under [RESUME_PEAK_ZOOM_PER_SECOND] — up to
+ * [MAX_RESUME_STRETCH]× [millis], past which the camera would seem not to answer at all.
+ */
+internal fun resumeBlendMillisFor(offset: OrbitFramingOffset, millis: Long): Long {
+    if (millis <= 0L) return millis
+    val turnDegrees = max(
+        abs(offset.yawDegrees),
+        abs(Math.toDegrees(offset.elevation.toDouble()).toFloat()),
+    )
+    val zoom = offset.distanceScale.takeIf { it.isFinite() && it > 0f }?.let { abs(ln(it)) } ?: 0f
+    val seconds = SMOOTHSTEP_PEAK *
+        max(turnDegrees / RESUME_PEAK_DEGREES_PER_SECOND, zoom / RESUME_PEAK_ZOOM_PER_SECOND)
+    if (!seconds.isFinite()) return millis
+    return (seconds * 1_000f).toLong().coerceIn(millis, millis * MAX_RESUME_STRETCH)
+}
+
+/** Peak speed of a smoothstep, in units of its mean speed. */
+private const val SMOOTHSTEP_PEAK = 1.5f
+
+/** The fastest a hand-back turns the camera round the subject, at the middle of its ease. */
+internal const val RESUME_PEAK_DEGREES_PER_SECOND = 45f
+
+/** The fastest a hand-back dollies, in natural-log distance per second (≈ ×2.2 each second). */
+internal const val RESUME_PEAK_ZOOM_PER_SECOND = 0.8f
+
+/** A hand-back never lasts more than this many times the length it was given. */
+internal const val MAX_RESUME_STRETCH = 3L
+
+/**
  * The user's framing while the idle orbit carries it: held at full weight for good, or easing
  * away. The ease runs on [nanoTime] rather than on frame deltas so that a manipulator nobody is
  * drawing from — Materials swaps between two — still finishes its way home in the meantime.
@@ -194,11 +230,15 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
         easeNanos = 0L
     }
 
-    /** Start easing what is carried away over [millis]. Nothing carried, nothing to ease. */
-    fun easeBack(millis: Long) {
-        if (offset == null) return
+    /**
+     * Start easing what is carried away over [millis] — or, with [paced], over as long as the way
+     * home needs ([resumeBlendMillisFor]). A demo that times the ease against an animation of its
+     * own asks for the exact length. Nothing carried, nothing to ease.
+     */
+    fun easeBack(millis: Long, paced: Boolean = false) {
+        val held = offset ?: return
         easeStartNanos = nanoTime()
-        easeNanos = millis * NANOS_PER_MILLI
+        easeNanos = (if (paced) resumeBlendMillisFor(held, millis) else millis) * NANOS_PER_MILLI
     }
 
     fun clear() {
@@ -233,11 +273,66 @@ internal class CarriedFraming(private val nanoTime: () -> Long) {
 internal const val FULL_TURN_DEGREES: Float = 360f
 
 /**
- * How long the idle yaw needs to finish the turn it is on, from [fromYawDegrees] to 360°, at one
- * full turn per [fullTurnMillis]. Never zero: a zero-length tween to 360° followed by the wrap to
- * 0° would spin the loop without ever suspending.
+ * The idle turntable's yaw, integrated **by the camera's own frame clock** with an eased angular
+ * speed.
+ *
+ * It replaces a Compose `Animatable` looping a linear tween, which had two defects every demo
+ * sharing the helper showed on screen:
+ *
+ * - **Velocity cuts.** A linear tween is at full speed from its first frame and at zero the frame
+ *   it is cancelled, so the orbit lurched off at open, after every hand-back from a gesture, and
+ *   stopped dead on pause. [advance] eases the speed towards its goal instead — the position was
+ *   already continuous (#3642), now the velocity is too.
+ * - **A second clock.** The tween ticked in its own coroutine, so the render loop read a yaw one
+ *   frame stale: a long frame moved one tick and the *next* short one carried the catch-up. Here
+ *   the yaw advances in the manipulator's `update(deltaTime)`, the frame that draws it.
+ *
+ * Pausing keeps the angle, exactly like the tween it replaces (#3640): only [reset] re-zeroes it.
  */
-internal fun remainingTurnMillis(fromYawDegrees: Float, fullTurnMillis: Int): Int {
-    val remaining = (FULL_TURN_DEGREES - fromYawDegrees).coerceIn(0f, FULL_TURN_DEGREES)
-    return (fullTurnMillis * (remaining / FULL_TURN_DEGREES)).toInt().coerceAtLeast(1)
+class OrbitSpin(private val easeSeconds: Float = DEFAULT_SPIN_EASE_SECONDS) {
+    /** Current yaw, in degrees, folded into `[0, 360)`. */
+    var yawDegrees: Float = 0f
+        private set
+
+    /** Current angular speed, in degrees per second. */
+    var degreesPerSecond: Float = 0f
+        private set
+
+    /**
+     * Move on by [deltaSeconds], easing the speed towards [goalDegreesPerSecond] (`0` to pause).
+     * A frame longer than [MAX_STEP_SECONDS] — a model upload, the app coming back from the
+     * background — counts as that much and no more. Ordinary jank still carries its own motion;
+     * a freeze leaves nothing to catch up. At a quarter of a second, the step after a 350 ms
+     * freeze was 3°, which the screen's camera then eased as a cut — a 1.5× surge of the orbit for
+     * half a second, measured on Lighting. A tenth keeps the step under what that camera calls one.
+     */
+    fun advance(deltaSeconds: Float, goalDegreesPerSecond: Float) {
+        if (!deltaSeconds.isFinite() || deltaSeconds <= 0f) return
+        val dt = deltaSeconds.coerceAtMost(MAX_STEP_SECONDS)
+        val goal = if (goalDegreesPerSecond.isFinite()) goalDegreesPerSecond else 0f
+        val before = degreesPerSecond
+        // Exact solution of "the speed closes a fixed share of its gap per unit of time", and its
+        // exact integral: the pose depends on the clock, not on how the frames sliced it.
+        val decay = if (easeSeconds <= 0f) 0f else kotlin.math.exp(-dt / easeSeconds)
+        degreesPerSecond = goal + (before - goal) * decay
+        val turned = yawDegrees + goal * dt + (before - goal) * easeSeconds.coerceAtLeast(0f) * (1f - decay)
+        yawDegrees = ((turned % FULL_TURN_DEGREES) + FULL_TURN_DEGREES) % FULL_TURN_DEGREES
+    }
+
+    /** Back to [yawDegrees], at rest. Only for a camera nobody is looking through. */
+    fun reset(yawDegrees: Float = 0f) {
+        this.yawDegrees = ((yawDegrees % FULL_TURN_DEGREES) + FULL_TURN_DEGREES) % FULL_TURN_DEGREES
+        degreesPerSecond = 0f
+    }
+
+    companion object {
+        /** Time constant of the speed ease: ~95 % of the way to the goal after three of these. */
+        const val DEFAULT_SPIN_EASE_SECONDS: Float = 0.45f
+
+        const val MAX_STEP_SECONDS: Float = 0.1f
+
+        /** Angular speed of one full turn per [fullTurnMillis]. */
+        fun degreesPerSecond(fullTurnMillis: Int): Float =
+            if (fullTurnMillis > 0) FULL_TURN_DEGREES * 1_000f / fullTurnMillis else 0f
+    }
 }
