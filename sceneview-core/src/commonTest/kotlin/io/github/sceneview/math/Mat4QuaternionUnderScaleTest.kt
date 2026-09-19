@@ -220,8 +220,9 @@ class Mat4QuaternionUnderScaleTest {
 
     /**
      * A non-uniformly scaled ancestor followed by a rotated descendant shears the world basis
-     * (`dot(col0, col1) = -0.8` here), so no quaternion equals the child's rotation. Normalising
-     * the columns rescales that basis without re-orthogonalising it, so what comes back is *a*
+     * (`dot(col0, col1) = -0.8` here): it is no longer a rotation times a per-axis scale, so
+     * normalising its columns cannot give back the child's rotation. That normalisation rescales
+     * the basis without re-orthogonalising it, so what comes back is *a*
      * unit rotation — not the nearest one, and not bounded in any useful way once the parent is
      * itself rotated (29.13° under this scale, ~180° in the worst pose under `(0.25, 2, 10)`).
      * An exact answer does exist for a single scaled ancestor and is tracked in #3744; this case
