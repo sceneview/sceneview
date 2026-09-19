@@ -57,7 +57,7 @@ describe("mcp/server.json (MCP registry entry)", () => {
 
   it("points the npm package entry at the same name and version", () => {
     const npm = serverJson.packages.find(
-      (pkg: { registryType: string }) => pkg.registryType === "npm",
+      (pkg: { registryType: string }) => pkg.registryType === "npm"
     );
     expect(npm.identifier).toBe(packageJson.name);
     expect(npm.version).toBe(packageJson.version);
