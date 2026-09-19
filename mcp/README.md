@@ -102,15 +102,6 @@ Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) — the sta
 cursor://anysphere.cursor-deeplink/mcp/install?name=sceneview&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjZW5ldmlldy1tY3AiXX0=
 ```
 
-### Gemini in Android Studio
-
-Android Studio's MCP integration **does not support stdio** — it connects over HTTP only, so
-point it at the hosted endpoint. Settings → Tools → AI → MCP Servers:
-
-```json
-{ "mcpServers": { "sceneview": { "httpUrl": "https://mcp.sceneview.dev/mcp", "enabled": true } } }
-```
-
 ### Gemini CLI
 
 The repository root carries a [`gemini-extension.json`](../gemini-extension.json), so the CLI
@@ -120,8 +111,29 @@ installs the server straight from GitHub — no JSON to paste:
 gemini extensions install https://github.com/sceneview/sceneview
 ```
 
-It declares nothing but the server: `npx -y sceneview-mcp` over stdio, no context file and no
-tool exclusions, so it adds the SceneView tools to a session and changes nothing else about it.
+**This clones the whole monorepo** — over 2 GB of history — because the CLI installs an
+extension by cloning the repository that declares it, and SceneView's manifest sits in a
+repository that also carries the Android, Apple, Web, Flutter and React Native sources. If you
+want the server and not the clone, paste the standard `mcpServers` block into
+`~/.gemini/settings.json` instead; it is the same command, `npx -y sceneview-mcp`, and it costs
+a download of the npm package.
+
+Either way, `npx` resolves `sceneview-mcp` to the **latest version published on npm**, which is
+not necessarily the version this manifest declares — the manifest's `version` describes the
+extension, and the server it launches updates on npm's cadence.
+
+The extension declares nothing but the server: `npx -y sceneview-mcp` over stdio, no context
+file and no tool exclusions, so it adds the SceneView tools to a session and changes nothing
+else about it.
+
+### Gemini in Android Studio
+
+Android Studio's MCP integration **does not support stdio** — it connects over HTTP only, so
+point it at the hosted endpoint. Settings → Tools → AI → MCP Servers:
+
+```json
+{ "mcpServers": { "sceneview": { "httpUrl": "https://mcp.sceneview.dev/mcp", "enabled": true } } }
+```
 
 ### GitHub Copilot
 
@@ -152,14 +164,28 @@ Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add, th
 
 [`mcp/manifest.json`](manifest.json) describes this server in the [MCP Bundle
 format](https://github.com/modelcontextprotocol/mcpb) (spec 0.3), for desktop apps that install
-a local server from a bundle rather than a command line. It runs the built
-`dist/index.js` with the host's Node, so `npm run build` has to have run before a bundle is
-zipped from this directory.
+a local server from a bundle rather than a command line. It runs the built `dist/index.js` with
+the host's Node — the host provides the runtime and **nothing else**, so the bundle has to carry
+its own `node_modules`. Zipping this directory after `npm run build` alone produces a bundle
+that fails at launch with `Cannot find package '@modelcontextprotocol/sdk'`:
+
+```bash
+npm ci                                # dev dependencies — the build needs them
+npm run build                         # writes dist/
+npm ci --omit=dev --ignore-scripts    # drop the dev tree, keep dist/
+zip -r sceneview-mcp.mcpb manifest.json package.json dist node_modules
+```
+
+`--ignore-scripts` is not optional: this package's `prepare` script ends in `tsc`, and the same
+command that omits the dev dependencies omits TypeScript, so without it npm runs `prepare`,
+fails to find `tsc` and exits 127. Reinstall with a plain `npm ci` afterwards to get the dev
+tree back.
 
 The manifest is not published as a `.mcpb` artefact by CI: it is the descriptor, and packing it
 stays a manual step for whoever needs a bundle. `mcp/src/packaging.test.ts` keeps its name,
-version, licence, entry point and Node range equal to `package.json`'s, because nothing else
-would notice them drifting.
+version, licence, entry point and Node range equal to `package.json`'s — and does the same for
+[`server.json`](server.json) and the root `gemini-extension.json` — because nothing else would
+notice them drifting.
 
 ### Use as a remote connector
 

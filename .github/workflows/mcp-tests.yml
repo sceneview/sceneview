@@ -29,10 +29,15 @@ on:
     paths:
       - 'mcp/**'
       - '.github/workflows/mcp-tests.yml'
+      # `mcp/src/packaging.test.ts` is the only thing keeping this file in step with
+      # `mcp/package.json`; a guard that does not run when its subject changes is not
+      # a guard. It lives at the repo root because the Gemini CLI looks for it there.
+      - 'gemini-extension.json'
   pull_request:
     paths:
       - 'mcp/**'
       - '.github/workflows/mcp-tests.yml'
+      - 'gemini-extension.json'
       # The reachability job below reads every workflow and every versioned
       # test file, so the PRs that must trigger it are the ones that touch
       # either — a PR that only deletes a workflow is exactly the PR it is for.
