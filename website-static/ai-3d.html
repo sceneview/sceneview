@@ -347,14 +347,22 @@
       cursor: grab;
     }
 
+    /* Text drawn on the 3D canvas, not on a themed surface: it must not follow
+       the theme, and it must hold its ratio whatever the scene renders under
+       it. With `var(--color-on-surface-variant)` and no background it measured
+       1.49:1 on composited pixels in light mode. Fixed light ink on its own
+       chip instead — and no `opacity`, which would have diluted the chip along
+       with the text. */
     .ai3d-preview__badge {
       position: absolute;
       bottom: 12px;
       right: 14px;
+      padding: 3px 8px;
+      border-radius: 8px;
+      background: rgba(13,17,23,0.82);
       font-size: 0.65rem;
       font-weight: 500;
-      color: var(--color-on-surface-variant);
-      opacity: 0.75;
+      color: rgba(255,255,255,0.88);
       letter-spacing: 0.03em;
       pointer-events: none;
     }
@@ -1231,7 +1239,7 @@
                 <div class="ai3d-cta__terminal-title">Terminal</div>
               </div>
               <div class="ai3d-cta__terminal-body">
-                <div><span class="ai3d-cta__terminal-prompt">$</span> <span class="ai3d-cta__terminal-cmd">npx sceneview-mcp</span></div>
+                <div><span class="ai3d-cta__terminal-prompt">$</span> <span class="ai3d-cta__terminal-cmd">npx -y sceneview-mcp</span></div>
                 <div><span class="ai3d-cta__terminal-success">SceneView MCP server started</span></div>
                 <div><span class="ai3d-cta__terminal-prompt">$</span> <span class="ai3d-cta__terminal-cmd">32 tools available</span></div>
               </div>

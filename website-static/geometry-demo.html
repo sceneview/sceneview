@@ -27,25 +27,42 @@
   canvas { width: 100%; height: 100%; display: block; cursor: grab; }
   canvas:active { cursor: grabbing; }
 
+  /* Everything below floats on a live WebGL canvas whose colours are whatever
+     the scene renders — a white product-display backdrop one moment, a black
+     sky the next. Contrast computed against a *declared* background is
+     therefore meaningless here: each floating element carries its own opaque
+     chip, so its ratios hold against its own fill whatever passes underneath.
+     The chip alpha (0.88 and up) is what keeps the worst case — a fully white
+     scene — from lifting the fill out of range. */
+  .chip {
+    background: rgba(13,17,23,0.9);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    padding: 5px 10px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  /* `#shapeCount` is empty until the first scene finishes loading; without this
+     the chip shows as a small empty box over the spinner. */
+  .chip:empty { display: none; }
+
   .badge {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     padding: 6px 16px; border-radius: 20px;
-    background: rgba(26,115,232,0.15); border: 1px solid rgba(26,115,232,0.3);
-    color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 500;
+    background: rgba(13,17,23,0.92); border: 1px solid rgba(74,154,245,0.55);
+    color: #fff; font-size: 12px; font-weight: 500;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     pointer-events: none; z-index: 10;
   }
-  .badge a { color: #4a9af5; text-decoration: none; pointer-events: auto; }
+  .badge a { color: #8ab4f8; text-decoration: none; pointer-events: auto; }
 
   .info {
     position: fixed; top: 16px; left: 16px; z-index: 10;
-    color: rgba(255,255,255,0.5); font-size: 11px; line-height: 1.6;
+    color: rgba(255,255,255,0.88); font-size: 11px; line-height: 1.6;
     pointer-events: none;
   }
   .title {
     position: fixed; top: 16px; right: 16px; z-index: 10;
     font-size: 18px; font-weight: 700; color: #fff;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
   }
 
   /* Loading overlay */
@@ -69,31 +86,42 @@
     position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
     display: flex; gap: 8px; align-items: center; z-index: 20;
     padding: 8px 14px; border-radius: 14px;
-    background: rgba(13,17,23,0.85); border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(13,17,23,0.96); border: 1px solid rgba(255,255,255,0.3);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     flex-wrap: wrap; justify-content: center;
   }
-  /* 0.36 white on the panel is a 3.2:1 outline; below that the controls stop
-     being distinguishable from the scene behind the blur. */
+  /* 0.45 white on a 0.96-opaque panel is a ~4:1 outline against the control's
+     own fill, and it stays there over a white scene as well as a black one.
+     The previous 0.36 on a 0.85 panel was arithmetic on declared colours: it
+     measured 2.0-3.0:1 on real pixels, depending on what the scene put behind
+     the blur.
+     The outline is 2px, not 1px, for a reason that only shows on composited
+     pixels: the panel is centred and wraps, so at 375px the buttons land on
+     fractional x and a 1px border is antialiased across two pixels, neither
+     at full strength (measured #6b6d71 and #45484d where #8c8e91 was meant) —
+     2.55:1 instead of 4:1. At 2px one whole pixel is always the real colour.
+     The padding drops by 1px to keep the buttons the same size. */
   .controls select, .controls button {
     font-family: inherit; font-size: 12px; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.36); border-radius: 8px;
-    background: rgba(255,255,255,0.08); color: #fff;
-    padding: 6px 12px; cursor: pointer; outline: none;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(255,255,255,0.10); color: #fff;
+    padding: 5px 11px; cursor: pointer; outline: none;
     transition: all 0.2s;
   }
   .controls select:hover, .controls button:hover {
-    background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
   }
+  /* The swatch's fill is whatever colour the user picked, so the ring cannot
+     be measured against it — it is measured against the panel it sits on. */
   .controls input[type="color"] {
-    width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.15);
+    width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.7);
     border-radius: 8px; cursor: pointer; background: transparent; padding: 1px;
   }
   .controls .add-btn {
-    background: rgba(26,115,232,0.5); border-color: rgba(26,115,232,0.6);
+    background: #1663c9; border-color: #a8c7fa;
     font-weight: 600;
   }
-  .controls .add-btn:hover { background: rgba(26,115,232,0.7); }
+  .controls .add-btn:hover { background: #1a73e8; border-color: #c8dcfd; }
   /* No vendor colour on any of them, and the same rule as the playground for
      who gets a button: "the assistant has a link that accepts a prefilled
      prompt" — a protocol fact, not a recommendation. Three qualify today.
@@ -102,13 +130,13 @@
   .controls .ai-btn {
     display: inline-flex; align-items: center; gap: 5px;
     font-family: inherit; font-size: 12px; font-weight: 600;
-    border: 1px solid rgba(255,255,255,0.36); border-radius: 8px;
-    background: rgba(255,255,255,0.08); color: #fff;
-    padding: 6px 12px; cursor: pointer; outline: none;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(255,255,255,0.10); color: #fff;
+    padding: 5px 11px; cursor: pointer; outline: none;
     text-decoration: none; transition: all 0.2s;
   }
   .controls .ai-btn:hover {
-    background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
   }
   .controls .ai-btn:focus-visible {
     outline: 2px solid #8ab4f8; outline-offset: 2px;
@@ -124,22 +152,24 @@
     border-top: 1px solid rgba(255,255,255,0.1);
   }
   .controls .ai-label {
-    color: rgba(255,255,255,0.75); font-size: 11px; font-weight: 600;
+    color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 600;
     letter-spacing: 0.04em; text-transform: uppercase;
   }
-  /* On a phone the panel wraps to several rows and the "Powered by SceneView"
-     badge wraps to two lines; 50px of clearance is no longer enough and the
-     panel lands on top of it. */
-  @media (max-width: 600px) {
-    .controls { bottom: 72px; }
+  /* `/go/codex` says this in visible text and refuses to auto-redirect,
+     because `codex://` is an application scheme and a browser with no handler
+     does nothing at all. The same caveat lived here in a `title` attribute,
+     which a touch device never shows. */
+  .controls .ai-note {
+    flex-basis: 100%; text-align: center;
+    color: rgba(255,255,255,0.88); font-size: 10px; line-height: 1.5;
   }
   .controls .reset-btn {
-    background: rgba(255,60,60,0.3); border-color: rgba(255,60,60,0.3);
+    background: #8c2f2f; border-color: #f2b8b5;
     font-size: 11px;
   }
-  .controls .reset-btn:hover { background: rgba(255,60,60,0.5); }
+  .controls .reset-btn:hover { background: #a63a3a; border-color: #f9d8d6; }
   .controls label {
-    color: rgba(255,255,255,0.5); font-size: 11px; display: flex; align-items: center; gap: 4px;
+    color: rgba(255,255,255,0.88); font-size: 11px; display: flex; align-items: center; gap: 4px;
   }
   .controls .slider {
     -webkit-appearance: none; width: 60px; height: 4px;
@@ -153,7 +183,7 @@
 
   .shape-count {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-    color: rgba(255,255,255,0.7); font-size: 11px; z-index: 10;
+    color: rgba(255,255,255,0.88); font-size: 11px; z-index: 10;
     pointer-events: none;
   }
 
@@ -162,15 +192,39 @@
     position: fixed; top: 50px; right: 16px; z-index: 10;
     display: flex; flex-direction: column; gap: 6px;
   }
+  /* These sit on the bare canvas with no panel under them, so the chip has to
+     be part of the button itself. */
   .presets button {
     font-family: inherit; font-size: 11px; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
-    padding: 5px 10px; cursor: pointer; outline: none;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(13,17,23,0.92); color: #fff;
+    padding: 4px 9px; cursor: pointer; outline: none;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     transition: all 0.2s; text-align: right;
   }
-  .presets button:hover { background: rgba(255,255,255,0.12); color: #fff; }
-  .presets button.active { background: rgba(26,115,232,0.3); border-color: rgba(26,115,232,0.5); color: #fff; }
+  .presets button:hover { border-color: rgba(255,255,255,0.7); }
+  .presets button.active { background: #1663c9; border-color: #a8c7fa; color: #fff; }
+
+  /* On a phone the panel wraps to several rows and the "Powered by SceneView"
+     badge wraps to two lines; 50px of clearance is no longer enough and the
+     panel lands on top of it.
+     The top row is laid out again here for the same reason: `.info` is a fixed
+     single line 272px wide that does not wrap, so at 375px it ran straight
+     under `.title` and `#shapeCount`, and a screen reader — or a photograph of
+     the page — read the three of them as one run-on string. They are stacked
+     instead: title left, count right, hint centred underneath, presets below
+     that. */
+  @media (max-width: 600px) {
+    .controls { bottom: 72px; }
+    .title { top: 12px; left: 12px; right: auto; font-size: 15px; }
+    .shape-count { top: 14px; left: auto; right: 12px; transform: none; }
+    .info {
+      top: 44px; left: 50%; right: auto; transform: translateX(-50%);
+      max-width: calc(100% - 24px); text-align: center;
+    }
+    /* `.info` wraps to two lines at this width; measured bottom 91.2px. */
+    .presets { top: 100px; right: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -181,9 +235,9 @@
 </div>
 
 <canvas id="c"></canvas>
-<div class="info">Drag to orbit | Scroll to zoom | Add shapes below</div>
-<div class="title">Geometry Demo</div>
-<div class="shape-count" id="shapeCount"></div>
+<div class="info chip">Drag to orbit | Scroll to zoom | Add shapes below</div>
+<div class="title chip">Geometry Demo</div>
+<div class="shape-count chip" id="shapeCount"></div>
 
 <div class="presets">
   <button class="active" data-scene="architecture" onclick="loadScene('architecture')">Architecture</button>
@@ -215,7 +269,9 @@
     </button>
     <a class="ai-btn" id="aiChatGPT" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">ChatGPT</a>
     <a class="ai-btn" id="aiClaude" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">Claude</a>
-    <a class="ai-btn" id="aiCodex" href="codex://new" rel="noopener" title="Open Codex with this prompt. Requires the Codex desktop app.">Codex</a>
+    <a class="ai-btn" id="aiCodex" href="codex://new" rel="noopener">Codex</a>
+    <p class="ai-note">Copy works anywhere. ChatGPT and Claude open in a new tab;
+      Codex opens the desktop app, which has to be installed.</p>
   </div>
 </div>
 

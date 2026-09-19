@@ -35,7 +35,7 @@
   <link rel="llms" href="/llms.txt" type="text/plain" title="SceneView API Reference for AI">
   <link rel="llms-full" href="/llms-full.txt" type="text/plain" title="SceneView Full API for LLM System Prompts">
   <meta name="ai-ready" content="true">
-  <meta name="mcp-server" content="npx sceneview-mcp">
+  <meta name="mcp-server" content="npx -y sceneview-mcp">
   <meta name="llms-txt" content="https://sceneview.github.io/llms.txt">
 
   <!-- Open Graph -->
@@ -130,7 +130,7 @@
         "name": "Is there an MCP server for 3D and AR development?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant and any other MCP-compatible client."
+          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx -y sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant and any other MCP-compatible client."
         }
       },
       {
@@ -146,7 +146,7 @@
         "name": "Is there a SceneView plugin for ChatGPT or Codex?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — the SceneView repository is itself an OpenAI plugin. Its manifest at .codex-plugin/plugin.json points at three skills (Jetpack Compose, SwiftUI, web) carrying the full API contract. Install it into Codex with codex plugin marketplace add followed by codex plugin add sceneview@sceneview-local. For ChatGPT, npx sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
+          "text": "Yes — the SceneView repository is also a Codex plugin. Its local marketplace catalog is .agents/plugins/marketplace.json (.codex-plugin/plugin.json is kept as the compatibility fallback), and it points at three skills (Jetpack Compose, SwiftUI, web) carrying the full API contract. From a checkout, run codex plugin marketplace add . — see the Codex documentation for the current install flow. For ChatGPT, npx -y sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
         }
       },
       {
