@@ -86,6 +86,7 @@ nav:
     - Why SceneView: showcase.md
     - Use Cases: use-cases.md
     - AI-Assisted Development: ai-development.md
+    - Use SceneView with AI Assistants: ai-context.md
     - vs. Alternatives: comparison.md
     - v4.0 Preview: v4-preview.md
   - Codelabs:

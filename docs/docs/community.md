@@ -53,7 +53,7 @@ first to avoid duplicates.
 
 We welcome contributions of all kinds — code, documentation, samples, and bug reports.
 See the [Contributing Guide](contributing.md) for how to get started, including the
-AI-assisted workflow with Claude Code.
+AI-assisted workflow.
 
 ---
 

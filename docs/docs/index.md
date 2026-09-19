@@ -374,6 +374,6 @@ Join thousands of developers building 3D and AR experiences with SceneView.
 [Join Discord](https://discord.gg/UbNDDBTNqb){ .md-button }
 [Star on GitHub](https://github.com/sceneview/sceneview){ .md-button .md-button--primary }
 [MCP Server on npm](https://www.npmjs.com/package/sceneview-mcp){ .md-button }
-[Claude Code Plugin](https://github.com/sceneview/claude-marketplace){ .md-button }
+[Set up your AI assistant](ai-development.md#per-tool-setup){ .md-button }
 
 </div>

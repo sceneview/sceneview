@@ -27,25 +27,42 @@
   canvas { width: 100%; height: 100%; display: block; cursor: grab; }
   canvas:active { cursor: grabbing; }
 
+  /* Everything below floats on a live WebGL canvas whose colours are whatever
+     the scene renders — a white product-display backdrop one moment, a black
+     sky the next. Contrast computed against a *declared* background is
+     therefore meaningless here: each floating element carries its own opaque
+     chip, so its ratios hold against its own fill whatever passes underneath.
+     The chip alpha (0.88 and up) is what keeps the worst case — a fully white
+     scene — from lifting the fill out of range. */
+  .chip {
+    background: rgba(13,17,23,0.9);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    padding: 5px 10px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  /* `#shapeCount` is empty until the first scene finishes loading; without this
+     the chip shows as a small empty box over the spinner. */
+  .chip:empty { display: none; }
+
   .badge {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     padding: 6px 16px; border-radius: 20px;
-    background: rgba(26,115,232,0.15); border: 1px solid rgba(26,115,232,0.3);
-    color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 500;
+    background: rgba(13,17,23,0.92); border: 1px solid rgba(74,154,245,0.55);
+    color: #fff; font-size: 12px; font-weight: 500;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     pointer-events: none; z-index: 10;
   }
-  .badge a { color: #4a9af5; text-decoration: none; pointer-events: auto; }
+  .badge a { color: #8ab4f8; text-decoration: none; pointer-events: auto; }
 
   .info {
     position: fixed; top: 16px; left: 16px; z-index: 10;
-    color: rgba(255,255,255,0.5); font-size: 11px; line-height: 1.6;
+    color: rgba(255,255,255,0.88); font-size: 11px; line-height: 1.6;
     pointer-events: none;
   }
   .title {
     position: fixed; top: 16px; right: 16px; z-index: 10;
     font-size: 18px; font-weight: 700; color: #fff;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
   }
 
   /* Loading overlay */
@@ -69,44 +86,90 @@
     position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
     display: flex; gap: 8px; align-items: center; z-index: 20;
     padding: 8px 14px; border-radius: 14px;
-    background: rgba(13,17,23,0.85); border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(13,17,23,0.96); border: 1px solid rgba(255,255,255,0.3);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     flex-wrap: wrap; justify-content: center;
   }
+  /* 0.45 white on a 0.96-opaque panel is a ~4:1 outline against the control's
+     own fill, and it stays there over a white scene as well as a black one.
+     The previous 0.36 on a 0.85 panel was arithmetic on declared colours: it
+     measured 2.0-3.0:1 on real pixels, depending on what the scene put behind
+     the blur.
+     The outline is 2px, not 1px, for a reason that only shows on composited
+     pixels: the panel is centred and wraps, so at 375px the buttons land on
+     fractional x and a 1px border is antialiased across two pixels, neither
+     at full strength (measured #6b6d71 and #45484d where #8c8e91 was meant) —
+     2.55:1 instead of 4:1. At 2px one whole pixel is always the real colour.
+     The padding drops by 1px to keep the buttons the same size. */
   .controls select, .controls button {
     font-family: inherit; font-size: 12px; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
-    background: rgba(255,255,255,0.08); color: #fff;
-    padding: 6px 12px; cursor: pointer; outline: none;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(255,255,255,0.10); color: #fff;
+    padding: 5px 11px; cursor: pointer; outline: none;
     transition: all 0.2s;
   }
   .controls select:hover, .controls button:hover {
-    background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
   }
+  /* The swatch's fill is whatever colour the user picked, so the ring cannot
+     be measured against it — it is measured against the panel it sits on. */
   .controls input[type="color"] {
-    width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.15);
+    width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.7);
     border-radius: 8px; cursor: pointer; background: transparent; padding: 1px;
   }
   .controls .add-btn {
-    background: rgba(26,115,232,0.5); border-color: rgba(26,115,232,0.6);
+    background: #1663c9; border-color: #a8c7fa;
     font-weight: 600;
   }
-  .controls .add-btn:hover { background: rgba(26,115,232,0.7); }
-  .controls .claude-btn {
-    background: linear-gradient(135deg, rgba(204,119,51,0.6), rgba(180,90,40,0.6));
-    border-color: rgba(204,119,51,0.5); font-weight: 600;
-    display: flex; align-items: center; gap: 5px;
+  .controls .add-btn:hover { background: #1a73e8; border-color: #c8dcfd; }
+  /* No vendor colour on any of them, and the same rule as the playground for
+     who gets a button: "the assistant has a link that accepts a prefilled
+     prompt" — a protocol fact, not a recommendation. Three qualify today.
+     Alphabetical, no featured slot. "Copy prompt" comes first because it is the
+     path that works for every assistant, including the ones with no link. */
+  .controls .ai-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(255,255,255,0.10); color: #fff;
+    padding: 5px 11px; cursor: pointer; outline: none;
+    text-decoration: none; transition: all 0.2s;
   }
-  .controls .claude-btn:hover {
-    background: linear-gradient(135deg, rgba(204,119,51,0.8), rgba(180,90,40,0.8));
+  .controls .ai-btn:hover {
+    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
+  }
+  .controls .ai-btn:focus-visible {
+    outline: 2px solid #8ab4f8; outline-offset: 2px;
+  }
+  /* Its own row, full width of the panel: on a phone the scene controls
+     already wrap, and without this the label lands beside "Reset" and reads
+     as a caption for it. */
+  .controls .ai-row {
+    flex-basis: 100%;
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: center; gap: 8px;
+    margin-top: 4px; padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+  .controls .ai-label {
+    color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  /* `/go/codex` says this in visible text and refuses to auto-redirect,
+     because `codex://` is an application scheme and a browser with no handler
+     does nothing at all. The same caveat lived here in a `title` attribute,
+     which a touch device never shows. */
+  .controls .ai-note {
+    flex-basis: 100%; text-align: center;
+    color: rgba(255,255,255,0.88); font-size: 10px; line-height: 1.5;
   }
   .controls .reset-btn {
-    background: rgba(255,60,60,0.3); border-color: rgba(255,60,60,0.3);
+    background: #8c2f2f; border-color: #f2b8b5;
     font-size: 11px;
   }
-  .controls .reset-btn:hover { background: rgba(255,60,60,0.5); }
+  .controls .reset-btn:hover { background: #a63a3a; border-color: #f9d8d6; }
   .controls label {
-    color: rgba(255,255,255,0.5); font-size: 11px; display: flex; align-items: center; gap: 4px;
+    color: rgba(255,255,255,0.88); font-size: 11px; display: flex; align-items: center; gap: 4px;
   }
   .controls .slider {
     -webkit-appearance: none; width: 60px; height: 4px;
@@ -120,7 +183,7 @@
 
   .shape-count {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-    color: rgba(255,255,255,0.7); font-size: 11px; z-index: 10;
+    color: rgba(255,255,255,0.88); font-size: 11px; z-index: 10;
     pointer-events: none;
   }
 
@@ -129,15 +192,39 @@
     position: fixed; top: 50px; right: 16px; z-index: 10;
     display: flex; flex-direction: column; gap: 6px;
   }
+  /* These sit on the bare canvas with no panel under them, so the chip has to
+     be part of the button itself. */
   .presets button {
     font-family: inherit; font-size: 11px; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
-    padding: 5px 10px; cursor: pointer; outline: none;
+    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(13,17,23,0.92); color: #fff;
+    padding: 4px 9px; cursor: pointer; outline: none;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     transition: all 0.2s; text-align: right;
   }
-  .presets button:hover { background: rgba(255,255,255,0.12); color: #fff; }
-  .presets button.active { background: rgba(26,115,232,0.3); border-color: rgba(26,115,232,0.5); color: #fff; }
+  .presets button:hover { border-color: rgba(255,255,255,0.7); }
+  .presets button.active { background: #1663c9; border-color: #a8c7fa; color: #fff; }
+
+  /* On a phone the panel wraps to several rows and the "Powered by SceneView"
+     badge wraps to two lines; 50px of clearance is no longer enough and the
+     panel lands on top of it.
+     The top row is laid out again here for the same reason: `.info` is a fixed
+     single line 272px wide that does not wrap, so at 375px it ran straight
+     under `.title` and `#shapeCount`, and a screen reader — or a photograph of
+     the page — read the three of them as one run-on string. They are stacked
+     instead: title left, count right, hint centred underneath, presets below
+     that. */
+  @media (max-width: 600px) {
+    .controls { bottom: 72px; }
+    .title { top: 12px; left: 12px; right: auto; font-size: 15px; }
+    .shape-count { top: 14px; left: auto; right: 12px; transform: none; }
+    .info {
+      top: 44px; left: 50%; right: auto; transform: translateX(-50%);
+      max-width: calc(100% - 24px); text-align: center;
+    }
+    /* `.info` wraps to two lines at this width; measured bottom 91.2px. */
+    .presets { top: 100px; right: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -148,9 +235,9 @@
 </div>
 
 <canvas id="c"></canvas>
-<div class="info">Drag to orbit | Scroll to zoom | Add shapes below</div>
-<div class="title">Geometry Demo</div>
-<div class="shape-count" id="shapeCount"></div>
+<div class="info chip">Drag to orbit | Scroll to zoom | Add shapes below</div>
+<div class="title chip">Geometry Demo</div>
+<div class="shape-count chip" id="shapeCount"></div>
 
 <div class="presets">
   <button class="active" data-scene="architecture" onclick="loadScene('architecture')">Architecture</button>
@@ -174,17 +261,25 @@
   <label>Rough <input type="range" class="slider" id="roughSlider" min="0" max="100" value="40"></label>
   <button class="add-btn" onclick="addUserShape()">+ Add Shape</button>
   <button class="reset-btn" onclick="loadScene(currentPreset)">Reset</button>
-  <button class="claude-btn" onclick="openClaude()">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Generate with Claude
-  </button>
+  <div class="ai-row">
+    <span class="ai-label">Build this in</span>
+    <button class="ai-btn" id="aiCopy" type="button" title="Copy the prompt to your clipboard — works with any assistant">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span id="aiCopyText">Copy prompt</span>
+    </button>
+    <a class="ai-btn" id="aiChatGPT" href="https://chatgpt.com/" target="_blank" rel="noopener" title="Open ChatGPT with this prompt">ChatGPT</a>
+    <a class="ai-btn" id="aiClaude" href="https://claude.ai/new" target="_blank" rel="noopener" title="Open Claude with this prompt">Claude</a>
+    <a class="ai-btn" id="aiCodex" href="codex://new" rel="noopener">Codex</a>
+    <p class="ai-note">Copy works anywhere. ChatGPT and Claude open in a new tab;
+      Codex opens the desktop app, which has to be installed.</p>
+  </div>
 </div>
 
 <div class="badge">Powered by <a href="https://sceneview.github.io" target="_blank">SceneView</a> — Procedural 3D Geometry</div>
 
 <script>
 // SceneView Geometry Renderer — procedural 3D shapes with PBR shading
-// Zero dependencies, pure WebGL2, designed for Claude artifacts
+// Zero dependencies, pure WebGL2, embeddable anywhere a single HTML file runs
 
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
@@ -945,16 +1040,39 @@ function addUserShape() {
   updateShapeCount();
 }
 
-function openClaude() {
-  const prompt = encodeURIComponent(
-    "Using SceneView for Android (Jetpack Compose), create a 3D scene with procedural geometry. " +
-    "Use SceneView { } composable with CubeNode, SphereNode, CylinderNode to build a miniature city " +
-    "with buildings of different heights, a park with trees (cylinder trunks + sphere canopies), " +
-    "and a reflective water feature. Apply PBR materials with varying metallic and roughness values. " +
-    "Include the dependency: io.github.sceneview:sceneview:4.37.0"
-  );
-  window.open('https://claude.ai/new?q=' + prompt, '_blank');
-}
+// One prompt, four ways out of this page. The three links are the assistants
+// that accept a prefilled prompt in a URL today; "Copy prompt" is the path for
+// every other one. Each link is built once at load, so a middle-click or
+// "open in new tab" carries the prompt like a normal href.
+const AI_PROMPT =
+  "Using SceneView for Android (Jetpack Compose), create a 3D scene with procedural geometry. " +
+  "Use SceneView { } composable with CubeNode, SphereNode, CylinderNode to build a miniature city " +
+  "with buildings of different heights, a park with trees (cylinder trunks + sphere canopies), " +
+  "and a reflective water feature. Apply PBR materials with varying metallic and roughness values. " +
+  "Include the dependency: io.github.sceneview:sceneview:4.37.0";
+
+(function wireAiButtons() {
+  const encoded = encodeURIComponent(AI_PROMPT);
+  document.getElementById('aiChatGPT').href = 'https://chatgpt.com/?q=' + encoded;
+  document.getElementById('aiClaude').href = 'https://claude.ai/new?q=' + encoded;
+  document.getElementById('aiCodex').href = 'codex://new?prompt=' + encoded;
+
+  const btn = document.getElementById('aiCopy');
+  const label = document.getElementById('aiCopyText');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(AI_PROMPT);
+      label.textContent = 'Copied';
+    } catch (e) {
+      // Clipboard API refused (insecure context, or permission denied): fall
+      // back to a selectable prompt rather than silently doing nothing.
+      window.prompt('Copy the prompt:', AI_PROMPT);
+      label.textContent = 'Copy prompt';
+      return;
+    }
+    setTimeout(() => { label.textContent = 'Copy prompt'; }, 1600);
+  });
+})();
 
 // Initialize with architecture scene
 loadScene('architecture');
