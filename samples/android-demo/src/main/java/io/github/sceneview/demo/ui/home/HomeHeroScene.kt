@@ -151,9 +151,11 @@ internal class HeroTurntable {
  *    writing a rotation every frame; while the grid is being dragged, or once the band
  *    has scrolled away, [rendering] goes `false`, the turntable stops advancing and the
  *    loop settles and parks by itself. The load needs no special handling — the library
- *    keeps drawing while `modelLoader.progress < 1f`, because Filament finalises texture
- *    uploads inside the frame loop and a model that landed during a park would otherwise
- *    render untextured.
+ *    keeps drawing while `modelLoader.isLoading` is `true`, because Filament finalises
+ *    texture uploads inside the frame loop and a model that landed during a park would
+ *    otherwise render untextured. Not `progress < 1f`: Filament reports `0`, not `1`, for
+ *    a loader that was never asked for an async load, so that form would read as "still
+ *    loading" for the lifetime of every procedural scene.
  *  - **Quality is sized to the band, not to the phone.** [RenderQuality.Performance]
  *    on a 320 dp strip that is decoration, not the subject of the screen; the
  *    Cinematic preset belongs to the Model Viewer this page opens.

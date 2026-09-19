@@ -523,31 +523,41 @@ open class ModelNode(
         super.onFrame(frameTimeNanos)
 
         try {
-            model.popRenderable()
-            // Re-sanitize after popRenderable() which may make new entities available
-            // for rendering that could have empty AABBs.
-            sanitizeEmptyBoundingBoxes()
             // Capture BEFORE applyAnimations(): a non-looping animation removes itself
             // from `playingAnimations` on the same frame it writes its final pose, so a
             // post-call `isNotEmpty()` check would skip invalidation on that stop-frame
             // and leave a stale world cache (#2264 re-review). `wasAnimating` covers it.
-            val wasAnimating = playingAnimations.isNotEmpty()
-            applyAnimations(frameTimeNanos)
-            animator.updateBoneMatrices()
-            // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
-            // into the Filament TransformManager, bypassing the Node setters that normally
-            // invalidate the caches. Invalidate the sub-nodes explicitly on any frame an
-            // animation was active (including the final stop-frame):
-            //  - the world cache (#2264), so reads of their worldPosition / worldQuaternion /
-            //    etc. never return a stale value;
-            //  - the local matrix mirror (#3718), so a later `subNode.position = p` is not
-            //    mistaken for a redundant write of the value the node last pushed itself. The
-            //    animator has moved the entity since, and skipping that write would leave
-            //    Filament on the last keyframe for good.
-            if (wasAnimating) {
-                nodes.forEach {
-                    it.invalidateTransformCache()
-                    it.onWorldTransformChanged()
+            var wasAnimating = false
+            try {
+                model.popRenderable()
+                // Re-sanitize after popRenderable() which may make new entities available
+                // for rendering that could have empty AABBs.
+                sanitizeEmptyBoundingBoxes()
+                wasAnimating = playingAnimations.isNotEmpty()
+                applyAnimations(frameTimeNanos)
+                animator.updateBoneMatrices()
+            } finally {
+                // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
+                // into the Filament TransformManager, bypassing the Node setters that normally
+                // invalidate the caches. Invalidate the sub-nodes explicitly on any frame an
+                // animation was active (including the final stop-frame):
+                //  - the world cache (#2264), so reads of their worldPosition / worldQuaternion /
+                //    etc. never return a stale value;
+                //  - the local matrix mirror (#3718), so a later `subNode.position = p` is not
+                //    mistaken for a redundant write of the value the node last pushed itself. The
+                //    animator has moved the entity since, and skipping that write would leave
+                //    Filament on the last keyframe for good.
+                //
+                // In a `finally` because `applyAnimations()` writes the sub-nodes one by one:
+                // if it — or `updateBoneMatrices()` after it — throws part-way, some entities
+                // have already moved. Skipping the invalidation there would leave exactly the
+                // stale caches this guards against, on a frame the scene is already unhappy.
+                // Errors still reach `onFrameError` through the outer `catch`.
+                if (wasAnimating) {
+                    nodes.forEach {
+                        it.invalidateTransformCache()
+                        it.onWorldTransformChanged()
+                    }
                 }
             }
         } catch (e: Exception) {
