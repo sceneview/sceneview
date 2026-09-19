@@ -97,8 +97,8 @@
       });
     });
 
-    // Adoption CTAs: repo, Claude deep link, Discord, npm.
-    each('a[href*="github.com/sceneview"], a[href*="claude://"], a[href*="discord"], a[href*="npmjs"]',
+    // Adoption CTAs: repo, MCP install links, Discord, npm.
+    each('a[href*="github.com/sceneview"], a[href*="cursor://"], a[href*="vscode:mcp"], a[href*="discord"], a[href*="npmjs"]',
       function (link) {
         link.addEventListener('click', function () {
           gtag('event', 'cta_click', {

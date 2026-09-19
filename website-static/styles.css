@@ -1638,11 +1638,11 @@ ul { list-style: none; }
   margin-bottom: 24px;
 }
 
-/* AI tools brand strip (Claude / Cursor / Windsurf) */
+/* AI tools strip */
 .ai-tools-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 0 0 28px;
 }
 
@@ -2289,7 +2289,7 @@ ul { list-style: none; }
   line-height: 1.6;
 }
 
-/* ===== CODE CARDS — JS & Claude ===== */
+/* ===== CODE CARDS — JS & MCP ===== */
 .code-card--js {
   background: #1a1a2e;
   border-radius: 16px;
@@ -2313,25 +2313,25 @@ ul { list-style: none; }
   letter-spacing: 0.1em;
 }
 
-.code-card--claude {
-  background: #1a0a2e;
+.code-card--ai {
+  background: #0f172a;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: var(--shadow-xl);
 }
 
-.code-card--claude .code-card__header {
+.code-card--ai .code-card__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  background: rgba(60, 30, 90, 0.5);
+  background: #1e293b;
 }
 
-.code-card--claude .code-card__lang {
+.code-card--ai .code-card__lang {
   font-size: 0.6875rem;
   font-weight: 700;
-  color: rgba(210, 168, 255, 0.8);
+  color: #cbd5e1;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -3318,4 +3318,223 @@ summary:focus-visible,
 .cta a:focus-visible,
 .cta button:focus-visible {
   outline-color: var(--color-on-primary);
+}
+
+/* ===== AI ASSISTANT SETUP =====
+   Every assistant sits at the same visual level: identical button size, weight and
+   colour. The selected tab differs only by its selected state, never by prominence.
+   Contrast (measured on the rendered page, dark first):
+     nav border  --color-outline       6.15:1 dark / 4.04:1 light  vs page background
+     selected    #fff on #0d419d       9.29:1 dark
+                 #fff on #005bc1       6.43:1 light
+     code text   #cbd5e1 on #0f172a   12.02:1 both themes            */
+.aiset {
+  padding: 96px 0;
+  background: var(--color-surface);
+  /* Two CTAs link to #ai-setup; keep the title clear of the sticky nav. */
+  scroll-margin-top: 80px;
+}
+
+.aiset__container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.aiset__title {
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-bottom: 16px;
+}
+
+.aiset__subtitle {
+  font-size: 1.125rem;
+  color: var(--color-on-surface-variant);
+  max-width: 68ch;
+  margin-bottom: 40px;
+}
+
+.aiset__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+/* Identical box for every tool — no size, weight or colour hierarchy. */
+.aiset__btn {
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-on-surface);
+  background: transparent;
+  border: 1px solid var(--color-outline);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background var(--duration-short), color var(--duration-short),
+              border-color var(--duration-short);
+}
+
+.aiset__btn:hover {
+  background: var(--color-surface-container);
+}
+
+.aiset__btn:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.aiset__btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+[data-theme="dark"] .aiset__btn--active {
+  background: var(--color-primary-container);
+  border-color: var(--color-primary-fixed-dim);
+  color: #fff;
+}
+
+.aiset__panels {
+  background: var(--color-surface-container-lowest);
+  border: 1px solid var(--color-outline);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.aiset__panel[hidden] {
+  display: none;
+}
+
+.aiset__panel:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 4px;
+}
+
+.aiset__step-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+  margin-bottom: 8px;
+}
+
+.aiset__step-label + .aiset__snippet {
+  margin-bottom: 20px;
+}
+
+.aiset__snippet {
+  position: relative;
+}
+
+.aiset__file {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+  background: var(--color-surface-container);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.aiset__code {
+  background: #0f172a;
+  border: 1px solid var(--color-outline);
+  border-radius: 10px;
+  padding: 14px 104px 14px 16px;
+}
+
+.aiset__copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #e6edf3;
+  background: #1f2937;
+  border: 1px solid #8b949e;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--duration-short);
+}
+
+.aiset__copy:hover {
+  background: #2d3748;
+}
+
+.aiset__copy:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.aiset__copy .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.aiset__copy--done {
+  background: #14532d;
+  border-color: #4ade80;
+  color: #dcfce7;
+}
+
+.aiset__note {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-on-surface-variant);
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.aiset__note a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.aiset__also {
+  font-size: 0.9375rem;
+  color: var(--color-on-surface-variant);
+  margin-top: 24px;
+}
+
+@media (max-width: 640px) {
+  .aiset {
+    padding: 64px 0;
+  }
+
+  .aiset__nav {
+    gap: 6px;
+  }
+
+  .aiset__btn {
+    padding: 9px 14px;
+    font-size: 0.875rem;
+  }
+
+  .aiset__panels {
+    padding: 16px;
+  }
+
+  /* Keep the copy affordance off the code at narrow widths. */
+  .aiset__code {
+    padding: 44px 16px 14px;
+  }
+
+  .aiset__copy {
+    top: 6px;
+    right: 6px;
+    padding: 5px 10px;
+  }
+}
+
+.code-card__lang-glyph {
+  font-size: 16px;
+  color: #cbd5e1;
+  flex-shrink: 0;
 }

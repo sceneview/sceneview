@@ -22,7 +22,7 @@
   <script src="/assets/analytics.js"></script>
   <title>SceneView — 3D & AR SDK for Android, iOS, Web, and more</title>
   <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native. Ships as a ChatGPT and Codex plugin, and opens the .3mf files AI print flows emit. Powered by Filament and RealityKit.">
-  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, 3D file viewer, glTF, GLB, 3MF, STL, OBJ, PLY, USDZ, AR Model Viewer, Will It Fit, 3MF, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, Claude 3D, ChatGPT AR, AI code generation, LLM 3D development, Copilot 3D, Gemini AR, model context protocol, ChatGPT plugin, Codex plugin, OpenAI plugin">
+  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, 3D file viewer, glTF, GLB, 3MF, STL, OBJ, PLY, USDZ, AR Model Viewer, Will It Fit, 3MF, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, model context protocol, AI coding assistant, AI code generation, LLM 3D development, AI 3D development, AI AR development">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#005bc1">
@@ -130,7 +130,7 @@
         "name": "Is there an MCP server for 3D and AR development?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude, ChatGPT, Cursor, and other MCP-compatible AI tools."
+          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant and any other MCP-compatible client."
         }
       },
       {
@@ -225,7 +225,7 @@
     <div class="hero__container">
       <div class="hero__content">
         <h1 class="hero__title">The 3D &amp; AR SDK that AI gets right on the first try</h1>
-        <p class="hero__description">SceneView is designed so Claude, Cursor and every other coding assistant can produce correct 3D &amp; AR code on the first try — for Jetpack Compose, SwiftUI, the Web, and beyond. It opens glTF/GLB, 3MF, STL, OBJ and PLY on Android and USDZ on Apple, and shows them at real size in AR.</p>
+        <p class="hero__description">SceneView is designed so any AI coding assistant can produce correct 3D &amp; AR code on the first try — for Jetpack Compose, SwiftUI, the Web, and beyond. It opens glTF/GLB, 3MF, STL, OBJ and PLY on Android and USDZ on Apple, and shows them at real size in AR.</p>
         <div class="hero__actions">
           <a href="/docs.html" class="hero__btn hero__btn--primary" target="_blank" rel="noopener">Get Started</a>
           <a href="https://github.com/sceneview/sceneview" class="hero__btn hero__btn--outline" target="_blank" rel="noopener">View on GitHub</a>
@@ -383,8 +383,7 @@
 
       <div class="tabs reveal" data-tabs="install">
         <div class="tabs__nav">
-          <button class="tabs__btn tabs__btn--active" data-tab="claude-mcp">Claude / MCP</button>
-          <button class="tabs__btn" data-tab="android">Android</button>
+          <button class="tabs__btn tabs__btn--active" data-tab="android">Android</button>
           <button class="tabs__btn" data-tab="ios">iOS</button>
           <button class="tabs__btn" data-tab="web">Web</button>
           <button class="tabs__btn" data-tab="flutter">Flutter</button>
@@ -392,71 +391,7 @@
           <button class="tabs__btn" data-tab="desktop">Desktop</button>
         </div>
         <div class="tabs__panels">
-          <div class="tabs__panel tabs__panel--active" data-panel="claude-mcp">
-            <div class="mcp-install">
-              <!-- Claude featured -->
-              <a href="claude://settings/mcp?url=npx%20sceneview-mcp" class="mcp-install__btn">
-                <img src="assets/brand/claude.svg" alt="" width="20" height="20" class="mcp-install__btn-logo">
-                Add to Claude
-              </a>
-              <div class="mcp-install__or">or run in Claude Code terminal</div>
-              <pre class="code-block mcp-install__code"><code><span class="syn-purple">claude</span> mcp add sceneview -- <span class="syn-blue">npx</span> <span class="syn-green-light">sceneview-mcp</span></code></pre>
-
-              <!-- Other AI tools -->
-              <div class="mcp-install__divider">Also works with</div>
-              <div class="mcp-tools-grid">
-
-                <div class="mcp-tool-card">
-                  <div class="mcp-tool-card__header">
-                    <span class="material-symbols-outlined mcp-tool-card__glyph" aria-hidden="true">extension</span>
-                    <span class="mcp-tool-card__name">ChatGPT &amp; Codex</span>
-                    <span class="mcp-tool-card__badge">Plugin</span>
-                  </div>
-                  <div class="mcp-tool-card__file">.codex-plugin/plugin.json</div>
-                  <pre class="code-block mcp-tool-card__code"><code><span class="syn-purple">codex</span> plugin marketplace add <span class="syn-green-light">"$PWD"</span>
-<span class="syn-purple">codex</span> plugin add <span class="syn-green-light">sceneview@sceneview-local</span>
-<span class="syn-green"># ChatGPT:</span> <span class="syn-blue">npx</span> <span class="syn-green-light">sceneview-mcp</span> --http</code></pre>
-                </div>
-
-                <div class="mcp-tool-card">
-                  <div class="mcp-tool-card__header">
-                    <img src="assets/brand/cursor.svg" alt="" width="18" height="18" class="mcp-tool-card__logo">
-                    <span class="mcp-tool-card__name">Cursor</span>
-                  </div>
-                  <div class="mcp-tool-card__file">~/.cursor/mcp.json</div>
-                  <pre class="code-block mcp-tool-card__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-                </div>
-
-                <div class="mcp-tool-card">
-                  <div class="mcp-tool-card__header">
-                    <img src="assets/brand/githubcopilot.svg" alt="" width="18" height="18" class="mcp-tool-card__logo">
-                    <span class="mcp-tool-card__name">GitHub Copilot</span>
-                    <span class="mcp-tool-card__badge">VS Code</span>
-                  </div>
-                  <div class="mcp-tool-card__file">.vscode/mcp.json</div>
-                  <pre class="code-block mcp-tool-card__code"><code>{ <span class="syn-green-light">"servers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"type"</span>: <span class="syn-green-light">"stdio"</span>,
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-                </div>
-
-                <div class="mcp-tool-card">
-                  <div class="mcp-tool-card__header">
-                    <img src="assets/brand/windsurf.svg" alt="" width="18" height="18" class="mcp-tool-card__logo">
-                    <span class="mcp-tool-card__name">Windsurf</span>
-                  </div>
-                  <div class="mcp-tool-card__file">~/.codeium/windsurf/mcp_config.json</div>
-                  <pre class="code-block mcp-tool-card__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-                </div>
-
-              </div>
-            </div>
-          </div>
-          <div class="tabs__panel" data-panel="android">
+          <div class="tabs__panel tabs__panel--active" data-panel="android">
             <pre class="code-block"><code><span class="syn-green">// build.gradle.kts</span>
 <span class="syn-purple">dependencies</span> {
     <span class="syn-green">// 3D only</span>
@@ -511,6 +446,7 @@
     </div>
   </section>
 
+
   <!-- ===== AI / MCP ===== -->
   <section class="ai-section" id="ai">
     <div class="ai-section__container">
@@ -520,41 +456,21 @@
           <h2 class="ai-section__title">Built for AI assistants</h2>
           <p class="ai-section__text">One MCP server, and your assistant stops guessing at the SceneView API. It compile-checks the Kotlin or Swift it just wrote, looks up the exact node API instead of inventing one, and starts you from a sample that already builds &mdash; plus AR setup, gestures, and troubleshooting when you get stuck. The repository ships as a ChatGPT and Codex plugin too, so the same API contract travels wherever you work.</p>
 
-          <div class="ai-tools-strip">
-            <div class="ai-tool-chip">
-              <img src="assets/ai-tools/claude.svg" alt="" class="ai-tool-chip__logo" width="40" height="40">
-              <div class="ai-tool-chip__body">
-                <div class="ai-tool-chip__name">Claude</div>
-                <div class="ai-tool-chip__tagline">Claude Code &amp; Desktop</div>
-              </div>
-            </div>
-            <div class="ai-tool-chip">
-              <span class="ai-tool-chip__glyph material-symbols-outlined" aria-hidden="true">extension</span>
-              <div class="ai-tool-chip__body">
-                <div class="ai-tool-chip__name">ChatGPT &amp; Codex</div>
-                <div class="ai-tool-chip__tagline">OpenAI plugin</div>
-              </div>
-            </div>
-            <div class="ai-tool-chip">
-              <img src="assets/ai-tools/cursor.svg" alt="" class="ai-tool-chip__logo" width="40" height="40">
-              <div class="ai-tool-chip__body">
-                <div class="ai-tool-chip__name">Cursor</div>
-                <div class="ai-tool-chip__tagline">AI code editor</div>
-              </div>
-            </div>
-            <div class="ai-tool-chip">
-              <img src="assets/ai-tools/windsurf.svg" alt="" class="ai-tool-chip__logo" width="40" height="40">
-              <div class="ai-tool-chip__body">
-                <div class="ai-tool-chip__name">Windsurf</div>
-                <div class="ai-tool-chip__tagline">Agentic IDE</div>
-              </div>
-            </div>
+          <div class="feature-card__chips ai-tools-strip">
+            <span class="feature-card__chip">Claude Code</span>
+            <span class="feature-card__chip">Cline</span>
+            <span class="feature-card__chip">Codex</span>
+            <span class="feature-card__chip">Cursor</span>
+            <span class="feature-card__chip">Gemini in Android Studio</span>
+            <span class="feature-card__chip">GitHub Copilot</span>
+            <span class="feature-card__chip">JetBrains AI Assistant</span>
+            <span class="feature-card__chip">Any MCP client</span>
           </div>
 
           <div class="ai-section__actions">
-            <a href="#install" class="ai-section__btn ai-section__btn--primary">
+            <a href="#ai-setup" class="ai-section__btn ai-section__btn--primary">
               <span class="material-symbols-outlined">auto_awesome</span>
-              Install with Claude
+              Set up your assistant
             </a>
             <a href="https://www.npmjs.com/package/sceneview-mcp" class="ai-section__btn ai-section__btn--secondary" target="_blank" rel="noopener">
               <span class="material-symbols-outlined">package_2</span>
@@ -570,7 +486,7 @@
                 <span class="terminal-mockup__dot terminal-mockup__dot--yellow"></span>
                 <span class="terminal-mockup__dot terminal-mockup__dot--green"></span>
               </div>
-              <span class="terminal-mockup__title">Claude Code &mdash; SceneView Project</span>
+              <span class="terminal-mockup__title">AI assistant &mdash; SceneView Project</span>
             </div>
             <div class="terminal-mockup__body">
               <div class="terminal-mockup__msg">
@@ -578,7 +494,7 @@
                 <span>Build me a 3D product viewer with AR try-on for shoes</span>
               </div>
               <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__ai">Claude</span>
+                <span class="terminal-mockup__ai">Assistant</span>
                 <div>
                   <p class="terminal-mockup__status">Using SceneView MCP to generate your app&hellip;</p>
                   <div class="terminal-mockup__code">
@@ -600,7 +516,7 @@
                 <span>Add a hotspot on the laces that opens a size selector</span>
               </div>
               <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__ai">Claude</span>
+                <span class="terminal-mockup__ai">Assistant</span>
                 <div>
                   <p class="terminal-mockup__status">Reading SceneView hotspot &amp; gesture docs via MCP&hellip;</p>
                   <p class="terminal-mockup__success">&#10003; Hotspot added. Preview updated in Android emulator.</p>
@@ -610,6 +526,165 @@
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ===== AI ASSISTANT SETUP ===== -->
+  <section class="aiset" id="ai-setup">
+    <div class="aiset__container">
+      <h2 class="aiset__title reveal">Use SceneView with your AI coding assistant</h2>
+      <p class="aiset__subtitle reveal">One MCP server, every assistant. Pick yours, copy one line, and it can read the full SceneView API reference, the samples and the best practices before it writes a line of 3D code.</p>
+
+      <div class="aiset__tabs reveal" data-aitabs>
+        <div class="aiset__nav" role="tablist" aria-label="AI coding assistants">
+          <button class="aiset__btn aiset__btn--active" role="tab" id="ait-any" aria-controls="aip-any" aria-selected="true" tabindex="0">Any MCP client</button>
+          <button class="aiset__btn" role="tab" id="ait-claude" aria-controls="aip-claude" aria-selected="false" tabindex="-1">Claude Code</button>
+          <button class="aiset__btn" role="tab" id="ait-cline" aria-controls="aip-cline" aria-selected="false" tabindex="-1">Cline</button>
+          <button class="aiset__btn" role="tab" id="ait-codex" aria-controls="aip-codex" aria-selected="false" tabindex="-1">Codex</button>
+          <button class="aiset__btn" role="tab" id="ait-cursor" aria-controls="aip-cursor" aria-selected="false" tabindex="-1">Cursor</button>
+          <button class="aiset__btn" role="tab" id="ait-gemini" aria-controls="aip-gemini" aria-selected="false" tabindex="-1">Gemini in Android Studio</button>
+          <button class="aiset__btn" role="tab" id="ait-copilot" aria-controls="aip-copilot" aria-selected="false" tabindex="-1">GitHub Copilot</button>
+          <button class="aiset__btn" role="tab" id="ait-jetbrains" aria-controls="aip-jetbrains" aria-selected="false" tabindex="-1">JetBrains AI Assistant</button>
+          <button class="aiset__btn" role="tab" id="ait-xcode" aria-controls="aip-xcode" aria-selected="false" tabindex="-1">Xcode</button>
+          <button class="aiset__btn" role="tab" id="ait-nomcp" aria-controls="aip-nomcp" aria-selected="false" tabindex="-1">No MCP?</button>
+        </div>
+
+        <div class="aiset__panels">
+
+          <div class="aiset__panel aiset__panel--active" role="tabpanel" id="aip-any" aria-labelledby="ait-any" tabindex="0">
+            <div class="aiset__step-label">Locally, over stdio</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code><span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <div class="aiset__step-label">Remotely, over Streamable HTTP &mdash; already hosted, nothing to run</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>https://mcp.sceneview.dev/mcp</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy URL"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Config shapes differ across the ecosystem, the command and its arguments never do. The common one is <code class="aiset__file">mcpServers</code>; VS Code uses <code class="aiset__file">servers</code> with <code>"type": "stdio"</code>, Codex a <code class="aiset__file">[mcp_servers.*]</code> TOML table, Copilot CLI <code>"type": "local"</code>, and Kilo Code a <code class="aiset__file">mcp</code> key in <code class="aiset__file">kilo.jsonc</code> where <code>command</code> is an array and the environment block is called <code>environment</code>. When in doubt, paste the command above into whatever field your client offers.</p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-claude" aria-labelledby="ait-claude" tabindex="0" hidden>
+            <div class="aiset__step-label">Run in your terminal</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code><span class="syn-purple">claude</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <div class="aiset__step-label">Or commit it for the whole team &mdash; <code class="aiset__file">.mcp.json</code></div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"type"</span>: <span class="syn-green-light">"stdio"</span>,
+  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Reference: <a href="https://code.claude.com/docs/en/mcp" target="_blank" rel="noopener">code.claude.com/docs/en/mcp</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-cline" aria-labelledby="ait-cline" tabindex="0" hidden>
+            <div class="aiset__step-label">MCP Servers icon &rarr; Configure &rarr; Configure MCP Servers &mdash; or <code class="aiset__file">~/.cline/mcp.json</code></div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>],
+  <span class="syn-green-light">"disabled"</span>: <span class="syn-blue">false</span>, <span class="syn-green-light">"autoApprove"</span>: []
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Reference: <a href="https://docs.cline.bot/mcp/configuring-mcp-servers" target="_blank" rel="noopener">docs.cline.bot/mcp/configuring-mcp-servers</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-codex" aria-labelledby="ait-codex" tabindex="0" hidden>
+            <div class="aiset__step-label">Run in your terminal</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code><span class="syn-purple">codex</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <div class="aiset__step-label">Or edit <code class="aiset__file">~/.codex/config.toml</code> &mdash; same config for the CLI, the IDE extension and the app</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>[<span class="syn-green-light">mcp_servers.sceneview</span>]
+<span class="syn-blue">command</span> = <span class="syn-green-light">"npx"</span>
+<span class="syn-blue">args</span> = [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Reference: <a href="https://learn.chatgpt.com/docs/extend/mcp" target="_blank" rel="noopener">learn.chatgpt.com/docs/extend/mcp</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-cursor" aria-labelledby="ait-cursor" tabindex="0" hidden>
+            <div class="aiset__step-label">Add to <code class="aiset__file">.cursor/mcp.json</code> (project) or <code class="aiset__file">~/.cursor/mcp.json</code> (global)</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Cursor also accepts an install link: <a class="aiset__link" href="cursor://anysphere.cursor-deeplink/mcp/install?name=sceneview&amp;config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjZW5ldmlldy1tY3AiXX0=">open in Cursor</a> (requires Cursor installed). Reference: <a href="https://cursor.com/docs/mcp/install-links" target="_blank" rel="noopener">cursor.com/docs/mcp/install-links</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-gemini" aria-labelledby="ait-gemini" tabindex="0" hidden>
+            <div class="aiset__step-label">Settings &rarr; Tools &rarr; AI &rarr; MCP Servers &mdash; Android Studio connects over HTTP, not stdio</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"httpUrl"</span>: <span class="syn-green-light">"https://mcp.sceneview.dev/mcp"</span>,
+  <span class="syn-green-light">"enabled"</span>: <span class="syn-blue">true</span>
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Gemini in Android Studio accepts <code>httpUrl</code> only &mdash; the local <code>npx -y sceneview-mcp</code> stdio command cannot be registered here, so this entry points at the hosted server instead. If you would rather run it locally inside the same IDE, use Junie: put the <strong>Any MCP client</strong> snippet in <code>.junie/mcp/mcp.json</code>. Reference: <a href="https://developer.android.com/studio/gemini/add-mcp-server" target="_blank" rel="noopener">developer.android.com/studio/gemini/add-mcp-server</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-copilot" aria-labelledby="ait-copilot" tabindex="0" hidden>
+            <div class="aiset__step-label">Add to <code class="aiset__file">.vscode/mcp.json</code> &mdash; note the <code class="aiset__file">servers</code> key, not <code class="aiset__file">mcpServers</code></div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"servers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"type"</span>: <span class="syn-green-light">"stdio"</span>,
+  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <div class="aiset__step-label">Copilot CLI</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code><span class="syn-purple">copilot</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Writing the CLI's file by hand takes a third shape: <code>~/.copilot/mcp-config.json</code> uses <code>mcpServers</code> like most clients, but each server needs <code>"type": "local"</code> instead of <code>"stdio"</code>. VS Code also accepts an install link: <a class="aiset__link" href="vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D">open in VS Code</a> (requires VS Code installed). References: <a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration" target="_blank" rel="noopener">code.visualstudio.com/docs/agents/reference/mcp-configuration</a> and <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers" target="_blank" rel="noopener">docs.github.com &mdash; add MCP servers to Copilot CLI</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-jetbrains" aria-labelledby="ait-jetbrains" tabindex="0" hidden>
+            <div class="aiset__step-label">Settings &rarr; Tools &rarr; AI Assistant &rarr; Model Context Protocol (MCP) &rarr; Add, then paste</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
+  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
+} } }</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Works for AI Assistant and Junie, in IntelliJ IDEA, Android Studio and the other JetBrains IDEs. Junie also reads the same JSON straight from a file &mdash; <code>.junie/mcp/mcp.json</code> for one project, <code>~/.junie/mcp/mcp.json</code> for every project. Reference: <a href="https://www.jetbrains.com/help/ai-assistant/mcp.html" target="_blank" rel="noopener">jetbrains.com/help/ai-assistant/mcp.html</a></p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-xcode" aria-labelledby="ait-xcode" tabindex="0" hidden>
+            <div class="aiset__step-label">Agents running inside Xcode read the rules files at your project root</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code><span class="syn-green"># at your project root</span>
+AGENTS.md
+CLAUDE.md</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy file names"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">Apple recommends putting your project guidance in these files, and the agents running inside Xcode read them. Xcode 26.3 itself exposes <em>its own</em> tools to external agents rather than hosting this server: turn it on under Settings &rarr; Intelligence &rarr; Model Context Protocol, then run your CLI alongside Xcode with both servers &mdash; <code class="aiset__file">claude mcp add --transport stdio xcode -- xcrun mcpbridge</code> or <code class="aiset__file">codex mcp add xcode -- xcrun mcpbridge</code> &mdash; plus SceneView from the Claude Code or Codex tab. Reference: <a href="https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode" target="_blank" rel="noopener">developer.apple.com &mdash; external agents</a>.</p>
+          </div>
+
+          <div class="aiset__panel" role="tabpanel" id="aip-nomcp" aria-labelledby="ait-nomcp" tabindex="0" hidden>
+            <div class="aiset__step-label">No MCP support? Point your assistant at the plain-text reference</div>
+            <div class="aiset__snippet">
+              <pre class="code-block aiset__code"><code>https://sceneview.github.io/llms.txt</code></pre>
+              <button class="aiset__copy" type="button" aria-label="Copy URL"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
+            </div>
+            <p class="aiset__note">It is the whole SDK &mdash; API surface, samples and best practices &mdash; in one file any assistant can read. The repository also ships <code class="aiset__file">AGENTS.md</code>, <code class="aiset__file">CLAUDE.md</code>, <code class="aiset__file">.github/copilot-instructions.md</code> and <code class="aiset__file">.cursorrules</code>, so whichever rules file your tool reads, it finds the same guidance. Full docs: <a href="docs.html">SceneView documentation</a>.</p>
+          </div>
+
+        </div>
+      </div>
+
+      <p class="aiset__also reveal">Also works with Antigravity, Continue, Devin Desktop, Goose, Kilo Code, Kiro, OpenCode, OpenHands, Qwen Code, Windsurf, Zed &mdash; and any MCP-compatible client.</p>
     </div>
   </section>
 
@@ -701,12 +776,12 @@
 })</code></pre>
           </div>
         </div>
-        <!-- Claude AI Card -->
-        <div class="code-card code-card--claude">
+        <!-- AI assistant card -->
+        <div class="code-card code-card--ai">
           <div class="code-card__header">
             <div class="code-card__lang-wrap">
-              <img src="assets/brand/claude.svg" alt="" width="16" height="16" class="code-card__lang-logo">
-              <span class="code-card__lang">Claude (AI)</span>
+              <span class="material-symbols-outlined code-card__lang-glyph" aria-hidden="true">smart_toy</span>
+              <span class="code-card__lang">AI assistant (MCP)</span>
             </div>
             <div class="code-card__dots">
               <span class="code-card__dot code-card__dot--red"></span>
@@ -715,16 +790,16 @@
             </div>
           </div>
           <div class="code-card__body">
-            <pre><code><span class="syn-green">// Ask Claude with SceneView MCP:</span>
+            <pre><code><span class="syn-green">// Ask your AI assistant, with SceneView MCP:</span>
 
 <span class="syn-green-light">"Build me an AR app that lets users
  place 3D furniture in their room"</span>
 
-<span class="syn-green">// Claude generates correct, working code</span>
-<span class="syn-green">// with SceneView on the first try.</span>
+<span class="syn-green">// It generates correct, working SceneView</span>
+<span class="syn-green">// code on the first try.</span>
 
-<span class="syn-green">// Setup:</span>
-<span class="syn-purple">claude</span> mcp add sceneview -- <span class="syn-blue">npx</span> <span class="syn-green-light">sceneview-mcp</span></code></pre>
+<span class="syn-green">// Setup, in any MCP client:</span>
+<span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
           </div>
         </div>
       </div>
@@ -905,10 +980,14 @@
           <h3 class="feature-card__title">AI-First MCP Server</h3>
           <p class="feature-card__text"><code>validate_code</code> compile-checks what your assistant wrote, <code>get_node_reference</code> resolves the exact node API, <code>get_setup</code> and <code>get_ar_setup</code> wire up the project, and <code>list_samples</code> starts you from code that builds. 38 compilable samples + full <code>llms.txt</code> reference.</p>
           <div class="feature-card__chips">
-            <span class="feature-card__chip">Claude</span>
-            <span class="feature-card__chip">ChatGPT &amp; Codex</span>
+            <span class="feature-card__chip">Claude Code</span>
+            <span class="feature-card__chip">Cline</span>
+            <span class="feature-card__chip">Codex</span>
             <span class="feature-card__chip">Cursor</span>
-            <span class="feature-card__chip">Windsurf</span>
+            <span class="feature-card__chip">Gemini in Android Studio</span>
+            <span class="feature-card__chip">GitHub Copilot</span>
+            <span class="feature-card__chip">JetBrains AI Assistant</span>
+            <span class="feature-card__chip">Any MCP client</span>
           </div>
         </div>
 
@@ -1281,9 +1360,9 @@
         <div class="cta__left">
           <h2 class="cta__title">Start building in 5 minutes</h2>
           <div class="cta__actions">
-            <a href="claude://settings/mcp?url=npx%20sceneview-mcp" class="cta__btn cta__btn--white">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="10" fill="rgba(0,0,0,0.12)"/><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm1 14.5l-5-3 5-3v6z"/></svg>
-              Open in Claude
+            <a href="#ai-setup" class="cta__btn cta__btn--white">
+              <span class="material-symbols-outlined" style="font-size:18px">smart_toy</span>
+              Set up your AI assistant
             </a>
             <a href="/docs.html" class="cta__btn cta__btn--glass" target="_blank" rel="noopener">
               <span class="material-symbols-outlined" style="font-size:18px">menu_book</span>

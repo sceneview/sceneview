@@ -12,7 +12,7 @@
 
 The official [Model Context Protocol](https://modelcontextprotocol.io/) server for **[SceneView](https://sceneview.github.io)** — the cross-platform 3D & AR SDK for Android (Jetpack Compose + Filament), iOS / macOS / visionOS (SwiftUI + RealityKit), and Web (Filament.js + WebXR).
 
-Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio, remotely over Streamable HTTP at **`https://mcp.sceneview.dev/mcp`** (see [Use as a Claude connector](#use-as-a-claude-connector)), or self-hosted for ChatGPT, Codex and the OpenAI API (see [Remote server](#remote-server-streamable-http--chatgpt-codex-openai-api)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
+Connect it to Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant — or any other MCP client — locally over stdio, or remotely over Streamable HTTP at **`https://mcp.sceneview.dev/mcp`** (see [Remote server](#remote-server-streamable-http)). Your AI assistant gets specialized tools, compilable code samples, the full API reference, a code validator, and an inline 3D viewer widget — so it writes correct, working 3D/AR code on the first try.
 
 > **Disclaimer:** Generated code is provided "as is" without warranty. Always review before production use. See [TERMS.md](./TERMS.md) and [PRIVACY.md](./PRIVACY.md).
 
@@ -26,9 +26,11 @@ Connect it to Claude, Cursor, Windsurf, or any MCP client — locally over stdio
 npx sceneview-mcp
 ```
 
-### Claude Desktop
+Every client below runs that same server. Three config shapes exist across the ecosystem —
+`mcpServers` (most clients), `servers` (VS Code) and `[mcp_servers.*]` (Codex TOML) — but the
+command and arguments are identical in all three.
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+### Any MCP client
 
 ```json
 {
@@ -41,37 +43,109 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Restart Claude Desktop after saving.
-
 ### Claude Code
 
-Two options.
+```bash
+claude mcp add sceneview -- npx -y sceneview-mcp
+```
 
-**Recommended — install the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)** to get this MCP server **plus** 11 namespaced contributor commands and cross-platform reminder hooks in one shot:
+Or commit `.mcp.json` at the repository root so the whole team gets it:
+
+```json
+{ "mcpServers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+Optionally, the [SceneView Claude Code plugin](https://github.com/sceneview/claude-marketplace)
+bundles this server with 11 namespaced contributor commands and cross-platform reminder hooks:
 
 ```bash
 /plugin marketplace add sceneview/claude-marketplace
 /plugin install sceneview@sceneview
 ```
 
-**Or — just the MCP server** (lighter, no commands or hooks):
+### Claude Desktop
 
-```bash
-claude mcp add sceneview -- npx -y sceneview-mcp
+Settings → Developer → Edit Config, then add the standard `mcpServers` block above to
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+`%APPDATA%\Claude\claude_desktop_config.json` (Windows). Restart after saving.
+
+### Cline
+
+MCP Servers icon → Configure → Configure MCP Servers, or `~/.cline/mcp.json`:
+
+```json
+{ "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"], "disabled": false, "autoApprove": [] } } }
 ```
 
-### Use as a Claude connector
+### Codex
 
-No install, nothing to run: SceneView is hosted as a remote MCP server and can be added to
-[claude.ai](https://claude.ai) — web, desktop and mobile — as a **custom connector**.
+```bash
+codex mcp add sceneview -- npx -y sceneview-mcp
+```
+
+Or `~/.codex/config.toml` — TOML, and the table is `mcp_servers`, not `mcpServers`:
+
+```toml
+[mcp_servers.sceneview]
+command = "npx"
+args = ["-y", "sceneview-mcp"]
+```
+
+The same config serves the Codex CLI, the IDE extension and the app.
+
+### Cursor
+
+Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) — the standard
+`mcpServers` block above. Cursor also accepts an install link:
+
+```
+cursor://anysphere.cursor-deeplink/mcp/install?name=sceneview&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjZW5ldmlldy1tY3AiXX0=
+```
+
+### Gemini in Android Studio
+
+Android Studio's MCP integration **does not support stdio** — it connects over HTTP only, so
+point it at the hosted endpoint. Settings → Tools → AI → MCP Servers:
+
+```json
+{ "mcpServers": { "sceneview": { "httpUrl": "https://mcp.sceneview.dev/mcp", "enabled": true } } }
+```
+
+### GitHub Copilot
+
+In VS Code, `.vscode/mcp.json` — note the `servers` key, not `mcpServers`:
+
+```json
+{ "servers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+```
+
+VS Code also accepts an install link:
+
+```
+vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D
+```
+
+In Copilot CLI:
+
+```bash
+copilot mcp add sceneview -- npx -y sceneview-mcp
+```
+
+### JetBrains AI Assistant / Junie
+
+Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add, then paste the standard
+`mcpServers` block above.
+
+### Use as a remote connector
+
+No install, nothing to run: SceneView is hosted as a remote MCP server at
 
 ```
 https://mcp.sceneview.dev/mcp
 ```
 
-In claude.ai, open **Settings → Connectors → Add custom connector**, paste that URL, name it
-`SceneView`, and click **Add**. The tools appear in the next conversation; the inline 3D viewer
-renders models straight in the chat.
+Any client that accepts a Streamable HTTP MCP URL can use it. In claude.ai, that is
+**Settings → Connectors → Add custom connector**.
 
 **Authless and read-only.** There is no sign-in, no API key and no account: every tool is a pure
 function of the SDK's own documentation, samples and API surface, so there is nothing to
@@ -79,33 +153,14 @@ authenticate and nothing of yours stored. All tools are annotated `readOnlyHint`
 `generate_3d_model`, which calls an external generation service and is therefore marked
 open-world rather than read-only.
 
-**Prefer it local?** `npx sceneview-mcp` runs the exact same server over stdio (see
-[Claude Desktop](#claude-desktop) and [Claude Code](#claude-code) above). The local route is the
-one that reads your project from disk (`analyze_project`) and the one that accepts your own
-`SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous, cannot.
+**Prefer it local?** `npx -y sceneview-mcp` runs the exact same server over stdio. The local
+route is the one that reads your project from disk (`analyze_project`) and the one that accepts
+your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the hosted connector, being shared and anonymous,
+cannot.
 
-### Cursor
+### Remote server (Streamable HTTP)
 
-Open **Settings > MCP**, add a new server named `sceneview` with command `npx -y sceneview-mcp`. Or add to `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "sceneview": {
-      "command": "npx",
-      "args": ["-y", "sceneview-mcp"]
-    }
-  }
-}
-```
-
-### Windsurf / Other MCP clients
-
-Same JSON config as above. The server communicates via **stdio** using the standard MCP protocol.
-
-### Remote server (Streamable HTTP) — ChatGPT, Codex, OpenAI API
-
-The ChatGPT / Codex Plugins Directory and the OpenAI API `mcp` tool cannot spawn a local process: they need MCP's **Streamable HTTP** transport at a public URL. The same package serves it:
+Some hosts cannot spawn a local process: they need MCP's **Streamable HTTP** transport at a public URL. The same package serves it:
 
 ```bash
 npx sceneview-mcp --http

@@ -10,7 +10,7 @@ Same concepts, same simplicity — Android, iOS, Web, Desktop, TV, Flutter, Reac
 [![Android AR](https://img.shields.io/maven-central/v/io.github.sceneview/arsceneview?label=Android%20AR&logo=android&color=34a853)](https://central.sonatype.com/artifact/io.github.sceneview/arsceneview)
 [![iOS / macOS / visionOS](https://img.shields.io/github/v/release/sceneview/sceneview?label=Swift&logo=swift&color=f05138)](https://github.com/sceneview/sceneview)
 [![sceneview.js](https://img.shields.io/npm/v/sceneview-web?label=sceneview.js&logo=javascript&color=f7df1e)](https://www.npmjs.com/package/sceneview-web)
-[![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=anthropic&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
+[![MCP Server](https://img.shields.io/npm/v/sceneview-mcp?label=MCP&logo=npm&color=d97706)](https://www.npmjs.com/package/sceneview-mcp)
 [![Flutter](https://img.shields.io/badge/Flutter-v4.37.0-02569B?logo=flutter)](https://github.com/sceneview/sceneview/tree/main/flutter)
 [![React Native](https://img.shields.io/badge/React%20Native-v4.37.0-61DAFB?logo=react)](https://github.com/sceneview/sceneview/tree/main/react-native)
 
@@ -91,8 +91,8 @@ SceneView(environment: .studio) {
 ```
 
 ```bash
-# Claude — ask AI to build your 3D app
-claude mcp add sceneview -- npx sceneview-mcp
+# Any AI assistant — add the MCP server, then just ask
+npx -y sceneview-mcp
 # Then ask: "Build me an AR app with tap-to-place furniture"
 ```
 
@@ -112,7 +112,7 @@ No engine boilerplate. No lifecycle callbacks. The runtime handles everything.
 | **Flutter** | Native per platform | PlatformView | Alpha |
 | **React Native** | Native per platform | Fabric | Alpha |
 | **Compose Multiplatform** | Per platform (Filament / RealityKit) | `sceneview-compose` | Alpha — viewer subset, Android + iOS |
-| **Claude / AI** | — | MCP Server | Stable |
+| **AI assistants** | — | MCP Server | Stable |
 
 ---
 
@@ -164,12 +164,20 @@ https://github.com/sceneview/sceneview.git  (from: 4.37.0)
 npm install sceneview-web
 ```
 
-**Claude Code / Claude Desktop:**
+**AI assistants (MCP):** one server, every client — see
+[Use SceneView with your AI coding assistant](https://sceneview.github.io/#ai-setup) for the
+exact snippet per tool.
+
 ```bash
-claude mcp add sceneview -- npx sceneview-mcp
+claude mcp add sceneview -- npx -y sceneview-mcp   # Claude Code
+codex  mcp add sceneview -- npx -y sceneview-mcp   # Codex
+copilot mcp add sceneview -- npx -y sceneview-mcp  # GitHub Copilot CLI
 ```
 ```json
+// Cursor (.cursor/mcp.json), Cline, JetBrains AI Assistant
 { "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+// VS Code (.vscode/mcp.json) uses the "servers" key instead
+{ "servers": { "sceneview": { "type": "stdio", "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
 ```
 
 **ChatGPT / Codex:** this repository *is* a plugin — the manifest lives at
@@ -473,16 +481,17 @@ implementation("io.github.sceneview:sceneview-core-js:4.37.0")
 
 SceneView is **AI-first** — every API, doc, and sample is designed so AI assistants generate correct, compilable 3D/AR code on the first try.
 
-### MCP Server (Claude, Cursor, Windsurf, etc.)
+### MCP Server (Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI, and any other MCP client)
 
 The official [MCP server](./mcp/) provides **38 compilable samples**, a full API reference, and a code validator — every tool is free, and there is no API key:
 
 ```bash
-# Claude Code — one command
-claude mcp add sceneview -- npx sceneview-mcp
+# Any MCP client — locally over stdio
+npx -y sceneview-mcp
 
-# Claude Desktop / Cursor / Windsurf — add to MCP config
-{ "mcpServers": { "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] } } }
+# Or remotely over Streamable HTTP, already hosted (required by Gemini in
+# Android Studio, which does not support stdio)
+https://mcp.sceneview.dev/mcp
 ```
 
 The tools your assistant actually reaches for: `validate_code` (compile-check before sending),
@@ -491,7 +500,7 @@ The tools your assistant actually reaches for: `validate_code` (compile-check be
 you go: `get_troubleshooting`, `get_gesture_guide`, `analyze_project` (audit an existing app),
 and per-platform recipes for AR, physics, geometry, and Compose-in-3D.
 
-### Claude Code plugin (MCP + slash commands + hooks)
+### Claude Code plugin (optional — MCP + slash commands + hooks)
 
 Want the MCP server **plus** the full SceneView contributor toolkit (one-shot release, review, cross-platform sync, version-bump, etc.) in a single install? Use the [SceneView Claude Code marketplace](https://github.com/sceneview/claude-marketplace):
 
@@ -523,13 +532,13 @@ and the inline `view_3d_model` widget (MCP Apps) that renders a public GLB/glTF 
 in the conversation. Listing copy, starter prompts and test cases:
 [agents/OPENAI-PLUGIN.md](agents/OPENAI-PLUGIN.md).
 
-### GitHub Copilot / Cursor / Other AI
+### Rules files — whichever one your assistant reads
 
-- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI)
-- **GitHub Copilot** — Custom instructions in [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
-- **Cursor** — Rules file at [`.cursorrules`](.cursorrules)
-- **Windsurf** — Rules file at [`.windsurfrules`](.windsurfrules)
-- **ChatGPT** — Ask: *"Build me an Android AR app with SceneView"* — SceneView is in the training data
+- **llms.txt** — Machine-readable API reference at [`llms.txt`](./llms.txt) (complete API: composables, nodes, threading rules, recipes — its Kotlin snippets are compile-checked in CI). Use it when your tool has no MCP support.
+- **`AGENTS.md`** — read by Codex, Cursor, GitHub Copilot, Gemini in Android Studio and a growing list of others
+- **`CLAUDE.md`** — read by Claude Code
+- **`.github/copilot-instructions.md`** — read by GitHub Copilot
+- **`.cursorrules`** — legacy Cursor rules, kept for older versions
 
 ### Domain-specific MCP servers
 
