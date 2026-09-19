@@ -78,8 +78,45 @@ internal fun isSceneFrameActive(
 ): Boolean = gestureInFlight || cameraMoved || cameraPending || hasActiveNode || isLoading ||
         isMirroring || framingPending
 
-/** Half a 60 Hz vsync. See [shouldPresentAtCap]. */
-private const val HALF_VSYNC_NANOS = 8_000_000L
+/**
+ * The `framingPending` argument of [isSceneFrameActive]: whether a framing pass still owes work
+ * that only a presented frame can advance.
+ *
+ * A guard on a *pending* state has one rule, and both halves of this expression exist because it
+ * was broken: **its condition must be exactly the condition of the work it waits for.** A framing
+ * pass that never runs never latches, and a guard that only asks "has it latched?" then answers
+ * "pending" for the lifetime of the view — which re-arms the settle budget every tick, holds the
+ * scene at full cadence and votes the display maximum, with nothing visibly wrong on screen.
+ *
+ * Two ways that happened here:
+ *
+ * - **auto-fit with a camera manipulator.** `SceneView` only runs the auto-fit pass when there is
+ *   no manipulator — an orbit manipulator owns the camera transform every frame, so a static fit
+ *   cannot coexist with it. But `rememberCameraManipulator()` is the *default*, so every scene
+ *   that set `autoFitContent = true` waited forever on a pass that was never going to run. Hence
+ *   [hasCameraManipulator].
+ * - **a pass with nothing to frame.** An empty scene, a scene whose nodes are all
+ *   `isVisible = false`, a lone light: the pass bails out before latching, every tick, forever —
+ *   and `autoCenterContent` is on by default. Hence the states report
+ *   [SceneAutoCenterState.isFramingPending] rather than `!didCenter`; see [FramingGate.isPending].
+ *   Content arriving is a push invalidation, so nothing is lost by resting.
+ */
+internal fun isFramingPending(
+    autoCenterContent: Boolean,
+    autoCenterPending: Boolean,
+    autoFitContent: Boolean,
+    hasCameraManipulator: Boolean,
+    autoFitPending: Boolean
+): Boolean = (autoCenterContent && autoCenterPending) ||
+        (autoFitContent && !hasCameraManipulator && autoFitPending)
+
+/**
+ * The vsync period, in nanoseconds, for a display running at [refreshRate] Hz — or `0` when the
+ * rate is unknown (no display attached yet), which [shouldPresentAtCap] reads as "compare the
+ * deadline strictly, no phase lock".
+ */
+internal fun vsyncPeriodNanos(refreshRate: Float?): Long =
+    if (refreshRate != null && refreshRate > 0f) (1_000_000_000.0 / refreshRate).toLong() else 0L
 
 /**
  * Whether a [FrameRatePolicy.Capped] scene may present at [frameTimeNanos], given the timestamp of

@@ -903,9 +903,18 @@ fun SceneView(
                                 hasActiveNode = childNodesRef.get().any { it.isFrameActive },
                                 isLoading = modelLoader.progress < 1f,
                                 isMirroring = surfaceMirrorer?.mirroredSurfaces?.isNotEmpty() == true,
-                                framingPending = (currentAutoCenterContent.value &&
-                                        !autoCenterState.didCenter) ||
-                                        (currentAutoFitContent.value && !autoFitState.didFit)
+                                // Exactly the condition of the work this guard waits for — the
+                                // same `if`s the update block above runs the passes under. See
+                                // [isFramingPending] for the two ways a looser guard held every
+                                // default scene at full cadence with no visible symptom.
+                                framingPending = isFramingPending(
+                                    autoCenterContent = currentAutoCenterContent.value,
+                                    autoCenterPending = autoCenterState.isFramingPending,
+                                    autoFitContent = currentAutoFitContent.value,
+                                    hasCameraManipulator =
+                                        currentCameraManipulator.value != null,
+                                    autoFitPending = autoFitState.isFramingPending
+                                )
                             )
                             // The vote is a hint to the display, not a gate on this frame: it asks
                             // the panel for the cadence the next few frames will want. Recomputed

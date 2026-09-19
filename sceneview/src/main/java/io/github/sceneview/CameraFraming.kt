@@ -341,6 +341,16 @@ class SceneAutoFitState {
     val didFit: Boolean get() = gate.latched
 
     /**
+     * `true` while the pass still needs presented frames to converge — see [FramingGate.isPending].
+     * `SceneView` reads this, **not** `!`[didFit], as its "framing pending" render source, and only
+     * when the pass is actually wired: `autoFitContent = true` **and** no camera manipulator.
+     * With a manipulator the pass never runs at all, so `!didFit` would have been permanently true
+     * and would have held the loop at full cadence forever — with `rememberCameraManipulator()`
+     * being the default, that is every scene that ever set `autoFitContent = true`.
+     */
+    val isFramingPending: Boolean get() = gate.isPending
+
+    /**
      * The orbit distance the last [maybeFit] framing computed. `0` until the content has been
      * framed. Camera manipulators can read this to seed their orbit radius.
      */
@@ -380,7 +390,13 @@ class SceneAutoFitState {
         contentRoots: List<Node>,
         padding: Float = DEFAULT_FRAMING_PADDING
     ): Boolean {
-        if (contentRoots.isEmpty()) return false
+        // No content to frame yet. See [FramingGate.isPending]: this is a wait on a push source
+        // (the DSL node sync invalidates and resets the gate when content arrives), never a reason
+        // to hold the render loop awake.
+        if (contentRoots.isEmpty()) {
+            gate.recordNoContent()
+            return false
+        }
         if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because
@@ -389,18 +405,27 @@ class SceneAutoFitState {
         val bounds = contentRoots
             .map { computeContentBounds(it, relativeTo = reference) }
             .union()
-        if (bounds.isEmpty) return false
+        if (bounds.isEmpty) {
+            gate.recordNoContent()
+            return false
+        }
         val distance = fitDistanceForBounds(
             bounds = bounds,
             verticalFovDegrees = verticalFovDegreesForFocalLength(cameraNode.focalLength),
             aspect = cameraNode.getViewPortAspect(),
             padding = padding
         )
-        if (distance <= 0f) return false
+        if (distance <= 0f) {
+            gate.recordNoContent()
+            return false
+        }
         val diagonal = bounds.diagonal
         val framed = gate.shouldFrame(diagonal)
         if (framed) {
-            if (!cameraNode.frameToBounds(bounds, padding = padding)) return false
+            if (!cameraNode.frameToBounds(bounds, padding = padding)) {
+                gate.recordNoContent()
+                return false
+            }
             fitDistance = distance
         }
         gate.recordFraming(diagonal)
