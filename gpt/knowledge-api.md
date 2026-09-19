@@ -50,6 +50,45 @@
 
 ---
 
+## Docs
+
+- [Quickstart (Android)](https://sceneview.github.io/docs/quickstart/): add the dependency and render a first model with Jetpack Compose
+- [Quickstart (Apple)](https://sceneview.github.io/docs/quickstart-ios/): the same path in SwiftUI, with RealityKit and ARKit
+- [Quickstart (Web)](https://sceneview.github.io/docs/quickstart-web/): Kotlin/JS and Filament.js — Alpha
+- [Nodes reference](https://sceneview.github.io/docs/nodes/): every node composable, its signature, and the mistakes it invites
+- [API cheatsheet](https://sceneview.github.io/docs/cheatsheet/): the declarative API on one page
+- [Model formats](https://sceneview.github.io/docs/formats/): glTF, GLB, USDZ, and what converts into what
+- [Platforms](https://sceneview.github.io/docs/platforms/): what each target supports and how mature it is
+- [Recipes](https://sceneview.github.io/docs/recipes/): task-shaped answers to "I want to…"
+- [Migration from Sceneform](https://sceneview.github.io/docs/migration/): the mapping, class by class
+- [Troubleshooting](https://sceneview.github.io/docs/troubleshooting/): symptom, cause, fix
+- [FAQ](https://sceneview.github.io/docs/faq/): the questions that come back
+
+## Reference
+
+- [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
+- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~12 kB, when the full file will not fit
+- [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
+- [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
+
+## Working with an AI assistant
+
+- [Use SceneView with AI assistants](https://sceneview.github.io/docs/ai-context/): how to hand this file to any assistant, and how to install the MCP server
+- [AI-assisted development](https://sceneview.github.io/docs/ai-development/): the prompts and workflows that produce code which compiles
+
+## Optional
+
+- [Architecture](https://sceneview.github.io/docs/architecture/): how the renderer, the node graph and Compose fit together
+- [Performance](https://sceneview.github.io/docs/performance/): frame budget, quality levels, what costs what
+- [Testing](https://sceneview.github.io/docs/testing/): testing a scene without a device
+- [Integrations](https://sceneview.github.io/docs/integrations/): Sketchfab, Rerun.io and other outside pieces
+- [Comparison with alternatives](https://sceneview.github.io/docs/comparison/): Sceneform, Unity, Filament, model-viewer
+- [Samples](https://sceneview.github.io/docs/samples/): the demo apps and what each one shows
+- [Community](https://sceneview.github.io/docs/community/): where to ask
+- [Changelog](https://sceneview.github.io/docs/changelog/): what changed, release by release
+
+---
+
 ## Core Composables
 
 ### SceneView — 3D viewport
@@ -348,6 +387,9 @@ Box {
         isTracking = isTracking,
         anyPlaneTracked = anyPlaneTracked,
         trackingFailureReason = failure,
+        // Default 16 dp — a gutter sized for a screen whose bottom is empty. If your own
+        // chrome occupies the bottom, name the band it must clear (#3735).
+        bottomClearance = 96.dp + 8.dp,
     )
 }
 ```
@@ -1236,8 +1278,8 @@ Signature:
     planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
     instantPlacement: Boolean = true,        // place before a plane converges (ArFragment parity)
     showReticle: Boolean = true,             // built-in centre-screen placement reticle
-    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
@@ -1245,6 +1287,9 @@ Signature:
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
+    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching pill — raise it by the
+                                             // height of your own bottom bar so the pill is not
+                                             // hidden behind it (#3735)
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 )
@@ -1261,6 +1306,14 @@ plane answered, and it comes from `Frame.hitTestInstantPlacement` at a 1 m appro
 placement fires a `LongPress` haptic, so a tap that lands feels different from a tap that misses.
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
+
+**If your screen has a bottom bar, tell the coaching guide about it (#3735).** With
+`coaching = true` the onboarding pill sits above the bottom edge with a 16 dp gutter — a gap sized
+for a screen whose bottom is empty. Host it under a dock, a nav bar or a product sheet and the pill
+lands *behind* that chrome, half-legible, exactly when the user most needs it. `PlacementScene` has
+no way to see a bar drawn by its caller, so pass the height yourself:
+`coachingBottomClearance = barHeight + 8.dp` (a spacing token, not a magic number). The parameter is
+purely additive — leave it out and nothing moves.
 
 The built-in reticle is composed only while the camera is `TRACKING`, so it can never render at
 the identity pose before the first hit (#3569). Its default look is deliberately achromatic — a
