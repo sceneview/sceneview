@@ -40,13 +40,18 @@ cd mcp
 npm run build   # the prebuild hook runs scripts/generate-llms-txt.js, then tsc
 ```
 
-### CI drift guard
+### The docs mirror
 
-`.claude/scripts/check-llms-drift.sh` (run by `quality-gate.sh` and the
-`ci.yml` `quality-gate` job) verifies that `docs/docs/llms.txt` is a
-byte-for-byte mirror of root `llms.txt` so the mkdocs site serves the same
-content as the raw GitHub URL LLM clients fetch. `sync-versions.sh --fix`
-re-copies the mirror for you locally.
+`docs/docs/llms.txt` is not committed. It is `.gitignore`d and written from
+root `llms.txt` at docs-build time, by the "Mirror root llms.txt into docs"
+step in `.github/workflows/docs.yml`, so the mkdocs site serves the same bytes
+as the raw GitHub URL LLM clients fetch and there is nothing that can drift.
+
+Nothing checks this. An earlier version of this section credited
+`.claude/scripts/check-llms-drift.sh`, run by `quality-gate.sh` and a `ci.yml`
+`quality-gate` job; the scripts and the job all went with the local harness in
+#3244 and nothing replaced them. `.gitignore` is what keeps a committed copy
+from reappearing.
 
 `src/generated/llms-txt.ts` no longer needs a drift check: being generated
 fresh on every build, publish and test run, it cannot drift from root

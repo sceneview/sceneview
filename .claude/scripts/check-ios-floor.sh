@@ -92,7 +92,6 @@ DOC_FILES=(
     SceneViewSwift/README.md
     CONTRIBUTING.md
     llms.txt
-    website-static/.well-known/llms.txt
     website-static/docs.html
     docs/docs/platforms.md
     docs/docs/quickstart-ios.md
