@@ -14,6 +14,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,14 +34,17 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
@@ -68,9 +73,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -78,9 +94,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -111,6 +131,9 @@ object HomeTestTags {
     const val GRID = "home-grid"
     const val SEARCH_FIELD = "home-search-field"
     const val HERO = "home-hero"
+
+    /** The permanent 80 dp band the hero docks into, and the grid's scroll proxy over it. */
+    const val HERO_DOCK = "home-hero-dock"
     const val SEARCH_CLOSE = "home-search-close"
 
     /** Test tag of the full-span header drawn above [category]'s first card (#2239). */
@@ -169,9 +192,16 @@ fun HomeScreen(
      * nothing else.
      */
     buildVersion: String = BuildConfig.VERSION_NAME,
+    /**
+     * The catalogue's scroll state, hoisted.
+     *
+     * The hero's whole choreography is a function of this one number, so a test that cannot set it
+     * exactly can only assert the screen through a swipe and a touch slop. `HomeHeroDockTest`
+     * drives it directly and captures the stage at an exact `p`.
+     */
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     val home = SceneViewTokens.Home
-    val gridState = rememberLazyGridState()
     val expanded = LocalConfiguration.current.screenWidthDp >= home.expandedWidthDp
     val inspectionMode = LocalInspectionMode.current
 
@@ -263,36 +293,115 @@ fun HomeScreen(
         derivedStateOf { gridState.firstVisibleItemIndex > 0 }
     }
 
-    // How far the featured band has travelled out of the viewport, 0 → 1. Read at
-    // *draw* time by the live hero's `graphicsLayer` (hence a lambda, not a `Float`):
-    // the band collapses without a single extra recomposition per scrolled frame, and
-    // without the grid's own scroll maths ever depending on a height the collapse chose.
-    val heroCollapse: () -> Float = remember(gridState) {
+    // ── The hero, as one number ───────────────────────────────────────────────────────────────
+    //
+    // `p` runs 0 → 1 over `HERO_DOLLY` dp of scroll and is the screen's *only* input to the 3D
+    // camera (`HomeHeroPose`). Everything the hero does — the dolly, the arc, the framing, the
+    // dock — is a pure function of it, so there is one writer, no memory, and nothing to
+    // interrupt. Read at *frame* time, hence a lambda: a `Float` here would recompose the whole
+    // home grid once per scrolled frame to move a camera the composition never reads.
+    val density = LocalDensity.current
+    val motionEnabled = LocalMotionEnabled.current
+    val dollyPx = with(density) { HERO_DOLLY.toPx() }
+    val heroProgress: () -> Float = remember(gridState, dollyPx) {
         {
             val item = gridState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.key == HERO_ITEM_KEY }
-            when {
-                item == null -> 1f
-                item.size.height == 0 -> 0f
-                else -> ((-item.offset.y).toFloat() / item.size.height).coerceIn(0f, 1f)
-            }
+            if (item == null) 1f else ((-item.offset.y).toFloat() / dollyPx).coerceIn(0f, 1f)
         }
     }
-    // Frames are for a band that is on screen and holding still. A drag is the one
-    // moment the scroll needs every millisecond of the frame budget, and a hero that
-    // has scrolled past its own height has nothing left to show.
-    val heroOnScreen by remember(gridState) {
-        derivedStateOf {
-            gridState.layoutInfo.visibleItemsInfo.any { it.key == HERO_ITEM_KEY }
+    // The stage spans the grid's own margins, so the hero and the first row of cards share one
+    // left edge. This is `W` in the pose table.
+    val stageWidthDp = LocalConfiguration.current.screenWidthDp - 2f * home.contentPadding.value
+    val pagerState = rememberPagerState(pageCount = { featuredPages.size })
+    val heroPose: (Float) -> HeroPose = remember(heroProgress, motionEnabled, stageWidthDp, pagerState) {
+        { idleYaw ->
+            val raw = heroProgress()
+            // "Remove animations": two poses, no trajectory. Thomas' decision — and note that the
+            // architecture is untouched, so the gesture fix and the permanent band survive it.
+            val p = if (motionEnabled) raw else if (raw < 0.5f) 0f else 1f
+            HomeHeroPose.pose(
+                progress = p,
+                pagerOffset = if (motionEnabled) {
+                    pagerState.currentPage + pagerState.currentPageOffsetFraction
+                } else {
+                    0f
+                },
+                idleYaw = idleYaw,
+                widthDp = stageWidthDp,
+                subjectUnits = HERO_SUBJECT_UNITS,
+            )
         }
     }
-    val heroRendering = heroOnScreen && !gridState.isScrollInProgress && !searching
+    // The stage never leaves the screen — that is what a permanent band means — so "is it on
+    // screen" is no longer the question. What is left is the hard stop: a search that has taken
+    // the band's place. Everything else is settled by the pose itself, in `HomeHeroScene`: a pose
+    // that has not moved writes nothing, nothing pushes the next frame, and the loop parks.
+    val heroRendering = !searching
 
     // The catalogue's one-shot entrance, played on arrival and never again under a thumb.
     val cascade = rememberCascade()
     var cascadeIndex = 0
 
+    val stageTop = home.headerHeight + home.heroTopGap
+    val stageClip = remember { Path() }
+
     Box(modifier = modifier.fillMaxSize()) {
+        // ── Layer 1: the stage ────────────────────────────────────────────────────────────────
+        // A viewport of a fixed size, pinned for the life of this screen, that receives no input
+        // whatsoever. It is drawn *under* the grid so the pager's copy can sit on it, and it is
+        // composed outside the grid so that scrolling the hero away cannot destroy the Filament
+        // engine and the EGL context with the lazy item that used to own it.
+        val stageModifier = Modifier
+            .align(Alignment.TopStart)
+            .fillMaxWidth()
+            .padding(top = stageTop, start = home.contentPadding, end = home.contentPadding)
+            .height(HERO_STAGE_HEIGHT)
+            // A query takes the band's place, and the results scroll where the stage is. Hidden
+            // rather than removed: dropping the composable would tear down the Filament engine and
+            // the EGL context on every search, and build them again. `rendering = false` already
+            // means it draws nothing while it is hidden.
+            .alpha(if (searching) 0f else 1f)
+            .drawWithContent {
+                // The one clip in the design, and it is a *draw* clip: the viewport itself never
+                // resizes, so the camera's projection never changes and there is no resize jump to
+                // chase. `visH` is the only height anything on screen reads.
+                val visible = size.height - heroProgress() * HERO_DOLLY.toPx()
+                val radius = HERO_STAGE_RADIUS.toPx()
+                stageClip.rewind()
+                stageClip.addRoundRect(
+                    RoundRect(
+                        left = 0f,
+                        top = 0f,
+                        right = size.width,
+                        bottom = visible,
+                        cornerRadius = CornerRadius(radius, radius),
+                    ),
+                )
+                clipPath(stageClip) { this@drawWithContent.drawContent() }
+            }
+        if (inspectionMode) {
+            // LayoutLib has no Filament `.so` to load, so a `@Preview` and the Roborazzi goldens
+            // get the bundled still of the same model in the same place. The images then pin the
+            // screen's geometry — the band, the clip, the copy over the stage — instead of a hole
+            // where the viewport would be.
+            Image(
+                painter = painterResource(R.drawable.preview_hero_model_viewer),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = stageModifier,
+            )
+        } else {
+            HomeHeroScene(
+                pose = heroPose,
+                rendering = heroRendering,
+                modifier = stageModifier,
+            )
+        }
+
+        // ── Layer 2: the catalogue ────────────────────────────────────────────────────────────
+        // Offset by the dock's height rather than by a spacer item, so no amount of scrolling can
+        // ever bring a card over the band. That offset *is* the permanence of the band.
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Adaptive(if (expanded) home.gridMinCellExpanded else home.gridMinCell),
@@ -305,24 +414,32 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(home.gridGutter),
             modifier = Modifier
                 .fillMaxSize()
+                .padding(top = if (searching) home.headerHeight + home.heroTopGap else stageTop + HERO_DOCK_HEIGHT)
+                .clipToBounds()
                 .testTag(HomeTestTags.GRID),
         ) {
-            // The pinned header overlay covers this band; the spacer keeps the
-            // hero from starting underneath it.
-            item(key = "header-spacer", span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.height(home.headerHeight + home.heroTopGap - home.gridGutter))
-            }
             // While a query is typed the featured pager gives way so the results
             // start under the header and stay visible above the keyboard (#3308).
             if (!searching) item(key = HERO_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                // `HERO_DOLLY`, not the stage height: the item is the scroll *extent* of the
+                // choreography, and the last 80 dp of the stage are the band, which does not
+                // scroll. The item's remaining height is therefore always `visH - 80`, so the
+                // first card meets the clipped edge of the stage exactly, at every `p`.
                 HomeFeaturedPager(
                     pages = featuredPages,
-                    height = if (expanded) home.heroHeightExpanded else home.heroHeight,
+                    height = HERO_DOLLY,
                     onDemoClick = onDemoClick,
                     onWhatsNewClick = { showWhatsNew = true },
-                    collapseFraction = heroCollapse,
-                    heroRendering = heroRendering,
-                    modifier = Modifier.testTag(HomeTestTags.HERO),
+                    pagerState = pagerState,
+                    stageBacked = true,
+                    modifier = Modifier
+                        // The copy is gone by mid-course — well before the clip could cut a title
+                        // through mid-letter, and before it would read as a ghost over the model.
+                        // The stage keeps the frame; the copy is the part that leaves.
+                        .graphicsLayer {
+                            alpha = ((0.42f - heroProgress()) / 0.30f).coerceIn(0f, 1f)
+                        }
+                        .testTag(HomeTestTags.HERO),
                 )
             }
             if (!searching) {
@@ -392,6 +509,97 @@ fun HomeScreen(
 
         }
 
+        // ── Layer 3: the chrome ───────────────────────────────────────────────────────────────
+        // Draw-only, and that is load-bearing: a modifier that only draws is not hit-testable, so
+        // this covers the whole screen without taking a single touch away from the grid.
+        if (!searching) {
+            val stageOutline = outlineSubtle()
+            Spacer(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val left = home.contentPadding.toPx()
+                        val top = stageTop.toPx()
+                        val width = size.width - 2 * left
+                        val visible = HERO_STAGE_HEIGHT.toPx() -
+                            heroProgress() * HERO_DOLLY.toPx()
+                        val radius = CornerRadius(HERO_STAGE_RADIUS.toPx(), HERO_STAGE_RADIUS.toPx())
+                        // Nothing on this screen rests on its fill alone (Thomas, on dark mode):
+                        // every container is closed by a 1 dp outline against the page, drawn last.
+                        drawRoundRect(
+                            color = stageOutline,
+                            topLeft = Offset(left, top),
+                            size = Size(width, visible),
+                            cornerRadius = radius,
+                            style = Stroke(width = home.cardOutlineWidth.toPx()),
+                        )
+                    },
+            )
+        }
+
+        // ── Layer 3b: the dock's own affordance ───────────────────────────────────────────────
+        // The band is permanent, so it needs a tap target — and it must not become the one place
+        // on the screen where the catalogue stops scrolling. `scrollable` hands the grid the
+        // vertical drags this 80 dp strip receives, fling included.
+        if (!searching) {
+            val dockLabel = stringResource(R.string.home_hero_title)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(top = stageTop, start = home.contentPadding, end = home.contentPadding)
+                    .height(HERO_DOCK_HEIGHT)
+                    .scrollable(
+                        state = gridState,
+                        orientation = Orientation.Vertical,
+                        reverseDirection = true,
+                    )
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = stringResource(R.string.home_hero_open),
+                    ) { onDemoClick(HERO_DEMO_ID) }
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = dockLabel
+                    }
+                    .testTag(HomeTestTags.HERO_DOCK),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = SceneViewTokens.Space.md)
+                        // Draw-time, like everything else the hero drives: the label fades in over
+                        // the last quarter of the dolly without a single recomposition, and without
+                        // the screen holding a Float it would have to invalidate.
+                        .graphicsLayer {
+                            alpha = ((heroProgress() - 0.75f) / 0.25f).coerceIn(0f, 1f)
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+                ) {
+                    Text(
+                        text = stringResource(R.string.home_hero_open),
+                        style = SceneViewTokens.Type.body,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SceneViewTokens.HomeColor.heroTitle,
+                    )
+                    Surface(
+                        modifier = Modifier.size(home.heroPillHeight),
+                        shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+                        color = SceneViewTokens.HomeColor.heroPillBackground,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = SceneViewTokens.HomeColor.heroPillText,
+                                modifier = Modifier.size(dockPillIconSize),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         HomeHeader(
             scrolled = scrolled,
             query = query,
@@ -446,6 +654,21 @@ private fun SectionHeader(category: String, modifier: Modifier = Modifier) {
  * that parks Filament once it has left.
  */
 private const val HERO_ITEM_KEY = "hero"
+
+/** The pinned viewport's size. Fixed for the life of the screen — see [HomeHeroPose]. */
+private val HERO_STAGE_HEIGHT = HomeHeroPose.STAGE_HEIGHT_DP.dp
+
+/** The band the hero never shrinks below. Thomas' decision: it is permanent, not a transient. */
+private val HERO_DOCK_HEIGHT = HomeHeroPose.DOCK_HEIGHT_DP.dp
+
+/** Scroll distance over which the choreography runs, and therefore the hero item's height. */
+private val HERO_DOLLY = HomeHeroPose.DOLLY_DISTANCE_DP.dp
+
+/** The stage's corner radius — the catalogue card's, so hero and cards share one language. */
+private val HERO_STAGE_RADIUS = SceneViewTokens.Radius.xl
+
+/** Arrow inside the docked pill; the pill is a 44 dp touch target, the glyph is not. */
+private val dockPillIconSize = 20.dp
 
 /** The demo the first featured page opens. */
 const val HERO_DEMO_ID = "model-viewer"

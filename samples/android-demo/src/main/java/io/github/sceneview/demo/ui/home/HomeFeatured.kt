@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,17 +29,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -48,13 +45,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.draw.alpha
-import androidx.compose.animation.core.animateFloatAsState
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.previewPainter
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.theme.motionTween
 import io.github.sceneview.demo.ui.pressScale
 
 /**
@@ -133,18 +127,22 @@ fun HomeFeaturedPager(
     onDemoClick: (String) -> Unit,
     onWhatsNewClick: () -> Unit,
     modifier: Modifier = Modifier,
-    collapseFraction: () -> Float = { 0f },
-    heroRendering: Boolean = true,
+    pagerState: PagerState = rememberPagerState(pageCount = { pages.size }),
+    /**
+     * Whether a pinned 3D stage is drawn *behind* this pager (the home hero).
+     *
+     * The pages then carry copy and nothing else: no fill, no border, no bundled still. They are
+     * the transparent, scrollable, tappable skin over a viewport that is not theirs and that they
+     * must never cover — which is also why the live scene is no longer a slot inside a page. A
+     * scene composed inside a lazy item is destroyed when that item scrolls out, taking the
+     * Filament engine and the EGL context with it.
+     *
+     * It holds in a `@Preview` too: the caller draws the bundled still on that same stage when
+     * LayoutLib cannot load Filament, so the page stays transparent either way.
+     */
+    stageBacked: Boolean = false,
 ) {
     if (pages.isEmpty()) return
-    val pagerState = rememberPagerState(pageCount = { pages.size })
-    // The live subject belongs to the page the app's flagship demo owns, and to no
-    // other: a carousel where every page runs its own Filament engine is three engines
-    // on the home screen. Inspection mode (Android Studio `@Preview`, the Roborazzi
-    // home goldens) never composes it — LayoutLib has no Filament `.so` to load, and
-    // a golden has to pin the bundled still, which is exactly what the fallback is.
-    val liveHeroKey = if (LocalInspectionMode.current) null else FeaturedPage.Demo.keyFor(HERO_DEMO_ID)
-    var heroSceneReady by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pagerState,
@@ -160,25 +158,13 @@ fun HomeFeaturedPager(
                     title = stringResource(page.entry.titleRes),
                     subtitle = stringResource(page.entry.subtitleRes),
                     actionLabel = stringResource(R.string.home_hero_open),
-                    media = page.heroArt?.let { painterResource(it) }
-                        ?: page.entry.previewPainter(),
-                    // Once the subject is live the bundled still is redundant, so it
-                    // crossfades away under it — the one "loading → content" fade the
-                    // screen has, and the reason the still is still drawn at all.
-                    mediaAlpha = if (page.key == liveHeroKey && heroSceneReady) 0f else 1f,
-                    onClick = { onDemoClick(page.entry.id) },
-                    live = if (page.key != liveHeroKey) {
+                    media = if (stageBacked) {
                         null
                     } else {
-                        {
-                            HomeHeroScene(
-                                collapseFraction = collapseFraction,
-                                rendering = heroRendering,
-                                onVisibilityChange = { heroSceneReady = it },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                        page.heroArt?.let { painterResource(it) } ?: page.entry.previewPainter()
                     },
+                    onClick = { onDemoClick(page.entry.id) },
+                    transparent = stageBacked,
                 )
                 is FeaturedPage.WhatsNew -> FeaturedCard(
                     height = height,
@@ -192,6 +178,7 @@ fun HomeFeaturedPager(
                     media = null,
                     glyph = true,
                     onClick = onWhatsNewClick,
+                    transparent = stageBacked,
                 )
             }
         }
@@ -224,18 +211,18 @@ private fun FeaturedCard(
     media: Painter?,
     onClick: () -> Unit,
     glyph: Boolean = false,
-    mediaAlpha: Float = 1f,
-    live: (@Composable BoxScope.() -> Unit)? = null,
+    /**
+     * The page draws no surface of its own: the pinned 3D stage behind it is the surface, and the
+     * outline and the clipped edge belong to the chrome drawn over everything. Only the scrim and
+     * the copy remain — the scrim unchanged, because it is what the measured text contrast over a
+     * dark stage rests on.
+     */
+    transparent: Boolean = false,
 ) {
     val dark = isSystemInDarkTheme()
     val colors = SceneViewTokens.HomeColor
     val home = SceneViewTokens.Home
     val interaction = remember { MutableInteractionSource() }
-    val stillAlpha by animateFloatAsState(
-        targetValue = mediaAlpha,
-        animationSpec = motionTween(SceneViewTokens.Duration.longMillis),
-        label = "featured-still",
-    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -249,22 +236,23 @@ private fun FeaturedCard(
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(SceneViewTokens.Radius.xl),
-        color = heroField(),
-        shadowElevation = if (dark) 0.dp else SceneViewTokens.Elevation.md,
-        border = if (dark) BorderStroke(home.cardOutlineWidth, outlineSubtle()) else null,
+        color = if (transparent) Color.Transparent else heroField(),
+        shadowElevation = if (dark || transparent) 0.dp else SceneViewTokens.Elevation.md,
+        border = if (dark && !transparent) {
+            BorderStroke(home.cardOutlineWidth, outlineSubtle())
+        } else {
+            null
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (media != null && stillAlpha > 0f) {
+            if (media != null) {
                 Image(
                     painter = media,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().alpha(stillAlpha),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-            // Drawn over the still and under the scrim, so the copy and the pill keep
-            // the exact contrast they have on a page that is only a photograph.
-            live?.invoke(this)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
