@@ -51,7 +51,13 @@ import org.robolectric.annotation.GraphicsMode
  *  - the host's bottom chrome is counted **once**, so doubling `chromeBottom` moves the
  *    pill by exactly that much and not twice that much;
  *  - an empty coaching stack measures **zero**, so the guard can fire;
- *  - a non-empty one costs its own height **plus one 8 dp gutter**, and nothing else.
+ *  - a non-empty one costs its own measured height and nothing else — the 8 dp gutter is
+ *    *inside* that measurement, because each child of the anchor carries its own gutter as
+ *    a top padding within its visibility wrapper. It used to sit outside, as a
+ *    `spacedBy` on the Column plus a matching term in `bottomClearance`, and that is
+ *    precisely what put a hidden child's gutter on screen: `spacedBy` pays a gap between
+ *    *children*, not between *visible* ones, so a silent coaching line still bought 8 dp
+ *    and the read-out sat 24 dp off the dock instead of 16.
  *
  * ## Why the window inset is not a variable here
  *
@@ -147,7 +153,7 @@ class PlacementBottomAnchorTest {
     }
 
     @Test
-    fun aNonEmptyCoachingStack_costsItsOwnHeightPlusOneGutter() {
+    fun aNonEmptyCoachingStack_costsExactlyItsOwnMeasuredHeight() {
         chromeBottom = DOCK_BAND
         composeRule.waitForIdle()
         val quiet = pillTop()
@@ -164,12 +170,29 @@ class PlacementBottomAnchorTest {
         val stack = coachStackContentHeight()
 
         assertDp(
-            "the coaching stack must lift the pill by its own measured height plus one " +
-                "${GUTTER.value.toInt()} dp gutter. The stack measures $stack and the pill " +
-                "rose by ${quiet - stacked}. Short by the gutter means the guard read a " +
-                "stack that was never zero; long means the padding is in the measurement.",
-            expected = stack + GUTTER,
+            "the coaching stack must lift the pill by exactly its own measured height. " +
+                "The stack measures $stack and the pill rose by ${quiet - stacked}. Long " +
+                "by a gutter means `bottomClearance` is adding one the stack already " +
+                "contains; short means the guard read a stack that was never zero.",
+            expected = stack,
             actual = quiet - stacked,
+        )
+
+        // …and the gutter really is in there, rather than quietly gone. The read-out's tag
+        // sits *after* its own top padding, so its bounds are the pill as painted, and the
+        // difference between the two readings is the gutter and nothing else. Without this
+        // the assertion above would still pass with every gutter deleted.
+        val readout = composeRule
+            .onNodeWithTag(PlacementTestTags.SCALE_READOUT)
+            .getUnclippedBoundsInRoot()
+        assertDp(
+            "the stack measures $stack around a read-out painted " +
+                "${readout.bottom - readout.top} tall, a gutter of " +
+                "${stack - (readout.bottom - readout.top)} rather than $GUTTER. The " +
+                "anchor's children each carry their own top gutter inside their " +
+                "visibility wrapper — a hidden child must contribute neither.",
+            expected = GUTTER,
+            actual = stack - (readout.bottom - readout.top),
         )
     }
 

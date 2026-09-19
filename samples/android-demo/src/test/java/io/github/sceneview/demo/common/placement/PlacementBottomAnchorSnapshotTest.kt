@@ -41,6 +41,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.absoluteValue
 
 /**
  * Pictures of the placement screen's bottom anchor, with the gap measured on the same
@@ -138,6 +139,29 @@ class PlacementBottomAnchorSnapshotTest {
     @Test
     fun quietStack_light_onBlack() = capture("quiet-light-black", false, Color.Black)
 
+    /**
+     * The coaching line on screen and nothing else — the state the guide is silent in, so
+     * the line itself is the bottom-most thing above the dock. `AIMING` is the only phase
+     * that reaches it: a plane is tracked (the guide has stopped speaking) but the reticle
+     * has no target yet.
+     */
+    @Test
+    fun liveCoaching_dark_onWhite() =
+        capture("coaching-dark-white", true, Color.White, aiming = true)
+
+    @Test
+    fun liveCoaching_light_onBlack() =
+        capture("coaching-light-black", false, Color.Black, aiming = true)
+
+    /**
+     * Both transient children at once — a pinch under way while the line is still up. The
+     * only state in which the gutter *between* two children of the anchor is on screen,
+     * and the one that says whether the line stayed put when the read-out appeared above it.
+     */
+    @Test
+    fun coachingDuringGesture_dark_onWhite() =
+        capture("coaching-gesture-dark-white", true, Color.White, 120, aiming = true)
+
     @Test
     fun liveGesture_dark_onWhite() = capture("gesture-dark-white", true, Color.White, 120)
 
@@ -172,8 +196,17 @@ class PlacementBottomAnchorSnapshotTest {
         ground: Color,
         scalePercent: Int? = null,
         navInsetDp: Int = 0,
+        aiming: Boolean = false,
     ) {
         state.scalePercent = scalePercent
+        // `AIMING`: tracking, a plane found, no reticle target. `placementCoaching` answers
+        // POINT_AT_SURFACE there, and it is the only phase it speaks in that the guide is
+        // silent in — the two never share the screen, by construction.
+        if (aiming) {
+            state.isTracking = true
+            state.trackingFailureReason = null
+            state.anyPlaneTracked = true
+        }
         composeScreen(darkTheme, ground)
         if (navInsetDp > 0) injectNavigationBarInset(navInsetDp)
         settleAnimations()
@@ -186,7 +219,7 @@ class PlacementBottomAnchorSnapshotTest {
             "src/test/snapshots/placement_bottom_$name.png",
             roborazziOptions = CROSS_PLATFORM_TOLERANT,
         )
-        assertAnchor(name, navInsetDp, observedNavInset)
+        assertAnchor(name, navInsetDp, observedNavInset, aiming)
     }
 
     /** The real scaffold, the real dock, the real overlays, over a flat stand-in scene. */
@@ -253,9 +286,21 @@ class PlacementBottomAnchorSnapshotTest {
     }
 
     /** The measurement, on the frame that was just photographed. */
-    private fun assertAnchor(name: String, navInsetDp: Int, observedNavInset: Dp) {
-        val pill = composeRule.onNodeWithTag(PlacementTestTags.DISCOVERY_GUIDE)
-            .getUnclippedBoundsInRoot()
+    private fun assertAnchor(
+        name: String,
+        navInsetDp: Int,
+        observedNavInset: Dp,
+        aiming: Boolean,
+    ) {
+        // Absent on purpose in `AIMING`: a plane is tracked, so the guide has finished
+        // speaking and its pill is not in the composition at all. That IS the state the
+        // coaching line exists to cover, and the two never share the screen.
+        val pill = if (aiming) {
+            null
+        } else {
+            composeRule.onNodeWithTag(PlacementTestTags.DISCOVERY_GUIDE)
+                .getUnclippedBoundsInRoot()
+        }
         val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK)
             .getUnclippedBoundsInRoot()
         val window = composeRule.onRoot().getUnclippedBoundsInRoot()
@@ -277,10 +322,36 @@ class PlacementBottomAnchorSnapshotTest {
         val stack = composeRule.onNodeWithTag(PlacementTestTags.COACH_STACK)
             .getUnclippedBoundsInRoot()
 
+        // The bottom edge of the bottom-most thing actually *on screen* — which is what a
+        // reader sees sitting above the dock, and not the bottom-most *node*. The anchor's
+        // children are declared badge, read-out, line, so the line wins whenever it is up,
+        // the read-out when it is not, and with every child hidden there is nothing in the
+        // Column at all: what sits above the dock is then the guide's own pill, pinned to
+        // the very line an empty Column's top edge reports.
+        //
+        // Only bottom edges are read here, never tops and never heights. Every gutter in
+        // this anchor is a *top* padding, so the bottom edge is the painted edge in all
+        // three cases — while the top edge is only sometimes one: a tag placed after the
+        // padding excludes it (the read-out reports [712..743] inside a stack whose top is
+        // at 704) and a tag placed before it includes it (the line reports [743..795] and
+        // is painted from 751). Reading a bottom edge is immune to that distinction.
+        val paintedBottom = when {
+            aiming -> composeRule.onNodeWithTag(PlacementTestTags.COACHING_LINE)
+                .getUnclippedBoundsInRoot().bottom
+            state.scalePercent != null -> composeRule.onNodeWithTag(PlacementTestTags.SCALE_READOUT)
+                .getUnclippedBoundsInRoot().bottom
+            else -> stack.top
+        }
+        val clearance = dock.top - paintedBottom
+
         println(
             "MEASURE[$name] density=${composeRule.density.density} " +
-                "window=${window.bottom} pillTop=${pill.top} " +
+                "window=${window.bottom} pillTop=${pill?.top} " +
                 "dockTop=${dock.top} dockBottom=${dock.bottom} stackTop=${stack.top} " +
+                "stackBottom=${stack.bottom} " +
+                "readout=${boundsOrNull(PlacementTestTags.SCALE_READOUT)} " +
+                "line=${boundsOrNull(PlacementTestTags.COACHING_LINE)} " +
+                "paintedBottom=$paintedBottom clearance=$clearance " +
                 "navInsetAsked=${navInsetDp}dp navInsetSeen=$observedNavInset"
         )
         if (navInsetDp > 0) {
@@ -295,12 +366,22 @@ class PlacementBottomAnchorSnapshotTest {
             )
         }
 
-        // The pill is drawn above the dock, not inside it.
+        // The invariant, in every state rather than only the quiet one: whatever is
+        // bottom-most on screen clears the dock by one gutter, no more and no less.
         assertTrue(
-            "the discovery pill's top edge is at ${pill.top}, at or below the dock's top " +
-                "edge ${dock.top} — the pill is inside the dock.",
-            pill.top < dock.top,
+            "[$name] the bottom-most painted overlay ends at $paintedBottom and the " +
+                "dock starts at ${dock.top} — a clearance of $clearance, not " +
+                "$EXPECTED_CLEARANCE. A gap paid to a hidden child is the usual cause.",
+            (clearance - EXPECTED_CLEARANCE).value.absoluteValue <= TOLERANCE.value,
         )
+        // The pill is drawn above the dock, not inside it.
+        if (pill != null) {
+            assertTrue(
+                "the discovery pill's top edge is at ${pill.top}, at or below the dock's " +
+                    "top edge ${dock.top} — the pill is inside the dock.",
+                pill.top < dock.top,
+            )
+        }
         // The dock does not run off the bottom of the window.
         assertTrue(
             "the dock ends at ${dock.bottom}, past the window's ${window.bottom}.",
@@ -308,8 +389,17 @@ class PlacementBottomAnchorSnapshotTest {
         )
     }
 
+    /** Bounds of a tagged node, or `null` when it is not on screen — a log helper. */
+    private fun boundsOrNull(tag: String): String = runCatching {
+        val b = composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+        "[${b.top}..${b.bottom}]"
+    }.getOrDefault("absent")
+
     private companion object {
         val TOLERANCE = 0.75.dp
+
+        /** One gutter — `SceneViewTokens.Space.md`, the same grid as the dock. */
+        val EXPECTED_CLEARANCE = 16.dp
 
         /** `xhdpi` from the qualifiers — 1 dp = 2 px, and every number below is in dp. */
         const val DENSITY = 2f

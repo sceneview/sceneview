@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -565,8 +564,13 @@ fun BoxScope.TapToPlaceStatusOverlays(
         anyPlaneTracked = state.anyPlaneTracked,
         trackingFailureReason = ForcedTrackingFailure.override ?: state.trackingFailureReason,
         modifier = Modifier.testTag(PlacementTestTags.DISCOVERY_GUIDE),
+        // No `+ Space.sm` here any more: the stack's topmost visible child now carries
+        // that gutter itself, inside its own visibility wrapper, so `coachStack` already
+        // includes it. Adding it again would lift the guide 8 dp on every state. The
+        // `coachStackPx > 0` guard still holds — with every child hidden, every
+        // `AnimatedVisibility` measures 0 and so does its gutter.
         bottomClearance = chromeBottom + SceneViewTokens.Space.md +
-            if (coachStackPx > 0) coachStack + SceneViewTokens.Space.sm else 0.dp,
+            if (coachStackPx > 0) coachStack else 0.dp,
     )
 
     val coaching = placementCoaching(
@@ -634,7 +638,20 @@ fun BoxScope.TapToPlaceStatusOverlays(
             // pins the opposite one, and says so — the two are not interchangeable.
             .onSizeChanged { coachStackPx = it.height },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        // NOT `Arrangement.spacedBy`. All three children below are always composed — each
+        // is an `AnimatedVisibility` that measures 0 dp when it has nothing to say — and
+        // `spacedBy` pays a gap between *children*, not between *visible* children. So a
+        // hidden coaching line still bought 8 dp between itself and the pill above it, and
+        // the bottom-most thing actually on screen sat 24 dp off the dock instead of 16.
+        // Measured on the goldens: `liveGesture_*` had the read-out's painted bottom at
+        // 787 dp against a dock top of 811.
+        //
+        // Each child carries its own gutter as a TOP padding placed *inside* its visibility
+        // wrapper, so a hidden child contributes exactly nothing. Top rather than bottom is
+        // the whole trick: the anchor is the bottom edge, so the gutter has to fall on the
+        // side away from it. The topmost visible child pays 8 dp of dead space above
+        // itself, which is transparent and sits in a wrap-content Column — it costs a
+        // measurement, not a pixel.
     ) {
         // "Approximating → Tracked" (#3405). Only under instant placement, and only for a
         // placement that actually landed on an InstantPlacementPoint — a plane-anchored one
@@ -660,7 +677,11 @@ fun BoxScope.TapToPlaceStatusOverlays(
             text = coachingText,
             tone = coachingTone(coaching),
             icon = coachingIcon(coaching),
-            modifier = Modifier.testTag(PlacementTestTags.COACHING_LINE),
+            // The banner applies this modifier to its own content *inside* its
+            // `AnimatedVisibility`, so the gutter exists only while the pill does.
+            modifier = Modifier
+                .testTag(PlacementTestTags.COACHING_LINE)
+                .padding(top = SceneViewTokens.Space.sm),
         )
     }
 }
@@ -684,6 +705,15 @@ object PlacementTestTags {
 
     /** The single coaching sentence, last child of the anchor and nearest the dock. */
     const val COACHING_LINE = "placement-coaching-line"
+
+    /**
+     * The live resize read-out — on screen only while two fingers are on the model, which
+     * makes it the bottom-most *visible* child of the anchor during a gesture. Tagged
+     * inside its own gutter, so its bounds are the pill as painted: that is the reading
+     * that has to sit 16 dp off the dock, and the one that sat at 24 dp while the hidden
+     * coaching line was still being paid a `spacedBy` gap.
+     */
+    const val SCALE_READOUT = "placement-scale-readout"
 
     /**
      * The anchored Column itself — the node whose measured content height *is*
@@ -720,6 +750,8 @@ private fun PlacementInstantBadge(label: InstantTrackingLabel?) {
         exit = fadeOut(tween(SceneViewTokens.Duration.shortMillis)),
     ) {
         Surface(
+            // Inside the visibility wrapper on purpose — see the anchor Column.
+            modifier = Modifier.padding(top = SceneViewTokens.Space.sm),
             color = SceneViewTokens.ArOverlay.scrimDark,
             contentColor = SceneViewTokens.ArOverlay.onScrim,
             shape = RoundedCornerShape(50),
@@ -806,6 +838,11 @@ private fun PlacementScaleReadout(
         exit = fadeOut(tween(SceneViewTokens.Duration.shortMillis)),
     ) {
         Surface(
+            // Inside the visibility wrapper on purpose — see the anchor Column. The tag
+            // sits after the gutter, so the tagged bounds are the painted pill.
+            modifier = Modifier
+                .padding(top = SceneViewTokens.Space.sm)
+                .testTag(PlacementTestTags.SCALE_READOUT),
             color = SceneViewTokens.ArOverlay.scrimDark,
             contentColor = SceneViewTokens.ArOverlay.onScrim,
             shape = RoundedCornerShape(50),
