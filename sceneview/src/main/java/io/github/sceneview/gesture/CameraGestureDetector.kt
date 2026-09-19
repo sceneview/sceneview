@@ -47,6 +47,17 @@ open class CameraGestureDetector(
 
     interface CameraManipulator {
         fun setViewport(width: Int, height: Int)
+
+        /**
+         * The camera transform for the frame being drawn.
+         *
+         * **Called exactly once per frame, and only from the render loop.** Implementations are
+         * allowed to advance state from here — an ease, a settle counter, a "what did we last
+         * show" record — so a second call in the same frame would double that integration and
+         * produce a visible discontinuity. Nothing else in the library calls it; in particular the
+         * render-on-demand gate decides from the value the loop already obtained, never by asking
+         * again (see [io.github.sceneview.FrameRatePolicy]).
+         */
         fun getTransform(): Transform
         fun grabBegin(x: Int, y: Int, strafe: Boolean)
         fun grabUpdate(x: Int, y: Int)
@@ -75,6 +86,34 @@ open class CameraGestureDetector(
          *               (move away).
          */
         fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {}
+
+        /**
+         * Whether this manipulator still owes frames even though the camera is **not moving right
+         * now**. Default `false`.
+         *
+         * The pendant of [io.github.sceneview.node.Node.isFrameActive], and the one thing
+         * [io.github.sceneview.FrameRatePolicy.OnDemand] cannot work out on its own. The render
+         * loop already notices motion: it compares the transform it just obtained against the
+         * previous frame's, which covers a fling, a pinch and any manipulator that keeps moving —
+         * with no API change and no second [getTransform] call.
+         *
+         * What it cannot notice is a manipulator that is *waiting*. A turntable that hands the
+         * camera back three seconds after the last gesture advances that countdown from [update],
+         * which only runs while the loop runs; the camera is motionless for those three seconds,
+         * so the scene settles, the loop parks, [update] stops being called and the turntable
+         * never resumes. Returning `true` for as long as the manipulator intends to move again —
+         * an ease in flight, a hand-back countdown, a scripted path between two waypoints — is
+         * what keeps the loop alive across that gap.
+         *
+         * Return `false` once the camera is genuinely at rest and nothing is pending; returning
+         * `true` unconditionally makes a scene never settle, which is the pre-1.0 behaviour and
+         * costs exactly what [io.github.sceneview.FrameRatePolicy] exists to save.
+         *
+         * A wake-up that must happen after the loop has already parked — a resume driven by a
+         * wall clock rather than by frames — cannot be expressed here, because nothing polls this
+         * while parked. Use [io.github.sceneview.RenderInvalidator] for that.
+         */
+        val isFrameActive: Boolean get() = false
     }
 
     /**

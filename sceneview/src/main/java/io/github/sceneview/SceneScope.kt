@@ -15,6 +15,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Box
@@ -415,6 +416,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 apply()
             }).apply(nodeApply)
         }
+        val prevLightProps = remember { mutableStateOf<List<Any?>?>(null) }
         SideEffect {
             // Push the light props on each recomposition so Compose state changes
             // (sliders, colour pickers, toggles) actually drive the underlying Light.
@@ -424,6 +426,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
             intensity?.let { node.intensity = it }
             direction?.let { node.lightDirection = it }
             color?.let { node.color = it }
+            // …and ask for the frame that shows them, on the change and never on the mere
+            // recomposition. `LightManager` reports nothing and the light has not moved, so
+            // under `FrameRatePolicy.OnDemand` a parked scene would keep the old lighting.
+            val current = listOf<Any?>(intensity, direction, color)
+            if (current != prevLightProps.value) {
+                prevLightProps.value = current
+                node.requestRender()
+            }
         }
         // The transform is component-keyed so a position a gesture or a frame-loop driver wrote
         // on the runtime node survives a bare recomposition — see SphereNode for the full
@@ -1012,9 +1022,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 intensity = intensity
             ).apply(apply)
         }
+        val prevContactShadow = remember { mutableStateOf<List<Any?>?>(null) }
         SideEffect {
             node.context = context
             node.intensity = intensity
+            val current = listOf<Any?>(context, intensity)
+            if (current != prevContactShadow.value) {
+                prevContactShadow.value = current
+                node.requestRender()
+            }
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653).
         DisposableEffect(node, position.x, position.y, position.z) {
@@ -1064,8 +1080,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 normal = normal
             ).apply(apply)
         }
+        val prevBitmap = remember { mutableStateOf(bitmap) }
         SideEffect {
-            node.bitmap = bitmap
+            // Guarded: the `remember` above is keyed on `bitmap`, so a *different* bitmap already
+            // produces a different node — re-assigning the same one on every recomposition only
+            // re-uploaded the texture (and, when `size == null`, re-uploaded the vertex buffer
+            // through `updateGeometry`, which is a push invalidation). That made every
+            // recomposition of this screen a reason to draw.
+            if (bitmap !== prevBitmap.value) {
+                node.bitmap = bitmap
+                prevBitmap.value = bitmap
+                node.requestRender()
+            }
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653).
         DisposableEffect(node, position.x, position.y, position.z) {
@@ -1205,8 +1231,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 cameraPositionProvider = cameraPositionProvider
             ).apply(apply)
         }
+        val prevBitmap = remember { mutableStateOf(bitmap) }
         SideEffect {
-            node.bitmap = bitmap
+            // Guarded: the `remember` above is keyed on `bitmap`, so a *different* bitmap already
+            // produces a different node — re-assigning the same one on every recomposition only
+            // re-uploaded the texture (and, when `size == null`, re-uploaded the vertex buffer
+            // through `updateGeometry`, which is a push invalidation). That made every
+            // recomposition of this screen a reason to draw.
+            if (bitmap !== prevBitmap.value) {
+                node.bitmap = bitmap
+                prevBitmap.value = bitmap
+                node.requestRender()
+            }
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
         // param here: the billboard rotates itself toward the camera every frame.
@@ -1266,12 +1302,20 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 cameraPositionProvider = cameraPositionProvider
             ).apply(apply)
         }
+        val prevTextProps = remember { mutableStateOf<List<Any?>?>(null) }
         SideEffect {
             node.text = text
             node.fontSize = fontSize
             node.textColor = textColor
             node.backgroundColor = backgroundColor
             node.typeface = typeface
+            // The setters above already skip unchanged values, so the bitmap is only refreshed on
+            // a real edit — but nothing reports that refresh to the render loop.
+            val current = listOf<Any?>(text, fontSize, textColor, backgroundColor, typeface)
+            if (current != prevTextProps.value) {
+                prevTextProps.value = current
+                node.requestRender()
+            }
         }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
         // param here: the text label rotates itself toward the camera every frame.
@@ -1476,6 +1520,14 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         content: (@Composable NodeScope.() -> Unit)? = null,
         viewContent: @Composable () -> Unit
     ) {
+        // The node is remembered, so the `viewContent` lambda handed to its constructor is the one
+        // from the FIRST composition — and a composable lambda captures the state it reads. A card
+        // whose label comes from `if (spinning) "Pause spin" else "Resume spin"` therefore kept
+        // saying "Resume spin" while the model span: the hosted view re-drew faithfully, from a
+        // closure frozen at construction (#3718). Route it through `rememberUpdatedState` and let
+        // the node call through the state, so each draw runs the current lambda. This is the same
+        // treatment `SceneView` already gives `onFrame` and the gesture callbacks.
+        val currentViewContent = rememberUpdatedState(viewContent)
         val node = remember(engine, windowManager) {
             ViewNodeImpl(
                 engine = engine,
@@ -1483,7 +1535,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 materialLoader = materialLoader,
                 unlit = unlit,
                 invertFrontFaceWinding = invertFrontFaceWinding,
-                content = viewContent
+                content = { currentViewContent.value() }
             ).apply(apply)
         }
         // Keyed on scalar components (Float3 is a mutable data class — keying on the wrapper
@@ -1837,10 +1889,16 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 cameraPositionProvider = cameraPositionProvider
             ).apply(apply)
         }
+        val prevSplatCount = remember { mutableStateOf(splatCount) }
         SideEffect {
             // Cheap var assignments — keep the latest lambda + count without re-keying the node.
             node.cameraPositionProvider = cameraPositionProvider
             node.splatCount = splatCount
+            // Only the count changes what is drawn; the provider is read per frame.
+            if (splatCount != prevSplatCount.value) {
+                prevSplatCount.value = splatCount
+                node.requestRender()
+            }
         }
         // Transform props are component-keyed so a bare recomposition never re-applies the
         // declared transform over one a gesture or a frame-loop driver wrote on the runtime
@@ -2059,13 +2117,30 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 initialVelocity = linearVelocity
             )
         }
+        // `internalOnFrame` + an explicit activity term, rather than the public `onFrame` slot.
+        //
+        // Two things were wrong with taking the public slot. It is the caller's — attaching physics
+        // to a node silently discarded whatever the caller had put there. And `Node.isFrameActive`
+        // reads it as a standing request for frames, so a body that had come to rest kept its scene
+        // at full cadence forever: the sphere stack in the animation-physics demo held 878 frames
+        // per 15 s on a picture identical to the byte (#3718).
+        //
+        // `PhysicsBody` already knows when it has nothing left to do — `isAsleep`, which `step`
+        // checks on entry — so the honest term is simply "not asleep". It is also a *pull* term on
+        // purpose: while the body is in flight `node.position = …` pushes a frame per step, but a
+        // body that has just been given a velocity needs the first frame before any step can push
+        // one, and the settle tail has to be topped up by something that survives the vote.
         DisposableEffect(node) {
             var prevFrameTime: Long? = null
-            node.onFrame = { frameTimeNanos ->
+            node.internalOnFrame = { frameTimeNanos ->
                 body.step(frameTimeNanos, prevFrameTime)
                 prevFrameTime = frameTimeNanos
             }
-            onDispose { node.onFrame = null }
+            val removeActivityProvider = node.addFrameActivityProvider { !body.isAsleep }
+            onDispose {
+                node.internalOnFrame = null
+                removeActivityProvider()
+            }
         }
     }
 

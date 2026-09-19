@@ -1268,6 +1268,7 @@ public class io/github/sceneview/ar/camera/ARCameraStream : io/github/sceneview/
 	public final fun isPersonOcclusionEnabled ()Z
 	public fun isShadowCaster ()Z
 	public fun isShadowReceiver ()Z
+	public fun onComponentChanged ()V
 	public fun set (Ljava/util/List;ILcom/google/android/filament/MaterialInstance;)V
 	public final fun setArFog (Lio/github/sceneview/ar/node/ARFogConfig;)V
 	public fun setAxisAlignedBoundingBox (Lcom/google/android/filament/Box;)V

@@ -79,7 +79,7 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     val cameraNode = rememberCameraNode(engine)
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // Decode the bundled capture off the main thread (pure CPU, no Filament calls). Null while
     // loading — the SplatNode is only declared once the cloud is ready, mirroring the SDK's

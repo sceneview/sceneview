@@ -15,6 +15,7 @@ import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
@@ -72,8 +73,30 @@ class ModelLoader(
 
     /**
      * Gets the status of an asynchronous resource load as a percentage in [0,1].
+     *
+     * **This is not a "still loading?" flag.** It reports Filament's progress over the resources of
+     * the last [asyncBeginLoad][com.google.android.filament.gltfio.ResourceLoader.asyncBeginLoad],
+     * and a loader that was never asked for one reports `0`, not `1`. Ask [isLoading] instead.
      */
     val progress get() = resourceLoader.asyncGetLoadProgress()
+
+    // Written on the main thread only (both `asyncBeginLoad` call sites hop to it, and `updateLoad`
+    // is the render loop). Volatile because `isLoading` is public: a progress UI reading it from a
+    // composition on another dispatcher must not see a stale `true` forever.
+    @Volatile
+    private var asyncLoadStarted = false
+
+    /**
+     * Whether an asynchronous resource load is in flight — i.e. one was started and Filament has
+     * not finished finalising its textures.
+     *
+     * This is the honest form of "is this scene still loading?", and the one `SceneView` renders
+     * on: texture finalisation happens inside the frame loop, so a scene that parked while a load
+     * was outstanding would sit there untextured. [progress] alone cannot answer it, because `0`
+     * means both "nothing started" and "started, nothing done yet" — see
+     * [io.github.sceneview.isAsyncLoadPending].
+     */
+    val isLoading: Boolean get() = isAsyncLoadPending(asyncLoadStarted, progress)
 
     /**
      * Creates a [Model] from the contents of a GLB or GLTF [Buffer].
@@ -517,6 +540,12 @@ class ModelLoader(
     fun updateLoad() {
         // Allow the resource loader to finalize textures that have become ready.
         resourceLoader.asyncUpdateLoad()
+        // Drop the latch as soon as Filament says the outstanding set is finalised, so `isLoading`
+        // stops holding the render loop awake. `asyncGetLoadProgress()` is global over the
+        // outstanding set, so one boolean is the right shape here, not a counter.
+        if (asyncLoadStarted && resourceLoader.asyncGetLoadProgress() >= 1f) {
+            asyncLoadStarted = false
+        }
     }
 
     /**
@@ -526,6 +555,7 @@ class ModelLoader(
         for (uri in model.resourceUris) {
             resourceResolver(uri)?.let { resourceLoader.addResourceData(uri, it) }
         }
+        asyncLoadStarted = true
         resourceLoader.asyncBeginLoad(model)
         resourceLoader.evictResourceData()
     }
@@ -545,6 +575,7 @@ class ModelLoader(
             }
         }
         withContext(Dispatchers.Main) {
+            asyncLoadStarted = true
             resourceLoader.asyncBeginLoad(model)
         }
     }

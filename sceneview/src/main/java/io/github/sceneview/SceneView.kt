@@ -129,10 +129,14 @@ import io.github.sceneview.node.findActivity
  * @param environmentLoader     Loader for HDR/KTX environments. Use [rememberEnvironmentLoader].
  * @param view                  Filament [View] (one per window). Use [rememberView].
  * @param isOpaque              Whether the render target is opaque. Default `true`.
- * @param isRendering           Whether the internal frame loop runs. Default `true`. Pass `false`
- *                              on a completely idle scene to park the loop and stop drawing; a new
- *                              or resized surface still gets one frame. See the parameter's own
- *                              KDoc for how to drive it — the dirty signal must be Compose state.
+ * @param frameRatePolicy       How often the scene presents. Default [FrameRatePolicy.OnDemand]:
+ *                              full cadence while anything moves, a short settle tail, then the
+ *                              loop parks. [FrameRatePolicy.Continuous] restores the pre-1.0
+ *                              "draw every vsync" behaviour, and [FrameRatePolicy.maxFps] caps
+ *                              either of them. See the parameter's own KDoc.
+ * @param renderInvalidator     Escape hatch for scene changes the library cannot observe — a
+ *                              Filament material or texture written directly. Use
+ *                              [rememberRenderInvalidator] and call `requestRender()` after.
  * @param renderQuality         One-line preset applied to `view` ([RenderQuality.Default],
  *                              [RenderQuality.Cinematic], or [RenderQuality.Performance]).
  * @param autoCenterContent     When `true` (default), the library translates all DSL [content]
@@ -186,7 +190,16 @@ import io.github.sceneview.node.findActivity
  *                              not a rendered frame and does not call this back (#3444), so "I was
  *                              called" is a sound signal that there are pixels on screen. Use it to
  *                              drop a loading cover or drive per-frame logic; it does not fire
- *                              while `isRendering` is `false`.
+ *                              while the render loop is parked on a settled scene.
+ *                              **It therefore cannot be what keeps the loop awake.** A callback
+ *                              that advances a clock or steps a simulation, and relies on nothing
+ *                              but its own next invocation to run again, stops the first time the
+ *                              scene parks — and never restarts. If your screen wants every vsync,
+ *                              say so with [FrameRatePolicy.Continuous]; if it wants one more frame
+ *                              after a change the library cannot see, push it through
+ *                              [renderInvalidator], *before* `onFrame` rather than from inside it:
+ *                              this fires after the frame it is named for was already presented, so
+ *                              what you write here lands in the next one.
  * @param content               Declare 3D scene content using the [SceneScope] composable DSL.
  */
 @Composable
@@ -227,50 +240,61 @@ fun SceneView(
      */
     isOpaque: Boolean = true,
     /**
-     * Controls whether the internal frame render loop runs. Default `true`.
+     * How often the scene presents a frame. Default [FrameRatePolicy.OnDemand].
      *
-     * Set to `false` when the scene is **completely idle** — nothing animating, no gesture in
-     * flight, no node / camera / material change pending — to park [withFrameNanos] and stop
-     * drawing. The loop *suspends* rather than spins, so a paused scene costs neither GPU frames
-     * nor a periodic CPU wake-up, and it resumes on the next composition that passes `true`
-     * without the frame loop being restarted.
+     * **The default is render-on-demand, and that is a behaviour change**: a `SceneView` no longer
+     * draws every vsync for as long as it is composed. It draws at the display's full cadence
+     * while something is happening — a finger on the screen, a camera fling, a playing animation,
+     * a video, a model still uploading its textures — then draws a short tail of settle frames and
+     * parks the loop until the next change. An idle 3D screen then costs neither GPU frames nor a
+     * periodic CPU wake-up (#3108), which on the reporting foldables was most of what made it run
+     * hot. The loop *suspends*; it does not spin.
      *
-     * **Nothing is presented while this is `false`.** A node added or moved, a camera or
-     * manipulator change and a material edit all leave the last drawn frame on screen until
-     * rendering resumes. [onFrame] is part of the render loop, so it does not fire while paused
-     * either. Two consequences are stronger than "the picture freezes", and both are handled or
-     * called out rather than left to be discovered:
+     * Nothing is asked of the caller for this to be correct. The library invalidates itself from
+     * every change it can observe: touch and gesture streams, every [Node] transform write (which
+     * covers the camera manipulators, physics and glTF animation), nodes added to or removed from
+     * the DSL, recomposition of this call, surface creation and resize, and lifecycle resume. A
+     * change it *cannot* observe — a parameter written straight onto a Filament
+     * `MaterialInstance`, a texture swapped behind its back — is what [renderInvalidator] is for.
      *
-     * - A **new surface** — first attach, app foregrounded, foldable folded or unfolded,
-     *   split-screen resize — starts with no pixels at all, so freezing there would mean a blank
-     *   view, not a stale one. The library therefore always presents one frame into a new or
-     *   resized surface even while paused, then parks again; you do not need to flip this flag on
-     *   a configuration change.
-     * - An **async model load does not finish** while paused. Filament finalises texture uploads
-     *   from inside the frame loop, so a model whose load completes during a pause renders
-     *   *untextured* until rendering resumes — hold `true` until `modelLoader.progress == 1f`
-     *   rather than until the load call returns.
+     * Choose another policy when the scene is driven from outside the library and a late frame is
+     * worse than the power it saves:
      *
-     * Drive it from an "is anything dirty" signal that stays `true` for at least one frame **after**
-     * the last mutation — not from "is an animation running", which is false at the exact moment a
-     * one-shot scene change is published and would strand that change undrawn. The dirty window
-     * must itself be **Compose state in both directions**: a deadline compared against
-     * `System.nanoTime()` turns `true` on the mutation that recomposes and then never turns back,
-     * because a clock passing a threshold invalidates nothing — the scene would render forever and
-     * this parameter would silently do nothing.
+     * The two questions the type asks — *when may a frame be drawn* and *how fast at most* — are
+     * independent, and [FrameRatePolicy.maxFps] answers the second one on either mode:
      *
      * ```kotlin
-     * // `dirtyToken` is bumped by every scene mutation, not just by animations.
-     * var isDirty by remember { mutableStateOf(true) }
-     * LaunchedEffect(dirtyToken) {
-     *     isDirty = true
-     *     delay(200)   // keep drawing briefly after the last mutation
-     *     isDirty = false
-     * }
-     * SceneView(isRendering = isAnimating || isInteracting || isDirty) { … }
+     * // The pre-1.0 default, verbatim:
+     * SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { … }
+     * // A background scene drawn every vsync but held at 30 fps while the UI runs at 120:
+     * SceneView(frameRatePolicy = FrameRatePolicy.Continuous(maxFps = 30)) { … }
+     * // Render-on-demand, and even when it wakes, never faster than 30 fps:
+     * SceneView(frameRatePolicy = FrameRatePolicy.OnDemand(maxFps = 30)) { … }
      * ```
      */
-    isRendering: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
+    /**
+     * Escape hatch for scene changes [frameRatePolicy] cannot observe. A no-op under
+     * [FrameRatePolicy.Continuous], where every vsync is drawn anyway.
+     *
+     * Everything the library owns already invalidates itself — see [frameRatePolicy]. This is for
+     * the frontier where you write to Filament directly: a `MaterialInstance` parameter, a texture
+     * swapped under a renderable, a light edited through its Filament entity. Under
+     * [FrameRatePolicy.OnDemand] such a write changes what *would* be drawn without touching
+     * anything the library watches, so on a settled scene it would sit invisible until the next
+     * touch. Call [RenderInvalidator.requestRender] after it.
+     *
+     * A call made before the scene is attached is not lost: it is replayed on attach.
+     *
+     * ```kotlin
+     * val invalidator = rememberRenderInvalidator()
+     * SceneView(renderInvalidator = invalidator) { … }
+     *
+     * materialInstance.setParameter("baseColorFactor", color)
+     * invalidator.requestRender()
+     * ```
+     */
+    renderInvalidator: RenderInvalidator? = null,
     /**
      * One-line rendering quality preset applied to [view]. Default [RenderQuality.Default] matches
      * the out-of-the-box `SceneView` settings. Use [RenderQuality.Cinematic] for hero shots on
@@ -397,18 +421,88 @@ fun SceneView(
 
     val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
 
-    SideEffect {
+    // ── The render-on-demand gate ────────────────────────────────────────────────────────────────
+    //
+    // "Does the surface still owe a frame?", in one object shared by every invalidation source. Its
+    // dirty flag is snapshot state, not a plain boolean, because the parked render loop suspends on
+    // it — see [awaitRenderingEnabled] and the `shouldRender` gate below (#3108, #3109). Declared
+    // first, above everything that writes Filament state, because every one of those writes is an
+    // invalidation source and reaches the gate from here down.
+    //
+    // Why it starts dirty, and why it owes a *run* of frames rather than one: a swap chain holds
+    // no pixels of its own. `SceneRenderer`'s `onNativeWindowChanged` creates a brand-new one and
+    // presents nothing into it, so every surface generation — first attach, app foregrounded,
+    // foldable folded or unfolded, split-screen resize — starts blank, and a gate that parked
+    // straight away would leave it blank (black, or transparent with `isOpaque = false`) until
+    // something unrelated woke it. One frame is not enough either: Filament finalises texture
+    // uploads and compiles material variants from inside the frame loop, so the first frame after
+    // a change is routinely not yet the finished picture — the Materials demo needs ~4 presented
+    // frames over 6.3 s before the ToyCar's clearcoat variants are warm. [SETTLE_DURATION_NANOS] is
+    // that tail, and it is what makes "stops drawing" mean "stops drawing the finished picture".
+    val frameRateGate = remember(engine, view, renderer) { FrameRateGate() }
+
+    // Publish the gate to every [Node] in this scene. Nodes reach it through a registry keyed on
+    // the Filament [Scene] they are attached to (see [SceneRenderInvalidators]) rather than a
+    // back-reference threaded down the tree, because glTF sub-nodes are created by the loader and
+    // never see the composable — `Node.attachedScene` is the one handle they all have.
+    val sceneInvalidator = remember(engine, view, renderer) { RenderInvalidator() }
+    DisposableEffect(frameRateGate, sceneInvalidator, scene) {
+        sceneInvalidator.attach(frameRateGate)
+        SceneRenderInvalidators.register(scene, sceneInvalidator)
+        onDispose {
+            SceneRenderInvalidators.unregister(scene)
+            sceneInvalidator.detach(frameRateGate)
+        }
+    }
+    // The caller's own escape hatch, wired to the same gate.
+    DisposableEffect(frameRateGate, renderInvalidator) {
+        renderInvalidator?.attach(frameRateGate)
+        onDispose { renderInvalidator?.detach(frameRateGate) }
+    }
+
+    // ── Filament wiring — one keyed effect per parameter, each asking for the frame it needs ──────
+    //
+    // These six writes used to be a single *unkeyed* `SideEffect`, paired with an equally unkeyed
+    // `SideEffect { frameRateGate.requestRender() }` a few hundred lines below. That pair is the
+    // reason an idle scene stayed awake: it made "a recomposition happened" an invalidation source
+    // in its own right, so any state change anywhere in the enclosing composition — a text field, a
+    // slider label, a clock ticking in a corner — asked the scene for a frame whether or not
+    // anything in it had moved. It also hid every genuinely missing invalidation behind itself,
+    // which is why removing it is the correction and not merely an optimisation.
+    //
+    // The rule they now follow: **an invalidation comes from what changed, never from the fact that
+    // a recomposition happened.** Each parameter that writes Filament state gets a `LaunchedEffect`
+    // keyed on exactly that parameter (the pattern `renderQuality` already used since #1078), and
+    // each asks for the frame its own write needs. Parameters that write nothing visible ask for
+    // nothing, and are listed — with the reason — in the pull request's parameter table.
+    LaunchedEffect(scene, environment) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+        // The first frozen image anyone would have hit: a dark/light toggle that swaps the
+        // environment while the scene is parked. The IBL and skybox are replaced in Filament and
+        // nothing else reports it, so without this the old sky stays on screen until something
+        // unrelated wakes the loop.
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, scene) {
         view.scene = scene
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, cameraNode, collisionSystem) {
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
         cameraNode.setView(view)
+        // A different camera is a different picture — and the swap happens without anyone moving
+        // the new camera, so `onTransformChanged` never fires for it.
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, isOpaque) {
         // Pair with `uiHelper.isOpaque` set in SceneRenderer.attachToSurfaceView/
         // TextureView (#1077). Without this, the fragment pipeline blends opaque
         // even when the swap chain is CONFIG_TRANSPARENT — nothing under the
         // SceneView shows through.
         view.blendMode = if (isOpaque) BlendMode.OPAQUE else BlendMode.TRANSLUCENT
+        frameRateGate.requestRender()
     }
     // Keyed `LaunchedEffect` so the preset is reapplied ONLY when `renderQuality`
     // actually changes (#1078). The previous unkeyed `SideEffect` ran on every
@@ -418,6 +512,8 @@ fun SceneView(
     // they will not be undone".
     LaunchedEffect(view, renderQuality) {
         view.applyRenderQuality(renderQuality)
+        // MSAA, FXAA, bloom, dynamic resolution: the same scene renders differently from now on.
+        frameRateGate.requestRender()
     }
 
     // Force a per-frame color-buffer clear so stale renderable pixels never survive
@@ -459,8 +555,10 @@ fun SceneView(
 
     DisposableEffect(cameraNode) {
         nodeManager.addNode(cameraNode)
+        frameRateGate.requestRender()
         onDispose {
             nodeManager.removeNode(cameraNode)
+            frameRateGate.requestRender()
         }
     }
 
@@ -473,8 +571,12 @@ fun SceneView(
 
     DisposableEffect(mainLightNode) {
         mainLightNode?.let { nodeManager.addNode(it) }
+        // Adding or removing the sun relights every surface in the scene, and neither the node nor
+        // Filament reports it — `addNode` moves no transform, so `onTransformChanged` never fires.
+        frameRateGate.requestRender()
         onDispose {
             mainLightNode?.let { nodeManager.removeNode(it) }
+            frameRateGate.requestRender()
         }
     }
 
@@ -482,8 +584,10 @@ fun SceneView(
 
     DisposableEffect(fillLightNode) {
         fillLightNode?.let { nodeManager.addNode(it) }
+        frameRateGate.requestRender()
         onDispose {
             fillLightNode?.let { nodeManager.removeNode(it) }
+            frameRateGate.requestRender()
         }
     }
 
@@ -513,6 +617,10 @@ fun SceneView(
         if (autoCenterContent) {
             nodeManager.addNode(contentRoot)
         }
+        // Turning centring on or off re-parents the whole content subtree and re-arms the framing
+        // pass; either way the content is about to be somewhere else than it is on screen.
+        autoCenterState.reset()
+        frameRateGate.requestRender()
         onDispose {
             if (autoCenterContent) {
                 nodeManager.removeNode(contentRoot)
@@ -520,29 +628,16 @@ fun SceneView(
         }
     }
 
+    // Enabling auto-fit at runtime has to wake the loop too: the fit pass only runs from inside a
+    // presented frame, so a parked scene would keep the old framing until something else woke it.
+    LaunchedEffect(autoFitContent, framingPadding) {
+        autoFitState.reset()
+        frameRateGate.requestRender()
+    }
+
     // ── DSL nodes → Filament scene sync ──────────────────────────────────────────────────────────
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
-
-    // A frame is *owed* to the surface currently attached: `true` until one has been presented
-    // into it. Snapshot state, not a plain flag, because the paused render loop parks on it —
-    // see [awaitRenderingEnabled] and the `shouldRender` gate below (#3109). Declared here
-    // (rather than next to [sceneRenderer] below, which only needs to read it) so the DSL-node
-    // sync effect right below can set it too — see the `needsPresent.value = true` inside the
-    // `collect` block (#3560).
-    //
-    // Why this exists at all: a swap chain holds no pixels of its own. `SceneRenderer`'s
-    // `onNativeWindowChanged` creates a brand-new one and presents nothing into it, so every
-    // surface generation — first attach, app foregrounded, foldable folded or unfolded,
-    // split-screen resize — starts blank. With `isRendering = false` on an idle scene, which is
-    // this parameter's documented use, a parked loop would leave that new surface blank
-    // *indefinitely* (black, or transparent with `isOpaque = false`) until something unrelated
-    // flipped the flag. The debt makes the park wait on "rendering is on OR a frame is owed", so a
-    // re-created surface always gets exactly one frame and then parks again. Keyed on
-    // (engine, view, renderer) rather than on `sceneRenderer` itself — `sceneRenderer` is
-    // `remember`ed with the same key below, so this reproduces its recreation timing without
-    // forward-referencing it.
-    val needsPresent = remember(engine, view, renderer) { mutableStateOf(true) }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -565,15 +660,13 @@ fun SceneView(
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
-            // A node was attached to (or detached from) the live scene — schedule a frame the
-            // same way a surface resize does (#3560). With `isRendering = false` (render-on-
-            // demand — the documented use of that parameter), the frame loop below parks on
-            // `shouldRender`, which only `needsPresent` or `isRendering` can wake. Previously
-            // only `onSurfaceResized`/`onSurfaceReady` set it, so a node added to a parked scene
-            // loaded and reported bounds but was never actually drawn until an unrelated resize
-            // (even 1px) incidentally flipped the flag — recomposition alone never reached the
-            // `withFrameNanos` loop.
-            needsPresent.value = true
+            // A node was attached to (or detached from) the live scene — invalidate the same way
+            // a surface resize does (#3560). Under [FrameRatePolicy.OnDemand] the frame loop below
+            // parks on `shouldRender`, and only the gate can wake it. Before #3560 only
+            // `onSurfaceResized`/`onSurfaceReady` did, so a node added to a parked scene loaded
+            // and reported bounds but was never drawn until an unrelated resize (even 1px)
+            // incidentally woke the loop — recomposition alone never reached `withFrameNanos`.
+            frameRateGate.requestRender()
         }
     }
 
@@ -589,6 +682,15 @@ fun SceneView(
         val observer = object : DefaultLifecycleObserver {
             override fun onResume(owner: LifecycleOwner) {
                 isResumed.set(true)
+                // Coming back to the foreground is a push invalidation, and it has to be written
+                // here: `isResumed` is an `AtomicBoolean`, deliberately — it is polled from the
+                // loop's inner wait and must not recompose the whole call sixty times a second.
+                // So nothing about the resume reaches the gate on its own. The blanket
+                // `SideEffect` used to cover this by accident (the activity usually recomposes on
+                // resume) and the surface usually gets re-created on top, which is why it never
+                // showed; on the paths where neither happens — a dialog dismissed over a still
+                // -attached surface — the scene stayed parked on a stale frame.
+                frameRateGate.requestRender()
                 // Attach the ViewNode off-screen window on resume. Without this, ViewNode instances
                 // render only a black rectangle because their backing Layout is never attached to
                 // android.view.WindowManager, meaning onLayout is never called and the
@@ -612,6 +714,10 @@ fun SceneView(
     // ── Gesture detection ────────────────────────────────────────────────────────────────────────
 
     val lastFrameTimeNanosRef = remember { AtomicLong(0L) }
+    // Timestamp of the last frame that actually reached the surface — the phase reference for
+    // [FrameRatePolicy.maxFps]. `0L` means "none yet". Distinct from `lastFrameTimeNanosRef`,
+    // which tracks every *tick* and feeds the manipulator's delta.
+    val lastPresentNanosRef = remember { AtomicLong(0L) }
     val gestureDetector = remember(context) { GestureDetector(context = context, listener = null) }
     val cameraGestureDetectorRef = remember { AtomicReference<CameraGestureDetector?>(null) }
 
@@ -640,6 +746,12 @@ fun SceneView(
     // the rest of the camera gestures get below (#3608).
     val cameraGesturesAbsorbedRef = remember { AtomicBoolean(false) }
 
+    // True between ACTION_DOWN and ACTION_UP/ACTION_CANCEL. A *pull* source for the frame gate
+    // (see [isSceneFrameActive]): a finger held still on the screen sends no MotionEvent at all,
+    // so the per-event `requestRender()` below would let the scene settle under a motionless
+    // finger and then have to wake on the next move — visible as a hitch at the start of a drag.
+    val gestureInFlightRef = remember { AtomicBoolean(false) }
+
     SideEffect {
         gestureDetector.listener = onGestureListener
         gestureDetector.onDoubleTapCamera = { event ->
@@ -657,6 +769,14 @@ fun SceneView(
             }
         }
     }
+
+    // A manipulator swapped at runtime (the Explore viewer rebuilds one after the model loads)
+    // holds its own camera transform, and the loop only reads it from inside a frame — so a parked
+    // scene would keep the old framing until a touch woke it. Keyed on the instance, not folded
+    // into the `SideEffect` above: that block runs on every recomposition by design (it rewires
+    // callbacks that are re-created each time), and asking for a frame from inside it would be the
+    // removed blanket `SideEffect` under another name.
+    LaunchedEffect(cameraManipulator) { frameRateGate.requestRender() }
 
     // Common touch dispatcher — wired to both SurfaceView and TextureView via SceneRenderer.
     //
@@ -702,9 +822,20 @@ fun SceneView(
             }
         }
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> capturedTouchNodeRef.set(hitNode.takeIf { consumedByNode })
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> capturedTouchNodeRef.set(null)
+            MotionEvent.ACTION_DOWN -> {
+                capturedTouchNodeRef.set(hitNode.takeIf { consumedByNode })
+                gestureInFlightRef.set(true)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                capturedTouchNodeRef.set(null)
+                gestureInFlightRef.set(false)
+            }
         }
+        // Every touch event invalidates, whatever it turned out to hit: the camera detector may
+        // have started a fling, a node may have moved, a listener may have changed a material.
+        // This is the cheapest possible over-approximation and it is the right one — a touch the
+        // user made is never a frame worth saving.
+        frameRateGate.requestRender()
     }
 
     // ── SceneRenderer — encapsulates surface lifecycle + swap chain + frame pipeline ─────────────
@@ -718,8 +849,13 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
-    // `needsPresent` (the frame-owed debt) is declared earlier, next to the DSL-node sync effect
-    // that also writes it — see its doc comment above (#3560).
+    // `frameRateGate` (the render-on-demand gate) is declared at the top of this function, above
+    // everything that writes Filament state — see its doc comment there (#3108, #3560).
+
+    // A mirrorer is a *pull* source (`isMirroring` in [isSceneFrameActive]), and a pull source is
+    // only read from inside a frame. Attaching one to a parked scene therefore has to wake it once,
+    // or the recording starts on a scene that is not drawing and never will.
+    LaunchedEffect(surfaceMirrorer) { frameRateGate.requestRender() }
 
     // Wire resize and surface callbacks.
     SideEffect {
@@ -730,13 +866,13 @@ fun SceneView(
             lastViewportRef.set(CameraViewportSeed.packViewport(width, height))
             cameraManipulator?.setViewport(width, height)
             cameraNode.updateProjection()
-            // The viewport just changed: whatever was on screen is the wrong size, and a paused
+            // The viewport just changed: whatever was on screen is the wrong size, and a parked
             // loop would keep it. Both callbacks run on the main thread (UiHelper), so writing
             // snapshot state here is safe and wakes the park through the normal apply path.
-            needsPresent.value = true
+            frameRateGate.requestRender()
         }
         sceneRenderer.onSurfaceReady = { viewHeight ->
-            needsPresent.value = true
+            frameRateGate.requestRender()
             if (cameraGestureDetectorRef.get() == null) {
                 cameraGestureDetectorRef.set(
                     CameraGestureDetector(
@@ -778,9 +914,9 @@ fun SceneView(
     // never moves. Reading through a state ref here makes the frame loop pick up
     // every recomposition without restarting.
     val currentCameraManipulator = rememberUpdatedState(cameraManipulator)
-    // Read through a state ref so toggling `isRendering` at runtime is picked up by the
+    // Read through a state ref so swapping `frameRatePolicy` at runtime is picked up by the
     // frame loop without restarting it.
-    val currentIsRendering = rememberUpdatedState(isRendering)
+    val currentFrameRatePolicy = rememberUpdatedState(frameRatePolicy)
     // Read through a state ref so toggling `autoCenterContent` at runtime is picked up by the
     // frame loop without restarting it (the loop's LaunchedEffect is keyed on engine/renderer/
     // view/scene only).
@@ -791,19 +927,37 @@ fun SceneView(
     // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
     // instead of staying latched on the previous framing.
     val currentFramingPadding = rememberUpdatedState(framingPadding)
-    LaunchedEffect(framingPadding) { autoFitState.reset() }
+    // The `reset()` and the wake-up for both of these live in one keyed effect next to the
+    // auto-fit state above.
 
-    // The loop's real wake condition: the caller wants frames, *or* the current surface is still
-    // owed one. Derived state so the park below observes both through a single snapshot read.
-    val shouldRender = remember(currentIsRendering, needsPresent) {
-        derivedStateOf { currentIsRendering.value || needsPresent.value }
+    // The loop's wake condition: the policy draws unconditionally, *or* something invalidated the
+    // gate. Derived state so the park below observes both through a single snapshot read.
+    //
+    // Only the gate's *dirty* flag is snapshot state; its settle debt is a plain counter, read
+    // directly at the park site below. That split is deliberate. The debt is written once per
+    // frame from inside the loop, so making it observable would apply a snapshot 60 times a second
+    // on every rendering scene — the exact per-frame cost this whole change exists to remove —
+    // and it would buy nothing, because the loop is by definition awake while it owes frames.
+    // Only the wake-up needs to be observable, and that is the dirty flag.
+    val shouldRender = remember(currentFrameRatePolicy, frameRateGate) {
+        derivedStateOf {
+            currentFrameRatePolicy.value !is FrameRatePolicy.OnDemand || frameRateGate.isDirty
+        }
     }
 
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
             when {
-                // Not resumed — poll the lifecycle flag the DisposableEffect below flips.
-                !isResumed.get() -> delay(100)
+                // Not resumed — poll the lifecycle flag the DisposableEffect below flips, and
+                // stop asking the panel for a cadence first. A paused view that is still attached
+                // never reaches `onDetachedFromSurface`, so without this its last vote — the
+                // display maximum, if it paused while something was moving — stays standing for as
+                // long as the app is in the background. `setFrameRateVote` deduplicates, so the
+                // repeat at 10 Hz costs nothing after the first pass.
+                !isResumed.get() -> {
+                    sceneRenderer.setFrameRateVote(0f)
+                    delay(100)
+                }
 
                 // Rendering paused and the surface is not owed a frame — park, don't poll. A
                 // `delay(16)` spin would stop the GPU work and still wake the CPU ~60x/s on a
@@ -813,7 +967,7 @@ fun SceneView(
                 // the thread idle until a recomposition flips the flag back — or until a new
                 // surface arrives and sets the debt. Both gates re-enter the loop from the top, so
                 // a park that lasts minutes still re-reads the lifecycle before the next frame.
-                !shouldRender.value -> {
+                !shouldRender.value && frameRateGate.isSettled -> {
                     // Don't hand the first frame after a long park a delta covering the whole
                     // park: `manipulator.update()` reads this as elapsed time. Zero means "no
                     // previous frame", which is what a resumed loop actually has.
@@ -822,8 +976,62 @@ fun SceneView(
                 }
 
                 else -> withFrameNanos { frameTimeNanos ->
-                    val presentedBefore = sceneRenderer.presentedFrameCount
-                    sceneRenderer.renderFrame(frameTimeNanos) {
+                    val policy = currentFrameRatePolicy.value
+                    var cameraMoved = false
+                    var cameraPending = false
+                    val presented = sceneRenderer.renderFrame(
+                        frameTimeNanos,
+                        // Evaluated *after* the update block below has run, so every pull source
+                        // reports post-tick state: an animation that ended on this very tick is
+                        // already inactive, and the settle tail starts from here rather than one
+                        // frame late. Gates the GPU submit only — `renderFrame` still drains the
+                        // engine destroy queue when it returns false, and the update block above
+                        // it always runs, so loads, node ticks and the manipulator keep advancing
+                        // whether or not the frame reaches the screen.
+                        shouldPresent = {
+                            val active = isSceneFrameActive(
+                                gestureInFlight = gestureInFlightRef.get(),
+                                cameraMoved = cameraMoved,
+                                cameraPending = cameraPending,
+                                hasActiveNode = childNodesRef.get().any { it.isFrameActive },
+                                // Not `progress < 1f`: Filament reports 0 for a loader that was
+                                // never asked for an async load, which read as "loading" for the
+                                // lifetime of every procedural scene. See [isAsyncLoadPending].
+                                isLoading = modelLoader.isLoading,
+                                isMirroring = surfaceMirrorer?.mirroredSurfaces?.isNotEmpty() == true,
+                                // Exactly the condition of the work this guard waits for — the
+                                // same `if`s the update block above runs the passes under. See
+                                // [isFramingPending] for the two ways a looser guard held every
+                                // default scene at full cadence with no visible symptom.
+                                framingPending = isFramingPending(
+                                    autoCenterContent = currentAutoCenterContent.value,
+                                    autoCenterPending = autoCenterState.isFramingPending,
+                                    autoFitContent = currentAutoFitContent.value,
+                                    hasCameraManipulator =
+                                        currentCameraManipulator.value != null,
+                                    autoFitPending = autoFitState.isFramingPending
+                                )
+                            )
+                            // The vote is a hint to the display, not a gate on this frame: it asks
+                            // the panel for the cadence the next few frames will want. Recomputed
+                            // every frame but only pushed across JNI on a change — see
+                            // [SceneRenderer.setFrameRateVote].
+                            sceneRenderer.setFrameRateVote(
+                                frameRateVote(policy, active, sceneRenderer.maxRefreshRate)
+                            )
+                            // Both questions of [FrameRatePolicy] — the mode and the optional cap —
+                            // in the order that keeps them independent. See [shouldPresentFrame].
+                            shouldPresentFrame(
+                                policy = policy,
+                                frameTimeNanos = frameTimeNanos,
+                                lastPresentNanos = lastPresentNanosRef.get(),
+                                // The panel's *current* mode, not a constant and not its
+                                // ceiling: the cap can only be met on whole vsyncs, and on a
+                                // VRR panel which vsyncs those are changes under us.
+                                vsyncPeriodNanos = vsyncPeriodNanos(sceneRenderer.refreshRate)
+                            ) { frameRateGate.shouldRender(active, frameTimeNanos) }
+                        }
+                    ) {
                         modelLoader.updateLoad()
                         childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
 
@@ -862,7 +1070,40 @@ fun SceneView(
                         currentCameraManipulator.value?.let { manipulator ->
                             val lastTime = lastFrameTimeNanosRef.get().takeIf { it != 0L }
                             manipulator.update(frameTimeNanos.intervalSeconds(lastTime).toFloat())
-                            cameraNode.transform = manipulator.getTransform()
+                            val transform = manipulator.getTransform()
+                            // A fling sends no MotionEvent while it decelerates, and Filament's
+                            // manipulator exposes no "is still moving". Comparing the transform it
+                            // produces against the previous frame's is the only signal there is —
+                            // and it is exact: the fling ends precisely when the camera stops
+                            // moving. `cameraNode.transform` also invalidates the gate through
+                            // `Node.onTransformChanged`, but that fires one frame *after* the
+                            // motion it reports, so the settle tail is what keeps the last frame
+                            // of a fling on screen rather than a frame behind.
+                            cameraMoved = transform != cameraNode.transform
+                            // The manipulator's own answer for what motion cannot show: an ease in
+                            // flight, or a turntable counting down to take the camera back three
+                            // seconds after the last gesture. That countdown advances from
+                            // `update()` — which only runs while the loop runs — so without this
+                            // the scene would settle at ~0.5 s, park, and the automatic orbit
+                            // would never resume.
+                            cameraPending = manipulator.isFrameActive
+                            // Write only on a real change. `Node.transform`'s setter is itself a
+                            // *push* invalidation source (`onTransformChanged` → `requestRender`),
+                            // so re-writing an identical matrix every tick re-dirties the gate
+                            // from inside the render loop: the gate re-arms its whole settle
+                            // budget on the next tick, which writes again, forever. No scene
+                            // holding a camera manipulator — i.e. the default scene — could
+                            // settle, and render-on-demand degraded to render-always everywhere
+                            // while every unit test still passed, because the loop that closes
+                            // the cycle is the one thing they cannot run. Measured on
+                            // emulator-5554 before this line: 1201 frames presented over 20.02 s
+                            // of a scene nobody touched, on a screen whose turntable was paused
+                            // (`dumpsys SurfaceFlinger --latency` on the Filament BLAST layer).
+                            // Skipping the write also spares a `setTransform` JNI call and three
+                            // decompositions per frame on a camera that is standing still.
+                            if (cameraMoved) {
+                                cameraNode.transform = transform
+                            }
                         }
                     }
 
@@ -877,19 +1118,17 @@ fun SceneView(
                     // demo scaffold the scene was up while the surface was still black, so it
                     // dropped its loading cover and every capture in that window — the Maestro
                     // screenshot included — recorded a blank viewport.
-                    val presented = sceneRenderer.presentedFrameCount != presentedBefore
                     if (presented) {
                         currentOnFrame.value?.invoke(frameTimeNanos)
                     }
 
-                    // Settle the surface's owed frame only if one was really presented.
-                    // `renderFrame` returns early when no swap chain is ready, and
-                    // `Renderer.beginFrame` can refuse a frame for pacing — clearing the debt on
-                    // the *attempt* would park with a blank surface, which is the bug this guards.
-                    // Guarded by the read so a rendering scene does not write snapshot state every
-                    // frame.
-                    if (needsPresent.value && presented) {
-                        needsPresent.value = false
+                    // Pay down the settle debt only if a frame was really presented. `renderFrame`
+                    // returns early when no swap chain is ready, and `Renderer.beginFrame` can
+                    // refuse a frame for pacing — settling on the *attempt* would park with a
+                    // blank surface, which is the bug this guards (#3109).
+                    if (presented) {
+                        frameRateGate.didRender(frameTimeNanos)
+                        lastPresentNanosRef.set(frameTimeNanos)
                     }
 
                     lastFrameTimeNanosRef.set(frameTimeNanos)
@@ -1425,7 +1664,20 @@ fun rememberMainLightNode(
 }.also { node ->
     // Re-apply on every recomposition so Compose-state-driven light properties stay reactive.
     // SideEffect runs on the composition applier (main) thread — required for Filament JNI.
-    SideEffect { node.apply(apply) }
+    //
+    // The re-apply writes straight to Filament's `LightManager`, which reports nothing, so under
+    // [FrameRatePolicy.OnDemand] it has to ask for its own frame — a relit scene that is parked
+    // keeps the old lighting on screen. It asks only when the block itself changed: Compose hands
+    // back a *new* lambda instance exactly when the values it captures change, so a constant block
+    // (`rememberMainLightNode(engine)` with no arguments, the common case) never invalidates and a
+    // block reading an animated intensity invalidates once per value.
+    val lastApply = remember { AtomicReference<(LightNode.() -> Unit)?>(null) }
+    SideEffect {
+        node.apply(apply)
+        if (lastApply.getAndSet(apply) !== apply) {
+            node.requestRender()
+        }
+    }
 }
 
 /**
@@ -1463,7 +1715,20 @@ fun rememberFillLightNode(
 }.also { node ->
     // Re-apply on every recomposition so Compose-state-driven light properties stay reactive.
     // SideEffect runs on the composition applier (main) thread — required for Filament JNI.
-    SideEffect { node.apply(apply) }
+    //
+    // The re-apply writes straight to Filament's `LightManager`, which reports nothing, so under
+    // [FrameRatePolicy.OnDemand] it has to ask for its own frame — a relit scene that is parked
+    // keeps the old lighting on screen. It asks only when the block itself changed: Compose hands
+    // back a *new* lambda instance exactly when the values it captures change, so a constant block
+    // (`rememberMainLightNode(engine)` with no arguments, the common case) never invalidates and a
+    // block reading an animated intensity invalidates once per value.
+    val lastApply = remember { AtomicReference<(LightNode.() -> Unit)?>(null) }
+    SideEffect {
+        node.apply(apply)
+        if (lastApply.getAndSet(apply) !== apply) {
+            node.requestRender()
+        }
+    }
 }
 
 /**
@@ -1894,7 +2159,7 @@ fun Scene(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
-    isRendering: Boolean = true,
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(),
     renderQuality: RenderQuality = RenderQuality.Default,
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
@@ -1925,7 +2190,7 @@ fun Scene(
     environmentLoader = environmentLoader,
     view = view,
     isOpaque = isOpaque,
-    isRendering = isRendering,
+    frameRatePolicy = frameRatePolicy,
     renderQuality = renderQuality,
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,

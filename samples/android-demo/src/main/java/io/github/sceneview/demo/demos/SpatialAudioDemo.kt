@@ -102,9 +102,9 @@ import kotlin.math.sqrt
 @Composable
 fun SpatialAudioDemo(onBack: () -> Unit) {
     var falloffMode by remember { mutableStateOf(FalloffMode.Inverse) }
-    val firstFrame = rememberFirstFrameState()
 
     val engine = rememberEngine()
+    val firstFrame = rememberFirstFrameState(engine)
     val materialLoader = rememberMaterialLoader(engine)
 
     // Camera home. The binding constraint here is the *horizontal* field of

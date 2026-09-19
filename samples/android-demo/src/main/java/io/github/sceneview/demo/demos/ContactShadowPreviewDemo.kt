@@ -231,7 +231,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     val fallbackEnvironment = remember(fallbackSkybox) { Environment(skybox = fallbackSkybox) }
     val environment = litEnvironment ?: fallbackEnvironment
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     val resetAll = {
         shadowsEnabled = true

@@ -2,6 +2,7 @@ package io.github.sceneview
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.view.Display
 import android.view.MotionEvent
 import android.view.Surface
@@ -64,6 +65,44 @@ class SceneRenderer(
 
     /** Whether the renderer is currently attached to a surface. */
     val isAttached: Boolean get() = swapChainRef.get() != null
+
+    /**
+     * The native surface currently rendered into, kept so the cadence vote can reach it.
+     * `null` on a [TextureView], which renders through a `SurfaceTexture` the view system owns —
+     * there is no surface whose frame rate this library may vote on.
+     */
+    private val votableSurfaceRef = AtomicReference<Surface?>(null)
+
+    /** Last frame rate voted, so an unchanged vote is not re-sent every frame. */
+    private var votedFrameRate: Float = 0f
+
+    /**
+     * The highest refresh rate the current display can run at, or `null` before attachment.
+     *
+     * This is what [FrameRatePolicy.OnDemand] and [FrameRatePolicy.Continuous] vote for while the
+     * scene is moving: asking for the panel's maximum is what makes a 120 Hz device actually run a
+     * gesture at 120 Hz instead of the 60 Hz an idle-looking surface is often given.
+     */
+    @Suppress("DEPRECATION")
+    val maxRefreshRate: Float?
+        get() = display?.let { d ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                d.supportedModes?.maxOfOrNull { it.refreshRate }
+            } else {
+                d.refreshRate
+            }
+        }
+
+    /**
+     * The refresh rate the display is running at **right now**, or `null` before attachment.
+     *
+     * Distinct from [maxRefreshRate], which is the panel's ceiling: on a variable-refresh-rate
+     * device the current mode is what the Choreographer's vsyncs actually land on, and that period
+     * — not a compile-time constant — is the only honest tolerance for
+     * the [FrameRatePolicy.maxFps] phase lock. See [shouldPresentAtCap].
+     */
+    val refreshRate: Float?
+        get() = display?.refreshRate?.takeIf { it > 0f }
 
     // ── Surface mirroring ───────────────────────────────────────────────────────────────────────
 
@@ -133,7 +172,8 @@ class SceneRenderer(
         // `view.blendMode = BlendMode.TRANSLUCENT` set in `SceneView.kt`.
         uiHelper.isOpaque = isOpaque
 
-        uiHelper.renderCallback = makeRendererCallback(viewHeight = { surfaceView.height })
+        uiHelper.renderCallback =
+            makeRendererCallback(viewHeight = { surfaceView.height }, votable = true)
         uiHelper.attachTo(surfaceView)
 
         onTouch?.let { dispatch ->
@@ -163,7 +203,10 @@ class SceneRenderer(
         textureView.isOpaque = isOpaque
         uiHelper.isOpaque = isOpaque  // Pair with view.blendMode in SceneView.kt (#1077).
 
-        uiHelper.renderCallback = makeRendererCallback(viewHeight = { textureView.height })
+        // `votable = false`: a TextureView draws through a SurfaceTexture owned by the view
+        // system, so there is no surface of ours to vote a frame rate on.
+        uiHelper.renderCallback =
+            makeRendererCallback(viewHeight = { textureView.height }, votable = false)
         uiHelper.attachTo(textureView)
 
         onTouch?.let { dispatch ->
@@ -194,18 +237,38 @@ class SceneRenderer(
      * after the swap chain check but before `beginFrame`, giving the caller a chance to
      * run per-frame logic (model loading, node updates, camera manipulator, AR frame, etc.).
      *
-     * Whether a frame actually reached the surface is observable through [presentedFrameCount] —
-     * this function returns `Unit` on both paths, and callers that need to know must compare that
-     * counter across the call.
+     * Returns `true` when a frame actually reached the surface, `false` when it did not: no swap
+     * chain yet, [shouldPresent] declined, or `Renderer.beginFrame` refused the frame for pacing.
+     * Callers use it to settle a frame debt only against a frame that really landed — settling on
+     * the attempt parks with a blank surface, which is the bug #3109 is about.
      *
      * @param frameTimeNanos The choreographer timestamp for this frame.
      * @param onBeforeRender Pre-render callback; skipped if no swap chain is ready.
+     * @param shouldPresent Consulted **after** [onBeforeRender] and before `beginFrame`: return
+     * `false` to run the tick's CPU work without submitting anything to the GPU. This is where
+     * [FrameRatePolicy.OnDemand] skips a frame, and the ordering is the whole point — the ARCore
+     * session update, the async-load pump and the node ticks inside [onBeforeRender] have already
+     * run, so a skipped frame costs the scene no progress, only pixels. `null` (the default) always
+     * presents.
      */
-    fun renderFrame(frameTimeNanos: Long, onBeforeRender: () -> Unit) {
-        val sc = swapChainRef.get() ?: return
+    fun renderFrame(
+        frameTimeNanos: Long,
+        shouldPresent: (() -> Boolean)? = null,
+        onBeforeRender: () -> Unit
+    ): Boolean {
+        val sc = swapChainRef.get() ?: return false
 
         onBeforeRender()
 
+        if (shouldPresent?.invoke() == false) {
+            // Still drain: the queue's grace periods are counted in ticks of real scene time, and a
+            // scene that settles into on-demand would otherwise hold destroyed GPU resources until
+            // something happened to wake it.
+            EngineDestroyQueue.of(engine).drain()
+            return false
+        }
+
+        var presented = false
         if (renderer.beginFrame(sc, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
@@ -217,6 +280,7 @@ class SceneRenderer(
             // discard it once it leaves the EGL draw slot, blacking both the recording and the
             // live view (#3602).
             surfaceMirrorer?.onFrame(engine, view, frameTimeNanos)
+            presented = true
         }
 
         // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
@@ -225,6 +289,48 @@ class SceneRenderer(
         // Choreographer callback so it advances in lock-step with real rendered frames, and stops
         // the moment the surface (and thus the render loop) goes away.
         EngineDestroyQueue.of(engine).drain()
+
+        return presented
+    }
+
+    // ── Frame rate vote ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Tells the platform what refresh rate this surface would like, so a variable-refresh-rate panel
+     * can follow the scene instead of guessing.
+     *
+     * Votes on the [SurfaceView]'s own [Surface] — never on the host `Window`. A library has no
+     * business deciding the refresh rate of an app's window: the app may be showing a video, a list
+     * and this scene at once, and only the app can arbitrate. `Surface.setFrameRate` is the
+     * per-surface mechanism built for exactly this, and the compositor does the arbitration.
+     *
+     * Silently does nothing below API 30, and on a [TextureView] (no surface of our own to vote on).
+     * On API 31+ the vote is `CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS`, so a device that would have to
+     * blank the screen to switch mode simply keeps its current rate rather than flashing mid-gesture.
+     *
+     * @param fps the wanted frame rate, or `0f` to withdraw the vote and let the platform decide —
+     * which is what an idle on-demand scene does.
+     */
+    fun setFrameRateVote(fps: Float) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (votedFrameRate == fps) return
+        val surface = votableSurfaceRef.get() ?: return
+        // A surface can be destroyed between the last frame and this call; voting on it throws.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                surface.setFrameRate(
+                    fps,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                    Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS
+                )
+            } else {
+                surface.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+            }
+        }.onSuccess {
+            votedFrameRate = fps
+        }.onFailure { e ->
+            android.util.Log.w("SceneRenderer", "Frame rate vote of $fps rejected", e)
+        }
     }
 
     // ── Viewport ────────────────────────────────────────────────────────────────────────────────
@@ -249,6 +355,8 @@ class SceneRenderer(
         // bound at its first mirrored frame.
         surfaceMirrorer?.destroy()
         surfaceMirrorer = null
+        votableSurfaceRef.set(null)
+        votedFrameRate = 0f
         uiHelper.detach()
         swapChainRef.getAndSet(null)?.let {
             runCatching { engine.destroySwapChain(it) }
@@ -265,12 +373,17 @@ class SceneRenderer(
      * Builds the [UiHelper.RendererCallback] that manages swap chain creation, destruction
      * and resize for both SurfaceView and TextureView paths.
      */
-    private fun makeRendererCallback(viewHeight: () -> Int) = object : UiHelper.RendererCallback {
+    private fun makeRendererCallback(
+        viewHeight: () -> Int,
+        votable: Boolean
+    ) = object : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
             // Create a new swap chain for the surface; destroy the old one if any.
             swapChainRef.getAndSet(
                 engine.createSwapChain(surface, uiHelper.swapChainFlags)
             )?.let { engine.destroySwapChain(it) }
+
+            if (votable) votableSurfaceRef.set(surface)
 
             displayHelper?.let { dh ->
                 display?.let { d -> dh.attach(renderer, d) }
@@ -280,6 +393,10 @@ class SceneRenderer(
         }
 
         override fun onDetachedFromSurface() {
+            // Drop the vote target before the surface goes away: a vote on a destroyed surface
+            // throws, and the next surface starts from no vote at all.
+            votableSurfaceRef.set(null)
+            votedFrameRate = 0f
             onSurfaceDestroyed?.invoke()
             // Detach the DisplayHelper (unregisters its display-changed listener) BEFORE
             // destroying the swap chain and flushAndWait(). Destroying the surface makes an

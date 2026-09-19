@@ -324,6 +324,58 @@ class HeroOrbitResumeTest {
         assertFalse(manipulator.isPaused())
     }
 
+    // ── Keeping the render loop alive across the countdown (#3108) ───────────────────────────────
+
+    @Test
+    fun `the countdown keeps the frame loop awake until the hand-back`() {
+        val manipulator = manipulator()
+        assertFalse("nothing pending before the first gesture", manipulator.isFrameActive)
+
+        manipulator.dragTo(USER_EYE)
+
+        // Under OnDemand the loop parks half a second after the camera stops moving — a sixth of
+        // the way to the deadline. `isFrameActive` is the only thing holding it open.
+        assertTrue("the countdown has to hold the loop open", manipulator.isFrameActive)
+        manipulator.advance(RESUME_AFTER_MILLIS / 2)
+        assertTrue("still waiting, half-way through", manipulator.isFrameActive)
+
+        manipulator.advance(RESUME_AFTER_MILLIS / 2 + 10)
+
+        assertFalse("the hand-back happened", manipulator.isPaused())
+        assertFalse("and nothing is pending any more, so the scene may park", manipulator.isFrameActive)
+    }
+
+    @Test
+    fun `the ease home keeps the frame loop awake, then releases it`() {
+        val manipulator = manipulator(resume = HeroOrbitResume.ReturnToAuthoredPath)
+        manipulator.dragTo(USER_EYE)
+        val paced = pacedBlendMillis()
+
+        manipulator.advance(RESUME_AFTER_MILLIS + 10)
+
+        assertFalse(manipulator.isPaused())
+        assertTrue("the ease home is still running", manipulator.isFrameActive)
+
+        // `over()` clears the ease when it lands, and it is only called from getTransform().
+        manipulator.advance(paced + 10)
+        manipulator.getTransform()
+
+        assertFalse("landed on the authored path — park allowed", manipulator.isFrameActive)
+    }
+
+    @Test
+    fun `a disabled resume parks instead of waiting forever`() {
+        val manipulator = manipulator(resumeAfterMillis = 0L)
+
+        manipulator.dragTo(USER_EYE)
+        manipulator.advance(RESUME_AFTER_MILLIS + 10)
+
+        // The user keeps the camera for good here, so there is no countdown to stay awake for.
+        assertTrue(manipulator.isPaused())
+        assertFalse("no resume is coming — holding the loop open would burn frames for nothing",
+            manipulator.isFrameActive)
+    }
+
     private companion object {
         const val RADIUS = 2f
         const val Y_HEIGHT = 0.5f

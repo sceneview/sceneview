@@ -237,6 +237,14 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingRig.Studio -> STUDIO_IBL_INTENSITY
         LightingRig.Sun -> SUN_IBL_INTENSITY
     }
+    // Read in the composition, NOT inside the `SideEffect` lambda below (#3718). A state value a
+    // composable only reads inside a lambda it hands to someone else is not a composition read, so
+    // writing it invalidates nothing here and the effect never re-runs — and the *Exposure* slider
+    // lives in the `controls = { … }` lambda, a restart scope of its own, so its own recomposition
+    // does not bring this one with it. Measured: one drag wrote the state 20 times (1.00 → 2.70)
+    // for 0 runs of the effect and 0 calls to `setExposure`, while *Environment rotation* — whose
+    // value is read right here, as `effectiveRotation` — ran it 9 times on one drag.
+    val cameraSensitivity = LightingStage.sensitivityFor(exposure)
     SideEffect {
         loadedEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
@@ -245,8 +253,17 @@ fun LightingDemo(onBack: () -> Unit) {
         cameraNode.setExposure(
             aperture = LightingStage.CAMERA_APERTURE,
             shutterSpeed = LightingStage.CAMERA_SHUTTER_SPEED,
-            sensitivity = LightingStage.sensitivityFor(exposure),
+            sensitivity = cameraSensitivity,
         )
+        // `IndirectLight` is a *raw* Filament object: the SDK hands it out and never sees it
+        // again, so rotating or dimming it reaches the engine and nothing else. Under
+        // `OnDemand` — and this screen parks, by design, whenever `Animate` is off — the new
+        // lighting would sit in the engine with no frame coming to show it. Measured before
+        // this line existed: dragging *Environment rotation* 302° → 100° and *Exposure*
+        // 1.00 → 2.72 on the parked scene produced 0 Filament frames and a viewport still lit
+        // the old way (#3718). `cameraNode.setExposure` invalidates on its own — it is an SDK
+        // mutator — and this covers the two that cannot.
+        cameraNode.requestRender()
     }
 
     // ── Rig geometry ─────────────────────────────────────────────────────────────────────────
@@ -260,7 +277,7 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingStage.RIM_ELEVATION_DEGREES,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,

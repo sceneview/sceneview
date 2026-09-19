@@ -29,6 +29,14 @@ open class LightNode(
     entity: Entity
 ) : Node(engine, entity), LightComponent {
 
+    /**
+     * Every mutator inherited from [io.github.sceneview.components.LightComponent] that changes what is drawn lands here, and asks the
+     * scene for the frame that will show it. Under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — nothing else would: a
+     * Filament manager is write-only from here. A no-op while this node is not in a scene.
+     */
+    override fun onComponentChanged() = requestRender()
+
     override var isTouchable = false
     override var isEditable = false
 

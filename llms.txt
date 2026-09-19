@@ -109,7 +109,8 @@ fun SceneView(
     environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
     view: View = rememberView(engine),
     isOpaque: Boolean = true,
-    isRendering: Boolean = true,   // false parks the frame loop on an idle scene — see note below
+    frameRatePolicy: FrameRatePolicy = FrameRatePolicy.OnDemand(), // render-on-demand by default — see note below
+    renderInvalidator: RenderInvalidator? = null,   // escape hatch for changes made below the library (direct Filament edits)
     renderQuality: RenderQuality = RenderQuality.Default,   // Cinematic / Default / Performance — see "Render Quality"
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
@@ -135,32 +136,55 @@ fun SceneView(
 
 **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
-**`isRendering` (default `true`, v4.29.0+ / #3108):** pass `false` when the scene is completely idle — nothing animating, no gesture in flight, no node / camera / material change pending — to park the frame loop. The loop suspends rather than spins, so a paused scene costs neither GPU frames nor a periodic CPU wake-up, and it resumes immediately on the next composition that passes `true` (the loop is not restarted). This is the fix for an idle 3D screen draining battery and thermally throttling on devices whose Choreographer does not idle on a static UI.
+**`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
-**Nothing is presented while `isRendering = false`** — a node added or moved, a camera or manipulator change and a material edit all leave the last drawn frame on screen until rendering resumes; `onFrame` does not fire either. Two exceptions matter:
+Three policies:
 
-- A **new or resized surface** (first attach, app foregrounded, foldable folded/unfolded, split-screen resize) holds no pixels, so the library always presents one frame into it even while paused and then parks again. Do not flip the flag on a configuration change.
-- An **async model load does not finalise** while paused: Filament finishes texture uploads from inside the frame loop, so a model that finishes loading during a pause renders *untextured* until rendering resumes. Hold `true` until `modelLoader.progress == 1f`, not until the load call returns.
+- **`FrameRatePolicy.OnDemand()`** (default) — draw while something is happening, then park. The library tracks the change itself, so there is nothing to compute at the call site: a touch in flight, a camera manipulator still coasting or easing, a playing glTF animation, a smooth transform, a decoding video, a `ViewNode`, a sorting `SplatNode`, an async model or environment load, an active `surfaceMirrorer`, a pending auto-center/auto-fit, a node added / moved / removed, a visibility, geometry or material change, a surface resize, a lifecycle resume. While any of those holds, the scene renders at the display's full cadence and votes for the display's maximum refresh rate; once they all stop it draws a short tail of settle frames and then **parks** — the loop suspends on the snapshot instead of polling, so an idle scene schedules no work at all, and the frame-rate vote is withdrawn so a variable-refresh-rate panel can drop to its idle mode.
+- **`FrameRatePolicy.Continuous()`** — the pre-v4.38.0 behaviour verbatim: a frame every vsync, display-max vote held the whole time. Use it when the scene is driven by something the library cannot see and you do not want to invalidate by hand (an external simulation writing into Filament each frame, a custom `Renderer` hook, a texture updated off-thread).
+- **`maxFps`** — an optional ceiling on **either** mode (`OnDemand(maxFps = 30)`, `Continuous(maxFps = 30)`), never a mode of its own: the type asks two independent questions, *when* may a frame be drawn and *how fast at most*. A capped scene never presents faster than `maxFps` and votes for `maxFps` rather than the display maximum (never above what the panel can do) — for a deliberate cadence, e.g. a 30 fps product turntable on a 120 Hz panel. A cap can only be met on a whole number of vsyncs, so the requested period is rounded **up** to whole vsyncs of the real display: `maxFps = 90` on a 120 Hz panel therefore runs at 60, because 90 is not reachable there and 120 would break the promise. `maxFps` is `null` (the display's cadence, the default) or strictly positive (`require` at construction).
 
-So drive it from an "is anything dirty" signal that stays `true` for at least one frame **after** the last mutation, never from "is an animation running" — the latter is already `false` at the instant a one-shot scene change is published, which strands that change undrawn. The dirty window must be Compose state **in both directions**: a deadline compared against a clock flips to `true` on the mutation that recomposes and then never flips back, because time passing a threshold invalidates no composition — the scene renders forever and the parameter silently does nothing.
+**Read this before generating any code that changes a scene at runtime — it is the one way `OnDemand` goes wrong, and it fails silently.** Nothing crashes, logs or throws: the screen keeps showing the previous frame, and the user reads it as a dead control.
+
+- **Every public mutator of a SceneView type asks for its own frame.** `lightNode.intensity`, `.color`, `.lightDirection`, `.falloff`, `.isShadowCaster`, `setIntensityCandela`, `setSpotLightCone`; `cameraNode.setExposure(…)`, `setProjection`, `setLensProjection`, `focusDistance`, `lookAt`, `projectionTransform`; a node's `transform` / `position` / `quaternion` / `scale`, `isVisible`, `materialInstance`, `setMaterialInstanceAt`, `setGeometry`, `setPriority`, `setCulling`, `setLayerMask`, `setMorphWeights`, `setBonesAsMatrices`, `axisAlignedBoundingBox`, shadow and blend-order flags. Do **not** generate a `requestRender()` after these, and do not reach for `Continuous()` to make them show — they invalidate on their own (`Component.onComponentChanged()`).
+- **Nothing written on a raw Filament object does.** The library hands the object out and never sees it again, so no bookkeeping is left to observe the write. Exhaustively: a `MaterialInstance` parameter written with `setParameter`; a light property written through `LightManager`; a `Skybox` or `IndirectLight` assigned or mutated (`intensity`, `setRotation`) straight on the Filament `Scene`; morph-target weights and bone transforms written through `RenderableManager`; an external `Stream` (camera, video) pushing content; runtime `View` options (bloom, AO, dynamic resolution, blend mode) on a `View` you own. **If the type you are writing to is in `com.google.android.filament`, emit a `requestRender()`.**
+
+Both escape hatches are main-thread and fire-and-forget, so before a `PixelCopy` or screenshot you request the frame and then wait for your next `onFrame`:
 
 ```kotlin
-// WRONG — a one-shot change (new position, highlight, finished load) is never drawn.
-SceneView(isRendering = isAnimating) { /* … */ }
+// From a node you hold:
+node.requestRender()
 
-// ALSO WRONG — `System.nanoTime()` is not snapshot state. Nothing recomposes when the window
-// elapses, so `isRendering` stays `true` from the first mutation onward and never pauses again.
-SceneView(isRendering = isAnimating || System.nanoTime() < dirtyUntilNanos) { /* … */ }
-
-// RIGHT — the dirty window is state, and the effect writes it back to false.
-var isDirty by remember { mutableStateOf(true) }
-LaunchedEffect(dirtyToken) {          // dirtyToken is bumped by every scene mutation
-    isDirty = true
-    delay(200)
-    isDirty = false
-}
-SceneView(isRendering = isAnimating || isInteracting || isDirty) { /* … */ }
+// From anywhere else — a material or IBL edit, or right before a PixelCopy / screenshot:
+val invalidator = rememberRenderInvalidator()
+SceneView(renderInvalidator = invalidator) { /* … */ }
+// later
+indirectLight.intensity = 30_000f
+invalidator.requestRender()
 ```
+
+Measured on a parked demo screen (#3718): dragging an *Environment rotation* slider 302° → 100° and an *Exposure* slider 1.00 → 2.72 produced **0** frames and left the viewport lit the old way. Both writes went into an `IndirectLight`. This is the single most likely defect in generated `OnDemand` code.
+
+**`ARSceneView` has no `frameRatePolicy` parameter and never parks** — do not generate one. A live camera feed is never idle. Its loop skips only the GPU submit, on a vsync where ARCore returns a duplicate `Frame.timestamp` and nothing in the virtual scene changed; `session.update()` runs every vsync, so tracking, anchors and plane detection are unaffected.
+
+**A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
+
+**`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+
+**`SceneView(onFrame = …)` and `node.onFrame = { … }` are opposites, despite the name.** `SceneView`'s runs *after* its frame was presented and holds the loop open for nothing — it is an observer. `Node.onFrame` runs *before* the frame is drawn and **pins the loop**: `Node.isFrameActive` reads a non-null slot as a standing request for a frame every tick, because it is a driver (`PhysicsNode` steps its simulation there) and a driver that only runs when a frame happens could never produce the first one. So `node.onFrame = null` is how a node stops asking, and a transform written in it is on screen in the same frame, not one late. Do not generate a `node.onFrame` that merely observes — hold the value in Compose state instead, or the scene never parks. The library's own per-frame work does not use that slot and pins nothing: `BillboardNode` and `TextNode` re-orient only when the camera actually moved, a settled `PhysicsNode` reports itself idle, `rememberModelAnimationState` observes for free.
+
+
+A **new or resized surface** (first attach, app foregrounded, foldable folded/unfolded, split-screen resize) holds no pixels of its own, so the library always presents into it before parking again — you never have to handle a configuration change yourself. An **async model load** finalises correctly too: `ModelLoader.isLoading` is one of the tracked sources, because Filament finishes texture uploads from inside the frame loop. Do not generate `modelLoader.progress < 1f` for this: `progress` reports Filament's progress over the last async resource load and is **0**, not 1, for a loader that was never asked for one — a procedural scene would read as "still loading" forever and never park.
+
+Migration from `isRendering`:
+
+```kotlin notest before/after comparison table — the left column is the removed API and does not compile by design
+// Before                                    // After
+SceneView(isRendering = true)  { }           SceneView(frameRatePolicy = FrameRatePolicy.Continuous()) { }
+SceneView(isRendering = isDirty) { }         SceneView { }   // OnDemand is the default — delete the dirty-tracking
+```
+
+The whole `isDirty` / `dirtyToken` / `LaunchedEffect(delay(200))` pattern the old parameter required is now the library's job: **delete it**, do not translate it.
 
 **`autoCenterContent` (default `true`):** all DSL `content` nodes are parented to an intermediate content-root node which the library translates once — on the first frame their union bounding box is non-empty — so the content centroid lands on the **world origin** and renders centred without per-node `ModelNode(centerOrigin = …)`. It lands on the origin, **not** on the camera manipulator's `targetPosition` — the two coincide only for the default target, which is why the camera-to-subject distance is `\|orbitHomePosition\|` (see \"Camera\"). Lights / camera are `SceneView` parameters (never DSL children) so they stay put. Pass `autoCenterContent = false` for scenes with intentional off-centre placement — authored world positions then survive. Mirrors the iOS `autoCenterContent` modifier.
 
@@ -6361,7 +6385,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | `ARSceneView(playbackDataset:)` | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
 | `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (+ `SceneView`/`ARSceneView(surfaceMirrorer:)`) | In-app scene→MP4 mirroring rides Filament `Renderer.copyFrame`; RealityKit has no per-frame surface-copy equivalent | iOS records the scene via [ReplayKit `RPScreenRecorder`](https://github.com/sceneview/sceneview/issues/1032) (see `cheatsheet-ios.md` "Recording"); the `surfaceMirrorer` parameter stays Android-only |
 | `ARSceneView(renderQuality:)` | The one-line `renderQuality` preset is on the AR composable on Android only; the iOS `.renderQuality(_:)` modifier is 3D-`SceneView`-only (#2524) | Tune AR on iOS via `ARSceneView(cameraExposure:)` + IBL; use `.renderQuality(_:)` on the 3D `SceneView` path |
-| `SceneView(isRendering:)` | Parking the frame loop is Filament-loop-specific: AR is never idle (the camera feed changes every frame) so `ARSceneView` does not take it, and RealityKit owns its own render loop with no equivalent to park | N/A — on the web, `sceneview.js` exposes the same capability as imperative `startRendering()` / `stopRendering()` |
+| `SceneView(frameRatePolicy:)` / `FrameRatePolicy` / `RenderInvalidator` | Render-on-demand is Filament-loop-specific: RealityKit owns its own render loop and exposes nothing to park or to vote a cadence with. **Android's `ARSceneView` does NOT take this parameter either** — a live camera feed is never idle, so its loop never parks; it only skips the GPU submit on a duplicate ARCore `Frame.timestamp` with no scene change | N/A — on the web, `sceneview.js` exposes the same capability as imperative `startRendering()` / `stopRendering()` |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
 | `StreetscapeGeometry` | ARGeoTrackingConfiguration exists but no mesh equivalent | iOS-skip with doc warning |
 | `TerrainAnchor / RooftopAnchor` | `ARGeoAnchor` only does ground; rooftop has no ARKit equivalent | iOS-skip with doc warning |

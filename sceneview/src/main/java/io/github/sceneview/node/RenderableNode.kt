@@ -30,6 +30,14 @@ open class RenderableNode(
 ) : Node(engine, entity), RenderableComponent {
 
     /**
+     * Every mutator inherited from [io.github.sceneview.components.RenderableComponent] that changes what is drawn lands here, and asks the
+     * scene for the frame that will show it. Under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] — the default — nothing else would: a
+     * Filament manager is write-only from here. A no-op while this node is not in a scene.
+     */
+    override fun onComponentChanged() = requestRender()
+
+    /**
      * Cached [RenderableManager] instance handle for this entity.
      *
      * `0` means "not yet looked up". The handle is stable for the lifetime of the
@@ -161,6 +169,30 @@ open class RenderableNode(
         if (!hasCustomCollisionShape) {
             updateCollisionShape()
         }
+        // Push source for render-on-demand. New vertices are a new picture, and nothing else
+        // reports it: the node has not moved, so [onTransformChanged] never fires. This is the
+        // funnel every geometry change goes through — `GeometryNode.updateGeometry`, and with it
+        // every `SphereNode(radius = …)` / `CubeNode(size = …)` / `PathNode(points = …)` the
+        // `SceneScope` DSL re-applies when its declared geometry changes.
+        requestRender()
+    }
+
+    /**
+     * Rebinds the material of one primitive, and asks for the frame that shows it.
+     *
+     * The override exists only for that second half: swapping a `MaterialInstance` is the most
+     * common "the scene changed but nothing moved" edit there is — a highlight on selection, a
+     * colour picker, a texture finishing its upload — and under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] a parked scene would keep the old material on
+     * screen. Filament reports nothing, and neither does the entity's transform.
+     *
+     * Editing the *parameters* of a material instance you already hold (`setParameter`) still goes
+     * straight to Filament and cannot be seen from here: call [requestRender] yourself after it,
+     * as [requestRender]'s documentation says.
+     */
+    override fun setMaterialInstanceAt(primitiveIndex: Int, materialInstance: MaterialInstance) {
+        super.setMaterialInstanceAt(primitiveIndex, materialInstance)
+        requestRender()
     }
 
     /**

@@ -103,6 +103,7 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberOcclusionMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
@@ -316,13 +317,22 @@ private fun StudioSection(
     // Push the live overrides onto the selected instance. Keyed on the values rather than on
     // `instances` — the map above produces a new List every recomposition, so keying on it
     // would restart the effect on every frame of a drag.
+    //
+    // Every write below goes straight into a Filament `MaterialInstance`, which the SDK cannot
+    // observe — the case [rememberRenderInvalidator] exists for, and the one this screen needs
+    // most: the sliders live in the sheet, so their touches never reach `SceneView`'s gesture
+    // detector and nothing else here would wake a parked scene. Without the push, moving
+    // roughness on a still wall repaints nothing.
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(selectedIndex, metallic, roughness, traitAmount) {
         instances[selectedIndex].push(selected, metallic, roughness, traitAmount)
+        renderInvalidator.requestRender()
     }
     // Reset: re-push every material's declared values, not just the selected one.
     LaunchedEffect(resetTick) {
         if (resetTick > 0) {
             library.forEachIndexed { index, material -> instances[index].push(material) }
+            renderInvalidator.requestRender()
         }
     }
 
@@ -347,6 +357,7 @@ private fun StudioSection(
             DemoSettings.qaMode || (inspecting && !animating) -> {
                 sweepMotion.pin()
                 sweepPhase.floatValue = sweepMotion.phase
+                renderInvalidator.requestRender()
             }
             inspecting -> sweepMotion.hold()
             else -> {
@@ -358,6 +369,18 @@ private fun StudioSection(
                         lastNanos = nanos
                         if (animating) sweepMotion.cruise(delta) else settled = sweepMotion.settle(delta)
                         sweepPhase.floatValue = sweepMotion.phase
+                        // The phase is read by [galleryManipulator]'s `yawProvider`, i.e. from
+                        // inside the render loop — which under `FrameRatePolicy.OnDemand` is
+                        // parked while the wall is still. Writing it is therefore invisible to
+                        // the gate: "Animate the camera" flipped the label, this loop ran on the
+                        // *Compose* frame clock, and the picture did not move (measured: 0
+                        // presented frames in 20 s, pixel-identical captures, while a single drag
+                        // woke it and it then held 54 fps on its own). A manipulator advanced
+                        // from outside the render loop is exactly the case
+                        // `CameraGestureDetector.CameraManipulator.isFrameActive` says it cannot
+                        // express and hands to [RenderInvalidator]: sustaining works, the rising
+                        // edge needs a push.
+                        renderInvalidator.requestRender()
                     }
                 }
             }
@@ -402,7 +425,15 @@ private fun StudioSection(
     // stop where the orbit stands, and resuming eases off from there.
     val heroSpin = remember { OrbitSpin() }
     val heroSpinning = rememberUpdatedState(inspecting && animating)
-    LaunchedEffect(DemoSettings.qaMode) { heroSpin.reset() }
+    // Same rising edge as the wall sweep, one level further out: the spin is advanced by the
+    // manipulator on the render clock, so while it runs it keeps itself alive — but the tap that
+    // *starts* it changes nothing the gate can see, and a parked Inspect orbit would never take
+    // off. One push per toggle; the motion sustains itself from there.
+    LaunchedEffect(inspecting && animating) { renderInvalidator.requestRender() }
+    LaunchedEffect(DemoSettings.qaMode) {
+        heroSpin.reset()
+        renderInvalidator.requestRender()
+    }
     // Deep-link zoom override (#1571), as `rememberHeroOrbitCameraManipulator` applies it.
     val heroOrbitRadius = DemoSettings.cameraDistance ?: heroRadius
     val heroManipulator = remember(heroOrbitRadius) {
@@ -599,7 +630,7 @@ private fun StudioSection(
         comparisonCamera.position = Position(sin(yaw) * heroRadius, 0f, cos(yaw) * heroRadius)
         comparisonCamera.lookAt(Position(0f))
     }
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
@@ -828,6 +859,7 @@ private fun StudioSection(
                     inspecting -> heroManipulator
                     else -> galleryManipulator
                 },
+                renderInvalidator = renderInvalidator,
                 onGestureListener = gestureListener,
                 // The wall's positions are the layout; letting the union bounding box
                 // re-centre the scene would move them, and the Compare pair's symmetry about
@@ -1184,7 +1216,7 @@ private fun OcclusionSection(
     // invisible plane — and the ground truth is one tap away, not the other way round.
     var occluderVisible by remember { mutableStateOf(false) }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),

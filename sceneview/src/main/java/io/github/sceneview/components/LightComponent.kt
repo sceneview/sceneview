@@ -53,8 +53,10 @@ interface LightComponent : Component {
      *
      * @see LightManager.Builder.lightChannel
      */
-    fun setLightChannel(@IntRange(from = 0, to = 7) channel: Int, enable: Boolean) =
+    fun setLightChannel(@IntRange(from = 0, to = 7) channel: Int, enable: Boolean) {
         lightManager.setLightChannel(lightInstance, channel, enable)
+        onComponentChanged()
+    }
 
     /**
      * Returns whether a light channel is enabled on a specified renderable.
@@ -75,6 +77,7 @@ interface LightComponent : Component {
         get() = lightManager.getPosition(lightInstance)
         set(value) {
             lightManager.setPosition(lightInstance, value)
+            onComponentChanged()
         }
 
     /**
@@ -87,6 +90,7 @@ interface LightComponent : Component {
         get() = lightManager.getQuaternion(lightInstance)
         set(value) {
             lightManager.setQuaternion(lightInstance, value)
+            onComponentChanged()
         }
 
     /**
@@ -99,6 +103,7 @@ interface LightComponent : Component {
         get() = lightManager.getDirection(lightInstance)
         set(value) {
             lightManager.setDirection(lightInstance, value)
+            onComponentChanged()
         }
 
     /**
@@ -111,7 +116,10 @@ interface LightComponent : Component {
         get() = FloatArray(3).apply {
             lightManager.getColor(lightInstance, this)
         }.toColor()
-        set(value) = lightManager.setColor(lightInstance, value.r, value.g, value.b)
+        set(value) {
+            lightManager.setColor(lightInstance, value.r, value.g, value.b)
+            onComponentChanged()
+        }
 
     /**
      * Dynamically updates the light's intensity
@@ -131,7 +139,10 @@ interface LightComponent : Component {
      */
     var intensity: Float
         get() = lightManager.getIntensity(lightInstance)
-        set(value) = lightManager.setIntensity(lightInstance, value)
+        set(value) {
+            lightManager.setIntensity(lightInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Dynamically updates the light's intensity in candela. The intensity can be negative.
@@ -143,8 +154,10 @@ interface LightComponent : Component {
      *
      * @see LightManager.Builder.intensityCandela
      */
-    fun setIntensityCandela(intensity: Float) =
+    fun setIntensityCandela(intensity: Float) {
         lightManager.setIntensityCandela(lightInstance, intensity)
+        onComponentChanged()
+    }
 
     /**
      * Dynamically updates the light's intensity. The intensity can be negative.
@@ -166,8 +179,10 @@ interface LightComponent : Component {
      * packaging of commercial lightbulbs.
      * @param efficiency Efficiency in percent. This depends on the type of lightbulb used.
      */
-    fun setIntensity(watts: Float, efficiency: Float) =
+    fun setIntensity(watts: Float, efficiency: Float) {
         lightManager.setIntensity(lightInstance, watts, efficiency)
+        onComponentChanged()
+    }
 
     /**
      * The falloff distance for point lights and spot lights.
@@ -179,7 +194,10 @@ interface LightComponent : Component {
      */
     var falloff: Float
         get() = lightManager.getFalloff(lightInstance)
-        set(value) = lightManager.setFalloff(lightInstance, value)
+        set(value) {
+            lightManager.setFalloff(lightInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Dynamically updates a spot light's cone as angles
@@ -189,8 +207,10 @@ interface LightComponent : Component {
      *
      * @see LightManager.Builder.spotLightCone
      */
-    fun setSpotLightCone(inner: Float, outer: Float) =
+    fun setSpotLightCone(inner: Float, outer: Float) {
         lightManager.setSpotLightCone(lightInstance, inner, outer)
+        onComponentChanged()
+    }
 
     /**
      * Dynamically updates the angular radius of a Type.SUN light.
@@ -202,7 +222,10 @@ interface LightComponent : Component {
      */
     var sunAngularRadius: Float
         get() = lightManager.getSunAngularRadius(lightInstance)
-        set(value) = lightManager.setSunAngularRadius(lightInstance, value)
+        set(value) {
+            lightManager.setSunAngularRadius(lightInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Dynamically updates the halo radius of a Type.SUN light
@@ -215,7 +238,10 @@ interface LightComponent : Component {
      */
     var sunHaloSize: Float
         get() = lightManager.getSunHaloSize(lightInstance)
-        set(value) = lightManager.setSunHaloSize(lightInstance, value)
+        set(value) {
+            lightManager.setSunHaloSize(lightInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Dynamically updates the halo falloff of a Type.SUN light.
@@ -229,7 +255,10 @@ interface LightComponent : Component {
      */
     var sunHaloFalloff: Float
         get() = lightManager.getSunHaloFalloff(lightInstance)
-        set(value) = lightManager.setSunHaloFalloff(lightInstance, value)
+        set(value) {
+            lightManager.setSunHaloFalloff(lightInstance, value)
+            onComponentChanged()
+        }
 
     /**
      * Whether this Light casts shadows (disabled by default)
@@ -239,7 +268,10 @@ interface LightComponent : Component {
      */
     var isShadowCaster: Boolean
         get() = lightManager.isShadowCaster(lightInstance)
-        set(value) = lightManager.setShadowCaster(lightInstance, value)
+        set(value) {
+            lightManager.setShadowCaster(lightInstance, value)
+            onComponentChanged()
+        }
 
     /** The outer cone angle of this spot light in radians. */
     val outerConeAngle: Float get() = lightManager.getOuterConeAngle(lightInstance)

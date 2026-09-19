@@ -63,6 +63,32 @@ LightNode(
 )
 ```
 
+## Rendering cadence (4.38.0)
+
+`SceneView(isRendering:)` / `Scene(isRendering:)` are **removed**, with no
+deprecated overload — the compile error is the migration notice.
+
+| Old | New |
+| --- | --- |
+| `isRendering = true` | `frameRatePolicy = FrameRatePolicy.Continuous()` |
+| `isRendering = false` + hand-rolled `isDirty` / `dirtyToken` / `LaunchedEffect { delay(200) }` | nothing — delete it, `FrameRatePolicy.OnDemand()` is the default |
+
+`OnDemand` draws only when the picture changes and parks otherwise; the library
+tracks the change itself, so do not rewrite the old boolean as a flag you
+compute. A cap is an argument of either mode (`OnDemand(maxFps = 30)`), never a
+third case, and must be `null` or strictly positive.
+
+Two things it cannot see: a **recomposition is not a change** (invalidation
+comes from what changed, not from the composable running again), and a write
+made straight into Filament — a `MaterialInstance` parameter, a light through
+`LightManager`, a `Skybox` / `IndirectLight` on the Filament `Scene`, bone or
+morph writes through `RenderableManager`. After one of those, call
+`node.requestRender()` or `rememberRenderInvalidator()` +
+`SceneView(renderInvalidator = …)`, on the main thread.
+
+**`ARSceneView` takes no `frameRatePolicy`** — do not add one: a live camera
+feed is never idle, so its loop never parks.
+
 ## Common compile errors and fixes
 
 1. `Type mismatch: expected Direction, got Position` — `LightNode.direction`

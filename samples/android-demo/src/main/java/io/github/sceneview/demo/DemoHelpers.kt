@@ -368,7 +368,7 @@ fun rememberArPlaybackDataset(): File? {
  * can flip the scrim off exactly when the scene is really on screen:
  *
  * ```kotlin
- * val firstFrame = rememberFirstFrameState()
+ * val firstFrame = rememberFirstFrameState(engine)
  * DemoScaffold(title = …, onBack = onBack, firstFrameRendered = firstFrame.rendered) {
  *     SceneView(onFrame = firstFrame.onFrame, …) { … }
  * }
@@ -386,15 +386,37 @@ fun rememberArPlaybackDataset(): File? {
  * "Still loading…" card, which is what the QA screenshot (taken at ~11 s), the
  * store capture and the bug reporter all recorded.
  *
- * So the signal is **sustained cadence**, not count:
- * [READY_FRAME_STREAK] presented frames in a row, each within
- * [CAUGHT_UP_INTERVAL_MILLIS] of the one before, mean the loop is no longer
- * waiting on the driver — so what the surface shows is current. A single close
- * pair is not enough: a warming driver still emits one now and then between its
- * long stalls, which is why a one-interval test lifted the cover at ~3 s while the
- * viewport stayed black to ~10 s. A device that never reaches that cadence is not
- * left under the cover forever — `DemoScaffold` still gives way to its
- * "Still loading…" card after 12 s.
+ * ### Why sustained cadence is not the signal either (#3108)
+ *
+ * The first answer to the paragraph above was a **cadence streak**: eight presented
+ * frames in a row, each within 250 ms of the one before, on the reasoning that a
+ * loop running at speed is a loop no longer waiting on the driver. That reasoning
+ * silently assumed a loop that keeps ticking — true when every `SceneView` drew
+ * every vsync forever, false the moment rendering became on-demand.
+ *
+ * Measured on `emulator-5554` after the switch: `model-viewer` and `splat-preview`
+ * present **3 frames in 10 s** and then park, with the model fully drawn and lit on
+ * screen. The streak needs eight and can never be paid, so `rendered` stayed
+ * `false`, and at 12 s `DemoScaffold` replaced the spinner with its "Still loading…"
+ * card — permanently, over a finished scene. Nudging the camera restarted the loop,
+ * completed the streak and dismissed the card, which is the proof: the signal was
+ * reading the *frame rate* and reporting it as *progress*.
+ *
+ * **A readiness signal must never depend on cadence. A parked scene is a ready
+ * scene** — parking is what the renderer does when there is nothing left to draw.
+ *
+ * ### The signal
+ *
+ * [READY_PRESENTED_FRAMES] presented frames, **at any interval**, and then one
+ * [Engine.flushAndWait] — which blocks until the backend has actually executed the
+ * queued work rather than merely accepted it. That is the driver truth the streak
+ * was trying to infer from timing, asked directly.
+ *
+ * Two frames rather than one because Filament applies backpressure: a *second*
+ * accepted submission is itself the evidence that the first was drained. Neither
+ * number is a cadence — a scene that presents its two frames 1.5 s apart during
+ * shader compilation waits exactly as long as it should, and a scene that presents
+ * them in the settle tail and parks is ready in 33 ms.
  *
  * @property rendered Read in the scaffold — `false` until the scene is really on
  *                    screen, then `true`. Never goes back to `false`.
@@ -403,52 +425,39 @@ fun rememberArPlaybackDataset(): File? {
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
+    private val engine: com.google.android.filament.Engine? = null,
 ) {
-    /** Timestamp of the previous presented frame, or `0L` before the first one. */
-    private var previousFrameTimeNanos: Long = 0L
-
-    /** How many presented frames in a row have arrived within [CAUGHT_UP_INTERVAL_MILLIS]. */
-    private var streak: Int = 0
+    /** How many frames the scene has presented so far, capped once [rendered] latches. */
+    private var presentedFrames: Int = 0
 
     val rendered: androidx.compose.runtime.State<Boolean> get() = renderedState
 
-    val onFrame: (frameTimeNanos: Long) -> Unit = { frameTimeNanos ->
+    val onFrame: (frameTimeNanos: Long) -> Unit = {
         if (!renderedState.value) {
-            val previous = previousFrameTimeNanos
-            previousFrameTimeNanos = frameTimeNanos
-            // `previous == 0L` is the very first presented frame — there is no interval to
-            // judge yet, so it only seeds the comparison.
-            streak = if (previous != 0L &&
-                frameTimeNanos - previous <= CAUGHT_UP_INTERVAL_MILLIS * 1_000_000L
-            ) {
-                streak + 1
-            } else {
-                0
+            presentedFrames++
+            if (presentedFrames >= READY_PRESENTED_FRAMES) {
+                // Blocks until the backend has executed what those frames queued. On a
+                // software GL this is the whole material-link time; on hardware it is ~100 ms.
+                // The cover is a static image, so the wait is invisible — and it is the only
+                // thing here that speaks to the driver rather than about it.
+                runCatching { engine?.flushAndWait() }
+                renderedState.value = true
             }
-            if (streak >= READY_FRAME_STREAK) renderedState.value = true
         }
     }
 }
 
 /**
- * Longest gap between two presented frames that still counts as "the render loop has caught
- * up with the driver" ([FirstFrameState]).
+ * Presented frames [FirstFrameState] needs, **at any interval**, before it flushes the backend
+ * and calls the scene visible.
  *
- * 250 ms — 4 fps — sits far below the ~1.5 s per frame a warming Filament driver produces and
- * far above any frame rate a device would sustain in normal use, so it separates the two
- * regimes without stranding a genuinely slow device under the loading cover.
+ * Two, and the second one carries the argument: Filament refuses a new frame while the driver
+ * is behind, so a second accepted submission proves the first was drained. One frame would
+ * prove only that the loop asked. Anything larger re-introduces the failure this replaced —
+ * a render-on-demand scene presents a handful of frames and parks, so a threshold above what
+ * the settle tail pays is a threshold that is never reached.
  */
-private const val CAUGHT_UP_INTERVAL_MILLIS = 250L
-
-/**
- * Consecutive on-cadence presented frames [FirstFrameState] needs before it calls the scene
- * visible.
- *
- * 8 frames is ~133 ms once the loop runs at 60 fps — imperceptible — but unreachable for a
- * driver that is presenting 4 frames in 6 s, which is what the warm-up regime looks like.
- * The streak resets on every long gap, so one lucky close pair mid-warm-up cannot satisfy it.
- */
-private const val READY_FRAME_STREAK = 8
+private const val READY_PRESENTED_FRAMES = 2
 
 /**
  * Is the viewport showing something worth looking at?
@@ -468,13 +477,20 @@ internal fun demoSceneReady(firstFrameRendered: Boolean?): Boolean = firstFrameR
 /**
  * Remembers a [FirstFrameState] for wiring the [DemoScaffold] loading scrim to a
  * SceneView's first presented frame. See [FirstFrameState] for the usage pattern.
+ *
+ * @param engine the scene's engine. Optional only so a preview or a test can leave it out:
+ *               without it the cover lifts on the presented-frame count alone, which says the
+ *               loop accepted the work but not that the backend finished it. Pass the same
+ *               `rememberEngine()` the `SceneView` uses.
  */
 @Composable
-fun rememberFirstFrameState(): FirstFrameState {
+fun rememberFirstFrameState(
+    engine: com.google.android.filament.Engine? = null,
+): FirstFrameState {
     val rendered = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    return androidx.compose.runtime.remember { FirstFrameState(rendered) }
+    return androidx.compose.runtime.remember(engine) { FirstFrameState(rendered, engine) }
 }
 
 /**
@@ -909,6 +925,31 @@ class HeroOrbitCameraManipulator(
             }
         }
     }
+
+    /**
+     * `true` while the camera is **waiting** rather than moving: the countdown [settle] runs
+     * between the last gesture and the hand-back, and the ease that carries the user's framing
+     * home afterwards.
+     *
+     * Both advance from [update] / [getTransform], so both only exist while the render loop
+     * runs — and under [io.github.sceneview.FrameRatePolicy.OnDemand] the loop parks about half a
+     * second after the camera stops moving, which is well inside the three seconds
+     * [resumeAfterMillis] asks for. Without this the loop would park on the user's pose and the
+     * idle orbit would never come back: the auto-orbit of #3700 would simply stop existing under
+     * the new default. Worse, whatever woke the loop minutes later would find the deadline missed
+     * by more than `UNWATCHED_MARGIN_NANOS` and cut straight to the authored pose — the very jump
+     * #3700 removed.
+     *
+     * It goes `false` as soon as the hand-back has happened and the ease has landed, so a screen
+     * the user never touches still parks: the cost is the three seconds after a gesture, on a
+     * screen whose turntable is about to render continuously anyway.
+     */
+    override val isFrameActive: Boolean
+        get() = isResumePending || carried.isEasing
+
+    /** The [settle] countdown is armed and has not fired yet. */
+    private val isResumePending: Boolean
+        get() = fallback != null && grabEndTimeNanos != 0L && resumeAfterMillis > 0L
 
     override fun setViewport(width: Int, height: Int) {
         viewportW = width.coerceAtLeast(1)

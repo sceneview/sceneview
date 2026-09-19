@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.LightManager
 import io.github.sceneview.ExperimentalSceneViewApi
+import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -94,6 +95,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
@@ -366,8 +368,13 @@ private fun AnimationSection(
     // to keep the soldier lit in step with the bright sky behind it (#1468) — a lower
     // value left the model looking like an unlit black silhouette. Re-runs whenever the
     // active environment OR the slider value change, so dragging it updates in real time.
+    val renderInvalidator = rememberRenderInvalidator()
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
+        // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
+        // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
+        // ambient would sit there with no frame coming to show it (#3718).
+        renderInvalidator.requestRender()
     }
 
     // Captured ref to the ModelNode once it's created — used by the LaunchedEffect
@@ -777,7 +784,47 @@ private fun AnimationSection(
         source = (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
+
+    // ── Who keeps this screen awake (#3718) ──────────────────────────────────────────────
+    //
+    // This screen animates from its own clock, and `onFrame` fires *after* a frame reached
+    // the surface — so the callback that advances the clip cannot also be the thing that
+    // asks for the next frame. Under render-on-demand that closes on itself: the scene
+    // settles, parks, `onFrame` stops, the clip stops, and the soldier stands still from the
+    // moment the screen opens. Nothing in the SDK can see it either — `applyAnimation` /
+    // `updateBoneMatrices` write bone matrices straight into Filament, and the
+    // `onWorldTransformChanged()` below only invalidates the node's world-space cache;
+    // `onTransformChanged()` is the one that pushes an invalidation, and an animator
+    // write-back never goes through it.
+    //
+    // Two different answers, because these are two different questions:
+    //
+    //  * **while it plays** the screen genuinely wants every vsync — that is what
+    //    [FrameRatePolicy.Continuous] is for, and it also lets the cadence vote tell the
+    //    panel. Pausing hands the screen back to on-demand.
+    //  * **while it is paused** a scrub, a clip chip or the blend slider moves the pose with
+    //    no clock running. The pose is applied *here*, outside the loop, and
+    //    [renderInvalidator] asks for the one frame that shows it. Applying it from
+    //    `onFrame` instead would draw the previous pose and park — one frame behind, for good.
+    val playing = isPlaying && !DemoSettings.qaMode
+    val applyPose: (ModelNodeImpl) -> Unit = { animatedNode ->
+        val animator = animatedNode.animator
+        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
+            val blendDuration = animator.getAnimationDuration(blendIndex)
+            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
+            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
+        } else animator.applyAnimation(selectedAnim, clipTime)
+        animator.updateBoneMatrices()
+        animatedNode.onWorldTransformChanged()
+    }
+    LaunchedEffect(playing, clipTime, selectedAnim, blendIndex, blendWeight, modelNodeRef.value) {
+        if (playing) return@LaunchedEffect
+        val animatedNode = modelNodeRef.value ?: return@LaunchedEffect
+        if (selectedAnim !in animationNames.indices || duration <= 0f) return@LaunchedEffect
+        applyPose(animatedNode)
+        renderInvalidator.requestRender()
+    }
 
     DemoScaffold(
         bottomOverlayReservesScene = true,
@@ -1016,21 +1063,26 @@ private fun AnimationSection(
                     if (animatedNode != null && selectedAnim in animationNames.indices && duration > 0f) {
                         val previous = previousFrame[0]
                         previousFrame[0] = nanos
-                        if (isPlaying && !DemoSettings.qaMode && previous != 0L) {
+                        // Advance the clip only while playing. The paused pose is applied by the
+                        // `LaunchedEffect` above, not here: `onFrame` runs after the frame it is
+                        // named for was already presented.
+                        if (playing && previous != 0L) {
                             val next = clipTime + ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f) * speed
                             clipTime = if (loop) next % duration else next.coerceAtMost(duration)
                             if (!loop && clipTime >= duration) isPlaying = false
+                            applyPose(animatedNode)
                         }
-                        val animator = animatedNode.animator
-                        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
-                            val blendDuration = animator.getAnimationDuration(blendIndex)
-                            animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
-                            animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
-                        } else animator.applyAnimation(selectedAnim, clipTime)
-                        animator.updateBoneMatrices()
-                        animatedNode.onWorldTransformChanged()
                     }
                 },
+                // Continuous *only* while the clip is running — see the block above
+                // `DemoScaffold`. Pausing returns the screen to on-demand, and a paused scene
+                // here presents nothing at all.
+                frameRatePolicy = if (playing) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
+                },
+                renderInvalidator = renderInvalidator,
                 engine = engine,
                 modelLoader = modelLoader,
                 environmentLoader = environmentLoader,
@@ -1183,6 +1235,12 @@ private fun PhysicsSection(
     var collisions by remember { mutableIntStateOf(0) }
     val simulation = remember(generation) { DemoCollisionReplay() }
 
+    // Whether the simulation still has visible work, measured from the bodies rather than assumed
+    // from `replaying` (#3718). `replaying` is intent — "the user has not paused" — and it starts
+    // `true`; it said nothing about the stack having come to rest half a minute ago. Keyed on
+    // `generation` so a replay, a reset or an added body starts the window over.
+    var simulationMoving by remember(generation) { mutableStateOf(true) }
+
     // ── Tray tilt (#3621) ────────────────────────────────────────────────────
     // `tiltEnabled` swaps what a one-finger drag over the viewport does: OFF (default) it orbits
     // the camera exactly as before, ON it tips the tray. Nothing about the camera manipulator
@@ -1236,7 +1294,13 @@ private fun PhysicsSection(
     val trayGravity = remember(pitchAnim.value, rollAnim.value) {
         trayLocalGravity(pitchAnim.value, rollAnim.value)
     }
-    LaunchedEffect(simulation, trayGravity) { simulation.gravity = trayGravity }
+    LaunchedEffect(simulation, trayGravity) {
+        simulation.gravity = trayGravity
+        // A new slope wakes every body (`PhysicsBody.gravity` clears `isAsleep`), so the settle
+        // window has to start over or a parked screen would never see them start rolling.
+        simulation.restartSettle()
+        simulationMoving = true
+    }
 
     // Nudging the tray implies "run it": a tilt with the simulation parked reads as a broken
     // control. Levelling does not force playback back on.
@@ -1268,7 +1332,7 @@ private fun PhysicsSection(
         lookAt(Position(0f, -0.35f, 0f))
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_animation_physics_title),
@@ -1446,6 +1510,22 @@ private fun PhysicsSection(
                     simulation.onFrame(nanos, replaying && simulation.bodies.size == bodyCount)
                     liveBodyCount = simulation.bodies.size
                     collisions = simulation.collisions
+                    simulationMoving = simulation.isMoving
+                },
+                // The simulation is stepped from `onFrame`, which fires only *after* a frame
+                // reached the surface — so it cannot be what keeps the loop awake (#3718). A
+                // replay that is *still moving something* wants every vsync, and says so; `Pause`,
+                // and equally a stack that has come to rest, hand the screen back to on-demand,
+                // where the tray still repaints on a tilt drag because `Node.position` /
+                // `Node.rotation` invalidate on their own.
+                //
+                // `simulationMoving` is measured, not declared: `replaying` alone kept 878 frames
+                // per 15 s running on a settled stack, because it only ever went false when the
+                // user pressed Reset.
+                frameRatePolicy = if (replaying && simulationMoving) {
+                    FrameRatePolicy.Continuous()
+                } else {
+                    FrameRatePolicy.OnDemand()
                 },
                 cameraManipulator = rememberCameraManipulator(
                     orbitHomePosition = cameraNode.worldPosition
@@ -1646,6 +1726,23 @@ private const val PHYSICS_STEP_NANOS = 8_333_333L
  */
 private const val PHYSICS_IMPACT_SPEED = 0.2f
 
+/**
+ * How long every body has to stay put before the screen stops declaring continuous rendering.
+ * Matches the SDK's own settle window (`SETTLE_DURATION_NANOS`), and for the same reason: a ball at
+ * the apex of its bounce is motionless for one frame without being finished.
+ */
+private const val PHYSICS_SETTLE_NANOS = 500_000_000L
+
+/** Squared displacement below which a body counts as not having moved: 0.1 mm. */
+private const val MOTION_EPSILON_SQ = 1e-8f
+
+private fun distanceSquared(a: Position, b: Position): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    val dz = a.z - b.z
+    return dx * dx + dy * dy + dz * dz
+}
+
 /** Tilt is clamped well short of the angle at which the rails stop being able to hold a ball. */
 private const val PHYSICS_MAX_TILT_DEGREES = 20f
 
@@ -1665,8 +1762,56 @@ private fun physicsStartPosition(index: Int): Position = when (index) {
 }
 
 /** A deterministic sphere-contact demonstration, deliberately local to this sample. */
+/**
+ * Turns "did anything actually move?" into the answer a [FrameRatePolicy.Continuous] declaration is
+ * allowed to rest on (#3718).
+ *
+ * The physics screen used to declare `Continuous()` from a `replaying` flag that started `true` and
+ * was cleared only by the Reset button. The stack of spheres therefore held 878 frames per 15 s on a
+ * picture identical to the byte — the same lie as a loading flag nobody lowers. A declaration of
+ * continuous rendering has to follow real motion, so this watches the thing that would be visible:
+ * the bodies' positions, with a settle window rather than a single still frame, because a ball at
+ * the top of its bounce is motionless for one frame and is not finished.
+ */
+internal class MotionSettleTracker(private val settleNanos: Long = PHYSICS_SETTLE_NANOS) {
+
+    private var lastMotionNanos: Long? = null
+
+    /** True while something moved within the last [settleNanos]. Starts `true`: nothing seen yet. */
+    var isMoving: Boolean = true
+        private set
+
+    fun update(frameTimeNanos: Long, moved: Boolean) {
+        val since = lastMotionNanos
+        if (moved || since == null) {
+            lastMotionNanos = frameTimeNanos
+            isMoving = true
+            return
+        }
+        isMoving = frameTimeNanos - since < settleNanos
+    }
+
+    /** Re-arms the window: a replay, a new body or a tilt is motion that has not happened yet. */
+    fun restart() {
+        lastMotionNanos = null
+        isMoving = true
+    }
+}
+
 private class DemoCollisionReplay {
     val bodies = sortedMapOf<Int, PhysicsBody>()
+
+    private val settle = MotionSettleTracker()
+    private val previousPositions = mutableMapOf<Int, Position>()
+
+    /**
+     * Whether the simulation still has visible work. Read by the composable to decide between
+     * [FrameRatePolicy.Continuous] and [FrameRatePolicy.OnDemand] — see [MotionSettleTracker].
+     */
+    val isMoving: Boolean get() = settle.isMoving
+
+    /** Called when the population or the slope changes: the settle window starts over. */
+    fun restartSettle() = settle.restart()
 
     /**
      * Gravity in the tray's frame, pushed onto every body at the top of each step. Held here
@@ -1682,12 +1827,36 @@ private class DemoCollisionReplay {
     fun onFrame(nanos: Long, playing: Boolean) {
         val elapsed = if (previousFrame == 0L) 0L else (nanos - previousFrame).coerceIn(0L, 100_000_000L)
         previousFrame = nanos
-        if (!playing) return
+        if (!playing) {
+            settle.update(nanos, moved = false)
+            return
+        }
         accumulatedNanos += elapsed
         while (accumulatedNanos >= PHYSICS_STEP_NANOS) {
             step()
             accumulatedNanos -= PHYSICS_STEP_NANOS
         }
+        settle.update(nanos, moved = takeMotionSinceLastFrame())
+    }
+
+    /**
+     * Whether any body ended this frame somewhere the eye could tell from where it started it.
+     * The threshold is a tenth of a millimetre — three orders of magnitude under a sphere radius,
+     * so it cannot hide motion, and above the float noise a resting contact keeps producing.
+     */
+    private fun takeMotionSinceLastFrame(): Boolean {
+        var moved = false
+        for ((index, body) in bodies) {
+            val position = body.node.position
+            val previous = previousPositions.put(index, position)
+            if (moved) continue
+            moved = previous == null || distanceSquared(previous, position) > MOTION_EPSILON_SQ
+        }
+        if (previousPositions.size != bodies.size) {
+            previousPositions.keys.retainAll(bodies.keys)
+            moved = true
+        }
+        return moved
     }
 
     private fun step() {
