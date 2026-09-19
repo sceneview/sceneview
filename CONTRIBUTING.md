@@ -138,32 +138,30 @@ legacy `sdkmanager` from `cmdline-tools`.
 
 ---
 
-## AI-assisted workflow (recommended)
+## AI-assisted workflow
 
-SceneView ships with a full Claude Code setup so you can contribute with AI assistance
-from the first keystroke — no context-gathering needed.
+Contribute with whichever assistant you already use. No tool is recommended over another.
 
-### Quick start
+### Rules files
 
-1. Install [Claude Code](https://claude.ai/code)
-2. Clone the repo and open it: `claude` inside the project root
-3. Run `/contribute` — Claude walks you through the entire workflow
+A checkout carries the repository conventions under each of the filenames these tools
+look for, so yours picks them up with no setup (alphabetical):
 
-See [CLAUDE.md](CLAUDE.md) for the full module map, architecture overview, threading rules, and AI contributor guidelines.
-
-### Available slash commands
-
-| Command | What it does |
+| Read by | File |
 |---|---|
-| `/contribute` | Full guided workflow from understanding to PR |
-| `/review` | Checks threading rules, Compose API, Kotlin style, module boundaries |
-| `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
-| `/review --coverage` | Audits coverage and generates missing tests |
+| Claude Code | `CLAUDE.md` |
+| Codex, and any agent following the AGENTS.md convention | `AGENTS.md` |
+| Cursor | `.cursorrules` — legacy single file, still read; current rules live in `.cursor/rules/*.mdc` and `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+| Windsurf / Devin | `.windsurfrules` — legacy single file, still read; current rules live in `.devin/rules/` (or `.windsurf/rules/`) and `AGENTS.md` |
 
-### MCP server (optional)
+Point your assistant at [AGENTS.md](AGENTS.md) and ask for the workflow you want.
+[CLAUDE.md](CLAUDE.md) carries the module map, architecture overview and threading rules
+in the most detail.
 
-If you use Claude Desktop or another MCP-compatible editor, add the SceneView MCP server
-for full API context in any chat:
+### MCP server
+
+The SceneView MCP server gives any MCP client the full API context:
 
 ```json
 {
@@ -173,14 +171,32 @@ for full API context in any chat:
 }
 ```
 
-### ChatGPT / Codex
+Where that JSON lives, and what its keys are called, differs per client — per-tool setup
+is in [docs/docs/ai-development.md](docs/docs/ai-development.md).
 
-The repository is also an OpenAI plugin — `.codex-plugin/plugin.json` points at the three
-skills under [`agents/`](agents/). Install it into Codex from your checkout:
+### Slash commands
+
+Slash commands are a Claude Code feature, so this section is specific to it. Working in
+the repo with another assistant? `AGENTS.md` describes the same workflows in prose — ask
+for them by name.
+
+| Command | What it does |
+|---|---|
+| `/contribute` | Full guided workflow from understanding to PR |
+| `/review` | Checks threading rules, Compose API, Kotlin style, module boundaries |
+| `/document` | Generates/updates KDoc and `llms.txt` for changed APIs |
+| `/review --coverage` | Audits coverage and generates missing tests |
+
+### Codex plugin and skills
+
+The repository is also a Codex plugin. The three skills under [`agents/`](agents/) are
+mirrored at `.agents/skills/`, which Codex scans from the working directory up to the
+repository root, and `.agents/plugins/marketplace.json` declares the local marketplace
+(`.codex-plugin/plugin.json` is kept as the compatibility fallback). To install it from
+your checkout:
 
 ```bash
-codex plugin marketplace add "$PWD"    # absolute path — a relative one does not resolve
-codex plugin add sceneview@sceneview-local
+codex plugin marketplace add .
 ```
 
 [AGENTS.md](AGENTS.md) carries the rules a delegated Codex session must respect — it
