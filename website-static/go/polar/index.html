@@ -9,67 +9,48 @@
 
   The old URL was live and has been shared outside the site, so it keeps
   answering 200 instead of starting to 404. `noindex, follow` plus a canonical
-  link so search engines consolidate on `/go/sponsor`; sitemap.xml lists
+  link so search engines consolidate on `/go/sponsor/`; sitemap.xml lists
   `/go/sponsor` only and never listed this path.
 
-  The GA4 loader and the `go_redirect` event are deliberately gone: a stub is
-  not a funnel step, and dropping them lets the policy below be the narrowest
-  on the site.
+  No script, so the GA4 loader and the `go_redirect` event are gone with the
+  interstitial — a stub is not a funnel step — and the content-security policy
+  below is the same one `/claude-3d.html` carries: no `script-src` at all, so
+  `default-src 'self'` forbids inline script. Every other page on the site
+  reads `localStorage['sceneview-theme']` from a bootstrap in `<head>`, but
+  paying for that here means allowing `'unsafe-inline'` on a page that exists
+  to be left within one frame. `color-scheme` plus `prefers-color-scheme` gets
+  the background right for the system theme without a byte of JavaScript.
 -->
 <html lang="en">
 <head>
-  <!-- `script-src 'self' 'unsafe-inline'` is here for exactly one thing: the
-       theme bootstrap below. Without it this stub would be the only page on the
-       site that cannot read the visitor's stored theme, and it would render dark
-       on a light system. No CDN, no analytics origin, no 'unsafe-eval' — the
-       stub loads no external script at all. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
-  <script>
-    (function() {
-      try {
-        var t = localStorage.getItem('sceneview-theme');
-        if (t !== 'dark' && t !== 'light') {
-          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', t);
-      } catch(e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
-    })();
-  </script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Support SceneView</title>
-  <meta name="description" content="The SceneView support page has moved to /go/sponsor.">
+  <meta name="description" content="The SceneView support page has moved to /go/sponsor/.">
   <meta name="robots" content="noindex, follow">
-  <link rel="canonical" href="https://sceneview.github.io/go/sponsor">
-  <meta http-equiv="refresh" content="0; url=/go/sponsor">
+  <link rel="canonical" href="https://sceneview.github.io/go/sponsor/">
+  <meta http-equiv="refresh" content="0; url=/go/sponsor/">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
-    /* The @media block is the no-JS path and comes after the :root defaults it
-       overrides; `:not([data-theme="dark"])` leaves a stored dark choice alone,
-       and the explicit [data-theme="light"] rule after it wins the other way.
-       Ratios measured on the rendered pixel, both themes, 375 / 768 / 1280px. */
+    /* `color-scheme` lets the UA paint the canvas, scrollbars and any form
+       control for the active theme; the @media block comes after the :root
+       defaults it overrides. Ratios measured on the rendered pixel, both
+       themes, 375 / 768 / 1280px. */
     :root {
       color-scheme: dark light;
       --bg: #0D2137;
-      --fg: #f0f4f8;   /* 14.7:1 */
-      --muted: #b8c7d9; /* 9.49:1 */
-      --link: #8ab4f8;  /* 7.62:1 */
+      --fg: #f0f4f8;   /* 14.73:1 */
+      --muted: #b8c7d9; /* 9.47:1 */
+      --link: #8ab4f8;  /* 7.73:1 */
     }
     @media (prefers-color-scheme: light) {
-      :root:not([data-theme="dark"]) {
+      :root {
         --bg: #f5f8fc;
-        --fg: #0d2137;   /* 15.3:1 */
-        --muted: #45586c; /* 6.96:1 */
-        --link: #005bc1;  /* 5.97:1 */
+        --fg: #0d2137;   /* 15.29:1 */
+        --muted: #45586c; /* 6.88:1 */
+        --link: #005bc1;  /* 6.04:1 */
       }
-    }
-    :root[data-theme="light"] {
-      --bg: #f5f8fc;
-      --fg: #0d2137;
-      --muted: #45586c;
-      --link: #005bc1;
     }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -86,7 +67,7 @@
 <body>
   <main>
     <h1>This page has moved</h1>
-    <p>Support for SceneView now lives at <a href="/go/sponsor">sceneview.github.io/go/sponsor</a>.</p>
+    <p>Support for SceneView now lives at <a href="/go/sponsor/">sceneview.github.io/go/sponsor</a>.</p>
   </main>
 </body>
 </html>

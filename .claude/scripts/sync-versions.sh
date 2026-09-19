@@ -464,9 +464,11 @@ fi
 # there is nothing to diff or fix here — the same "no committed generated
 # artefact" decision as #1928 (`mcp/src/generated/llms-txt.ts`).
 #
-# `check-llms-drift.sh` (wired into `quality-gate.sh`) now enforces the
-# structural invariant — that `docs/docs/llms.txt` stays untracked — so a
-# committed copy can never silently reappear.
+# Nothing enforces that invariant today. `check-llms-drift.sh` and
+# `quality-gate.sh`, which this comment used to credit, both went with the
+# local harness in #3244 and no workflow replaced them. `.gitignore` is the
+# whole mechanism: it stops a plain `git add docs/docs/llms.txt`, it does not
+# stop `git add -f`, and no check would go red if a committed copy landed.
 
 # ─── 5b-bis. MCP generated bundle (issue #1928) ───────────────────────────
 # `mcp/src/generated/llms-txt.ts` used to be a committed artefact that this

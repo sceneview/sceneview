@@ -135,21 +135,6 @@
   background: #222b3a;
 }
 
-/* Sits inside .tabs__panels, so it needs the next step up, not the same tone. */
-[data-theme="dark"] .mcp-tool-card {
-  background: #323a47;
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-/* The snippet inside the card has no background of its own, so once the card was
-   lifted the syntax colours lost their near-black backdrop (purple fell to 4.34:1).
-   Give the snippet the code tone back. */
-[data-theme="dark"] .mcp-tool-card__code {
-  background: #1b2230;
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
 [data-theme="dark"] .code-card,
 [data-theme="dark"] .ai-section .code-block,
 [data-theme="dark"] .usecase-card__code,
@@ -1500,73 +1485,6 @@ ul { list-style: none; }
 .mcp-install__divider::before { left: 0; }
 .mcp-install__divider::after { right: 0; }
 
-/* AI tools grid */
-.mcp-tools-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  width: 100%;
-}
-
-.mcp-tool-card {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(203, 213, 225, 0.1);
-  border-radius: 10px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mcp-tool-card__header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(203, 213, 225, 0.8);
-}
-
-.mcp-tool-card__name {
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
-
-/* Same role as .mcp-tool-card__logo, for a tool whose brand mark we do not
-   redistribute. Sized to the 18px logo box; colour comes from the header. */
-.mcp-tool-card__glyph {
-  flex-shrink: 0;
-  font-size: 18px;
-  line-height: 1;
-  color: inherit;
-}
-
-.mcp-tool-card__badge {
-  font-size: 0.625rem;
-  font-weight: 600;
-  background: rgba(203, 213, 225, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: rgba(203, 213, 225, 0.85);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.mcp-tool-card__file {
-  font-size: 0.6875rem;
-  font-family: var(--font-mono);
-  color: rgba(203, 213, 225, 0.78);
-}
-
-.mcp-tool-card__code {
-  font-size: 0.6875rem;
-  line-height: 1.6;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-@media (max-width: 640px) {
-  .mcp-tools-grid { grid-template-columns: 1fr; }
-}
 
 .code-block {
   margin: 0;
@@ -2548,9 +2466,11 @@ ul { list-style: none; }
   object-fit: contain;
 }
 
+/* `apple.svg` and `jetbrains.svg` are the only two black-only marks this class
+   ever carries — see the ten `.platform-card-v2__icon-img` tags in index.html.
+   A `githubcopilot.svg` arm sat here too; no card has ever had that src. */
 [data-theme="dark"] .platform-card-v2__icon-img[src$="apple.svg"],
-[data-theme="dark"] .platform-card-v2__icon-img[src$="jetbrains.svg"],
-[data-theme="dark"] .platform-card-v2__icon-img[src$="githubcopilot.svg"] {
+[data-theme="dark"] .platform-card-v2__icon-img[src$="jetbrains.svg"] {
   filter: invert(1) brightness(1.4);
 }
 
@@ -2586,20 +2506,6 @@ ul { list-style: none; }
   height: 20px;
   object-fit: contain;
   flex-shrink: 0;
-}
-
-/* MCP tool card logo */
-.mcp-tool-card__logo {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-[data-theme="dark"] .mcp-tool-card__logo[src$="cursor.svg"],
-[data-theme="dark"] .mcp-tool-card__logo[src$="windsurf.svg"],
-[data-theme="dark"] .mcp-tool-card__logo[src$="githubcopilot.svg"] {
-  filter: invert(1) brightness(1.4);
 }
 
 .platform-card-v2__icon--green { color: #22c55e; }

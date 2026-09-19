@@ -9,29 +9,20 @@
   `noindex, follow` + a canonical link so search engines consolidate on
   `/ai-3d.html` rather than indexing this stub. sitemap.xml lists the new URL
   only.
+
+  No script, and the content-security policy stays exactly as it was: the
+  theming is pure CSS. Every other page on the site reads
+  `localStorage['sceneview-theme']` from a bootstrap in `<head>`, but paying
+  for that here means allowing `'unsafe-inline'` in `script-src` on a page
+  that exists to be left within one frame. `color-scheme` plus
+  `prefers-color-scheme` gets the background right for the system theme
+  without a single byte of JavaScript; a visitor whose stored site choice
+  differs from their system one sees the system one, for as long as a 0s
+  redirect lasts.
 -->
 <html lang="en">
 <head>
-  <!-- `script-src 'self' 'unsafe-inline'` is here for exactly one thing: the
-       theme bootstrap below. Without it the stub was the only page on the site
-       that could not read the visitor's stored theme, and it rendered dark on a
-       light system. It is still the narrowest policy of any page here — no CDN,
-       no analytics origin, no 'unsafe-eval' — and the stub loads no external
-       script at all. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
-  <script>
-    (function() {
-      try {
-        var t = localStorage.getItem('sceneview-theme');
-        if (t !== 'dark' && t !== 'light') {
-          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', t);
-      } catch(e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
-    })();
-  </script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI-Powered 3D — SceneView</title>
@@ -41,30 +32,24 @@
   <meta http-equiv="refresh" content="0; url=/ai-3d.html">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
-    /* The @media block is the no-JS path and comes after the :root defaults it
-       overrides; `:not([data-theme="dark"])` leaves a stored dark choice alone,
-       and the explicit [data-theme="light"] rule after it wins the other way.
-       Ratios measured on the rendered pixel, both themes, 375 / 768 / 1280px. */
+    /* `color-scheme` lets the UA paint the canvas, scrollbars and any form
+       control for the active theme; the @media block comes after the :root
+       defaults it overrides. Ratios measured on the rendered pixel, both
+       themes, 375 / 768 / 1280px. */
     :root {
       color-scheme: dark light;
       --bg: #0D2137;
       --fg: #f0f4f8;   /* 14.7:1 */
-      --muted: #b8c7d9; /* 9.49:1 */
-      --link: #8ab4f8;  /* 7.62:1 */
+      --muted: #b8c7d9; /* 9.47:1 */
+      --link: #8ab4f8;  /* 7.73:1 */
     }
     @media (prefers-color-scheme: light) {
-      :root:not([data-theme="dark"]) {
+      :root {
         --bg: #f5f8fc;
         --fg: #0d2137;   /* 15.3:1 */
-        --muted: #45586c; /* 6.96:1 */
-        --link: #005bc1;  /* 5.97:1 */
+        --muted: #45586c; /* 6.88:1 */
+        --link: #005bc1;  /* 6.04:1 */
       }
-    }
-    :root[data-theme="light"] {
-      --bg: #f5f8fc;
-      --fg: #0d2137;
-      --muted: #45586c;
-      --link: #005bc1;
     }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body {

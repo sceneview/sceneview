@@ -1,27 +1,11 @@
 # Sponsors & Supporters
 
-SceneView is free and open source. Development is funded by generous sponsors.
-
-Funds go toward the running costs of maintaining SceneView across all 9
-platforms — test devices, CI, hosting, assets.
+SceneView is free and open source. Sponsorship helps fund its upkeep across all
+9 platforms — test devices, CI, hosting, assets.
 
 ---
 
 ## Sponsor SceneView
-
-Sponsoring buys recognition, never a claim on anyone's time. Nothing here
-promises support, bug fixes, response times, or influence over what ships —
-SceneView is maintained on a volunteer schedule and that does not change with a
-contribution. The tiers and their current amounts live on the platforms
-themselves.
-
-| Tier | Recognition |
-|------|-------------|
-| **Backer** | Name on the sponsors list and the website |
-| **Sponsor** | Logo on the README, the website, and the docs |
-| **Gold Sponsor** | Prominent logo placement across the project |
-
-### How to sponsor
 
 | Platform | Link |
 |----------|------|
@@ -29,33 +13,23 @@ themselves.
 | **GitHub Sponsors** | [github.com/sponsors/sceneview](https://github.com/sponsors/sceneview) |
 
 Open Collective comes first because its ledger is public: every contribution and
-every expense is visible to anyone. GitHub Sponsors is there for people who
-would rather stay inside GitHub.
+every expense is visible to anyone, without an account. GitHub Sponsors is there
+for people who would rather stay inside GitHub.
 
----
+The tiers, what each one costs and what each one says it includes are defined on
+those two pages, and they are maintained there. This file deliberately does not
+restate any of it. A copy here would go stale the day a tier is edited, and a
+file that describes benefits the platforms do not offer — or denies ones they
+do — is worse than a file that says nothing.
 
-## Gold Sponsors
+## Who is sponsoring
 
-> Prominent logo placement across the project
-
-<!-- Gold sponsor logos here -->
-
-*Become the first Gold Sponsor — [donate on Open Collective](https://opencollective.com/sceneview)*
-
-## Sponsors
-
-> Logo on GitHub README, website, and documentation
-
-<!-- Sponsor logos here -->
-
-*No sponsors yet — [become one!](https://opencollective.com/sceneview)*
-
-## Backers
-
-Thank you to all our backers!
-
-<!-- backers will be listed here -->
-
+Both platforms publish their own list, and this file does not mirror it, for the
+same reason as the tiers: the
+[Open Collective page](https://opencollective.com/sceneview) shows every
+financial contributor as soon as a contribution clears, and the
+[GitHub Sponsors page](https://github.com/sponsors/sceneview) shows the sponsors
+who give through GitHub.
 
 ---
 

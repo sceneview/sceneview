@@ -1401,11 +1401,13 @@
     /* `display: block` is what makes the two lines under it do anything at all.
        `#descText` is a `<span>`, and `overflow` and `text-overflow` do not apply
        to an inline box: the nowrap sentence simply ran past its parent with no
-       ellipsis and no clipping — measured 419.7px of text in a 351px box at
-       375px wide, so 57px of it left the viewport entirely, and the longest of
-       the fourteen descriptions overflowed by 259px even at 1280px. The element
-       reported `scrollWidth === clientWidth === 0`, which is why nothing caught
-       it: an inline box has no scroll box to compare. */
+       ellipsis and no clipping. Measured on the fourteen descriptions, all
+       fourteen overflowed the 351px box at 375px wide — the default one by
+       68.7px (419.7px of text), 56.7px of that past the right edge of the
+       viewport, and the longest by 803.4px. At 1280px the box is 671.2px and
+       only the longest still overflows, by 483.2px. The element reported
+       `scrollWidth === clientWidth === 0`, which is why nothing caught it: an
+       inline box has no scroll box to compare. */
     .pg__bottom-text {
       display: block;
       font-size: 0.8rem;
