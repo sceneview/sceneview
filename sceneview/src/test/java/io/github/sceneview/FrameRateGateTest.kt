@@ -117,6 +117,28 @@ class FrameRateGateTest {
         )
     }
 
+    @Test
+    fun aPushSourceFiringFromInsideTheLoopNeverLetsTheSceneSettle() {
+        val gate = FrameRateGate()
+
+        repeat(SETTLE_FRAMES * 4) {
+            // What `cameraNode.transform = manipulator.getTransform()` used to do on every tick:
+            // the setter is a push source, so an unchanged rewrite invalidated the gate from
+            // inside the very loop the gate is supposed to stop.
+            gate.requestRender()
+            gate.shouldRender(active = false)
+            gate.didRender()
+        }
+
+        assertFalse(
+            "an invalidation on every tick re-arms the whole settle budget on every tick, so the " +
+                "scene renders forever at full cadence while nothing moves — and no test of the " +
+                "gate's own arithmetic can catch it, because the cycle closes through a caller. " +
+                "Anything the render loop writes per frame must be written only when it changed.",
+            gate.isSettled
+        )
+    }
+
     // ── RenderInvalidator ────────────────────────────────────────────────────────────────────────
 
     @Test

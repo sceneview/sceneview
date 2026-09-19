@@ -978,7 +978,23 @@ fun SceneView(
                             // the scene would settle at ~0.5 s, park, and the automatic orbit
                             // would never resume.
                             cameraPending = manipulator.isFrameActive
-                            cameraNode.transform = transform
+                            // Write only on a real change. `Node.transform`'s setter is itself a
+                            // *push* invalidation source (`onTransformChanged` → `requestRender`),
+                            // so re-writing an identical matrix every tick re-dirties the gate
+                            // from inside the render loop: the gate re-arms its whole settle
+                            // budget on the next tick, which writes again, forever. No scene
+                            // holding a camera manipulator — i.e. the default scene — could
+                            // settle, and render-on-demand degraded to render-always everywhere
+                            // while every unit test still passed, because the loop that closes
+                            // the cycle is the one thing they cannot run. Measured on
+                            // emulator-5554 before this line: 1201 frames presented over 20.02 s
+                            // of a scene nobody touched, on a screen whose turntable was paused
+                            // (`dumpsys SurfaceFlinger --latency` on the Filament BLAST layer).
+                            // Skipping the write also spares a `setTransform` JNI call and three
+                            // decompositions per frame on a camera that is standing still.
+                            if (cameraMoved) {
+                                cameraNode.transform = transform
+                            }
                         }
                     }
 
