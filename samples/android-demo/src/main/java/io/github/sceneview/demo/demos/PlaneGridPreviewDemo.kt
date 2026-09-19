@@ -132,7 +132,7 @@ fun PlaneGridPreviewDemo(onBack: () -> Unit) {
         Environment(skybox = if (brightBackground) brightSkybox else darkSkybox)
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_plane_grid_preview_title),

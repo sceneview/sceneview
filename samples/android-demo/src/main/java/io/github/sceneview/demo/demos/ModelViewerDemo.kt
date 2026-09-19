@@ -190,8 +190,15 @@ fun ModelViewerDemo(onBack: () -> Unit) {
  * Not 1: the scene parents DSL nodes through an async `snapshotFlow`, so the first frame after
  * the instance lands can be drawn without the `ModelNode`; the flush must wait on a frame that
  * includes it.
+ *
+ * Not 3 either, since #3108: this counter is paid out of frames the scene presents *after* the
+ * model is in, and a render-on-demand scene presents a settle tail and then parks — measured at
+ * 3 frames in 10 s total on `emulator-5554`, of which fewer still land post-load. A threshold
+ * the scene never reaches leaves the "Still loading…" card over a finished model for good. Two
+ * is the smallest count that keeps the reason above intact, and the `flushAndWait` on the second
+ * is what actually proves the backend drew it.
  */
-private const val MODEL_COVER_FRAMES = 3
+private const val MODEL_COVER_FRAMES = 2
 
 /**
  * Length of the camera fly-in when the model lands (#3406). Twice `duration-medium`:
@@ -466,7 +473,7 @@ private fun SingleModelSection(
         else -> AssetSourceState.Streamed
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     // The preview cover stays up until a Filament frame that actually SHOWS the model. Three
     // signals fire too early: the first frame lands before the GLB is decoded;
     // `rememberModelInstance` returns while gltfio is still uploading textures
@@ -1104,7 +1111,7 @@ private fun MultiModelSection(
         )
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_multi_model_title),
@@ -1420,7 +1427,7 @@ private fun GallerySection(
         )
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_scene_gallery_title),

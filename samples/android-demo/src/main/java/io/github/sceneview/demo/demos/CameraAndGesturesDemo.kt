@@ -245,7 +245,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
         if (moveMode && focus == null) flyTo(RigSubject.Helmet, CameraView.Hero)
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     val resetAll = {
         cinematic = false

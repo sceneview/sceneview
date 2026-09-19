@@ -278,7 +278,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         BENCH_KEY_AZIMUTH,
         LightingStage.KEY_ELEVATION_DEGREES,
     )
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,

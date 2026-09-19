@@ -777,7 +777,7 @@ private fun AnimationSection(
         source = (if (cameraMode == CameraMode.FREE) freeManipulator else null) ?: scriptedManipulator,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         bottomOverlayReservesScene = true,
@@ -1268,7 +1268,7 @@ private fun PhysicsSection(
         lookAt(Position(0f, -0.35f, 0f))
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_animation_physics_title),

@@ -90,6 +90,32 @@ SceneView { /* … */ }
 library cannot observe — an external simulation writing into Filament each frame, a custom
 `Renderer` hook, a texture updated off-thread.
 
+### Check your app for heuristics that read the frame rate
+
+This is the failure mode that survives the mechanical migration, because it compiles, it is in
+*your* code, and it looks like it is measuring something else.
+
+**Any heuristic built on a run of closely spaced frames breaks under `OnDemand`.** The pattern is
+always some form of "I will believe the scene is up once I have seen N frames within M
+milliseconds of each other" — a loading cover, a splash dismissal, a warm-up probe, an "is the GPU
+keeping up" check. It worked because every `SceneView` drew every vsync forever, so frames were a
+clock you could count on. They are not a clock any more. A finished scene presents a short settle
+tail and parks: our own demo app measured **3 frames in 10 s** on a fully drawn model, and its
+loading cover — which wanted 8 frames within 250 ms of each other — never lifted. At 12 s the
+scaffold replaced the spinner with a "Still loading…" card, over a scene that had been complete
+for ten seconds. Nudging the camera restarted the loop, satisfied the streak and dismissed the
+card, which is the tell: the signal was reading the frame rate and reporting it as progress.
+
+**A readiness signal must never depend on cadence — a parked scene is a ready scene.** Rewrite the
+rule to count frames without looking at the intervals between them, and if what you actually need
+is "has the GPU finished", ask the GPU: `Engine.flushAndWait()` blocks until the backend has
+executed the queued work, which is the fact the timing was being used to guess. Two presented
+frames are enough to start that question, because Filament refuses a new frame while the driver is
+behind — a second accepted submission is itself the evidence that the first was drained.
+
+Do **not** fix this by holding the loop awake to feed the heuristic. That re-creates exactly the
+drain this release exists to remove, and hides the bug instead of closing it.
+
 ---
 
 ## SceneView 4.14.x to 4.15.1 (iOS) — native Apple camera modes added to `CameraControlMode`

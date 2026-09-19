@@ -260,7 +260,7 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingStage.RIM_ELEVATION_DEGREES,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,

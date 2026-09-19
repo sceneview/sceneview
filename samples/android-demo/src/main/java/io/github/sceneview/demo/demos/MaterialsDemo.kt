@@ -630,7 +630,7 @@ private fun StudioSection(
         comparisonCamera.position = Position(sin(yaw) * heroRadius, 0f, cos(yaw) * heroRadius)
         comparisonCamera.lookAt(Position(0f))
     }
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // A tap on a gallery sphere flies the camera onto it and then moves to Inspect.
     // `Node.name` carries the material id — the picker hands back the picked Node, not an
@@ -1216,7 +1216,7 @@ private fun OcclusionSection(
     // invisible plane — and the ground truth is one tap away, not the other way round.
     var occluderVisible by remember { mutableStateOf(false) }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),

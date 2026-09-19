@@ -144,7 +144,7 @@ fun GeometryDemo(onBack: () -> Unit) {
         }
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
 
     DemoScaffold(

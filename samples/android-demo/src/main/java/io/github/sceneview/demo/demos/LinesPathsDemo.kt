@@ -182,7 +182,7 @@ fun LinesPathsDemo(onBack: () -> Unit) {
         samples = LinesPathsScene.DASH_SAMPLES,
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_lines_paths_title),

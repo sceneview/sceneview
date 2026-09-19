@@ -164,7 +164,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
         onScroll = { _, _, _, _ -> onHeroGesture() },
     )
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
     var renderedFrames by remember { mutableIntStateOf(0) }
     // The card's first frames are the empty texture the ComposeView has not drawn into yet;
     // holding the "first frame" signal back keeps the loading veil up until the scene is real.

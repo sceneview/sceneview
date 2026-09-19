@@ -168,7 +168,7 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
     val viewNodeManager = rememberViewNodeManager()
 
     val helmet = rememberModelInstance(modelLoader, HELMET_ASSET)
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     // Turntable off the Choreographer. `spinning` is a key, so the loop simply stops when the
     // in-scene button is tapped rather than spinning a paused counter.

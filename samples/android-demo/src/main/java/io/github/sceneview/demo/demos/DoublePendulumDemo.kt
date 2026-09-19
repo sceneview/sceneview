@@ -152,7 +152,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         cameraNode.lookAt(envelopeCenter)
     }
 
-    val firstFrame = rememberFirstFrameState()
+    val firstFrame = rememberFirstFrameState(engine)
 
     DemoScaffold(
         title = stringResource(R.string.demo_double_pendulum_title),
