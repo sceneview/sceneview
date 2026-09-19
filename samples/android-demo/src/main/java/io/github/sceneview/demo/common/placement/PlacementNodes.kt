@@ -29,13 +29,18 @@ import io.github.sceneview.node.ModelNode as ModelNodeImpl
  *
  * 1. **One finger drags the anchor, not the model.** The model node is explicitly
  *    `isPositionEditable = false`, which is what routes the move gesture up to the
- *    [AnchorNode][io.github.sceneview.ar.node.AnchorNode] — the only node in the pair that
+ *    [AnchorNode][io.github.sceneview.ar.node.AnchorNode] — the only node in the trio that
  *    knows how to move in AR (it detaches its anchor on move-begin, follows a per-frame
  *    ARCore hit test, and re-anchors on move-end). Left editable, the model swallowed the
  *    gesture and then failed to move at all: `NodeGestureDelegate.onMove` resolves the drag
  *    against *the parent's collider*, and an `AnchorNode` is a pose with no geometry, so
  *    the hit test returned nothing and every drag was a silent no-op. Dragging a placed
  *    model in AR has therefore never worked; this is the line that fixes it.
+ * 1-bis. **The two-finger twist turns the object on the floor, never off it** (#3735). The
+ *    node the twist edits is a bare [pivot][io.github.sceneview.SceneScope.Node] that holds
+ *    a pure yaw, and the model — with whatever rotation the asset needs to stand up — is a
+ *    **non-editable child** of it. See [PlacementRotation] for why the order matters, and
+ *    the note on the pivot below for how a gesture that lands on the child reaches it.
  * 2. **The drag stays on the surface and keeps the object's facing.** The node's `onMove`
  *    hook writes a translation-only pose instead of letting the raw hit pose through: an
  *    ARCore plane hit's rotation is defined relative to *the cast ray*, so applying it
@@ -117,50 +122,85 @@ internal fun ARSceneScope.PlacedModelNode(
         // doesn't flash black on placement (#1435).
         val textured = rememberTexturesSettled(ready = instance != null)
 
-        instance?.let {
-            ModelNode(
-                modelInstance = it,
-                // Real-world size, not a uniform 0.3 m "demo size" (#3326).
-                scaleToUnits = placed.spec.realWorldSizeMeters,
-                // Per-asset placement correction (#1477). `rotationOverride` wins when
-                // supplied; otherwise fall back to the shared helmet −90° X correction.
-                rotation = placed.spec.rotationOverride
-                    ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
-                isVisible = textured,
-                isEditable = true,
-                apply = {
-                    handle.node = this
-                    // The move gesture belongs to the anchor above — see this composable's
-                    // KDoc. Rotation and scale stay here, on the object itself.
-                    isPositionEditable = false
+        // The yaw pivot (#3735). A bare node with no geometry, interposed between the anchor
+        // and the model for exactly one reason: it is the node the twist gesture edits, and
+        // its local rotation is only ever a pure yaw, so its local Y axis stays the anchor's
+        // up axis. `NodeGestureDelegate.onRotate` applies its delta with `quaternion *=` —
+        // a right-multiplication, i.e. the delta expressed in the node's OWN frame — so a
+        // node whose Y is upright yaws, while a node whose Y an asset correction has laid
+        // flat tumbles instead. That is the whole of #3735: the correction used to sit on
+        // the very node the twist edited, so the helmet's −90° X turned every twist into a
+        // pitch. See [PlacementRotation] for the algebra and its unit tests.
+        //
+        // No finger ever lands on this node — it has no collider. The touch lands on the
+        // model child, which stays `isEditable = true` so `SceneView`'s touch dispatcher
+        // still counts it as an edit rather than leaking the gesture to the camera
+        // manipulator, but locks the two axes it must not own. `NodeGestureDelegate`
+        // forwards a gesture to `node.parent` whenever the matching `is*Editable` flag is
+        // off, so rotation stops here and movement carries on up to the anchor.
+        Node(
+            isEditable = true,
+            apply = {
+                // The per-axis defaults are asymmetric on `Node` — position starts `false`,
+                // rotation and scale start `true` — so spell out what this node owns rather
+                // than inherit a mix. Rotation, and only rotation.
+                isPositionEditable = false
+                // Scale belongs to the model child, which expresses it as a percentage of
+                // real-world size; locking it here means a pinch can never be claimed by the
+                // pivot on the way up.
+                isScaleEditable = false
+            },
+        ) {
+            instance?.let {
+                ModelNode(
+                    modelInstance = it,
+                    // Real-world size, not a uniform 0.3 m "demo size" (#3326).
+                    scaleToUnits = placed.spec.realWorldSizeMeters,
+                    // Per-asset placement correction (#1477). `rotationOverride` wins when
+                    // supplied; otherwise fall back to the shared helmet −90° X correction.
+                    // This is the rotation that must never sit on an edited node (#3735):
+                    // it is the model's own business of standing up, not the user's yaw.
+                    rotation = placed.spec.rotationOverride
+                        ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
+                    isVisible = textured,
+                    isEditable = true,
+                    apply = {
+                        handle.node = this
+                        // The move gesture belongs to the anchor, the twist to the pivot
+                        // just above — see this composable's KDoc. Scale stays here, on the
+                        // object itself, because it is expressed against this node's fitted
+                        // real-world scale.
+                        isPositionEditable = false
+                        isRotationEditable = false
 
-                    // `scaleToUnits` has already run in the constructor, so this IS the
-                    // 100 % scale.
-                    val base = scale.x
-                    handle.baseScale = base
-                    editableScaleRange = PlacementScale.rangeFor(base)
+                        // `scaleToUnits` has already run in the constructor, so this IS the
+                        // 100 % scale.
+                        val base = scale.x
+                        handle.baseScale = base
+                        editableScaleRange = PlacementScale.rangeFor(base)
 
-                    onScale = { _, _, factor ->
-                        val was = PlacementScale.isRealWorldSize(scale.x, base)
-                        val next = PlacementScale.next(
-                            current = scale.x,
-                            base = base,
-                            rawFactor = factor,
-                            sensitivity = scaleGestureSensitivity,
-                        )
-                        scale = Scale(next)
-                        val now = PlacementScale.isRealWorldSize(next, base)
-                        currentOnScaleChanged(
-                            PlacementScale.percent(next, base),
-                            now,
-                            PlacementScale.shouldTickHaptic(was, now),
-                        )
-                        // We applied the scale ourselves, with the clamp and the detent the
-                        // stock path has no way to express.
-                        false
-                    }
-                },
-            )
+                        onScale = { _, _, factor ->
+                            val was = PlacementScale.isRealWorldSize(scale.x, base)
+                            val next = PlacementScale.next(
+                                current = scale.x,
+                                base = base,
+                                rawFactor = factor,
+                                sensitivity = scaleGestureSensitivity,
+                            )
+                            scale = Scale(next)
+                            val now = PlacementScale.isRealWorldSize(next, base)
+                            currentOnScaleChanged(
+                                PlacementScale.percent(next, base),
+                                now,
+                                PlacementScale.shouldTickHaptic(was, now),
+                            )
+                            // We applied the scale ourselves, with the clamp and the detent
+                            // the stock path has no way to express.
+                            false
+                        }
+                    },
+                )
+            }
         }
 
         // Scale-in on arrival. Keyed on the moment the model becomes visible, and latched,

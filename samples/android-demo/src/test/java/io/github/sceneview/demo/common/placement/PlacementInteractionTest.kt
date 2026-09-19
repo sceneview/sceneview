@@ -1,6 +1,9 @@
 package io.github.sceneview.demo.common.placement
 
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
+import io.github.sceneview.math.Rotation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -14,10 +17,141 @@ import org.junit.Test
  *
  * The AR emulator produces no ARCore tracking, so none of this behaviour can be exercised
  * on CI through the UI. Everything that *can* be decided without a camera therefore lives
- * in [PlacementScale] / [PlacementEntrance] / [placementCoaching] as pure functions, and
- * this is where the contract is pinned.
+ * in [PlacementRotation] / [PlacementScale] / [PlacementEntrance] / [placementCoaching] as
+ * pure functions, and this is where the contract is pinned.
+ *
+ * The rotation block below is written as a matched pair: the same assertions run against the
+ * new composition and against [PlacementRotation.legacyContentOrientation], which reproduces
+ * what the demo did before
+ * [#3735](https://github.com/sceneview/sceneview/issues/3735). They pass on one and fail on
+ * the other, so the fix is pinned by a test that could fail, not by a test written to agree
+ * with the code.
  */
 class PlacementInteractionTest {
+
+    // ── PlacementRotation: the twist stays a yaw (#3735) ────────────────────
+
+    /**
+     * The Khronos helmet is authored Z-up, so the demo stands it up with a −90° X
+     * correction ([DemoMath.placementRotationFor][io.github.sceneview.demo.demos.internal.DemoMath]).
+     * Built here the way the SDK builds it — `Quaternion.fromEuler` on a [Rotation], exactly
+     * what `Node.rotation`'s setter does.
+     */
+    private val helmetCorrection = Quaternion.fromEuler(Rotation(x = -90f))
+
+    /** The model's own up axis: +Z in the helmet's authored frame, which the correction stands up. */
+    private val authoredUp = Float3(z = 1f)
+
+    /** Everything else the demo ships has no correction at all. */
+    private val noCorrection = Quaternion()
+
+    @Test
+    fun `a twist on a pre-rotated asset turns it on the floor, not off it`() {
+        val rest = PlacementRotation.contentOrientation(Quaternion(), helmetCorrection)
+        val twisted = PlacementRotation.contentOrientation(
+            pivot = PlacementRotation.twist(Quaternion(), 30f),
+            assetCorrection = helmetCorrection,
+        )
+
+        // What the twist did, expressed in the anchor's frame. It must be a pure yaw, so
+        // anything that was vertical is still vertical.
+        val applied = PlacementRotation.appliedInAnchorFrame(current = twisted, rest = rest)
+        assertEquals(0f, PlacementRotation.tiltDegrees(applied), 1e-4f)
+        assertEquals(30f, PlacementRotation.yawDegrees(applied), 1e-3f)
+
+        // Concretely: the helmet's own up axis pointed at the sky at rest and still does.
+        val upAtRest = rest * authoredUp
+        val upAfter = twisted * authoredUp
+        assertEquals(1f, upAtRest.y, 1e-4f)
+        assertEquals(upAtRest.x, upAfter.x, 1e-4f)
+        assertEquals(upAtRest.y, upAfter.y, 1e-4f)
+        assertEquals(upAtRest.z, upAfter.z, 1e-4f)
+    }
+
+    @Test
+    fun `the old structure tips the same asset over — this is the regression`() {
+        // The pre-#3735 composition: the correction lived on the node the twist edited, so
+        // the SDK's local-frame `quaternion *= delta` turned about the node's local Y — which
+        // the correction had already laid flat onto (0, 0, -1). Same assertions as the test
+        // above; they fail here, which is the point.
+        val rest = PlacementRotation.legacyContentOrientation(helmetCorrection, 0f)
+        val twisted = PlacementRotation.legacyContentOrientation(helmetCorrection, 30f)
+        val applied = PlacementRotation.appliedInAnchorFrame(current = twisted, rest = rest)
+
+        // The twist became a full 30° of pitch: not a yaw at all.
+        assertEquals(30f, PlacementRotation.tiltDegrees(applied), 1e-3f)
+
+        // And the helmet's up axis left the vertical — it tipped a third of the way to
+        // lying on its side.
+        val upAfter = twisted * authoredUp
+        assertEquals(0.5f, upAfter.x, 1e-4f)
+        assertEquals(0.8660254f, upAfter.y, 1e-4f)
+        assertTrue(
+            "the legacy structure must NOT keep the model upright — if it does, this test " +
+                "is no longer proving anything",
+            upAfter.y < 0.999f,
+        )
+    }
+
+    @Test
+    fun `repeated small twists accumulate a yaw and drift into no pitch or roll`() {
+        var pivot = Quaternion()
+        repeat(5) { pivot = PlacementRotation.twist(pivot, 6f) }
+
+        val rest = PlacementRotation.contentOrientation(Quaternion(), helmetCorrection)
+        val twisted = PlacementRotation.contentOrientation(pivot, helmetCorrection)
+        val applied = PlacementRotation.appliedInAnchorFrame(current = twisted, rest = rest)
+
+        assertEquals(30f, PlacementRotation.yawDegrees(applied), 0.05f)
+        assertEquals(0f, PlacementRotation.tiltDegrees(applied), 0.05f)
+    }
+
+    @Test
+    fun `an asset with no correction keeps the behaviour it already had`() {
+        // The non-regression half: for every bundled model but the helmet the correction is
+        // identity, both structures agree, and nothing about this fix may change them.
+        val pivot = PlacementRotation.twist(Quaternion(), 30f)
+        val new = PlacementRotation.contentOrientation(pivot, noCorrection)
+        val legacy = PlacementRotation.legacyContentOrientation(noCorrection, 30f)
+
+        assertEquals(new.x, legacy.x, 1e-6f)
+        assertEquals(new.y, legacy.y, 1e-6f)
+        assertEquals(new.z, legacy.z, 1e-6f)
+        assertEquals(new.w, legacy.w, 1e-6f)
+        assertEquals(30f, PlacementRotation.yawDegrees(new), 1e-3f)
+        assertEquals(0f, PlacementRotation.tiltDegrees(new), 1e-4f)
+    }
+
+    @Test
+    fun `the asset correction never reaches the edited node, whatever the asset`() {
+        // The editable node's rotation is a function of the twists and nothing else. Run the
+        // same gesture against four very different corrections — including a `rotationOverride`
+        // shape a caller could pass — and the pivot must come out identical every time, with
+        // no tilt for the SDK's local-frame delta to convert into a tumble.
+        val corrections = listOf(
+            noCorrection,
+            helmetCorrection,
+            Quaternion.fromEuler(Rotation(y = 180f)),
+            Quaternion.fromEuler(Rotation(z = 45f)),
+        )
+        var pivot = Quaternion()
+        repeat(3) { pivot = PlacementRotation.twist(pivot, 15f) }
+        assertEquals(0f, PlacementRotation.tiltDegrees(pivot), 1e-4f)
+        assertEquals(45f, PlacementRotation.yawDegrees(pivot), 1e-3f)
+
+        corrections.forEach { correction ->
+            val rest = PlacementRotation.contentOrientation(Quaternion(), correction)
+            val twisted = PlacementRotation.contentOrientation(pivot, correction)
+            val applied = PlacementRotation.appliedInAnchorFrame(current = twisted, rest = rest)
+            // Whatever the asset needed to stand up, the twist that reached the world is the
+            // pivot itself: the correction cancels out of `current ∘ rest⁻¹`.
+            assertEquals(pivot.x, applied.x, 1e-5f)
+            assertEquals(pivot.y, applied.y, 1e-5f)
+            assertEquals(pivot.z, applied.z, 1e-5f)
+            assertEquals(pivot.w, applied.w, 1e-5f)
+            assertEquals(0f, PlacementRotation.tiltDegrees(applied), 1e-4f)
+        }
+    }
 
     // ── PlacementScale: the 100 % detent ────────────────────────────────────
 
