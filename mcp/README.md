@@ -111,6 +111,18 @@ point it at the hosted endpoint. Settings → Tools → AI → MCP Servers:
 { "mcpServers": { "sceneview": { "httpUrl": "https://mcp.sceneview.dev/mcp", "enabled": true } } }
 ```
 
+### Gemini CLI
+
+The repository root carries a [`gemini-extension.json`](../gemini-extension.json), so the CLI
+installs the server straight from GitHub — no JSON to paste:
+
+```bash
+gemini extensions install https://github.com/sceneview/sceneview
+```
+
+It declares nothing but the server: `npx -y sceneview-mcp` over stdio, no context file and no
+tool exclusions, so it adds the SceneView tools to a session and changes nothing else about it.
+
 ### GitHub Copilot
 
 In VS Code, `.vscode/mcp.json` — note the `servers` key, not `mcpServers`:
@@ -135,6 +147,19 @@ copilot mcp add sceneview -- npx -y sceneview-mcp
 
 Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add, then paste the standard
 `mcpServers` block above.
+
+### MCP Bundle (`.mcpb`)
+
+[`mcp/manifest.json`](manifest.json) describes this server in the [MCP Bundle
+format](https://github.com/modelcontextprotocol/mcpb) (spec 0.3), for desktop apps that install
+a local server from a bundle rather than a command line. It runs the built
+`dist/index.js` with the host's Node, so `npm run build` has to have run before a bundle is
+zipped from this directory.
+
+The manifest is not published as a `.mcpb` artefact by CI: it is the descriptor, and packing it
+stays a manual step for whoever needs a bundle. `mcp/src/packaging.test.ts` keeps its name,
+version, licence, entry point and Node range equal to `package.json`'s, because nothing else
+would notice them drifting.
 
 ### Use as a remote connector
 
