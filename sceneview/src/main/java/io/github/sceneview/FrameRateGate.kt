@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,7 +16,8 @@ import java.util.WeakHashMap
  * unlit one — on screen until something else happens to wake it. Half a second at 60 Hz is cheap
  * once, and it is the difference between "render-on-demand" and "render-on-demand, mostly".
  */
-internal const val SETTLE_FRAMES: Int = 30
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+const val SETTLE_FRAMES: Int = 30
 
 /**
  * Decides, once per frame, whether the GPU submit happens — the Android port of the web SDK's
@@ -32,8 +34,14 @@ internal const val SETTLE_FRAMES: Int = 30
  * the node ticks running on a tick whose GPU work was skipped.
  *
  * Not thread-safe by design: every caller is the main/render thread.
+ *
+ * Library-group API, not app API: `arsceneview` builds one too, so that a virtual-content change
+ * landing between two ARCore camera images is presented rather than waiting for the sensor.
  */
-internal class FrameRateGate(private val settleBudget: Int = SETTLE_FRAMES) {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+class FrameRateGate @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constructor(
+    private val settleBudget: Int = SETTLE_FRAMES
+) {
 
     // Snapshot state, because parking reads it through `derivedStateOf` and a plain field would
     // never wake the suspended loop (#3108: the park must be woken by a snapshot apply, not polled).
@@ -84,8 +92,10 @@ internal class FrameRateGate(private val settleBudget: Int = SETTLE_FRAMES) {
  *
  * Everything the SDK owns — node transforms, animations, gestures, loads, surface changes — already
  * invalidates on its own. This is the escape hatch for the rest: a Filament material parameter or
- * light property written directly, an external simulation stepping the scene, or a `PixelCopy` /
- * screenshot that needs a guaranteed fresh frame on the surface first.
+ * light property written directly, an external simulation stepping the scene, or a `PixelCopy` or
+ * screenshot that needs a fresh frame on the surface first — request it, then wait for your next
+ * `onFrame` before reading the surface, because the request itself is fire-and-forget and there is
+ * no "await one frame" API to hand you.
  *
  * ```kotlin
  * val invalidator = rememberRenderInvalidator()
@@ -101,16 +111,31 @@ internal class FrameRateGate(private val settleBudget: Int = SETTLE_FRAMES) {
  */
 class RenderInvalidator {
 
+    // Volatile, unlike [FrameRateGate]'s own state: this is the *public* escape hatch, and the
+    // migration guide points it at "a texture updated off-thread". The visibility of the handoff
+    // is therefore guaranteed here; what still has to happen on the main thread is the gate's own
+    // `requestRender`, which is why the KDoc below says so rather than leaving it to be found.
+    @Volatile
     private var gate: FrameRateGate? = null
+
+    @Volatile
     private var pending: Boolean = false
 
-    /** Requests one more rendered frame. Cheap, idempotent, safe to over-call. */
+    /**
+     * Requests one more rendered frame. Cheap, idempotent, safe to over-call.
+     *
+     * **Call it on the main thread.** A background thread that finished a texture upload or a
+     * simulation step should post here rather than call across — the gate it forwards to is the
+     * render loop's own state and is not thread-safe. The request itself is never lost either way:
+     * an invalidator that has not been attached yet remembers one and replays it on attach.
+     */
     fun requestRender() {
         val currentGate = gate
         if (currentGate != null) currentGate.requestRender() else pending = true
     }
 
-    internal fun attach(gate: FrameRateGate) {
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    fun attach(gate: FrameRateGate) {
         this.gate = gate
         if (pending) {
             pending = false
@@ -118,7 +143,8 @@ class RenderInvalidator {
         }
     }
 
-    internal fun detach(gate: FrameRateGate) {
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    fun detach(gate: FrameRateGate) {
         if (this.gate === gate) this.gate = null
     }
 }
@@ -139,7 +165,8 @@ fun rememberRenderInvalidator(): RenderInvalidator = remember { RenderInvalidato
  * Mirrors `EngineDestroyQueue.of(engine)`: a [WeakHashMap] keyed on the Filament object, so a
  * destroyed scene's entry disappears with it and no view is kept alive by this registry.
  */
-internal object SceneRenderInvalidators {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+object SceneRenderInvalidators {
 
     private val invalidators = WeakHashMap<Scene, RenderInvalidator>()
 

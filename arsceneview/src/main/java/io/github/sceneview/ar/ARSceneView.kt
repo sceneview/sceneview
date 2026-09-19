@@ -65,7 +65,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
+import io.github.sceneview.FrameRateGate
+import io.github.sceneview.RenderInvalidator
 import io.github.sceneview.SceneNodeManager
+import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.SceneRenderer
 import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.RenderQuality
@@ -1499,6 +1502,28 @@ fun ARSceneView(
     // a frame even on a vsync where ARCore returns a duplicate.
     val arFramesOwed = remember { AtomicInteger(1) }
 
+    // Virtual content changing between two camera images (#3108). The AR loop never parks — a live
+    // camera feed is never idle — so this gate is used for one thing only: the GPU submit. Without
+    // it `shouldPresent` was the ARCore timestamp alone, so a node animation, a material swap or a
+    // `requestRender()` that landed between two images was simply not drawn, and the virtual
+    // content ran at the *sensor's* rate. Invisible in `LATEST_CAMERA_IMAGE` on a bright scene,
+    // where a new timestamp arrives nearly every vsync — and plainly visible the moment the sensor
+    // drops to 30 fps in low light on a 90 or 120 Hz panel. The `||` can only ever add a presented
+    // frame, never remove one.
+    val frameRateGate = remember { FrameRateGate() }
+    val sceneInvalidator = remember { RenderInvalidator() }
+    DisposableEffect(frameRateGate, sceneInvalidator) {
+        sceneInvalidator.attach(frameRateGate)
+        onDispose { sceneInvalidator.detach(frameRateGate) }
+    }
+    DisposableEffect(scene, sceneInvalidator) {
+        // The one link every managed node has back to its view: `Node.requestRender()` resolves
+        // through `attachedScene`, so registering here is what makes every push source in
+        // `sceneview` — transforms, geometry, materials, visibility — reach the AR loop too.
+        SceneRenderInvalidators.register(scene, sceneInvalidator)
+        onDispose { SceneRenderInvalidators.unregister(scene) }
+    }
+
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.
     SideEffect {
         sceneRenderer.surfaceMirrorer = surfaceMirrorer
@@ -1539,11 +1564,15 @@ fun ARSceneView(
             }
             withFrameNanos { frameTimeNanos ->
                 var hasNewArFrame = false
+                var sceneChanged = false
                 val presented = sceneRenderer.renderFrame(
                     frameTimeNanos,
-                    // Evaluated after the update block below, so `hasNewArFrame` reflects the
-                    // `session.update()` that just ran. Gates the GPU submit only.
-                    shouldPresent = { hasNewArFrame || arFramesOwed.get() > 0 }
+                    // Evaluated after the update block below, so `hasNewArFrame` and
+                    // `sceneChanged` reflect the `session.update()` and the node ticks that
+                    // just ran. Gates the GPU submit only — the loop itself never parks.
+                    shouldPresent = {
+                        hasNewArFrame || sceneChanged || arFramesOwed.get() > 0
+                    }
                 ) {
                     view.isFrontFaceWindingInverted = isFrontFaceWindingInvertedRef.get()
 
@@ -1587,13 +1616,23 @@ fun ARSceneView(
 
                     modelLoader.updateLoad()
                     childNodes.forEach { it.onFrame(frameTimeNanos) }
+
+                    // Last, so the node ticks above are already accounted for: a glTF animation
+                    // advanced this tick reports `isFrameActive` and keeps the budget topped up.
+                    sceneChanged = frameRateGate.shouldRender(
+                        active = childNodes.any { it.isFrameActive } ||
+                                modelLoader.progress < 1f
+                    )
                 }
 
                 // Pay the surface's debt down only on a frame that really reached it —
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
-                if (presented && arFramesOwed.get() > 0) {
-                    arFramesOwed.decrementAndGet()
+                if (presented) {
+                    frameRateGate.didRender()
+                    if (arFramesOwed.get() > 0) {
+                        arFramesOwed.decrementAndGet()
+                    }
                 }
             }
         }

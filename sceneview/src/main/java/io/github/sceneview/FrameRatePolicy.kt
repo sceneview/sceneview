@@ -1,16 +1,20 @@
 package io.github.sceneview
 
 /**
- * How often a [SceneView] / `ARSceneView` submits a frame to the GPU, and what refresh rate it asks
- * the display for while it is doing so.
+ * How often a [SceneView] submits a frame to the GPU, and what refresh rate it asks the display for
+ * while it is doing so.
  *
  * The default is [OnDemand]: the library tracks what makes the picture change and draws only then.
  * This replaces the `isRendering` flag, which asked every caller to compute that answer by hand.
  *
  * Whatever the policy, the Compose frame loop itself keeps its normal cadence for everything that is
- * not a GPU submit — the ARCore session is still updated every vsync, async loads still progress,
- * node ticks still run. A policy only decides whether `Renderer.beginFrame` / `render` / `endFrame`
- * is reached on a given tick.
+ * not a GPU submit — async loads still progress, node ticks still run. A policy only decides whether
+ * `Renderer.beginFrame` / `render` / `endFrame` is reached on a given tick.
+ *
+ * **`ARSceneView` takes no policy.** A live camera feed is never idle, so there is nothing to park:
+ * its loop runs every vsync, updates the ARCore session every vsync, and skips only the GPU submit,
+ * on a tick where ARCore hands back a duplicate `Frame.timestamp` *and* nothing in the virtual scene
+ * changed. Tracking, anchors and plane detection are unaffected.
  *
  * @see SceneView
  * @see rememberRenderInvalidator
@@ -23,16 +27,23 @@ sealed interface FrameRatePolicy {
      * An idle scene costs no GPU frame and no periodic CPU wake-up — the loop suspends on the
      * snapshot rather than polling — and it wakes on its own for every source of change the library
      * knows about: a touch, a camera manipulator still coasting, a playing animation, a smooth
-     * transform, a node added / moved / removed, an async model or environment load, a surface
-     * resize, a lifecycle resume, an active `surfaceMirrorer` recording, or a new ARCore camera
-     * image. After the last change it keeps drawing for a short settle window, because Filament
+     * transform, a node added / moved / removed, a visibility, geometry or material change, an async
+     * model or environment load, a surface resize, a lifecycle resume, an active `surfaceMirrorer`
+     * recording. After the last change it keeps drawing for a short settle window, because Filament
      * finalises texture uploads, IBL and shadow work across several frames.
      *
-     * Mutating Filament objects directly — a material parameter, a light intensity, a
-     * [io.github.sceneview.loaders.MaterialLoader] instance — happens below the library's
-     * bookkeeping and is the one case it cannot see. Call
+     * What it never treats as a change is a **recomposition**: an invalidation comes from the thing
+     * that changed, not from the fact that the composable ran again. Write your own screen the same
+     * way — a counter that writes Compose state from `onFrame` recomposes once per presented frame
+     * for no reason, and is measuring itself rather than the scene.
+     *
+     * Mutating Filament objects directly — a material parameter, a light property written through
+     * `LightManager`, a `Skybox` or `IndirectLight` put straight on the Filament `Scene`, morph
+     * weights or bone transforms through `RenderableManager`, an external `Stream`, runtime `View`
+     * options — happens below the library's bookkeeping and is the one case it cannot see. Call
      * [io.github.sceneview.node.Node.requestRender] or [RenderInvalidator.requestRender] after such
-     * an edit, and before a `PixelCopy` / screenshot of the surface.
+     * an edit; before a `PixelCopy` / screenshot of the surface, request the frame and then wait for
+     * your next `onFrame`, because the request is fire-and-forget.
      */
     data object OnDemand : FrameRatePolicy
 

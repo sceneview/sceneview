@@ -183,7 +183,20 @@ public final class io/github/sceneview/EngineKt {
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 
+public final class io/github/sceneview/FrameRateGate {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun didRender ()V
+	public final fun isDirty ()Z
+	public final fun isSettled ()Z
+	public final fun requestRender ()V
+	public final fun shouldRender (Z)Z
+}
+
 public final class io/github/sceneview/FrameRateGateKt {
+	public static final field SETTLE_FRAMES I
 	public static final fun rememberRenderInvalidator (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/RenderInvalidator;
 }
 
@@ -244,6 +257,8 @@ public final class io/github/sceneview/NodeScope : io/github/sceneview/SceneScop
 public final class io/github/sceneview/RenderInvalidator {
 	public static final field $stable I
 	public fun <init> ()V
+	public final fun attach (Lio/github/sceneview/FrameRateGate;)V
+	public final fun detach (Lio/github/sceneview/FrameRateGate;)V
 	public final fun requestRender ()V
 }
 
@@ -359,6 +374,14 @@ public final class io/github/sceneview/SceneNodeManager {
 	public final fun getScene ()Lcom/google/android/filament/Scene;
 	public final fun removeNode (Lio/github/sceneview/node/Node;)V
 	public final fun replaceNode (Lio/github/sceneview/node/Node;Lio/github/sceneview/node/Node;)V
+}
+
+public final class io/github/sceneview/SceneRenderInvalidators {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/SceneRenderInvalidators;
+	public final fun of (Lcom/google/android/filament/Scene;)Lio/github/sceneview/RenderInvalidator;
+	public final fun register (Lcom/google/android/filament/Scene;Lio/github/sceneview/RenderInvalidator;)V
+	public final fun unregister (Lcom/google/android/filament/Scene;)V
 }
 
 public final class io/github/sceneview/SceneRenderer {

@@ -933,8 +933,16 @@ fun SceneView(
     LaunchedEffect(engine, renderer, view, scene) {
         while (true) {
             when {
-                // Not resumed — poll the lifecycle flag the DisposableEffect below flips.
-                !isResumed.get() -> delay(100)
+                // Not resumed — poll the lifecycle flag the DisposableEffect below flips, and
+                // stop asking the panel for a cadence first. A paused view that is still attached
+                // never reaches `onDetachedFromSurface`, so without this its last vote — the
+                // display maximum, if it paused while something was moving — stays standing for as
+                // long as the app is in the background. `setFrameRateVote` deduplicates, so the
+                // repeat at 10 Hz costs nothing after the first pass.
+                !isResumed.get() -> {
+                    sceneRenderer.setFrameRateVote(0f)
+                    delay(100)
+                }
 
                 // Rendering paused and the surface is not owed a frame — park, don't poll. A
                 // `delay(16)` spin would stop the GPU work and still wake the CPU ~60x/s on a

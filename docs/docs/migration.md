@@ -43,20 +43,45 @@ SceneView { /* … */ }
 - The `isDirty` state, the `dirtyToken`, the `LaunchedEffect { delay(200) }` window — **delete
   them, do not translate them.** Every source they were standing in for (touch, camera coast,
   animation, smooth transform, video, `ViewNode`, splat sort, async load, mirrorer, auto-fit, node
-  added/moved/removed, surface resize, lifecycle resume) is now tracked by the library.
+  added/moved/removed, visibility, geometry, material swap, surface resize, lifecycle resume) is
+  now tracked by the library.
+- **Never invalidate from a recomposition, and never write Compose state from `onFrame`.** The
+  library asks for a frame from the thing that changed, never from the fact that a recomposition
+  happened — and your screen should do the same. A counter that writes snapshot state on every
+  presented frame recomposes its host on every presented frame; if any of that feeds back into the
+  scene, the screen is measuring its own loop rather than the scene's. `DebugStats` holds plain
+  fields and `DebugOverlay` reads them on a 250 ms tick, which is the pattern to copy.
+- **A single `ViewNode` anywhere in the tree keeps the whole scene at full cadence, permanently.**
+  `ViewNode.isFrameActive` is constantly `true`, because the Android `View` it hosts can animate
+  at any time and the library cannot see inside it. That is deliberate, but it means a screen with
+  a `ViewNode` gets none of this. Same for a `VideoNode` while its player reports playing.
 - Pre-compiled consumers must recompile. A caller passing nine or more **positional** arguments
   gets a type error at slot 9 rather than a silent behaviour change — the slot went from `Boolean`
   to `FrameRatePolicy`.
 - `FrameRatePolicy.Capped(fps)` is new: render continuously but never faster than `fps`, and vote
   `fps` to the display rather than the panel maximum.
-- **Direct Filament edits are the one thing the default cannot see.** Setting a `MaterialInstance`
-  parameter or a light intensity happens below the scene graph, so nothing invalidates. Call
-  `node.requestRender()`, or take the new `renderInvalidator` parameter with
-  `rememberRenderInvalidator()` and call `invalidator.requestRender()` after the edit — and before
-  any `PixelCopy` or screenshot of the surface.
-- `ARSceneView` takes the same parameter and also defaults to `OnDemand`, gating on a changed
-  ARCore `Frame.timestamp`. `session.update()` still runs every vsync, so tracking, anchors and
-  plane detection are unaffected.
+- **Direct Filament edits are the one thing the default cannot see.** Anything written below the
+  scene graph leaves nothing to invalidate on. The full list, and it is a list rather than an
+  example, because the cost of missing one is a frozen image:
+  - a `MaterialInstance` parameter (`setParameter`) on an instance you already hold;
+  - a light property written through `LightManager` rather than through the node;
+  - a `Skybox` or `IndirectLight` assigned straight onto the Filament `Scene`;
+  - morph-target weights and bone transforms written through `RenderableManager`;
+  - an external `Stream` — a camera or video surface — pushing new content;
+  - `View` options changed at runtime (bloom, ambient occlusion, dynamic resolution, blend mode)
+    on a `View` you own.
+
+  For all of them: call `node.requestRender()` on a node you hold, or take the new
+  `renderInvalidator` parameter with `rememberRenderInvalidator()` and call
+  `invalidator.requestRender()` after the edit. Call it on the main thread — post to it from a
+  background upload rather than calling across. Before a `PixelCopy` or a screenshot, request a
+  frame and then **wait for your next `onFrame`**: the request is fire-and-forget, and there is no
+  "await one frame" API.
+- **`ARSceneView` does not take this parameter, and its loop never parks.** A live camera feed is
+  never idle, so there is no idle frame to skip. What it does do is skip the *GPU submit* on a
+  vsync where ARCore hands back a duplicate `Frame.timestamp` and nothing in the scene changed —
+  `session.update()` still runs every vsync, so tracking, anchors and plane detection are
+  unaffected.
 
 **Action:** delete the `isRendering` argument and the dirty-tracking behind it. Pass
 `frameRatePolicy = FrameRatePolicy.Continuous` only if your scene is driven by something the
