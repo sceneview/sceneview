@@ -388,13 +388,19 @@ class ViewNode(
      * attached to a window and drawn to a real DisplayListCanvas, which is a hidden class.
      * To achieve this, the following is done:
      *
-     *  - Attach [Layout] to the [WindowManager].
-     *  - Override dispatchDraw.
-     *  - Call super.dispatchDraw with the real DisplayListCanvas
-     *  - Draw the clear color the DisplayListCanvas so that it isn't visible on screen.
-     *  - Draw the view to the SurfaceTexture every frame. This must be done every frame, because
-     *  the view will not be marked as dirty when child views are animating when hardware
-     *  accelerated.
+     *  - Attach [Layout] to the [WindowManager], so the hierarchy is really attached, measured and
+     *  drawn.
+     *  - Override [Layout.dispatchDraw] and run the hosted hierarchy's draw into a canvas locked on
+     *  the node's `Surface`, clearing it first so nothing of the previous copy shows through.
+     *  - Copy the hierarchy to that `Surface` **on every change of the hosted views** rather than on
+     *  every rendered frame: a hardware-accelerated child that invalidates only re-records its own
+     *  display list and never re-runs this layout's `dispatchDraw`, so the copy is driven by
+     *  [Layout.onDescendantInvalidated] (API 26+) / [Layout.invalidateChildInParent] (24–25), which
+     *  mark this layout dirty for the next traversal (#3718).
+     *
+     * Redrawing on change, not per frame, is what lets the scene park under
+     * [io.github.sceneview.FrameRatePolicy.OnDemand] while still showing a current picture of the
+     * hosted view.
      */
     inner class Layout @JvmOverloads constructor(
         context: Context,
@@ -428,9 +434,8 @@ class ViewNode(
          * `Resume`) for exactly **one** `dispatchDraw` and **one** queued buffer over the whole
          * scenario, both at 16.861 — the label on the quad never changed.
          *
-         * Invalidating here is the event-driven half of what the class KDoc above describes as
-         * "every frame": the copy happens once per real change to the hosted view instead of once
-         * per rendered frame, which is what lets the scene park under
+         * This is the event-driven copy the class KDoc above describes: once per real change to the
+         * hosted view instead of once per rendered frame, which is what lets the scene park under
          * [io.github.sceneview.FrameRatePolicy.OnDemand] while still showing a current picture.
          */
         @RequiresApi(Build.VERSION_CODES.O)
@@ -439,11 +444,20 @@ class ViewNode(
             invalidate()
         }
 
-        /** The pre-API-26 half of [onDescendantInvalidated] — same reason, older walk (#3718). */
+        /**
+         * The pre-API-26 half of [onDescendantInvalidated] — same reason, older walk (#3718).
+         *
+         * `super` runs FIRST: the framework's implementation reads `location` and `dirty` (which
+         * the caller passes as the shared `mTmpInvalRect` scratch) and rewrites them in place for
+         * the next parent up the chain. Invalidating this view before that read would re-enter
+         * `ViewGroup`'s invalidation on the same scratch rectangle and hand `super` a dirty region
+         * that is no longer the child's.
+         */
         @Suppress("DEPRECATION")
         override fun invalidateChildInParent(location: IntArray?, dirty: Rect?): ViewParent? {
+            val parent = super.invalidateChildInParent(location, dirty)
             invalidate()
-            return super.invalidateChildInParent(location, dirty)
+            return parent
         }
 
         override fun dispatchDraw(canvas: Canvas) {
