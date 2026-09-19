@@ -1369,6 +1369,16 @@ open class Node protected constructor(
      * @see RenderableNode.updateVisibility
      */
     protected open fun updateVisibility() {
+        // Push source for render-on-demand, and the second funnel after [onTransformChanged]:
+        // showing or hiding a node changes the picture without moving anything, so no transform
+        // notification fires and nothing else would report it. Placed here rather than in the
+        // `isVisible` setter because several subclasses override that property (`AnchorNode`,
+        // `PoseNode`, `TrackableNode`, the plane renderers) and all of them funnel here.
+        //
+        // The recursion below asks again per descendant, unlike [onTransformChanged] which asks
+        // once: a visibility toggle is a user action, not a per-frame event, so the extra registry
+        // lookups are paid once and buy correctness for overrides that re-enter the recursion.
+        requestRender()
         childNodes.forEach { childNode ->
             childNode.updateVisibility()
         }

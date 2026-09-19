@@ -406,18 +406,88 @@ fun SceneView(
 
     val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
 
-    SideEffect {
+    // ── The render-on-demand gate ────────────────────────────────────────────────────────────────
+    //
+    // "Does the surface still owe a frame?", in one object shared by every invalidation source. Its
+    // dirty flag is snapshot state, not a plain boolean, because the parked render loop suspends on
+    // it — see [awaitRenderingEnabled] and the `shouldRender` gate below (#3108, #3109). Declared
+    // first, above everything that writes Filament state, because every one of those writes is an
+    // invalidation source and reaches the gate from here down.
+    //
+    // Why it starts dirty, and why it owes a *run* of frames rather than one: a swap chain holds
+    // no pixels of its own. `SceneRenderer`'s `onNativeWindowChanged` creates a brand-new one and
+    // presents nothing into it, so every surface generation — first attach, app foregrounded,
+    // foldable folded or unfolded, split-screen resize — starts blank, and a gate that parked
+    // straight away would leave it blank (black, or transparent with `isOpaque = false`) until
+    // something unrelated woke it. One frame is not enough either: Filament finalises texture
+    // uploads and compiles material variants from inside the frame loop, so the first frame after
+    // a change is routinely not yet the finished picture — the Materials demo needs ~4 presented
+    // frames over 6.3 s before the ToyCar's clearcoat variants are warm. [SETTLE_FRAMES] is that
+    // tail, and it is what makes "stops drawing" mean "stops drawing the finished picture".
+    val frameRateGate = remember(engine, view, renderer) { FrameRateGate() }
+
+    // Publish the gate to every [Node] in this scene. Nodes reach it through a registry keyed on
+    // the Filament [Scene] they are attached to (see [SceneRenderInvalidators]) rather than a
+    // back-reference threaded down the tree, because glTF sub-nodes are created by the loader and
+    // never see the composable — `Node.attachedScene` is the one handle they all have.
+    val sceneInvalidator = remember(engine, view, renderer) { RenderInvalidator() }
+    DisposableEffect(frameRateGate, sceneInvalidator, scene) {
+        sceneInvalidator.attach(frameRateGate)
+        SceneRenderInvalidators.register(scene, sceneInvalidator)
+        onDispose {
+            SceneRenderInvalidators.unregister(scene)
+            sceneInvalidator.detach(frameRateGate)
+        }
+    }
+    // The caller's own escape hatch, wired to the same gate.
+    DisposableEffect(frameRateGate, renderInvalidator) {
+        renderInvalidator?.attach(frameRateGate)
+        onDispose { renderInvalidator?.detach(frameRateGate) }
+    }
+
+    // ── Filament wiring — one keyed effect per parameter, each asking for the frame it needs ──────
+    //
+    // These six writes used to be a single *unkeyed* `SideEffect`, paired with an equally unkeyed
+    // `SideEffect { frameRateGate.requestRender() }` a few hundred lines below. That pair is the
+    // reason an idle scene stayed awake: it made "a recomposition happened" an invalidation source
+    // in its own right, so any state change anywhere in the enclosing composition — a text field, a
+    // slider label, a clock ticking in a corner — asked the scene for a frame whether or not
+    // anything in it had moved. It also hid every genuinely missing invalidation behind itself,
+    // which is why removing it is the correction and not merely an optimisation.
+    //
+    // The rule they now follow: **an invalidation comes from what changed, never from the fact that
+    // a recomposition happened.** Each parameter that writes Filament state gets a `LaunchedEffect`
+    // keyed on exactly that parameter (the pattern `renderQuality` already used since #1078), and
+    // each asks for the frame its own write needs. Parameters that write nothing visible ask for
+    // nothing, and are listed — with the reason — in the pull request's parameter table.
+    LaunchedEffect(scene, environment) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+        // The first frozen image anyone would have hit: a dark/light toggle that swaps the
+        // environment while the scene is parked. The IBL and skybox are replaced in Filament and
+        // nothing else reports it, so without this the old sky stays on screen until something
+        // unrelated wakes the loop.
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, scene) {
         view.scene = scene
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, cameraNode, collisionSystem) {
         view.camera = cameraNode.camera
         cameraNode.collisionSystem = collisionSystem
         cameraNode.setView(view)
+        // A different camera is a different picture — and the swap happens without anyone moving
+        // the new camera, so `onTransformChanged` never fires for it.
+        frameRateGate.requestRender()
+    }
+    LaunchedEffect(view, isOpaque) {
         // Pair with `uiHelper.isOpaque` set in SceneRenderer.attachToSurfaceView/
         // TextureView (#1077). Without this, the fragment pipeline blends opaque
         // even when the swap chain is CONFIG_TRANSPARENT — nothing under the
         // SceneView shows through.
         view.blendMode = if (isOpaque) BlendMode.OPAQUE else BlendMode.TRANSLUCENT
+        frameRateGate.requestRender()
     }
     // Keyed `LaunchedEffect` so the preset is reapplied ONLY when `renderQuality`
     // actually changes (#1078). The previous unkeyed `SideEffect` ran on every
@@ -427,6 +497,8 @@ fun SceneView(
     // they will not be undone".
     LaunchedEffect(view, renderQuality) {
         view.applyRenderQuality(renderQuality)
+        // MSAA, FXAA, bloom, dynamic resolution: the same scene renders differently from now on.
+        frameRateGate.requestRender()
     }
 
     // Force a per-frame color-buffer clear so stale renderable pixels never survive
@@ -468,8 +540,10 @@ fun SceneView(
 
     DisposableEffect(cameraNode) {
         nodeManager.addNode(cameraNode)
+        frameRateGate.requestRender()
         onDispose {
             nodeManager.removeNode(cameraNode)
+            frameRateGate.requestRender()
         }
     }
 
@@ -482,8 +556,12 @@ fun SceneView(
 
     DisposableEffect(mainLightNode) {
         mainLightNode?.let { nodeManager.addNode(it) }
+        // Adding or removing the sun relights every surface in the scene, and neither the node nor
+        // Filament reports it — `addNode` moves no transform, so `onTransformChanged` never fires.
+        frameRateGate.requestRender()
         onDispose {
             mainLightNode?.let { nodeManager.removeNode(it) }
+            frameRateGate.requestRender()
         }
     }
 
@@ -491,8 +569,10 @@ fun SceneView(
 
     DisposableEffect(fillLightNode) {
         fillLightNode?.let { nodeManager.addNode(it) }
+        frameRateGate.requestRender()
         onDispose {
             fillLightNode?.let { nodeManager.removeNode(it) }
+            frameRateGate.requestRender()
         }
     }
 
@@ -522,6 +602,10 @@ fun SceneView(
         if (autoCenterContent) {
             nodeManager.addNode(contentRoot)
         }
+        // Turning centring on or off re-parents the whole content subtree and re-arms the framing
+        // pass; either way the content is about to be somewhere else than it is on screen.
+        autoCenterState.reset()
+        frameRateGate.requestRender()
         onDispose {
             if (autoCenterContent) {
                 nodeManager.removeNode(contentRoot)
@@ -529,53 +613,16 @@ fun SceneView(
         }
     }
 
+    // Enabling auto-fit at runtime has to wake the loop too: the fit pass only runs from inside a
+    // presented frame, so a parked scene would keep the old framing until something else woke it.
+    LaunchedEffect(autoFitContent, framingPadding) {
+        autoFitState.reset()
+        frameRateGate.requestRender()
+    }
+
     // ── DSL nodes → Filament scene sync ──────────────────────────────────────────────────────────
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
-
-    // The render-on-demand gate: "does the surface still owe a frame?", in one object shared by
-    // every invalidation source. Its dirty flag is snapshot state, not a plain boolean, because
-    // the parked render loop suspends on it — see [awaitRenderingEnabled] and the `shouldRender`
-    // gate below (#3108, #3109). Declared here, rather than next to [sceneRenderer] below which
-    // only reads it, so the DSL-node sync effect right below can invalidate too — see the
-    // `requestRender()` inside its `collect` block (#3560).
-    //
-    // Why it starts dirty, and why it owes a *run* of frames rather than one: a swap chain holds
-    // no pixels of its own. `SceneRenderer`'s `onNativeWindowChanged` creates a brand-new one and
-    // presents nothing into it, so every surface generation — first attach, app foregrounded,
-    // foldable folded or unfolded, split-screen resize — starts blank, and a gate that parked
-    // straight away would leave it blank (black, or transparent with `isOpaque = false`) until
-    // something unrelated woke it. One frame is not enough either: Filament finalises texture
-    // uploads and compiles material variants from inside the frame loop, so the first frame after
-    // a change is routinely not yet the finished picture — the Materials demo needs ~4 presented
-    // frames over 6.3 s before the ToyCar's clearcoat variants are warm. [SETTLE_FRAMES] is that
-    // tail, and it is what makes "stops drawing" mean "stops drawing the finished picture".
-    val frameRateGate = remember(engine, view, renderer) { FrameRateGate() }
-
-    // Publish the gate to every [Node] in this scene. Nodes reach it through a registry keyed on
-    // the Filament [Scene] they are attached to (see [SceneRenderInvalidators]) rather than a
-    // back-reference threaded down the tree, because glTF sub-nodes are created by the loader and
-    // never see the composable — `Node.attachedScene` is the one handle they all have.
-    val sceneInvalidator = remember(engine, view, renderer) { RenderInvalidator() }
-    DisposableEffect(frameRateGate, sceneInvalidator, scene) {
-        sceneInvalidator.attach(frameRateGate)
-        SceneRenderInvalidators.register(scene, sceneInvalidator)
-        onDispose {
-            SceneRenderInvalidators.unregister(scene)
-            sceneInvalidator.detach(frameRateGate)
-        }
-    }
-    // The caller's own escape hatch, wired to the same gate.
-    DisposableEffect(frameRateGate, renderInvalidator) {
-        renderInvalidator?.attach(frameRateGate)
-        onDispose { renderInvalidator?.detach(frameRateGate) }
-    }
-    // Recomposition of this call is itself an invalidation source, and the widest one: a caller
-    // that swaps a material, moves a light or rebuilds its DSL content in response to state has
-    // recomposed by the time the change lands, and for a plain Filament edit nothing else would
-    // report it. Cheap by construction — `requestRender` returns immediately when the gate is
-    // already dirty, and writes snapshot state only on the transition.
-    SideEffect { frameRateGate.requestRender() }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -620,6 +667,15 @@ fun SceneView(
         val observer = object : DefaultLifecycleObserver {
             override fun onResume(owner: LifecycleOwner) {
                 isResumed.set(true)
+                // Coming back to the foreground is a push invalidation, and it has to be written
+                // here: `isResumed` is an `AtomicBoolean`, deliberately — it is polled from the
+                // loop's inner wait and must not recompose the whole call sixty times a second.
+                // So nothing about the resume reaches the gate on its own. The blanket
+                // `SideEffect` used to cover this by accident (the activity usually recomposes on
+                // resume) and the surface usually gets re-created on top, which is why it never
+                // showed; on the paths where neither happens — a dialog dismissed over a still
+                // -attached surface — the scene stayed parked on a stale frame.
+                frameRateGate.requestRender()
                 // Attach the ViewNode off-screen window on resume. Without this, ViewNode instances
                 // render only a black rectangle because their backing Layout is never attached to
                 // android.view.WindowManager, meaning onLayout is never called and the
@@ -699,6 +755,14 @@ fun SceneView(
         }
     }
 
+    // A manipulator swapped at runtime (the Explore viewer rebuilds one after the model loads)
+    // holds its own camera transform, and the loop only reads it from inside a frame — so a parked
+    // scene would keep the old framing until a touch woke it. Keyed on the instance, not folded
+    // into the `SideEffect` above: that block runs on every recomposition by design (it rewires
+    // callbacks that are re-created each time), and asking for a frame from inside it would be the
+    // removed blanket `SideEffect` under another name.
+    LaunchedEffect(cameraManipulator) { frameRateGate.requestRender() }
+
     // Common touch dispatcher — wired to both SurfaceView and TextureView via SceneRenderer.
     //
     // Gesture isolation: when the touch lands on an editable node, the camera gesture
@@ -770,8 +834,13 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
-    // `frameRateGate` (the render-on-demand gate) is declared earlier, next to the DSL-node sync
-    // effect that also invalidates it — see its doc comment above (#3560).
+    // `frameRateGate` (the render-on-demand gate) is declared at the top of this function, above
+    // everything that writes Filament state — see its doc comment there (#3108, #3560).
+
+    // A mirrorer is a *pull* source (`isMirroring` in [isSceneFrameActive]), and a pull source is
+    // only read from inside a frame. Attaching one to a parked scene therefore has to wake it once,
+    // or the recording starts on a scene that is not drawing and never will.
+    LaunchedEffect(surfaceMirrorer) { frameRateGate.requestRender() }
 
     // Wire resize and surface callbacks.
     SideEffect {
@@ -843,7 +912,8 @@ fun SceneView(
     // And `framingPadding` — a per-scene change re-arms the pass so the new air is applied
     // instead of staying latched on the previous framing.
     val currentFramingPadding = rememberUpdatedState(framingPadding)
-    LaunchedEffect(framingPadding) { autoFitState.reset() }
+    // The `reset()` and the wake-up for both of these live in one keyed effect next to the
+    // auto-fit state above.
 
     // The loop's wake condition: the policy draws unconditionally, *or* something invalidated the
     // gate. Derived state so the park below observes both through a single snapshot read.
@@ -1570,7 +1640,20 @@ fun rememberMainLightNode(
 }.also { node ->
     // Re-apply on every recomposition so Compose-state-driven light properties stay reactive.
     // SideEffect runs on the composition applier (main) thread — required for Filament JNI.
-    SideEffect { node.apply(apply) }
+    //
+    // The re-apply writes straight to Filament's `LightManager`, which reports nothing, so under
+    // [FrameRatePolicy.OnDemand] it has to ask for its own frame — a relit scene that is parked
+    // keeps the old lighting on screen. It asks only when the block itself changed: Compose hands
+    // back a *new* lambda instance exactly when the values it captures change, so a constant block
+    // (`rememberMainLightNode(engine)` with no arguments, the common case) never invalidates and a
+    // block reading an animated intensity invalidates once per value.
+    val lastApply = remember { AtomicReference<(LightNode.() -> Unit)?>(null) }
+    SideEffect {
+        node.apply(apply)
+        if (lastApply.getAndSet(apply) !== apply) {
+            node.requestRender()
+        }
+    }
 }
 
 /**
@@ -1608,7 +1691,20 @@ fun rememberFillLightNode(
 }.also { node ->
     // Re-apply on every recomposition so Compose-state-driven light properties stay reactive.
     // SideEffect runs on the composition applier (main) thread — required for Filament JNI.
-    SideEffect { node.apply(apply) }
+    //
+    // The re-apply writes straight to Filament's `LightManager`, which reports nothing, so under
+    // [FrameRatePolicy.OnDemand] it has to ask for its own frame — a relit scene that is parked
+    // keeps the old lighting on screen. It asks only when the block itself changed: Compose hands
+    // back a *new* lambda instance exactly when the values it captures change, so a constant block
+    // (`rememberMainLightNode(engine)` with no arguments, the common case) never invalidates and a
+    // block reading an animated intensity invalidates once per value.
+    val lastApply = remember { AtomicReference<(LightNode.() -> Unit)?>(null) }
+    SideEffect {
+        node.apply(apply)
+        if (lastApply.getAndSet(apply) !== apply) {
+            node.requestRender()
+        }
+    }
 }
 
 /**

@@ -225,7 +225,9 @@ public final class io/github/sceneview/FramingGate {
 	public static final field STABILITY_EPSILON F
 	public fun <init> ()V
 	public final fun getLatched ()Z
+	public final fun isPending ()Z
 	public final fun recordFraming (F)V
+	public final fun recordNoContent ()V
 	public final fun reset ()V
 	public final fun shouldFrame (F)Z
 	public final fun shouldRun (Z)Z
@@ -268,6 +270,7 @@ public final class io/github/sceneview/SceneAutoCenterState {
 	public static final field $stable I
 	public fun <init> ()V
 	public final fun getDidCenter ()Z
+	public final fun isFramingPending ()Z
 	public final fun maybeCenter (Lio/github/sceneview/node/Node;)Z
 	public final fun reset ()V
 }
@@ -277,6 +280,7 @@ public final class io/github/sceneview/SceneAutoFitState {
 	public fun <init> ()V
 	public final fun getDidFit ()Z
 	public final fun getFitDistance ()F
+	public final fun isFramingPending ()Z
 	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;F)Z
 	public final fun maybeFit (Lio/github/sceneview/node/CameraNode;Ljava/util/List;F)Z
 	public static synthetic fun maybeFit$default (Lio/github/sceneview/SceneAutoFitState;Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/node/Node;FILjava/lang/Object;)Z
@@ -370,6 +374,7 @@ public final class io/github/sceneview/SceneRenderer {
 	public final fun getOnSurfaceDestroyed ()Lkotlin/jvm/functions/Function0;
 	public final fun getOnSurfaceReady ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnSurfaceResized ()Lkotlin/jvm/functions/Function2;
+	public final fun getRefreshRate ()Ljava/lang/Float;
 	public final fun getSurfaceMirrorer ()Lio/github/sceneview/utils/SurfaceMirrorer;
 	public final fun getView ()Lcom/google/android/filament/View;
 	public final fun isAttached ()Z
