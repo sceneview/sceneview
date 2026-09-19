@@ -1499,13 +1499,16 @@ class SceneView private constructor(
         val autoCenterActive = autoCenterContent && models.isNotEmpty() && !autoCenterGate.didCenter
         refreshContentCentering()
 
-        // Update orbit camera — reports whether the eye/target actually moved
-        // this frame (auto-rotate, damping tail, or a fresh drag/zoom/pan).
-        val cameraMoved = cameraController?.update() ?: false
-
-        // Track animation time
+        // Track animation time. Resolved BEFORE the camera update, which needs
+        // the same step: driving the orbit camera off the frame count instead
+        // made auto-rotation and inertia run at the display's refresh rate —
+        // twice too fast on a 120 Hz panel.
         val deltaSeconds = if (lastTimestamp > 0) (timestamp - lastTimestamp) / 1000.0 else 0.0
         lastTimestamp = timestamp
+
+        // Update orbit camera — reports whether the eye/target actually moved
+        // this frame (auto-rotate, damping tail, or a fresh drag/zoom/pan).
+        val cameraMoved = cameraController?.update(deltaSeconds) ?: false
 
         // Fan the frame tick out through the retained node tree (#2024) so
         // Node.onFrame overrides can animate. The empty-graph guard keeps the

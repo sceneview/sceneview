@@ -137,7 +137,11 @@ class SceneViewJS {
     }
 
     /**
-     * Set auto-rotation speed in radians per frame.
+     * Set auto-rotation speed in **radians per second**.
+     *
+     * Was radians per *frame* until the orbit camera stopped counting frames:
+     * a value tuned against the old unit is 60× too slow now, so multiply it
+     * by 60 (or pass `30 * Math.PI / 180` for the default 30°/s).
      */
     @JsName("setAutoRotateSpeed")
     fun setAutoRotateSpeed(speed: Double) {

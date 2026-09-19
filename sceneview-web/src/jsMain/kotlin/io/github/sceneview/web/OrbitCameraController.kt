@@ -12,6 +12,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
 
 /**
@@ -25,8 +26,13 @@ import kotlin.math.sin
  * val controller = OrbitCameraController(canvas, sceneView.camera)
  * controller.target(0.0, 0.0, 0.0)
  * controller.distance = 5.0
- * // Call update() each frame in the render loop
+ * // Call update(deltaSeconds) each frame in the render loop
  * ```
+ *
+ * All self-driven motion — auto-rotation and the damping tail a released drag
+ * leaves — is integrated against **elapsed time**, not against the frame count,
+ * so the camera turns at the same speed on a 60 Hz panel and on a 120 Hz
+ * ProMotion / Android display. See [update].
  */
 class OrbitCameraController(
     private val canvas: HTMLCanvasElement,
@@ -38,10 +44,43 @@ class OrbitCameraController(
          * treated as floating-point noise or a settled damping tail rather than a
          * genuine move (#2332). At a typical few-metre framing this is far below
          * one screen pixel, so the render gate stops repainting once the camera
-         * has visually settled — yet auto-rotate (≈0.5°/frame) and any real drag
-         * move the eye well beyond it, so live interaction always repaints.
+         * has visually settled — yet auto-rotate (≈0.5°/frame at 60 Hz) and any
+         * real drag move the eye well beyond it, so live interaction always
+         * repaints.
          */
         private const val MOVE_EPSILON: Double = 1e-6
+
+        /**
+         * Longest step, in seconds, [update] integrates at once.
+         *
+         * A frame that arrives late — a model landing on the main thread, a
+         * shader compiling, or a background tab that rAF stopped ticking for a
+         * minute — then pauses the motion for the length of the hitch instead
+         * of leaping across it. Without this bound, returning to a backgrounded
+         * tab would hand `update` a multi-second `deltaSeconds` and snap the
+         * camera a third of the way round the model in one frame.
+         *
+         * Same value as iOS `CameraControls.maxMotionStep`, so a hitch reads
+         * the same on both platforms.
+         */
+        const val MAX_MOTION_STEP: Double = 0.05
+
+        /**
+         * Reference rate the damping model is expressed against: [dampingFactor]
+         * is "velocity retained per 1/60 s", whatever rate [update] actually
+         * runs at. Keeping the unit pinned to 60 Hz means the shipped default
+         * (and any value a consumer already tuned by eye) produces exactly the
+         * same inertia it always did on a 60 Hz panel.
+         */
+        private const val DAMPING_REFERENCE_HZ: Double = 60.0
+
+        /**
+         * Ceiling applied to [dampingFactor] before it is used. `1.0` would be
+         * a velocity that never decays — an inertia that never ends — and it
+         * also makes the closed-form travel below divide by zero. Matches iOS
+         * `CameraControls.applyInertia`.
+         */
+        private const val MAX_DAMPING_FACTOR: Double = 0.999
     }
 
     // Spherical coordinates — defaults match model-viewer's "45deg 70deg 2.5m"
@@ -65,13 +104,41 @@ class OrbitCameraController(
     var zoomSensitivity = 0.1
     var panSensitivity = 0.003
 
-    // Auto-rotation — default speed matches model-viewer's 30deg/sec at 60fps
+    // Auto-rotation
     var autoRotate = false
-    var autoRotateSpeed = 30.0 * PI / 180.0 / 60.0  // 30°/sec ÷ 60fps ≈ 0.00873 rad/frame
+
+    /**
+     * Auto-rotation angular speed in **radians per second**.
+     *
+     * Default is model-viewer's 30°/s. Because the speed is integrated against
+     * elapsed time, the turntable completes a revolution in 12 s on every
+     * display — 60 Hz, 90 Hz, 120 Hz ProMotion — and a dropped frame costs
+     * smoothness, never travel.
+     *
+     * Same name and same unit as iOS `CameraControls.autoRotateSpeed` (whose
+     * own default is 0.3 rad/s); Android expresses orbit speed through
+     * Filament's `CameraManipulator.orbitSpeed`.
+     */
+    var autoRotateSpeed = 30.0 * PI / 180.0  // 30°/sec ≈ 0.5236 rad/s
 
     // Damping (inertia) — higher factor = smoother, more model-viewer-like
     var enableDamping = true
+
+    /**
+     * Share of the orbit velocity retained per 1/60 s of inertia — `0.95`
+     * keeps 95 % of it every 60th of a second, wherever the frame boundaries
+     * actually fall. [update] raises it to the power of the elapsed 60 Hz
+     * frames, so the tail lasts the same wall-clock time at any refresh rate.
+     *
+     * Values are clamped to `0 … 0.999`: `1.0` is an inertia that never ends.
+     */
     var dampingFactor = 0.95
+
+    /**
+     * Orbit velocity left by a drag, in **radians per 1/60 s** — the unit the
+     * pointer handlers below write it in ([rotateSensitivity] × pixels moved).
+     * Paired with [dampingFactor], which decays at the same reference rate.
+     */
     private var velocityTheta = 0.0
     private var velocityPhi = 0.0
 
@@ -120,24 +187,50 @@ class OrbitCameraController(
      * Converts spherical coordinates (theta, phi, distance) to Cartesian
      * and calls camera.lookAt() with float3 arrays as required by Filament.js.
      *
+     * Every self-driven motion is integrated against [deltaSeconds], so the
+     * camera behaves identically whatever rate the host's `requestAnimationFrame`
+     * fires at. The step is clamped to [MAX_MOTION_STEP] so a hitch — or a tab
+     * returning from the background with a multi-second gap — pauses the motion
+     * rather than leaping across it.
+     *
+     * @param deltaSeconds Seconds elapsed since the previous frame. Pass `0.0`
+     *   on the very first frame (there is no previous timestamp to subtract):
+     *   nothing self-driven advances and the camera renders exactly on its
+     *   authored pose. Negative values are treated as `0.0`.
      * @return `true` if the resolved eye or target moved since the previous
      *   frame (auto-rotate, a damping tail, or a fresh drag/zoom/pan) — the
      *   signal the render gate uses to decide whether to repaint (#2332). The
      *   `lookAt` itself still runs every frame, so the Filament camera always
      *   reflects the current pose even on frames the gate skips drawing.
      */
-    fun update(): Boolean {
-        // Apply auto-rotation
+    fun update(deltaSeconds: Double): Boolean {
+        // A late frame pauses the motion for the length of the hitch; a first
+        // frame (dt = 0) advances nothing at all.
+        val step = min(max(deltaSeconds, 0.0), MAX_MOTION_STEP)
+
+        // Apply auto-rotation — rad/s integrated over the elapsed time.
         if (autoRotate && !isDragging) {
-            theta += autoRotateSpeed
+            theta += autoRotateSpeed * step
         }
 
-        // Apply damping
+        // Apply damping. `velocityTheta`/`velocityPhi` are per 1/60 s and
+        // `dampingFactor` decays per 1/60 s, so first express the step in those
+        // reference frames, then integrate the decaying velocity in closed form:
+        // a velocity shrinking by `damping` each reference frame travels
+        // `(1 - damping^frames) / (1 - damping)` times its current value over
+        // `frames` of them. At exactly 60 Hz, frames = 1 and the travel is 1 —
+        // the expression collapses to the previous `theta += velocityTheta;
+        // velocityTheta *= dampingFactor`, so 60 Hz behaviour is bit-for-bit
+        // what it was. Mirrors iOS `CameraControls.applyInertia(dt:)`.
         if (enableDamping) {
-            theta += velocityTheta
-            phi += velocityPhi
-            velocityTheta *= dampingFactor
-            velocityPhi *= dampingFactor
+            val frames = step * DAMPING_REFERENCE_HZ
+            val damping = min(max(dampingFactor, 0.0), MAX_DAMPING_FACTOR)
+            val decay = damping.pow(frames)
+            val travel = (1.0 - decay) / (1.0 - damping)
+            theta += velocityTheta * travel
+            phi += velocityPhi * travel
+            velocityTheta *= decay
+            velocityPhi *= decay
         }
 
         // Clamp phi

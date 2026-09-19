@@ -131,9 +131,14 @@ export interface SceneViewer {
   /** Turn auto-rotation on/off at runtime. */
   setAutoRotate(enabled: boolean): void;
 
-  /** Auto-rotate angular speed in **radians per frame** — the controller
-   *  advances the orbit angle by this amount once per `requestAnimationFrame`
-   *  tick. At 60 fps the default is `30° / 60 ≈ 0.00873` rad/frame. */
+  /** Auto-rotate angular speed in **radians per second** — the controller
+   *  integrates it against the time elapsed since the previous
+   *  `requestAnimationFrame` tick, so the turntable turns at the same speed on
+   *  a 60 Hz and on a 120 Hz display. Default `30 * Math.PI / 180 ≈ 0.5236`
+   *  rad/s (30°/s, a revolution every 12 s).
+   *
+   *  BREAKING (was radians per *frame*): multiply a value tuned against the
+   *  old unit by 60. */
   setAutoRotateSpeed(speed: number): void;
 
   /** Constrain pinch-zoom to `[min, max]` metres from the target. */

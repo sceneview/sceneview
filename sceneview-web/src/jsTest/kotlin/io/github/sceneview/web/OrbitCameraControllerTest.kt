@@ -1,6 +1,8 @@
 @file:Suppress(
     "VariableNaming",   // EPS is a test constant — uppercase matches the math convention
-    "UnusedParameter",  // deltaY in dispatchWheel is used inside js("...") string literal
+    // deltaY in dispatchWheel, eventType/clientX/clientY in dispatchMouse: all
+    // read inside a js("...") string literal, which the compiler cannot see.
+    "UnusedParameter",
 )
 
 package io.github.sceneview.web
@@ -76,6 +78,12 @@ class OrbitCameraControllerTest {
 
     private val EPS = 1e-9
 
+    /** One 60 Hz frame, in seconds — the rate every pre-existing test assumed. */
+    private val FRAME_60 = 1.0 / 60.0
+
+    /** One 120 Hz frame — a ProMotion Mac or a 120 Hz Android panel. */
+    private val FRAME_120 = 1.0 / 120.0
+
     @Test
     fun defaultsMatchModelViewer() {
         val (controller, _) = controller()
@@ -94,7 +102,7 @@ class OrbitCameraControllerTest {
         controller.distance = 5.0
         controller.enableDamping = false
         controller.autoRotate = false
-        controller.update()
+        controller.update(FRAME_60)
 
         // eye = target + distance * [sin(phi)sin(theta), cos(phi), sin(phi)cos(theta)]
         //     = [0, 0, 5]
@@ -117,7 +125,7 @@ class OrbitCameraControllerTest {
         controller.phi = phi
         controller.distance = distance
         controller.enableDamping = false
-        controller.update()
+        controller.update(FRAME_60)
 
         val expX = 2.0 + distance * sin(phi) * sin(theta)
         val expY = -1.0 + distance * cos(phi)
@@ -135,11 +143,11 @@ class OrbitCameraControllerTest {
         controller.maxPhi = PI - 0.1
 
         controller.phi = -5.0
-        controller.update()
+        controller.update(FRAME_60)
         assertEquals(0.1, controller.phi, EPS, "phi below minPhi must clamp up to minPhi")
 
         controller.phi = 99.0
-        controller.update()
+        controller.update(FRAME_60)
         assertEquals(PI - 0.1, controller.phi, EPS, "phi above maxPhi must clamp down to maxPhi")
     }
 
@@ -151,34 +159,43 @@ class OrbitCameraControllerTest {
         controller.maxDistance = 50.0
 
         controller.distance = 0.01
-        controller.update()
+        controller.update(FRAME_60)
         assertEquals(0.5, controller.distance, "distance below minDistance must clamp up")
 
         controller.distance = 9999.0
-        controller.update()
+        controller.update(FRAME_60)
         assertEquals(50.0, controller.distance, "distance above maxDistance must clamp down")
     }
 
     @Test
-    fun autoRotateAdvancesThetaByOneStepPerFrame() {
+    fun autoRotateAdvancesThetaBySpeedTimesElapsedTime() {
         val (controller, _) = controller()
         controller.enableDamping = false
         controller.autoRotate = true
         controller.theta = 0.0
-        val step = controller.autoRotateSpeed
+        val step = controller.autoRotateSpeed * FRAME_60
 
-        controller.update()
-        assertEquals(step, controller.theta, EPS, "auto-rotate must advance theta by exactly one speed step")
+        controller.update(FRAME_60)
+        assertEquals(step, controller.theta, EPS, "auto-rotate must advance theta by speed × elapsed time")
 
-        controller.update()
-        assertEquals(2.0 * step, controller.theta, EPS, "two frames advance theta by two steps")
+        controller.update(FRAME_60)
+        assertEquals(2.0 * step, controller.theta, EPS, "two 60 Hz frames advance theta by two such steps")
     }
 
     @Test
-    fun autoRotateSpeedDefaultIs30DegPerSecAt60Fps() {
+    fun autoRotateSpeedDefaultIs30DegPerSecond() {
         val (controller, _) = controller()
-        // 30°/sec ÷ 60fps = 0.5°/frame in radians.
-        assertEquals(30.0 * PI / 180.0 / 60.0, controller.autoRotateSpeed, EPS)
+        // The unit is rad/SECOND (iOS `CameraControls.autoRotateSpeed` parity),
+        // not rad/frame — a 60 Hz assumption is exactly the bug this pins shut.
+        assertEquals(30.0 * PI / 180.0, controller.autoRotateSpeed, EPS)
+        // And it still resolves to the historical 0.5°/frame at 60 Hz, so the
+        // visible speed on a 60 Hz panel is unchanged by the unit switch.
+        assertEquals(
+            30.0 * PI / 180.0 / 60.0,
+            controller.autoRotateSpeed * FRAME_60,
+            EPS,
+            "a 60 Hz frame must still advance the historical 0.5°",
+        )
     }
 
     @Test
@@ -195,8 +212,8 @@ class OrbitCameraControllerTest {
 
         // No mouse input -> velocities start at 0, so theta stays put and the
         // controller is a stable no-op frame to frame.
-        controller.update()
-        controller.update()
+        controller.update(FRAME_60)
+        controller.update(FRAME_60)
         assertEquals(0.0, controller.theta, EPS, "zero velocity -> theta unchanged under damping")
     }
 
@@ -216,9 +233,9 @@ class OrbitCameraControllerTest {
     fun updateInvokesCameraLookAtEveryFrame() {
         val (controller, cam) = controller()
         controller.enableDamping = false
-        controller.update()
-        controller.update()
-        controller.update()
+        controller.update(FRAME_60)
+        controller.update(FRAME_60)
+        controller.update(FRAME_60)
         assertEquals(3, cam.lookAtCalls, "every update() must push a fresh lookAt to the camera")
     }
 
@@ -228,7 +245,7 @@ class OrbitCameraControllerTest {
         // frame has no prior pose to compare against and must count as moved.
         val (controller, _) = controller()
         controller.enableDamping = false
-        assertTrue(controller.update(), "the first update() must report the camera as moved")
+        assertTrue(controller.update(FRAME_60), "the first update() must report the camera as moved")
     }
 
     @Test
@@ -239,9 +256,9 @@ class OrbitCameraControllerTest {
         val (controller, _) = controller()
         controller.enableDamping = false
         controller.autoRotate = false
-        controller.update() // first frame: moved (no prior pose)
-        assertFalse(controller.update(), "an unchanged camera must report not-moved")
-        assertFalse(controller.update(), "and stay not-moved while nothing changes")
+        controller.update(FRAME_60) // first frame: moved (no prior pose)
+        assertFalse(controller.update(FRAME_60), "an unchanged camera must report not-moved")
+        assertFalse(controller.update(FRAME_60), "and stay not-moved while nothing changes")
     }
 
     @Test
@@ -256,9 +273,9 @@ class OrbitCameraControllerTest {
         val (controller, _) = controller()
         assertTrue(controller.enableDamping, "test premise: damping is on by default in production")
         controller.autoRotate = false
-        controller.update() // first frame: moved (no prior pose)
+        controller.update(FRAME_60) // first frame: moved (no prior pose)
         assertFalse(
-            controller.update(),
+            controller.update(FRAME_60),
             "a settled camera must report not-moved under the default damping = true",
         )
     }
@@ -271,9 +288,9 @@ class OrbitCameraControllerTest {
         controller.enableDamping = false
         controller.autoRotate = true
         controller.theta = 0.0
-        controller.update() // first frame
-        assertTrue(controller.update(), "auto-rotate must keep reporting the camera as moved")
-        assertTrue(controller.update(), "auto-rotate must keep reporting the camera as moved")
+        controller.update(FRAME_60) // first frame
+        assertTrue(controller.update(FRAME_60), "auto-rotate must keep reporting the camera as moved")
+        assertTrue(controller.update(FRAME_60), "auto-rotate must keep reporting the camera as moved")
     }
 
     /**
@@ -335,11 +352,11 @@ class OrbitCameraControllerTest {
         controller.distance = 4.0
 
         controller.theta = 0.3
-        controller.update()
+        controller.update(FRAME_60)
         val eyeA = cam.eye.copyOf()
 
         controller.theta = 0.3 + 2.0 * PI
-        controller.update()
+        controller.update(FRAME_60)
         val eyeB = cam.eye.copyOf()
 
         for (i in 0..2) {
@@ -348,5 +365,241 @@ class OrbitCameraControllerTest {
                 "a full 2π orbit must land on the same eye position (axis $i: $eyeA vs $eyeB)",
             )
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Frame-rate independence
+    //
+    // The controller used to add one fixed increment per `update()` call —
+    // both the auto-rotation step and the damping decay. On a 120 Hz panel
+    // (a ProMotion Mac in Chrome, a 120 Hz Android display) rAF fires twice as
+    // often, so the turntable spun twice as fast and a released drag's inertia
+    // died in half the time. These pin the fix the way the iOS suite pins its
+    // own (`CameraMotionContinuityTests.testCoastIsFrameRateIndependent`):
+    // simulate the SAME wall-clock second at two refresh rates and require the
+    // same final pose.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Dispatch a synthetic mouse event with the given type and client position.
+     * Built via `js` so `clientX`/`clientY`/`button` are populated under
+     * ChromeHeadless (the Kotlin `MouseEvent` constructor cannot set them).
+     */
+    private fun dispatchMouse(canvas: HTMLCanvasElement, eventType: String, clientX: Double, clientY: Double) {
+        val event = js(
+            "new MouseEvent(eventType, { clientX: clientX, clientY: clientY, button: 0, cancelable: true })"
+        )
+        canvas.dispatchEvent(event.unsafeCast<org.w3c.dom.events.Event>())
+    }
+
+    /**
+     * Drive a real press-drag-release through the DOM listeners so the
+     * controller's private inertia velocity is seeded exactly the way a user's
+     * finger seeds it — no test-only setter, no reflection.
+     *
+     * Returns a controller left coasting, mid-range in phi so the coast never
+     * reaches [OrbitCameraController.minPhi] (a clamp would flatten the very
+     * difference these tests look for).
+     */
+    private fun coastingController(): OrbitCameraController {
+        val canvas = newCanvas()
+        val controller = OrbitCameraController(canvas, FakeCamera().toCamera())
+        controller.theta = 0.0
+        controller.phi = PI / 2.0
+        dispatchMouse(canvas, "mousedown", 100.0, 100.0)
+        dispatchMouse(canvas, "mousemove", 140.0, 106.0)
+        dispatchMouse(canvas, "mouseup", 140.0, 106.0)
+        return controller
+    }
+
+    @Test
+    fun autoRotationIsFrameRateIndependent() {
+        val at60 = controller().first
+        val at120 = controller().first
+        for (c in listOf(at60, at120)) {
+            c.enableDamping = false
+            c.autoRotate = true
+            c.theta = 0.0
+        }
+
+        // One simulated second, at each rate.
+        repeat(60) { at60.update(FRAME_60) }
+        repeat(120) { at120.update(FRAME_120) }
+
+        assertEquals(
+            at60.theta,
+            at120.theta,
+            1e-9,
+            "one second of auto-rotation must travel the same angle at 60 Hz (${at60.theta}) " +
+                "and at 120 Hz (${at120.theta})",
+        )
+    }
+
+    @Test
+    fun autoRotationTravelsThirtyDegreesPerSecondAtEveryRate() {
+        // The honest statement of the default, independent of any refresh rate:
+        // 30°/s means 30° of travel per wall-clock second, full stop.
+        val thirtyDegrees = 30.0 * PI / 180.0
+        // 60 Hz, 90 Hz, 120 Hz, 144 Hz — the panels this actually ships on.
+        for (hz in listOf(60, 90, 120, 144)) {
+            val c = controller().first
+            c.enableDamping = false
+            c.autoRotate = true
+            c.theta = 0.0
+            repeat(hz) { c.update(1.0 / hz) }
+            assertEquals(
+                thirtyDegrees,
+                c.theta,
+                1e-9,
+                "one second at $hz Hz must travel 30°, not ${c.theta * 180.0 / PI}°",
+            )
+        }
+    }
+
+    @Test
+    fun inertiaIsFrameRateIndependent() {
+        val at60 = coastingController()
+        val at120 = coastingController()
+
+        repeat(60) { at60.update(FRAME_60) }
+        repeat(120) { at120.update(FRAME_120) }
+
+        assertEquals(
+            at60.theta,
+            at120.theta,
+            1e-9,
+            "a second of inertia must land on the same theta at 60 Hz (${at60.theta}) " +
+                "and at 120 Hz (${at120.theta})",
+        )
+        assertEquals(
+            at60.phi,
+            at120.phi,
+            1e-9,
+            "a second of inertia must land on the same phi at 60 Hz (${at60.phi}) " +
+                "and at 120 Hz (${at120.phi})",
+        )
+    }
+
+    @Test
+    fun inertiaActuallyMovesTheCameraAndThenSettles() {
+        // Guards the test above against passing for the wrong reason: two
+        // controllers that never moved at all would also agree.
+        val c = coastingController()
+        val start = c.theta
+        c.update(FRAME_60)
+        assertTrue(
+            abs(c.theta - start) > 1e-4,
+            "a released drag must actually coast — theta moved only ${c.theta - start}",
+        )
+
+        // …and the tail dies out rather than orbiting forever.
+        repeat(600) { c.update(FRAME_60) }
+        val settled = c.theta
+        repeat(60) { c.update(FRAME_60) }
+        assertTrue(
+            abs(c.theta - settled) < 1e-6,
+            "ten seconds in, the coast must be over — still moving by ${c.theta - settled}",
+        )
+    }
+
+    @Test
+    fun inertiaTailLastsTheSameWallClockTimeAtEveryRate() {
+        // Not just the same endpoint after a fixed second: the *shape* of the
+        // decay must match, so the inertia feels identical rather than merely
+        // finishing in the same place.
+        val at60 = coastingController()
+        val at120 = coastingController()
+        for (tenthOfASecond in 1..10) {
+            repeat(6) { at60.update(FRAME_60) }
+            repeat(12) { at120.update(FRAME_120) }
+            assertEquals(
+                at60.theta,
+                at120.theta,
+                1e-9,
+                "at t = ${tenthOfASecond / 10.0}s the two rates must agree on theta",
+            )
+        }
+    }
+
+    @Test
+    fun aFirstFrameWithZeroDeltaAdvancesNothing() {
+        // The render loop has no previous timestamp on frame 1 and passes 0.0.
+        // Nothing self-driven may advance — the scene must appear on exactly
+        // the pose the caller authored.
+        val c = coastingController()
+        c.autoRotate = true
+        val theta = c.theta
+        val phi = c.phi
+        c.update(0.0)
+        assertEquals(theta, c.theta, EPS, "a zero-length first frame must not rotate")
+        assertEquals(phi, c.phi, EPS, "a zero-length first frame must not coast")
+        // …and it must not eat the pending inertia either.
+        c.update(FRAME_60)
+        assertTrue(abs(c.theta - theta) > 1e-4, "the coast must survive the zero-length frame")
+    }
+
+    @Test
+    fun aLateFrameIsClampedInsteadOfLeaping() {
+        // A tab returning from the background hands rAF a multi-second gap.
+        // Unclamped, 90 s × 30°/s would spin the model seven times in one
+        // frame. The motion pauses for the hitch instead.
+        val c = controller().first
+        c.enableDamping = false
+        c.autoRotate = true
+        c.theta = 0.0
+        c.update(90.0)
+        assertEquals(
+            c.autoRotateSpeed * OrbitCameraController.MAX_MOTION_STEP,
+            c.theta,
+            EPS,
+            "a 90 s gap must advance at most one clamped step, not ${c.theta} rad",
+        )
+        assertTrue(
+            c.theta < 0.1,
+            "the clamped step must stay far below a visible jump — was ${c.theta} rad",
+        )
+    }
+
+    @Test
+    fun aNegativeDeltaIsTreatedAsZero() {
+        // A host that subtracts timestamps in the wrong order (or a clock that
+        // steps backwards) must not drive the camera in reverse.
+        val c = controller().first
+        c.enableDamping = false
+        c.autoRotate = true
+        c.theta = 0.0
+        c.update(-1.0)
+        assertEquals(0.0, c.theta, EPS, "a negative delta must advance nothing")
+    }
+
+    @Test
+    fun sixtyHertzBehaviourIsUnchangedByTheUnitSwitch() {
+        // The migration promise: on a 60 Hz panel this release looks exactly
+        // like the last one. Auto-rotation advanced `30° / 60` per frame and
+        // inertia was `theta += velocity; velocity *= dampingFactor` — both
+        // reproduced here in closed form and compared against the controller.
+        val c = coastingController()
+        c.autoRotate = true
+        c.enableDamping = true
+        c.dampingFactor = 0.95
+        val autoStep = 30.0 * PI / 180.0 / 60.0
+
+        // Re-derive the legacy per-frame loop from the velocity the same drag
+        // seeds: 40 px at the 0.005 default sensitivity.
+        var expected = 0.0
+        var velocity = -40.0 * c.rotateSensitivity
+        repeat(120) {
+            expected += autoStep
+            expected += velocity
+            velocity *= 0.95
+        }
+
+        repeat(120) { c.update(FRAME_60) }
+        assertEquals(
+            expected,
+            c.theta,
+            1e-10,
+            "two seconds at 60 Hz must reproduce the legacy per-frame loop exactly",
+        )
     }
 }
