@@ -120,18 +120,42 @@ internal fun vsyncPeriodNanos(refreshRate: Float?): Long =
 
 /**
  * Whether a [FrameRatePolicy.Capped] scene may present at [frameTimeNanos], given the timestamp of
- * the last presented frame (`0L` = none yet).
+ * the last presented frame (`0L` = none yet) and the display's real [vsyncPeriodNanos].
  *
- * The half-vsync of slack matters: a 30 fps cap on a 60 Hz display asks for one frame every
- * 33.3 ms while vsyncs land every 16.7 ms. Comparing strictly would reject the vsync at 33.3 ms by
- * a rounding hair on most frames and settle at one frame per *three* vsyncs — 20 fps, not the 30
- * that was asked for. The slack accepts the vsync that is within half a period of the deadline,
- * which is the standard way to phase-lock a cap onto a refresh rate it does not divide evenly.
+ * A cap can only ever be met by presenting on a **whole number of vsyncs**: nothing else exists to
+ * present on. So the requested period is rounded to a whole number of vsyncs, and it is rounded
+ * **up**, because `Capped(fps)` promises "never faster than fps". `Capped(90)` on a 120 Hz panel
+ * therefore runs at 60, not at 120: 90 is not reachable there, and of the two reachable neighbours
+ * only 60 honours the promise.
+ *
+ * Rounding up needs a jitter tolerance or it would round the wrong way on the common exact cases:
+ * a 30 fps cap asks for 33.333 ms while two vsyncs of a "60 Hz" panel measure 33.334 ms — or
+ * 33.367 ms on a panel that is really 59.94 Hz — and a strict `ceil` would push those to *three*
+ * vsyncs, i.e. 20 fps from a 30 fps request. A quarter of a vsync absorbs that and nothing more.
+ *
+ * This used to be a hard-coded `8_000_000L`, "half a 60 Hz vsync", subtracted from the requested
+ * period. On a 120 Hz panel that slack (8 ms) was larger than the whole vsync (8.33 ms), so every
+ * vsync cleared the deadline and the cap capped nothing: `Capped(90)` rendered 120, `Capped(60)`
+ * on a 90 Hz panel rendered 90. The rule was general — a constant tolerance stops working as soon
+ * as `fps > refresh / 2` — and the tests only ever ran it at 60 Hz.
  */
-internal fun shouldPresentAtCap(fps: Int, frameTimeNanos: Long, lastPresentNanos: Long): Boolean {
+internal fun shouldPresentAtCap(
+    fps: Int,
+    frameTimeNanos: Long,
+    lastPresentNanos: Long,
+    vsyncPeriodNanos: Long
+): Boolean {
     if (lastPresentNanos == 0L || fps <= 0) return true
-    return frameTimeNanos - lastPresentNanos >= 1_000_000_000L / fps - HALF_VSYNC_NANOS
+    val requestedPeriod = 1_000_000_000L / fps
+    val elapsed = frameTimeNanos - lastPresentNanos
+    if (vsyncPeriodNanos <= 0L) return elapsed >= requestedPeriod
+    val jitter = vsyncPeriodNanos / 4
+    val vsyncs = ceilDiv(requestedPeriod - jitter, vsyncPeriodNanos).coerceAtLeast(1L)
+    return elapsed >= vsyncs * vsyncPeriodNanos - jitter
 }
+
+private fun ceilDiv(value: Long, divisor: Long): Long =
+    if (value <= 0L) 0L else (value + divisor - 1L) / divisor
 
 /**
  * The cadence, in frames per second, that the scene asks the display for — see
@@ -150,7 +174,10 @@ internal fun frameRateVote(
     active: Boolean,
     maxRefreshRate: Float?
 ): Float = when (policy) {
-    is FrameRatePolicy.Capped -> policy.fps.toFloat()
+    // Never vote above what the panel can do: `Capped(240)` on a 120 Hz display is a request the
+    // system would clamp anyway, and an out-of-range vote is worth no more than an honest one.
+    is FrameRatePolicy.Capped ->
+        maxRefreshRate?.let { minOf(policy.fps.toFloat(), it) } ?: policy.fps.toFloat()
     FrameRatePolicy.Continuous -> maxRefreshRate ?: 0f
     FrameRatePolicy.OnDemand -> if (active) maxRefreshRate ?: 0f else 0f
 }

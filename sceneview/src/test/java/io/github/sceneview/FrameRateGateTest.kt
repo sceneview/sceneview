@@ -3,6 +3,7 @@ package io.github.sceneview
 import androidx.compose.runtime.snapshots.Snapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -225,33 +226,134 @@ class FrameRateGateTest {
         )
     }
 
-    @Test
-    fun aCapPhaseLocksOntoARefreshRateItDoesNotDivideEvenly() {
-        val vsync = 1_000_000_000L / 60
+    // ── Capped, on a display that is not 60 Hz ────────────────────────────────────────────────
+    //
+    // #3108 blocker 4. The slack used to be `8_000_000L`, "half a 60 Hz vsync", and every test ran
+    // at 60 Hz. On a 120 Hz panel that constant is larger than a whole vsync (8.33 ms), so every
+    // vsync cleared the deadline and the cap capped nothing. The emulator is locked at 60 Hz, so
+    // this is the only instrument that reaches the 90 and 120 Hz cases; the on-device figures are
+    // still owed to a Pixel 9.
+
+    /** Frames presented over one virtual second of [refreshRate] vsyncs under an [fps] cap. */
+    private fun presentedInOneSecond(fps: Int, refreshRate: Float): Int {
+        val vsync = vsyncPeriodNanos(refreshRate)
         // `withFrameNanos` hands out system uptime, never 0 — and 0 is this function's "no frame
         // presented yet" sentinel, so a test starting at 0 would measure the sentinel, not the cap.
         val base = 1_000_000_000L
         var last = 0L
         var presented = 0
-        // One virtual second of 60 Hz vsyncs under a 30 fps cap.
-        for (i in 0 until 60) {
+        for (i in 0 until refreshRate.toInt()) {
             val now = base + i * vsync
-            if (shouldPresentAtCap(fps = 30, frameTimeNanos = now, lastPresentNanos = last)) {
+            if (shouldPresentAtCap(fps, now, last, vsync)) {
                 presented++
                 last = now
             }
         }
+        return presented
+    }
 
+    @Test
+    fun aCapPhaseLocksOntoARefreshRateItDoesNotDivideEvenly() {
         assertEquals(
             "a strict comparison rejects the vsync at 33.3 ms by a rounding hair and settles at " +
                 "one frame per three vsyncs — 20 fps, not the 30 that was asked for",
             30,
+            presentedInOneSecond(fps = 30, refreshRate = 60f)
+        )
+    }
+
+    @Test
+    fun aCapIsNeverExceededOnA120HzPanel() {
+        // The regression this pins: with the old constant slack this read 120.
+        val presented = presentedInOneSecond(fps = 90, refreshRate = 120f)
+        assertTrue(
+            "Capped(90) must never present faster than 90 on a 120 Hz panel — it read $presented",
+            presented <= 90
+        )
+        assertEquals(
+            "90 is not reachable on 120 Hz vsyncs; of the two reachable neighbours only 60 " +
+                "honours \"never faster than fps\"",
+            60,
             presented
         )
     }
 
     @Test
+    fun aCapIsNeverExceededOnA90HzPanel() {
+        val presented = presentedInOneSecond(fps = 60, refreshRate = 90f)
+        assertTrue(
+            "Capped(60) must never present faster than 60 on a 90 Hz panel — it read $presented",
+            presented <= 60
+        )
+        assertEquals("one frame every two vsyncs of 90 Hz", 45, presented)
+    }
+
+    @Test
+    fun a30HzCapHoldsAtBoth60And120Hz() {
+        assertEquals("30 divides 60 exactly", 30, presentedInOneSecond(fps = 30, refreshRate = 60f))
+        assertEquals(
+            "30 divides 120 exactly too — one frame every fourth vsync",
+            30,
+            presentedInOneSecond(fps = 30, refreshRate = 120f)
+        )
+    }
+
+    @Test
+    fun aCapAtOrAboveTheRefreshRatePresentsEveryVsync() {
+        assertEquals(
+            "Capped(60) on 60 Hz is every vsync, not every other one",
+            60,
+            presentedInOneSecond(fps = 60, refreshRate = 60f)
+        )
+        assertEquals(
+            "asking for more than the panel can give presents every vsync, never more",
+            60,
+            presentedInOneSecond(fps = 120, refreshRate = 60f)
+        )
+    }
+
+    @Test
+    fun aPanelThatIsReally59Point94HzStillMeetsA30FpsCap() {
+        // Two vsyncs of 59.94 Hz measure 33.37 ms against a 33.33 ms request: a strict `ceil`
+        // would round those up to three vsyncs and deliver 20 fps from a 30 fps cap.
+        val presented = presentedInOneSecond(fps = 30, refreshRate = 59.94f)
+        assertTrue("expected ~30 frames, got $presented", presented in 29..30)
+    }
+
+    @Test
+    fun anUnknownDisplayFallsBackToAStrictDeadline() {
+        assertEquals(0L, vsyncPeriodNanos(null))
+        assertEquals(0L, vsyncPeriodNanos(0f))
+        // No phase lock available, so the deadline is compared as asked.
+        assertTrue(shouldPresentAtCap(30, 1_000_000_000L + 33_400_000L, 1_000_000_000L, 0L))
+        assertFalse(shouldPresentAtCap(30, 1_000_000_000L + 33_000_000L, 1_000_000_000L, 0L))
+    }
+
+    @Test
     fun theFirstFrameIsNeverHeldBackByACap() {
-        assertTrue(shouldPresentAtCap(fps = 1, frameTimeNanos = 0L, lastPresentNanos = 0L))
+        assertTrue(shouldPresentAtCap(1, 0L, 0L, vsyncPeriodNanos(60f)))
+    }
+
+    @Test
+    fun aNonPositiveCapIsRejectedAtConstruction() {
+        // The cap arithmetic divides by `fps`, so a zero or negative one has no meaning. It is
+        // refused where the caller can see it rather than silently treated as "present always".
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Capped(0) }
+        assertThrows(IllegalArgumentException::class.java) { FrameRatePolicy.Capped(-30) }
+    }
+
+    @Test
+    fun aCapNeverVotesAboveWhatThePanelCanDo() {
+        assertEquals(
+            "Capped(240) on a 120 Hz panel votes 120, not a number the panel cannot honour",
+            120f,
+            frameRateVote(FrameRatePolicy.Capped(240), active = true, maxRefreshRate = 120f),
+            0f
+        )
+        assertEquals(
+            30f,
+            frameRateVote(FrameRatePolicy.Capped(30), active = false, maxRefreshRate = 120f),
+            0f
+        )
     }
 }

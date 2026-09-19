@@ -925,7 +925,13 @@ fun SceneView(
                             )
                             when (policy) {
                                 is FrameRatePolicy.Capped -> shouldPresentAtCap(
-                                    policy.fps, frameTimeNanos, lastPresentNanosRef.get()
+                                    fps = policy.fps,
+                                    frameTimeNanos = frameTimeNanos,
+                                    lastPresentNanos = lastPresentNanosRef.get(),
+                                    // The panel's *current* mode, not a constant and not its
+                                    // ceiling: the cap can only be met on whole vsyncs, and on a
+                                    // VRR panel which vsyncs those are changes under us.
+                                    vsyncPeriodNanos = vsyncPeriodNanos(sceneRenderer.refreshRate)
                                 )
                                 FrameRatePolicy.Continuous -> true
                                 FrameRatePolicy.OnDemand -> frameRateGate.shouldRender(active)
