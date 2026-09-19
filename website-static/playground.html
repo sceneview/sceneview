@@ -1398,7 +1398,16 @@
       min-width: 0;
     }
 
+    /* `display: block` is what makes the two lines under it do anything at all.
+       `#descText` is a `<span>`, and `overflow` and `text-overflow` do not apply
+       to an inline box: the nowrap sentence simply ran past its parent with no
+       ellipsis and no clipping — measured 419.7px of text in a 351px box at
+       375px wide, so 57px of it left the viewport entirely, and the longest of
+       the fourteen descriptions overflowed by 259px even at 1280px. The element
+       reported `scrollWidth === clientWidth === 0`, which is why nothing caught
+       it: an inline box has no scroll box to compare. */
     .pg__bottom-text {
+      display: block;
       font-size: 0.8rem;
       color: var(--color-on-surface-variant, #5b5f68);
       white-space: nowrap;
@@ -1516,8 +1525,26 @@
         padding: 6px 8px;
       }
 
+      /* Below this width one clipped line shows about half a sentence, so the
+         bar stops being a fixed 56px strip and grows to fit two wrapped lines.
+         `min-height` keeps the short descriptions on the same 56px as before;
+         the panes above it are `flex: 1; min-height: 0`, so the few extra
+         pixels come out of the preview, not out of the page. */
       .pg__bottom {
-        padding: 0 12px;
+        height: auto;
+        min-height: var(--pg-bottom-h);
+        padding: 8px 12px;
+      }
+
+      /* Overrides the single-line rule above: wraps, then clamps at two lines
+         with the ellipsis the clamp draws itself. */
+      .pg__bottom-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: normal;
+        line-height: 1.45;
       }
 
       .pg__bottom-tags {
