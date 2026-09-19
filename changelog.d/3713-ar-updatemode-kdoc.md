@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **`ARSceneView.updateMode`'s documentation named the wrong mode ([#3713](https://github.com/sceneview/sceneview/pull/3713)).** The KDoc said `LATEST_CAMERA_IMAGE` blocks until a new camera frame arrives and `BLOCKING` returns immediately; ARCore is the other way round. Corrected, with a line on why `LATEST_CAMERA_IMAGE` is the right default for a vsync-driven render loop. Text only — the default has not changed.
