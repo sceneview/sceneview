@@ -1,0 +1,11 @@
+{
+  "name": "sceneview",
+  "version": "4.1.0",
+  "description": "SceneView 3D & AR SDK — API reference, samples, code validation and generation for Android, Apple and Web.",
+  "mcpServers": {
+    "sceneview": {
+      "command": "npx",
+      "args": ["-y", "sceneview-mcp"]
+    }
+  }
+}
