@@ -20,12 +20,25 @@ import org.junit.Test
  * in [PlacementRotation] / [PlacementScale] / [PlacementEntrance] / [placementCoaching] as
  * pure functions, and this is where the contract is pinned.
  *
- * The rotation block below is written as a matched pair: the same assertions run against the
- * new composition and against [PlacementRotation.legacyContentOrientation], which reproduces
- * what the demo did before
- * [#3735](https://github.com/sceneview/sceneview/issues/3735). They pass on one and fail on
- * the other, so the fix is pinned by a test that could fail, not by a test written to agree
- * with the code.
+ * ## What the rotation block below proves, and what it does not
+ *
+ * [#3735](https://github.com/sceneview/sceneview/issues/3735) has two halves, and only one
+ * of them can be reached from the JVM.
+ *
+ * **Proved here.** (a) The *algebra*: composing the pivot's yaw with the asset's correction
+ * in this order leaves the twist a pure yaw in the anchor's frame, whatever the asset was
+ * authored up. Written as a matched pair — the same assertions also run against
+ * [PlacementRotation.legacyContentOrientation], which reproduces what the demo did before —
+ * so they pass on one composition and fail on the other. (b) The *split of roles*: which
+ * node carries the correction and which one the twist turns, read out of
+ * [PlacementHierarchy], the object `PivotedModelNode` builds both nodes from. Putting the
+ * correction back on the node that rotates means editing that object, and these tests fail.
+ *
+ * **Not proved here, and not provable here.** That the composable calls [PlacementHierarchy]
+ * at all, and that Filament really builds the two nodes in that parent/child relationship
+ * with the gesture bubbling between them. A Filament node needs an engine; there is none on
+ * the JVM, and no amount of pure testing invents one. That half is established by reading
+ * `NodeGestureDelegate` and by the device pass — the twist actually felt on glass.
  */
 class PlacementInteractionTest {
 
@@ -151,6 +164,79 @@ class PlacementInteractionTest {
             assertEquals(pivot.w, applied.w, 1e-5f)
             assertEquals(0f, PlacementRotation.tiltDegrees(applied), 1e-4f)
         }
+    }
+
+    // ── PlacementHierarchy: who carries what (#3735) ─────────────────────────
+
+    /**
+     * The invariant, stated without naming either node: of the two nodes `PivotedModelNode`
+     * builds, **the one the twist turns must be standing upright at rest**.
+     *
+     * This is the assertion that makes the algebra above load-bearing rather than
+     * decorative, because `PivotedModelNode` takes both nodes' flags and both nodes' rest
+     * rotations from [PlacementHierarchy] and writes none of its own. Moving the correction
+     * back onto the rotating node — the pre-#3735 structure — is therefore a change to
+     * [PlacementHierarchy.pivot] or [PlacementHierarchy.content], and it fails here.
+     */
+    @Test
+    fun `the node a twist turns is upright at rest, whatever the asset needed`() {
+        val corrections = listOf(
+            Rotation(),
+            Rotation(x = -90f),
+            Rotation(x = 90f, y = 45f),
+            Rotation(y = 180f, z = 30f),
+        )
+
+        corrections.forEach { correction ->
+            val roles = listOf(
+                PlacementHierarchy.pivot(),
+                PlacementHierarchy.content(correction),
+            )
+
+            // Exactly one node accepts rotation. Two would fight over the gesture; none
+            // would make the model unturnable.
+            val turning = roles.single { it.isEditable && it.isRotationEditable }
+
+            // `quaternion *= delta` is a right-multiplication, so the delta lands in this
+            // node's own frame: it is a yaw only while this node's local Y is still up.
+            assertEquals(
+                "the node that rotates carries a rest tilt for asset correction " +
+                    "$correction — a twist on it comes out as a pitch, which is #3735",
+                0f,
+                PlacementRotation.tiltDegrees(turning.restOrientation),
+                1e-4f,
+            )
+        }
+    }
+
+    @Test
+    fun `the asset correction rides the node that does not rotate`() {
+        val correction = Rotation(x = -90f)
+        val content = PlacementHierarchy.content(correction)
+
+        assertEquals(correction, content.restRotation)
+        assertFalse(
+            "the correction and the twist must never share a node — that is the defect",
+            content.isRotationEditable,
+        )
+        // It still has to be editable: it is the node with the collider, so it is the node
+        // the finger touches, and `SceneView` leaks the gesture to the camera manipulator
+        // unless the hit node counts as editable.
+        assertTrue(content.isEditable)
+        // Scale lives here, against this node's own fitted real-world scale.
+        assertTrue(content.isScaleEditable)
+    }
+
+    @Test
+    fun `neither node claims the drag, so it reaches the anchor`() {
+        // The AnchorNode is the only node that can move in AR — it detaches its anchor,
+        // follows a per-frame hit test and re-anchors. A `false` flag forwards the gesture
+        // to the parent rather than swallowing it, so both nodes declining is what lets the
+        // drag arrive there.
+        assertFalse(PlacementHierarchy.pivot().isPositionEditable)
+        assertFalse(PlacementHierarchy.content(Rotation()).isPositionEditable)
+        // And the pinch must not be claimed by the pivot on its way up.
+        assertFalse(PlacementHierarchy.pivot().isScaleEditable)
     }
 
     // ── PlacementScale: the 100 % detent ────────────────────────────────────

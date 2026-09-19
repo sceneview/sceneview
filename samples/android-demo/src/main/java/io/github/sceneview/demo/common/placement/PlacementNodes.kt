@@ -11,12 +11,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.TrackingState
+import io.github.sceneview.SceneScope
 import io.github.sceneview.ar.ARSceneScope
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.node.ModelNode as ModelNodeImpl
 
@@ -122,85 +125,46 @@ internal fun ARSceneScope.PlacedModelNode(
         // doesn't flash black on placement (#1435).
         val textured = rememberTexturesSettled(ready = instance != null)
 
-        // The yaw pivot (#3735). A bare node with no geometry, interposed between the anchor
-        // and the model for exactly one reason: it is the node the twist gesture edits, and
-        // its local rotation is only ever a pure yaw, so its local Y axis stays the anchor's
-        // up axis. `NodeGestureDelegate.onRotate` applies its delta with `quaternion *=` —
-        // a right-multiplication, i.e. the delta expressed in the node's OWN frame — so a
-        // node whose Y is upright yaws, while a node whose Y an asset correction has laid
-        // flat tumbles instead. That is the whole of #3735: the correction used to sit on
-        // the very node the twist edited, so the helmet's −90° X turned every twist into a
-        // pitch. See [PlacementRotation] for the algebra and its unit tests.
-        //
-        // No finger ever lands on this node — it has no collider. The touch lands on the
-        // model child, which stays `isEditable = true` so `SceneView`'s touch dispatcher
-        // still counts it as an edit rather than leaking the gesture to the camera
-        // manipulator, but locks the two axes it must not own. `NodeGestureDelegate`
-        // forwards a gesture to `node.parent` whenever the matching `is*Editable` flag is
-        // off, so rotation stops here and movement carries on up to the anchor.
-        Node(
-            isEditable = true,
-            apply = {
-                // The per-axis defaults are asymmetric on `Node` — position starts `false`,
-                // rotation and scale start `true` — so spell out what this node owns rather
-                // than inherit a mix. Rotation, and only rotation.
-                isPositionEditable = false
-                // Scale belongs to the model child, which expresses it as a percentage of
-                // real-world size; locking it here means a pinch can never be claimed by the
-                // pivot on the way up.
-                isScaleEditable = false
-            },
-        ) {
-            instance?.let {
-                ModelNode(
-                    modelInstance = it,
-                    // Real-world size, not a uniform 0.3 m "demo size" (#3326).
-                    scaleToUnits = placed.spec.realWorldSizeMeters,
-                    // Per-asset placement correction (#1477). `rotationOverride` wins when
-                    // supplied; otherwise fall back to the shared helmet −90° X correction.
-                    // This is the rotation that must never sit on an edited node (#3735):
-                    // it is the model's own business of standing up, not the user's yaw.
-                    rotation = placed.spec.rotationOverride
-                        ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
-                    isVisible = textured,
-                    isEditable = true,
-                    apply = {
-                        handle.node = this
-                        // The move gesture belongs to the anchor, the twist to the pivot
-                        // just above — see this composable's KDoc. Scale stays here, on the
-                        // object itself, because it is expressed against this node's fitted
-                        // real-world scale.
-                        isPositionEditable = false
-                        isRotationEditable = false
+        instance?.let {
+            PivotedModelNode(
+                modelInstance = it,
+                // Per-asset placement correction (#1477). `rotationOverride` wins when
+                // supplied; otherwise fall back to the shared helmet −90° X correction.
+                assetRotation = placed.spec.rotationOverride
+                    ?: DemoMath.placementRotationFor(placed.spec.assetLocation),
+                // Real-world size, not a uniform 0.3 m "demo size" (#3326).
+                scaleToUnits = placed.spec.realWorldSizeMeters,
+                isVisible = textured,
+                applyContent = {
+                    handle.node = this
 
-                        // `scaleToUnits` has already run in the constructor, so this IS the
-                        // 100 % scale.
-                        val base = scale.x
-                        handle.baseScale = base
-                        editableScaleRange = PlacementScale.rangeFor(base)
+                    // `scaleToUnits` has already run in the constructor, so this IS the
+                    // 100 % scale.
+                    val base = scale.x
+                    handle.baseScale = base
+                    editableScaleRange = PlacementScale.rangeFor(base)
 
-                        onScale = { _, _, factor ->
-                            val was = PlacementScale.isRealWorldSize(scale.x, base)
-                            val next = PlacementScale.next(
-                                current = scale.x,
-                                base = base,
-                                rawFactor = factor,
-                                sensitivity = scaleGestureSensitivity,
-                            )
-                            scale = Scale(next)
-                            val now = PlacementScale.isRealWorldSize(next, base)
-                            currentOnScaleChanged(
-                                PlacementScale.percent(next, base),
-                                now,
-                                PlacementScale.shouldTickHaptic(was, now),
-                            )
-                            // We applied the scale ourselves, with the clamp and the detent
-                            // the stock path has no way to express.
-                            false
-                        }
-                    },
-                )
-            }
+                    onScale = { _, _, factor ->
+                        val was = PlacementScale.isRealWorldSize(scale.x, base)
+                        val next = PlacementScale.next(
+                            current = scale.x,
+                            base = base,
+                            rawFactor = factor,
+                            sensitivity = scaleGestureSensitivity,
+                        )
+                        scale = Scale(next)
+                        val now = PlacementScale.isRealWorldSize(next, base)
+                        currentOnScaleChanged(
+                            PlacementScale.percent(next, base),
+                            now,
+                            PlacementScale.shouldTickHaptic(was, now),
+                        )
+                        // We applied the scale ourselves, with the clamp and the detent the
+                        // stock path has no way to express.
+                        false
+                    }
+                },
+            )
         }
 
         // Scale-in on arrival. Keyed on the moment the model becomes visible, and latched,
@@ -226,6 +190,87 @@ internal fun ARSceneScope.PlacedModelNode(
             }
             node.scale = Scale(base)
         }
+    }
+}
+
+/**
+ * The two-node hierarchy every **editable** placed model in this app is built from
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)): a geometry-free yaw pivot,
+ * with the model as its non-rotatable content child.
+ *
+ * ## Why two nodes
+ *
+ * `NodeGestureDelegate.onRotate` applies a two-finger twist with `node.quaternion *= delta`
+ * — a **right**-multiplication, so the delta is expressed in the node's **own** frame. That
+ * is a yaw for exactly as long as the node's local Y still points along the anchor's up
+ * axis, and an asset's standing-up correction is precisely what stops that being true: the
+ * Khronos helmet is authored Z-up, so `Rotation(x = -90f)` maps its local Y onto
+ * `(0, 0, -1)` and every twist came out as a pitch. The model tumbled instead of pivoting.
+ *
+ * Splitting the two jobs fixes it whatever the asset: the pivot only ever accumulates yaw
+ * and stays upright, the correction rides a child that no twist is applied to, and the two
+ * compose in the order that leaves the twist a yaw in the anchor's frame.
+ *
+ * No finger ever lands on the pivot — it has no collider. The touch lands on the model,
+ * which stays `isEditable` so `SceneView`'s dispatcher counts it as an edit rather than
+ * leaking the gesture to the camera manipulator, and which declines the axes it must not
+ * own. A declined axis does not swallow the gesture: `NodeGestureDelegate` forwards it to
+ * `node.parent`. So the twist stops at the pivot, a drag carries on past it to the
+ * `AnchorNode` — the only node that can move in AR — and a pinch is claimed by the model
+ * before it ever reaches the pivot.
+ *
+ * ## Why it is a composable and not a snippet
+ *
+ * [#3735](https://github.com/sceneview/sceneview/issues/3735) is as much about the defect
+ * being fixed in one place and left standing in another as about the defect itself. Every
+ * editable node in this app that carries a `DemoMath.placementRotationFor` correction goes
+ * through here — `PlacedModelNode` and `PointAndAskDemo` today — so there is one place to
+ * get it right. The nodes' flags and rest rotations are not written here either: they are
+ * read from [PlacementHierarchy], which is pure and unit-tested, so moving the correction
+ * back onto the node the twist turns means editing an object that has tests pointed at it.
+ *
+ * @param assetRotation the model's own standing-up correction — its business, never the
+ *   user's yaw. Pass `Rotation()` for an asset authored Y-up.
+ * @param applyContent imperative configuration for the **model** node, applied after its
+ *   role's flags so a caller can add a custom `onScale` or capture the node, but late
+ *   enough that overriding `isRotationEditable` here would be visible as exactly that.
+ */
+@Composable
+internal fun SceneScope.PivotedModelNode(
+    modelInstance: ModelInstance,
+    assetRotation: Rotation,
+    scaleToUnits: Float? = null,
+    isVisible: Boolean = true,
+    applyContent: ModelNodeImpl.() -> Unit = {},
+) {
+    val pivotRole = PlacementHierarchy.pivot()
+    val contentRole = PlacementHierarchy.content(assetRotation)
+
+    Node(
+        rotation = pivotRole.restRotation,
+        isEditable = pivotRole.isEditable,
+        apply = {
+            // The per-axis defaults are asymmetric on `Node` — position starts `false`,
+            // rotation and scale start `true` — so every axis is spelled out from the role
+            // rather than half-inherited.
+            isPositionEditable = pivotRole.isPositionEditable
+            isRotationEditable = pivotRole.isRotationEditable
+            isScaleEditable = pivotRole.isScaleEditable
+        },
+    ) {
+        ModelNode(
+            modelInstance = modelInstance,
+            scaleToUnits = scaleToUnits,
+            rotation = contentRole.restRotation,
+            isVisible = isVisible,
+            isEditable = contentRole.isEditable,
+            apply = {
+                isPositionEditable = contentRole.isPositionEditable
+                isRotationEditable = contentRole.isRotationEditable
+                isScaleEditable = contentRole.isScaleEditable
+                applyContent()
+            },
+        )
     }
 }
 

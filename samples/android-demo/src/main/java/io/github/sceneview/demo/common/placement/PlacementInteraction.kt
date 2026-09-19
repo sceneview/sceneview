@@ -7,6 +7,7 @@ import dev.romainguy.kotlin.math.inverse
 import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
+import io.github.sceneview.math.Rotation
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.atan2
@@ -27,7 +28,8 @@ import kotlin.math.roundToInt
  *  - the screen says **one** short thing at a time, and stops talking once the user has
  *    understood the interaction — [placementCoaching];
  *  - a two-finger twist turns the object **on the floor**, never off it —
- *    [PlacementRotation].
+ *    [PlacementRotation] for the algebra, [PlacementHierarchy] for the split of roles
+ *    across the two nodes that makes the algebra hold.
  */
 
 // ── Rotation ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +125,84 @@ object PlacementRotation {
         val cosine = (up.y / length(up)).coerceIn(-1f, 1f)
         return degrees(acos(cosine))
     }
+}
+
+/**
+ * Which node in a placed model's hierarchy carries which editing right, and which one
+ * carries the asset's standing-up correction
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)).
+ *
+ * [PlacementRotation] pins the *algebra* — that composing a yaw with a correction in this
+ * order leaves the twist a yaw. This object pins the *wiring*, and it is the thing
+ * `PivotedModelNode` actually reads to build the two nodes: the flags it sets and the rest
+ * rotation it gives each node come from here and from nowhere else. Putting the correction
+ * back on the node the twist turns is therefore not something a call site can do on its
+ * own — it means editing [pivot] or [content], which is what
+ * [PlacementHierarchyTest][io.github.sceneview.demo.common.placement.PlacementInteractionTest]
+ * asserts against.
+ *
+ * What this cannot pin is that the composable calls it at all, or that Filament builds the
+ * two nodes in that relationship — a Filament node needs an engine and cannot exist on the
+ * JVM. That half is the device pass.
+ */
+object PlacementHierarchy {
+
+    /**
+     * The editable node: the one the finger's twist turns.
+     *
+     * It is deliberately geometry-free, so it is never the node a hit test returns; the
+     * gesture reaches it by bubbling up from the content child, which declines rotation.
+     * Its rest rotation is identity and it only ever accumulates yaw, so its local Y stays
+     * the anchor's up axis — the precondition that makes the SDK's right-multiplied delta
+     * a yaw (see [PlacementRotation]).
+     *
+     * Position is refused so a drag bubbles further up to the `AnchorNode`, the only node
+     * that can move in AR; scale is refused so the pinch stops at the content below, which
+     * owns the real-world-size percentage.
+     */
+    fun pivot(): PlacementNodeRole = PlacementNodeRole(
+        isEditable = true,
+        isPositionEditable = false,
+        isRotationEditable = true,
+        isScaleEditable = false,
+        restRotation = Rotation(),
+    )
+
+    /**
+     * The content node: the one that renders, and the only one with a collider — so it is
+     * the node the finger actually touches, and it must stay `isEditable` for the touch to
+     * be treated as an edit rather than leaking to the camera manipulator.
+     *
+     * It carries [assetCorrection] and refuses rotation, which is the whole fix: the
+     * correction can lay this node's local Y flat as much as the asset needs, because no
+     * twist is ever applied here.
+     */
+    fun content(assetCorrection: Rotation): PlacementNodeRole = PlacementNodeRole(
+        isEditable = true,
+        isPositionEditable = false,
+        isRotationEditable = false,
+        isScaleEditable = true,
+        restRotation = assetCorrection,
+    )
+}
+
+/**
+ * One node's editing rights and rest rotation — see [PlacementHierarchy].
+ *
+ * Every field maps to a property the SDK's `Node` already has. Note that each `is*Editable`
+ * flag is gated by [isEditable] (`get() = isEditable && field`), so `false` there makes the
+ * other three moot; and that a `false` flag does not swallow the gesture, it *forwards* it
+ * to the parent — which is how a node can absorb the touch and edit nothing.
+ */
+data class PlacementNodeRole(
+    val isEditable: Boolean,
+    val isPositionEditable: Boolean,
+    val isRotationEditable: Boolean,
+    val isScaleEditable: Boolean,
+    val restRotation: Rotation,
+) {
+    /** [restRotation] as the SDK stores it — `Node.rotation`'s setter is `fromEuler`. */
+    val restOrientation: Quaternion get() = Quaternion.fromEuler(restRotation)
 }
 
 // ── Scale ────────────────────────────────────────────────────────────────────────────────
