@@ -134,6 +134,25 @@ deeplink — is on [the setup page](https://sceneview.github.io/#ai-setup).
 References: [cursor.com/docs/mcp](https://cursor.com/docs/mcp) and
 [cursor.com/docs/mcp/install-links](https://cursor.com/docs/mcp/install-links)
 
+#### Gemini CLI
+
+`~/.gemini/settings.json`, the standard `mcpServers` block:
+
+```json
+{
+  "mcpServers": {
+    "sceneview": { "command": "npx", "args": ["-y", "sceneview-mcp"] }
+  }
+}
+```
+
+The repository root also carries a `gemini-extension.json`, so
+`gemini extensions install https://github.com/sceneview/sceneview` registers the
+same server with nothing to paste — at the cost of cloning the monorepo, which is
+over 2 GB of history. The settings block above is the light way in.
+
+Reference: [google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+
 #### Gemini in Android Studio
 
 Settings → Tools → AI → MCP Servers. Android Studio connects over HTTP, not
@@ -312,10 +331,11 @@ check it against the version you have installed.
 
 | Layer | Where it lives |
 |---|---|
+| Install descriptors | `gemini-extension.json` at the repo root (Gemini CLI), `mcp/manifest.json` (MCP Bundle) |
 | Machine-readable API reference | `llms.txt`, at the repo root and at [sceneview.github.io/llms.txt](https://sceneview.github.io/llms.txt) |
 | MCP server | `sceneview-mcp`, over stdio or Streamable HTTP |
 | Rules files | one per convention, in every checkout |
 | Skills | `agents/sceneview`, `agents/sceneview-ios`, `agents/sceneview-web` |
 
-All four are maintained alongside the source and updated with every release, so
+All five are maintained alongside the source and updated with every release, so
 an assistant reading them is reading the API that actually shipped.
