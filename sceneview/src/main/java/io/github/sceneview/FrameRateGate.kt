@@ -8,16 +8,24 @@ import com.google.android.filament.Scene
 import java.util.WeakHashMap
 
 /**
- * Frames still drawn after the last invalidation.
+ * How long frames keep being drawn after the last invalidation.
  *
- * Same budget, and the same reason, as the web SDK's `RenderGate.SETTLE_FRAMES`: Filament finalises
- * texture uploads, IBL prefiltering and shadow map work across several frames after the change that
- * triggered them, so a gate that stops on the first clean frame leaves an untextured model — or an
- * unlit one — on screen until something else happens to wake it. Half a second at 60 Hz is cheap
- * once, and it is the difference between "render-on-demand" and "render-on-demand, mostly".
+ * Same reason as the web SDK's `RenderGate` settle window: Filament finalises texture uploads, IBL
+ * prefiltering and shadow map work across several frames after the change that triggered them, so a
+ * gate that stops on the first clean frame leaves an untextured model — or an unlit one — on screen
+ * until something else happens to wake it. Half a second is cheap once, and it is the difference
+ * between "render-on-demand" and "render-on-demand, mostly".
+ *
+ * **A duration, not a frame count.** The work being waited on is Filament's, and Filament's is
+ * measured in wall-clock time — a texture upload does not get faster because the panel refreshes
+ * faster. A budget of 30 *frames* was half a second on a 60 Hz panel and a quarter of a second on a
+ * 120 Hz one, so the newer and faster the device, the shorter the tail it got; and with a
+ * [FrameRatePolicy.maxFps] cap in play, 30 frames at 5 fps would have been a six-second tail. The
+ * clock that drives it is the render loop's own `withFrameNanos` timestamp, so it stays testable on
+ * a virtual clock and never reads the system clock behind the caller's back.
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-const val SETTLE_FRAMES: Int = 30
+const val SETTLE_DURATION_NANOS: Long = 500_000_000L
 
 /**
  * Decides, once per frame, whether the GPU submit happens — the Android port of the web SDK's
@@ -40,20 +48,33 @@ const val SETTLE_FRAMES: Int = 30
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 class FrameRateGate @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constructor(
-    private val settleBudget: Int = SETTLE_FRAMES
+    private val settleDurationNanos: Long = SETTLE_DURATION_NANOS
 ) {
 
     // Snapshot state, because parking reads it through `derivedStateOf` and a plain field would
     // never wake the suspended loop (#3108: the park must be woken by a snapshot apply, not polled).
     private val dirtyState = mutableStateOf(true)
 
-    private var owed: Int = settleBudget
+    /**
+     * The frame time at which the settle window closes. Only meaningful while [owesSettle] is
+     * `true`, which is why the gate does not need a sentinel for "no tick seen yet": it starts owing
+     * frames, and the first [shouldRender] sets the deadline from the first real frame time.
+     */
+    private var settleUntilNanos: Long = 0L
+
+    /**
+     * Whether the settle window is still open. A plain field, deliberately — the park site reads it
+     * outside `withFrameNanos` and the loop is awake by definition for as long as it is `true`, so
+     * making it snapshot state would apply a snapshot per frame on every rendering scene, which is
+     * the exact per-frame cost this whole design exists to remove.
+     */
+    private var owesSettle: Boolean = true
 
     /** `true` while an invalidation is waiting to be consumed by the next [shouldRender]. */
     val isDirty: Boolean get() = dirtyState.value
 
-    /** `true` when the budget is spent and nothing is pending — the only state safe to park in. */
-    val isSettled: Boolean get() = owed <= 0 && !dirtyState.value
+    /** `true` when the window is closed and nothing is pending — the only state safe to park in. */
+    val isSettled: Boolean get() = !owesSettle && !dirtyState.value
 
     /**
      * Marks the scene changed. Safe to call from any of the push sources, including several times
@@ -66,24 +87,32 @@ class FrameRateGate @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) construct
     }
 
     /**
-     * Answers "submit this tick?", and re-arms the settle budget when [active] or a pending
+     * Answers "submit this tick?", and re-arms the settle window when [active] or a pending
      * invalidation says the picture is still moving.
      *
      * @param active whether any *pull* source is live this tick — a gesture in flight, a coasting
      * manipulator, a playing animation, an async load, a recording. Continuous activity therefore
-     * keeps the budget topped up and renders continuously, without a per-frame [requestRender].
+     * keeps the window open and renders continuously, without a per-frame [requestRender].
+     * @param frameTimeNanos the loop's frame time for this tick (`withFrameNanos`). It is the only
+     * clock the settle window uses, so a test drives it with whatever cadence it wants to model.
      */
-    fun shouldRender(active: Boolean): Boolean {
+    fun shouldRender(active: Boolean, frameTimeNanos: Long): Boolean {
         if (dirtyState.value || active) {
-            owed = settleBudget
+            settleUntilNanos = frameTimeNanos + settleDurationNanos
+            owesSettle = true
             if (dirtyState.value) dirtyState.value = false
         }
-        return owed > 0
+        return owesSettle
     }
 
-    /** Consumes one frame of the settle budget. Called only when a frame really reached the surface. */
-    fun didRender() {
-        if (owed > 0) owed--
+    /**
+     * Closes the settle window once [frameTimeNanos] has reached its deadline. Called only when a
+     * frame really reached the surface: it is presented frames that carry Filament's upload and
+     * prefiltering work, so a window closed on ticks that drew nothing would not have waited for
+     * anything.
+     */
+    fun didRender(frameTimeNanos: Long) {
+        if (owesSettle && frameTimeNanos >= settleUntilNanos) owesSettle = false
     }
 }
 

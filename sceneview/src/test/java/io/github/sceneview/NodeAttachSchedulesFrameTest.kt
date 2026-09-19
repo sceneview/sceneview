@@ -55,11 +55,18 @@ class NodeAttachSchedulesFrameTest {
     /** The production wake condition under [FrameRatePolicy.OnDemand], verbatim. */
     private fun shouldRenderState(gate: FrameRateGate) = derivedStateOf { gate.isDirty }
 
-    /** Burns the settle budget down the way a rendering loop does, with nothing active. */
+    /**
+     * Burns the gate's settle window down the way a rendering loop does, with nothing active.
+     *
+     * The window is a duration, not a frame count, so this walks a virtual 60 Hz clock rather than
+     * counting ticks — the gate reads no clock of its own, it is handed the loop's frame time.
+     */
     private fun FrameRateGate.settle() {
+        var frameTimeNanos = 1_000_000_000L
         while (!isSettled) {
-            shouldRender(active = false)
-            didRender()
+            shouldRender(active = false, frameTimeNanos = frameTimeNanos)
+            didRender(frameTimeNanos)
+            frameTimeNanos += vsyncPeriodNanos(60f)
         }
     }
 

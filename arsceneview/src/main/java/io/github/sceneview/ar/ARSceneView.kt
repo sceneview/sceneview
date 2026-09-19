@@ -1620,6 +1620,7 @@ fun ARSceneView(
                     // Last, so the node ticks above are already accounted for: a glTF animation
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
                     sceneChanged = frameRateGate.shouldRender(
+                        frameTimeNanos = frameTimeNanos,
                         active = childNodes.any { it.isFrameActive } ||
                                 // Not `progress < 1f`: a loader that was never asked for an async
                                 // load reports 0, which reads as "loading" forever — see
@@ -1632,7 +1633,7 @@ fun ARSceneView(
                 // `Renderer.beginFrame` can refuse one for pacing, and settling on the attempt
                 // would leave a new swap chain blank.
                 if (presented) {
-                    frameRateGate.didRender()
+                    frameRateGate.didRender(frameTimeNanos)
                     if (arFramesOwed.get() > 0) {
                         arFramesOwed.decrementAndGet()
                     }

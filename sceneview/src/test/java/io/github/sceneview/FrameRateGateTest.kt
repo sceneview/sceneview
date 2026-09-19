@@ -23,6 +23,31 @@ import org.junit.Test
  */
 class FrameRateGateTest {
 
+    /** What one settle run cost, driven by a virtual panel: see [settleRun]. */
+    private data class SettleRun(val frames: Int, val elapsedNanos: Long)
+
+    /**
+     * Runs the gate exactly as the render loop does — ask, present, mark — on a panel whose vsyncs
+     * are [periodNanos] apart, starting from a change, until it settles.
+     *
+     * The clock is the loop's `withFrameNanos` timestamp, which is the only clock the gate reads:
+     * no `Thread.sleep`, no wall clock, and every refresh rate reachable from a JVM test.
+     */
+    private fun settleRun(periodNanos: Long, gate: FrameRateGate = FrameRateGate()): SettleRun {
+        val start = 1_000_000_000L
+        var now = start
+        var frames = 0
+        while (now - start < 10_000_000_000L) {
+            if (gate.shouldRender(active = false, frameTimeNanos = now)) {
+                frames++
+                gate.didRender(now)
+            }
+            if (gate.isSettled) return SettleRun(frames, now - start)
+            now += periodNanos
+        }
+        return SettleRun(frames, -1L)
+    }
+
     @Test
     fun startsDirtySoANewSwapChainIsNeverLeftBlank() {
         val gate = FrameRateGate()
@@ -33,71 +58,110 @@ class FrameRateGateTest {
                 "with isOpaque = false) until something unrelated woke it (#3109)",
             gate.isDirty
         )
-        assertTrue(gate.shouldRender(active = false))
+        assertTrue(gate.shouldRender(active = false, frameTimeNanos = 1_000_000_000L))
     }
 
     @Test
-    fun owesAFullRunOfFramesAfterTheLastChange() {
-        val gate = FrameRateGate()
-        var presented = 0
+    fun owesHalfASecondOfFramesAfterTheLastChange() {
+        val run = settleRun(vsyncPeriodNanos(60f))
 
-        while (gate.shouldRender(active = false)) {
-            presented++
-            gate.didRender()
-            if (presented > SETTLE_FRAMES * 4) break
-        }
-
-        assertEquals(
+        assertTrue(
             "the settle tail is what makes 'stops drawing' mean 'stops drawing the finished " +
                 "picture': the first frame after a change is routinely not it — the Materials " +
                 "demo needs ~4 presented frames over 6.3 s before the ToyCar's clearcoat " +
-                "variants are warm, and a one-frame gate would freeze on the untextured one",
-            SETTLE_FRAMES,
-            presented
+                "variants are warm, and a one-frame gate would freeze on the untextured one. It " +
+                "lasted ${run.elapsedNanos} ns",
+            run.elapsedNanos in SETTLE_DURATION_NANOS until SETTLE_DURATION_NANOS +
+                vsyncPeriodNanos(60f)
         )
-        assertTrue(gate.isSettled)
+    }
+
+    @Test
+    fun theSettleTailLastsTheSameTimeAtEveryRefreshRate() {
+        // The regression this pins: the budget used to be 30 *frames*, so the faster the panel the
+        // shorter the tail — half a second at 60 Hz, a quarter of a second at 120 Hz, an eighth on
+        // the 240 Hz panels that exist. Filament's texture uploads and material-variant compiles do
+        // not get faster because the display refreshes faster, so the newest devices got the
+        // thinnest safety margin, which is exactly backwards.
+        val at60 = settleRun(vsyncPeriodNanos(60f))
+        val at120 = settleRun(vsyncPeriodNanos(120f))
+
+        assertTrue(
+            "120 Hz tail lasted ${at120.elapsedNanos} ns, expected ~$SETTLE_DURATION_NANOS",
+            at120.elapsedNanos in SETTLE_DURATION_NANOS until SETTLE_DURATION_NANOS +
+                vsyncPeriodNanos(120f)
+        )
+        assertTrue(
+            "the same wall-clock tail on a panel with twice the vsyncs means about twice the " +
+                "frames: ${at120.frames} at 120 Hz against ${at60.frames} at 60 Hz",
+            at120.frames > at60.frames * 3 / 2
+        )
+    }
+
+    @Test
+    fun aSlowCadenceSettlesOnTheClockRatherThanOnAFrameCount() {
+        // A scene capped at 5 fps presents a frame every 200 ms. Counted in frames, the tail would
+        // have been 30 × 200 ms = six seconds of rendering after the last change — on the one
+        // policy whose whole point is to draw as little as possible.
+        val run = settleRun(periodNanos = 200_000_000L)
+
+        assertEquals("four presented frames, not thirty", 4, run.frames)
+        assertEquals(600_000_000L, run.elapsedNanos)
     }
 
     @Test
     fun anActiveSceneNeverSettles() {
         val gate = FrameRateGate()
+        val vsync = vsyncPeriodNanos(60f)
+        var now = 1_000_000_000L
 
-        repeat(SETTLE_FRAMES * 3) {
+        repeat(300) {
             assertTrue(
                 "a finger on the screen, a playing animation or a decoding video must hold full " +
                     "cadence for as long as it lasts, not for one settle budget",
-                gate.shouldRender(active = true)
+                gate.shouldRender(active = true, frameTimeNanos = now)
             )
-            gate.didRender()
+            gate.didRender(now)
             assertFalse(gate.isSettled)
+            now += vsync
         }
     }
 
     @Test
     fun aChangeMidSettleRestartsTheWholeRun() {
         val gate = FrameRateGate()
-        repeat(SETTLE_FRAMES - 1) { gate.shouldRender(active = false); gate.didRender() }
+        val vsync = vsyncPeriodNanos(60f)
+        var now = 1_000_000_000L
 
-        gate.requestRender()
-        var presented = 0
-        while (gate.shouldRender(active = false)) {
-            presented++
-            gate.didRender()
-            if (presented > SETTLE_FRAMES * 4) break
+        // Burn the tail down to its last frame, then change something on that very frame.
+        while (now - 1_000_000_000L < SETTLE_DURATION_NANOS - vsync) {
+            gate.shouldRender(active = false, frameTimeNanos = now)
+            gate.didRender(now)
+            now += vsync
         }
+        assertFalse("precondition: still inside the first run", gate.isSettled)
+        gate.requestRender()
 
-        assertEquals(
-            "a change arriving on the last frame of a settle run must buy a full run, not the one " +
-                "frame left over — otherwise the frames a change needs depend on when it landed",
-            SETTLE_FRAMES,
-            presented
+        val restartedAt = now
+        while (!gate.isSettled) {
+            if (gate.shouldRender(active = false, frameTimeNanos = now)) gate.didRender(now)
+            if (gate.isSettled) break
+            now += vsync
+        }
+        val restarted = now - restartedAt
+
+        assertTrue(
+            "a change arriving on the last frame of a settle run must buy a full run, not the " +
+                "few milliseconds left over — otherwise the tail a change gets depends on when it " +
+                "landed. It got $restarted ns",
+            restarted >= SETTLE_DURATION_NANOS
         )
     }
 
     @Test
     fun requestRenderWritesSnapshotStateOnlyOnTheTransition() {
         val gate = FrameRateGate()
-        gate.shouldRender(active = false)   // clears the dirty flag
+        gate.shouldRender(active = false, frameTimeNanos = 1_000_000_000L)   // clears dirty
         assertFalse(gate.isDirty)
 
         var writes = 0
@@ -122,14 +186,17 @@ class FrameRateGateTest {
     @Test
     fun aPushSourceFiringFromInsideTheLoopNeverLetsTheSceneSettle() {
         val gate = FrameRateGate()
+        val vsync = vsyncPeriodNanos(60f)
+        var now = 1_000_000_000L
 
-        repeat(SETTLE_FRAMES * 4) {
+        repeat(300) {
             // What `cameraNode.transform = manipulator.getTransform()` used to do on every tick:
             // the setter is a push source, so an unchanged rewrite invalidated the gate from
             // inside the very loop the gate is supposed to stop.
             gate.requestRender()
-            gate.shouldRender(active = false)
-            gate.didRender()
+            gate.shouldRender(active = false, frameTimeNanos = now)
+            gate.didRender(now)
+            now += vsync
         }
 
         assertFalse(
@@ -147,7 +214,7 @@ class FrameRateGateTest {
     fun anInvalidatorReplaysTheRequestItReceivedBeforeAttach() {
         val invalidator = RenderInvalidator()
         val gate = FrameRateGate()
-        gate.shouldRender(active = false)
+        gate.shouldRender(active = false, frameTimeNanos = 1_000_000_000L)
         assertFalse(gate.isDirty)
 
         // A caller that edits a material in the same composition pass that creates the scene.
@@ -166,7 +233,7 @@ class FrameRateGateTest {
         val invalidator = RenderInvalidator()
         val gate = FrameRateGate()
         invalidator.attach(gate)
-        gate.shouldRender(active = false)
+        gate.shouldRender(active = false, frameTimeNanos = 1_000_000_000L)
 
         invalidator.detach(gate)
         invalidator.requestRender()

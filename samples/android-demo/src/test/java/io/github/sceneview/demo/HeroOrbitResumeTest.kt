@@ -333,8 +333,8 @@ class HeroOrbitResumeTest {
 
         manipulator.dragTo(USER_EYE)
 
-        // Under OnDemand the loop parks ~30 frames after the camera stops moving — half a second,
-        // a sixth of the way to the deadline. `isFrameActive` is the only thing holding it open.
+        // Under OnDemand the loop parks half a second after the camera stops moving — a sixth of
+        // the way to the deadline. `isFrameActive` is the only thing holding it open.
         assertTrue("the countdown has to hold the loop open", manipulator.isFrameActive)
         manipulator.advance(RESUME_AFTER_MILLIS / 2)
         assertTrue("still waiting, half-way through", manipulator.isFrameActive)

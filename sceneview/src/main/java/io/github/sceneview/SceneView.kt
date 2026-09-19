@@ -428,8 +428,8 @@ fun SceneView(
     // something unrelated woke it. One frame is not enough either: Filament finalises texture
     // uploads and compiles material variants from inside the frame loop, so the first frame after
     // a change is routinely not yet the finished picture — the Materials demo needs ~4 presented
-    // frames over 6.3 s before the ToyCar's clearcoat variants are warm. [SETTLE_FRAMES] is that
-    // tail, and it is what makes "stops drawing" mean "stops drawing the finished picture".
+    // frames over 6.3 s before the ToyCar's clearcoat variants are warm. [SETTLE_DURATION_NANOS] is
+    // that tail, and it is what makes "stops drawing" mean "stops drawing the finished picture".
     val frameRateGate = remember(engine, view, renderer) { FrameRateGate() }
 
     // Publish the gate to every [Node] in this scene. Nodes reach it through a registry keyed on
@@ -1020,7 +1020,7 @@ fun SceneView(
                                 // ceiling: the cap can only be met on whole vsyncs, and on a
                                 // VRR panel which vsyncs those are changes under us.
                                 vsyncPeriodNanos = vsyncPeriodNanos(sceneRenderer.refreshRate)
-                            ) { frameRateGate.shouldRender(active) }
+                            ) { frameRateGate.shouldRender(active, frameTimeNanos) }
                         }
                     ) {
                         modelLoader.updateLoad()
@@ -1118,7 +1118,7 @@ fun SceneView(
                     // refuse a frame for pacing — settling on the *attempt* would park with a
                     // blank surface, which is the bug this guards (#3109).
                     if (presented) {
-                        frameRateGate.didRender()
+                        frameRateGate.didRender(frameTimeNanos)
                         lastPresentNanosRef.set(frameTimeNanos)
                     }
 

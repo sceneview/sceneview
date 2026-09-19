@@ -186,17 +186,17 @@ public abstract interface annotation class io/github/sceneview/ExperimentalScene
 public final class io/github/sceneview/FrameRateGate {
 	public static final field $stable I
 	public fun <init> ()V
-	public fun <init> (I)V
-	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun didRender ()V
+	public fun <init> (J)V
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun didRender (J)V
 	public final fun isDirty ()Z
 	public final fun isSettled ()Z
 	public final fun requestRender ()V
-	public final fun shouldRender (Z)Z
+	public final fun shouldRender (ZJ)Z
 }
 
 public final class io/github/sceneview/FrameRateGateKt {
-	public static final field SETTLE_FRAMES I
+	public static final field SETTLE_DURATION_NANOS J
 	public static final fun rememberRenderInvalidator (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/RenderInvalidator;
 }
 
