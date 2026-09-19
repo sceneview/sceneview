@@ -1231,6 +1231,12 @@ private fun PhysicsSection(
     var collisions by remember { mutableIntStateOf(0) }
     val simulation = remember(generation) { DemoCollisionReplay() }
 
+    // Whether the simulation still has visible work, measured from the bodies rather than assumed
+    // from `replaying` (#3718). `replaying` is intent — "the user has not paused" — and it starts
+    // `true`; it said nothing about the stack having come to rest half a minute ago. Keyed on
+    // `generation` so a replay, a reset or an added body starts the window over.
+    var simulationMoving by remember(generation) { mutableStateOf(true) }
+
     // ── Tray tilt (#3621) ────────────────────────────────────────────────────
     // `tiltEnabled` swaps what a one-finger drag over the viewport does: OFF (default) it orbits
     // the camera exactly as before, ON it tips the tray. Nothing about the camera manipulator
@@ -1284,7 +1290,13 @@ private fun PhysicsSection(
     val trayGravity = remember(pitchAnim.value, rollAnim.value) {
         trayLocalGravity(pitchAnim.value, rollAnim.value)
     }
-    LaunchedEffect(simulation, trayGravity) { simulation.gravity = trayGravity }
+    LaunchedEffect(simulation, trayGravity) {
+        simulation.gravity = trayGravity
+        // A new slope wakes every body (`PhysicsBody.gravity` clears `isAsleep`), so the settle
+        // window has to start over or a parked screen would never see them start rolling.
+        simulation.restartSettle()
+        simulationMoving = true
+    }
 
     // Nudging the tray implies "run it": a tilt with the simulation parked reads as a broken
     // control. Levelling does not force playback back on.
@@ -1494,13 +1506,19 @@ private fun PhysicsSection(
                     simulation.onFrame(nanos, replaying && simulation.bodies.size == bodyCount)
                     liveBodyCount = simulation.bodies.size
                     collisions = simulation.collisions
+                    simulationMoving = simulation.isMoving
                 },
                 // The simulation is stepped from `onFrame`, which fires only *after* a frame
                 // reached the surface — so it cannot be what keeps the loop awake (#3718). A
-                // replay that runs wants every vsync, and says so; `Pause` hands the screen
-                // back to on-demand, where the tray still repaints on a tilt drag because
-                // `Node.position` / `Node.rotation` invalidate on their own.
-                frameRatePolicy = if (replaying) {
+                // replay that is *still moving something* wants every vsync, and says so; `Pause`,
+                // and equally a stack that has come to rest, hand the screen back to on-demand,
+                // where the tray still repaints on a tilt drag because `Node.position` /
+                // `Node.rotation` invalidate on their own.
+                //
+                // `simulationMoving` is measured, not declared: `replaying` alone kept 878 frames
+                // per 15 s running on a settled stack, because it only ever went false when the
+                // user pressed Reset.
+                frameRatePolicy = if (replaying && simulationMoving) {
                     FrameRatePolicy.Continuous()
                 } else {
                     FrameRatePolicy.OnDemand()
@@ -1704,6 +1722,23 @@ private const val PHYSICS_STEP_NANOS = 8_333_333L
  */
 private const val PHYSICS_IMPACT_SPEED = 0.2f
 
+/**
+ * How long every body has to stay put before the screen stops declaring continuous rendering.
+ * Matches the SDK's own settle window (`SETTLE_DURATION_NANOS`), and for the same reason: a ball at
+ * the apex of its bounce is motionless for one frame without being finished.
+ */
+private const val PHYSICS_SETTLE_NANOS = 500_000_000L
+
+/** Squared displacement below which a body counts as not having moved: 0.1 mm. */
+private const val MOTION_EPSILON_SQ = 1e-8f
+
+private fun distanceSquared(a: Position, b: Position): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    val dz = a.z - b.z
+    return dx * dx + dy * dy + dz * dz
+}
+
 /** Tilt is clamped well short of the angle at which the rails stop being able to hold a ball. */
 private const val PHYSICS_MAX_TILT_DEGREES = 20f
 
@@ -1723,8 +1758,56 @@ private fun physicsStartPosition(index: Int): Position = when (index) {
 }
 
 /** A deterministic sphere-contact demonstration, deliberately local to this sample. */
+/**
+ * Turns "did anything actually move?" into the answer a [FrameRatePolicy.Continuous] declaration is
+ * allowed to rest on (#3718).
+ *
+ * The physics screen used to declare `Continuous()` from a `replaying` flag that started `true` and
+ * was cleared only by the Reset button. The stack of spheres therefore held 878 frames per 15 s on a
+ * picture identical to the byte — the same lie as a loading flag nobody lowers. A declaration of
+ * continuous rendering has to follow real motion, so this watches the thing that would be visible:
+ * the bodies' positions, with a settle window rather than a single still frame, because a ball at
+ * the top of its bounce is motionless for one frame and is not finished.
+ */
+internal class MotionSettleTracker(private val settleNanos: Long = PHYSICS_SETTLE_NANOS) {
+
+    private var lastMotionNanos: Long? = null
+
+    /** True while something moved within the last [settleNanos]. Starts `true`: nothing seen yet. */
+    var isMoving: Boolean = true
+        private set
+
+    fun update(frameTimeNanos: Long, moved: Boolean) {
+        val since = lastMotionNanos
+        if (moved || since == null) {
+            lastMotionNanos = frameTimeNanos
+            isMoving = true
+            return
+        }
+        isMoving = frameTimeNanos - since < settleNanos
+    }
+
+    /** Re-arms the window: a replay, a new body or a tilt is motion that has not happened yet. */
+    fun restart() {
+        lastMotionNanos = null
+        isMoving = true
+    }
+}
+
 private class DemoCollisionReplay {
     val bodies = sortedMapOf<Int, PhysicsBody>()
+
+    private val settle = MotionSettleTracker()
+    private val previousPositions = mutableMapOf<Int, Position>()
+
+    /**
+     * Whether the simulation still has visible work. Read by the composable to decide between
+     * [FrameRatePolicy.Continuous] and [FrameRatePolicy.OnDemand] — see [MotionSettleTracker].
+     */
+    val isMoving: Boolean get() = settle.isMoving
+
+    /** Called when the population or the slope changes: the settle window starts over. */
+    fun restartSettle() = settle.restart()
 
     /**
      * Gravity in the tray's frame, pushed onto every body at the top of each step. Held here
@@ -1740,12 +1823,36 @@ private class DemoCollisionReplay {
     fun onFrame(nanos: Long, playing: Boolean) {
         val elapsed = if (previousFrame == 0L) 0L else (nanos - previousFrame).coerceIn(0L, 100_000_000L)
         previousFrame = nanos
-        if (!playing) return
+        if (!playing) {
+            settle.update(nanos, moved = false)
+            return
+        }
         accumulatedNanos += elapsed
         while (accumulatedNanos >= PHYSICS_STEP_NANOS) {
             step()
             accumulatedNanos -= PHYSICS_STEP_NANOS
         }
+        settle.update(nanos, moved = takeMotionSinceLastFrame())
+    }
+
+    /**
+     * Whether any body ended this frame somewhere the eye could tell from where it started it.
+     * The threshold is a tenth of a millimetre — three orders of magnitude under a sphere radius,
+     * so it cannot hide motion, and above the float noise a resting contact keeps producing.
+     */
+    private fun takeMotionSinceLastFrame(): Boolean {
+        var moved = false
+        for ((index, body) in bodies) {
+            val position = body.node.position
+            val previous = previousPositions.put(index, position)
+            if (moved) continue
+            moved = previous == null || distanceSquared(previous, position) > MOTION_EPSILON_SQ
+        }
+        if (previousPositions.size != bodies.size) {
+            previousPositions.keys.retainAll(bodies.keys)
+            moved = true
+        }
+        return moved
     }
 
     private fun step() {
