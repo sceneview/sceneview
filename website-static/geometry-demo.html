@@ -2,6 +2,19 @@
 <html lang="en">
 <head>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
@@ -22,8 +35,109 @@
 <meta name="twitter:image" content="https://sceneview.github.io/favicon.svg">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
+  /* THEME — the page chrome follows the visitor's choice; the 3D scene does not.
+     The canvas is a rendered scene, not a page surface: its backdrop is tied to
+     the shader's `fogColor`, which has to match whatever the camera fades into
+     or the horizon shows a seam, and to a `skyColor`/`groundColor` pair that
+     lights every material through the image-based lighting. Swapping the clear
+     colour alone would break the fog; swapping all three is a re-lighting of
+     the demo, not a theme. So the viewport stays a lit studio in both themes —
+     the same choice Blender, Unity and Figma make — and only the chrome flips.
+
+     That is exactly why every ratio below is measured on COMPOSITED pixels with
+     the canvas forced white AND black: in light theme the panels are pale
+     surfaces floating over a dark scene, in dark theme they are dark surfaces
+     that a bright material can light up from behind. The outline colour is the
+     one value that cannot flip with the theme — a pale edge vanishes on a light
+     panel, a dark edge vanishes on a dark one — so it is a single neutral grey,
+     #767676, in both. Worst measured case 3.22:1 (dark chip over a forced-white
+     scene), best 4.62:1; it was 1.47:1 on the chips and 1.29:1 on the panel rule
+     before, which no declared-colour check could see.
+
+     The @media block is the no-JS path and comes after the :root defaults it
+     overrides; `:not([data-theme="dark"])` leaves a stored dark choice alone,
+     and the explicit [data-theme="light"] rule after it wins the other way. */
+  :root {
+    color-scheme: dark light;
+    --gd-bg: #0d1117;
+    --gd-panel: rgba(13,17,23,0.96);
+    --gd-chip: rgba(13,17,23,0.90);
+    --gd-ink: #ffffff;              /* 18.95:1 on the panel over the real scene */
+    --gd-ink-soft: rgba(255,255,255,0.88);
+    --gd-muted: #b7bdc6;            /* 10.01:1 on --gd-bg */
+    --gd-edge: #767676;             /* 3.22–4.22:1, white and black scene */
+    --gd-edge-hover: #9aa0a6;
+    --gd-rule: rgba(255,255,255,0.28);
+    /* 0.10 white lifted the control's fill to #2d3136 over a white scene, and
+       the neutral edge measured 2.88:1 against it — the panel was fine, the
+       fill on top of it was not. 0.06 puts it back at 3.25:1 worst case. */
+    --gd-ctl-fill: rgba(255,255,255,0.06);
+    --gd-ctl-fill-hover: rgba(255,255,255,0.16);
+    --gd-accent: #1663c9;           /* white label 5.73:1 */
+    --gd-accent-hover: #1a73e8;
+    --gd-accent-edge: #a8c7fa;      /* 3.34:1 on the fill */
+    --gd-danger: #8c2f2f;           /* white label 8.19:1 */
+    --gd-danger-hover: #a63a3a;
+    --gd-danger-edge: #f2b8b5;      /* 4.80:1 on the fill */
+    --gd-link: #8ab4f8;             /* 9.00:1 on the badge chip */
+    --gd-focus: #8ab4f8;            /* 8.27:1 on the panel */
+    --gd-spin-track: rgba(26,115,232,0.25);
+    --gd-spin-head: #4a9af5;        /* 6.52:1 on --gd-bg */
+    --gd-track: rgba(255,255,255,0.25);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --gd-bg: #f5f8fc;
+      --gd-panel: rgba(255,255,255,0.96);
+      --gd-chip: rgba(255,255,255,0.92);
+      --gd-ink: #0d2137;            /* 13.73:1 on the chip over the real scene */
+      --gd-ink-soft: #1d3047;
+      --gd-muted: #45586c;          /* 6.88:1 on --gd-bg */
+      --gd-edge: #767676;           /* 3.80–4.54:1, white and black scene */
+      --gd-edge-hover: #4a4a4a;
+      --gd-rule: rgba(13,33,55,0.24);
+      --gd-ctl-fill: rgba(13,33,55,0.06);
+      --gd-ctl-fill-hover: rgba(13,33,55,0.12);
+      --gd-accent: #0b57d0;         /* white label 6.39:1 */
+      --gd-accent-hover: #0847ad;
+      --gd-accent-edge: #cfe0ff;    /* 4.79:1 on the fill */
+      --gd-danger: #a32a26;         /* white label 7.20:1 */
+      --gd-danger-hover: #8a221e;
+      --gd-danger-edge: #ffd6d3;    /* 5.42:1 on the fill */
+      --gd-link: #005bc1;           /* 5.42:1 on the badge chip */
+      --gd-focus: #0b57d0;          /* 5.86:1 on the panel */
+      --gd-spin-track: rgba(11,87,208,0.25);
+      --gd-spin-head: #0b57d0;      /* 6.00:1 on --gd-bg */
+      --gd-track: rgba(13,33,55,0.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --gd-bg: #f5f8fc;
+    --gd-panel: rgba(255,255,255,0.96);
+    --gd-chip: rgba(255,255,255,0.92);
+    --gd-ink: #0d2137;
+    --gd-ink-soft: #1d3047;
+    --gd-muted: #45586c;
+    --gd-edge: #767676;
+    --gd-edge-hover: #4a4a4a;
+    --gd-rule: rgba(13,33,55,0.24);
+    --gd-ctl-fill: rgba(13,33,55,0.06);
+    --gd-ctl-fill-hover: rgba(13,33,55,0.12);
+    --gd-accent: #0b57d0;
+    --gd-accent-hover: #0847ad;
+    --gd-accent-edge: #cfe0ff;
+    --gd-danger: #a32a26;
+    --gd-danger-hover: #8a221e;
+    --gd-danger-edge: #ffd6d3;
+    --gd-link: #005bc1;
+    --gd-focus: #0b57d0;
+    --gd-spin-track: rgba(11,87,208,0.25);
+    --gd-spin-head: #0b57d0;
+    --gd-track: rgba(13,33,55,0.28);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1117; font-family: 'Inter', system-ui, sans-serif; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--gd-bg); font-family: 'Inter', system-ui, sans-serif; }
   canvas { width: 100%; height: 100%; display: block; cursor: grab; }
   canvas:active { cursor: grabbing; }
 
@@ -32,13 +146,14 @@
      sky the next. Contrast computed against a *declared* background is
      therefore meaningless here: each floating element carries its own opaque
      chip, so its ratios hold against its own fill whatever passes underneath.
-     The chip alpha (0.88 and up) is what keeps the worst case — a fully white
-     scene — from lifting the fill out of range. */
+     The chip alpha (0.90 and up) is what keeps the worst case — a fully white
+     scene under a dark chip, a fully black one under a light chip — from
+     pulling the fill out of range. */
   .chip {
-    background: rgba(13,17,23,0.9);
-    border: 1px solid rgba(255,255,255,0.14);
+    background: var(--gd-chip);
+    border: 2px solid var(--gd-edge);
     border-radius: 10px;
-    padding: 5px 10px;
+    padding: 4px 9px;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
   /* `#shapeCount` is empty until the first scene finishes loading; without this
@@ -47,81 +162,80 @@
 
   .badge {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    padding: 6px 16px; border-radius: 20px;
-    background: rgba(13,17,23,0.92); border: 1px solid rgba(74,154,245,0.55);
-    color: #fff; font-size: 12px; font-weight: 500;
+    padding: 5px 15px; border-radius: 20px;
+    background: var(--gd-chip); border: 2px solid var(--gd-edge);
+    color: var(--gd-ink); font-size: 12px; font-weight: 500;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     pointer-events: none; z-index: 10;
   }
-  .badge a { color: #8ab4f8; text-decoration: none; pointer-events: auto; }
+  .badge a { color: var(--gd-link); text-decoration: none; pointer-events: auto; }
 
   .info {
     position: fixed; top: 16px; left: 16px; z-index: 10;
-    color: rgba(255,255,255,0.88); font-size: 11px; line-height: 1.6;
+    color: var(--gd-ink-soft); font-size: 11px; line-height: 1.6;
     pointer-events: none;
   }
   .title {
     position: fixed; top: 16px; right: 16px; z-index: 10;
-    font-size: 18px; font-weight: 700; color: #fff;
+    font-size: 18px; font-weight: 700; color: var(--gd-ink);
   }
 
   /* Loading overlay */
   #loading {
     position: fixed; inset: 0; z-index: 100;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: #0d1117;
+    background: var(--gd-bg);
     transition: opacity 0.6s ease;
   }
   #loading.hidden { opacity: 0; pointer-events: none; }
   .spinner {
-    width: 40px; height: 40px; border: 3px solid rgba(26,115,232,0.2);
-    border-top-color: #4a9af5; border-radius: 50%;
+    width: 40px; height: 40px; border: 3px solid var(--gd-spin-track);
+    border-top-color: var(--gd-spin-head); border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-text { color: rgba(255,255,255,0.6); font-size: 13px; margin-top: 14px; }
+  .loading-text { color: var(--gd-muted); font-size: 13px; margin-top: 14px; }
 
   /* Controls panel */
   .controls {
     position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
     display: flex; gap: 8px; align-items: center; z-index: 20;
     padding: 8px 14px; border-radius: 14px;
-    background: rgba(13,17,23,0.96); border: 1px solid rgba(255,255,255,0.3);
+    background: var(--gd-panel); border: 2px solid var(--gd-edge);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     flex-wrap: wrap; justify-content: center;
   }
-  /* 0.45 white on a 0.96-opaque panel is a ~4:1 outline against the control's
-     own fill, and it stays there over a white scene as well as a black one.
-     The previous 0.36 on a 0.85 panel was arithmetic on declared colours: it
-     measured 2.0-3.0:1 on real pixels, depending on what the scene put behind
-     the blur.
-     The outline is 2px, not 1px, for a reason that only shows on composited
+  /* The outline is 2px, not 1px, for a reason that only shows on composited
      pixels: the panel is centred and wraps, so at 375px the buttons land on
      fractional x and a 1px border is antialiased across two pixels, neither
      at full strength (measured #6b6d71 and #45484d where #8c8e91 was meant) —
      2.55:1 instead of 4:1. At 2px one whole pixel is always the real colour.
-     The padding drops by 1px to keep the buttons the same size. */
+     The padding is 1px short of the visual value to keep the buttons the size
+     they were before the border grew.
+     The colour no longer flips with the theme: a translucent white edge, which
+     is what this was, reads as nothing at all on a light panel. See the note at
+     the top for the measurements behind the single neutral grey. */
   .controls select, .controls button {
     font-family: inherit; font-size: 12px; font-weight: 500;
-    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
-    background: rgba(255,255,255,0.10); color: #fff;
+    border: 2px solid var(--gd-edge); border-radius: 8px;
+    background: var(--gd-ctl-fill); color: var(--gd-ink);
     padding: 5px 11px; cursor: pointer; outline: none;
     transition: all 0.2s;
   }
   .controls select:hover, .controls button:hover {
-    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
+    background: var(--gd-ctl-fill-hover); border-color: var(--gd-edge-hover);
   }
   /* The swatch's fill is whatever colour the user picked, so the ring cannot
      be measured against it — it is measured against the panel it sits on. */
   .controls input[type="color"] {
-    width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.7);
+    width: 30px; height: 30px; border: 2px solid var(--gd-edge);
     border-radius: 8px; cursor: pointer; background: transparent; padding: 1px;
   }
   .controls .add-btn {
-    background: #1663c9; border-color: #a8c7fa;
-    font-weight: 600;
+    background: var(--gd-accent); border-color: var(--gd-accent-edge);
+    color: #fff; font-weight: 600;
   }
-  .controls .add-btn:hover { background: #1a73e8; border-color: #c8dcfd; }
+  .controls .add-btn:hover { background: var(--gd-accent-hover); }
   /* No vendor colour on any of them, and the same rule as the playground for
      who gets a button: "the assistant has a link that accepts a prefilled
      prompt" — a protocol fact, not a recommendation. Three qualify today.
@@ -130,16 +244,16 @@
   .controls .ai-btn {
     display: inline-flex; align-items: center; gap: 5px;
     font-family: inherit; font-size: 12px; font-weight: 600;
-    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
-    background: rgba(255,255,255,0.10); color: #fff;
+    border: 2px solid var(--gd-edge); border-radius: 8px;
+    background: var(--gd-ctl-fill); color: var(--gd-ink);
     padding: 5px 11px; cursor: pointer; outline: none;
     text-decoration: none; transition: all 0.2s;
   }
   .controls .ai-btn:hover {
-    background: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.65);
+    background: var(--gd-ctl-fill-hover); border-color: var(--gd-edge-hover);
   }
   .controls .ai-btn:focus-visible {
-    outline: 2px solid #8ab4f8; outline-offset: 2px;
+    outline: 2px solid var(--gd-focus); outline-offset: 2px;
   }
   /* Its own row, full width of the panel: on a phone the scene controls
      already wrap, and without this the label lands beside "Reset" and reads
@@ -149,10 +263,10 @@
     display: flex; flex-wrap: wrap; align-items: center;
     justify-content: center; gap: 8px;
     margin-top: 4px; padding-top: 8px;
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid var(--gd-rule);
   }
   .controls .ai-label {
-    color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 600;
+    color: var(--gd-ink-soft); font-size: 11px; font-weight: 600;
     letter-spacing: 0.04em; text-transform: uppercase;
   }
   /* `/go/codex` says this in visible text and refuses to auto-redirect,
@@ -161,29 +275,29 @@
      which a touch device never shows. */
   .controls .ai-note {
     flex-basis: 100%; text-align: center;
-    color: rgba(255,255,255,0.88); font-size: 10px; line-height: 1.5;
+    color: var(--gd-ink-soft); font-size: 10px; line-height: 1.5;
   }
   .controls .reset-btn {
-    background: #8c2f2f; border-color: #f2b8b5;
-    font-size: 11px;
+    background: var(--gd-danger); border-color: var(--gd-danger-edge);
+    color: #fff; font-size: 11px;
   }
-  .controls .reset-btn:hover { background: #a63a3a; border-color: #f9d8d6; }
+  .controls .reset-btn:hover { background: var(--gd-danger-hover); }
   .controls label {
-    color: rgba(255,255,255,0.88); font-size: 11px; display: flex; align-items: center; gap: 4px;
+    color: var(--gd-ink-soft); font-size: 11px; display: flex; align-items: center; gap: 4px;
   }
   .controls .slider {
     -webkit-appearance: none; width: 60px; height: 4px;
-    border-radius: 2px; background: rgba(255,255,255,0.15);
+    border-radius: 2px; background: var(--gd-track);
     outline: none;
   }
   .controls .slider::-webkit-slider-thumb {
     -webkit-appearance: none; width: 12px; height: 12px;
-    border-radius: 50%; background: #4a9af5; cursor: pointer;
+    border-radius: 50%; background: var(--gd-spin-head); cursor: pointer;
   }
 
   .shape-count {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-    color: rgba(255,255,255,0.88); font-size: 11px; z-index: 10;
+    color: var(--gd-ink-soft); font-size: 11px; z-index: 10;
     pointer-events: none;
   }
 
@@ -196,14 +310,14 @@
      be part of the button itself. */
   .presets button {
     font-family: inherit; font-size: 11px; font-weight: 500;
-    border: 2px solid rgba(255,255,255,0.45); border-radius: 8px;
-    background: rgba(13,17,23,0.92); color: #fff;
+    border: 2px solid var(--gd-edge); border-radius: 8px;
+    background: var(--gd-chip); color: var(--gd-ink);
     padding: 4px 9px; cursor: pointer; outline: none;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     transition: all 0.2s; text-align: right;
   }
-  .presets button:hover { border-color: rgba(255,255,255,0.7); }
-  .presets button.active { background: #1663c9; border-color: #a8c7fa; color: #fff; }
+  .presets button:hover { border-color: var(--gd-edge-hover); }
+  .presets button.active { background: var(--gd-accent); border-color: var(--gd-accent-edge); color: #fff; }
 
   /* On a phone the panel wraps to several rows and the "Powered by SceneView"
      badge wraps to two lines; 50px of clearance is no longer enough and the

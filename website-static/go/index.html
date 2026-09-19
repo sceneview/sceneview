@@ -2,6 +2,21 @@
 <html lang="en">
 <head>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <script>
+    // Same bootstrap as every other page on the site: the stored choice first,
+    // then the system preference, applied before first paint.
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
@@ -27,10 +42,82 @@
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+    /* ── Theme ─────────────────────────────────────────────────────────────
+       This hub had no theme at all: hardcoded dark, on a site where every
+       other page follows localStorage['sceneview-theme'] and then
+       prefers-color-scheme. The bootstrap in <head> sets data-theme before
+       first paint; the @media block below is the no-JS path and is placed
+       AFTER the :root defaults it overrides, because both have the same
+       specificity and source order is what decides. `:not([data-theme="dark"])`
+       keeps a stored dark choice winning on a light system, and the explicit
+       [data-theme="light"] rule after it wins the other way.
+
+       Every ratio here is measured on the rendered pixel at 375 / 768 / 1280px
+       in both themes, not computed from the declared colour — which is how the
+       rgba() borders passed review at 1.2:1. */
+    :root {
+      color-scheme: dark light;
+      --go-bg: #0D2137;
+      --go-fg: #f0f4f8;          /* 14.7:1 */
+      --go-card-fg: #d1d9e3;     /* 11.4:1 */
+      --go-muted: #94a9bd;       /* 6.70:1 — the tagline's #7b8fa6 folded into
+                                    this one grey, 4.88:1 before */
+      --go-arrow: #7e93a8;       /* 5.12:1 — was #3a5a78, measured 2.23:1, and
+                                    the arrow is the only mark that says a row
+                                    is a link */
+      --go-rule: #1e3a5f;
+      --go-link: #8ab4f8;        /* 7.62:1 */
+      --go-logo-b: #42a5f5;      /* 6.14:1 */
+      --go-ok: #4ade80;          /* 9.28:1 */
+      --go-edge: #626f7c;        /* 3.15:1 — was rgba(255,255,255,0.06), 1.2:1 */
+      --go-panel: rgba(255,255,255,0.04);
+      --go-chip: rgba(26,115,232,0.12);
+      --go-glow: rgba(26,115,232,0.15);
+      --go-glow-2: rgba(26,115,232,0.05);
+      --go-cta-a: #005bc1;       /* white label, 6.36:1 */
+      --go-cta-b: #1557b0;       /* white label, 6.96:1 */
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --go-bg: #f5f8fc;
+        --go-fg: #0d2137;          /* 15.3:1 */
+        --go-card-fg: #1d3047;     /* 12.6:1 */
+        --go-muted: #45586c;       /* 6.96:1 */
+        --go-arrow: #5b7086;       /* 4.74:1 */
+        --go-rule: #c3ccd8;
+        --go-link: #005bc1;        /* 5.97:1 */
+        --go-logo-b: #1557b0;      /* 6.53:1 */
+        --go-ok: #12703a;          /* 5.72:1 */
+        --go-edge: #848e98;        /* 3.13:1 */
+        --go-panel: rgba(13,33,55,0.05);
+        --go-chip: rgba(0,91,193,0.10);
+        --go-glow: rgba(26,115,232,0.10);
+        --go-glow-2: rgba(26,115,232,0.04);
+      }
+    }
+
+    :root[data-theme="light"] {
+        --go-bg: #f5f8fc;
+        --go-fg: #0d2137;          /* 15.3:1 */
+        --go-card-fg: #1d3047;     /* 12.6:1 */
+        --go-muted: #45586c;       /* 6.96:1 */
+        --go-arrow: #5b7086;       /* 4.74:1 */
+        --go-rule: #c3ccd8;
+        --go-link: #005bc1;        /* 5.97:1 */
+        --go-logo-b: #1557b0;      /* 6.53:1 */
+        --go-ok: #12703a;          /* 5.72:1 */
+        --go-edge: #848e98;        /* 3.13:1 */
+        --go-panel: rgba(13,33,55,0.05);
+        --go-chip: rgba(0,91,193,0.10);
+        --go-glow: rgba(26,115,232,0.10);
+        --go-glow-2: rgba(26,115,232,0.04);
+    }
+
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: #0D2137;
-      color: #f0f4f8;
+      background: var(--go-bg);
+      color: var(--go-fg);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -48,7 +135,7 @@
       transform: translateX(-50%);
       width: 800px;
       height: 800px;
-      background: radial-gradient(circle, rgba(26,115,232,0.15) 0%, rgba(26,115,232,0.05) 40%, transparent 70%);
+      background: radial-gradient(circle, var(--go-glow) 0%, var(--go-glow-2) 40%, transparent 70%);
       pointer-events: none;
       z-index: 0;
     }
@@ -78,14 +165,14 @@
       font-size: 1.75rem;
       font-weight: 800;
       letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #8ab4f8, #42a5f5);
+      background: linear-gradient(135deg, var(--go-link), var(--go-logo-b));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
 
     .tagline {
-      color: #7b8fa6;
+      color: var(--go-muted);
       font-size: 0.95rem;
       margin-bottom: 2rem;
     }
@@ -97,8 +184,8 @@
       gap: 8px;
       padding: 8px 18px;
       border-radius: 999px;
-      background: rgba(26,115,232,0.12);
-      color: #8ab4f8;
+      background: var(--go-chip);
+      color: var(--go-link);
       font-size: 0.85rem;
       font-weight: 600;
       margin-bottom: 1.5rem;
@@ -114,7 +201,7 @@
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #4ade80;
+      background: var(--go-ok);
       animation: blink 1.5s ease-in-out infinite;
     }
 
@@ -134,7 +221,7 @@
       font-weight: 700;
       text-decoration: none;
       color: #fff;
-      background: linear-gradient(135deg, #005bc1, #1557b0);
+      background: linear-gradient(135deg, var(--go-cta-a), var(--go-cta-b));
       box-shadow: 0 4px 20px rgba(26,115,232,0.35);
       transition: transform 0.2s cubic-bezier(0.2,0,0,1), box-shadow 0.2s;
       margin-bottom: 0.5rem;
@@ -150,7 +237,7 @@
     }
 
     .redirect-note {
-      color: #4ade80;
+      color: var(--go-ok);
       font-size: 0.8rem;
       margin-top: 8px;
       margin-bottom: 1.5rem;
@@ -168,7 +255,7 @@
       align-items: center;
       gap: 16px;
       margin: 1.5rem 0;
-      color: #94a9bd;
+      color: var(--go-muted);
       font-size: 0.8rem;
       font-weight: 500;
       text-transform: uppercase;
@@ -179,7 +266,7 @@
       content: '';
       flex: 1;
       height: 1px;
-      background: linear-gradient(to right, transparent, #1e3a5f, transparent);
+      background: linear-gradient(to right, transparent, var(--go-rule), transparent);
     }
 
     /* Platform grid */
@@ -194,16 +281,16 @@
       gap: 14px;
       padding: 14px 18px;
       border-radius: 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: var(--go-panel);
+      border: 1px solid var(--go-edge);
       text-decoration: none;
-      color: #d1d9e3;
+      color: var(--go-card-fg);
       transition: all 0.2s cubic-bezier(0.2,0,0,1);
     }
 
     .platform-link:hover {
-      background: rgba(26,115,232,0.1);
-      border-color: rgba(26,115,232,0.25);
+      background: var(--go-chip);
+      border-color: var(--go-link);
       transform: translateX(4px);
     }
 
@@ -230,24 +317,24 @@
 
     .platform-desc {
       font-size: 0.78rem;
-      color: #94a9bd;
+      color: var(--go-muted);
       margin-top: 2px;
     }
 
     .platform-arrow {
-      color: #3a5a78;
+      color: var(--go-arrow);
       transition: color 0.2s;
     }
 
     .platform-link:hover .platform-arrow {
-      color: #8ab4f8;
+      color: var(--go-link);
     }
 
     /* Quick links footer */
     .quick-links {
       margin-top: 2rem;
       padding-top: 1.5rem;
-      border-top: 1px solid rgba(255,255,255,0.06);
+      border-top: 1px solid var(--go-edge);
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
@@ -259,17 +346,17 @@
       border-radius: 999px;
       font-size: 0.78rem;
       font-weight: 500;
-      color: #94a9bd;
+      color: var(--go-muted);
       text-decoration: none;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.05);
+      background: var(--go-panel);
+      border: 1px solid var(--go-edge);
       transition: all 0.2s;
     }
 
     .quick-link:hover {
-      color: #8ab4f8;
-      border-color: rgba(26,115,232,0.3);
-      background: rgba(26,115,232,0.08);
+      color: var(--go-link);
+      border-color: var(--go-link);
+      background: var(--go-chip);
     }
 
     /* Hidden by default */

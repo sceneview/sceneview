@@ -11,6 +11,22 @@
 <html lang="en">
 <head>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <script>
+    // Same bootstrap as every other page on the site: the stored choice first,
+    // then the system preference, applied before first paint so an interstitial
+    // that lives for 700ms never flashes the wrong theme.
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
@@ -25,19 +41,96 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #0D2137; color: #f0f4f8; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    body::before { content: ''; position: fixed; top: -40%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(circle, rgba(26,115,232,0.15) 0%, transparent 70%); pointer-events: none; }
+
+    /* ── Theme ─────────────────────────────────────────────────────────────
+       This page had no theme at all: hardcoded dark, on a site where every
+       other page follows localStorage['sceneview-theme'] and then
+       prefers-color-scheme. The bootstrap in <head> sets data-theme before
+       first paint; the @media block below is the no-JS path and is placed
+       AFTER the :root defaults it overrides, because both have the same
+       specificity and source order is what decides. `:not([data-theme="dark"])`
+       keeps a stored dark choice winning on a light system, and the explicit
+       [data-theme="light"] rule after it wins the other way.
+
+       Every ratio in the comments is measured on the rendered pixel at
+       375 / 768 / 1280px, in both themes — not computed from the declared
+       colour, which is the same mistake the old rgba() borders made. */
+    :root {
+      color-scheme: dark light;
+      --go-bg: #0D2137;
+      --go-fg: #f0f4f8;          /* 14.7:1 */
+      --go-faint: #94a7bb;       /* 6.57:1 — was #4a5e73, measured 2.42:1 */
+      --go-link: #8ab4f8;        /* 7.62:1 — was #5e7a94, measured 3.59:1 */
+      --go-ok: #4ade80;          /* 9.28:1 */
+      --go-edge: #626f7c;        /* 3.15:1 — was rgba(255,255,255,0.12), 1.4:1 */
+      --go-panel: rgba(255,255,255,0.04);
+      --go-chip: rgba(26,115,232,0.12);
+      --go-code-ink: #a6e3a1;   /* 10.9:1 on --go-panel */
+      --go-muted: #b8c7d9;       /* 9.49:1 */
+      --go-glow: rgba(26,115,232,0.15);
+      --go-head-a: #8ab4f8; --go-head-b: #a5d6ff;
+      --go-cta-a: #1557b0; --go-cta-b: #0d3f80;
+      /* 2px, measured on composited pixels against the page behind it: 7.52:1.
+         The dark CTA fill sits 1.87-2.90:1 against the dark page on ten of
+         these twelve pages, so the button's own boundary failed 1.4.11 in
+         dark; the fill cannot fix that alone, because a white label wants a
+         dark fill and the boundary wants a light one. This is a tint of the
+         button's own hue, so no brand colour moves. The light theme keeps it
+         transparent — there the fill already carries the boundary at
+         4.79-7.51:1 — and the border box keeps both themes the same size. */
+      --go-cta-edge: #8ab4f8;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --go-bg: #f5f8fc;
+        --go-fg: #0d2137;          /* 15.3:1 */
+        --go-muted: #45586c;       /* 6.96:1 */
+        --go-faint: #56697d;       /* 5.33:1 */
+        --go-link: #005bc1;        /* 5.97:1 */
+        --go-ok: #12703a;          /* 5.72:1 */
+        --go-edge: #848e98;        /* 3.13:1 */
+        --go-panel: rgba(13,33,55,0.05);
+        --go-chip: rgba(0,91,193,0.10);
+        --go-code-ink: #146c31;   /* 5.5:1 on --go-panel */
+        --go-glow: rgba(26,115,232,0.10);
+        --go-head-a: #0b57d0; --go-head-b: #1557b0;
+        --go-cta-edge: transparent;
+      }
+    }
+
+    :root[data-theme="light"] {
+        --go-bg: #f5f8fc;
+        --go-fg: #0d2137;          /* 15.3:1 */
+        --go-muted: #45586c;       /* 6.96:1 */
+        --go-faint: #56697d;       /* 5.33:1 */
+        --go-link: #005bc1;        /* 5.97:1 */
+        --go-ok: #12703a;          /* 5.72:1 */
+        --go-edge: #848e98;        /* 3.13:1 */
+        --go-panel: rgba(13,33,55,0.05);
+        --go-chip: rgba(0,91,193,0.10);
+        --go-code-ink: #146c31;   /* 5.5:1 on --go-panel */
+        --go-glow: rgba(26,115,232,0.10);
+        --go-head-a: #0b57d0; --go-head-b: #1557b0;
+        --go-cta-edge: transparent;
+    }
+
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--go-bg); color: var(--go-fg); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body::before { content: ''; position: fixed; top: -40%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(circle, var(--go-glow) 0%, transparent 70%); pointer-events: none; }
     .page { position: relative; z-index: 1; text-align: center; padding: 2rem; max-width: 520px; }
     .icon { font-size: 3rem; margin-bottom: 1rem; }
-    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(135deg, #8ab4f8, #a5d6ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .desc { color: #b8c7d9; margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.6; }
-    .cta { display: inline-flex; align-items: center; gap: 10px; padding: 16px 36px; border-radius: 16px; font-size: 1rem; font-weight: 700; text-decoration: none; color: #fff; background: linear-gradient(135deg, #1557b0, #0d3f80); box-shadow: 0 4px 20px rgba(21,87,176,0.35); transition: transform 0.2s, box-shadow 0.2s; }
+    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(135deg, var(--go-head-a), var(--go-head-b)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .desc { color: var(--go-muted); margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.6; }
+    .cta { display: inline-flex; align-items: center; gap: 10px; padding: 14px 34px; border: 2px solid var(--go-cta-edge); border-radius: 16px; font-size: 1rem; font-weight: 700; text-decoration: none; color: #fff; background: linear-gradient(135deg, var(--go-cta-a), var(--go-cta-b)); box-shadow: 0 4px 20px rgba(21,87,176,0.35); transition: transform 0.2s, box-shadow 0.2s; }
     .cta:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(21,87,176,0.45); }
-    .tip { margin-top: 1.5rem; padding: 14px 20px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); text-align: left; font-size: 0.82rem; color: #b8c7d9; line-height: 1.6; }
-    .tip strong { color: #8ab4f8; font-weight: 600; }
-    .note { color: #4ade80; font-size: 0.8rem; margin-top: 1rem; }
-    .fallback { margin-top: 2rem; color: #94a7bb; font-size: 0.8rem; }
-    .fallback a { color: #8ab4f8; text-decoration: underline; }
+    .tip { margin-top: 1.5rem; padding: 14px 20px; border-radius: 12px; background: var(--go-panel); border: 1px solid var(--go-edge); text-align: left; font-size: 0.82rem; color: var(--go-muted); line-height: 1.6; }
+    .tip strong { color: var(--go-link); font-weight: 600; }
+    /* The snippet keeps a terminal's own palette in both themes; it is
+       read against the panel, 10.9:1 dark and 5.5:1 light. */
+    .tip code { color: var(--go-code-ink); font-family: 'JetBrains Mono', monospace; }
+    .note { color: var(--go-ok); font-size: 0.8rem; margin-top: 1rem; }
+    .fallback { margin-top: 2rem; color: var(--go-faint); font-size: 0.8rem; }
+    .fallback a { color: var(--go-link); text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -51,7 +144,7 @@
     </a>
     <div class="tip">
       <strong>Pro tip:</strong> install the SceneView MCP server so your assistant has full API access:<br>
-      <code style="color:#a6e3a1; font-family:monospace;">npx -y sceneview-mcp</code>
+      <code>npx -y sceneview-mcp</code>
     </div>
     <p class="note">Redirecting to ChatGPT...</p>
     <p class="fallback">Not working? <a href="https://chatgpt.com">Open ChatGPT manually</a> or go <a href="/go/">back</a></p>
