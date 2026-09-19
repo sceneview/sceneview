@@ -326,4 +326,38 @@ class FrameRatePolicyTest {
             )
         }
     }
+
+    /**
+     * A cap of zero or less describes a scene that never presents a frame, which is a frozen view
+     * and never what a caller means. Both policies reject it at construction rather than handing
+     * the loop a period of infinity: the failure must land on the line that wrote the policy, not
+     * hours later on a black screen.
+     *
+     * `null` stays legal — it is the documented "the display's own cadence" default.
+     */
+    @Test
+    fun maxFpsMustBeNullOrStrictlyPositive() {
+        listOf(0, -1, Int.MIN_VALUE).forEach { invalid ->
+            listOf<Pair<String, () -> FrameRatePolicy>>(
+                "OnDemand" to { FrameRatePolicy.OnDemand(maxFps = invalid) },
+                "Continuous" to { FrameRatePolicy.Continuous(maxFps = invalid) }
+            ).forEach { (name, construct) ->
+                val thrown = runCatching { construct() }.exceptionOrNull()
+                assertTrue(
+                    "$name(maxFps = $invalid) must be rejected at construction, got $thrown",
+                    thrown is IllegalArgumentException
+                )
+                assertTrue(
+                    "the message must name the offending value so the fix is obvious: $thrown",
+                    thrown?.message?.contains("$invalid") == true
+                )
+            }
+        }
+
+        // The documented default and an ordinary cap must keep working.
+        assertEquals(null, FrameRatePolicy.OnDemand().maxFps)
+        assertEquals(30, FrameRatePolicy.OnDemand(maxFps = 30).maxFps)
+        assertEquals(null, FrameRatePolicy.Continuous().maxFps)
+        assertEquals(1, FrameRatePolicy.Continuous(maxFps = 1).maxFps)
+    }
 }
